@@ -190,6 +190,64 @@ export default function OptiPage() {
   const [selectedB, setSelectedB] = useState<string>('')
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
+  
+  // Panel form state
+  const [hosszúság, setHosszúság] = useState<string>('')
+  const [szélesség, setSzélesség] = useState<string>('')
+  const [darab, setDarab] = useState<string>('')
+  const [jelölés, setJelölés] = useState<string>('')
+  
+  // Panels table state
+  const [panels, setPanels] = useState<Array<{
+    id: string
+    táblásAnyag: string
+    hosszúság: string
+    szélesség: string
+    darab: string
+    jelölés: string
+    élzárás: string
+  }>>([])
+
+  // Add panel function
+  const addPanel = () => {
+    // Validation
+    if (!selectedTáblásAnyag || !hosszúság || !szélesség || !darab) {
+      alert('Kérjük töltse ki az összes kötelező mezőt!')
+      return
+    }
+
+    // Get material name
+    const material = materials.find(m => m.id === selectedTáblásAnyag)
+    const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
+
+    // Create élzárás string from A, B, C, D selections
+    const élzárás = [selectedA, selectedB, selectedC, selectedD]
+      .filter(val => val && val !== '')
+      .join(', ')
+
+    // Add new panel
+    const newPanel = {
+      id: Date.now().toString(),
+      táblásAnyag: materialName,
+      hosszúság,
+      szélesség,
+      darab,
+      jelölés: jelölés || '-',
+      élzárás: élzárás || '-'
+    }
+
+    setPanels(prev => [...prev, newPanel])
+
+    // Clear form
+    setHosszúság('')
+    setSzélesség('')
+    setDarab('')
+    setJelölés('')
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
+  }
 
   // Fetch materials from database
   useEffect(() => {
@@ -849,6 +907,8 @@ export default function OptiPage() {
                     label="Hosszúság (mm)"
                     type="number"
                     required
+                    value={hosszúság}
+                    onChange={(e) => setHosszúság(e.target.value)}
                     inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
@@ -858,6 +918,8 @@ export default function OptiPage() {
                     label="Szélesség (mm)"
                     type="number"
                     required
+                    value={szélesség}
+                    onChange={(e) => setSzélesség(e.target.value)}
                     inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
@@ -867,6 +929,8 @@ export default function OptiPage() {
                     label="Darab"
                     type="number"
                     required
+                    value={darab}
+                    onChange={(e) => setDarab(e.target.value)}
                     inputProps={{ min: 1, step: 1 }}
                   />
                 </Grid>
@@ -874,6 +938,8 @@ export default function OptiPage() {
                   <TextField
                     fullWidth
                     label="Jelölés"
+                    value={jelölés}
+                    onChange={(e) => setJelölés(e.target.value)}
                     inputProps={{ maxLength: 50 }}
                   />
                 </Grid>
@@ -948,6 +1014,7 @@ export default function OptiPage() {
                   variant="contained"
                   color="primary"
                   size="large"
+                  onClick={addPanel}
                 >
                   Hozzáadás
                 </Button>
@@ -955,6 +1022,46 @@ export default function OptiPage() {
             </CardContent>
           </Card>
         </Grid>
+
+        {/* Panels Table */}
+        {panels.length > 0 && (
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Hozzáadott Panelek
+                </Typography>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Táblás anyag</strong></TableCell>
+                        <TableCell><strong>Hosszúság</strong></TableCell>
+                        <TableCell><strong>Szélesség</strong></TableCell>
+                        <TableCell><strong>Darab</strong></TableCell>
+                        <TableCell><strong>Jelölés</strong></TableCell>
+                        <TableCell><strong>Élzárás</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {panels.map((panel) => (
+                        <TableRow key={panel.id}>
+                          <TableCell>{panel.táblásAnyag}</TableCell>
+                          <TableCell>{panel.hosszúság} mm</TableCell>
+                          <TableCell>{panel.szélesség} mm</TableCell>
+                          <TableCell>{panel.darab}</TableCell>
+                          <TableCell>{panel.jelölés}</TableCell>
+                          <TableCell>{panel.élzárás}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
         {/* Material Selection */}
         <Grid item xs={12} md={4}>
           <Card>
