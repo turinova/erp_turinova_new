@@ -794,6 +794,37 @@ export default function OptiPage() {
       </Typography>
 
       <Grid container spacing={3}>
+        {/* Táblás anyag Selection */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Táblás anyag
+              </Typography>
+              
+              <FormControl fullWidth>
+                <InputLabel>Select Material</InputLabel>
+                <Select
+                  disabled={materialsLoading}
+                >
+                  {materialsLoading ? (
+                    <MenuItem disabled>
+                      <CircularProgress size={20} sx={{ mr: 1 }} />
+                      Loading materials...
+                    </MenuItem>
+                  ) : (
+                    materials.map((material) => (
+                      <MenuItem key={material.id} value={material.id}>
+                        {material.name} ({material.width_mm}×{material.length_mm}mm)
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* New Input Fields Card */}
         <Grid item xs={12}>
           <Card>
