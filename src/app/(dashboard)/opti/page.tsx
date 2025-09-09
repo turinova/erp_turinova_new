@@ -265,7 +265,7 @@ export default function OptiPage() {
 
     setAddedPanels(prev => [...prev, newPanel])
 
-    // Clear form
+    // Clear form but keep the same material selected for next entry
     setPanelForm({
       hosszúság: '',
       szélesség: '',
@@ -276,6 +276,7 @@ export default function OptiPage() {
     setSelectedB('')
     setSelectedC('')
     setSelectedD('')
+    // Keep selectedTáblásAnyag unchanged for next entry
   }
 
   // Delete panel from table
@@ -368,7 +369,7 @@ export default function OptiPage() {
       darab: '',
       jelölés: ''
     })
-    setSelectedTáblásAnyag('')
+    // Keep the material selected when canceling edit
     setSelectedA('')
     setSelectedB('')
     setSelectedC('')
