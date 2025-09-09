@@ -1072,6 +1072,7 @@ export default function OptiPage() {
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField
                     fullWidth
+                    size="small"
                     label="Hosszúság (mm)"
                     type="number"
                     required
@@ -1085,6 +1086,7 @@ export default function OptiPage() {
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField
                     fullWidth
+                    size="small"
                     label="Szélesség (mm)"
                     type="number"
                     required
@@ -1097,6 +1099,7 @@ export default function OptiPage() {
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField
                     fullWidth
+                    size="small"
                     label="Darab"
                     type="number"
                     required
@@ -1109,6 +1112,7 @@ export default function OptiPage() {
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField
                     fullWidth
+                    size="small"
                     label="Jelölés"
                     value={panelForm.jelölés}
                     onChange={(e) => setPanelForm({...panelForm, jelölés: e.target.value})}
@@ -1117,7 +1121,7 @@ export default function OptiPage() {
                   />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth size="small">
                     <InputLabel id="dropdown-a-label">A</InputLabel>
                     <Select
                       labelId="dropdown-a-label"
@@ -1134,7 +1138,7 @@ export default function OptiPage() {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth size="small">
                     <InputLabel id="dropdown-b-label">B</InputLabel>
                     <Select
                       labelId="dropdown-b-label"
@@ -1151,7 +1155,7 @@ export default function OptiPage() {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth size="small">
                     <InputLabel id="dropdown-c-label">C</InputLabel>
                     <Select
                       labelId="dropdown-c-label"
@@ -1168,7 +1172,7 @@ export default function OptiPage() {
                   </FormControl>
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth>
+                  <FormControl fullWidth size="small">
                     <InputLabel id="dropdown-d-label">D</InputLabel>
                     <Select
                       labelId="dropdown-d-label"
