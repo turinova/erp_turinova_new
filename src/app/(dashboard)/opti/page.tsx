@@ -1225,9 +1225,22 @@ export default function OptiPage() {
                         onClick={() => editPanel(panel)}
                         sx={{ 
                           cursor: 'pointer',
-                          backgroundColor: addedPanels.filter(p => p.táblásAnyag === panel.táblásAnyag).length > 1 
-                            ? 'rgba(0, 123, 108, 0.05)' 
-                            : 'transparent',
+                          backgroundColor: (() => {
+                            // Get all unique materials and assign colors
+                            const uniqueMaterials = [...new Set(addedPanels.map(p => p.táblásAnyag))]
+                            const materialIndex = uniqueMaterials.indexOf(panel.táblásAnyag)
+                            const colors = [
+                              'rgba(0, 123, 108, 0.05)',    // Green
+                              'rgba(25, 118, 210, 0.05)',   // Blue  
+                              'rgba(156, 39, 176, 0.05)',   // Purple
+                              'rgba(255, 152, 0, 0.05)',    // Orange
+                              'rgba(244, 67, 54, 0.05)',    // Red
+                              'rgba(76, 175, 80, 0.05)',    // Light Green
+                              'rgba(63, 81, 181, 0.05)',    // Indigo
+                              'rgba(255, 193, 7, 0.05)'     // Yellow
+                            ]
+                            return colors[materialIndex % colors.length]
+                          })(),
                           '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
                         }}
                       >
