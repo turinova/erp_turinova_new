@@ -1242,15 +1242,13 @@ export default function OptiPage() {
                           onClick={() => deletePanelFromTable(panel.id)}
                           sx={{ 
                             minWidth: 'auto', 
-                            px: 0.5, 
-                            py: 0.25,
+                            px: 1, 
+                            py: 0.5,
                             minHeight: 'auto',
-                            '& .MuiButton-startIcon': {
-                              margin: 0
-                            }
+                            fontSize: '12px'
                           }}
                         >
-                          <i className="ri-delete-bin-line" style={{ fontSize: '14px' }}></i>
+                          Törlés
                         </Button>
                       </TableCell>
                     </TableRow>
