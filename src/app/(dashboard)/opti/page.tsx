@@ -185,6 +185,7 @@ export default function OptiPage() {
   const [orderPolicy, setOrderPolicy] = useState<'LSF' | 'LAF' | 'DH'>('LAF')
   const [expandedAccordions, setExpandedAccordions] = useState<Set<string>>(new Set())
   const [currentBoardPerMaterial, setCurrentBoardPerMaterial] = useState<Map<string, number>>(new Map())
+  const [selectedTáblásAnyag, setSelectedTáblásAnyag] = useState<string>('')
 
   // Fetch materials from database
   useEffect(() => {
@@ -805,6 +806,8 @@ export default function OptiPage() {
               <FormControl fullWidth>
                 <InputLabel>Select Material</InputLabel>
                 <Select
+                  value={selectedTáblásAnyag}
+                  onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
                   disabled={materialsLoading}
                 >
                   {materialsLoading ? (
