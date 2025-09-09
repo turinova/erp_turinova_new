@@ -375,6 +375,25 @@ export default function OptiPage() {
     setSelectedD('')
   }
 
+  // Handle Enter key press
+  const handleKeyPress = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (editingPanel) {
+        savePanel()
+      } else {
+        addPanelToTable()
+      }
+      // Focus on hosszúság input after action
+      setTimeout(() => {
+        const hosszúságInput = document.querySelector('input[name="hosszúság"]') as HTMLInputElement
+        if (hosszúságInput) {
+          hosszúságInput.focus()
+        }
+      }, 100)
+    }
+  }
+
   // Fetch materials from database
   useEffect(() => {
     const fetchMaterials = async () => {
@@ -1043,8 +1062,10 @@ export default function OptiPage() {
                     label="Hosszúság (mm)"
                     type="number"
                     required
+                    name="hosszúság"
                     value={panelForm.hosszúság}
                     onChange={(e) => setPanelForm({...panelForm, hosszúság: e.target.value})}
+                    onKeyPress={handleKeyPress}
                     inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
@@ -1056,6 +1077,7 @@ export default function OptiPage() {
                     required
                     value={panelForm.szélesség}
                     onChange={(e) => setPanelForm({...panelForm, szélesség: e.target.value})}
+                    onKeyPress={handleKeyPress}
                     inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
@@ -1067,6 +1089,7 @@ export default function OptiPage() {
                     required
                     value={panelForm.darab}
                     onChange={(e) => setPanelForm({...panelForm, darab: e.target.value})}
+                    onKeyPress={handleKeyPress}
                     inputProps={{ min: 1, step: 1 }}
                   />
                 </Grid>
@@ -1076,6 +1099,7 @@ export default function OptiPage() {
                     label="Jelölés"
                     value={panelForm.jelölés}
                     onChange={(e) => setPanelForm({...panelForm, jelölés: e.target.value})}
+                    onKeyPress={handleKeyPress}
                     inputProps={{ maxLength: 50 }}
                   />
                 </Grid>
@@ -1086,6 +1110,7 @@ export default function OptiPage() {
                       labelId="dropdown-a-label"
                       value={selectedA}
                       onChange={(e) => setSelectedA(e.target.value)}
+                      onKeyPress={handleKeyPress}
                       label="A"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
@@ -1102,6 +1127,7 @@ export default function OptiPage() {
                       labelId="dropdown-b-label"
                       value={selectedB}
                       onChange={(e) => setSelectedB(e.target.value)}
+                      onKeyPress={handleKeyPress}
                       label="B"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
@@ -1118,6 +1144,7 @@ export default function OptiPage() {
                       labelId="dropdown-c-label"
                       value={selectedC}
                       onChange={(e) => setSelectedC(e.target.value)}
+                      onKeyPress={handleKeyPress}
                       label="C"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
@@ -1134,6 +1161,7 @@ export default function OptiPage() {
                       labelId="dropdown-d-label"
                       value={selectedD}
                       onChange={(e) => setSelectedD(e.target.value)}
+                      onKeyPress={handleKeyPress}
                       label="D"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
