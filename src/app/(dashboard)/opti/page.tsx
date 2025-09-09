@@ -1122,6 +1122,14 @@ export default function OptiPage() {
                     inputProps={{ maxLength: 50 }}
                   />
                 </Grid>
+                
+                {/* Élzárás Section */}
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+                    Élzárás
+                  </Typography>
+                </Grid>
+                
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
                     <InputLabel id="dropdown-a-label">A</InputLabel>
