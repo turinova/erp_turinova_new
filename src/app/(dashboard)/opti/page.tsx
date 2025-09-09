@@ -1069,7 +1069,7 @@ export default function OptiPage() {
                           onClick={() => deletePanelFromTable(panel.id)}
                           sx={{ minWidth: 'auto', px: 1 }}
                         >
-                          ✕
+                          ✕ Törlés
                         </Button>
                       </TableCell>
                     </TableRow>
