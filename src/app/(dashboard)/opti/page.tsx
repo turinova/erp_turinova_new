@@ -297,8 +297,9 @@ export default function OptiPage() {
     }
   }, [optimizationResult])
 
-  // Panel form state
-  const [panelForm, setPanelForm] = useState({
+
+  // Add panel for optimization (using separate form state)
+  const [optimizationPanelForm, setOptimizationPanelForm] = useState({
     length: '',
     width: '',
     quantity: '1',
@@ -309,16 +310,15 @@ export default function OptiPage() {
     edgeLeft: 'None'
   })
 
-  // Add panel
   const addPanel = () => {
     if (!selectedMaterial) {
       setError('Please select a material first')
       return
     }
 
-    const length = parseFloat(panelForm.length)
-    const width = parseFloat(panelForm.width)
-    const quantity = parseInt(panelForm.quantity)
+    const length = parseFloat(optimizationPanelForm.length)
+    const width = parseFloat(optimizationPanelForm.width)
+    const quantity = parseInt(optimizationPanelForm.quantity)
 
     if (!length || !width || !quantity || length <= 0 || width <= 0 || quantity <= 0) {
       setError('Please enter valid dimensions and quantity')
@@ -343,15 +343,15 @@ export default function OptiPage() {
       length,
       width,
       quantity,
-      marking: panelForm.marking,
-      edgeTop: panelForm.edgeTop,
-      edgeRight: panelForm.edgeRight,
-      edgeBottom: panelForm.edgeBottom,
-      edgeLeft: panelForm.edgeLeft
+      marking: optimizationPanelForm.marking,
+      edgeTop: optimizationPanelForm.edgeTop,
+      edgeRight: optimizationPanelForm.edgeRight,
+      edgeBottom: optimizationPanelForm.edgeBottom,
+      edgeLeft: optimizationPanelForm.edgeLeft
     }
 
     setPanels([...panels, newPanel])
-    setPanelForm({
+    setOptimizationPanelForm({
       length: '',
       width: '',
       quantity: '1',
@@ -1171,8 +1171,8 @@ export default function OptiPage() {
                     fullWidth
                     label="Length (mm)"
                     type="number"
-                    value={panelForm.length}
-                    onChange={(e) => setPanelForm({...panelForm, length: e.target.value})}
+                    value={optimizationPanelForm.length}
+                    onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, length: e.target.value})}
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -1180,8 +1180,8 @@ export default function OptiPage() {
                     fullWidth
                     label="Width (mm)"
                     type="number"
-                    value={panelForm.width}
-                    onChange={(e) => setPanelForm({...panelForm, width: e.target.value})}
+                    value={optimizationPanelForm.width}
+                    onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, width: e.target.value})}
                   />
                 </Grid>
                 <Grid item xs={6}>
@@ -1189,16 +1189,16 @@ export default function OptiPage() {
                     fullWidth
                     label="Quantity"
                     type="number"
-                    value={panelForm.quantity}
-                    onChange={(e) => setPanelForm({...panelForm, quantity: e.target.value})}
+                    value={optimizationPanelForm.quantity}
+                    onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, quantity: e.target.value})}
                   />
                 </Grid>
                 <Grid item xs={6}>
                   <TextField
                     fullWidth
                     label="Marking"
-                    value={panelForm.marking}
-                    onChange={(e) => setPanelForm({...panelForm, marking: e.target.value})}
+                    value={optimizationPanelForm.marking}
+                    onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, marking: e.target.value})}
                   />
                 </Grid>
               </Grid>
@@ -1211,8 +1211,8 @@ export default function OptiPage() {
                   <FormControl fullWidth size="small">
                     <InputLabel>Top</InputLabel>
                     <Select
-                      value={panelForm.edgeTop}
-                      onChange={(e) => setPanelForm({...panelForm, edgeTop: e.target.value})}
+                      value={optimizationPanelForm.edgeTop}
+                      onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, edgeTop: e.target.value})}
                     >
                       {EDGE_OPTIONS.map(option => (
                         <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -1224,8 +1224,8 @@ export default function OptiPage() {
                   <FormControl fullWidth size="small">
                     <InputLabel>Right</InputLabel>
                     <Select
-                      value={panelForm.edgeRight}
-                      onChange={(e) => setPanelForm({...panelForm, edgeRight: e.target.value})}
+                      value={optimizationPanelForm.edgeRight}
+                      onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, edgeRight: e.target.value})}
                     >
                       {EDGE_OPTIONS.map(option => (
                         <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -1237,8 +1237,8 @@ export default function OptiPage() {
                   <FormControl fullWidth size="small">
                     <InputLabel>Bottom</InputLabel>
                     <Select
-                      value={panelForm.edgeBottom}
-                      onChange={(e) => setPanelForm({...panelForm, edgeBottom: e.target.value})}
+                      value={optimizationPanelForm.edgeBottom}
+                      onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, edgeBottom: e.target.value})}
                     >
                       {EDGE_OPTIONS.map(option => (
                         <MenuItem key={option} value={option}>{option}</MenuItem>
@@ -1250,8 +1250,8 @@ export default function OptiPage() {
                   <FormControl fullWidth size="small">
                     <InputLabel>Left</InputLabel>
                     <Select
-                      value={panelForm.edgeLeft}
-                      onChange={(e) => setPanelForm({...panelForm, edgeLeft: e.target.value})}
+                      value={optimizationPanelForm.edgeLeft}
+                      onChange={(e) => setOptimizationPanelForm({...optimizationPanelForm, edgeLeft: e.target.value})}
                     >
                       {EDGE_OPTIONS.map(option => (
                         <MenuItem key={option} value={option}>{option}</MenuItem>
