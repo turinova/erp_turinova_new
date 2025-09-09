@@ -25,14 +25,17 @@ import {
   CircularProgress,
   Pagination,
   Tooltip,
-  Autocomplete,
-  Snackbar
+  Autocomplete
 } from '@mui/material'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
 import MuiAccordionSummary from '@mui/material/AccordionSummary'
 import MuiAccordionDetails from '@mui/material/AccordionDetails'
 import type { AccordionProps } from '@mui/material/Accordion'
+
+// Third-party Imports
+import { toast, ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 import type { AccordionSummaryProps } from '@mui/material/AccordionSummary'
 import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 
@@ -236,23 +239,6 @@ export default function OptiPage() {
   // Edit state
   const [editingPanel, setEditingPanel] = useState<string | null>(null)
 
-  // Toast notifications
-  const [toast, setToast] = useState({
-    open: false,
-    message: '',
-    severity: 'success' as 'success' | 'error' | 'warning' | 'info'
-  })
-
-  // Show toast notification
-  const showToast = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
-    setToast({ open: true, message, severity })
-  }
-
-  // Close toast
-  const closeToast = () => {
-    setToast(prev => ({ ...prev, open: false }))
-  }
-
   // Add panel to separate table
   const addPanelToTable = () => {
     // Validation
@@ -284,7 +270,7 @@ export default function OptiPage() {
     setAddedPanels(prev => [...prev, newPanel])
 
     // Show success toast
-    showToast('Panel sikeresen hozzáadva!', 'success')
+    toast.success('Panel sikeresen hozzáadva!')
 
     // Clear form but keep the same material selected for next entry
     setPanelForm({
@@ -304,7 +290,7 @@ export default function OptiPage() {
   const deletePanelFromTable = (id: string) => {
     setAddedPanels(prev => prev.filter(panel => panel.id !== id))
     // Show error toast
-    showToast('Panel sikeresen törölve!', 'error')
+    toast.error('Panel sikeresen törölve!')
   }
 
   // Edit panel - load record into form
@@ -369,7 +355,7 @@ export default function OptiPage() {
     ))
 
     // Show success toast
-    showToast('Panel sikeresen módosítva!', 'success')
+    toast.success('Panel sikeresen módosítva!')
 
     // Clear form and exit edit mode
     setEditingPanel(null)
@@ -2033,21 +2019,19 @@ export default function OptiPage() {
         )}
       </Grid>
 
-      {/* Toast Notifications */}
-      <Snackbar
-        open={toast.open}
-        autoHideDuration={3000}
-        onClose={closeToast}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-      >
-        <Alert 
-          onClose={closeToast} 
-          severity={toast.severity}
-          sx={{ width: '100%' }}
-        >
-          {toast.message}
-        </Alert>
-      </Snackbar>
+      {/* Toast Container */}
+      <ToastContainer
+        position="bottom-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </Box>
   )
 }
