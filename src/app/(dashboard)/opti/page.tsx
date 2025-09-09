@@ -186,6 +186,77 @@ export default function OptiPage() {
   const [expandedAccordions, setExpandedAccordions] = useState<Set<string>>(new Set())
   const [currentBoardPerMaterial, setCurrentBoardPerMaterial] = useState<Map<string, number>>(new Map())
   const [selectedTáblásAnyag, setSelectedTáblásAnyag] = useState<string>('')
+  const [selectedA, setSelectedA] = useState<string>('')
+  const [selectedB, setSelectedB] = useState<string>('')
+  const [selectedC, setSelectedC] = useState<string>('')
+  const [selectedD, setSelectedD] = useState<string>('')
+  
+  // Panel form state for the separate table
+  const [panelForm, setPanelForm] = useState({
+    hosszúság: '',
+    szélesség: '',
+    darab: '',
+    jelölés: ''
+  })
+  
+  // Separate panels table state
+  const [addedPanels, setAddedPanels] = useState<Array<{
+    id: string
+    táblásAnyag: string
+    hosszúság: string
+    szélesség: string
+    darab: string
+    jelölés: string
+    élzárás: string
+  }>>([])
+
+  // Add panel to separate table
+  const addPanelToTable = () => {
+    // Validation
+    if (!selectedTáblásAnyag || !panelForm.hosszúság || !panelForm.szélesség || !panelForm.darab) {
+      alert('Kérjük töltse ki az összes kötelező mezőt!')
+      return
+    }
+
+    // Get material name
+    const material = materials.find(m => m.id === selectedTáblásAnyag)
+    const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
+
+    // Create élzárás string from A, B, C, D selections
+    const élzárás = [selectedA, selectedB, selectedC, selectedD]
+      .filter(val => val && val !== '')
+      .join(', ')
+
+    // Add new panel to table
+    const newPanel = {
+      id: Date.now().toString(),
+      táblásAnyag: materialName,
+      hosszúság: panelForm.hosszúság,
+      szélesség: panelForm.szélesség,
+      darab: panelForm.darab,
+      jelölés: panelForm.jelölés || '-',
+      élzárás: élzárás || '-'
+    }
+
+    setAddedPanels(prev => [...prev, newPanel])
+
+    // Clear form
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
+  }
+
+  // Delete panel from table
+  const deletePanelFromTable = (id: string) => {
+    setAddedPanels(prev => prev.filter(panel => panel.id !== id))
+  }
 
   // Fetch materials from database
   useEffect(() => {
@@ -795,42 +866,214 @@ export default function OptiPage() {
       </Typography>
 
       <Grid container spacing={3}>
-        {/* Táblás anyag Selection */}
-        <Grid item xs={12} md={6}>
+        {/* Panel Adatok Card with Táblás anyag */}
+        <Grid item xs={12}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Táblás anyag
+                Panel Adatok
               </Typography>
               
-              <FormControl fullWidth>
-                <InputLabel id="táblás-anyag-label">Táblás anyag választás:</InputLabel>
-                <Select
-                  labelId="táblás-anyag-label"
-                  value={selectedTáblásAnyag}
-                  onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
-                  disabled={materialsLoading}
-                  label="Táblás anyag választás:"
+              <Grid container spacing={2}>
+                {/* Táblás anyag Selection */}
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth>
+                    <InputLabel id="táblás-anyag-label">Táblás anyag választás:</InputLabel>
+                    <Select
+                      labelId="táblás-anyag-label"
+                      value={selectedTáblásAnyag}
+                      onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
+                      disabled={materialsLoading}
+                      label="Táblás anyag választás:"
+                    >
+                      {materialsLoading ? (
+                        <MenuItem disabled>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Loading materials...
+                        </MenuItem>
+                      ) : (
+                        materials.map((material) => (
+                          <MenuItem key={material.id} value={material.id}>
+                            {material.name} ({material.width_mm}×{material.length_mm}mm)
+                          </MenuItem>
+                        ))
+                      )}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Hosszúság (mm)"
+                    type="number"
+                    required
+                    value={panelForm.hosszúság}
+                    onChange={(e) => setPanelForm({...panelForm, hosszúság: e.target.value})}
+                    inputProps={{ min: 0, step: 0.1 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Szélesség (mm)"
+                    type="number"
+                    required
+                    value={panelForm.szélesség}
+                    onChange={(e) => setPanelForm({...panelForm, szélesség: e.target.value})}
+                    inputProps={{ min: 0, step: 0.1 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Darab"
+                    type="number"
+                    required
+                    value={panelForm.darab}
+                    onChange={(e) => setPanelForm({...panelForm, darab: e.target.value})}
+                    inputProps={{ min: 1, step: 1 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    label="Jelölés"
+                    value={panelForm.jelölés}
+                    onChange={(e) => setPanelForm({...panelForm, jelölés: e.target.value})}
+                    inputProps={{ maxLength: 50 }}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth>
+                    <InputLabel id="dropdown-a-label">A</InputLabel>
+                    <Select
+                      labelId="dropdown-a-label"
+                      value={selectedA}
+                      onChange={(e) => setSelectedA(e.target.value)}
+                      label="A"
+                    >
+                      <MenuItem value="option1">Option 1</MenuItem>
+                      <MenuItem value="option2">Option 2</MenuItem>
+                      <MenuItem value="option3">Option 3</MenuItem>
+                      <MenuItem value="option4">Option 4</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth>
+                    <InputLabel id="dropdown-b-label">B</InputLabel>
+                    <Select
+                      labelId="dropdown-b-label"
+                      value={selectedB}
+                      onChange={(e) => setSelectedB(e.target.value)}
+                      label="B"
+                    >
+                      <MenuItem value="option1">Option 1</MenuItem>
+                      <MenuItem value="option2">Option 2</MenuItem>
+                      <MenuItem value="option3">Option 3</MenuItem>
+                      <MenuItem value="option4">Option 4</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth>
+                    <InputLabel id="dropdown-c-label">C</InputLabel>
+                    <Select
+                      labelId="dropdown-c-label"
+                      value={selectedC}
+                      onChange={(e) => setSelectedC(e.target.value)}
+                      label="C"
+                    >
+                      <MenuItem value="option1">Option 1</MenuItem>
+                      <MenuItem value="option2">Option 2</MenuItem>
+                      <MenuItem value="option3">Option 3</MenuItem>
+                      <MenuItem value="option4">Option 4</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth>
+                    <InputLabel id="dropdown-d-label">D</InputLabel>
+                    <Select
+                      labelId="dropdown-d-label"
+                      value={selectedD}
+                      onChange={(e) => setSelectedD(e.target.value)}
+                      label="D"
+                    >
+                      <MenuItem value="option1">Option 1</MenuItem>
+                      <MenuItem value="option2">Option 2</MenuItem>
+                      <MenuItem value="option3">Option 3</MenuItem>
+                      <MenuItem value="option4">Option 4</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+              
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  onClick={addPanelToTable}
+                  disabled={!selectedTáblásAnyag}
                 >
-                  {materialsLoading ? (
-                    <MenuItem disabled>
-                      <CircularProgress size={20} sx={{ mr: 1 }} />
-                      Loading materials...
-                    </MenuItem>
-                  ) : (
-                    materials.map((material) => (
-                      <MenuItem key={material.id} value={material.id}>
-                        {material.name} ({material.width_mm}×{material.length_mm}mm)
-                      </MenuItem>
-                    ))
-                  )}
-                </Select>
-              </FormControl>
+                  Hozzáadás
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
 
-
+        {/* Added Panels Table - Separate Card */}
+        {addedPanels.length > 0 && (
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Hozzáadott Panelek
+                </Typography>
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell><strong>Táblás anyag</strong></TableCell>
+                        <TableCell><strong>Hosszúság</strong></TableCell>
+                        <TableCell><strong>Szélesség</strong></TableCell>
+                        <TableCell><strong>Darab</strong></TableCell>
+                        <TableCell><strong>Jelölés</strong></TableCell>
+                        <TableCell><strong>Élzárás</strong></TableCell>
+                        <TableCell><strong>Műveletek</strong></TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {addedPanels.map((panel) => (
+                        <TableRow key={panel.id}>
+                          <TableCell>{panel.táblásAnyag}</TableCell>
+                          <TableCell>{panel.hosszúság} mm</TableCell>
+                          <TableCell>{panel.szélesség} mm</TableCell>
+                          <TableCell>{panel.darab}</TableCell>
+                          <TableCell>{panel.jelölés}</TableCell>
+                          <TableCell>{panel.élzárás}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="contained"
+                              color="error"
+                              size="small"
+                              onClick={() => deletePanelFromTable(panel.id)}
+                              sx={{ minWidth: 'auto', px: 1 }}
+                            >
+                              ✕
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
 
         {/* Material Selection */}
         <Grid item xs={12} md={4}>
