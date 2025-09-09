@@ -1065,13 +1065,13 @@ export default function OptiPage() {
                           <TableCell>{panel.élzárás}</TableCell>
                           <TableCell>
                             <Button
-                              variant="outlined"
+                              variant="contained"
                               color="error"
                               size="small"
                               onClick={() => deletePanelFromTable(panel.id)}
-                              startIcon={<span>🗑️</span>}
+                              sx={{ minWidth: 'auto', px: 1 }}
                             >
-                              Törlés
+                              ✕
                             </Button>
                           </TableCell>
                         </TableRow>
