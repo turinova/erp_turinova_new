@@ -26,6 +26,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => [
     href: '/optitest',
     icon: 'ri-test-tube-line',
     iconColor: '#E67E22' // Orange for testing/experimentation
+  },
+  {
+    label: 'Opti',
+    href: '/opti',
+    icon: 'ri-settings-3-line',
+    iconColor: '#8E44AD' // Purple for optimization tools
   }
 ]
 
