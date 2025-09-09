@@ -203,6 +203,34 @@ export default function OptiPage() {
     darab: '',
     jelölés: ''
   })
+
+  // Validation states for required fields
+  const [validationErrors, setValidationErrors] = useState({
+    hosszúság: false,
+    szélesség: false,
+    darab: false,
+    táblásAnyag: false
+  })
+
+  // Validation function
+  const validateForm = () => {
+    const errors = {
+      hosszúság: !panelForm.hosszúság || parseFloat(panelForm.hosszúság) <= 0,
+      szélesség: !panelForm.szélesség || parseFloat(panelForm.szélesség) <= 0,
+      darab: !panelForm.darab || parseInt(panelForm.darab) <= 0,
+      táblásAnyag: !selectedTáblásAnyag
+    }
+    
+    setValidationErrors(errors)
+    return !Object.values(errors).some(error => error)
+  }
+
+  // Clear validation errors when user starts typing
+  const clearValidationError = (field: keyof typeof validationErrors) => {
+    if (validationErrors[field]) {
+      setValidationErrors(prev => ({ ...prev, [field]: false }))
+    }
+  }
   
   // Separate panels table state
   const [addedPanels, setAddedPanels] = useState<Array<{
@@ -242,8 +270,8 @@ export default function OptiPage() {
   // Add panel to separate table
   const addPanelToTable = () => {
     // Validation
-    if (!selectedTáblásAnyag || !panelForm.hosszúság || !panelForm.szélesség || !panelForm.darab) {
-      alert('Kérjük töltse ki az összes kötelező mezőt!')
+    if (!validateForm()) {
+      toast.error('Kérjük, töltse ki az összes kötelező mezőt!')
       return
     }
 
@@ -1031,6 +1059,7 @@ export default function OptiPage() {
                  value={materials.find(m => m.id === selectedTáblásAnyag) || null}
                  onChange={(event, newValue) => {
                    setSelectedTáblásAnyag(newValue ? newValue.id : '')
+                   clearValidationError('táblásAnyag')
                  }}
                  disabled={materialsLoading}
                  loading={materialsLoading}
@@ -1041,6 +1070,8 @@ export default function OptiPage() {
                      {...params}
                      label="Táblás anyag választás:"
                      size="small"
+                     error={validationErrors.táblásAnyag}
+                     helperText={validationErrors.táblásAnyag ? 'Táblás anyag kiválasztása kötelező' : ''}
                      InputProps={{
                        ...params.InputProps,
                        endAdornment: (
@@ -1080,9 +1111,14 @@ export default function OptiPage() {
                     required
                     name="hosszúság"
                     value={panelForm.hosszúság}
-                    onChange={(e) => setPanelForm({...panelForm, hosszúság: e.target.value})}
+                    onChange={(e) => {
+                      setPanelForm({...panelForm, hosszúság: e.target.value})
+                      clearValidationError('hosszúság')
+                    }}
                     onKeyPress={handleKeyPress}
                     inputProps={{ min: 0, step: 0.1 }}
+                    error={validationErrors.hosszúság}
+                    helperText={validationErrors.hosszúság ? 'Hosszúság megadása kötelező és nagyobb kell legyen 0-nál' : ''}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
@@ -1093,9 +1129,14 @@ export default function OptiPage() {
                     type="number"
                     required
                     value={panelForm.szélesség}
-                    onChange={(e) => setPanelForm({...panelForm, szélesség: e.target.value})}
+                    onChange={(e) => {
+                      setPanelForm({...panelForm, szélesség: e.target.value})
+                      clearValidationError('szélesség')
+                    }}
                     onKeyPress={handleKeyPress}
                     inputProps={{ min: 0, step: 0.1 }}
+                    error={validationErrors.szélesség}
+                    helperText={validationErrors.szélesség ? 'Szélesség megadása kötelező és nagyobb kell legyen 0-nál' : ''}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
@@ -1106,9 +1147,14 @@ export default function OptiPage() {
                     type="number"
                     required
                     value={panelForm.darab}
-                    onChange={(e) => setPanelForm({...panelForm, darab: e.target.value})}
+                    onChange={(e) => {
+                      setPanelForm({...panelForm, darab: e.target.value})
+                      clearValidationError('darab')
+                    }}
                     onKeyPress={handleKeyPress}
                     inputProps={{ min: 1, step: 1 }}
+                    error={validationErrors.darab}
+                    helperText={validationErrors.darab ? 'Darab megadása kötelező és nagyobb kell legyen 0-nál' : ''}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
