@@ -253,6 +253,11 @@ export default function OptiPage() {
     setSelectedD('')
   }
 
+  // Delete panel from table
+  const deletePanelFromTable = (id: string) => {
+    setAddedPanels(prev => prev.filter(panel => panel.id !== id))
+  }
+
   // Fetch materials from database
   useEffect(() => {
     const fetchMaterials = async () => {
@@ -1028,7 +1033,7 @@ export default function OptiPage() {
           </Card>
         </Grid>
 
-        {/* Added Panels Table */}
+        {/* Added Panels Table - Separate Card */}
         {addedPanels.length > 0 && (
           <Grid item xs={12}>
             <Card>
@@ -1046,6 +1051,7 @@ export default function OptiPage() {
                         <TableCell><strong>Darab</strong></TableCell>
                         <TableCell><strong>Jelölés</strong></TableCell>
                         <TableCell><strong>Élzárás</strong></TableCell>
+                        <TableCell><strong>Műveletek</strong></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1057,6 +1063,17 @@ export default function OptiPage() {
                           <TableCell>{panel.darab}</TableCell>
                           <TableCell>{panel.jelölés}</TableCell>
                           <TableCell>{panel.élzárás}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              size="small"
+                              onClick={() => deletePanelFromTable(panel.id)}
+                              startIcon={<span>🗑️</span>}
+                            >
+                              Törlés
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
