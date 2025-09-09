@@ -178,7 +178,6 @@ export default function OptiPage() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [materialsLoading, setMaterialsLoading] = useState(true)
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
-  const [panels, setPanels] = useState<Panel[]>([])
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -293,72 +292,6 @@ export default function OptiPage() {
     }
   }, [optimizationResult])
 
-  // Panel form state
-  const [panelForm, setPanelForm] = useState({
-    length: '',
-    width: '',
-    quantity: '1',
-    marking: '',
-    edgeTop: 'None',
-    edgeRight: 'None',
-    edgeBottom: 'None',
-    edgeLeft: 'None'
-  })
-
-  // Add panel
-  const addPanel = () => {
-    if (!selectedMaterial) {
-      setError('Please select a material first')
-      return
-    }
-
-    const length = parseFloat(panelForm.length)
-    const width = parseFloat(panelForm.width)
-    const quantity = parseInt(panelForm.quantity)
-
-    if (!length || !width || !quantity || length <= 0 || width <= 0 || quantity <= 0) {
-      setError('Please enter valid dimensions and quantity')
-      return
-    }
-
-    // Prevent extremely large panels that might cause optimization issues
-    if (length > selectedMaterial.length_mm || width > selectedMaterial.width_mm) {
-      setError(`Panel dimensions (${length}x${width}mm) exceed material dimensions (${selectedMaterial.width_mm}x${selectedMaterial.length_mm}mm)`)
-      return
-    }
-
-    // Prevent excessive quantities
-    if (quantity > 100) {
-      setError('Maximum quantity per panel is 100')
-      return
-    }
-
-    const newPanel: Panel = {
-      id: `panel-${Date.now()}`,
-      material: selectedMaterial,
-      length,
-      width,
-      quantity,
-      marking: panelForm.marking,
-      edgeTop: panelForm.edgeTop,
-      edgeRight: panelForm.edgeRight,
-      edgeBottom: panelForm.edgeBottom,
-      edgeLeft: panelForm.edgeLeft
-    }
-
-    setPanels([...panels, newPanel])
-    setPanelForm({
-      length: '',
-      width: '',
-      quantity: '1',
-      marking: '',
-      edgeTop: 'None',
-      edgeRight: 'None',
-      edgeBottom: 'None',
-      edgeLeft: 'None'
-    })
-    setError(null)
-  }
 
   // Remove panel
   const removePanel = (id: string) => {
