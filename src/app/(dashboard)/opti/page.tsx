@@ -24,7 +24,8 @@ import {
   Alert,
   CircularProgress,
   Pagination,
-  Tooltip
+  Tooltip,
+  Autocomplete
 } from '@mui/material'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
@@ -969,29 +970,39 @@ export default function OptiPage() {
                 Táblás anyag
               </Typography>
               
-              <FormControl fullWidth>
-                <InputLabel id="táblás-anyag-label">Táblás anyag választás:</InputLabel>
-                <Select
-                  labelId="táblás-anyag-label"
-                  value={selectedTáblásAnyag}
-                  onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
-                  disabled={materialsLoading}
-                  label="Táblás anyag választás:"
-                >
-                  {materialsLoading ? (
-                    <MenuItem disabled>
-                      <CircularProgress size={20} sx={{ mr: 1 }} />
-                      Loading materials...
-                    </MenuItem>
-                  ) : (
-                    materials.map((material) => (
-                      <MenuItem key={material.id} value={material.id}>
-                        {material.name} ({material.width_mm}×{material.length_mm}mm)
-                      </MenuItem>
-                    ))
-                  )}
-                </Select>
-              </FormControl>
+               <Autocomplete
+                 fullWidth
+                 options={materials}
+                 getOptionLabel={(option) => `${option.name} (${option.width_mm}×${option.length_mm}mm)`}
+                 value={materials.find(m => m.id === selectedTáblásAnyag) || null}
+                 onChange={(event, newValue) => {
+                   setSelectedTáblásAnyag(newValue ? newValue.id : '')
+                 }}
+                 disabled={materialsLoading}
+                 loading={materialsLoading}
+                 loadingText="Anyagok betöltése..."
+                 noOptionsText="Nincs találat"
+                 renderInput={(params) => (
+                   <TextField
+                     {...params}
+                     label="Táblás anyag választás:"
+                     InputProps={{
+                       ...params.InputProps,
+                       endAdornment: (
+                         <>
+                           {materialsLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                           {params.InputProps.endAdornment}
+                         </>
+                       ),
+                     }}
+                   />
+                 )}
+                 renderOption={(props, option) => (
+                   <Box component="li" {...props}>
+                     {option.name} ({option.width_mm}×{option.length_mm}mm)
+                   </Box>
+                 )}
+               />
             </CardContent>
           </Card>
         </Grid>
