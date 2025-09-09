@@ -350,15 +350,12 @@ export default function OptiPage() {
     setSelectedC(élzárásParts[2] || '')
     setSelectedD(élzárásParts[3] || '')
     
-    // Scroll to the Táblás anyag section
+    // Scroll to the top of the page
     setTimeout(() => {
-      const inputSection = document.getElementById('táblás-anyag-section')
-      if (inputSection) {
-        inputSection.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'start' 
-        })
-      }
+      window.scrollTo({ 
+        top: 0, 
+        behavior: 'smooth' 
+      })
     }, 100)
   }
 
