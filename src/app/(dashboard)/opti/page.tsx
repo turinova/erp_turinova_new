@@ -804,13 +804,13 @@ export default function OptiPage() {
               </Typography>
               
               <FormControl fullWidth>
-                <InputLabel id="táblás-anyag-label">Select Material</InputLabel>
+                <InputLabel id="táblás-anyag-label">Táblás anyag választás:</InputLabel>
                 <Select
                   labelId="táblás-anyag-label"
                   value={selectedTáblásAnyag}
                   onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
                   disabled={materialsLoading}
-                  label="Select Material"
+                  label="Táblás anyag választás:"
                 >
                   {materialsLoading ? (
                     <MenuItem disabled>
