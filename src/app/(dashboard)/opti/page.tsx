@@ -209,6 +209,9 @@ export default function OptiPage() {
     jelölés: string
     élzárás: string
   }>>([])
+  
+  // Edit state
+  const [editingPanel, setEditingPanel] = useState<string | null>(null)
 
   // Add panel to separate table
   const addPanelToTable = () => {
@@ -256,6 +259,98 @@ export default function OptiPage() {
   // Delete panel from table
   const deletePanelFromTable = (id: string) => {
     setAddedPanels(prev => prev.filter(panel => panel.id !== id))
+  }
+
+  // Edit panel - load record into form
+  const editPanel = (panel: any) => {
+    setEditingPanel(panel.id)
+    
+    // Find the material ID from the panel's táblásAnyag string
+    const material = materials.find(m => 
+      panel.táblásAnyag.includes(m.name) && 
+      panel.táblásAnyag.includes(`${m.width_mm}×${m.length_mm}mm`)
+    )
+    
+    if (material) {
+      setSelectedTáblásAnyag(material.id)
+    }
+    
+    // Load form data
+    setPanelForm({
+      hosszúság: panel.hosszúság,
+      szélesség: panel.szélesség,
+      darab: panel.darab,
+      jelölés: panel.jelölés
+    })
+    
+    // Parse élzárás back to A, B, C, D selections
+    const élzárásParts = panel.élzárás.split(', ').filter(part => part && part !== '-')
+    setSelectedA(élzárásParts[0] || '')
+    setSelectedB(élzárásParts[1] || '')
+    setSelectedC(élzárásParts[2] || '')
+    setSelectedD(élzárásParts[3] || '')
+  }
+
+  // Save edited panel
+  const savePanel = () => {
+    if (!editingPanel || !selectedTáblásAnyag || !panelForm.hosszúság || !panelForm.szélesség || !panelForm.darab) {
+      alert('Kérjük töltse ki az összes kötelező mezőt!')
+      return
+    }
+
+    // Get material name
+    const material = materials.find(m => m.id === selectedTáblásAnyag)
+    const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
+
+    // Create élzárás string from A, B, C, D selections
+    const élzárás = [selectedA, selectedB, selectedC, selectedD]
+      .filter(val => val && val !== '')
+      .join(', ')
+
+    // Update panel in table
+    setAddedPanels(prev => prev.map(panel => 
+      panel.id === editingPanel 
+        ? {
+            ...panel,
+            táblásAnyag: materialName,
+            hosszúság: panelForm.hosszúság,
+            szélesség: panelForm.szélesség,
+            darab: panelForm.darab,
+            jelölés: panelForm.jelölés || '-',
+            élzárás: élzárás || '-'
+          }
+        : panel
+    ))
+
+    // Clear form and exit edit mode
+    setEditingPanel(null)
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
+    setSelectedTáblásAnyag('')
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
+  }
+
+  // Cancel edit
+  const cancelEdit = () => {
+    setEditingPanel(null)
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
+    setSelectedTáblásAnyag('')
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
   }
 
   // Fetch materials from database
@@ -1018,15 +1113,25 @@ export default function OptiPage() {
                 </Grid>
               </Grid>
               
-              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                {editingPanel && (
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    size="large"
+                    onClick={cancelEdit}
+                  >
+                    Mégse
+                  </Button>
+                )}
                 <Button
                   variant="contained"
                   color="primary"
                   size="large"
-                  onClick={addPanelToTable}
+                  onClick={editingPanel ? savePanel : addPanelToTable}
                   disabled={!selectedTáblásAnyag}
                 >
-                  Hozzáadás
+                  {editingPanel ? 'Mentés' : 'Hozzáadás'}
                 </Button>
               </Box>
             </CardContent>
@@ -1054,14 +1159,21 @@ export default function OptiPage() {
                 </TableHead>
                 <TableBody>
                   {addedPanels.map((panel) => (
-                    <TableRow key={panel.id}>
+                    <TableRow 
+                      key={panel.id}
+                      onClick={() => editPanel(panel)}
+                      sx={{ 
+                        cursor: 'pointer',
+                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
+                      }}
+                    >
                       <TableCell>{panel.táblásAnyag}</TableCell>
                       <TableCell>{panel.hosszúság} mm</TableCell>
                       <TableCell>{panel.szélesség} mm</TableCell>
                       <TableCell>{panel.darab}</TableCell>
                       <TableCell>{panel.jelölés}</TableCell>
                       <TableCell>{panel.élzárás}</TableCell>
-                      <TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="contained"
                           color="error"
