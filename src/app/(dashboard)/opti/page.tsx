@@ -866,7 +866,42 @@ export default function OptiPage() {
       </Typography>
 
       <Grid container spacing={3}>
-        {/* Panel Adatok Card with Táblás anyag */}
+        {/* Táblás anyag Selection */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Táblás anyag
+              </Typography>
+              
+              <FormControl fullWidth>
+                <InputLabel id="táblás-anyag-label">Táblás anyag választás:</InputLabel>
+                <Select
+                  labelId="táblás-anyag-label"
+                  value={selectedTáblásAnyag}
+                  onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
+                  disabled={materialsLoading}
+                  label="Táblás anyag választás:"
+                >
+                  {materialsLoading ? (
+                    <MenuItem disabled>
+                      <CircularProgress size={20} sx={{ mr: 1 }} />
+                      Loading materials...
+                    </MenuItem>
+                  ) : (
+                    materials.map((material) => (
+                      <MenuItem key={material.id} value={material.id}>
+                        {material.name} ({material.width_mm}×{material.length_mm}mm)
+                      </MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* New Input Fields Card */}
         <Grid item xs={12}>
           <Card>
             <CardContent>
@@ -875,32 +910,6 @@ export default function OptiPage() {
               </Typography>
               
               <Grid container spacing={2}>
-                {/* Táblás anyag Selection */}
-                <Grid item xs={12} md={6}>
-                  <FormControl fullWidth>
-                    <InputLabel id="táblás-anyag-label">Táblás anyag választás:</InputLabel>
-                    <Select
-                      labelId="táblás-anyag-label"
-                      value={selectedTáblásAnyag}
-                      onChange={(e) => setSelectedTáblásAnyag(e.target.value)}
-                      disabled={materialsLoading}
-                      label="Táblás anyag választás:"
-                    >
-                      {materialsLoading ? (
-                        <MenuItem disabled>
-                          <CircularProgress size={20} sx={{ mr: 1 }} />
-                          Loading materials...
-                        </MenuItem>
-                      ) : (
-                        materials.map((material) => (
-                          <MenuItem key={material.id} value={material.id}>
-                            {material.name} ({material.width_mm}×{material.length_mm}mm)
-                          </MenuItem>
-                        ))
-                      )}
-                    </Select>
-                  </FormControl>
-                </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <TextField
                     fullWidth
@@ -1024,54 +1033,50 @@ export default function OptiPage() {
           </Card>
         </Grid>
 
-        {/* Added Panels Table - Separate Card */}
+        {/* Added Panels Table */}
         {addedPanels.length > 0 && (
           <Grid item xs={12}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  Hozzáadott Panelek
-                </Typography>
-                <TableContainer component={Paper}>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell><strong>Táblás anyag</strong></TableCell>
-                        <TableCell><strong>Hosszúság</strong></TableCell>
-                        <TableCell><strong>Szélesség</strong></TableCell>
-                        <TableCell><strong>Darab</strong></TableCell>
-                        <TableCell><strong>Jelölés</strong></TableCell>
-                        <TableCell><strong>Élzárás</strong></TableCell>
-                        <TableCell><strong>Műveletek</strong></TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {addedPanels.map((panel) => (
-                        <TableRow key={panel.id}>
-                          <TableCell>{panel.táblásAnyag}</TableCell>
-                          <TableCell>{panel.hosszúság} mm</TableCell>
-                          <TableCell>{panel.szélesség} mm</TableCell>
-                          <TableCell>{panel.darab}</TableCell>
-                          <TableCell>{panel.jelölés}</TableCell>
-                          <TableCell>{panel.élzárás}</TableCell>
-                          <TableCell>
-                            <Button
-                              variant="contained"
-                              color="error"
-                              size="small"
-                              onClick={() => deletePanelFromTable(panel.id)}
-                              sx={{ minWidth: 'auto', px: 1 }}
-                            >
-                              ✕
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </CardContent>
-            </Card>
+            <Typography variant="h6" gutterBottom>
+              Hozzáadott Panelek
+            </Typography>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Táblás anyag</strong></TableCell>
+                    <TableCell><strong>Hosszúság</strong></TableCell>
+                    <TableCell><strong>Szélesség</strong></TableCell>
+                    <TableCell><strong>Darab</strong></TableCell>
+                    <TableCell><strong>Jelölés</strong></TableCell>
+                    <TableCell><strong>Élzárás</strong></TableCell>
+                    <TableCell><strong>Műveletek</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {addedPanels.map((panel) => (
+                    <TableRow key={panel.id}>
+                      <TableCell>{panel.táblásAnyag}</TableCell>
+                      <TableCell>{panel.hosszúság} mm</TableCell>
+                      <TableCell>{panel.szélesség} mm</TableCell>
+                      <TableCell>{panel.darab}</TableCell>
+                      <TableCell>{panel.jelölés}</TableCell>
+                      <TableCell>{panel.élzárás}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="contained"
+                          color="error"
+                          size="small"
+                          onClick={() => deletePanelFromTable(panel.id)}
+                          sx={{ minWidth: 'auto', px: 1 }}
+                        >
+                          ✕
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           </Grid>
         )}
 
