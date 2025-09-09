@@ -349,6 +349,17 @@ export default function OptiPage() {
     setSelectedB(élzárásParts[1] || '')
     setSelectedC(élzárásParts[2] || '')
     setSelectedD(élzárásParts[3] || '')
+    
+    // Scroll to the input section
+    setTimeout(() => {
+      const inputSection = document.getElementById('panel-adatok-section')
+      if (inputSection) {
+        inputSection.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        })
+      }
+    }, 100)
   }
 
   // Save edited panel
@@ -1095,7 +1106,7 @@ export default function OptiPage() {
 
         {/* New Input Fields Card */}
         <Grid item xs={12}>
-          <Card>
+          <Card id="panel-adatok-section">
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Panel Adatok
