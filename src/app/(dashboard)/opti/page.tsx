@@ -1025,6 +1025,7 @@ export default function OptiPage() {
               
                <Autocomplete
                  fullWidth
+                 size="small"
                  options={materials}
                  getOptionLabel={(option) => `${option.name} (${option.width_mm}×${option.length_mm}mm)`}
                  value={materials.find(m => m.id === selectedTáblásAnyag) || null}
@@ -1039,6 +1040,7 @@ export default function OptiPage() {
                    <TextField
                      {...params}
                      label="Táblás anyag választás:"
+                     size="small"
                      InputProps={{
                        ...params.InputProps,
                        endAdornment: (
