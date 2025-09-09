@@ -1,7 +1,9 @@
 // Type Imports
 import type { VerticalMenuDataType } from '@/types/menuTypes'
 
-const verticalMenuData = (): VerticalMenuDataType[] => [
+const verticalMenuData = (): VerticalMenuDataType[] => {
+  // Force re-evaluation on every call
+  return [
   {
     label: 'Home',
     href: '/home',
@@ -33,6 +35,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => [
     icon: 'ri-settings-3-line',
     iconColor: '#8E44AD' // Purple for optimization tools
   }
-]
+  ]
+}
 
 export default verticalMenuData
