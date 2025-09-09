@@ -25,7 +25,8 @@ import {
   CircularProgress,
   Pagination,
   Tooltip,
-  Autocomplete
+  Autocomplete,
+  Snackbar
 } from '@mui/material'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
@@ -235,6 +236,23 @@ export default function OptiPage() {
   // Edit state
   const [editingPanel, setEditingPanel] = useState<string | null>(null)
 
+  // Toast notifications
+  const [toast, setToast] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error' | 'warning' | 'info'
+  })
+
+  // Show toast notification
+  const showToast = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
+    setToast({ open: true, message, severity })
+  }
+
+  // Close toast
+  const closeToast = () => {
+    setToast(prev => ({ ...prev, open: false }))
+  }
+
   // Add panel to separate table
   const addPanelToTable = () => {
     // Validation
@@ -265,6 +283,9 @@ export default function OptiPage() {
 
     setAddedPanels(prev => [...prev, newPanel])
 
+    // Show success toast
+    showToast('Panel sikeresen hozzáadva!', 'success')
+
     // Clear form but keep the same material selected for next entry
     setPanelForm({
       hosszúság: '',
@@ -282,6 +303,8 @@ export default function OptiPage() {
   // Delete panel from table
   const deletePanelFromTable = (id: string) => {
     setAddedPanels(prev => prev.filter(panel => panel.id !== id))
+    // Show error toast
+    showToast('Panel sikeresen törölve!', 'error')
   }
 
   // Edit panel - load record into form
@@ -344,6 +367,9 @@ export default function OptiPage() {
           }
         : panel
     ))
+
+    // Show success toast
+    showToast('Panel sikeresen módosítva!', 'success')
 
     // Clear form and exit edit mode
     setEditingPanel(null)
@@ -2006,6 +2032,22 @@ export default function OptiPage() {
           </Grid>
         )}
       </Grid>
+
+      {/* Toast Notifications */}
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={3000}
+        onClose={closeToast}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert 
+          onClose={closeToast} 
+          severity={toast.severity}
+          sx={{ width: '100%' }}
+        >
+          {toast.message}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }
