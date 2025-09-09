@@ -350,9 +350,9 @@ export default function OptiPage() {
     setSelectedC(élzárásParts[2] || '')
     setSelectedD(élzárásParts[3] || '')
     
-    // Scroll to the input section
+    // Scroll to the Táblás anyag section
     setTimeout(() => {
-      const inputSection = document.getElementById('panel-adatok-section')
+      const inputSection = document.getElementById('táblás-anyag-section')
       if (inputSection) {
         inputSection.scrollIntoView({ 
           behavior: 'smooth', 
@@ -1056,7 +1056,7 @@ export default function OptiPage() {
       <Grid container spacing={3}>
         {/* Táblás anyag Selection */}
         <Grid item xs={12} md={6}>
-          <Card>
+          <Card id="táblás-anyag-section">
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Táblás anyag
