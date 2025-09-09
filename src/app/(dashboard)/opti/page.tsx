@@ -795,7 +795,7 @@ export default function OptiPage() {
 
       <Grid container spacing={3}>
         {/* Táblás anyag Selection */}
-        <Grid item xs={12}>
+        <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
