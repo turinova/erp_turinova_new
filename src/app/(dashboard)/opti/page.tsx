@@ -186,6 +186,10 @@ export default function OptiPage() {
   const [expandedAccordions, setExpandedAccordions] = useState<Set<string>>(new Set())
   const [currentBoardPerMaterial, setCurrentBoardPerMaterial] = useState<Map<string, number>>(new Map())
   const [selectedTáblásAnyag, setSelectedTáblásAnyag] = useState<string>('')
+  const [selectedA, setSelectedA] = useState<string>('')
+  const [selectedB, setSelectedB] = useState<string>('')
+  const [selectedC, setSelectedC] = useState<string>('')
+  const [selectedD, setSelectedD] = useState<string>('')
 
   // Fetch materials from database
   useEffect(() => {
@@ -875,8 +879,13 @@ export default function OptiPage() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth>
-                    <InputLabel>A</InputLabel>
-                    <Select>
+                    <InputLabel id="dropdown-a-label">A</InputLabel>
+                    <Select
+                      labelId="dropdown-a-label"
+                      value={selectedA}
+                      onChange={(e) => setSelectedA(e.target.value)}
+                      label="A"
+                    >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
                       <MenuItem value="option3">Option 3</MenuItem>
@@ -886,8 +895,13 @@ export default function OptiPage() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth>
-                    <InputLabel>B</InputLabel>
-                    <Select>
+                    <InputLabel id="dropdown-b-label">B</InputLabel>
+                    <Select
+                      labelId="dropdown-b-label"
+                      value={selectedB}
+                      onChange={(e) => setSelectedB(e.target.value)}
+                      label="B"
+                    >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
                       <MenuItem value="option3">Option 3</MenuItem>
@@ -897,8 +911,13 @@ export default function OptiPage() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth>
-                    <InputLabel>C</InputLabel>
-                    <Select>
+                    <InputLabel id="dropdown-c-label">C</InputLabel>
+                    <Select
+                      labelId="dropdown-c-label"
+                      value={selectedC}
+                      onChange={(e) => setSelectedC(e.target.value)}
+                      label="C"
+                    >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
                       <MenuItem value="option3">Option 3</MenuItem>
@@ -908,8 +927,13 @@ export default function OptiPage() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth>
-                    <InputLabel>D</InputLabel>
-                    <Select>
+                    <InputLabel id="dropdown-d-label">D</InputLabel>
+                    <Select
+                      labelId="dropdown-d-label"
+                      value={selectedD}
+                      onChange={(e) => setSelectedD(e.target.value)}
+                      label="D"
+                    >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
                       <MenuItem value="option3">Option 3</MenuItem>
