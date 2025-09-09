@@ -918,6 +918,16 @@ export default function OptiPage() {
                   </FormControl>
                 </Grid>
               </Grid>
+              
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                >
+                  Hozzáadás
+                </Button>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
