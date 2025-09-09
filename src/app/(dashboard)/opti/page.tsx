@@ -210,6 +210,27 @@ export default function OptiPage() {
     jelölés: string
     élzárás: string
   }>>([])
+
+  // Load panels from session storage on component mount
+  useEffect(() => {
+    const savedPanels = sessionStorage.getItem('opti-panels')
+    if (savedPanels) {
+      try {
+        setAddedPanels(JSON.parse(savedPanels))
+      } catch (error) {
+        console.error('Error loading panels from session storage:', error)
+      }
+    }
+  }, [])
+
+  // Save panels to session storage whenever addedPanels changes
+  useEffect(() => {
+    if (addedPanels.length > 0) {
+      sessionStorage.setItem('opti-panels', JSON.stringify(addedPanels))
+    } else {
+      sessionStorage.removeItem('opti-panels')
+    }
+  }, [addedPanels])
   
   // Edit state
   const [editingPanel, setEditingPanel] = useState<string | null>(null)
