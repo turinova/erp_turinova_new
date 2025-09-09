@@ -1040,7 +1040,7 @@ export default function OptiPage() {
               Hozzáadott Panelek
             </Typography>
             <TableContainer component={Paper}>
-              <Table>
+              <Table size="small">
                 <TableHead>
                   <TableRow>
                     <TableCell><strong>Táblás anyag</strong></TableCell>
