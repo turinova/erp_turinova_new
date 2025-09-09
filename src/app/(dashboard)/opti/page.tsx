@@ -1220,14 +1220,17 @@ export default function OptiPage() {
                 </TableHead>
                 <TableBody>
                   {addedPanels.map((panel) => (
-                    <TableRow 
-                      key={panel.id}
-                      onClick={() => editPanel(panel)}
-                      sx={{ 
-                        cursor: 'pointer',
-                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
-                      }}
-                    >
+                      <TableRow 
+                        key={panel.id}
+                        onClick={() => editPanel(panel)}
+                        sx={{ 
+                          cursor: 'pointer',
+                          backgroundColor: addedPanels.filter(p => p.táblásAnyag === panel.táblásAnyag).length > 1 
+                            ? 'rgba(0, 123, 108, 0.05)' 
+                            : 'transparent',
+                          '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
+                        }}
+                      >
                       <TableCell>{panel.táblásAnyag}</TableCell>
                       <TableCell>{panel.hosszúság} mm</TableCell>
                       <TableCell>{panel.szélesség} mm</TableCell>
