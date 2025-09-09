@@ -178,6 +178,7 @@ export default function OptiPage() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [materialsLoading, setMaterialsLoading] = useState(true)
   const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
+  const [panels, setPanels] = useState<Panel[]>([])
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -190,14 +191,16 @@ export default function OptiPage() {
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
   
-  // Panel form state
-  const [hosszúság, setHosszúság] = useState<string>('')
-  const [szélesség, setSzélesség] = useState<string>('')
-  const [darab, setDarab] = useState<string>('')
-  const [jelölés, setJelölés] = useState<string>('')
+  // Panel form state for the separate table
+  const [panelForm, setPanelForm] = useState({
+    hosszúság: '',
+    szélesség: '',
+    darab: '',
+    jelölés: ''
+  })
   
-  // Panels table state
-  const [panels, setPanels] = useState<Array<{
+  // Separate panels table state
+  const [addedPanels, setAddedPanels] = useState<Array<{
     id: string
     táblásAnyag: string
     hosszúság: string
@@ -207,10 +210,10 @@ export default function OptiPage() {
     élzárás: string
   }>>([])
 
-  // Add panel function
-  const addPanel = () => {
+  // Add panel to separate table
+  const addPanelToTable = () => {
     // Validation
-    if (!selectedTáblásAnyag || !hosszúság || !szélesség || !darab) {
+    if (!selectedTáblásAnyag || !panelForm.hosszúság || !panelForm.szélesség || !panelForm.darab) {
       alert('Kérjük töltse ki az összes kötelező mezőt!')
       return
     }
@@ -224,24 +227,26 @@ export default function OptiPage() {
       .filter(val => val && val !== '')
       .join(', ')
 
-    // Add new panel
+    // Add new panel to table
     const newPanel = {
       id: Date.now().toString(),
       táblásAnyag: materialName,
-      hosszúság,
-      szélesség,
-      darab,
-      jelölés: jelölés || '-',
+      hosszúság: panelForm.hosszúság,
+      szélesség: panelForm.szélesség,
+      darab: panelForm.darab,
+      jelölés: panelForm.jelölés || '-',
       élzárás: élzárás || '-'
     }
 
-    setPanels(prev => [...prev, newPanel])
+    setAddedPanels(prev => [...prev, newPanel])
 
     // Clear form
-    setHosszúság('')
-    setSzélesség('')
-    setDarab('')
-    setJelölés('')
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
     setSelectedA('')
     setSelectedB('')
     setSelectedC('')
@@ -292,6 +297,72 @@ export default function OptiPage() {
     }
   }, [optimizationResult])
 
+  // Panel form state
+  const [panelForm, setPanelForm] = useState({
+    length: '',
+    width: '',
+    quantity: '1',
+    marking: '',
+    edgeTop: 'None',
+    edgeRight: 'None',
+    edgeBottom: 'None',
+    edgeLeft: 'None'
+  })
+
+  // Add panel
+  const addPanel = () => {
+    if (!selectedMaterial) {
+      setError('Please select a material first')
+      return
+    }
+
+    const length = parseFloat(panelForm.length)
+    const width = parseFloat(panelForm.width)
+    const quantity = parseInt(panelForm.quantity)
+
+    if (!length || !width || !quantity || length <= 0 || width <= 0 || quantity <= 0) {
+      setError('Please enter valid dimensions and quantity')
+      return
+    }
+
+    // Prevent extremely large panels that might cause optimization issues
+    if (length > selectedMaterial.length_mm || width > selectedMaterial.width_mm) {
+      setError(`Panel dimensions (${length}x${width}mm) exceed material dimensions (${selectedMaterial.width_mm}x${selectedMaterial.length_mm}mm)`)
+      return
+    }
+
+    // Prevent excessive quantities
+    if (quantity > 100) {
+      setError('Maximum quantity per panel is 100')
+      return
+    }
+
+    const newPanel: Panel = {
+      id: `panel-${Date.now()}`,
+      material: selectedMaterial,
+      length,
+      width,
+      quantity,
+      marking: panelForm.marking,
+      edgeTop: panelForm.edgeTop,
+      edgeRight: panelForm.edgeRight,
+      edgeBottom: panelForm.edgeBottom,
+      edgeLeft: panelForm.edgeLeft
+    }
+
+    setPanels([...panels, newPanel])
+    setPanelForm({
+      length: '',
+      width: '',
+      quantity: '1',
+      marking: '',
+      edgeTop: 'None',
+      edgeRight: 'None',
+      edgeBottom: 'None',
+      edgeLeft: 'None'
+    })
+    setError(null)
+  }
 
   // Remove panel
   const removePanel = (id: string) => {
@@ -438,6 +509,350 @@ export default function OptiPage() {
     setError(null)
   }
 
+  // Test with comprehensive multi-material panel data (enough for 3+ boards per material)
+  const addTestPanels = () => {
+    console.log('=== ADDING COMPREHENSIVE MULTI-MATERIAL TEST PANELS (3+ BOARDS PER MATERIAL) ===')
+    
+    // Board areas for reference:
+    // MDF 18mm: 2800x2070 = 5,796,000 mm²
+    // Plywood 15mm: 2500x1250 = 3,125,000 mm²  
+    // Chipboard 16mm: 2750x1830 = 5,032,500 mm²
+    // OSB 12mm: 2500x1250 = 3,125,000 mm²
+    // Hardboard 3mm: 3050x1525 = 4,651,250 mm²
+    // MDF 18mm No Grain: 2800x2070 = 5,796,000 mm²
+    
+    // Create comprehensive panels from all materials to fill at least 3 boards each
+    const testPanels: Panel[] = [
+      // MDF 18mm panels (2800x2070mm = 5,796,000 mm²) - Target: 3+ boards
+      {
+        id: 'panel-mdf-large-1000x800',
+        material: materials[0] || { id: '1', name: 'MDF 18mm', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: true, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm', created_at: '', updated_at: '' }, // MDF 18mm
+        length: 800,
+        width: 1000,
+        quantity: 6, // 6 panels = 4,800,000 mm² (fits ~1 board)
+        marking: 'MDF Large Panel 1000x800',
+        edgeTop: 'PVC White',
+        edgeRight: 'PVC White',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-mdf-medium-744x615',
+        material: materials[0] || { id: '1', name: 'MDF 18mm', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: true, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm', created_at: '', updated_at: '' }, // MDF 18mm
+        length: 615,
+        width: 744,
+        quantity: 8, // 8 panels = 3,660,480 mm² (fits ~1 board)
+        marking: 'MDF Medium Panel 744x615',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-mdf-small-400x300',
+        material: materials[0] || { id: '1', name: 'MDF 18mm', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: true, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm', created_at: '', updated_at: '' }, // MDF 18mm
+        length: 300,
+        width: 400,
+        quantity: 15, // 15 panels = 1,800,000 mm² (fits ~1 board)
+        marking: 'MDF Small Panel 400x300',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-mdf-tiny-200x150',
+        material: materials[0] || { id: '1', name: 'MDF 18mm', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: true, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm', created_at: '', updated_at: '' }, // MDF 18mm
+        length: 150,
+        width: 200,
+        quantity: 20, // 20 panels = 600,000 mm² (fits ~1 board)
+        marking: 'MDF Tiny Panel 200x150',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      
+      // Plywood 15mm panels (2500x1250mm = 3,125,000 mm²) - Target: 3+ boards
+      {
+        id: 'panel-plywood-large-800x600',
+        material: materials[1] || { id: '2', name: 'Plywood 15mm', width_mm: 2500, length_mm: 1250, thickness_mm: 15, grain_direction: true, kerf_mm: 3, trim_top_mm: 5, trim_bottom_mm: 5, trim_left_mm: 5, trim_right_mm: 5, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Plywood 15mm', created_at: '', updated_at: '' }, // Plywood 15mm
+        length: 600,
+        width: 800,
+        quantity: 6, // 6 panels = 2,880,000 mm² (fits ~1 board)
+        marking: 'Plywood Large Panel 800x600',
+        edgeTop: 'PVC Oak',
+        edgeRight: 'PVC Oak',
+        edgeBottom: 'PVC Oak',
+        edgeLeft: 'PVC Oak'
+      },
+      {
+        id: 'panel-plywood-medium-500x400',
+        material: materials[1] || { id: '2', name: 'Plywood 15mm', width_mm: 2500, length_mm: 1250, thickness_mm: 15, grain_direction: true, kerf_mm: 3, trim_top_mm: 5, trim_bottom_mm: 5, trim_left_mm: 5, trim_right_mm: 5, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Plywood 15mm', created_at: '', updated_at: '' }, // Plywood 15mm
+        length: 400,
+        width: 500,
+        quantity: 8, // 8 panels = 1,600,000 mm² (fits ~1 board)
+        marking: 'Plywood Medium Panel 500x400',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-plywood-small-300x200',
+        material: materials[1] || { id: '2', name: 'Plywood 15mm', width_mm: 2500, length_mm: 1250, thickness_mm: 15, grain_direction: true, kerf_mm: 3, trim_top_mm: 5, trim_bottom_mm: 5, trim_left_mm: 5, trim_right_mm: 5, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Plywood 15mm', created_at: '', updated_at: '' }, // Plywood 15mm
+        length: 200,
+        width: 300,
+        quantity: 12, // 12 panels = 720,000 mm² (fits ~1 board)
+        marking: 'Plywood Small Panel 300x200',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-plywood-tiny-150x100',
+        material: materials[1] || { id: '2', name: 'Plywood 15mm', width_mm: 2500, length_mm: 1250, thickness_mm: 15, grain_direction: true, kerf_mm: 3, trim_top_mm: 5, trim_bottom_mm: 5, trim_left_mm: 5, trim_right_mm: 5, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Plywood 15mm', created_at: '', updated_at: '' }, // Plywood 15mm
+        length: 100,
+        width: 150,
+        quantity: 15, // 15 panels = 225,000 mm² (fits ~1 board)
+        marking: 'Plywood Tiny Panel 150x100',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      
+      // Chipboard 16mm panels (2750x1830mm = 5,032,500 mm²) - Target: 3+ boards
+      {
+        id: 'panel-chipboard-large-900x700',
+        material: materials[2] || { id: '3', name: 'Chipboard 16mm', width_mm: 2750, length_mm: 1830, thickness_mm: 16, grain_direction: false, kerf_mm: 4, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'Chipboard 16mm', created_at: '', updated_at: '' }, // Chipboard 16mm
+        length: 700,
+        width: 900,
+        quantity: 6, // 6 panels = 3,780,000 mm² (fits ~1 board)
+        marking: 'Chipboard Large Panel 900x700',
+        edgeTop: 'Melamine White',
+        edgeRight: 'Melamine White',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-chipboard-medium-600x400',
+        material: materials[2] || { id: '3', name: 'Chipboard 16mm', width_mm: 2750, length_mm: 1830, thickness_mm: 16, grain_direction: false, kerf_mm: 4, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'Chipboard 16mm', created_at: '', updated_at: '' }, // Chipboard 16mm
+        length: 400,
+        width: 600,
+        quantity: 8, // 8 panels = 1,920,000 mm² (fits ~1 board)
+        marking: 'Chipboard Medium Panel 600x400',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-chipboard-small-400x300',
+        material: materials[2] || { id: '3', name: 'Chipboard 16mm', width_mm: 2750, length_mm: 1830, thickness_mm: 16, grain_direction: false, kerf_mm: 4, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'Chipboard 16mm', created_at: '', updated_at: '' }, // Chipboard 16mm
+        length: 300,
+        width: 400,
+        quantity: 12, // 12 panels = 1,440,000 mm² (fits ~1 board)
+        marking: 'Chipboard Small Panel 400x300',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-chipboard-tiny-200x150',
+        material: materials[2] || { id: '3', name: 'Chipboard 16mm', width_mm: 2750, length_mm: 1830, thickness_mm: 16, grain_direction: false, kerf_mm: 4, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'Chipboard 16mm', created_at: '', updated_at: '' }, // Chipboard 16mm
+        length: 150,
+        width: 200,
+        quantity: 18, // 18 panels = 540,000 mm² (fits ~1 board)
+        marking: 'Chipboard Tiny Panel 200x150',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      
+      // OSB 12mm panels (2500x1250mm = 3,125,000 mm²) - Target: 3+ boards
+      {
+        id: 'panel-osb-large-700x500',
+        material: materials[3] || { id: '4', name: 'OSB 12mm', width_mm: 2500, length_mm: 1250, thickness_mm: 12, grain_direction: false, kerf_mm: 5, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'OSB 12mm', created_at: '', updated_at: '' }, // OSB 12mm
+        length: 500,
+        width: 700,
+        quantity: 6, // 6 panels = 2,100,000 mm² (fits ~1 board)
+        marking: 'OSB Large Panel 700x500',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-osb-medium-500x350',
+        material: materials[3] || { id: '4', name: 'OSB 12mm', width_mm: 2500, length_mm: 1250, thickness_mm: 12, grain_direction: false, kerf_mm: 5, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'OSB 12mm', created_at: '', updated_at: '' }, // OSB 12mm
+        length: 350,
+        width: 500,
+        quantity: 8, // 8 panels = 1,400,000 mm² (fits ~1 board)
+        marking: 'OSB Medium Panel 500x350',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-osb-small-300x200',
+        material: materials[3] || { id: '4', name: 'OSB 12mm', width_mm: 2500, length_mm: 1250, thickness_mm: 12, grain_direction: false, kerf_mm: 5, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'OSB 12mm', created_at: '', updated_at: '' }, // OSB 12mm
+        length: 200,
+        width: 300,
+        quantity: 12, // 12 panels = 720,000 mm² (fits ~1 board)
+        marking: 'OSB Small Panel 300x200',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-osb-tiny-150x100',
+        material: materials[3] || { id: '4', name: 'OSB 12mm', width_mm: 2500, length_mm: 1250, thickness_mm: 12, grain_direction: false, kerf_mm: 5, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: false, waste_multi: 1.0, brand_name: 'Test', material_name: 'OSB 12mm', created_at: '', updated_at: '' }, // OSB 12mm
+        length: 100,
+        width: 150,
+        quantity: 15, // 15 panels = 225,000 mm² (fits ~1 board)
+        marking: 'OSB Tiny Panel 150x100',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      
+      // Hardboard 3mm panels (3050x1525mm = 4,651,250 mm²) - Target: 3+ boards
+      {
+        id: 'panel-hardboard-large-1200x800',
+        material: materials[4] || { id: '5', name: 'Hardboard 3mm', width_mm: 3050, length_mm: 1525, thickness_mm: 3, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Hardboard 3mm', created_at: '', updated_at: '' }, // Hardboard 3mm
+        length: 800,
+        width: 1200,
+        quantity: 4, // 4 panels = 3,840,000 mm² (fits ~1 board)
+        marking: 'Hardboard Large Panel 1200x800',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-hardboard-medium-600x400',
+        material: materials[4] || { id: '5', name: 'Hardboard 3mm', width_mm: 3050, length_mm: 1525, thickness_mm: 3, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Hardboard 3mm', created_at: '', updated_at: '' }, // Hardboard 3mm
+        length: 400,
+        width: 600,
+        quantity: 8, // 8 panels = 1,920,000 mm² (fits ~1 board)
+        marking: 'Hardboard Medium Panel 600x400',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-hardboard-small-300x200',
+        material: materials[4] || { id: '5', name: 'Hardboard 3mm', width_mm: 3050, length_mm: 1525, thickness_mm: 3, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Hardboard 3mm', created_at: '', updated_at: '' }, // Hardboard 3mm
+        length: 200,
+        width: 300,
+        quantity: 12, // 12 panels = 720,000 mm² (fits ~1 board)
+        marking: 'Hardboard Small Panel 300x200',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-hardboard-tiny-150x100',
+        material: materials[4] || { id: '5', name: 'Hardboard 3mm', width_mm: 3050, length_mm: 1525, thickness_mm: 3, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'Hardboard 3mm', created_at: '', updated_at: '' }, // Hardboard 3mm
+        length: 100,
+        width: 150,
+        quantity: 16, // 16 panels = 240,000 mm² (fits ~1 board)
+        marking: 'Hardboard Tiny Panel 150x100',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      
+      // MDF 18mm No Grain panels (2800x2070mm = 5,796,000 mm²) - Target: 3+ boards
+      {
+        id: 'panel-mdf-nograin-large-800x600',
+        material: materials[5] || { id: '6', name: 'MDF 18mm No Grain', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm No Grain', created_at: '', updated_at: '' }, // MDF 18mm No Grain
+        length: 600,
+        width: 800,
+        quantity: 6, // 6 panels = 2,880,000 mm² (fits ~1 board)
+        marking: 'MDF No Grain Large Panel 800x600',
+        edgeTop: 'ABS Black',
+        edgeRight: 'ABS Black',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-mdf-nograin-medium-500x400',
+        material: materials[5] || { id: '6', name: 'MDF 18mm No Grain', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm No Grain', created_at: '', updated_at: '' }, // MDF 18mm No Grain
+        length: 400,
+        width: 500,
+        quantity: 8, // 8 panels = 1,600,000 mm² (fits ~1 board)
+        marking: 'MDF No Grain Medium Panel 500x400',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-mdf-nograin-small-300x200',
+        material: materials[5] || { id: '6', name: 'MDF 18mm No Grain', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm No Grain', created_at: '', updated_at: '' }, // MDF 18mm No Grain
+        length: 200,
+        width: 300,
+        quantity: 12, // 12 panels = 720,000 mm² (fits ~1 board)
+        marking: 'MDF No Grain Small Panel 300x200',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      },
+      {
+        id: 'panel-mdf-nograin-tiny-150x100',
+        material: materials[5] || { id: '6', name: 'MDF 18mm No Grain', width_mm: 2800, length_mm: 2070, thickness_mm: 18, grain_direction: false, kerf_mm: 3, trim_top_mm: 0, trim_bottom_mm: 0, trim_left_mm: 0, trim_right_mm: 0, rotatable: true, waste_multi: 1.0, brand_name: 'Test', material_name: 'MDF 18mm No Grain', created_at: '', updated_at: '' }, // MDF 18mm No Grain
+        length: 100,
+        width: 150,
+        quantity: 20, // 20 panels = 300,000 mm² (fits ~1 board)
+        marking: 'MDF No Grain Tiny Panel 150x100',
+        edgeTop: 'None',
+        edgeRight: 'None',
+        edgeBottom: 'None',
+        edgeLeft: 'None'
+      }
+    ]
+
+    console.log('Comprehensive multi-material test panels created:', testPanels.length, 'panel types')
+    console.log('Materials used:', [...new Set(testPanels.map(p => p.material.name))])
+    console.log('Total panels to optimize:', testPanels.reduce((sum, panel) => sum + panel.quantity, 0))
+    
+    // Calculate total area per material
+    const materialAreas = new Map<string, number>()
+    testPanels.forEach(panel => {
+      const materialName = panel.material.name
+      const panelArea = panel.width * panel.length * panel.quantity
+      materialAreas.set(materialName, (materialAreas.get(materialName) || 0) + panelArea)
+    })
+    
+    console.log('Total area per material:')
+    materialAreas.forEach((area, material) => {
+      const materialData = materials.find(m => m.name === material)
+      const boardArea = materialData ? materialData.width_mm * materialData.length_mm : 0
+      const estimatedBoards = Math.ceil(area / boardArea)
+      console.log(`  ${material}: ${(area / 1000000).toFixed(1)}M mm² (estimated ${estimatedBoards}+ boards)`)
+    })
+    
+    console.log('Panel size distribution:')
+    testPanels.forEach(panel => {
+      console.log(`  ${panel.marking}: ${panel.quantity} panels (${panel.width}x${panel.length}mm)`)
+    })
+    
+    setPanels(testPanels)
+    setError(null)
+    console.log('Comprehensive multi-material test panels added successfully')
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -496,8 +911,8 @@ export default function OptiPage() {
                     label="Hosszúság (mm)"
                     type="number"
                     required
-                    value={hosszúság}
-                    onChange={(e) => setHosszúság(e.target.value)}
+                    value={panelForm.hosszúság}
+                    onChange={(e) => setPanelForm({...panelForm, hosszúság: e.target.value})}
                     inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
@@ -507,8 +922,8 @@ export default function OptiPage() {
                     label="Szélesség (mm)"
                     type="number"
                     required
-                    value={szélesség}
-                    onChange={(e) => setSzélesség(e.target.value)}
+                    value={panelForm.szélesség}
+                    onChange={(e) => setPanelForm({...panelForm, szélesség: e.target.value})}
                     inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
@@ -518,8 +933,8 @@ export default function OptiPage() {
                     label="Darab"
                     type="number"
                     required
-                    value={darab}
-                    onChange={(e) => setDarab(e.target.value)}
+                    value={panelForm.darab}
+                    onChange={(e) => setPanelForm({...panelForm, darab: e.target.value})}
                     inputProps={{ min: 1, step: 1 }}
                   />
                 </Grid>
@@ -527,8 +942,8 @@ export default function OptiPage() {
                   <TextField
                     fullWidth
                     label="Jelölés"
-                    value={jelölés}
-                    onChange={(e) => setJelölés(e.target.value)}
+                    value={panelForm.jelölés}
+                    onChange={(e) => setPanelForm({...panelForm, jelölés: e.target.value})}
                     inputProps={{ maxLength: 50 }}
                   />
                 </Grid>
@@ -603,7 +1018,8 @@ export default function OptiPage() {
                   variant="contained"
                   color="primary"
                   size="large"
-                  onClick={addPanel}
+                  onClick={addPanelToTable}
+                  disabled={!selectedTáblásAnyag}
                 >
                   Hozzáadás
                 </Button>
@@ -612,8 +1028,8 @@ export default function OptiPage() {
           </Card>
         </Grid>
 
-        {/* Panels Table */}
-        {panels.length > 0 && (
+        {/* Added Panels Table */}
+        {addedPanels.length > 0 && (
           <Grid item xs={12}>
             <Card>
               <CardContent>
@@ -633,7 +1049,7 @@ export default function OptiPage() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {panels.map((panel) => (
+                      {addedPanels.map((panel) => (
                         <TableRow key={panel.id}>
                           <TableCell>{panel.táblásAnyag}</TableCell>
                           <TableCell>{panel.hosszúság} mm</TableCell>
@@ -741,6 +1157,131 @@ export default function OptiPage() {
           </Card>
         </Grid>
 
+        {/* Panel Form */}
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Add Panel
+              </Typography>
+
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Length (mm)"
+                    type="number"
+                    value={panelForm.length}
+                    onChange={(e) => setPanelForm({...panelForm, length: e.target.value})}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Width (mm)"
+                    type="number"
+                    value={panelForm.width}
+                    onChange={(e) => setPanelForm({...panelForm, width: e.target.value})}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Quantity"
+                    type="number"
+                    value={panelForm.quantity}
+                    onChange={(e) => setPanelForm({...panelForm, quantity: e.target.value})}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Marking"
+                    value={panelForm.marking}
+                    onChange={(e) => setPanelForm({...panelForm, marking: e.target.value})}
+                  />
+                </Grid>
+              </Grid>
+
+              <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>
+                Edge Banding:
+              </Typography>
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Top</InputLabel>
+                    <Select
+                      value={panelForm.edgeTop}
+                      onChange={(e) => setPanelForm({...panelForm, edgeTop: e.target.value})}
+                    >
+                      {EDGE_OPTIONS.map(option => (
+                        <MenuItem key={option} value={option}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Right</InputLabel>
+                    <Select
+                      value={panelForm.edgeRight}
+                      onChange={(e) => setPanelForm({...panelForm, edgeRight: e.target.value})}
+                    >
+                      {EDGE_OPTIONS.map(option => (
+                        <MenuItem key={option} value={option}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Bottom</InputLabel>
+                    <Select
+                      value={panelForm.edgeBottom}
+                      onChange={(e) => setPanelForm({...panelForm, edgeBottom: e.target.value})}
+                    >
+                      {EDGE_OPTIONS.map(option => (
+                        <MenuItem key={option} value={option}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Left</InputLabel>
+                    <Select
+                      value={panelForm.edgeLeft}
+                      onChange={(e) => setPanelForm({...panelForm, edgeLeft: e.target.value})}
+                    >
+                      {EDGE_OPTIONS.map(option => (
+                        <MenuItem key={option} value={option}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={addPanel}
+                sx={{ mt: 2 }}
+                disabled={!selectedMaterial}
+              >
+                Add Panel
+              </Button>
+
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={addTestPanels}
+                sx={{ mt: 1 }}
+              >
+                Add Multi-Material Test Panels
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
 
         {/* Actions */}
         <Grid item xs={12} md={4}>
