@@ -36,10 +36,15 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {
-    label: 'Ügyfelek',
-    href: '/customers',
-    icon: 'ri-user-line',
-    iconColor: '#E74C3C' // Red for customers/people
+    label: 'Törzsadatok',
+    icon: 'ri-database-2-line',
+    iconColor: '#2ECC71', // Green for master data
+    children: [
+      {
+        label: 'Ügyfelek',
+        href: '/customers'
+      }
+    ]
   }
   ]
 }
