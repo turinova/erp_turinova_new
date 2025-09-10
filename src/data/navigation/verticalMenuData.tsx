@@ -34,6 +34,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     href: '/opti',
     icon: 'ri-settings-3-line',
     iconColor: '#8E44AD' // Purple for optimization tools
+  },
+  {
+    label: 'Ügyfelek',
+    href: '/ugyfelek',
+    icon: 'ri-user-line',
+    iconColor: '#E74C3C' // Red for customers/people
   }
   ]
 }
