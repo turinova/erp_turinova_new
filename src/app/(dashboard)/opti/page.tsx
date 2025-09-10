@@ -26,7 +26,15 @@ import {
   Pagination,
   Tooltip,
   Autocomplete,
-  Divider
+  Divider,
+  Switch,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Radio,
+  RadioGroup
 } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { styled } from '@mui/material/styles'
@@ -282,6 +290,39 @@ export default function OptiPage() {
   
   // Edit state
   const [editingPanel, setEditingPanel] = useState<string | null>(null)
+  const [duplungolas, setDuplungolas] = useState(false)
+  
+  // Pánthelyfúrás modal state
+  const [panthelyfurasModalOpen, setPanthelyfurasModalOpen] = useState(false)
+  const [panthelyfurasMennyiseg, setPanthelyfurasMennyiseg] = useState('2')
+  const [panthelyfurasOldal, setPanthelyfurasOldal] = useState('hosszu')
+  const [panthelyfurasSaved, setPanthelyfurasSaved] = useState(false)
+  
+  // Pánthelyfúrás modal handlers
+  const handlePanthelyfurasOpen = () => {
+    setPanthelyfurasModalOpen(true)
+  }
+  
+  const handlePanthelyfurasClose = () => {
+    setPanthelyfurasModalOpen(false)
+  }
+  
+  const handlePanthelyfurasSave = () => {
+    // Here you can add logic to save the pánthelyfúrás data
+    console.log('Pánthelyfúrás saved:', {
+      mennyiseg: panthelyfurasMennyiseg,
+      oldal: panthelyfurasOldal
+    })
+    setPanthelyfurasSaved(true)
+    setPanthelyfurasModalOpen(false)
+  }
+  
+  const handlePanthelyfurasDelete = () => {
+    // Here you can add logic to delete the pánthelyfúrás data
+    console.log('Pánthelyfúrás deleted')
+    setPanthelyfurasSaved(false)
+    setPanthelyfurasModalOpen(false)
+  }
 
   // Add panel to separate table
   const addPanelToTable = () => {
@@ -308,7 +349,11 @@ export default function OptiPage() {
       szélesség: panelForm.szélesség,
       darab: panelForm.darab,
       jelölés: panelForm.jelölés || '-',
-      élzárás: élzárás || '-'
+      élzárás: élzárás || '-',
+      élzárásA: selectedA || '',
+      élzárásB: selectedB || '',
+      élzárásC: selectedC || '',
+      élzárásD: selectedD || ''
     }
 
     setAddedPanels(prev => [...prev, newPanel])
@@ -366,12 +411,11 @@ export default function OptiPage() {
       jelölés: panel.jelölés
     })
     
-    // Parse élzárás back to Hosszú felső, Széles jobb, Hosszú alsó, Széles bal selections
-    const élzárásParts = panel.élzárás.split(', ').filter(part => part && part !== '-')
-    setSelectedA(élzárásParts[0] || '')
-    setSelectedB(élzárásParts[1] || '')
-    setSelectedC(élzárásParts[2] || '')
-    setSelectedD(élzárásParts[3] || '')
+    // Load individual edge finishing selections
+    setSelectedA(panel.élzárásA || '')
+    setSelectedB(panel.élzárásB || '')
+    setSelectedC(panel.élzárásC || '')
+    setSelectedD(panel.élzárásD || '')
     
     // Scroll to the top of the page
     setTimeout(() => {
@@ -408,7 +452,11 @@ export default function OptiPage() {
             szélesség: panelForm.szélesség,
             darab: panelForm.darab,
             jelölés: panelForm.jelölés || '-',
-            élzárás: élzárás || '-'
+            élzárás: élzárás || '-',
+            élzárásA: selectedA || '',
+            élzárásB: selectedB || '',
+            élzárásC: selectedC || '',
+            élzárásD: selectedD || ''
           }
         : panel
     ))
@@ -1748,6 +1796,46 @@ export default function OptiPage() {
                 </Grid>
               </Grid>
               
+              {/* Megmunkálás Section */}
+              <Grid item xs={12} sx={{ mt: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Megmunkálás
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    color={panthelyfurasSaved ? "success" : "primary"}
+                    onClick={handlePanthelyfurasOpen}
+                  >
+                    Pánthelyfúrás
+                  </Button>
+                  
+                  <Button
+                    variant="contained"
+                    size="small"
+                    color="primary"
+                  >
+                    Szögvágás
+                  </Button>
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={duplungolas}
+                        onChange={(e) => setDuplungolas(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Duplungolás"
+                    sx={{ ml: 2 }}
+                  />
+                </Box>
+              </Grid>
+              
               <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
                 {editingPanel && (
                   <Button
@@ -1788,7 +1876,10 @@ export default function OptiPage() {
                     <TableCell><strong>Szélesség</strong></TableCell>
                     <TableCell><strong>Darab</strong></TableCell>
                     <TableCell><strong>Jelölés</strong></TableCell>
-                    <TableCell><strong>Élzárás</strong></TableCell>
+                    <TableCell align="center"><strong>Hosszú felső</strong></TableCell>
+                    <TableCell align="center"><strong>Hosszú alsó</strong></TableCell>
+                    <TableCell align="center"><strong>Széles bal</strong></TableCell>
+                    <TableCell align="center"><strong>Széles jobb</strong></TableCell>
                     <TableCell><strong>Műveletek</strong></TableCell>
                   </TableRow>
                 </TableHead>
@@ -1823,7 +1914,38 @@ export default function OptiPage() {
                       <TableCell>{panel.szélesség} mm</TableCell>
                       <TableCell>{panel.darab}</TableCell>
                       <TableCell>{panel.jelölés}</TableCell>
-                      <TableCell>{panel.élzárás}</TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásA || 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásA ? 'primary' : 'default'}
+                          variant={panel.élzárásA ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásC || 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásC ? 'primary' : 'default'}
+                          variant={panel.élzárásC ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásD || 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásD ? 'primary' : 'default'}
+                          variant={panel.élzárásD ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásB || 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásB ? 'primary' : 'default'}
+                          variant={panel.élzárásB ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="contained"
@@ -2411,6 +2533,45 @@ export default function OptiPage() {
         pauseOnHover
         theme="light"
       />
+      
+      {/* Pánthelyfúrás Modal */}
+      <Dialog open={panthelyfurasModalOpen} onClose={handlePanthelyfurasClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Pánthelyfúrás beállítások</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Mennyiség"
+              value={panthelyfurasMennyiseg}
+              onChange={(e) => setPanthelyfurasMennyiseg(e.target.value)}
+              type="number"
+              sx={{ mb: 3 }}
+            />
+            
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'medium' }}>
+              Oldal:
+            </Typography>
+            <RadioGroup
+              value={panthelyfurasOldal}
+              onChange={(e) => setPanthelyfurasOldal(e.target.value)}
+            >
+              <FormControlLabel value="hosszu" control={<Radio />} label="Hosszú oldal" />
+              <FormControlLabel value="rovid" control={<Radio />} label="Rövid oldal" />
+            </RadioGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handlePanthelyfurasClose} color="primary">
+            Mégse
+          </Button>
+          <Button onClick={handlePanthelyfurasDelete} color="error">
+            Törlés
+          </Button>
+          <Button onClick={handlePanthelyfurasSave} variant="contained" color="primary">
+            Mentés
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }
