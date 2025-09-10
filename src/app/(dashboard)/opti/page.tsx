@@ -1052,7 +1052,7 @@ export default function OptiPage() {
 
       <Grid container spacing={3}>
         {/* Dynamic Rectangle Visualization Card */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={4}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -1162,9 +1162,9 @@ export default function OptiPage() {
                           <Box
                             sx={{
                               position: 'absolute',
-                              right: -20,
-                              top: '50%',
-                              transform: 'translateY(-50%)',
+                              bottom: -20,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
                               fontSize: '12px',
                               fontWeight: 'bold',
                               color: getOptionColor(selectedB)
@@ -1175,9 +1175,9 @@ export default function OptiPage() {
                           <Box
                             sx={{
                               position: 'absolute',
-                              bottom: -20,
-                              left: '50%',
-                              transform: 'translateX(-50%)',
+                              left: -20,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
                               fontSize: '12px',
                               fontWeight: 'bold',
                               color: getOptionColor(selectedC)
@@ -1188,7 +1188,7 @@ export default function OptiPage() {
                           <Box
                             sx={{
                               position: 'absolute',
-                              left: -20,
+                              right: -20,
                               top: '50%',
                               transform: 'translateY(-50%)',
                               fontSize: '12px',
@@ -1235,10 +1235,10 @@ export default function OptiPage() {
                             <Box
                               sx={{
                                 position: 'absolute',
-                                top: -3,
-                                right: -3,
                                 bottom: -3,
-                                width: 3,
+                                left: -3,
+                                right: -3,
+                                height: 3,
                                 backgroundColor: getOptionColor(selectedB),
                                 borderRadius: '2px'
                               }}
@@ -1248,10 +1248,10 @@ export default function OptiPage() {
                             <Box
                               sx={{
                                 position: 'absolute',
-                                bottom: -3,
+                                top: -3,
                                 left: -3,
-                                right: -3,
-                                height: 3,
+                                bottom: -3,
+                                width: 3,
                                 backgroundColor: getOptionColor(selectedC),
                                 borderRadius: '2px'
                               }}
@@ -1262,7 +1262,7 @@ export default function OptiPage() {
                               sx={{
                                 position: 'absolute',
                                 top: -3,
-                                left: -3,
+                                right: -3,
                                 bottom: -3,
                                 width: 3,
                                 backgroundColor: getOptionColor(selectedD),
@@ -1274,19 +1274,6 @@ export default function OptiPage() {
                       )
                     })()}
                     
-                    {/* Dimensions text inside rectangle */}
-                    <Typography
-                      variant="body2"
-                      sx={{
-                        fontSize: '14px',
-                        fontWeight: 'bold',
-                        color: '#333',
-                        textAlign: 'center',
-                        lineHeight: 1.2
-                      }}
-                    >
-                      {panelForm.szélesség} × {panelForm.hosszúság} mm
-                    </Typography>
                   </Box>
                 ) : (
                   <Box
@@ -1316,11 +1303,11 @@ export default function OptiPage() {
         </Grid>
 
         {/* Panel Information Card */}
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Panel Információ
+                Megrendelő adatai
               </Typography>
               <Box sx={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
@@ -1331,14 +1318,17 @@ export default function OptiPage() {
           </Card>
         </Grid>
 
-        {/* Táblás anyag Selection */}
-        <Grid item xs={12} md={6}>
-          <Card id="táblás-anyag-section">
+        {/* Panel Adatok Card */}
+        <Grid item xs={12}>
+          <Card id="panel-adatok-section">
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Táblás anyag
-              </Typography>
-              
+              {/* Táblás anyag Selection */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Táblás anyag
+                </Typography>
+                <Grid container spacing={2} alignItems="flex-end">
+                  <Grid item xs={12} sm={6} md={4}>
                <Autocomplete
                  fullWidth
                  size="small"
@@ -1377,17 +1367,124 @@ export default function OptiPage() {
                    </Box>
                  )}
                />
-            </CardContent>
-          </Card>
         </Grid>
 
-        {/* New Input Fields Card */}
-        <Grid item xs={12}>
-          <Card id="panel-adatok-section">
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Panel Adatok
+                  {/* Selected Material Details */}
+                  {selectedTáblásAnyag && (() => {
+                    const selectedMaterial = materials.find(m => m.id === selectedTáblásAnyag)
+                    if (!selectedMaterial) return null
+                    
+                    // Color mapping based on material type
+                    const getMaterialColor = (materialName: string) => {
+                      const name = materialName.toLowerCase()
+                      if (name.includes('mdf')) return '#8B4513' // Brown
+                      if (name.includes('plywood')) return '#DEB887' // Burlywood
+                      if (name.includes('chipboard')) return '#D2691E' // Chocolate
+                      if (name.includes('osb')) return '#A0522D' // Sienna
+                      if (name.includes('hardboard')) return '#F5DEB3' // Wheat
+                      return '#696969' // Dim gray (default)
+                    }
+                    
+                    return (
+                      <Grid item xs={12} sm={6} md={8}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                          {/* Material Image */}
+                          <Box
+                            sx={{
+                              width: 60,
+                              height: 60,
+                              background: selectedMaterial.image_url 
+                                ? `url(${selectedMaterial.image_url})`
+                                : `linear-gradient(45deg, ${getMaterialColor(selectedMaterial.name)} 25%, transparent 25%), 
+                                   linear-gradient(-45deg, ${getMaterialColor(selectedMaterial.name)} 25%, transparent 25%), 
+                                   linear-gradient(45deg, transparent 75%, ${getMaterialColor(selectedMaterial.name)} 75%), 
+                                   linear-gradient(-45deg, transparent 75%, ${getMaterialColor(selectedMaterial.name)} 75%)`,
+                              backgroundSize: selectedMaterial.image_url ? 'cover' : '20px 20px',
+                              backgroundPosition: selectedMaterial.image_url ? 'center' : '0 0, 0 10px, 10px -10px, -10px 0px',
+                              border: '2px solid #e0e0e0',
+                              borderRadius: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              mr: 1,
+                              overflow: 'hidden',
+                              position: 'relative'
+                            }}
+                            title={`${selectedMaterial.name} képe`}
+                          >
+                            {selectedMaterial.image_url ? (
+                              <img
+                                src={selectedMaterial.image_url}
+                                alt={selectedMaterial.name}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover'
+                                }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `linear-gradient(135deg, ${getMaterialColor(selectedMaterial.name)} 0%, ${getMaterialColor(selectedMaterial.name)}dd 100%)`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    color: 'white', 
+                                    textAlign: 'center', 
+                                    fontSize: '8px',
+                                    fontWeight: 'bold',
+                                    textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
+                                  }}
+                                >
+                                  {selectedMaterial.name.split(' ')[0]}
               </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          
+                          <Chip
+                            label={`${selectedMaterial.width_mm} × ${selectedMaterial.length_mm}mm`}
+                            color="primary"
+                            variant="outlined"
+                            size="small"
+                          />
+                          <Chip
+                            label={`${selectedMaterial.thickness_mm}mm vastag`}
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                          />
+                          {selectedMaterial.grain_direction && (
+                            <Chip
+                              label="Szálirány"
+                              color="warning"
+                              variant="outlined"
+                              size="small"
+                            />
+                          )}
+                        </Box>
+                      </Grid>
+                    )
+                  })()}
+                </Grid>
+              </Box>
+              
+              {/* Méretek Section */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Méretek
+                </Typography>
+              </Box>
               
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6} md={3}>
@@ -1459,7 +1556,7 @@ export default function OptiPage() {
                 
                 {/* Élzárás Section */}
                 <Grid item xs={12}>
-                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium' }}>
+                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
                     Élzárás
                   </Typography>
                 </Grid>
