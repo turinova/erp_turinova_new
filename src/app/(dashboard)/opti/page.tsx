@@ -1014,11 +1014,14 @@ export default function OptiPage() {
                      }}
                    />
                  )}
-                 renderOption={(props, option) => (
-                   <Box component="li" {...props}>
-                     {option.name} ({option.width_mm}×{option.length_mm}mm)
-                   </Box>
-                 )}
+                 renderOption={(props, option) => {
+                   const { key, ...otherProps } = props;
+                   return (
+                     <Box component="li" key={key} {...otherProps}>
+                       {option.name} ({option.width_mm}×{option.length_mm}mm)
+                     </Box>
+                   );
+                 }}
                />
         </Grid>
 
