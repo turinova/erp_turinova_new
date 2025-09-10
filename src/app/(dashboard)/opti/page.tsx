@@ -1750,6 +1750,25 @@ export default function OptiPage() {
                                   justifyContent: 'center'
                                 }}
                               >
+                                {/* Grain direction lines - horizontal lines if material has grain direction */}
+                                {material?.grain_direction && (
+                                  <>
+                                    {Array.from({ length: 8 }, (_, i) => (
+                                      <Box
+                                        key={`grain-${placement.id}-${i}`}
+                                        sx={{
+                                          position: 'absolute',
+                                          top: `${(i + 1) * 12.5}%`,
+                                          left: '5%',
+                                          right: '5%',
+                                          height: '1px',
+                                          backgroundColor: '#999',
+                                          opacity: 0.6
+                                        }}
+                                      />
+                                    ))}
+                                  </>
+                                )}
                                 {/* Width label on top edge */}
                                 <Box
                                   sx={{
