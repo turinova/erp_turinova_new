@@ -1106,7 +1106,7 @@ export default function OptiPage() {
                           </Box>
                           
                           <Chip
-                            label={`${selectedMaterial.width_mm} × ${selectedMaterial.length_mm}mm`}
+                            label={`${selectedMaterial.length_mm} × ${selectedMaterial.width_mm}mm`}
                             color="primary"
                             variant="outlined"
                             size="small"
@@ -1125,6 +1125,18 @@ export default function OptiPage() {
                               size="small"
                             />
                           )}
+                          <Chip
+                            label={`Penge vastagság: ${selectedMaterial.kerf_mm}mm`}
+                            color="info"
+                            variant="outlined"
+                            size="small"
+                          />
+                          <Chip
+                            label={`Szélezés: HF${selectedMaterial.trim_top_mm} RB${selectedMaterial.trim_bottom_mm} HA${selectedMaterial.trim_left_mm} RJ${selectedMaterial.trim_right_mm}mm`}
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                          />
                         </Box>
                       </Grid>
                     )
@@ -1467,12 +1479,6 @@ export default function OptiPage() {
                         {materialResult.material_name}
                           </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Chip
-                          label={`${materialResult.metrics.placed_count} placed`} 
-                          size="small" 
-                          color="success" 
-                          variant="outlined"
-                        />
                         <Chip 
                           label={`${material?.length_mm}×${material?.width_mm}mm`} 
                           size="small" 
@@ -1480,7 +1486,7 @@ export default function OptiPage() {
                           variant="outlined"
                         />
                         <Chip 
-                          label={material?.grain_direction ? "Grain Direction" : "No Grain"} 
+                          label={material?.grain_direction ? "Szálirányos" : "No Grain"} 
                           size="small" 
                           color={material?.grain_direction ? "warning" : "default"} 
                           variant="outlined"
@@ -1494,7 +1500,7 @@ export default function OptiPage() {
                           />
                         )}
                         <Chip 
-                          label={`${materialResult.metrics.boards_used} boards`} 
+                          label={`${materialResult.metrics.boards_used} tábla`} 
                               size="small"
                           color="primary" 
                           variant="outlined"
@@ -1614,21 +1620,103 @@ export default function OptiPage() {
                             }}
                           >
                           
-                          {/* Trim margins visualization - only show if any trim > 0 */}
-                          {((material?.trim_top_mm ?? 0) > 0 || 
-                            (material?.trim_bottom_mm ?? 0) > 0 || 
-                            (material?.trim_left_mm ?? 0) > 0 || 
-                            (material?.trim_right_mm ?? 0) > 0) && (
+                          {/* Trim margins visualization - show individual trim lines only if trim > 0 */}
+                          {/* Top trim area with cross lines */}
+                          {(material?.trim_top_mm ?? 0) > 0 && (
                               <Box
                                 sx={{
                                   position: 'absolute',
-                                // Horizontal layout: left->left, top->top, width->width, height->height
-                                left: `${((material?.trim_left_mm || 0) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
-                                top: `${((material?.trim_top_mm || 0) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
-                                width: `${((materialResult.debug?.board_width || material?.width_mm || 1) - (material?.trim_left_mm || 0) - (material?.trim_right_mm || 0)) / (materialResult.debug?.board_width || material?.width_mm || 1) * 100}%`,
-                                height: `${((materialResult.debug?.board_height || material?.length_mm || 1) - (material?.trim_top_mm || 0) - (material?.trim_bottom_mm || 0)) / (materialResult.debug?.board_height || material?.length_mm || 1) * 100}%`,
-                                  border: '2px dashed #0066cc',
-                                  backgroundColor: 'rgba(0,102,204,0.05)'
+                                left: '0%',
+                                top: '0%',
+                                width: '100%',
+                                height: `${((material?.trim_top_mm || 0) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                              }}
+                            />
+                          )}
+                          
+                          {/* Bottom trim area with cross lines */}
+                          {(material?.trim_bottom_mm ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: '0%',
+                                top: `${((materialResult.debug?.board_height || material?.length_mm || 1) - (material?.trim_bottom_mm || 0)) / (materialResult.debug?.board_height || material?.length_mm || 1) * 100}%`,
+                                width: '100%',
+                                height: `${((material?.trim_bottom_mm || 0) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                              }}
+                            />
+                          )}
+                          
+                          {/* Left trim area with cross lines */}
+                          {(material?.trim_left_mm ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: '0%',
+                                top: '0%',
+                                width: `${((material?.trim_left_mm || 0) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                height: '100%',
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                              }}
+                            />
+                          )}
+                          
+                          {/* Right trim area with cross lines */}
+                          {(material?.trim_right_mm ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: `${((materialResult.debug?.board_width || material?.width_mm || 1) - (material?.trim_right_mm || 0)) / (materialResult.debug?.board_width || material?.width_mm || 1) * 100}%`,
+                                top: '0%',
+                                width: `${((material?.trim_right_mm || 0) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                height: '100%',
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
                                 }}
                               />
                           )}

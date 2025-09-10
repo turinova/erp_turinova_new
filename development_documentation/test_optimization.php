@@ -491,6 +491,7 @@ function processBin($bin, $trim_left = 0, $trim_right = 0, $trim_top = 0, $trim_
         // Without trim: use simple guillotine cutting
         $currentY = 0;
         $remainingRectangles = $bin->usedRectangles;
+        $isFirstStrip = true;
         
         // Sort rectangles by Y position to process strips in order
         usort($remainingRectangles, function($a, $b) {
@@ -501,15 +502,18 @@ function processBin($bin, $trim_left = 0, $trim_right = 0, $trim_top = 0, $trim_
             $strip = getNextStrip($remainingRectangles, $bin, $currentY);
             if (!$strip) break;
             
-            // Horizontal cut to separate this strip
-            $cuttingLength += $bin->width;
+            // Skip first horizontal cut when no trim (no top trim)
+            if (!$isFirstStrip) {
+                $cuttingLength += $bin->width;
+            }
             
             // Process strip with vertical cuts
-            $stripCuttingLength = processStripOptimized($strip, false, $strip['stripHeight']);
+            $stripCuttingLength = processStripOptimized($strip, false, $strip['stripHeight'], $trim_left);
             $cuttingLength += $stripCuttingLength;
             
             $currentY = $strip['height'];
             $remainingRectangles = $strip['remainingRectangles'];
+            $isFirstStrip = false;
         }
     } else {
         // With trim: calculate exact guillotine sequence
@@ -526,6 +530,10 @@ function calculateGuillotineWithTrim($bin, $trim_left, $trim_right, $trim_top, $
     $originalBoardWidth = $bin->width + $trim_left + $trim_right;
     $originalBoardHeight = $bin->height + $trim_top + $trim_bottom;
     
+    // Debug output
+    error_log("DEBUG: calculateGuillotineWithTrim - Board: {$bin->width}x{$bin->height}, Trim: L{$trim_left}R{$trim_right}T{$trim_top}B{$trim_bottom}");
+    error_log("DEBUG: Original board dimensions: {$originalBoardWidth}x{$originalBoardHeight}");
+    
     // Sort rectangles by Y position to process strips in order
     $rectangles = $bin->usedRectangles;
     usort($rectangles, function($a, $b) {
@@ -536,17 +544,22 @@ function calculateGuillotineWithTrim($bin, $trim_left, $trim_right, $trim_top, $
     $strips = [];
     $currentY = 0;
     $remainingRectangles = $rectangles;
+    $isFirstStrip = true;
     
     while (count($remainingRectangles) > 0) {
         $strip = getNextStrip($remainingRectangles, $bin, $currentY);
         if (!$strip) break;
         
-        // Horizontal cut to separate this strip from the remaining board
-        $cuttingLength += $originalBoardWidth;
+        // Only add horizontal cut if there's a top trim (skip first horizontal cut if no top trim)
+        if (!$isFirstStrip || $trim_top > 0) {
+            $cuttingLength += $originalBoardWidth;
+            error_log("DEBUG: Added horizontal cut: {$originalBoardWidth}mm (strip at y={$currentY}, isFirstStrip={$isFirstStrip}, trim_top={$trim_top})");
+        }
         
         $strips[] = $strip;
         $currentY = $strip['height'];
         $remainingRectangles = $strip['remainingRectangles'];
+        $isFirstStrip = false;
     }
     
     // Step 2: Process each strip with vertical cuts
@@ -558,29 +571,37 @@ function calculateGuillotineWithTrim($bin, $trim_left, $trim_right, $trim_top, $
         });
         
         $currentX = 0;
+        $isFirstPanel = true;
         foreach ($stripRectangles as $rect) {
             // Vertical cut before this panel (if there's a gap)
-            if ($rect->x > $currentX) {
+            // Skip first vertical cut if no left trim
+            if ($rect->x > $currentX && (!$isFirstPanel || $trim_left > 0)) {
                 $cuttingLength += $strip['stripHeight'];
+                error_log("DEBUG: Added vertical cut before panel: {$strip['stripHeight']}mm (panel at x={$rect->x}, currentX={$currentX}, isFirstPanel={$isFirstPanel}, trim_left={$trim_left})");
             }
             
             // Vertical cut after this panel (if it doesn't reach the end)
+            // Only add if there's actually remaining space after this panel
             if ($rect->x + $rect->width < $strip['bin']->width) {
                 $cuttingLength += $strip['stripHeight'];
+                error_log("DEBUG: Added vertical cut after panel: {$strip['stripHeight']}mm (panel ends at x=" . ($rect->x + $rect->width) . ", bin width={$strip['bin']->width})");
             }
             
             $currentX = $rect->x + $rect->width;
+            $isFirstPanel = false;
         }
         
         // Additional vertical cut for remaining area after the strip (only for single panel)
         if (count($stripRectangles) == 1) {
             $cuttingLength += $strip['stripHeight'];
+            error_log("DEBUG: Added additional vertical cut for single panel: {$strip['stripHeight']}mm");
         }
     }
     
     // Add horizontal cut for remaining area after all strips
     if ($currentY < $originalBoardHeight) {
         $cuttingLength += $originalBoardWidth;
+        error_log("DEBUG: Added horizontal cut for remaining area: {$originalBoardWidth}mm (currentY={$currentY}, originalBoardHeight={$originalBoardHeight})");
         
         // Add vertical cuts for remaining area - check total panels in board
         $totalPanelsInBoard = 0;
@@ -593,15 +614,19 @@ function calculateGuillotineWithTrim($bin, $trim_left, $trim_right, $trim_top, $
             $cuttingLength += $originalBoardHeight - $currentY; // Cut for remaining area
             $cuttingLength += $originalBoardHeight - $currentY; // Additional cut
             $cuttingLength += $originalBoardHeight - $currentY - 201; // Third cut (adjusted to get 14.4m)
+            error_log("DEBUG: Added 3 vertical cuts for 4+ panels: " . (($originalBoardHeight - $currentY) * 3 - 201) . "mm");
         } elseif ($totalPanelsInBoard == 2) {
             // Two panels: 8.6m
             $cuttingLength += $originalBoardHeight - $currentY - 1070; // Additional cut for two panels (adjusted to get 8.6m)
+            error_log("DEBUG: Added vertical cut for 2 panels: " . ($originalBoardHeight - $currentY - 1070) . "mm");
         } else {
             // Single panel: 7.6m
             $cuttingLength += $originalBoardHeight - $currentY - 1070; // Additional cut for single panel (adjusted to get 7.6m)
+            error_log("DEBUG: Added vertical cut for 1 panel: " . ($originalBoardHeight - $currentY - 1070) . "mm");
         }
     }
     
+    error_log("DEBUG: Total cutting length: {$cuttingLength}mm");
     return $cuttingLength;
 }
 
@@ -648,9 +673,10 @@ function getNextStrip($rectangles, $bin, $currentY) {
     ];
 }
 
-function processStripOptimized($strip, $hasTrim = false, $originalBoardHeight = 0) {
+function processStripOptimized($strip, $hasTrim = false, $originalBoardHeight = 0, $trim_left = 0) {
     $cuttingLength = 0;
     $currentX = 0;
+    $isFirstPanel = true;
     
     // Sort rectangles by X position
     usort($strip['rectangles'], function($a, $b) {
@@ -659,7 +685,8 @@ function processStripOptimized($strip, $hasTrim = false, $originalBoardHeight = 
     
     foreach ($strip['rectangles'] as $rect) {
         // Vertical cut before this panel (if there's a gap)
-        if ($rect->x > $currentX) {
+        // Skip first vertical cut if no left trim
+        if ($rect->x > $currentX && (!$isFirstPanel || $trim_left > 0)) {
             if ($hasTrim) {
                 // With trim: cut through strip height (not full board height)
                 $cuttingLength += $strip['stripHeight'];
@@ -681,6 +708,7 @@ function processStripOptimized($strip, $hasTrim = false, $originalBoardHeight = 
         }
         
         $currentX = $rect->x + $rect->width;
+        $isFirstPanel = false;
     }
     
     return $cuttingLength;
