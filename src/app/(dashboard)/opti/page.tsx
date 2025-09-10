@@ -295,7 +295,7 @@ export default function OptiPage() {
     const material = materials.find(m => m.id === selectedTáblásAnyag)
     const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
 
-    // Create élzárás string from A, B, C, D selections
+    // Create élzárás string from Hosszú felső, Széles jobb, Hosszú alsó, Széles bal selections
     const élzárás = [selectedA, selectedB, selectedC, selectedD]
       .filter(val => val && val !== '')
       .join(', ')
@@ -366,7 +366,7 @@ export default function OptiPage() {
       jelölés: panel.jelölés
     })
     
-    // Parse élzárás back to A, B, C, D selections
+    // Parse élzárás back to Hosszú felső, Széles jobb, Hosszú alsó, Széles bal selections
     const élzárásParts = panel.élzárás.split(', ').filter(part => part && part !== '-')
     setSelectedA(élzárásParts[0] || '')
     setSelectedB(élzárásParts[1] || '')
@@ -393,7 +393,7 @@ export default function OptiPage() {
     const material = materials.find(m => m.id === selectedTáblásAnyag)
     const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
 
-    // Create élzárás string from A, B, C, D selections
+    // Create élzárás string from Hosszú felső, Széles jobb, Hosszú alsó, Széles bal selections
     const élzárás = [selectedA, selectedB, selectedC, selectedD]
       .filter(val => val && val !== '')
       .join(', ')
@@ -939,7 +939,7 @@ export default function OptiPage() {
                       }
                       return null
                     })()}
-                    {/* Edge labels A, B, C, D with option-based colors */}
+                    {/* Edge labels with Hungarian names and option-based colors */}
                     {(() => {
                       // Color mapping based on option values
                       const getOptionColor = (option: string) => {
@@ -966,7 +966,7 @@ export default function OptiPage() {
                               color: getOptionColor(selectedA)
                             }}
                           >
-                            A
+                            Hosszú felső
                           </Box>
                           <Box
                             sx={{
@@ -976,36 +976,36 @@ export default function OptiPage() {
                               transform: 'translateX(-50%)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedB)
+                              color: getOptionColor(selectedC)
                             }}
                           >
-                            B
+                            Hosszú alsó
                           </Box>
                           <Box
                             sx={{
                               position: 'absolute',
                               left: -20,
                               top: '50%',
-                              transform: 'translateY(-50%)',
+                              transform: 'translateY(-50%) rotate(-90deg)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedC)
+                              color: getOptionColor(selectedD)
                             }}
                           >
-                            C
+                            Széles bal
                           </Box>
                           <Box
                             sx={{
                               position: 'absolute',
                               right: -20,
                               top: '50%',
-                              transform: 'translateY(-50%)',
+                              transform: 'translateY(-50%) rotate(90deg)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedD)
+                              color: getOptionColor(selectedB)
                             }}
                           >
-                            D
+                            Széles jobb
                           </Box>
                         </>
                       )
@@ -1040,7 +1040,7 @@ export default function OptiPage() {
                               }}
                             />
                           )}
-                          {selectedB && (
+                          {selectedC && (
                             <Box
                               sx={{
                                 position: 'absolute',
@@ -1048,19 +1048,6 @@ export default function OptiPage() {
                                 left: -3,
                                 right: -3,
                                 height: 3,
-                                backgroundColor: getOptionColor(selectedB),
-                                borderRadius: '2px'
-                              }}
-                            />
-                          )}
-                          {selectedC && (
-                            <Box
-                              sx={{
-                                position: 'absolute',
-                                top: -3,
-                                left: -3,
-                                bottom: -3,
-                                width: 3,
                                 backgroundColor: getOptionColor(selectedC),
                                 borderRadius: '2px'
                               }}
@@ -1071,10 +1058,23 @@ export default function OptiPage() {
                               sx={{
                                 position: 'absolute',
                                 top: -3,
-                                right: -3,
+                                left: -3,
                                 bottom: -3,
                                 width: 3,
                                 backgroundColor: getOptionColor(selectedD),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedB && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                right: -3,
+                                bottom: -3,
+                                width: 3,
+                                backgroundColor: getOptionColor(selectedB),
                                 borderRadius: '2px'
                               }}
                             />
@@ -1302,9 +1302,9 @@ export default function OptiPage() {
 
                 {/* Szálázási adatok Collapsible Section */}
                 <Grid item xs={12}>
-                  <Accordion 
-                    defaultExpanded={true}
-                  >
+         <Accordion
+           defaultExpanded={false}
+         >
                     <AccordionSummary
                       expandIcon={<ExpandMoreIcon />}
                     >
@@ -1680,13 +1680,13 @@ export default function OptiPage() {
                 
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-a-label">A</InputLabel>
+                    <InputLabel id="dropdown-a-label">Hosszú felső</InputLabel>
                     <Select
                       labelId="dropdown-a-label"
                       value={selectedA}
                       onChange={(e) => setSelectedA(e.target.value)}
                       onKeyPress={handleKeyPress}
-                      label="A"
+                      label="Hosszú felső"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
@@ -1697,30 +1697,13 @@ export default function OptiPage() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-b-label">B</InputLabel>
-                    <Select
-                      labelId="dropdown-b-label"
-                      value={selectedB}
-                      onChange={(e) => setSelectedB(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      label="B"
-                    >
-                      <MenuItem value="option1">Option 1</MenuItem>
-                      <MenuItem value="option2">Option 2</MenuItem>
-                      <MenuItem value="option3">Option 3</MenuItem>
-                      <MenuItem value="option4">Option 4</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-c-label">C</InputLabel>
+                    <InputLabel id="dropdown-c-label">Hosszú alsó</InputLabel>
                     <Select
                       labelId="dropdown-c-label"
                       value={selectedC}
                       onChange={(e) => setSelectedC(e.target.value)}
                       onKeyPress={handleKeyPress}
-                      label="C"
+                      label="Hosszú alsó"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
@@ -1731,13 +1714,30 @@ export default function OptiPage() {
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
                   <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-d-label">D</InputLabel>
+                    <InputLabel id="dropdown-d-label">Széles bal</InputLabel>
                     <Select
                       labelId="dropdown-d-label"
                       value={selectedD}
                       onChange={(e) => setSelectedD(e.target.value)}
                       onKeyPress={handleKeyPress}
-                      label="D"
+                      label="Széles bal"
+                    >
+                      <MenuItem value="option1">Option 1</MenuItem>
+                      <MenuItem value="option2">Option 2</MenuItem>
+                      <MenuItem value="option3">Option 3</MenuItem>
+                      <MenuItem value="option4">Option 4</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel id="dropdown-b-label">Széles jobb</InputLabel>
+                    <Select
+                      labelId="dropdown-b-label"
+                      value={selectedB}
+                      onChange={(e) => setSelectedB(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                      label="Széles jobb"
                     >
                       <MenuItem value="option1">Option 1</MenuItem>
                       <MenuItem value="option2">Option 2</MenuItem>
