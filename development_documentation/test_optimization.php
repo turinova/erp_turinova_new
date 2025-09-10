@@ -63,8 +63,8 @@ class Bin {
             
             if ($freeRect->width >= $rectangle->width + ($requiresHorizontalKerf ? $kerf : 0) && 
                 $freeRect->height >= $rectangle->height + ($requiresVerticalKerf ? $kerf : 0)) {
-                // Prefer horizontal placement by prioritizing lower y-coordinate
-                $wasteScore = $normalWaste + ($freeRect->y * 1000) + ($freeRect->x * 100);
+                // Prefer horizontal placement by prioritizing lower y-coordinate, then lower x-coordinate
+                $wasteScore = $normalWaste + ($freeRect->y * 10000) + ($freeRect->x * 1000);
                 if ($wasteScore < $bestWaste) {
                     $bestFit = $freeRect;
                     $bestFitIndex = $index;
@@ -79,7 +79,7 @@ class Bin {
                 
                 if ($freeRect->width >= $rectangle->height + ($requiresHorizontalKerfRotated ? $kerf : 0) && 
                     $freeRect->height >= $rectangle->width + ($requiresVerticalKerfRotated ? $kerf : 0)) {
-                    $wasteScore = $rotatedWaste + ($freeRect->y * 1000) + ($freeRect->x * 100);
+                    $wasteScore = $rotatedWaste + ($freeRect->y * 10000) + ($freeRect->x * 1000);
                     if ($wasteScore < $bestWaste) {
                         $bestFit = $freeRect;
                         $bestFitIndex = $index;
@@ -100,7 +100,7 @@ class Bin {
             list($rectangle->width, $rectangle->height) = [$rectangle->height, $rectangle->width];
         }
 
-        $this->splitFreeSpaceVerticalFirst($bestFit, $rectangle, $kerf);
+        $this->splitFreeSpaceHorizontalFirst($bestFit, $rectangle, $kerf);
         
         $rectangle->x = $bestFit->x;
         $rectangle->y = $bestFit->y;
@@ -109,7 +109,7 @@ class Bin {
         return true;
     }
 
-    private function splitFreeSpaceVerticalFirst($freeRect, $placedRect, $kerf = 0) {
+    private function splitFreeSpaceHorizontalFirst($freeRect, $placedRect, $kerf = 0) {
         $widthRemainder = $freeRect->width - $placedRect->width;
         $heightRemainder = $freeRect->height - $placedRect->height;
         
@@ -185,7 +185,9 @@ if ($input && isset($input['materials']) && is_array($input['materials'])) {
         foreach ($parts as $part) {
             $quantity = $part['qty'] ?? 1;
             for ($i = 0; $i < $quantity; $i++) {
-                $panels[] = new Rectangle($part['w_mm'], $part['h_mm'], 0, 0, $part['allow_rot_90'] ?? true);
+                // Check if material has grain direction - if so, panels cannot be rotated
+                $can_rotate = ($material['grain_direction'] ?? false) ? false : ($part['allow_rot_90'] ?? true);
+                $panels[] = new Rectangle($part['h_mm'], $part['w_mm'], 0, 0, $can_rotate);
             }
         }
         
@@ -197,9 +199,9 @@ if ($input && isset($input['materials']) && is_array($input['materials'])) {
         $trim_bottom = $board['trim_bottom_mm'] ?? 0;
         $kerf_size = $params['kerf_mm'] ?? 3;
         
-        // CRITICAL: Swap board dimensions exactly like calculate_price.php does (lines 461-462)
-        $board_width_swapped = $board_width;   // 2800 (wide)
-        $board_height_swapped = $board_height; // 2070 (short)
+        // CRITICAL: Swap board dimensions to place panels along the LENGTH side (longer dimension)
+        $board_width_swapped = $board_height;  // 2070 (now treated as width for horizontal placement)
+        $board_height_swapped = $board_width;  // 2800 (now treated as height for vertical stacking)
 
         // Calculate usable board dimensions after trim
         $usable_board_width = $board_width_swapped - $trim_left - $trim_right;
@@ -234,8 +236,11 @@ if ($input && isset($input['materials']) && is_array($input['materials'])) {
                         $quantity = $part['qty'] ?? 1;
                         
                         // Check if dimensions match (accounting for possible rotation)
-                        if (($part['w_mm'] == $rect->width && $part['h_mm'] == $rect->height) ||
-                            ($part['w_mm'] == $rect->height && $part['h_mm'] == $rect->width)) {
+                        // Note: w_mm = hosszúság, h_mm = szélesség in the API request
+                        // Rectangle constructor: new Rectangle($part['h_mm'], $part['w_mm'], ...)
+                        // So rect->width = h_mm (szélesség), rect->height = w_mm (hosszúság)
+                        if (($part['h_mm'] == $rect->width && $part['w_mm'] == $rect->height) ||
+                            ($part['h_mm'] == $rect->height && $part['w_mm'] == $rect->width)) {
                             
                             // Count how many of this part type we've already placed
                             $already_placed_count = 0;
@@ -350,7 +355,9 @@ if ($input && isset($input['materials']) && is_array($input['materials'])) {
     // Single material optimization (legacy support)
     $panels = [];
     foreach ($input['parts'] as $part) {
-        $panels[] = new Rectangle($part['w_mm'], $part['h_mm'], 0, 0, $part['allow_rot_90'] ?? true);
+        // Check if material has grain direction - if so, panels cannot be rotated
+        $can_rotate = ($input['grain_direction'] ?? false) ? false : ($part['allow_rot_90'] ?? true);
+        $panels[] = new Rectangle($part['h_mm'], $part['w_mm'], 0, 0, $can_rotate);
     }
     
     $board_width = $input['board']['w_mm'];
@@ -459,14 +466,16 @@ $response = [
         "placed_count" => count($placements),
         "unplaced_count" => count($unplaced)
     ],
-    "debug" => [
-        "board_width" => $board_width_swapped,
-        "board_height" => $board_height_swapped,
-        "usable_width" => $usable_board_width,
-        "usable_height" => $usable_board_height,
-        "bins_count" => count($bins),
-        "panels_count" => count($panels)
-    ]
+            "debug" => [
+                "board_width" => $board_width_swapped,  // 2070 (for horizontal placement)
+                "board_height" => $board_height_swapped, // 2800 (for vertical stacking)
+                "usable_width" => $usable_board_width,
+                "usable_height" => $usable_board_height,
+                "bins_count" => count($bins),
+                "panels_count" => count($panels),
+                "grain_direction" => $material['grain_direction'] ?? false,
+                "rotatable_panels" => count(array_filter($panels, function($p) { return $p->rotatable; }))
+            ]
 ];
 
 echo json_encode($response, JSON_PRETTY_PRINT);

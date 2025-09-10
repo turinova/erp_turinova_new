@@ -737,8 +737,8 @@ export default function OptiPage() {
                       maxHeight: '90%',
                       // Calculate aspect ratio and fit within 200px height
                       width: (() => {
-                        const width = parseFloat(panelForm.szélesség) || 0
-                        const height = parseFloat(panelForm.hosszúság) || 0
+                        const width = parseFloat(panelForm.hosszúság) || 0
+                        const height = parseFloat(panelForm.szélesség) || 0
                         if (width === 0 || height === 0) return '100px'
                         const aspectRatio = width / height
                         const maxHeight = 170
@@ -747,8 +747,8 @@ export default function OptiPage() {
                         return calculatedWidth > maxWidth ? `${maxWidth}px` : `${calculatedWidth}px`
                       })(),
                       height: (() => {
-                        const width = parseFloat(panelForm.szélesség) || 0
-                        const height = parseFloat(panelForm.hosszúság) || 0
+                        const width = parseFloat(panelForm.hosszúság) || 0
+                        const height = parseFloat(panelForm.szélesség) || 0
                         if (width === 0 || height === 0) return '100px'
                         const aspectRatio = height / width
                         const maxHeight = 170
@@ -1409,12 +1409,12 @@ export default function OptiPage() {
             </Box>
             
             {/* Error Display */}
-            {error && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {error}
-              </Alert>
-            )}
-          </Grid>
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
+        </Grid>
         )}
 
 
@@ -1622,6 +1622,7 @@ export default function OptiPage() {
                               <Box
                                 sx={{
                                   position: 'absolute',
+                                // Horizontal layout: left->left, top->top, width->width, height->height
                                 left: `${((material?.trim_left_mm || 0) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
                                 top: `${((material?.trim_top_mm || 0) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
                                 width: `${((materialResult.debug?.board_width || material?.width_mm || 1) - (material?.trim_left_mm || 0) - (material?.trim_right_mm || 0)) / (materialResult.debug?.board_width || material?.width_mm || 1) * 100}%`,
@@ -1649,6 +1650,7 @@ export default function OptiPage() {
                                     key={placement.id}
                                     sx={{
                                       position: 'absolute',
+                                  // Horizontal stacking: x->left, y->top, w->width, h->height
                                   left: `${(placement.x_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
                                   top: `${(placement.y_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
                                   width: `${(placement.w_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
@@ -1729,10 +1731,11 @@ export default function OptiPage() {
                                 key={`kerf-top-${index}`}
                                 sx={{
                                   position: 'absolute',
-                                  left: `${(placement.x_mm / (material?.width_mm || 1)) * 100}%`,
-                                  top: `${((placement.y_mm - kerfSize/2) / (material?.length_mm || 1)) * 100}%`,
-                                  width: `${(placement.w_mm / (material?.width_mm || 1)) * 100}%`,
-                                  height: `${(kerfSize / (material?.length_mm || 1)) * 100}%`,
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${(placement.x_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${((placement.y_mm - kerfSize/2) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(placement.w_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(kerfSize / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
                                   backgroundColor: '#ff6b6b',
                                   opacity: 0.7,
                                   zIndex: 10
@@ -1746,10 +1749,11 @@ export default function OptiPage() {
                                 key={`kerf-bottom-${index}`}
                                 sx={{
                                   position: 'absolute',
-                                  left: `${(placement.x_mm / (material?.width_mm || 1)) * 100}%`,
-                                  top: `${((placement.y_mm + placement.h_mm - kerfSize/2) / (material?.length_mm || 1)) * 100}%`,
-                                  width: `${(placement.w_mm / (material?.width_mm || 1)) * 100}%`,
-                                  height: `${(kerfSize / (material?.length_mm || 1)) * 100}%`,
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${(placement.x_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${((placement.y_mm + placement.h_mm - kerfSize/2) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(placement.w_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(kerfSize / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
                                   backgroundColor: '#ff6b6b',
                                   opacity: 0.7,
                                   zIndex: 10
@@ -1763,10 +1767,11 @@ export default function OptiPage() {
                                 key={`kerf-left-${index}`}
                                 sx={{
                                   position: 'absolute',
-                                  left: `${((placement.x_mm - kerfSize/2) / (material?.width_mm || 1)) * 100}%`,
-                                  top: `${(placement.y_mm / (material?.length_mm || 1)) * 100}%`,
-                                  width: `${(kerfSize / (material?.width_mm || 1)) * 100}%`,
-                                  height: `${(placement.h_mm / (material?.length_mm || 1)) * 100}%`,
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${((placement.x_mm - kerfSize/2) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${(placement.y_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(kerfSize / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(placement.h_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
                                   backgroundColor: '#ff6b6b',
                                   opacity: 0.7,
                                   zIndex: 10
@@ -1780,10 +1785,11 @@ export default function OptiPage() {
                                 key={`kerf-right-${index}`}
                                 sx={{
                                   position: 'absolute',
-                                  left: `${((placement.x_mm + placement.w_mm - kerfSize/2) / (material?.width_mm || 1)) * 100}%`,
-                                  top: `${(placement.y_mm / (material?.length_mm || 1)) * 100}%`,
-                                  width: `${(kerfSize / (material?.width_mm || 1)) * 100}%`,
-                                  height: `${(placement.h_mm / (material?.length_mm || 1)) * 100}%`,
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${((placement.x_mm + placement.w_mm - kerfSize/2) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${(placement.y_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(kerfSize / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(placement.h_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
                                   backgroundColor: '#ff6b6b',
                                   opacity: 0.7,
                                   zIndex: 10
