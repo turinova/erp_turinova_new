@@ -25,8 +25,10 @@ import {
   CircularProgress,
   Pagination,
   Tooltip,
-  Autocomplete
+  Autocomplete,
+  Divider
 } from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
 import MuiAccordionSummary from '@mui/material/AccordionSummary'
@@ -102,6 +104,14 @@ interface Material {
   waste_multi: number
   created_at: string
   updated_at: string
+}
+
+interface Customer {
+  id: string
+  name: string
+  email: string
+  mobile: string
+  discount_percent: number
 }
 
 interface Panel {
@@ -182,6 +192,25 @@ export default function OptiPage() {
   const [selectedB, setSelectedB] = useState<string>('')
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
+  
+  // Customer data state
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customersLoading, setCustomersLoading] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [customerData, setCustomerData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    discount: '',
+    billing_name: '',
+    billing_country: 'Magyarország',
+    billing_city: '',
+    billing_postal_code: '',
+    billing_street: '',
+    billing_house_number: '',
+    billing_tax_number: '',
+    billing_company_reg_number: ''
+  })
   
   // Panel form state for the separate table
   const [panelForm, setPanelForm] = useState({
@@ -421,6 +450,110 @@ export default function OptiPage() {
     setSelectedD('')
   }
 
+  // Hungarian phone number formatting helper
+  const formatPhoneNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 2) {
+      return digits
+    } else if (digits.length <= 4) {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2)}`
+    } else if (digits.length <= 7) {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2, 4)} ${digits.substring(4)}`
+    } else if (digits.length <= 9) {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2, 4)} ${digits.substring(4, 7)} ${digits.substring(7)}`
+    } else {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2, 4)} ${digits.substring(4, 7)} ${digits.substring(7, 9)}`
+    }
+  }
+
+  // Hungarian tax number (adószám) formatting helper
+  const formatTaxNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 8) {
+      return digits
+    } else if (digits.length <= 9) {
+      return `${digits.substring(0, 8)}-${digits.substring(8)}`
+    } else if (digits.length <= 11) {
+      return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9)}`
+    } else {
+      return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9, 11)}`
+    }
+  }
+
+  // Hungarian company registration number (cégjegyzékszám) formatting helper
+  const formatCompanyRegNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 2) {
+      return digits
+    } else if (digits.length <= 4) {
+      return `${digits.substring(0, 2)}-${digits.substring(2)}`
+    } else if (digits.length <= 10) {
+      return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4)}`
+    } else {
+      return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4, 10)}`
+    }
+  }
+
+  // Handle customer selection
+  const handleCustomerSelect = (customer: Customer | null) => {
+    setSelectedCustomer(customer)
+    if (customer) {
+      const newCustomerData = {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.mobile,
+        discount: customer.discount_percent.toString(),
+        billing_name: customer.billing_name || '',
+        billing_country: customer.billing_country || 'Magyarország',
+        billing_city: customer.billing_city || '',
+        billing_postal_code: customer.billing_postal_code || '',
+        billing_street: customer.billing_street || '',
+        billing_house_number: customer.billing_house_number || '',
+        billing_tax_number: customer.billing_tax_number || '',
+        billing_company_reg_number: customer.billing_company_reg_number || ''
+      }
+      setCustomerData(newCustomerData)
+    } else {
+      setCustomerData({
+        name: '',
+        email: '',
+        phone: '',
+        discount: '',
+        billing_name: '',
+        billing_country: 'Magyarország',
+        billing_city: '',
+        billing_postal_code: '',
+        billing_street: '',
+        billing_house_number: '',
+        billing_tax_number: '',
+        billing_company_reg_number: ''
+      })
+    }
+  }
+
+  // Handle customer data input changes
+  const handleCustomerDataChange = (field: string, value: string) => {
+    let formattedValue = value
+    
+    // Apply formatting based on field type
+    if (field === 'phone') {
+      formattedValue = formatPhoneNumber(value)
+    } else if (field === 'billing_tax_number') {
+      formattedValue = formatTaxNumber(value)
+    } else if (field === 'billing_company_reg_number') {
+      formattedValue = formatCompanyRegNumber(value)
+    }
+    
+    setCustomerData(prev => {
+      const newData = {
+        ...prev,
+        [field]: formattedValue
+      }
+      console.log('🔍 handleCustomerDataChange - field:', field, 'value:', formattedValue, 'newData:', newData)
+      return newData
+    })
+  }
+
   // Handle Enter key press
   const handleKeyPress = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter') {
@@ -467,6 +600,29 @@ export default function OptiPage() {
 
     fetchMaterials()
   }, [])
+
+  // Fetch customers from database
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        setCustomersLoading(true)
+        const response = await fetch('/api/customers')
+        if (response.ok) {
+          const data = await response.json()
+          setCustomers(data)
+        } else {
+          console.error('Failed to fetch customers:', response.statusText)
+        }
+      } catch (error) {
+        console.error('Error fetching customers:', error)
+      } finally {
+        setCustomersLoading(false)
+      }
+    }
+
+    fetchCustomers()
+  }, [])
+
 
   // Initialize board indices when optimization result changes
   useEffect(() => {
@@ -955,18 +1111,311 @@ export default function OptiPage() {
           </Card>
         </Grid>
 
-        {/* Panel Information Card */}
+        {/* Customer Information Card */}
         <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Megrendelő adatai
               </Typography>
-              <Box sx={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Üres - később lesz feltöltve
-                </Typography>
-              </Box>
+              
+              <Grid container spacing={2}>
+               {/* Customer Selection and Discount in same row */}
+               <Grid item xs={12} sm={8}>
+                 <Autocomplete
+                   fullWidth
+                   size="small"
+                   options={customers}
+                   getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
+                   value={selectedCustomer}
+                   onChange={(event, newValue) => {
+                     if (typeof newValue === 'string') {
+                       // User typed a new customer name
+                       setSelectedCustomer(null)
+                       setCustomerData({
+                         name: newValue,
+                         email: '',
+                         phone: '',
+                         discount: '0',
+                         billing_name: '',
+                         billing_country: 'Magyarország',
+                         billing_city: '',
+                         billing_postal_code: '',
+                         billing_street: '',
+                         billing_house_number: '',
+                         billing_tax_number: '',
+                         billing_company_reg_number: ''
+                       })
+                     } else if (newValue) {
+                       // User selected an existing customer - set data directly
+                       setSelectedCustomer(newValue)
+                       setCustomerData({
+                         name: newValue.name,
+                         email: newValue.email,
+                         phone: newValue.mobile,
+                         discount: newValue.discount_percent.toString(),
+                         billing_name: newValue.billing_name || '',
+                         billing_country: newValue.billing_country || 'Magyarország',
+                         billing_city: newValue.billing_city || '',
+                         billing_postal_code: newValue.billing_postal_code || '',
+                         billing_street: newValue.billing_street || '',
+                         billing_house_number: newValue.billing_house_number || '',
+                         billing_tax_number: newValue.billing_tax_number || '',
+                         billing_company_reg_number: newValue.billing_company_reg_number || ''
+                       })
+                     } else {
+                       // User cleared selection
+                       setSelectedCustomer(null)
+                       setCustomerData({
+                         name: '',
+                         email: '',
+                         phone: '',
+                         discount: '',
+                         billing_name: '',
+                         billing_country: 'Magyarország',
+                         billing_city: '',
+                         billing_postal_code: '',
+                         billing_street: '',
+                         billing_house_number: '',
+                         billing_tax_number: '',
+                         billing_company_reg_number: ''
+                       })
+                     }
+                   }}
+                   onInputChange={(event, newInputValue) => {
+                     if (event && newInputValue && !customers.find(c => c.name === newInputValue)) {
+                       // User is typing a new customer name
+                       setSelectedCustomer(null)
+                       setCustomerData({
+                         name: newInputValue,
+                         email: '',
+                         phone: '',
+                         discount: '0',
+                         billing_name: '',
+                         billing_country: 'Magyarország',
+                         billing_city: '',
+                         billing_postal_code: '',
+                         billing_street: '',
+                         billing_house_number: '',
+                         billing_tax_number: '',
+                         billing_company_reg_number: ''
+                       })
+                     }
+                   }}
+                   freeSolo
+                   disabled={customersLoading}
+                   loading={customersLoading}
+                   loadingText="Ügyfelek betöltése..."
+                   noOptionsText="Nincs találat"
+                   renderInput={(params) => (
+                     <TextField
+                       {...params}
+                       label="Név (válasszon ügyfelet vagy írjon be új nevet)"
+                       size="small"
+                       InputProps={{
+                         ...params.InputProps,
+                         endAdornment: (
+                           <>
+                             {customersLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                             {params.InputProps.endAdornment}
+                           </>
+                         ),
+                       }}
+                     />
+                   )}
+                   renderOption={(props, option) => {
+                     const { key, ...otherProps } = props;
+                     return (
+                       <Box component="li" key={key} {...otherProps}>
+                         <Box>
+                           <Typography variant="body2" fontWeight="medium">
+                             {option.name}
+                           </Typography>
+                           <Typography variant="caption" color="text.secondary">
+                             {option.email} • {option.mobile}
+                           </Typography>
+                         </Box>
+                       </Box>
+                     );
+                   }}
+                 />
+               </Grid>
+               <Grid item xs={12} sm={4}>
+                 <TextField
+                   fullWidth
+                   size="small"
+                   label="Kedvezmény (%)"
+                   type="number"
+                   value={customerData.discount}
+                   onChange={(e) => handleCustomerDataChange('discount', e.target.value)}
+                   disabled={!!selectedCustomer}
+                   inputProps={{ min: 0, max: 100, step: 0.01 }}
+                 />
+               </Grid>
+
+               {/* Customer Data Fields */}
+               <Grid item xs={12} sm={6}>
+                 <TextField
+                   fullWidth
+                   size="small"
+                   label="E-mail"
+                   value={customerData.email}
+                   onChange={(e) => handleCustomerDataChange('email', e.target.value)}
+                   disabled={!!selectedCustomer}
+                 />
+               </Grid>
+               <Grid item xs={12} sm={6}>
+                 <TextField
+                   fullWidth
+                   size="small"
+                   label="Telefon"
+                   value={customerData.phone}
+                   onChange={(e) => handleCustomerDataChange('phone', e.target.value)}
+                   disabled={!!selectedCustomer}
+                 />
+               </Grid>
+
+               {/* Status and Clear Button */}
+               <Grid item xs={12}>
+                 <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pt: 1, gap: 2 }}>
+                   {selectedCustomer ? (
+                     <>
+                       <Typography variant="body2" color="text.secondary">
+                         Adatok automatikusan kitöltve
+                       </Typography>
+                       <Button
+                         size="small"
+                         variant="outlined"
+                         color="secondary"
+                         onClick={() => handleCustomerSelect(null)}
+                       >
+                         Törlés
+                       </Button>
+                     </>
+                   ) : customerData.name && !selectedCustomer ? (
+                     <Typography variant="body2" color="primary">
+                       Új ügyfél adatai - kérem töltse ki a mezőket
+                     </Typography>
+                   ) : null}
+                 </Box>
+               </Grid>
+
+                {/* Szálázási adatok Collapsible Section */}
+                <Grid item xs={12}>
+                  <Accordion 
+                    defaultExpanded={true}
+                  >
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon />}
+                    >
+                      <Typography variant="h6" sx={{ fontWeight: 'medium' }}>
+                        Számlázási adatok
+                      </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Grid container spacing={2}>
+                        {/* Billing Name */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Szálázási név"
+                            value={customerData.billing_name}
+                            onChange={(e) => handleCustomerDataChange('billing_name', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Country */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Ország"
+                            value={customerData.billing_country}
+                            onChange={(e) => handleCustomerDataChange('billing_country', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* City */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Város"
+                            value={customerData.billing_city}
+                            onChange={(e) => handleCustomerDataChange('billing_city', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Postal Code */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Irányítószám"
+                            value={customerData.billing_postal_code}
+                            onChange={(e) => handleCustomerDataChange('billing_postal_code', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Street */}
+                        <Grid item xs={12} sm={8}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Utca"
+                            value={customerData.billing_street}
+                            onChange={(e) => handleCustomerDataChange('billing_street', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* House Number */}
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Házszám"
+                            value={customerData.billing_house_number}
+                            onChange={(e) => handleCustomerDataChange('billing_house_number', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Tax Number */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Adószám"
+                            placeholder="12345678-1-02"
+                            value={customerData.billing_tax_number}
+                            onChange={(e) => handleCustomerDataChange('billing_tax_number', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Company Registration Number */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Cégjegyzékszám"
+                            placeholder="01-09-123456"
+                            value={customerData.billing_company_reg_number}
+                            onChange={(e) => handleCustomerDataChange('billing_company_reg_number', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+                      </Grid>
+                    </AccordionDetails>
+                  </Accordion>
+                </Grid>
+              </Grid>
             </CardContent>
           </Card>
         </Grid>

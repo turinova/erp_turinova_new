@@ -20,17 +20,33 @@ export async function GET(request: NextRequest) {
       const sampleCustomers = [
         {
           id: 'b016c425-ff23-4340-98b6-55148c597b7a',
-          name: 'Kovács Péter',
-          email: 'peter.kovacs@example.com',
-          mobile: '+36 30 123 4567',
-          discount_percent: 5.00
+          name: 'Mező Dávid',
+          email: 'zsofia.nagy@example.com',
+          mobile: '+36 20 765 1202',
+          discount_percent: 10,
+          billing_name: 'Nagy Zsófia',
+          billing_country: 'Magyarország',
+          billing_city: 'Budapest',
+          billing_postal_code: '1051',
+          billing_street: 'Bajcsy-Zsilinszky út',
+          billing_house_number: '5',
+          billing_tax_number: '23123123-1-23',
+          billing_company_reg_number: '32-13-213123'
         },
         {
           id: 'fcee2e83-beb7-4bc0-b2d1-05b76f1bf681',
-          name: 'Nagy Zsófia',
-          email: 'zsofia.nagy@example.com',
-          mobile: '+36 20 765 4321',
-          discount_percent: 0.00
+          name: 'Kovács Péter',
+          email: 'peter.kovacs@example.com',
+          mobile: '+36 30 999 2800',
+          discount_percent: 10,
+          billing_name: 'Kovács Kft.',
+          billing_country: 'Hungary',
+          billing_city: 'Kecskemét',
+          billing_postal_code: '6000',
+          billing_street: 'Mindszenti krt.',
+          billing_house_number: '10',
+          billing_tax_number: '12345678-1-02',
+          billing_company_reg_number: '01-09-999999'
         }
       ]
       return NextResponse.json(sampleCustomers, { status: 200 })
@@ -39,7 +55,7 @@ export async function GET(request: NextRequest) {
     // Fetch customers from Supabase database
     const { data, error } = await supabase!
       .from('customers')
-      .select('id, name, email, mobile, discount_percent')
+      .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number')
       .order('name')
     
     if (error) {
