@@ -1051,6 +1051,286 @@ export default function OptiPage() {
       </Typography>
 
       <Grid container spacing={3}>
+        {/* Dynamic Rectangle Visualization Card */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Panel Előnézet
+              </Typography>
+              <Box
+                sx={{
+                  height: 200,
+                  backgroundColor: '#f5f5f5',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 1,
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden'
+                }}
+              >
+                {panelForm.hosszúság && panelForm.szélesség ? (
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      backgroundColor: '#e0e0e0',
+                      border: '2px solid #666',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      maxWidth: '90%',
+                      maxHeight: '90%',
+                      // Calculate aspect ratio and fit within 200px height
+                      width: (() => {
+                        const width = parseFloat(panelForm.szélesség) || 0
+                        const height = parseFloat(panelForm.hosszúság) || 0
+                        if (width === 0 || height === 0) return '100px'
+                        const aspectRatio = width / height
+                        const maxHeight = 170
+                        const maxWidth = 300
+                        const calculatedWidth = maxHeight * aspectRatio
+                        return calculatedWidth > maxWidth ? `${maxWidth}px` : `${calculatedWidth}px`
+                      })(),
+                      height: (() => {
+                        const width = parseFloat(panelForm.szélesség) || 0
+                        const height = parseFloat(panelForm.hosszúság) || 0
+                        if (width === 0 || height === 0) return '100px'
+                        const aspectRatio = height / width
+                        const maxHeight = 170
+                        const maxWidth = 300
+                        const calculatedHeight = maxWidth * aspectRatio
+                        return calculatedHeight > maxHeight ? `${maxHeight}px` : `${calculatedHeight}px`
+                      })()
+                    }}
+                  >
+                    {/* Grain direction lines - horizontal lines if material has grain direction */}
+                    {(() => {
+                      const selectedMaterial = materials.find(m => m.id === selectedTáblásAnyag)
+                      if (selectedMaterial?.grain_direction) {
+                        const lines = []
+                        for (let i = 0; i < 8; i++) {
+                          lines.push(
+                            <Box
+                              key={`grain-${i}`}
+                              sx={{
+                                position: 'absolute',
+                                top: `${(i + 1) * 12.5}%`,
+                                left: '5%',
+                                right: '5%',
+                                height: '1px',
+                                backgroundColor: '#999',
+                                opacity: 0.6
+                              }}
+                            />
+                          )
+                        }
+                        return lines
+                      }
+                      return null
+                    })()}
+                    {/* Edge labels A, B, C, D with option-based colors */}
+                    {(() => {
+                      // Color mapping based on option values
+                      const getOptionColor = (option: string) => {
+                        if (!option) return '#666'
+                        switch (option) {
+                          case 'option1': return '#1976d2' // Blue
+                          case 'option2': return '#388e3c' // Green
+                          case 'option3': return '#f57c00' // Orange
+                          case 'option4': return '#d32f2f' // Red
+                          default: return '#666'
+                        }
+                      }
+                      
+                      return (
+                        <>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              top: -20,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedA)
+                            }}
+                          >
+                            A
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              right: -20,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedB)
+                            }}
+                          >
+                            B
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              bottom: -20,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedC)
+                            }}
+                          >
+                            C
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: -20,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedD)
+                            }}
+                          >
+                            D
+                          </Box>
+                        </>
+                      )
+                    })()}
+                    
+                    {/* Special borders for selected edges with option-based colors */}
+                    {(() => {
+                      // Color mapping based on option values
+                      const getOptionColor = (option: string) => {
+                        if (!option) return '#666'
+                        switch (option) {
+                          case 'option1': return '#1976d2' // Blue
+                          case 'option2': return '#388e3c' // Green
+                          case 'option3': return '#f57c00' // Orange
+                          case 'option4': return '#d32f2f' // Red
+                          default: return '#666'
+                        }
+                      }
+                      
+                      return (
+                        <>
+                          {selectedA && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                right: -3,
+                                height: 3,
+                                backgroundColor: getOptionColor(selectedA),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedB && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                right: -3,
+                                bottom: -3,
+                                width: 3,
+                                backgroundColor: getOptionColor(selectedB),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedC && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                bottom: -3,
+                                left: -3,
+                                right: -3,
+                                height: 3,
+                                backgroundColor: getOptionColor(selectedC),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedD && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                bottom: -3,
+                                width: 3,
+                                backgroundColor: getOptionColor(selectedD),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                        </>
+                      )
+                    })()}
+                    
+                    {/* Dimensions text inside rectangle */}
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        color: '#333',
+                        textAlign: 'center',
+                        lineHeight: 1.2
+                      }}
+                    >
+                      {panelForm.szélesség} × {panelForm.hosszúság} mm
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      width: 100,
+                      height: 100,
+                      backgroundColor: '#e0e0e0',
+                      border: '2px solid #666',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: 1
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontSize: '12px', color: '#666' }}>
+                      X × Y
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontSize: '10px', color: '#999' }}>
+                      mm
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Panel Information Card */}
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Panel Információ
+              </Typography>
+              <Box sx={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Üres - később lesz feltöltve
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Táblás anyag Selection */}
         <Grid item xs={12} md={6}>
           <Card id="táblás-anyag-section">
