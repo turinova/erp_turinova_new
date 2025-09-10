@@ -37,7 +37,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
   },
   {
     label: 'Ügyfelek',
-    href: '/ugyfelek',
+    href: '/customers',
     icon: 'ri-user-line',
     iconColor: '#E74C3C' // Red for customers/people
   }
