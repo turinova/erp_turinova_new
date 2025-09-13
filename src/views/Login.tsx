@@ -1,7 +1,7 @@
 'use client'
 
 // React Imports
-import { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 // Next Imports
 import { useRouter } from 'next/navigation'
@@ -18,6 +18,8 @@ import Divider from '@mui/material/Divider'
 
 // Third-party Imports
 import classnames from 'classnames'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { toast } from 'react-toastify'
 
 // Type Imports
 import type { Mode } from '@core/types'
@@ -36,6 +38,10 @@ import { useSettings } from '@core/hooks/useSettings'
 const LoginV2 = ({ mode }: { mode: Mode }) => {
   // States
   const [isPasswordShown, setIsPasswordShown] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [user, setUser] = useState(null)
 
   // Vars
   const darkImg = '/images/pages/auth-v2-mask-1-dark.png'
@@ -49,6 +55,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
   const router = useRouter()
   const { settings } = useSettings()
   const authBackground = useImageVariant(mode, lightImg, darkImg)
+  const supabase = createClientComponentClient()
 
   const characterIllustration = useImageVariant(
     mode,
@@ -59,6 +66,43 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
   )
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        setUser(user)
+        router.push('/')
+      }
+    }
+    checkUser()
+  }, [supabase.auth, router])
+
+  // Handle login
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        toast.error(error.message)
+      } else if (data.user) {
+        toast.success('Login successful!')
+        setUser(data.user)
+        router.push('/')
+      }
+    } catch (error) {
+      toast.error('An unexpected error occurred')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   return (
     <div className='flex bs-full justify-center'>
@@ -91,17 +135,25 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
           <form
             noValidate
             autoComplete='off'
-            onSubmit={e => {
-              e.preventDefault()
-              router.push('/')
-            }}
+            onSubmit={handleLogin}
             className='flex flex-col gap-5'
           >
-            <TextField autoFocus fullWidth label='Email' />
+            <TextField 
+              autoFocus 
+              fullWidth 
+              label='Email' 
+              type='email'
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
             <TextField
               fullWidth
               label='Password'
               type={isPasswordShown ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
               slotProps={{
                 input: {
                   endAdornment: (
@@ -125,8 +177,13 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
                 Forgot password?
               </Typography>
             </div>
-            <Button fullWidth variant='contained' type='submit'>
-              Log In
+            <Button 
+              fullWidth 
+              variant='contained' 
+              type='submit'
+              disabled={isLoading}
+            >
+              {isLoading ? 'Signing in...' : 'Log In'}
             </Button>
             <div className='flex justify-center items-center flex-wrap gap-2'>
               <Typography>New on our platform?</Typography>

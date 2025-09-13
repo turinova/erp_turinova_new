@@ -73,7 +73,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       },
       {
         label: 'Felhasználók',
-        href: '/felhasznalok'
+        href: '/users'
       },
       {
         label: 'Opti beállítások',

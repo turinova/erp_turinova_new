@@ -1,204 +1,142 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
-import { toast } from 'react-toastify'
-
-export interface UserPermissions {
-  id: string
-  user_id: string
-  page_access: string[]
-  is_super_user: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface AuthUser extends User {
-  permissions?: UserPermissions
-}
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import type { User } from '@supabase/supabase-js'
+import type { PermissionMatrix } from '@/types/permission'
 
 interface AuthContextType {
-  user: AuthUser | null
-  session: Session | null
+  user: User | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
+  permissions: PermissionMatrix[]
+  permissionsLoading: boolean
   signOut: () => Promise<void>
-  hasPermission: (page: string) => boolean
-  isSuperUser: () => boolean
+  hasPermission: (pagePath: string, permissionType: 'view' | 'edit' | 'delete') => boolean
   refreshPermissions: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export const useAuth = () => {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [permissions, setPermissions] = useState<PermissionMatrix[]>([])
+  const [permissionsLoading, setPermissionsLoading] = useState(false)
+  const supabase = createClientComponentClient()
+
+  // Simplified - no complex permission fetching
+  const refreshPermissions = async () => {
+    // No-op for simple permission system
+  }
+
+  useEffect(() => {
+    // Get initial session
+    const getInitialSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setUser(session?.user ?? null)
+      setLoading(false)
+      
+      // Don't fetch permissions on initial load for performance
+      // They will be fetched when needed
+    }
+
+    getInitialSession()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setUser(session?.user ?? null)
+        setLoading(false)
+        
+        if (session?.user) {
+          // Simple permission system - no database calls needed
+          setPermissions([])
+        } else {
+          setPermissions([])
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [supabase.auth])
+
+  const signOut = async () => {
+    try {
+      // Clear local state immediately
+      setUser(null)
+      setPermissions([])
+      
+      // Clear any cached data immediately
+      if (typeof window !== 'undefined') {
+        localStorage.clear()
+        sessionStorage.clear()
+        
+        // Clear all cookies
+        document.cookie.split(";").forEach(function(c) { 
+          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+        });
+      }
+      
+      // Then sign out from Supabase with scope: 'global' to clear all sessions
+      await supabase.auth.signOut({ scope: 'global' })
+      
+      // Force redirect to login page
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      }
+    } catch (error) {
+      console.error('Error during sign out:', error)
+      // Still clear local state even if Supabase signOut fails
+      setUser(null)
+      setPermissions([])
+      
+      // Force redirect to login even on error
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      }
+    }
+  }
+
+  const hasPermission = (pagePath: string, permissionType: 'view' | 'edit' | 'delete'): boolean => {
+    if (!user) return false
+    
+    // If permissions are still loading or failed to load, allow access (fallback)
+    if (permissionsLoading || permissions.length === 0) {
+      return true
+    }
+    
+    const permission = permissions.find(p => p.page_path === pagePath)
+    if (!permission) return false
+
+    switch (permissionType) {
+      case 'view':
+        return permission.can_view
+      case 'edit':
+        return permission.can_edit
+      case 'delete':
+        return permission.can_delete
+      default:
+        return false
+    }
+  }
+
+  const value = {
+    user,
+    loading,
+    permissions,
+    permissionsLoading,
+    signOut,
+    hasPermission,
+    refreshPermissions,
+  }
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+}
+
+export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
-}
-
-interface AuthProviderProps {
-  children: React.ReactNode
-}
-
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  // Fetch user permissions from database
-  const fetchUserPermissions = async (userId: string): Promise<UserPermissions | null> => {
-    try {
-      const { data, error } = await supabase
-        .from('user_permissions')
-        .select('*')
-        .eq('user_id', userId)
-        .single()
-
-      if (error) {
-        console.error('Error fetching user permissions:', error)
-        return null
-      }
-
-      return data
-    } catch (error) {
-      console.error('Error fetching user permissions:', error)
-      return null
-    }
-  }
-
-  // Check if user has permission to access a specific page
-  const hasPermission = (page: string): boolean => {
-    if (!user?.permissions) return false
-    
-    // Super users have access to everything
-    if (user.permissions.is_super_user) return true
-    
-    // Check if page is in user's allowed pages
-    return user.permissions.page_access.includes(page)
-  }
-
-  // Check if user is super user
-  const isSuperUser = (): boolean => {
-    return user?.permissions?.is_super_user || false
-  }
-
-  // Refresh user permissions
-  const refreshPermissions = async (): Promise<void> => {
-    if (!user) return
-
-    try {
-      const permissions = await fetchUserPermissions(user.id)
-      if (permissions) {
-        setUser(prev => prev ? { ...prev, permissions } : null)
-      }
-    } catch (error) {
-      console.error('Error refreshing permissions:', error)
-    }
-  }
-
-  // Sign in function
-  const signIn = async (email: string, password: string): Promise<{ error: AuthError | null }> => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        return { error }
-      }
-
-      if (data.user) {
-        // Fetch user permissions
-        const permissions = await fetchUserPermissions(data.user.id)
-        setUser({ ...data.user, permissions: permissions || undefined })
-        setSession(data.session)
-      }
-
-      return { error: null }
-    } catch (error) {
-      console.error('Sign in error:', error)
-      return { error: error as AuthError }
-    }
-  }
-
-  // Sign out function
-  const signOut = async (): Promise<void> => {
-    try {
-      await supabase.auth.signOut()
-      setUser(null)
-      setSession(null)
-      toast.success('Sikeres kijelentkezés!')
-    } catch (error) {
-      console.error('Sign out error:', error)
-      toast.error('Kijelentkezés sikertelen')
-    }
-  }
-
-  // Initialize auth state
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        // Get initial session
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
-        if (error) {
-          console.error('Error getting session:', error)
-          setLoading(false)
-          return
-        }
-
-        if (session?.user) {
-          // Fetch user permissions
-          const permissions = await fetchUserPermissions(session.user.id)
-          setUser({ ...session.user, permissions: permissions || undefined })
-          setSession(session)
-        }
-
-        setLoading(false)
-      } catch (error) {
-        console.error('Error initializing auth:', error)
-        setLoading(false)
-      }
-    }
-
-    initializeAuth()
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          const permissions = await fetchUserPermissions(session.user.id)
-          setUser({ ...session.user, permissions: permissions || undefined })
-          setSession(session)
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null)
-          setSession(null)
-        }
-        setLoading(false)
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const value: AuthContextType = {
-    user,
-    session,
-    loading,
-    signIn,
-    signOut,
-    hasPermission,
-    isSuperUser,
-    refreshPermissions,
-  }
-
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
 }

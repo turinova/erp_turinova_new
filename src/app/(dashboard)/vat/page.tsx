@@ -5,6 +5,7 @@ import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { useDatabasePermission } from '@/hooks/useDatabasePermission'
 
 interface VatRate {
   id: string
@@ -16,6 +17,9 @@ interface VatRate {
 
 export default function VatPage() {
   const router = useRouter()
+  
+  // Check permission for this page
+  const hasAccess = useDatabasePermission('/vat')
   
   const [vatRates, setVatRates] = useState<VatRate[]>([])
   const [selectedVatRates, setSelectedVatRates] = useState<string[]>([])
@@ -197,6 +201,31 @@ export default function VatPage() {
 
   const handleDeleteCancel = () => {
     setDeleteModalOpen(false)
+  }
+
+  // Check access permission
+  useEffect(() => {
+    if (!hasAccess) {
+      toast.error('Nincs jogosultsága az Adónemek oldal megtekintéséhez!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+      router.push('/users')
+    }
+  }, [hasAccess, router])
+
+  if (!hasAccess) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Typography variant="h6" color="error">
+          Nincs jogosultsága az Adónemek oldal megtekintéséhez!
+        </Typography>
+      </Box>
+    )
   }
 
   if (isLoading) {

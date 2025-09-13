@@ -5,6 +5,7 @@ import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { useDatabasePermission } from '@/hooks/useDatabasePermission'
 
 interface Customer {
   id: string
@@ -17,6 +18,9 @@ interface Customer {
 export default function UgyfelekPage() {
   const router = useRouter()
   
+  // Check permission for this page
+  const hasAccess = useDatabasePermission('/customers')
+  
   const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -24,8 +28,19 @@ export default function UgyfelekPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
+  // Check permission and redirect if no access
+  useEffect(() => {
+    if (!hasAccess) {
+      toast.error('Nincs jogosultságod az ügyfelek oldal megtekintéséhez')
+      router.push('/users') // Redirect to users page
+      return
+    }
+  }, [hasAccess, router])
+
   // Fetch customers from API
   useEffect(() => {
+    if (!hasAccess) return // Don't fetch if no access
+    
     const fetchCustomers = async () => {
       try {
         setIsLoading(true)
@@ -78,7 +93,7 @@ export default function UgyfelekPage() {
     }
 
     fetchCustomers()
-  }, [])
+  }, [hasAccess])
 
   // Filter customers based on search term
   const filteredCustomers = useMemo(() => {
@@ -200,6 +215,8 @@ export default function UgyfelekPage() {
     setDeleteModalOpen(false)
   }
 
+
+  // Show loading while fetching customers
   if (isLoading) {
     return (
       <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
