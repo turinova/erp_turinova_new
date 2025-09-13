@@ -107,3 +107,9 @@ dist
 # Temporary folders
 tmp/
 temp/
+
+# Environment files with sensitive data
+.env.local
+.env.local.backup
+.env
+._.env*
