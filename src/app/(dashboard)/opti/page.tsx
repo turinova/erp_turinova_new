@@ -44,7 +44,7 @@ import MuiAccordionDetails from '@mui/material/AccordionDetails'
 import type { AccordionProps } from '@mui/material/Accordion'
 
 // Third-party Imports
-import { toast, ToastContainer } from 'react-toastify'
+import { toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import type { AccordionSummaryProps } from '@mui/material/AccordionSummary'
 import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
@@ -1814,14 +1814,6 @@ export default function OptiPage() {
                     Pánthelyfúrás
                   </Button>
                   
-                  <Button
-                    variant="contained"
-                    size="small"
-                    color="primary"
-                  >
-                    Szögvágás
-                  </Button>
-                  
                   <FormControlLabel
                     control={
                       <Switch
@@ -2520,19 +2512,6 @@ export default function OptiPage() {
         )}
       </Grid>
 
-      {/* Toast Container */}
-      <ToastContainer
-        position="bottom-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="light"
-      />
       
       {/* Pánthelyfúrás Modal */}
       <Dialog open={panthelyfurasModalOpen} onClose={handlePanthelyfurasClose} maxWidth="sm" fullWidth>

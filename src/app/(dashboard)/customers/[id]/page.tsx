@@ -5,6 +5,7 @@ import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextF
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { useApiCache, invalidateApiCache } from '../../../../hooks/useApiCache'
 
 interface Customer {
   id: string
@@ -45,35 +46,15 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     created_at: '2024-01-15T10:30:00Z'
   }
 
-  const [customer, setCustomer] = useState<Customer | null>(null)
+  const [customerData, setCustomerData] = useState<Customer | null>(initialCustomer)
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
 
-  // Load customer data from API
-  useEffect(() => {
-    const loadCustomer = async () => {
-      try {
-        const response = await fetch(`/api/customers/${resolvedParams.id}`)
-        if (response.ok) {
-          const customerData = await response.json()
-          setCustomer(customerData)
-        } else {
-          console.error('Failed to load customer')
-          // Fallback to initial data if API fails
-          setCustomer(initialCustomer)
-        }
-      } catch (error) {
-        console.error('Error loading customer:', error)
-        // Fallback to initial data if API fails
-        setCustomer(initialCustomer)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadCustomer()
-  }, [resolvedParams.id])
+  // Use cached API data with 5-minute TTL for individual records
+  const { data: customer, isLoading, error, refresh } = useApiCache<Customer>(`/api/customers/${resolvedParams.id}`, {
+    ttl: 5 * 60 * 1000, // 5 minutes cache for individual records
+    staleWhileRevalidate: true
+  })
 
   const handleBack = () => {
     router.push('/customers')
@@ -156,7 +137,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const handleInputChange = (field: keyof Customer, value: string | number) => {
-    if (customer) {
+    if (customerData) {
       let processedValue = value
       
       // Format phone number if it's the mobile field
@@ -174,7 +155,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
         processedValue = formatCompanyRegNumber(value)
       }
       
-      setCustomer(prev => prev ? { ...prev, [field]: processedValue } : null)
+      setCustomerData(prev => prev ? { ...prev, [field]: processedValue } : null)
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -183,22 +164,22 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   }
 
   const handleSave = async () => {
-    if (!customer) return
+    if (!customerData) return
     
     const newErrors: { [key: string]: string } = {}
     
     // Validate required fields
-    if (!customer.name.trim()) {
+    if (!customerData.name.trim()) {
       newErrors.name = 'A név mező kötelező'
     }
     
     // Validate tax number format if provided
-    if (customer.billing_tax_number && customer.billing_tax_number.trim() && !validateTaxNumber(customer.billing_tax_number)) {
+    if (customerData.billing_tax_number && customerData.billing_tax_number.trim() && !validateTaxNumber(customerData.billing_tax_number)) {
       newErrors.billing_tax_number = 'Az adószám formátuma helytelen (pl. 12345678-1-02)'
     }
     
     // Validate company registration number format if provided
-    if (customer.billing_company_reg_number && customer.billing_company_reg_number.trim() && !validateCompanyRegNumber(customer.billing_company_reg_number)) {
+    if (customerData.billing_company_reg_number && customerData.billing_company_reg_number.trim() && !validateCompanyRegNumber(customerData.billing_company_reg_number)) {
       newErrors.billing_company_reg_number = 'A cégjegyzékszám formátuma helytelen (pl. 01-09-123456)'
     }
     
@@ -210,12 +191,12 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     setIsSaving(true)
     
     try {
-      const response = await fetch(`/api/customers/${customer.id}`, {
+      const response = await fetch(`/api/customers/${customerData.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(customer),
+        body: JSON.stringify(customerData),
       })
       
       if (response.ok) {
@@ -228,8 +209,10 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           pauseOnHover: true,
           draggable: true,
         })
-        // Update local state with saved data
-        setCustomer(result.customer)
+        
+        // Invalidate cache and refresh data
+        invalidateApiCache(`/api/customers/${customerData.id}`)
+        await refresh()
       } else {
         const errorData = await response.json()
         throw new Error(errorData.message || 'Mentés sikertelen')
@@ -253,6 +236,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     return (
       <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
         <CircularProgress />
+      </Box>
+    )
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <Typography color="error">Hiba történt az ügyfél betöltése során: {error}</Typography>
       </Box>
     )
   }
@@ -304,7 +295,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           Ügyfelek
         </Link>
         <Typography color="text.primary">
-          {customer.name}
+          {customerData?.name || 'N/A'}
         </Typography>
       </Breadcrumbs>
 
@@ -346,7 +337,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Név"
-              value={customer.name}
+              value={customerData?.name || ''}
               onChange={(e) => handleInputChange('name', e.target.value)}
               required
               error={!!errors.name}
@@ -359,7 +350,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               fullWidth
               label="E-mail"
               type="email"
-              value={customer.email}
+              value={customerData?.email || ''}
               onChange={(e) => handleInputChange('email', e.target.value)}
               error={!!errors.email}
               helperText={errors.email}
@@ -371,7 +362,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               fullWidth
               label="Telefonszám"
               placeholder="+36 30 999 2800"
-              value={customer.mobile || ''}
+              value={customerData?.mobile || ''}
               onChange={(e) => handleInputChange('mobile', e.target.value)}
             />
           </Grid>
@@ -381,7 +372,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               fullWidth
               label="Kedvezmény (%)"
               type="number"
-              value={customer.discount_percent}
+              value={customerData?.discount_percent || 0}
               onChange={(e) => handleInputChange('discount_percent', parseFloat(e.target.value) || 0)}
               inputProps={{ min: 0, max: 100, step: 0.01 }}
             />
@@ -399,7 +390,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Számlázási név"
-              value={customer.billing_name || ''}
+              value={customerData?.billing_name || ''}
               onChange={(e) => handleInputChange('billing_name', e.target.value)}
             />
           </Grid>
@@ -408,7 +399,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Ország"
-              value={customer.billing_country || ''}
+              value={customerData?.billing_country || ''}
               onChange={(e) => handleInputChange('billing_country', e.target.value)}
             />
           </Grid>
@@ -417,7 +408,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Város"
-              value={customer.billing_city || ''}
+              value={customerData?.billing_city || ''}
               onChange={(e) => handleInputChange('billing_city', e.target.value)}
             />
           </Grid>
@@ -426,7 +417,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Irányítószám"
-              value={customer.billing_postal_code || ''}
+              value={customerData?.billing_postal_code || ''}
               onChange={(e) => handleInputChange('billing_postal_code', e.target.value)}
             />
           </Grid>
@@ -435,7 +426,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Utca"
-              value={customer.billing_street || ''}
+              value={customerData?.billing_street || ''}
               onChange={(e) => handleInputChange('billing_street', e.target.value)}
             />
           </Grid>
@@ -444,7 +435,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Házszám"
-              value={customer.billing_house_number || ''}
+              value={customerData?.billing_house_number || ''}
               onChange={(e) => handleInputChange('billing_house_number', e.target.value)}
             />
           </Grid>
@@ -454,7 +445,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               fullWidth
               label="Adószám"
               placeholder="12345678-1-02"
-              value={customer.billing_tax_number || ''}
+              value={customerData?.billing_tax_number || ''}
               onChange={(e) => handleInputChange('billing_tax_number', e.target.value)}
               error={!!errors.billing_tax_number}
               helperText={errors.billing_tax_number}
@@ -466,7 +457,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
               fullWidth
               label="Cégjegyzékszám"
               placeholder="01-09-123456"
-              value={customer.billing_company_reg_number || ''}
+              value={customerData?.billing_company_reg_number || ''}
               onChange={(e) => handleInputChange('billing_company_reg_number', e.target.value)}
               error={!!errors.billing_company_reg_number}
               helperText={errors.billing_company_reg_number}
@@ -485,7 +476,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Létrehozva"
-              value={new Date(customer.created_at).toLocaleDateString('hu-HU')}
+              value={customerData?.created_at ? new Date(customerData.created_at).toLocaleDateString('hu-HU') : 'N/A'}
               InputProps={{ readOnly: true }}
               variant="filled"
             />
@@ -495,7 +486,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
             <TextField
               fullWidth
               label="Ügyfél ID"
-              value={customer.id}
+              value={customerData?.id || ''}
               InputProps={{ readOnly: true }}
               variant="filled"
               sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace' } }}

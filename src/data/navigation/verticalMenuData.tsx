@@ -12,18 +12,6 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#0B6E99' // Blue for home/dashboard
   },
   {
-    label: 'About',
-    href: '/about',
-    icon: 'ri-information-line',
-    iconColor: '#9B9A97' // Gray for informational content
-  },
-  {
-    label: 'Optimalizáló',
-    href: '/optimalizalo',
-    icon: 'ri-speed-up-line',
-    iconColor: '#0F7B6C' // Green for optimization/success
-  },
-  {
     label: 'OptiTest',
     href: '/optitest',
     icon: 'ri-test-tube-line',
@@ -43,6 +31,53 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Ügyfelek',
         href: '/customers'
+      },
+      {
+        label: 'Gyártók',
+        href: '/brands'
+      },
+      {
+        label: 'Adónem',
+        href: '/vat'
+      },
+      {
+        label: 'Pénznem',
+        href: '/currencies'
+      },
+      {
+        label: 'Egységek',
+        href: '/units'
+      },
+      {
+        label: 'Táblás anyagok',
+        href: '/tablas-anyagok'
+      },
+      {
+        label: 'Szálas anyagok',
+        href: '/szalas-anyagok'
+      },
+      {
+        label: 'Élzárók',
+        href: '/elzarok'
+      }
+    ]
+  },
+  {
+    label: 'Beállítások',
+    icon: 'ri-settings-2-line',
+    iconColor: '#8E44AD', // Purple for settings
+    children: [
+      {
+        label: 'Cégadatok',
+        href: '/company'
+      },
+      {
+        label: 'Felhasználók',
+        href: '/felhasznalok'
+      },
+      {
+        label: 'Opti beállítások',
+        href: '/opti-beallitasok'
       }
     ]
   }

@@ -52,11 +52,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(sampleCustomers, { status: 200 })
     }
     
-    // Fetch customers from Supabase database
-    const { data, error } = await supabase!
+    // Try to fetch with all columns including soft delete filter
+    let { data, error } = await supabase!
       .from('customers')
-      .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number')
+      .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
+      .is('deleted_at', null)
       .order('name')
+
+    // If deleted_at column doesn't exist, try without soft delete filter
+    if (error && error.message.includes('column "deleted_at" does not exist')) {
+      console.log('deleted_at column not found, fetching all customers...')
+      const result = await supabase!
+        .from('customers')
+        .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
+        .order('name')
+      
+      data = result.data
+      error = result.error
+    }
+
+    // If updated_at column doesn't exist, try without it
+    if (error && error.message.includes('column "updated_at" does not exist')) {
+      console.log('updated_at column not found, fetching without it...')
+      const result = await supabase!
+        .from('customers')
+        .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at')
+        .order('name')
+      
+      data = result.data
+      error = result.error
+    }
     
     if (error) {
       console.error('Supabase error:', error)

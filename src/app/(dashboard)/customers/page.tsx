@@ -283,7 +283,7 @@ export default function UgyfelekPage() {
               <TableCell>Név</TableCell>
               <TableCell>E-mail</TableCell>
               <TableCell>Telefonszám</TableCell>
-              <TableCell>Discount_percent</TableCell>
+              <TableCell>Kedvezmény</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

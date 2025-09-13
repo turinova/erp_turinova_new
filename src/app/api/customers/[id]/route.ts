@@ -66,7 +66,8 @@ export async function PUT(
         billing_house_number: customerData.billing_house_number,
         billing_tax_number: customerData.billing_tax_number,
         billing_company_reg_number: customerData.billing_company_reg_number,
-        discount_percent: customerData.discount_percent
+        discount_percent: customerData.discount_percent,
+        updated_at: new Date().toISOString()
       })
       .eq('id', customerId)
       .select()
@@ -132,11 +133,22 @@ export async function DELETE(
       )
     }
     
-    // Delete customer from Supabase database
-    const { error } = await supabase!
+    // Try soft delete first
+    let { error } = await supabase!
       .from('customers')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
       .eq('id', customerId)
+
+    // If deleted_at column doesn't exist, fall back to hard delete
+    if (error && error.message.includes('column "deleted_at" does not exist')) {
+      console.log('deleted_at column not found, using hard delete...')
+      const result = await supabase!
+        .from('customers')
+        .delete()
+        .eq('id', customerId)
+
+      error = result.error
+    }
     
     if (error) {
       console.error('Supabase error:', error)
@@ -234,7 +246,7 @@ export async function GET(
     // Fetch customer from Supabase database (only for valid UUIDs)
     const { data, error } = await supabase!
       .from('customers')
-      .select('*')
+      .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
       .eq('id', customerId)
       .single()
     
