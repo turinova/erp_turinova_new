@@ -1,48 +1,57 @@
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function GET() {
   try {
-    // Try to fetch from the new materials_with_settings view first
-    const { data: materialsWithSettings, error: viewError } = await supabase
-      .from('materials_with_settings')
-      .select('*')
-      .order('brand_name, material_name')
-
-    if (!viewError && materialsWithSettings) {
-      // Transform the data to match the expected format
-      const transformedData = materialsWithSettings.map(material => ({
-        id: material.id,
-        name: `${material.brand_name} - ${material.material_name}`,
-        length_mm: material.length_mm,
-        width_mm: material.width_mm,
-        thickness_mm: material.thickness_mm,
-        grain_direction: material.grain_direction,
-        image_url: material.image_url,
-        // Include optimization settings
-        kerf_mm: material.kerf_mm,
-        trim_top_mm: material.trim_top_mm,
-        trim_right_mm: material.trim_right_mm,
-        trim_bottom_mm: material.trim_bottom_mm,
-        trim_left_mm: material.trim_left_mm,
-        rotatable: material.rotatable,
-        waste_multi: material.waste_multi,
-        brand_name: material.brand_name,
-        machine_code: material.machine_code,
-        created_at: material.created_at,
-        updated_at: material.updated_at
-      }))
-
-      return Response.json({ success: true, data: transformedData })
-    }
-
-    // Fallback to old materials table if the view doesn't exist yet
+    console.log('Fetching materials for opti page...')
+    
+    const startTime = performance.now()
+    
+    // Skip the complex view and go directly to materials table for better performance
     const { data, error } = await supabase
       .from('materials')
       .select('*')
+      .limit(50) // Limit results to prevent memory issues
+      .order('id', { ascending: true })
 
-    if (error) throw error
+    const endTime = performance.now()
+    const queryTime = endTime - startTime
+    
+    console.log(`Materials query took: ${queryTime.toFixed(2)}ms`)
 
-    return Response.json({ success: true, data })
+    if (error) {
+      console.error('Error fetching materials:', error)
+      throw error
+    }
+
+    // Transform the data to match the expected format
+    const transformedData = (data || []).map(material => ({
+      id: material.id,
+      name: material.name || `Material ${material.id}`,
+      length_mm: material.length_mm || 2800,
+      width_mm: material.width_mm || 2070,
+      thickness_mm: material.thickness_mm || 18,
+      grain_direction: material.grain_direction || 'length',
+      image_url: material.image_url || null,
+      // Include optimization settings with defaults
+      kerf_mm: material.kerf_mm || 3,
+      trim_top_mm: material.trim_top_mm || 10,
+      trim_right_mm: material.trim_right_mm || 0,
+      trim_bottom_mm: material.trim_bottom_mm || 0,
+      trim_left_mm: material.trim_left_mm || 10,
+      rotatable: material.rotatable !== false,
+      waste_multi: material.waste_multi || 1.0,
+      brand_name: material.brand_name || 'Unknown',
+      machine_code: material.machine_code || 'MDF',
+      created_at: material.created_at,
+      updated_at: material.updated_at
+    }))
+
+    console.log(`Fetched ${transformedData.length} materials successfully`)
+    return Response.json({ success: true, data: transformedData })
   } catch (error) {
     return Response.json({ 
       success: false, 

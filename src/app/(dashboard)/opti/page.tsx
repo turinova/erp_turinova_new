@@ -654,7 +654,7 @@ export default function OptiPage() {
     const fetchCustomers = async () => {
       try {
         setCustomersLoading(true)
-        const response = await fetch('/api/customers')
+        const response = await fetch('/api/customers/optimized')
         if (response.ok) {
           const data = await response.json()
           setCustomers(data)
