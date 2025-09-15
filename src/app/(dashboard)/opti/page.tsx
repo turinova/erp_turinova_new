@@ -201,6 +201,9 @@ export default function OptiPage() {
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
   
+  // State for showing optimization data card
+  const [showOptimizationData, setShowOptimizationData] = useState(false)
+  
   // Customer data state
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customersLoading, setCustomersLoading] = useState(false)
@@ -2518,6 +2521,172 @@ export default function OptiPage() {
                 </Accordion>
               )
             })}
+          </Grid>
+        )}
+
+        {/* Optimization Data Card */}
+        {optimizationResult && showOptimizationData && (
+          <Grid item xs={12} sx={{ mt: 3 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Optimalizálási adatok
+                </Typography>
+                
+                {optimizationResult.materials.map((materialResult) => {
+                  const material = materials.find(m => m.id === materialResult.material_id)
+                  
+                  // Calculate edge lengths for this material
+                  const materialPanels = addedPanels.filter(panel => {
+                    const materialMatch = panel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
+                    if (!materialMatch) return false
+                    const materialName = materialMatch[1].trim()
+                    const materialWidth = parseInt(materialMatch[2])
+                    const materialLength = parseInt(materialMatch[3])
+                    return material && 
+                           material.name === materialName && 
+                           material.width_mm === materialWidth && 
+                           material.length_mm === materialLength
+                  })
+                  
+                  // Calculate edge material total lengths
+                  const edgeLengths: { [key: string]: number } = {}
+                  materialPanels.forEach(panel => {
+                    const length = parseInt(panel.hosszúság)
+                    const width = parseInt(panel.szélesség)
+                    const quantity = parseInt(panel.darab)
+                    
+                    // Top edge (A)
+                    if (panel.élzárásA && panel.élzárásA !== '') {
+                      edgeLengths[panel.élzárásA] = (edgeLengths[panel.élzárásA] || 0) + (length * quantity)
+                    }
+                    // Right edge (B)
+                    if (panel.élzárásB && panel.élzárásB !== '') {
+                      edgeLengths[panel.élzárásB] = (edgeLengths[panel.élzárásB] || 0) + (width * quantity)
+                    }
+                    // Bottom edge (C)
+                    if (panel.élzárásC && panel.élzárásC !== '') {
+                      edgeLengths[panel.élzárásC] = (edgeLengths[panel.élzárásC] || 0) + (length * quantity)
+                    }
+                    // Left edge (D)
+                    if (panel.élzárásD && panel.élzárásD !== '') {
+                      edgeLengths[panel.élzárásD] = (edgeLengths[panel.élzárásD] || 0) + (width * quantity)
+                    }
+                  })
+                  
+                  return (
+                    <Box key={materialResult.material_id} sx={{ mb: 3, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                      <Typography variant="h6" gutterBottom>
+                        {materialResult.material_name}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Márka:</strong> {material?.brand_name || 'N/A'}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Méret:</strong> {(material?.length_mm / 1000).toFixed(2)}×{(material?.width_mm / 1000).toFixed(2)}m
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Vastagság:</strong> {material?.thickness_mm}mm
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Szálirány:</strong> {material?.grain_direction ? 'Igen' : 'Nem'}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Penge vastagság:</strong> {material?.kerf_mm}mm
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Szélezés:</strong> HF{material?.trim_top_mm} RB{material?.trim_bottom_mm} HA{material?.trim_left_mm} RJ{material?.trim_right_mm}mm
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Hulladékszorzó:</strong> {material?.waste_multi}x
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Felhasznált táblák száma:</strong> {materialResult.metrics.boards_used}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Táblák kihasználtsága:</strong>
+                      </Typography>
+                      
+                      {/* Individual board usage percentages */}
+                      <Box sx={{ ml: 2, mb: 1 }}>
+                        {(() => {
+                          // Group placements by board_id (same logic as in accordion)
+                          const placementsByBoard = new Map<number, Placement[]>()
+                          materialResult.placements.forEach(placement => {
+                            const boardId = placement.board_id || 1
+                            if (!placementsByBoard.has(boardId)) {
+                              placementsByBoard.set(boardId, [])
+                            }
+                            placementsByBoard.get(boardId)!.push(placement)
+                          })
+                          
+                          const boardIds = Array.from(placementsByBoard.keys()).sort((a, b) => a - b)
+                          
+                          return boardIds.map((boardId) => {
+                            const boardPlacements = placementsByBoard.get(boardId) || []
+                            const boardUsedArea = boardPlacements.reduce((sum, placement) => sum + (placement.w_mm * placement.h_mm), 0)
+                            const boardArea = (materialResult.debug?.board_width || material?.width_mm || 1) * (materialResult.debug?.board_height || material?.length_mm || 1)
+                            const boardUsage = (boardUsedArea / boardArea) * 100
+                            
+                            return (
+                              <Typography key={boardId} variant="body2" sx={{ mb: 0.5 }}>
+                                • Tábla {boardId}: {boardUsage.toFixed(1)}%
+                              </Typography>
+                            )
+                          })
+                        })()}
+                      </Box>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Összes vágási hossz:</strong> {(materialResult.metrics.total_cut_length_mm / 1000).toFixed(2)}m
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Élzáró anyagok:</strong>
+                      </Typography>
+                      
+                      {Object.keys(edgeLengths).length > 0 ? (
+                        <Box sx={{ ml: 2 }}>
+                          {Object.entries(edgeLengths).map(([edgeType, length]) => (
+                            <Typography key={edgeType} variant="body2" sx={{ mb: 0.5 }}>
+                              • {edgeType}: {(length / 1000).toFixed(2)}m
+                            </Typography>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" sx={{ ml: 2, color: 'text.secondary' }}>
+                          Nincs élzáró anyag
+                        </Typography>
+                      )}
+                    </Box>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
+
+        {/* Árajnálat generálás Button */}
+        {optimizationResult && (
+          <Grid item xs={12} sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              sx={{ px: 4, py: 1.5 }}
+              onClick={() => setShowOptimizationData(true)}
+            >
+              Árajnálat generálás
+            </Button>
           </Grid>
         )}
       </Grid>

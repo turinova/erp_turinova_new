@@ -10,9 +10,9 @@ export async function GET() {
     
     const startTime = performance.now()
     
-    // Single optimized query with all columns - FAST!
+    // Use the materials_with_settings view that handles the hierarchy logic
     const { data, error } = await supabase
-      .from('materials')
+      .from('materials_with_settings')
       .select('*')
       .limit(50) // Limit results to prevent memory issues
       .order('id', { ascending: true })
@@ -27,16 +27,19 @@ export async function GET() {
       throw error
     }
 
+    // Debug: Log the raw data to see what's being returned
+    console.log('Raw data from Supabase:', JSON.stringify(data?.[0], null, 2))
+
     // Transform the data to match the expected format
     const transformedData = (data || []).map(material => ({
       id: material.id,
-      name: material.name || `Material ${material.id}`,
+      name: material.material_name || `Material ${material.id}`,
       length_mm: material.length_mm || 2800,
       width_mm: material.width_mm || 2070,
       thickness_mm: material.thickness_mm || 18,
       grain_direction: material.grain_direction || 'length',
       image_url: material.image_url || null,
-      // Include optimization settings with defaults
+      // Use the effective settings from the view (already handles hierarchy)
       kerf_mm: material.kerf_mm || 3,
       trim_top_mm: material.trim_top_mm || 10,
       trim_right_mm: material.trim_right_mm || 0,
