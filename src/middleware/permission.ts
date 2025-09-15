@@ -15,7 +15,6 @@ const PROTECTED_PAGES = {
   '/szalas-anyagok': 'view',
   '/elzarok': 'view',
   '/opti': 'view',
-  '/optitest': 'view',
   '/opti-beallitasok': 'view',
   '/test-toast': 'view',
 } as const

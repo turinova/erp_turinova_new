@@ -72,7 +72,6 @@ export default function UsersPage() {
     { path: '/szalas-anyagok', name: 'Szálas anyagok' },
     { path: '/elzarok', name: 'Elzárók' },
     { path: '/opti', name: 'Optimalizáló' },
-    { path: '/optitest', name: 'Opti teszt' },
     { path: '/opti-beallitasok', name: 'Opti beállítások' },
     { path: '/users', name: 'Felhasználók' },
     { path: '/test-toast', name: 'Toast teszt' }
