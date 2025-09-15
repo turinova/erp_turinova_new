@@ -5,6 +5,7 @@ import type { ChildrenType, Direction } from '@core/types'
 import { VerticalNavProvider } from '@menu/contexts/verticalNavContext'
 import { SettingsProvider } from '@core/contexts/settingsContext'
 import { AuthProvider } from '../contexts/AuthContext'
+import { PermissionProvider } from '../contexts/PermissionContext'
 import ThemeProvider from '@components/theme'
 
 // Third-party Imports
@@ -29,25 +30,27 @@ const Providers = async (props: Props) => {
 
   return (
     <AuthProvider>
-      <VerticalNavProvider>
-        <SettingsProvider settingsCookie={settingsCookie} mode={mode}>
-          <ThemeProvider direction={direction}>
-            {children}
-            <ToastContainer
-              position="top-right"
-              autoClose={3000}
-              hideProgressBar={false}
-              newestOnTop={false}
-              closeOnClick
-              rtl={false}
-              pauseOnFocusLoss
-              draggable
-              pauseOnHover
-              theme="light"
-            />
-          </ThemeProvider>
-        </SettingsProvider>
-      </VerticalNavProvider>
+      <PermissionProvider>
+        <VerticalNavProvider>
+          <SettingsProvider settingsCookie={settingsCookie} mode={mode}>
+            <ThemeProvider direction={direction}>
+              {children}
+              <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+              />
+            </ThemeProvider>
+          </SettingsProvider>
+        </VerticalNavProvider>
+      </PermissionProvider>
     </AuthProvider>
   )
 }

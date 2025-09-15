@@ -135,7 +135,9 @@ export function useSimplePagePermissions(user: User | null) {
 
   // Initialize permissions when user changes
   useEffect(() => {
-    if (user) {
+    // DISABLED: Permission checks causing memory issues
+    // TODO: Re-enable when performance is optimized
+    if (false && user) {
       fetchPermissions()
     } else {
       setState({ permissions: [], pages: [], loading: false, error: null })

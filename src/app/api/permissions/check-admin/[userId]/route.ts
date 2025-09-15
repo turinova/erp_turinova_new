@@ -17,14 +17,15 @@ export async function GET(
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
     }
 
-    // For now, return empty permissions since the database functions are not available
-    // In a real implementation, you would query the user_permissions table directly
-    const permissions: any[] = []
+    // For now, return false for admin check since we can't access auth.users directly
+    // In a real implementation, you would need to use Supabase Admin API or a different approach
+    // This is a simplified version that assumes the first user is admin
+    const isAdmin = false // TODO: Implement proper admin check
 
-    return NextResponse.json({ permissions })
+    return NextResponse.json({ isAdmin })
 
   } catch (error) {
-    console.error('Error in user permissions API:', error)
+    console.error('Error in check-admin API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -26,8 +26,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/home', req.url))
   }
 
-  // Skip permission checks for now to improve performance
-  // TODO: Re-enable when performance is optimized
+  // Temporarily disable permission checks to prevent memory issues
+  // TODO: Implement lightweight permission checking
   // if (session) {
   //   const permissionCheck = shouldCheckPermission(req.nextUrl.pathname)
   //   if (permissionCheck) {

@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import type { User, CreateUserRequest, UpdateUserRequest, UserFilters } from '@/types/user'
 import type { Page, PermissionMatrix, UpdateUserPermissionsRequest } from '@/types/permission'
-import { useSimplePagePermissions } from '@/hooks/useSimplePagePermissions'
+import { useLightweightPermissions } from '@/hooks/useLightweightPermissions'
+import { PermissionGuard } from '@/components/PermissionGuard'
 
 export default function UsersPage() {
   const router = useRouter()
@@ -31,13 +32,14 @@ export default function UsersPage() {
     is_active: true
   })
   
-  // Simple permission management state
+  // Permission management state
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
   const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<User | null>(null)
   const [savingPermissions, setSavingPermissions] = useState(false)
+  const [userPermissions, setUserPermissions] = useState<{[key: string]: boolean}>({})
   
-  // Use simple page permissions hook
-  const simplePermissions = useSimplePagePermissions(selectedUserForPermissions)
+  // Use lightweight permissions hook
+  const { isAdmin, canAccessPage } = useLightweightPermissions()
 
   // Fetch users
   const fetchUsers = async () => {
@@ -62,22 +64,54 @@ export default function UsersPage() {
     fetchUsers()
   }, [])
 
-  // Simple permission save
+  // Available pages for permission management - ALL pages in the system
+  const availablePages = [
+    { path: '/home', name: 'Főoldal' },
+    { path: '/company', name: 'Cégadatok' },
+    { path: '/customers', name: 'Ügyfelek' },
+    { path: '/vat', name: 'Adónemek' },
+    { path: '/brands', name: 'Márkák' },
+    { path: '/currencies', name: 'Pénznemek' },
+    { path: '/units', name: 'Mértékegységek' },
+    { path: '/tablas-anyagok', name: 'Táblás anyagok' },
+    { path: '/szalas-anyagok', name: 'Szálas anyagok' },
+    { path: '/elzarok', name: 'Elzárók' },
+    { path: '/opti', name: 'Optimalizáló' },
+    { path: '/optitest', name: 'Opti teszt' },
+    { path: '/opti-beallitasok', name: 'Opti beállítások' },
+    { path: '/users', name: 'Felhasználók' },
+    { path: '/test-toast', name: 'Toast teszt' }
+  ]
+
+  // Permission save function
   const saveUserPermissions = async () => {
     if (!selectedUserForPermissions) return
 
     try {
       setSavingPermissions(true)
       
-      const result = await simplePermissions.savePermissions(simplePermissions.permissions)
-      
-      if (result.success) {
-        toast.success(result.message)
-        setPermissionsDialogOpen(false)
-        setSelectedUserForPermissions(null)
-      } else {
-        toast.error(result.message || 'Hiba a jogosultságok mentése során')
+      // Prepare permissions data for API
+      const permissionsData = availablePages.map(page => ({
+        page_path: page.path,
+        can_access: userPermissions[page.path] || false
+      }))
+
+      // Call the API to save permissions
+      const response = await fetch(`/api/permissions/simple/user/${selectedUserForPermissions.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ permissions: permissionsData }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save permissions')
       }
+
+      toast.success('Jogosultságok sikeresen mentve!')
+      setPermissionsDialogOpen(false)
+      setSelectedUserForPermissions(null)
     } catch (error) {
       console.error('Error saving permissions:', error)
       toast.error('Hiba a jogosultságok mentése során')
@@ -86,9 +120,42 @@ export default function UsersPage() {
     }
   }
 
+  // Toggle permission for a page
+  const togglePermission = (pagePath: string) => {
+    setUserPermissions(prev => ({
+      ...prev,
+      [pagePath]: !prev[pagePath]
+    }))
+  }
+
+
   // Open permissions dialog - load individual permissions
-  const handleOpenPermissions = (user: User) => {
+  const handleOpenPermissions = async (user: User) => {
     setSelectedUserForPermissions(user)
+    
+    try {
+      // Fetch user's actual permissions from the API
+      const response = await fetch(`/api/permissions/simple/user/${user.id}`)
+      const data = await response.json()
+      
+      // Initialize userPermissions based on actual permissions or default to true
+      const initialPermissions: {[key: string]: boolean} = {}
+      availablePages.forEach(page => {
+        // Find if user has permission for this page
+        const userPermission = data.permissions?.find((p: any) => p.page_path === page.path)
+        initialPermissions[page.path] = userPermission?.can_access ?? true // Default to true if no permission found
+      })
+      setUserPermissions(initialPermissions)
+    } catch (error) {
+      console.error('Error fetching user permissions:', error)
+      // Fallback: default all to true
+      const initialPermissions: {[key: string]: boolean} = {}
+      availablePages.forEach(page => {
+        initialPermissions[page.path] = true 
+      })
+      setUserPermissions(initialPermissions)
+    }
+    
     setPermissionsDialogOpen(true)
   }
 
@@ -293,7 +360,8 @@ export default function UsersPage() {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <PermissionGuard requiredPage="/users">
+      <Box sx={{ p: 3 }}>
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
         <Link
           underline="hover"
@@ -417,11 +485,22 @@ export default function UsersPage() {
                 <TableCell>{user.full_name || '-'}</TableCell>
                 <TableCell>{user.phone || '-'}</TableCell>
                 <TableCell>
-                  <Chip
-                    label={user.role}
-                    color={user.role === 'admin' ? 'error' : user.role === 'manager' ? 'warning' : 'default'}
-                    size="small"
-                  />
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip
+                      label={user.role}
+                      color={user.role === 'admin' ? 'error' : user.role === 'manager' ? 'warning' : 'default'}
+                      size="small"
+                    />
+                    {user.role === 'admin' && (
+                      <Chip
+                        label="Admin"
+                        color="error"
+                        variant="outlined"
+                        size="small"
+                        icon={<SecurityIcon />}
+                      />
+                    )}
+                  </Box>
                 </TableCell>
                 <TableCell>
                   <Chip
@@ -566,98 +645,140 @@ export default function UsersPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Simple Permissions Management Dialog */}
+      {/* Enhanced Permissions Management Dialog */}
       <Dialog
         open={permissionsDialogOpen}
         onClose={() => setPermissionsDialogOpen(false)}
-        maxWidth="md"
+        maxWidth="lg"
         fullWidth
       >
-        <DialogTitle>
-          Oldal hozzáférés kezelése - {selectedUserForPermissions?.email}
+        <DialogTitle sx={{ pb: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <SecurityIcon color="primary" />
+            <Box>
+              <Typography variant="h6" component="div">
+                Jogosultságok kezelése
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {selectedUserForPermissions?.email} - Oldal hozzáférés beállítása
+              </Typography>
+            </Box>
+          </Box>
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            {simplePermissions.loading ? (
-              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-                <CircularProgress />
-                <Typography sx={{ ml: 2 }}>Jogosultságok betöltése...</Typography>
-              </Box>
-            ) : simplePermissions.error ? (
-              <Box sx={{ p: 2, bgcolor: 'error.light', borderRadius: 1 }}>
-                <Typography color="error">
-                  Hiba: {simplePermissions.error}
+        <DialogContent sx={{ pt: 2 }}>
+          <Box sx={{ mb: 3 }}>
+            {selectedUserForPermissions?.role === 'admin' ? (
+              <Box sx={{ p: 2, bgcolor: 'warning.50', borderRadius: 1, mb: 2 }}>
+                <Typography variant="body2" color="warning.dark" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <SecurityIcon fontSize="small" />
+                  <strong>Admin felhasználó:</strong> Ez a felhasználó automatikusan hozzáfér minden oldalhoz.
                 </Typography>
               </Box>
             ) : (
               <>
-                {/* Simple Permissions Table */}
-                <TableContainer component={Paper}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Oldal</TableCell>
-                        <TableCell align="center">Hozzáférhető</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {simplePermissions.permissions.map((permission) => (
-                        <TableRow key={permission.page_path}>
-                          <TableCell>
-                            <Typography variant="body2" fontWeight="medium">
-                              {simplePermissions.availablePages.find(p => p.path === permission.page_path)?.name || permission.page_path}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Switch
-                              checked={permission.can_access}
-                              onChange={() => simplePermissions.toggleAccess(permission.page_path)}
-                              size="small"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Válassza ki, hogy mely oldalakhoz férhet hozzá ez a felhasználó:
+                </Typography>
+                
+                {/* Simple List of Pages */}
+                <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+                  {availablePages.map((page) => (
+                    <Box 
+                      key={page.path} 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        py: 1.5,
+                        px: 1,
+                        borderBottom: 1,
+                        borderColor: 'grey.200',
+                        '&:hover': {
+                          bgcolor: 'grey.50'
+                        }
+                      }}
+                    >
+                      <Box>
+                        <Typography variant="body1" fontWeight="medium">
+                          {page.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {page.path}
+                        </Typography>
+                      </Box>
+                      <Switch
+                        checked={userPermissions[page.path] || false}
+                        onChange={() => togglePermission(page.path)}
+                        color="primary"
+                      />
+                    </Box>
+                  ))}
+                </Box>
+              </>
+            )}
 
-                {/* Simple Summary */}
-                <Box sx={{ mt: 2, p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
-                  <Typography variant="body2" fontWeight="medium" color="primary">
-                    Aktív oldalak ({simplePermissions.permissions.filter(p => p.can_access).length}):
+            {/* Summary Section */}
+            <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2" fontWeight="medium" sx={{ mb: 1 }}>
+                Összefoglaló
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Chip
+                  label={`${Object.values(userPermissions).filter(Boolean).length} aktív oldal`}
+                  color="primary"
+                  variant="outlined"
+                  size="small"
+                />
+                <Chip
+                  label={`${availablePages.length - Object.values(userPermissions).filter(Boolean).length} letiltott oldal`}
+                  color="default"
+                  variant="outlined"
+                  size="small"
+                />
+              </Box>
+              
+              {Object.values(userPermissions).filter(Boolean).length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>
+                    Aktív oldalak:
                   </Typography>
-                  <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {simplePermissions.permissions
-                      .filter(p => p.can_access)
-                      .map((permission) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {availablePages
+                      .filter(page => userPermissions[page.path])
+                      .map((page) => (
                         <Chip
-                          key={permission.page_path}
-                          label={simplePermissions.availablePages.find(p => p.path === permission.page_path)?.name || permission.page_path}
+                          key={page.path}
+                          label={page.name}
                           size="small"
                           color="primary"
-                          variant="outlined"
+                          variant="filled"
                         />
                       ))}
                   </Box>
                 </Box>
-              </>
-            )}
+              )}
+            </Box>
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPermissionsDialogOpen(false)}>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button 
+            onClick={() => setPermissionsDialogOpen(false)}
+            variant="outlined"
+          >
             Mégse
           </Button>
           <Button 
             onClick={saveUserPermissions} 
             variant="contained"
-            startIcon={<SecurityIcon />}
-            disabled={savingPermissions || simplePermissions.loading}
+            startIcon={savingPermissions ? <CircularProgress size={20} /> : <SecurityIcon />}
+            disabled={savingPermissions}
+            sx={{ minWidth: 120 }}
           >
             {savingPermissions ? 'Mentés...' : 'Mentés'}
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+      </Box>
+    </PermissionGuard>
   )
 }

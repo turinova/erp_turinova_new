@@ -2,14 +2,22 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-// Define pages that require specific permissions
+// Define pages that require specific permissions - ALL pages except home and login
 const PROTECTED_PAGES = {
   '/users': 'view',
   '/company': 'view', 
   '/customers': 'view',
   '/vat': 'view',
+  '/brands': 'view',
+  '/currencies': 'view',
+  '/units': 'view',
+  '/tablas-anyagok': 'view',
+  '/szalas-anyagok': 'view',
+  '/elzarok': 'view',
   '/opti': 'view',
-  '/optimalizalo': 'view',
+  '/optitest': 'view',
+  '/opti-beallitasok': 'view',
+  '/test-toast': 'view',
 } as const
 
 export async function checkPagePermission(req: NextRequest, pagePath: string, permissionType: string) {

@@ -1,77 +1,55 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useLightweightPermissions } from './useLightweightPermissions'
 import verticalMenuData from '@/data/navigation/verticalMenuData'
 import type { VerticalMenuDataType } from '@/types/menuTypes'
 
-// Database-based navigation filtering
+// Lightweight navigation filtering using session-cached permissions
 export function useDatabaseNavigation() {
   const { user } = useAuth()
-  const [filteredMenu, setFilteredMenu] = useState<VerticalMenuDataType[]>([])
-  const [loading, setLoading] = useState(true)
+  const { canAccessPage, isAdmin, loading } = useLightweightPermissions()
+  const [isHydrated, setIsHydrated] = useState(false)
 
+  // Track hydration to prevent SSR/client mismatch
   useEffect(() => {
-    const filterMenu = async () => {
-      if (!user?.id) {
-        setFilteredMenu([])
-        setLoading(false)
-        return
-      }
+    setIsHydrated(true)
+  }, [])
 
-      try {
-        const response = await fetch(`/api/permissions/simple/user/${user.id}`)
-        
-        if (!response.ok) {
-          console.error('Failed to fetch permissions')
-          setFilteredMenu([])
-          setLoading(false)
-          return
-        }
-
-        const data = await response.json()
-        const permissions = data.permissions || []
-        
-        // Create a map of page paths to access permissions
-        const permissionMap = new Map()
-        permissions.forEach((p: any) => {
-          permissionMap.set(p.page_path, p.can_access)
-        })
-        
-        const filterMenuItems = (items: VerticalMenuDataType[]): VerticalMenuDataType[] => {
-          return items.filter(item => {
-            // If item has children, filter children first
-            if (item.children) {
-              const filteredChildren = filterMenuItems(item.children)
-              return filteredChildren.length > 0
-            }
-            
-            // Check database permission for this page
-            if (item.href) {
-              // Always allow home
-              if (item.href === '/home') return true
-              
-              // Check database permission for this page
-              const hasAccess = permissionMap.get(item.href)
-              return hasAccess === true
-            }
-            
-            return true // Show items without href
-          }).map(item => ({
-            ...item,
-            children: item.children ? filterMenuItems(item.children) : undefined
-          }))
-        }
-        
-        setFilteredMenu(filterMenuItems(verticalMenuData()))
-      } catch (error) {
-        console.error('Error filtering menu:', error)
-        setFilteredMenu([])
-      } finally {
-        setLoading(false)
-      }
+  const filteredMenu = useMemo(() => {
+    // During SSR or before hydration, return empty menu to prevent mismatch
+    if (!isHydrated || !user || loading) {
+      return []
     }
 
-    filterMenu()
-  }, [user?.id])
+    const filterMenuItems = (items: VerticalMenuDataType[]): VerticalMenuDataType[] => {
+      return items.filter(item => {
+        // If item has children, filter children first
+        if (item.children) {
+          const filteredChildren = filterMenuItems(item.children)
+          return filteredChildren.length > 0
+        }
+        
+        // Check permission for this page
+        if (item.href) {
+          // Always allow home
+          if (item.href === '/home') return true
+          
+          // Admin has access to everything
+          if (isAdmin) return true
+          
+          // Check user's specific permissions
+          return canAccessPage(item.href)
+        }
+        
+        return true // Show items without href
+      }).map(item => ({
+        ...item,
+        children: item.children ? filterMenuItems(item.children) : undefined
+      }))
+    }
+
+    return filterMenuItems(verticalMenuData())
+  }, [user?.id, canAccessPage, isAdmin, loading])
 
   return filteredMenu
 }
