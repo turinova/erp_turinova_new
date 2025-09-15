@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { optimizedQuery, PerformanceMonitor } from '@/lib/supabase-optimized'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function GET(request: NextRequest) {
   try {
     console.log('Fetching all brands (optimized)...')
+    
+    const startTime = performance.now()
+    
+    const { data: brands, error } = await supabase
+      .from('brands')
+      .select('id, name, comment, created_at, updated_at, deleted_at')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    
+    const endTime = performance.now()
+    const queryTime = endTime - startTime
+    
+    console.log(`Brands query took: ${queryTime.toFixed(2)}ms`)
 
-    const brands = await PerformanceMonitor.measureQuery(
-      'brands-get-all',
-      () => optimizedQuery.getAllActive(
-        'brands',
-        'id, name, comment, created_at, updated_at, deleted_at',
-        'name',
-        'asc'
-      )
-    )
+    if (error) {
+      console.error('Error fetching brands:', error)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
 
     // Ensure comment field exists (fallback to null if column doesn't exist)
-    const brandsWithComment = brands.map(brand => ({
+    const brandsWithComment = (brands || []).map(brand => ({
       ...brand,
       comment: brand.comment || null
     }))

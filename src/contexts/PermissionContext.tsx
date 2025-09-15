@@ -34,7 +34,7 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
   // Check if user is admin (first user in the system)
   const checkIfAdmin = async (userId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/permissions/check-admin/${userId}/optimized`)
+        const response = await fetch(`/api/permissions/check-admin/${userId}/optimized`)
       if (response.ok) {
         const data = await response.json()
         return data.isAdmin || false

@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { optimizedQuery, PerformanceMonitor } from '@/lib/supabase-optimized'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function GET(request: NextRequest) {
   try {
     console.log('Fetching all currencies (optimized)...')
+    
+    const startTime = performance.now()
+    
+    const { data: currencies, error } = await supabase
+      .from('currencies')
+      .select('id, name, rate, created_at, updated_at, deleted_at')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    
+    const endTime = performance.now()
+    const queryTime = endTime - startTime
+    
+    console.log(`Currencies query took: ${queryTime.toFixed(2)}ms`)
 
-    const currencies = await PerformanceMonitor.measureQuery(
-      'currencies-get-all',
-      () => optimizedQuery.getAllActive(
-        'currencies',
-        'id, name, rate, created_at, updated_at, deleted_at',
-        'name',
-        'asc'
-      )
-    )
+    if (error) {
+      console.error('Error fetching currencies:', error)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
 
-    console.log(`Fetched ${currencies.length} currencies successfully`)
-    return NextResponse.json(currencies)
+    console.log(`Fetched ${currencies?.length || 0} currencies successfully`)
+    return NextResponse.json(currencies || [])
 
   } catch (error) {
     console.error('Error fetching currencies:', error)

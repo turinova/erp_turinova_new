@@ -1,22 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { optimizedQuery, PerformanceMonitor } from '@/lib/supabase-optimized'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseKey)
 
 export async function GET(request: NextRequest) {
   try {
     console.log('Fetching all units (optimized)...')
+    
+    const startTime = performance.now()
+    
+    const { data: units, error } = await supabase
+      .from('units')
+      .select('id, name, shortform, created_at, updated_at, deleted_at')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    
+    const endTime = performance.now()
+    const queryTime = endTime - startTime
+    
+    console.log(`Units query took: ${queryTime.toFixed(2)}ms`)
 
-    const units = await PerformanceMonitor.measureQuery(
-      'units-get-all',
-      () => optimizedQuery.getAllActive(
-        'units',
-        'id, name, shortform, created_at, updated_at, deleted_at',
-        'name',
-        'asc'
-      )
-    )
+    if (error) {
+      console.error('Error fetching units:', error)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
 
-    console.log(`Fetched ${units.length} units successfully`)
-    return NextResponse.json(units)
+    console.log(`Fetched ${units?.length || 0} units successfully`)
+    return NextResponse.json(units || [])
 
   } catch (error) {
     console.error('Error fetching units:', error)
