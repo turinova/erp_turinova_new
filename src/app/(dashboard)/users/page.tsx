@@ -16,8 +16,6 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [roleFilter, setRoleFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
@@ -26,10 +24,7 @@ export default function UsersPage() {
   const [formData, setFormData] = useState<CreateUserRequest>({
     email: '',
     password: '',
-    full_name: '',
-    phone: '',
-    role: 'user',
-    is_active: true
+    full_name: ''
   })
   
   // Permission management state
@@ -159,7 +154,7 @@ export default function UsersPage() {
     setPermissionsDialogOpen(true)
   }
 
-  // Filter users based on search term and filters
+  // Filter users based on search term
   const filteredUsers = useMemo(() => {
     let filtered = users
 
@@ -171,17 +166,8 @@ export default function UsersPage() {
       )
     }
 
-    if (roleFilter) {
-      filtered = filtered.filter(user => user.role === roleFilter)
-    }
-
-    if (statusFilter) {
-      const isActive = statusFilter === 'true'
-      filtered = filtered.filter(user => user.is_active === isActive)
-    }
-
     return filtered
-  }, [users, searchTerm, roleFilter, statusFilter])
+  }, [users, searchTerm])
 
   // Selection handlers
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -225,10 +211,7 @@ export default function UsersPage() {
         setFormData({
           email: '',
           password: '',
-          full_name: '',
-          phone: '',
-          role: 'user',
-          is_active: true
+          full_name: ''
         })
         fetchUsers()
       } else {
@@ -245,10 +228,7 @@ export default function UsersPage() {
     setFormData({
       email: user.email,
       password: '', // Don't pre-fill password
-      full_name: user.full_name || '',
-      phone: user.phone || '',
-      role: user.role,
-      is_active: user.is_active
+      full_name: user.full_name || ''
     })
     setOpenDialog(true)
   }
@@ -343,10 +323,7 @@ export default function UsersPage() {
     setFormData({
       email: '',
       password: '',
-      full_name: '',
-      phone: '',
-      role: 'user',
-      is_active: true
+      full_name: ''
     })
   }
 
@@ -420,33 +397,6 @@ export default function UsersPage() {
         }}
       />
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Szerepkör</InputLabel>
-          <Select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            label="Szerepkör"
-          >
-            <MenuItem value="">Összes</MenuItem>
-            <MenuItem value="admin">Admin</MenuItem>
-            <MenuItem value="manager">Manager</MenuItem>
-            <MenuItem value="user">User</MenuItem>
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Státusz</InputLabel>
-          <Select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            label="Státusz"
-          >
-            <MenuItem value="">Összes</MenuItem>
-            <MenuItem value="true">Aktív</MenuItem>
-            <MenuItem value="false">Inaktív</MenuItem>
-          </Select>
-        </FormControl>
-      </Box>
       
       <TableContainer component={Paper} sx={{ mt: 2 }}>
         <Table size="small" stickyHeader>
@@ -461,10 +411,8 @@ export default function UsersPage() {
               </TableCell>
               <TableCell>Email</TableCell>
               <TableCell>Név</TableCell>
-              <TableCell>Telefon</TableCell>
-              <TableCell>Szerepkör</TableCell>
-              <TableCell>Státusz</TableCell>
               <TableCell>Létrehozva</TableCell>
+              <TableCell>Utolsó bejelentkezés</TableCell>
               <TableCell>Műveletek</TableCell>
             </TableRow>
           </TableHead>
@@ -483,34 +431,14 @@ export default function UsersPage() {
                 </TableCell>
                 <TableCell>{user.email}</TableCell>
                 <TableCell>{user.full_name || '-'}</TableCell>
-                <TableCell>{user.phone || '-'}</TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip
-                      label={user.role}
-                      color={user.role === 'admin' ? 'error' : user.role === 'manager' ? 'warning' : 'default'}
-                      size="small"
-                    />
-                    {user.role === 'admin' && (
-                      <Chip
-                        label="Admin"
-                        color="error"
-                        variant="outlined"
-                        size="small"
-                        icon={<SecurityIcon />}
-                      />
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={user.is_active ? 'Aktív' : 'Inaktív'}
-                    color={user.is_active ? 'success' : 'default'}
-                    size="small"
-                  />
-                </TableCell>
                 <TableCell>
                   {new Date(user.created_at).toLocaleDateString('hu-HU')}
+                </TableCell>
+                <TableCell>
+                  {user.last_sign_in_at 
+                    ? new Date(user.last_sign_in_at).toLocaleDateString('hu-HU') + ' ' + new Date(user.last_sign_in_at).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })
+                    : 'Soha'
+                  }
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <Box sx={{ display: 'flex', gap: 1 }}>
@@ -569,34 +497,6 @@ export default function UsersPage() {
                 onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
                 fullWidth
               />
-              <TextField
-                label="Telefon"
-                value={formData.phone}
-                onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                fullWidth
-              />
-              <FormControl fullWidth>
-                <InputLabel>Szerepkör</InputLabel>
-                <Select
-                  value={formData.role}
-                  onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value as any }))}
-                  label="Szerepkör"
-                >
-                  <MenuItem value="user">User</MenuItem>
-                  <MenuItem value="manager">Manager</MenuItem>
-                  <MenuItem value="admin">Admin</MenuItem>
-                </Select>
-              </FormControl>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  style={{ marginRight: '8px' }}
-                />
-                <label htmlFor="is_active">Aktív felhasználó</label>
-              </Box>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 2 }}>
                 <Button onClick={handleDialogClose}>
                   Mégse

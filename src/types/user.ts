@@ -14,16 +14,12 @@ export interface CreateUserRequest {
   email: string
   password: string
   full_name?: string
-  phone?: string
-  role: 'admin' | 'user' | 'manager'
-  is_active?: boolean
 }
 
 export interface UpdateUserRequest {
   email?: string
+  password?: string
   full_name?: string
-  phone?: string
-  role?: 'admin' | 'user' | 'manager'
   is_active?: boolean
 }
 

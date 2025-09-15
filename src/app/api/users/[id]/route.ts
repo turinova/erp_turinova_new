@@ -50,7 +50,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body: UpdateUserRequest = await request.json()
-    const { email, full_name, phone, role, is_active } = body
+    const { email, password, full_name, phone, role, is_active } = body
 
     // Get current user first to preserve existing metadata
     const { data: currentUser } = await supabase.auth.admin.getUserById(id)
@@ -60,6 +60,7 @@ export async function PUT(
     const updateData: any = {}
     
     if (email !== undefined) updateData.email = email
+    if (password !== undefined && password.trim() !== '') updateData.password = password
     
     // Merge user metadata
     const newMetadata = { ...currentMetadata }
