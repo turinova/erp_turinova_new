@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   Box,
   Card,
@@ -626,7 +626,7 @@ export default function OptiPage() {
     const fetchMaterials = async () => {
       try {
         setMaterialsLoading(true)
-        const response = await fetch('/api/test-supabase')
+        const response = await fetch('/api/materials/optimized')
         const result = await response.json()
         
         if (result.success) {
@@ -686,6 +686,58 @@ export default function OptiPage() {
 
 
 
+
+  // Optimize panel preview calculation
+  const panelPreviewStyle = useMemo(() => {
+    if (!panelForm.hosszúság || !panelForm.szélesség) {
+      return { width: '100px', height: '100px' }
+    }
+    
+    const width = parseFloat(panelForm.hosszúság) || 0
+    const height = parseFloat(panelForm.szélesség) || 0
+    if (width === 0 || height === 0) return { width: '100px', height: '100px' }
+    
+    const aspectRatio = width / height
+    const maxHeight = 170
+    const maxWidth = 300
+    
+    if (aspectRatio > 1) {
+      // Landscape
+      const calculatedWidth = Math.min(maxWidth, maxHeight * aspectRatio)
+      const calculatedHeight = calculatedWidth / aspectRatio
+      return { width: `${calculatedWidth}px`, height: `${calculatedHeight}px` }
+    } else {
+      // Portrait
+      const calculatedHeight = Math.min(maxHeight, maxWidth / aspectRatio)
+      const calculatedWidth = calculatedHeight * aspectRatio
+      return { width: `${calculatedWidth}px`, height: `${calculatedHeight}px` }
+    }
+  }, [panelForm.hosszúság, panelForm.szélesség])
+
+  // Optimize grain direction calculation
+  const grainDirectionLines = useMemo(() => {
+    const selectedMaterial = materials.find(m => m.id === selectedTáblásAnyag)
+    if (!selectedMaterial?.grain_direction) return null
+    
+    const lines = []
+    for (let i = 0; i < 8; i++) {
+      lines.push(
+        <Box
+          key={`grain-${i}`}
+          sx={{
+            position: 'absolute',
+            top: `${(i + 1) * 12.5}%`,
+            left: '5%',
+            right: '5%',
+            height: '1px',
+            backgroundColor: '#999',
+            opacity: 0.6
+          }}
+        />
+      )
+    }
+    return lines
+  }, [materials, selectedTáblásAnyag])
 
   // Convert addedPanels to panels format for compatibility
   const convertAddedPanelsToPanels = (): Panel[] => {
@@ -939,54 +991,12 @@ export default function OptiPage() {
                       justifyContent: 'center',
                       maxWidth: '90%',
                       maxHeight: '90%',
-                      // Calculate aspect ratio and fit within 200px height
-                      width: (() => {
-                        const width = parseFloat(panelForm.hosszúság) || 0
-                        const height = parseFloat(panelForm.szélesség) || 0
-                        if (width === 0 || height === 0) return '100px'
-                        const aspectRatio = width / height
-                        const maxHeight = 170
-                        const maxWidth = 300
-                        const calculatedWidth = maxHeight * aspectRatio
-                        return calculatedWidth > maxWidth ? `${maxWidth}px` : `${calculatedWidth}px`
-                      })(),
-                      height: (() => {
-                        const width = parseFloat(panelForm.hosszúság) || 0
-                        const height = parseFloat(panelForm.szélesség) || 0
-                        if (width === 0 || height === 0) return '100px'
-                        const aspectRatio = height / width
-                        const maxHeight = 170
-                        const maxWidth = 300
-                        const calculatedHeight = maxWidth * aspectRatio
-                        return calculatedHeight > maxHeight ? `${maxHeight}px` : `${calculatedHeight}px`
-                      })()
+                      width: panelPreviewStyle.width,
+                      height: panelPreviewStyle.height
                     }}
                   >
                     {/* Grain direction lines - horizontal lines if material has grain direction */}
-                    {(() => {
-                      const selectedMaterial = materials.find(m => m.id === selectedTáblásAnyag)
-                      if (selectedMaterial?.grain_direction) {
-                        const lines = []
-                        for (let i = 0; i < 8; i++) {
-                          lines.push(
-                            <Box
-                              key={`grain-${i}`}
-                              sx={{
-                                position: 'absolute',
-                                top: `${(i + 1) * 12.5}%`,
-                                left: '5%',
-                                right: '5%',
-                                height: '1px',
-                                backgroundColor: '#999',
-                                opacity: 0.6
-                              }}
-                            />
-                          )
-                        }
-                        return lines
-                      }
-                      return null
-                    })()}
+                    {grainDirectionLines}
                     {/* Edge labels with Hungarian names and option-based colors */}
                     {(() => {
                       // Color mapping based on option values
