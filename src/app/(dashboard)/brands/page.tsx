@@ -24,7 +24,7 @@ export default function GyartokPage() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Use cached API data with 2-minute TTL
-  const { data: brands = [], isLoading, error, refresh } = useApiCache<Brand[]>('/api/brands', {
+  const { data: brands = [], isLoading, error, refresh } = useApiCache<Brand[]>('/api/brands/optimized', {
     ttl: 2 * 60 * 1000, // 2 minutes cache
     staleWhileRevalidate: true
   })

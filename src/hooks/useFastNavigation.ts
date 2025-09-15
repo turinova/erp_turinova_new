@@ -17,7 +17,7 @@ export function useDatabaseNavigation() {
 
   const filteredMenu = useMemo(() => {
     // During SSR or before hydration, return empty menu to prevent mismatch
-    if (!isHydrated || !user || loading) {
+    if (!isHydrated || !user) {
       return []
     }
 
@@ -34,12 +34,18 @@ export function useDatabaseNavigation() {
           // Always allow home
           if (item.href === '/home') return true
           
+          // During loading, only show home page to prevent flash
+          if (loading) return false
+          
           // Admin has access to everything
           if (isAdmin) return true
           
           // Check user's specific permissions
           return canAccessPage(item.href)
         }
+        
+        // During loading, hide section headers to prevent flash
+        if (loading) return false
         
         return true // Show items without href
       }).map(item => ({

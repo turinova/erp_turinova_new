@@ -29,7 +29,7 @@ export default function UnitsPage() {
     const fetchUnits = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch('/api/units')
+        const response = await fetch('/api/units/optimized')
         if (response.ok) {
           const data = await response.json()
           setUnits(data)

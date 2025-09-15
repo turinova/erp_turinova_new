@@ -29,7 +29,7 @@ export default function CurrenciesPage() {
     const fetchCurrencies = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch('/api/currencies')
+        const response = await fetch('/api/currencies/optimized')
         if (response.ok) {
           const data = await response.json()
           setCurrencies(data)

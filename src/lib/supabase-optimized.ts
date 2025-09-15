@@ -2,10 +2,10 @@ import { createClient } from '@supabase/supabase-js'
 
 // Optimized Supabase client with connection pooling and performance settings
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-// Create optimized Supabase client
-export const supabaseOptimized = createClient(supabaseUrl, supabaseAnonKey, {
+// Create optimized Supabase client with service role key for full database access
+export const supabaseOptimized = createClient(supabaseUrl, supabaseServiceKey, {
   db: {
     schema: 'public',
   },

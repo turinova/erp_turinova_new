@@ -29,11 +29,12 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
   const [permissions, setPermissions] = useState<Permission[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false)
 
   // Check if user is admin (first user in the system)
   const checkIfAdmin = async (userId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/permissions/check-admin/${userId}`)
+      const response = await fetch(`/api/permissions/check-admin/${userId}/optimized`)
       if (response.ok) {
         const data = await response.json()
         return data.isAdmin || false
@@ -45,15 +46,16 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
     }
   }
 
-  // Fetch user permissions (only once per session)
+  // Fetch user permissions (only once per session) - Non-blocking
   const fetchPermissions = async () => {
     if (!user?.id) {
       setPermissions([])
       setIsAdmin(false)
+      setPermissionsLoaded(true)
       return
     }
 
-    setLoading(true)
+    // Don't set loading to true immediately - allow UI to render first
     try {
       // Check if user is admin first
       const adminStatus = await checkIfAdmin(user.id)
@@ -62,12 +64,12 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
       if (adminStatus) {
         // Admin has access to all pages - no need to fetch from database
         setPermissions([])
-        setLoading(false)
+        setPermissionsLoaded(true)
         return
       }
 
       // For regular users, fetch their specific permissions
-      const response = await fetch(`/api/permissions/simple/user/${user.id}`)
+      const response = await fetch(`/api/permissions/simple/user/${user.id}/optimized`)
       if (response.ok) {
         const data = await response.json()
         // Transform the simple permissions format to match our interface
@@ -81,11 +83,11 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
       } else {
         setPermissions([])
       }
+      setPermissionsLoaded(true)
     } catch (error) {
       console.error('Error fetching permissions:', error)
       setPermissions([])
-    } finally {
-      setLoading(false)
+      setPermissionsLoaded(true)
     }
   }
 
@@ -93,6 +95,12 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
   const hasPermission = (pagePath: string, permissionType: 'view' | 'edit' | 'delete' = 'view'): boolean => {
     // Admin has access to everything
     if (isAdmin) return true
+
+    // During loading, allow access to prevent blocking the login flow
+    // This ensures users can access pages while permissions load in the background
+    if (!permissionsLoaded) {
+      return true
+    }
 
     // Check user's specific permissions
     const permission = permissions.find(p => p.page_path === pagePath)
@@ -117,13 +125,58 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
 
   // Fetch permissions when user changes
   useEffect(() => {
-    fetchPermissions()
-  }, [user?.id])
+    const fetchUserPermissions = async () => {
+      if (!user?.id) {
+        setPermissions([])
+        setIsAdmin(false)
+        setPermissionsLoaded(true)
+        return
+      }
+
+      try {
+        // Check if user is admin first
+        const adminStatus = await checkIfAdmin(user.id)
+        setIsAdmin(adminStatus)
+
+        if (adminStatus) {
+          // Admin has access to all pages - no need to fetch from database
+          setPermissions([])
+          setPermissionsLoaded(true)
+          return
+        }
+
+        // For regular users, fetch their specific permissions
+        const response = await fetch(`/api/permissions/simple/user/${user.id}/optimized`)
+        if (response.ok) {
+          const data = await response.json()
+          // Transform the simple permissions format to match our interface
+          const transformedPermissions = data.permissions?.map((p: any) => ({
+            page_path: p.page_path,
+            can_view: p.can_access,
+            can_edit: false, // Simple system only has view access
+            can_delete: false // Simple system only has view access
+          })) || []
+          setPermissions(transformedPermissions)
+        } else {
+          setPermissions([])
+        }
+        setPermissionsLoaded(true)
+      } catch (error) {
+        console.error('Error fetching permissions:', error)
+        setPermissions([])
+        setPermissionsLoaded(true)
+      }
+    }
+
+    // Reset permissions loaded state when user changes
+    setPermissionsLoaded(false)
+    fetchUserPermissions()
+  }, [user?.id]) // Only depend on user.id to prevent infinite loops
 
   const value: PermissionContextType = {
     permissions,
     isAdmin,
-    loading,
+    loading: !permissionsLoaded, // Loading is true until permissions are loaded
     hasPermission,
     refreshPermissions
   }
