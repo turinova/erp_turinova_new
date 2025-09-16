@@ -37,7 +37,7 @@ export async function GET() {
       length_mm: material.length_mm || 2800,
       width_mm: material.width_mm || 2070,
       thickness_mm: material.thickness_mm || 18,
-      grain_direction: material.grain_direction || 'length',
+      grain_direction: Boolean(material.grain_direction), // Fix: Convert to boolean instead of fallback string
       image_url: material.image_url || null,
       // Use the effective settings from the view (already handles hierarchy)
       kerf_mm: material.kerf_mm || 3,

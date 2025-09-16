@@ -1726,7 +1726,7 @@ export default function OptiPage() {
                   <TextField
                     fullWidth
                     size="small"
-                    label="Hosszúság (mm)"
+                    label="Szálirány (mm)"
                     type="number"
                     required
                     name="hosszúság"
@@ -1745,7 +1745,7 @@ export default function OptiPage() {
                   <TextField
                     fullWidth
                     size="small"
-                    label="Szélesség (mm)"
+                    label="Keresztirány (mm)"
                     type="number"
                     required
                     value={panelForm.szélesség}
@@ -1978,8 +1978,8 @@ export default function OptiPage() {
                 <TableHead>
                   <TableRow>
                     <TableCell><strong>Táblás anyag</strong></TableCell>
-                    <TableCell><strong>Hosszúság</strong></TableCell>
-                    <TableCell><strong>Szélesség</strong></TableCell>
+                    <TableCell><strong>Szálirány</strong></TableCell>
+                    <TableCell><strong>Keresztirány</strong></TableCell>
                     <TableCell><strong>Darab</strong></TableCell>
                     <TableCell><strong>Jelölés</strong></TableCell>
                     <TableCell align="center"><strong>Hosszú felső</strong></TableCell>
