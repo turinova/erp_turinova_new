@@ -663,7 +663,7 @@ export default function OptiPage() {
     const fetchMaterials = async () => {
       try {
         setMaterialsLoading(true)
-        const response = await fetch('/api/materials/optimized')
+        const response = await fetch('/api/test-supabase')
         const result = await response.json()
         
         if (result.success) {
