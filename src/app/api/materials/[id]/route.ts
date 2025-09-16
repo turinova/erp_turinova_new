@@ -36,6 +36,13 @@ export async function GET(
       }, { status: 404 })
     }
 
+    // Fetch brand_id from materials table
+    const { data: materialData } = await supabase
+      .from('materials')
+      .select('brand_id')
+      .eq('id', materialId)
+      .single()
+
     // Fetch machine code from machine_material_map
     const { data: machineData } = await supabase
       .from('machine_material_map')
@@ -54,6 +61,8 @@ export async function GET(
       grain_direction: Boolean(data.grain_direction),
       on_stock: data.on_stock !== undefined ? Boolean(data.on_stock) : true,
       image_url: data.image_url || null,
+      brand_id: materialData?.brand_id || '',
+      brand_name: data.brand_name || 'Unknown',
       kerf_mm: data.kerf_mm || 3,
       trim_top_mm: data.trim_top_mm || 0,
       trim_right_mm: data.trim_right_mm || 0,
@@ -61,7 +70,6 @@ export async function GET(
       trim_left_mm: data.trim_left_mm || 0,
       rotatable: data.rotatable !== false,
       waste_multi: data.waste_multi || 1.0,
-      brand_name: data.brand_name || 'Unknown',
       machine_code: machineData?.machine_code || '',
       created_at: data.created_at,
       updated_at: data.updated_at
@@ -100,6 +108,7 @@ export async function PUT(
         grain_direction: body.grain_direction,
         on_stock: body.on_stock,
         image_url: body.image_url || null,
+        brand_id: body.brand_id,
         updated_at: new Date().toISOString()
       })
       .eq('id', materialId)

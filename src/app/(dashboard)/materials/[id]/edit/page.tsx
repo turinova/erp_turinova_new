@@ -16,12 +16,17 @@ import {
   Grid,
   Card,
   CardContent,
-  CardHeader
+  CardHeader,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material'
 import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+import ImageUpload from '@/components/ImageUpload'
 
 interface Material {
   id: string
@@ -32,6 +37,8 @@ interface Material {
   grain_direction: boolean
   on_stock: boolean
   image_url: string | null
+  brand_id: string
+  brand_name: string
   kerf_mm: number
   trim_top_mm: number
   trim_right_mm: number
@@ -39,7 +46,15 @@ interface Material {
   trim_left_mm: number
   rotatable: boolean
   waste_multi: number
-  brand_name: string
+  machine_code: string
+  created_at: string
+  updated_at: string
+}
+
+interface Brand {
+  id: string
+  name: string
+  comment: string | null
   created_at: string
   updated_at: string
 }
@@ -53,6 +68,7 @@ export default function EditMaterialPage() {
   const hasAccess = useDatabasePermission('/materials')
   
   const [material, setMaterial] = useState<Material | null>(null)
+  const [brands, setBrands] = useState<Brand[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +82,7 @@ export default function EditMaterialPage() {
     grain_direction: false,
     on_stock: true,
     image_url: '',
+    brand_id: '',
     kerf_mm: 3,
     trim_top_mm: 0,
     trim_right_mm: 0,
@@ -75,6 +92,26 @@ export default function EditMaterialPage() {
     waste_multi: 1.0,
     machine_code: ''
   })
+
+  // Fetch brands data
+  useEffect(() => {
+    const fetchBrands = async () => {
+      try {
+        const response = await fetch('/api/brands/optimized')
+        const data = await response.json()
+        
+        if (response.ok) {
+          setBrands(data)
+        } else {
+          console.error('Failed to fetch brands:', data.error)
+        }
+      } catch (err) {
+        console.error('Error fetching brands:', err)
+      }
+    }
+
+    fetchBrands()
+  }, [])
 
   // Fetch material data
   useEffect(() => {
@@ -93,6 +130,7 @@ export default function EditMaterialPage() {
             grain_direction: data.grain_direction || false,
             on_stock: data.on_stock !== undefined ? data.on_stock : true,
             image_url: data.image_url || '',
+            brand_id: data.brand_id || '',
             kerf_mm: data.kerf_mm || 3,
             trim_top_mm: data.trim_top_mm || 0,
             trim_right_mm: data.trim_right_mm || 0,
@@ -225,11 +263,27 @@ export default function EditMaterialPage() {
       <Grid container spacing={3}>
         {/* Basic Information */}
         <Grid item xs={12} md={6}>
-          <Card>
+          <Card sx={{ height: '100%' }}>
             <CardHeader title="Alapadatok" />
             <CardContent>
               <Grid container spacing={2}>
-                <Grid item xs={12}>
+                <Grid item xs={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Márka</InputLabel>
+                    <Select
+                      value={formData.brand_id}
+                      label="Márka"
+                      onChange={(e) => handleInputChange('brand_id', e.target.value)}
+                    >
+                      {brands.map((brand) => (
+                        <MenuItem key={brand.id} value={brand.id}>
+                          {brand.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={6}>
                   <TextField
                     fullWidth
                     label="Anyag neve"
@@ -264,15 +318,22 @@ export default function EditMaterialPage() {
                     onChange={(e) => handleInputChange('thickness_mm', parseInt(e.target.value) || 0)}
                   />
                 </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Kép URL"
-                    value={formData.image_url}
-                    onChange={(e) => handleInputChange('image_url', e.target.value)}
-                  />
-                </Grid>
               </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Image Upload */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardHeader title="Képfeltöltés" />
+            <CardContent>
+              <ImageUpload
+                currentImageUrl={formData.image_url || undefined}
+                onImageChange={(url) => handleInputChange('image_url', url || '')}
+                materialId={materialId}
+                disabled={isSaving}
+              />
             </CardContent>
           </Card>
         </Grid>

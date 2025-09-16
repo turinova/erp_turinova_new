@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react'
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, CircularProgress, Chip } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon } from '@mui/icons-material'
+import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 import { useDatabasePermission } from '@/hooks/useDatabasePermission'
@@ -15,6 +15,7 @@ interface Material {
   thickness_mm: number
   grain_direction: boolean
   on_stock: boolean
+  image_url: string | null
   created_at: string
   updated_at: string
 }
@@ -254,6 +255,7 @@ export default function MaterialsPage() {
                   onChange={handleSelectAll}
                 />
               </TableCell>
+              <TableCell>Kép</TableCell>
               <TableCell>Név</TableCell>
               <TableCell>Hossz (mm)</TableCell>
               <TableCell>Szélesség (mm)</TableCell>
@@ -275,6 +277,35 @@ export default function MaterialsPage() {
                     checked={selectedMaterials.includes(material.id)}
                     onChange={() => handleSelectMaterial(material.id)}
                   />
+                </TableCell>
+                <TableCell>
+                  {material.image_url ? (
+                    <img
+                      src={material.image_url}
+                      alt={material.name}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        objectFit: 'cover',
+                        borderRadius: 4
+                      }}
+                    />
+                  ) : (
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        backgroundColor: '#f5f5f5',
+                        borderRadius: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#999'
+                      }}
+                    >
+                      <ImageIcon sx={{ fontSize: 20 }} />
+                    </Box>
+                  )}
                 </TableCell>
                 <TableCell>{material.name}</TableCell>
                 <TableCell>{material.length_mm.toLocaleString()}</TableCell>
