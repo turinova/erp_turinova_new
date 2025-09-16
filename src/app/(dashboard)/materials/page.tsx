@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, CircularProgress } from '@mui/material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, CircularProgress, Chip } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
@@ -14,12 +14,7 @@ interface Material {
   width_mm: number
   thickness_mm: number
   grain_direction: boolean
-  on_stock?: boolean
-  price?: number
-  vat_id?: string
-  vat_name?: string
-  vat_rate?: number
-  price_with_vat?: number
+  on_stock: boolean
   created_at: string
   updated_at: string
 }
@@ -57,10 +52,6 @@ export default function MaterialsPage() {
                 thickness_mm: 18,
                 grain_direction: true,
                 on_stock: true,
-                price: 12500.00,
-                vat_name: 'ÁFA 27%',
-                vat_rate: 27,
-                price_with_vat: 15875.00,
                 created_at: '2025-09-13T06:00:00Z',
                 updated_at: '2025-09-13T06:00:00Z'
               },
@@ -72,10 +63,6 @@ export default function MaterialsPage() {
                 thickness_mm: 18,
                 grain_direction: false,
                 on_stock: false,
-                price: 8500.00,
-                vat_name: 'ÁFA 27%',
-                vat_rate: 27,
-                price_with_vat: 10795.00,
                 created_at: '2025-09-13T06:00:00Z',
                 updated_at: '2025-09-13T06:00:00Z'
               }
@@ -93,10 +80,6 @@ export default function MaterialsPage() {
               thickness_mm: 18,
               grain_direction: true,
               on_stock: true,
-              price: 12500.00,
-              vat_name: 'ÁFA 27%',
-              vat_rate: 27,
-              price_with_vat: 15875.00,
               created_at: '2025-09-13T06:00:00Z',
               updated_at: '2025-09-13T06:00:00Z'
             },
@@ -108,10 +91,6 @@ export default function MaterialsPage() {
               thickness_mm: 18,
               grain_direction: false,
               on_stock: false,
-              price: 8500.00,
-              vat_name: 'ÁFA 27%',
-              vat_rate: 27,
-              price_with_vat: 10795.00,
               created_at: '2025-09-13T06:00:00Z',
               updated_at: '2025-09-13T06:00:00Z'
             }
@@ -129,10 +108,6 @@ export default function MaterialsPage() {
             thickness_mm: 18,
             grain_direction: true,
             on_stock: true,
-            price: 12500.00,
-            vat_name: 'ÁFA 27%',
-            vat_rate: 27,
-            price_with_vat: 15875.00,
             created_at: '2025-09-13T06:00:00Z',
             updated_at: '2025-09-13T06:00:00Z'
           },
@@ -144,10 +119,6 @@ export default function MaterialsPage() {
             thickness_mm: 18,
             grain_direction: false,
             on_stock: false,
-            price: 8500.00,
-            vat_name: 'ÁFA 27%',
-            vat_rate: 27,
-            price_with_vat: 10795.00,
             created_at: '2025-09-13T06:00:00Z',
             updated_at: '2025-09-13T06:00:00Z'
           }
@@ -170,9 +141,7 @@ export default function MaterialsPage() {
       material.length_mm.toString().includes(term) ||
       material.width_mm.toString().includes(term) ||
       material.thickness_mm.toString().includes(term) ||
-      (material.price && material.price.toString().includes(term)) ||
-      (material.vat_name && material.vat_name.toLowerCase().includes(term)) ||
-      (material.on_stock !== undefined && (material.on_stock ? 'raktár' : 'nincs').includes(term))
+      (material.on_stock ? 'igen' : 'nem').includes(term)
     )
   }, [materials, searchTerm])
 
@@ -192,12 +161,13 @@ export default function MaterialsPage() {
     )
   }
 
+  const handleRowClick = (materialId: string) => {
+    router.push(`/materials/${materialId}/edit`)
+  }
+
   const isAllSelected = selectedMaterials.length === filteredMaterials.length && filteredMaterials.length > 0
   const isIndeterminate = selectedMaterials.length > 0 && selectedMaterials.length < filteredMaterials.length
 
-  const handleRowClick = (materialId: string) => {
-    router.push(`/materials/${materialId}`)
-  }
 
   // Check access permission
   useEffect(() => {
@@ -260,7 +230,7 @@ export default function MaterialsPage() {
       
       <TextField
         fullWidth
-        placeholder="Keresés név, hossz, szélesség, vastagság, ár, ÁFA vagy raktár szerint..."
+        placeholder="Keresés név, hossz, szélesség, vastagság vagy raktár szerint..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         sx={{ mt: 2, mb: 2 }}
@@ -289,10 +259,7 @@ export default function MaterialsPage() {
               <TableCell>Szélesség (mm)</TableCell>
               <TableCell>Vastagság (mm)</TableCell>
               <TableCell>Szálirány</TableCell>
-              <TableCell>Raktár</TableCell>
-              <TableCell>Ár (Ft)</TableCell>
-              <TableCell>ÁFA</TableCell>
-              <TableCell>Ár ÁFA-val (Ft)</TableCell>
+              <TableCell>Raktári</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -322,24 +289,14 @@ export default function MaterialsPage() {
                     {material.grain_direction ? 'Igen' : 'Nem'}
                   </Typography>
                 </TableCell>
-                <TableCell>
-                  <Typography 
-                    variant="body2" 
-                    color={material.on_stock ? "success.main" : "error.main"}
-                    sx={{ fontWeight: 'bold' }}
-                  >
-                    {material.on_stock ? 'Raktár' : 'Nincs'}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  {material.price ? `${material.price.toLocaleString()} Ft` : '-'}
-                </TableCell>
-                <TableCell>
-                  {material.vat_name ? `${material.vat_name} (${material.vat_rate}%)` : '-'}
-                </TableCell>
-                <TableCell>
-                  {material.price_with_vat ? `${material.price_with_vat.toLocaleString()} Ft` : '-'}
-                </TableCell>
+               <TableCell>
+                 <Chip
+                   label={material.on_stock ? 'Igen' : 'Nem'}
+                   color={material.on_stock ? 'success' : 'error'}
+                   variant="filled"
+                   size="small"
+                 />
+               </TableCell>
               </TableRow>
             ))}
           </TableBody>

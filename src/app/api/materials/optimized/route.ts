@@ -38,6 +38,7 @@ export async function GET() {
       width_mm: material.width_mm || 2070,
       thickness_mm: material.thickness_mm || 18,
       grain_direction: Boolean(material.grain_direction), // Fix: Convert to boolean instead of fallback string
+      on_stock: material.on_stock !== undefined ? Boolean(material.on_stock) : true, // Default to true if not set
       image_url: material.image_url || null,
       // Use the effective settings from the view (already handles hierarchy)
       kerf_mm: material.kerf_mm || 3,
