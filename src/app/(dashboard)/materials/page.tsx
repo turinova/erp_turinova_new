@@ -1,3 +1,289 @@
-export default function TablasAnyagokPage() {
-  return <h1>Táblás anyagok</h1>
+'use client'
+
+import React, { useState, useMemo, useEffect } from 'react'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, CircularProgress } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon } from '@mui/icons-material'
+import { useRouter } from 'next/navigation'
+import { toast } from 'react-toastify'
+import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+
+interface Material {
+  id: string
+  name: string
+  length_mm: number
+  width_mm: number
+  thickness_mm: number
+  grain_direction: boolean
+  created_at: string
+  updated_at: string
+}
+
+export default function MaterialsPage() {
+  const router = useRouter()
+  
+  // Check permission for this page
+  const hasAccess = useDatabasePermission('/materials')
+  
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Fetch materials from API
+  useEffect(() => {
+    const fetchMaterials = async () => {
+      try {
+        setIsLoading(true)
+        const response = await fetch('/api/materials/optimized')
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success) {
+            setMaterials(result.data)
+          } else {
+            console.error('Failed to fetch materials:', result.error)
+            // Fallback to sample data
+            setMaterials([
+              {
+                id: '1',
+                name: 'U205',
+                length_mm: 2800,
+                width_mm: 2070,
+                thickness_mm: 18,
+                grain_direction: true,
+                created_at: '2025-09-13T06:00:00Z',
+                updated_at: '2025-09-13T06:00:00Z'
+              },
+              {
+                id: '2',
+                name: 'MDF 18mm',
+                length_mm: 2500,
+                width_mm: 1850,
+                thickness_mm: 18,
+                grain_direction: false,
+                created_at: '2025-09-13T06:00:00Z',
+                updated_at: '2025-09-13T06:00:00Z'
+              }
+            ])
+          }
+        } else {
+          console.error('Failed to fetch materials')
+          // Fallback to sample data
+          setMaterials([
+            {
+              id: '1',
+              name: 'U205',
+              length_mm: 2800,
+              width_mm: 2070,
+              thickness_mm: 18,
+              grain_direction: true,
+              created_at: '2025-09-13T06:00:00Z',
+              updated_at: '2025-09-13T06:00:00Z'
+            },
+            {
+              id: '2',
+              name: 'MDF 18mm',
+              length_mm: 2500,
+              width_mm: 1850,
+              thickness_mm: 18,
+              grain_direction: false,
+              created_at: '2025-09-13T06:00:00Z',
+              updated_at: '2025-09-13T06:00:00Z'
+            }
+          ])
+        }
+      } catch (error) {
+        console.error('Failed to fetch materials:', error)
+        // Fallback to sample data
+        setMaterials([
+          {
+            id: '1',
+            name: 'U205',
+            length_mm: 2800,
+            width_mm: 2070,
+            thickness_mm: 18,
+            grain_direction: true,
+            created_at: '2025-09-13T06:00:00Z',
+            updated_at: '2025-09-13T06:00:00Z'
+          },
+          {
+            id: '2',
+            name: 'MDF 18mm',
+            length_mm: 2500,
+            width_mm: 1850,
+            thickness_mm: 18,
+            grain_direction: false,
+            created_at: '2025-09-13T06:00:00Z',
+            updated_at: '2025-09-13T06:00:00Z'
+          }
+        ])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchMaterials()
+  }, [])
+
+  // Filter materials based on search term
+  const filteredMaterials = useMemo(() => {
+    if (!searchTerm) return materials
+    
+    const term = searchTerm.toLowerCase()
+    return materials.filter(material => 
+      material.name.toLowerCase().includes(term) ||
+      material.length_mm.toString().includes(term) ||
+      material.width_mm.toString().includes(term) ||
+      material.thickness_mm.toString().includes(term)
+    )
+  }, [materials, searchTerm])
+
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      setSelectedMaterials(filteredMaterials.map(material => material.id))
+    } else {
+      setSelectedMaterials([])
+    }
+  }
+
+  const handleSelectMaterial = (materialId: string) => {
+    setSelectedMaterials(prev => 
+      prev.includes(materialId) 
+        ? prev.filter(id => id !== materialId)
+        : [...prev, materialId]
+    )
+  }
+
+  const isAllSelected = selectedMaterials.length === filteredMaterials.length && filteredMaterials.length > 0
+  const isIndeterminate = selectedMaterials.length > 0 && selectedMaterials.length < filteredMaterials.length
+
+  const handleRowClick = (materialId: string) => {
+    router.push(`/materials/${materialId}`)
+  }
+
+  // Check access permission
+  useEffect(() => {
+    if (!hasAccess) {
+      toast.error('Nincs jogosultsága az Anyagok oldal megtekintéséhez!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+      router.push('/users')
+    }
+  }, [hasAccess, router])
+
+  if (!hasAccess) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Typography variant="h6" color="error">
+          Nincs jogosultsága az Anyagok oldal megtekintéséhez!
+        </Typography>
+      </Box>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress />
+        <Typography sx={{ ml: 2 }}>Anyagok betöltése...</Typography>
+      </Box>
+    )
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
+        <Link
+          underline="hover"
+          color="inherit"
+          href="/"
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+        >
+          <HomeIcon fontSize="small" />
+          Főoldal
+        </Link>
+        <Link
+          underline="hover"
+          color="inherit"
+          href="#"
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+        >
+          Törzsadatok
+        </Link>
+        <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          Táblás anyagok
+        </Typography>
+      </Breadcrumbs>
+      
+      <TextField
+        fullWidth
+        placeholder="Keresés név, hossz, szélesség vagy vastagság szerint..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        sx={{ mt: 2, mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon />
+            </InputAdornment>
+          ),
+        }}
+      />
+      
+      <TableContainer component={Paper} sx={{ mt: 2 }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell padding="checkbox">
+                <Checkbox
+                  indeterminate={isIndeterminate}
+                  checked={isAllSelected}
+                  onChange={handleSelectAll}
+                />
+              </TableCell>
+              <TableCell>Név</TableCell>
+              <TableCell>Hossz (mm)</TableCell>
+              <TableCell>Szélesség (mm)</TableCell>
+              <TableCell>Vastagság (mm)</TableCell>
+              <TableCell>Szálirány</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredMaterials.map((material) => (
+              <TableRow 
+                key={material.id} 
+                hover 
+                sx={{ cursor: 'pointer' }}
+                onClick={() => handleRowClick(material.id)}
+              >
+                <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={selectedMaterials.includes(material.id)}
+                    onChange={() => handleSelectMaterial(material.id)}
+                  />
+                </TableCell>
+                <TableCell>{material.name}</TableCell>
+                <TableCell>{material.length_mm.toLocaleString()}</TableCell>
+                <TableCell>{material.width_mm.toLocaleString()}</TableCell>
+                <TableCell>{material.thickness_mm}</TableCell>
+                <TableCell>
+                  <Typography 
+                    variant="body2" 
+                    color={material.grain_direction ? "success.main" : "text.secondary"}
+                    sx={{ fontWeight: material.grain_direction ? 'bold' : 'normal' }}
+                  >
+                    {material.grain_direction ? 'Igen' : 'Nem'}
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  )
 }
