@@ -324,6 +324,44 @@ curl -X POST http://localhost:8000/test_optimization.php \
 
 ## Common Issues and Solutions
 
+### Issue: Opti Page Not Loading / Freezing
+**Error Message**: Opti page loads but shows loading spinner indefinitely or freezes
+
+**Solution**: The opti page uses `/api/test-supabase` endpoint, not `/api/materials/optimized`. If you see this issue:
+1. Check that `/api/test-supabase` is working: `curl http://localhost:3000/api/test-supabase`
+2. Ensure the endpoint returns: `{ success: true, data: [...] }`
+3. The opti page expects this specific format for materials data
+
+**Root Cause**: Different API endpoints return data in different formats. The opti page specifically needs the `/api/test-supabase` format.
+
+### Issue: Images Not Displaying in Materials Edit Page
+**Error Message**: Images show as broken or don't load in materials edit page
+
+**Solution**: Images require Supabase Storage bucket setup. Run the following SQL script in Supabase SQL Editor:
+```sql
+-- Setup Supabase Storage for Materials Images
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'materials',
+  'materials',
+  true,
+  2097152, -- 2MB limit
+  ARRAY['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Create RLS policies for authenticated users
+CREATE POLICY "Enable upload for authenticated users" ON storage.objects
+FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'materials');
+
+CREATE POLICY "Enable read access for authenticated users" ON storage.objects
+FOR SELECT TO authenticated
+USING (bucket_id = 'materials');
+```
+
+**Root Cause**: Supabase Storage bucket `materials` doesn't exist or RLS policies aren't configured.
+
 ### Issue: "No package.json found" Error
 **Error Message**: `ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND No package.json was found`
 
