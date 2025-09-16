@@ -40,7 +40,7 @@ export function useSimpleNavigation() {
               return isAdmin
             case '/units':
               return isAdmin
-            case '/tablas-anyagok':
+            case '/materials':
             case '/szalas-anyagok':
             case '/edge':
               return isAdmin

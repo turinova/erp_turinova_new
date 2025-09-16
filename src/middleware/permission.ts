@@ -11,7 +11,7 @@ const PROTECTED_PAGES = {
   '/brands': 'view',
   '/currencies': 'view',
   '/units': 'view',
-  '/tablas-anyagok': 'view',
+  '/materials': 'view',
   '/szalas-anyagok': 'view',
   '/edge': 'view',
   '/opti': 'view',

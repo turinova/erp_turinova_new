@@ -17,7 +17,7 @@ const PERMISSION_ROLES: SimplePermissionRole[] = [
     name: 'Admin',
     description: 'Teljes hozzáférés minden funkcióhoz',
     emailPattern: 'admin|turinova.hu',
-    permissions: ['/home', '/company', '/customers', '/vat', '/users', '/opti', '/optimalizalo', '/brands', '/currencies', '/units', '/tablas-anyagok', '/szalas-anyagok', '/edge', '/opti-beallitasok']
+    permissions: ['/home', '/company', '/customers', '/vat', '/users', '/opti', '/optimalizalo', '/brands', '/currencies', '/units', '/materials', '/szalas-anyagok', '/edge', '/opti-beallitasok']
   },
   {
     id: 'customer_manager',
@@ -31,14 +31,14 @@ const PERMISSION_ROLES: SimplePermissionRole[] = [
     name: 'Anyagkezelő',
     description: 'Anyagok és kapcsolódó funkciók kezelése',
     emailPattern: 'material|anyag',
-    permissions: ['/home', '/tablas-anyagok', '/szalas-anyagok', '/edge', '/brands', '/currencies', '/units']
+    permissions: ['/home', '/materials', '/szalas-anyagok', '/edge', '/brands', '/currencies', '/units']
   },
   {
     id: 'optimizer',
     name: 'Optimalizáló',
     description: 'Optimalizáló eszköz használata',
     emailPattern: 'optimizer|opti',
-    permissions: ['/home', '/opti', '/optimalizalo', '/opti-beallitasok', '/tablas-anyagok', '/szalas-anyagok', '/edge']
+    permissions: ['/home', '/opti', '/optimalizalo', '/opti-beallitasok', '/materials', '/szalas-anyagok', '/edge']
   },
   {
     id: 'basic_user',
@@ -61,7 +61,7 @@ const AVAILABLE_PAGES = [
   { id: '8', path: '/brands', name: 'Márkák', description: 'Márkák kezelése', category: 'Törzsadatok' },
   { id: '9', path: '/currencies', name: 'Pénznemek', description: 'Pénznemek kezelése', category: 'Törzsadatok' },
   { id: '10', path: '/units', name: 'Mértékegységek', description: 'Mértékegységek kezelése', category: 'Törzsadatok' },
-  { id: '11', path: '/tablas-anyagok', name: 'Táblás anyagok', description: 'Táblás anyagok kezelése', category: 'Anyagok' },
+  { id: '11', path: '/materials', name: 'Táblás anyagok', description: 'Táblás anyagok kezelése', category: 'Anyagok' },
   { id: '12', path: '/szalas-anyagok', name: 'Szálas anyagok', description: 'Szálas anyagok kezelése', category: 'Anyagok' },
   { id: '13', path: '/edge', name: 'Elzárók', description: 'Elzárók kezelése', category: 'Anyagok' },
   { id: '14', path: '/opti-beallitasok', name: 'Opti beállítások', description: 'Optimalizáló beállítások', category: 'Eszközök' }

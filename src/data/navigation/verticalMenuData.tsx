@@ -44,7 +44,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       },
       {
         label: 'Táblás anyagok',
-        href: '/tablas-anyagok'
+        href: '/materials'
       },
       {
         label: 'Szálas anyagok',

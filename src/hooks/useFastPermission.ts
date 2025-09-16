@@ -33,7 +33,7 @@ export function useFastPermission(pagePath: string): boolean {
       case '/currencies':
       case '/units':
         return isAdmin || isCustomer || isMaterial
-      case '/tablas-anyagok':
+      case '/materials':
       case '/szalas-anyagok':
       case '/edge':
         return isAdmin || isMaterial || isOptimizer

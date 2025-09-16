@@ -14,7 +14,7 @@ const USER_ROLES: UserRole[] = [
     id: 'admin',
     name: 'Admin',
     emailPattern: 'admin|turinova.hu',
-    permissions: ['/home', '/company', '/customers', '/vat', '/users', '/opti', '/optimalizalo', '/brands', '/currencies', '/units', '/tablas-anyagok', '/szalas-anyagok', '/edge', '/opti-beallitasok']
+    permissions: ['/home', '/company', '/customers', '/vat', '/users', '/opti', '/optimalizalo', '/brands', '/currencies', '/units', '/materials', '/szalas-anyagok', '/edge', '/opti-beallitasok']
   },
   {
     id: 'customer_manager',
@@ -26,13 +26,13 @@ const USER_ROLES: UserRole[] = [
     id: 'material_manager',
     name: 'Anyagkezelő',
     emailPattern: 'material|anyag',
-    permissions: ['/home', '/tablas-anyagok', '/szalas-anyagok', '/edge', '/brands', '/currencies', '/units']
+    permissions: ['/home', '/materials', '/szalas-anyagok', '/edge', '/brands', '/currencies', '/units']
   },
   {
     id: 'optimizer',
     name: 'Optimalizáló',
     emailPattern: 'optimizer|opti',
-    permissions: ['/home', '/opti', '/optimalizalo', '/opti-beallitasok', '/tablas-anyagok', '/szalas-anyagok', '/edge']
+    permissions: ['/home', '/opti', '/optimalizalo', '/opti-beallitasok', '/materials', '/szalas-anyagok', '/edge']
   },
   {
     id: 'basic_user',
@@ -71,7 +71,7 @@ export function useSimplePermissions() {
       canViewVat: effectiveRole.permissions.includes('/vat'),
       canViewCurrencies: effectiveRole.permissions.includes('/currencies'),
       canViewUnits: effectiveRole.permissions.includes('/units'),
-      canViewMaterials: effectiveRole.permissions.includes('/tablas-anyagok') || effectiveRole.permissions.includes('/szalas-anyagok') || effectiveRole.permissions.includes('/edge'),
+      canViewMaterials: effectiveRole.permissions.includes('/materials') || effectiveRole.permissions.includes('/szalas-anyagok') || effectiveRole.permissions.includes('/edge'),
       canViewOpti: effectiveRole.permissions.includes('/opti') || effectiveRole.permissions.includes('/optimalizalo') || effectiveRole.permissions.includes('/opti-beallitasok')
     }
   }, [user?.email])

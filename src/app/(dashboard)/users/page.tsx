@@ -68,7 +68,7 @@ export default function UsersPage() {
     { path: '/brands', name: 'Márkák' },
     { path: '/currencies', name: 'Pénznemek' },
     { path: '/units', name: 'Mértékegységek' },
-    { path: '/tablas-anyagok', name: 'Táblás anyagok' },
+    { path: '/materials', name: 'Táblás anyagok' },
     { path: '/szalas-anyagok', name: 'Szálas anyagok' },
     { path: '/edge', name: 'Elzárók' },
     { path: '/opti', name: 'Optimalizáló' },

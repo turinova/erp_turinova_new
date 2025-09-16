@@ -15,7 +15,7 @@ INSERT INTO pages (path, name, description, category, is_active) VALUES
   ('/brands', 'Márkák', 'Márkák kezelése', 'Törzsadatok', true),
   ('/currencies', 'Pénznemek', 'Pénznemek kezelése', 'Törzsadatok', true),
   ('/units', 'Mértékegységek', 'Mértékegységek kezelése', 'Törzsadatok', true),
-  ('/tablas-anyagok', 'Táblás anyagok', 'Táblás anyagok kezelése', 'Anyagok', true),
+  ('/materials', 'Táblás anyagok', 'Táblás anyagok kezelése', 'Anyagok', true),
   ('/szalas-anyagok', 'Szálas anyagok', 'Szálas anyagok kezelése', 'Anyagok', true),
   ('/edge', 'Elzárók', 'Elzárók kezelése', 'Anyagok', true),
   ('/opti-beallitasok', 'Opti beállítások', 'Optimalizáló beállítások', 'Eszközök', true)
