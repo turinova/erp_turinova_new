@@ -1398,9 +1398,9 @@ export default function OptiPage() {
                  <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pt: 1, gap: 2 }}>
                    {selectedCustomer ? (
                      <>
-                       <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary">
                          Adatok automatikusan kitöltve
-                       </Typography>
+                </Typography>
                        <Button
                          size="small"
                          variant="outlined"
@@ -1415,7 +1415,7 @@ export default function OptiPage() {
                        Új ügyfél adatai - kérem töltse ki a mezőket
                      </Typography>
                    ) : null}
-                 </Box>
+              </Box>
                </Grid>
 
                 {/* Szálázási adatok Collapsible Section */}
@@ -1585,8 +1585,8 @@ export default function OptiPage() {
                    const { key, ...otherProps } = props;
                    return (
                      <Box component="li" key={key} {...otherProps}>
-                       {option.name} ({option.width_mm}×{option.length_mm}mm)
-                     </Box>
+                     {option.name} ({option.width_mm}×{option.length_mm}mm)
+                   </Box>
                    );
                  }}
                />
@@ -1812,7 +1812,7 @@ export default function OptiPage() {
                       <TextField
                         {...params}
                         label="Hosszú felső"
-                        onKeyPress={handleKeyPress}
+                      onKeyPress={handleKeyPress}
                       />
                     )}
                     ListboxProps={{
@@ -1840,7 +1840,7 @@ export default function OptiPage() {
                       <TextField
                         {...params}
                         label="Hosszú alsó"
-                        onKeyPress={handleKeyPress}
+                      onKeyPress={handleKeyPress}
                       />
                     )}
                     ListboxProps={{
@@ -1868,7 +1868,7 @@ export default function OptiPage() {
                       <TextField
                         {...params}
                         label="Széles bal"
-                        onKeyPress={handleKeyPress}
+                      onKeyPress={handleKeyPress}
                       />
                     )}
                     ListboxProps={{
@@ -1896,7 +1896,7 @@ export default function OptiPage() {
                       <TextField
                         {...params}
                         label="Széles jobb"
-                        onKeyPress={handleKeyPress}
+                      onKeyPress={handleKeyPress}
                       />
                     )}
                     ListboxProps={{
@@ -2773,7 +2773,7 @@ export default function OptiPage() {
                 })}
               </CardContent>
             </Card>
-          </Grid>
+      </Grid>
         )}
 
         {/* Árajnálat generálás Button */}
