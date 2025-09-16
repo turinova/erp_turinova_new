@@ -21,6 +21,7 @@ export async function GET(
 ) {
   try {
     const { userId } = await params
+    console.log('Checking permissions for user:', userId)
     const supabase = createServerClient()
 
     // Fetch user's simple permissions
@@ -31,6 +32,7 @@ export async function GET(
 
     if (error) {
       console.error('Error fetching simple permissions:', error)
+      console.error('Error details:', JSON.stringify(error, null, 2))
       return NextResponse.json({ 
         error: 'Failed to fetch permissions',
         permissions: [] 
@@ -45,6 +47,7 @@ export async function GET(
 
     if (pagesError) {
       console.error('Error fetching pages:', pagesError)
+      console.error('Pages error details:', JSON.stringify(pagesError, null, 2))
       return NextResponse.json({ 
         error: 'Failed to fetch pages',
         permissions: [] 
@@ -64,6 +67,9 @@ export async function GET(
       can_access: p.can_view || false
     })) || []
 
+    console.log('Transformed permissions:', transformedPermissions)
+    console.log('Available pages:', Object.keys(pageIdToPath))
+    
     return NextResponse.json({ permissions: transformedPermissions })
   } catch (error) {
     console.error('Error in simple permissions GET:', error)

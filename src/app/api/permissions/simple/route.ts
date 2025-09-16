@@ -14,7 +14,7 @@ const PAGES = [
   { id: '10', path: '/units', name: 'Mértékegységek', description: 'Mértékegységek kezelése', category: 'Törzsadatok' },
   { id: '11', path: '/tablas-anyagok', name: 'Táblás anyagok', description: 'Táblás anyagok kezelése', category: 'Anyagok' },
   { id: '12', path: '/szalas-anyagok', name: 'Szálas anyagok', description: 'Szálas anyagok kezelése', category: 'Anyagok' },
-  { id: '13', path: '/elzarok', name: 'Elzárók', description: 'Elzárók kezelése', category: 'Anyagok' },
+  { id: '13', path: '/edge', name: 'Elzárók', description: 'Elzárók kezelése', category: 'Anyagok' },
   { id: '14', path: '/opti-beallitasok', name: 'Opti beállítások', description: 'Optimalizáló beállítások', category: 'Eszközök' }
 ]
 

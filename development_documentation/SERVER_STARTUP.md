@@ -11,10 +11,11 @@ This document provides comprehensive instructions for starting both the Next.js 
 
 ## Architecture Overview
 
-The ERP Turinova project consists of two main components:
+The ERP Turinova project consists of three main components:
 
 1. **Next.js Frontend Server** (Port 3000) - React-based admin interface
 2. **PHP Optimization Service** (Port 8000) - Panel optimization algorithm
+3. **Rust Optimizer Service** (Port 8080) - High-performance optimization engine (optional)
 
 ## Server Startup Instructions
 
@@ -46,7 +47,32 @@ Start the development server:
 pnpm dev
 ```
 
-### 3. Expected Output
+### 3. Start the Rust Optimizer Service (Optional)
+
+In a **third terminal window**, navigate to the optimizer service directory:
+
+```bash
+cd /Volumes/T7/erp_turinova_new/services/optimizer
+```
+
+Build and start the service:
+
+```bash
+# Option 1: Using make (if available)
+make build
+make run
+
+# Option 2: Direct cargo commands (recommended)
+cargo build --release
+cargo run --release
+```
+
+**Expected Output:**
+```
+2025-09-16T07:48:44.892033Z  INFO optimizer: Optimizer service running on http://0.0.0.0:8080
+```
+
+### 4. Expected Output
 
 **PHP Server (Terminal 1):**
 ```
@@ -67,9 +93,15 @@ PHP 8.3.0 Development Server (http://localhost:8000) started
  ✓ Ready in 938ms
 ```
 
-### 4. Access the Application
+**Rust Optimizer Server (Terminal 3):**
+```
+2025-09-16T07:48:44.892033Z  INFO optimizer: Optimizer service running on http://0.0.0.0:8080
+```
+
+### 5. Access the Application
 - **Frontend URL**: http://localhost:3000
-- **Optimization Service**: http://localhost:8000
+- **PHP Optimization Service**: http://localhost:8000
+- **Rust Optimizer Service**: http://localhost:8080
 - **Network URL**: http://192.168.3.1:3000
 
 ## API Routes Documentation
@@ -331,6 +363,27 @@ curl -X POST http://localhost:8000/test_optimization.php \
 3. Try accessing http://localhost:3000 directly
 4. Check browser console for CORS errors
 
+### Issue: Rust Optimizer Service Won't Start
+**Error Message**: `make: *** No rule to make target 'run'. Stop.`
+
+**Solution**: You're in the wrong directory. Make sure you're in:
+```bash
+cd /Volumes/T7/erp_turinova_new/services/optimizer
+```
+
+**Alternative Solution**: Use direct cargo commands:
+```bash
+cd /Volumes/T7/erp_turinova_new/services/optimizer
+cargo run --release
+```
+
+### Issue: Rust Service Health Check Fails
+**Solution**:
+1. Wait a few seconds for the service to fully start
+2. Check the terminal output for error messages
+3. Verify the service is running: `ps aux | grep optimizer`
+4. Check if port 8080 is available: `lsof -i :8080`
+
 ## Running in Background
 
 ### PHP Server (Terminal 1)
@@ -341,6 +394,11 @@ cd /Volumes/T7/erp_turinova_new/starter-kit/development_documentation && php -S 
 ### Next.js Server (Terminal 2)
 ```bash
 cd /Volumes/T7/erp_turinova_new/starter-kit && pnpm dev
+```
+
+### Rust Optimizer Server (Terminal 3)
+```bash
+cd /Volumes/T7/erp_turinova_new/services/optimizer && cargo run --release
 ```
 
 ## Stopping the Servers
@@ -405,7 +463,7 @@ npx update-browserslist-db@latest
 
 ## Quick Start Commands
 
-### Start Both Servers (Two Terminals)
+### Start All Servers (Three Terminals)
 **Terminal 1 (PHP Server):**
 ```bash
 cd /Volumes/T7/erp_turinova_new/starter-kit/development_documentation && php -S localhost:8000
@@ -416,13 +474,19 @@ cd /Volumes/T7/erp_turinova_new/starter-kit/development_documentation && php -S 
 cd /Volumes/T7/erp_turinova_new/starter-kit && pnpm dev
 ```
 
+**Terminal 3 (Rust Optimizer Server):**
+```bash
+cd /Volumes/T7/erp_turinova_new/services/optimizer && cargo run --release
+```
+
 ## Development Workflow
 
 1. **Start PHP Server First** - Required for optimization API
 2. **Start Next.js Server** - Frontend interface
-3. **Access Application** - Navigate to http://localhost:3000/optitest
-4. **Test Optimization** - Use the interface or curl commands
-5. **Monitor Logs** - Check both terminal outputs for errors
+3. **Start Rust Optimizer Server** - High-performance optimization engine (optional)
+4. **Access Application** - Navigate to http://localhost:3000/optitest
+5. **Test Optimization** - Use the interface or curl commands
+6. **Monitor Logs** - Check all terminal outputs for errors
 
 ## Performance Notes
 

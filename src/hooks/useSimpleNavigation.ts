@@ -42,7 +42,7 @@ export function useSimpleNavigation() {
               return isAdmin
             case '/tablas-anyagok':
             case '/szalas-anyagok':
-            case '/elzarok':
+            case '/edge':
               return isAdmin
             case '/opti':
             case '/optimalizalo':

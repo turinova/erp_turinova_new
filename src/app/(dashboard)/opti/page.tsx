@@ -182,6 +182,26 @@ interface OptimizationResult {
   }
 }
 
+interface EdgeMaterial {
+  id: string
+  brand_id: string
+  type: string
+  thickness: number
+  width: number
+  decor: string
+  price: number
+  vat_id: string
+  created_at: string
+  updated_at: string
+  brands: {
+    name: string
+  }
+  vat: {
+    name: string
+    kulcs: number
+  }
+}
+
 // Materials will be fetched from database
 
 
@@ -200,6 +220,10 @@ export default function OptiPage() {
   const [selectedB, setSelectedB] = useState<string>('')
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
+  
+  // Edge materials state
+  const [edgeMaterials, setEdgeMaterials] = useState<EdgeMaterial[]>([])
+  const [edgeMaterialsLoading, setEdgeMaterialsLoading] = useState(false)
   
   // State for showing optimization data card
   const [showOptimizationData, setShowOptimizationData] = useState(false)
@@ -257,6 +281,16 @@ export default function OptiPage() {
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: false }))
     }
+  }
+
+  // Format edge material display name
+  const formatEdgeMaterialName = (material: EdgeMaterial) => {
+    return `${material.type}-${material.width}/${material.thickness}-${material.decor}`
+  }
+
+  const getEdgeMaterialNameById = (id: string) => {
+    const material = edgeMaterials.find(m => m.id === id)
+    return material ? formatEdgeMaterialName(material) : id
   }
   
   // Separate panels table state
@@ -674,6 +708,29 @@ export default function OptiPage() {
     fetchCustomers()
   }, [])
 
+  // Fetch edge materials from database
+  useEffect(() => {
+    const fetchEdgeMaterials = async () => {
+      try {
+        setEdgeMaterialsLoading(true)
+        const response = await fetch('/api/edge-materials')
+        const data = await response.json()
+        
+        if (response.ok) {
+          setEdgeMaterials(data)
+          console.log('Edge materials loaded:', data.length, 'materials')
+        } else {
+          console.error('Failed to fetch edge materials:', data.error)
+        }
+      } catch (error) {
+        console.error('Error fetching edge materials:', error)
+      } finally {
+        setEdgeMaterialsLoading(false)
+      }
+    }
+
+    fetchEdgeMaterials()
+  }, [])
 
   // Initialize board indices when optimization result changes
   useEffect(() => {
@@ -1740,72 +1797,116 @@ export default function OptiPage() {
                 </Grid>
                 
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-a-label">Hosszú felső</InputLabel>
-                    <Select
-                      labelId="dropdown-a-label"
-                      value={selectedA}
-                      onChange={(e) => setSelectedA(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      label="Hosszú felső"
-                    >
-                      <MenuItem value="option1">Option 1</MenuItem>
-                      <MenuItem value="option2">Option 2</MenuItem>
-                      <MenuItem value="option3">Option 3</MenuItem>
-                      <MenuItem value="option4">Option 4</MenuItem>
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedA) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedA(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Hosszú felső"
+                        onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-c-label">Hosszú alsó</InputLabel>
-                    <Select
-                      labelId="dropdown-c-label"
-                      value={selectedC}
-                      onChange={(e) => setSelectedC(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      label="Hosszú alsó"
-                    >
-                      <MenuItem value="option1">Option 1</MenuItem>
-                      <MenuItem value="option2">Option 2</MenuItem>
-                      <MenuItem value="option3">Option 3</MenuItem>
-                      <MenuItem value="option4">Option 4</MenuItem>
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedC) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedC(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Hosszú alsó"
+                        onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-d-label">Széles bal</InputLabel>
-                    <Select
-                      labelId="dropdown-d-label"
-                      value={selectedD}
-                      onChange={(e) => setSelectedD(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      label="Széles bal"
-                    >
-                      <MenuItem value="option1">Option 1</MenuItem>
-                      <MenuItem value="option2">Option 2</MenuItem>
-                      <MenuItem value="option3">Option 3</MenuItem>
-                      <MenuItem value="option4">Option 4</MenuItem>
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedD) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedD(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Széles bal"
+                        onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
                 </Grid>
                 <Grid item xs={12} sm={6} md={3}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="dropdown-b-label">Széles jobb</InputLabel>
-                    <Select
-                      labelId="dropdown-b-label"
-                      value={selectedB}
-                      onChange={(e) => setSelectedB(e.target.value)}
-                      onKeyPress={handleKeyPress}
-                      label="Széles jobb"
-                    >
-                      <MenuItem value="option1">Option 1</MenuItem>
-                      <MenuItem value="option2">Option 2</MenuItem>
-                      <MenuItem value="option3">Option 3</MenuItem>
-                      <MenuItem value="option4">Option 4</MenuItem>
-                    </Select>
-                  </FormControl>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedB) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedB(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Széles jobb"
+                        onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
                 </Grid>
               </Grid>
               
@@ -1921,7 +2022,7 @@ export default function OptiPage() {
                       <TableCell>{panel.jelölés}</TableCell>
                       <TableCell align="center">
                         <Chip 
-                          label={panel.élzárásA || 'Nincs'} 
+                          label={panel.élzárásA ? getEdgeMaterialNameById(panel.élzárásA) : 'Nincs'} 
                           size="small" 
                           color={panel.élzárásA ? 'primary' : 'default'}
                           variant={panel.élzárásA ? 'filled' : 'outlined'}
@@ -1929,7 +2030,7 @@ export default function OptiPage() {
                       </TableCell>
                       <TableCell align="center">
                         <Chip 
-                          label={panel.élzárásC || 'Nincs'} 
+                          label={panel.élzárásC ? getEdgeMaterialNameById(panel.élzárásC) : 'Nincs'} 
                           size="small" 
                           color={panel.élzárásC ? 'primary' : 'default'}
                           variant={panel.élzárásC ? 'filled' : 'outlined'}
@@ -1937,7 +2038,7 @@ export default function OptiPage() {
                       </TableCell>
                       <TableCell align="center">
                         <Chip 
-                          label={panel.élzárásD || 'Nincs'} 
+                          label={panel.élzárásD ? getEdgeMaterialNameById(panel.élzárásD) : 'Nincs'} 
                           size="small" 
                           color={panel.élzárásD ? 'primary' : 'default'}
                           variant={panel.élzárásD ? 'filled' : 'outlined'}
@@ -1945,7 +2046,7 @@ export default function OptiPage() {
                       </TableCell>
                       <TableCell align="center">
                         <Chip 
-                          label={panel.élzárásB || 'Nincs'} 
+                          label={panel.élzárásB ? getEdgeMaterialNameById(panel.élzárásB) : 'Nincs'} 
                           size="small" 
                           color={panel.élzárásB ? 'primary' : 'default'}
                           variant={panel.élzárásB ? 'filled' : 'outlined'}

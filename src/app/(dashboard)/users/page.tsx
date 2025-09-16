@@ -70,7 +70,7 @@ export default function UsersPage() {
     { path: '/units', name: 'Mértékegységek' },
     { path: '/tablas-anyagok', name: 'Táblás anyagok' },
     { path: '/szalas-anyagok', name: 'Szálas anyagok' },
-    { path: '/elzarok', name: 'Elzárók' },
+    { path: '/edge', name: 'Elzárók' },
     { path: '/opti', name: 'Optimalizáló' },
     { path: '/opti-beallitasok', name: 'Opti beállítások' },
     { path: '/users', name: 'Felhasználók' },

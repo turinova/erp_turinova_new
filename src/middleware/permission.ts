@@ -13,7 +13,7 @@ const PROTECTED_PAGES = {
   '/units': 'view',
   '/tablas-anyagok': 'view',
   '/szalas-anyagok': 'view',
-  '/elzarok': 'view',
+  '/edge': 'view',
   '/opti': 'view',
   '/opti-beallitasok': 'view',
   '/test-toast': 'view',

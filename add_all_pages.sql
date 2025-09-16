@@ -17,7 +17,7 @@ INSERT INTO pages (path, name, description, category, is_active) VALUES
   ('/units', 'Mértékegységek', 'Mértékegységek kezelése', 'Törzsadatok', true),
   ('/tablas-anyagok', 'Táblás anyagok', 'Táblás anyagok kezelése', 'Anyagok', true),
   ('/szalas-anyagok', 'Szálas anyagok', 'Szálas anyagok kezelése', 'Anyagok', true),
-  ('/elzarok', 'Elzárók', 'Elzárók kezelése', 'Anyagok', true),
+  ('/edge', 'Elzárók', 'Elzárók kezelése', 'Anyagok', true),
   ('/opti-beallitasok', 'Opti beállítások', 'Optimalizáló beállítások', 'Eszközök', true)
 ON CONFLICT (path) DO UPDATE SET
   name = EXCLUDED.name,

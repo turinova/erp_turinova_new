@@ -35,7 +35,7 @@ export function useFastPermission(pagePath: string): boolean {
         return isAdmin || isCustomer || isMaterial
       case '/tablas-anyagok':
       case '/szalas-anyagok':
-      case '/elzarok':
+      case '/edge':
         return isAdmin || isMaterial || isOptimizer
       case '/opti':
       case '/optimalizalo':

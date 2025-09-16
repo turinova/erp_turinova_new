@@ -52,7 +52,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       },
       {
         label: 'Élzárók',
-        href: '/elzarok'
+        href: '/edge'
       }
     ]
   },
