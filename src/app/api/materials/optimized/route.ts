@@ -1,13 +1,34 @@
 import { createClient } from '@supabase/supabase-js'
+import { redisCache } from '@/lib/redis'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
+const CACHE_KEY_ALL_MATERIALS = 'materials:all'
+const CACHE_TTL_SECONDS = 300 // 5 minutes
+
 export async function GET() {
   try {
-    console.log('Fetching materials (optimized)...')
-    
+    console.log('Fetching materials (optimized) with Redis caching...')
+
+    // Try to get from Redis cache first
+    const cachedMaterials = await redisCache.get<any[]>(CACHE_KEY_ALL_MATERIALS)
+    if (cachedMaterials) {
+      console.log(`Materials served from Redis cache in ${performance.now()}ms`)
+      return Response.json({ 
+        success: true, 
+        data: cachedMaterials,
+        cached: true 
+      }, {
+        headers: {
+          'X-Cache': 'HIT',
+          'X-Cache-Source': 'Redis',
+        },
+      })
+    }
+
+    console.log('Redis cache miss for materials, fetching from database...')
     const startTime = performance.now()
     
     // Use the materials_with_settings view that handles the hierarchy logic
@@ -55,7 +76,21 @@ export async function GET() {
     }))
 
     console.log(`Fetched ${transformedData.length} materials successfully`)
-    return Response.json({ success: true, data: transformedData })
+
+    // Cache the result in Redis
+    await redisCache.set(CACHE_KEY_ALL_MATERIALS, transformedData, CACHE_TTL_SECONDS)
+
+    return Response.json({ 
+      success: true, 
+      data: transformedData,
+      cached: false 
+    }, {
+      headers: {
+        'X-Cache': 'MISS',
+        'X-Cache-Source': 'Database',
+        'X-Cache-Time': `${queryTime.toFixed(2)}ms`,
+      },
+    })
   } catch (error) {
     return Response.json({ 
       success: false, 

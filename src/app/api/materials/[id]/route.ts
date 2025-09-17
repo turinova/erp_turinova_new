@@ -1,9 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
+import { redisCache } from '@/lib/redis'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient(supabaseUrl, supabaseKey)
+
+const CACHE_TTL = 300 // 5 minutes in seconds
 
 export async function GET(
   request: NextRequest,
@@ -11,8 +14,23 @@ export async function GET(
 ) {
   try {
     const { id: materialId } = await params
-    
-    console.log(`Fetching material with ID: ${materialId}`)
+    const cacheKey = `material:${materialId}`
+    console.log(`Fetching material ${materialId} with Redis caching...`)
+
+    // Try to get from Redis cache first
+    const cachedMaterial = await redisCache.get<any>(cacheKey)
+    if (cachedMaterial) {
+      console.log(`Material ${materialId} served from Redis cache`)
+      return Response.json(cachedMaterial, {
+        headers: {
+          'X-Cache': 'HIT',
+          'X-Cache-Source': 'Redis',
+        },
+      })
+    }
+
+    console.log(`Redis cache miss for material ${materialId}, fetching from database...`)
+    const startTime = performance.now()
     
     // Fetch material from materials_with_settings view
     const { data, error } = await supabase
@@ -51,6 +69,10 @@ export async function GET(
       .eq('machine_type', 'Korpus')
       .single()
 
+    const endTime = performance.now()
+    const queryTime = endTime - startTime
+    console.log(`Material ${materialId} database query took: ${queryTime.toFixed(2)}ms`)
+
     // Transform the data to match the expected format
     const transformedData = {
       id: data.id,
@@ -76,7 +98,17 @@ export async function GET(
     }
 
     console.log(`Fetched material successfully: ${transformedData.name}`)
-    return Response.json(transformedData)
+
+    // Cache the result in Redis
+    await redisCache.set(cacheKey, transformedData, CACHE_TTL)
+
+    return Response.json(transformedData, {
+      headers: {
+        'X-Cache': 'MISS',
+        'X-Cache-Source': 'Database',
+        'X-Cache-Time': `${queryTime.toFixed(2)}ms`,
+      },
+    })
   } catch (error) {
     console.error('Error in GET /api/materials/[id]:', error)
     return Response.json({ 
@@ -94,7 +126,7 @@ export async function PUT(
     const { id: materialId } = await params
     const body = await request.json()
     
-    console.log(`Updating material with ID: ${materialId}`)
+    console.log(`Updating material ${materialId}, invalidating Redis cache...`)
     console.log('Update data:', body)
     
     // Update the materials table
@@ -174,7 +206,11 @@ export async function PUT(
       }
     }
 
-    console.log(`Material updated successfully: ${body.name}`)
+    // Invalidate cache for this specific material and all materials list
+    await redisCache.del(`material:${materialId}`)
+    await redisCache.delPattern('materials:*')
+
+    console.log(`Material updated successfully and cache invalidated: ${body.name}`)
     return Response.json({ 
       success: true, 
       message: 'Material updated successfully',
