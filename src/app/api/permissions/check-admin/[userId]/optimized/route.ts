@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { redisCache } from '@/lib/redis'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -9,6 +10,7 @@ const supabase = createClient(
 // Simple in-memory cache for admin status (resets on server restart)
 const adminCache = new Map<string, { isAdmin: boolean; timestamp: number }>()
 const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+const REDIS_CACHE_TTL = 300 // 5 minutes in seconds
 
 // GET /api/permissions/check-admin/[userId]/optimized - Fast admin check
 export async function GET(
@@ -22,7 +24,15 @@ export async function GET(
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 })
     }
 
-    // Check cache first
+    // Check Redis cache first
+    const redisCacheKey = `admin:${userId}`
+    const cachedFromRedis = await redisCache.get<{ isAdmin: boolean }>(redisCacheKey)
+    if (cachedFromRedis) {
+      console.log(`Admin status served from Redis cache for user: ${userId}`)
+      return NextResponse.json(cachedFromRedis)
+    }
+
+    // Check in-memory cache as fallback
     const cached = adminCache.get(userId)
     if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
       return NextResponse.json({ isAdmin: cached.isAdmin })
@@ -51,10 +61,13 @@ export async function GET(
 
     const isAdmin = adminPermission?.can_edit === true
 
-    // Cache the result
+    // Cache the result in both Redis and in-memory
+    const result = { isAdmin }
+    await redisCache.set(redisCacheKey, result, REDIS_CACHE_TTL)
     adminCache.set(userId, { isAdmin, timestamp: Date.now() })
 
-    return NextResponse.json({ isAdmin })
+    console.log(`Admin status cached for user: ${userId}, isAdmin: ${isAdmin}`)
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error in optimized check-admin API:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

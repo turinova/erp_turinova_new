@@ -29,6 +29,7 @@
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.57.2",
     "@turinova/optimizer-sdk": "file:../packages/optimizer-sdk",
+    "@types/redis": "^4.0.11",
     "@types/uuid": "^10.0.0",
     "classnames": "2.5.1",
     "dotenv-cli": "^10.0.0",
@@ -40,6 +41,7 @@
     "react-perfect-scrollbar": "1.5.8",
     "react-toastify": "^11.0.5",
     "react-use": "17.6.0",
+    "redis": "^5.8.2",
     "server-only": "0.0.1",
     "uuid": "^13.0.0"
   },

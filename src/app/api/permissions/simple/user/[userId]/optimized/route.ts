@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseOptimized } from '@/lib/supabase-optimized'
+import { redisCache } from '@/lib/redis'
 
 // Simple in-memory cache for user permissions (resets on server restart)
 const permissionsCache = new Map<string, { permissions: any[]; timestamp: number }>()
 const CACHE_DURATION = 5 * 60 * 1000 // 5 minutes
+const REDIS_CACHE_TTL = 300 // 5 minutes in seconds
 
 // GET /api/permissions/simple/user/[userId]/optimized - Get optimized user permissions
 export async function GET(
@@ -13,7 +15,15 @@ export async function GET(
   try {
     const { userId } = await params
 
-    // Check cache first
+    // Check Redis cache first
+    const redisCacheKey = `permissions:${userId}`
+    const cachedFromRedis = await redisCache.get<{ permissions: any[] }>(redisCacheKey)
+    if (cachedFromRedis) {
+      console.log(`Permissions served from Redis cache for user: ${userId}`)
+      return NextResponse.json(cachedFromRedis)
+    }
+
+    // Check in-memory cache as fallback
     const cached = permissionsCache.get(userId)
     if (cached && (Date.now() - cached.timestamp) < CACHE_DURATION) {
       return NextResponse.json({ permissions: cached.permissions })
@@ -48,10 +58,13 @@ export async function GET(
       can_access: p.can_view || false
     })) || []
 
-    // Cache the result
+    // Cache the result in both Redis and in-memory
+    const result = { permissions: transformedPermissions }
+    await redisCache.set(redisCacheKey, result, REDIS_CACHE_TTL)
     permissionsCache.set(userId, { permissions: transformedPermissions, timestamp: Date.now() })
 
-    return NextResponse.json({ permissions: transformedPermissions })
+    console.log(`Permissions cached for user: ${userId}, count: ${transformedPermissions.length}`)
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error in optimized permissions GET:', error)
     return NextResponse.json({ 
