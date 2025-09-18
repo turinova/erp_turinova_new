@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { supabase } from '@/lib/supabase'
@@ -12,14 +12,44 @@ interface PermissionContextType {
   reloadPermissions: (userId: string) => Promise<void>
   loading: boolean
   error: string | null
-  // Pre-computed permissions for common pages
-  pagePermissions: Record<string, boolean>
 }
 
 const PermissionContext = createContext<PermissionContextType | undefined>(undefined)
 
 interface PermissionProviderProps {
   children: ReactNode
+}
+
+// Extract the existing permission SQL/logic into a single function (reuse existing query from API)
+async function fetchAllowedPaths(userId: string): Promise<string[]> {
+  console.log('⚡ fetchAllowedPaths called for user:', userId)
+  
+  try {
+    // Reuse the same query logic from the existing API endpoint
+    // This eliminates the need for HTTP calls and uses direct Supabase client
+    const { data, error } = await supabase
+      .from('user_permissions')
+      .select(`
+        can_view,
+        pages!inner(path)
+      `)
+      .eq('user_id', userId)
+      .eq('can_view', true)
+
+    if (error) {
+      console.error('Error fetching permissions directly:', error)
+      return [] // Return empty permissions on error
+    }
+
+    const paths = data?.map((item: any) => item.pages.path) || []
+    
+    console.log(`⚡ Fetched ${paths.length} allowed paths directly:`, paths)
+    
+    return paths
+  } catch (error) {
+    console.error('Error in fetchAllowedPaths:', error)
+    return [] // Return empty permissions on exception
+  }
 }
 
 export function PermissionProvider({ children }: PermissionProviderProps) {
@@ -37,7 +67,7 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
     return normalized.endsWith('/') && normalized !== '/' ? normalized.slice(0, -1) : normalized
   }, [])
 
-  // Check if user can access a path
+  // Check if user can access a path (CLIENT-ONLY - NO API CALL)
   const canAccess = useCallback((path: string): boolean => {
     const normalizedPath = normalizePath(path)
     
@@ -53,47 +83,26 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
     })
   }, [allowedPaths, normalizePath])
 
-  // Simple pre-computed permissions - only for the most common pages
-  const pagePermissions = useMemo(() => {
-    const commonPages = ['/home', '/users', '/materials', '/customers']
-    const permissions: Record<string, boolean> = {}
+  // Load permissions ONCE on login/session change and cache them
+  const loadUserPermissions = useCallback(async (userId: string): Promise<void> => {
+    if (!mountedRef.current) return
     
-    commonPages.forEach(page => {
-      permissions[page] = allowedPaths.includes(normalizePath(page))
-    })
-    
-    return permissions
-  }, [allowedPaths, normalizePath])
+    setLoading(true)
+    setError(null)
 
-  // Fetch permissions for a user - using useRef to avoid circular dependency
-  const fetchUserPermissionsRef = useRef(async (userId: string): Promise<void> => {
-    console.log('🚀 fetchUserPermissions called for user:', userId)
     try {
-      if (!mountedRef.current) return
-      
-      setLoading(true)
-      setError(null)
-
-      // Use API endpoint to fetch permissions server-side
-      const response = await fetch(`/api/permissions/user/${userId}`)
-      
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch permissions')
-      }
-
-      const { paths } = await response.json()
-      const normalizedPaths = paths?.map((path: string) => normalizePath(path)) || []
+      // Call fetchAllowedPaths ONCE and cache the result
+      const paths = await fetchAllowedPaths(userId)
+      const normalizedPaths = paths.map(path => normalizePath(path))
       
       if (!mountedRef.current) return
       
-      console.log('🔧 About to set allowedPaths:', normalizedPaths)
       setAllowedPaths(normalizedPaths)
       setCurrentUserId(userId)
-      console.log('🔧 setAllowedPaths called')
+      console.log('✅ Permissions cached locally!', normalizedPaths.length, 'pages')
 
     } catch (err) {
-      console.error('Error in fetchUserPermissions:', err)
+      console.error('Error loading user permissions:', err)
       if (!mountedRef.current) return
       
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -110,70 +119,14 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
         setLoading(false)
       }
     }
-  })
-
-  // Update the ref when dependencies change
-  useEffect(() => {
-    fetchUserPermissionsRef.current = async (userId: string): Promise<void> => {
-      console.log('🚀 fetchUserPermissions called for user:', userId)
-      try {
-        if (!mountedRef.current) return
-        
-        setLoading(true)
-        setError(null)
-
-        // Use API endpoint to fetch permissions server-side
-        const response = await fetch(`/api/permissions/user/${userId}`)
-        
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || 'Failed to fetch permissions')
-        }
-
-        const { paths } = await response.json()
-        const normalizedPaths = paths?.map((path: string) => normalizePath(path)) || []
-        
-        if (!mountedRef.current) return
-        
-        console.log('🔧 About to set allowedPaths:', normalizedPaths)
-        setAllowedPaths(normalizedPaths)
-        setCurrentUserId(userId)
-        console.log('🔧 setAllowedPaths called')
-
-      } catch (err) {
-        console.error('Error in fetchUserPermissions:', err)
-        if (!mountedRef.current) return
-        
-        setError(err instanceof Error ? err.message : 'Unknown error')
-        
-        // Sign out user on permission fetch failure
-        try {
-          await supabase.auth.signOut()
-          router.push('/login')
-        } catch (signOutError) {
-          console.error('Error signing out user:', signOutError)
-        }
-      } finally {
-        if (mountedRef.current) {
-          setLoading(false)
-        }
-      }
-    }
   }, [normalizePath, router])
 
-  // Reload permissions for a specific user
+  // Reload permissions for a specific user (on demand)
   const reloadPermissions = useCallback(async (userId: string): Promise<void> => {
-    await fetchUserPermissionsRef.current(userId)
-  }, [])
+    await loadUserPermissions(userId)
+  }, [loadUserPermissions])
 
-  // Monitor when allowedPaths changes (reduced logging for performance)
-  useEffect(() => {
-    if (allowedPaths.length > 0) {
-      console.log('✅ Permissions loaded successfully!', allowedPaths.length, 'pages')
-    }
-  }, [allowedPaths])
-
-  // Monitor auth state changes
+  // Monitor auth state changes - fetch permissions ONCE on login/session detection
   useEffect(() => {
     mountedRef.current = true
 
@@ -201,9 +154,11 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
           return
         }
 
-        // Only fetch if user changed
+        // Only fetch if user changed - CACHE PERMISSIONS ONCE
         if (session.user.id !== currentUserId) {
-          await fetchUserPermissionsRef.current(session.user.id)
+          await loadUserPermissions(session.user.id)
+        } else if (mountedRef.current) {
+          setLoading(false)
         }
       } catch (err) {
         console.error('Error initializing permissions:', err)
@@ -216,11 +171,9 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
 
     initializePermissions()
 
-    // Listen for auth state changes
+    // Listen for auth state changes - fetch permissions ONCE on login
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mountedRef.current) return
-
-      // Auth state changed
 
       if (event === 'SIGNED_OUT' || !session?.user?.id) {
         setAllowedPaths([])
@@ -231,9 +184,9 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
       }
 
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        // Only fetch if user changed
+        // Only fetch if user changed - CACHE PERMISSIONS ONCE
         if (session.user.id !== currentUserId) {
-          await fetchUserPermissionsRef.current(session.user.id)
+          await loadUserPermissions(session.user.id)
         }
       }
     })
@@ -242,15 +195,14 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
       mountedRef.current = false
       subscription.unsubscribe()
     }
-  }, [currentUserId])
+  }, [currentUserId, loadUserPermissions])
 
   const value: PermissionContextType = {
     allowedPaths,
     canAccess,
     reloadPermissions,
     loading,
-    error,
-    pagePermissions
+    error
   }
 
   return (

@@ -7,7 +7,7 @@ import type { VerticalMenuDataType } from '@/types/menuTypes'
 
 // Navigation filtering using the new permission system
 export function useNavigation() {
-  const { canAccess, loading, allowedPaths, pagePermissions } = usePermissions()
+  const { canAccess, loading, allowedPaths } = usePermissions()
   const [isHydrated, setIsHydrated] = useState(false)
 
   // Track hydration to prevent SSR/client mismatch
@@ -46,8 +46,8 @@ export function useNavigation() {
             return true
           }
           
-          // Use pre-computed permissions for better performance
-          return pagePermissions[item.href] ?? canAccess(item.href)
+          // Use cached permissions with local check - no API calls
+          return canAccess(item.href)
         }
         
         return true // Show items without href
