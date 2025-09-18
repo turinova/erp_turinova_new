@@ -1,5 +1,8 @@
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+
 import type { CreateUserRequest, UserFilters } from '@/types/user'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -20,7 +23,8 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching users:', error)
-      return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
+      
+return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
     }
 
     // Transform and filter the data
@@ -50,6 +54,7 @@ export async function GET(request: NextRequest) {
 
     if (is_active !== null) {
       const activeFilter = is_active === 'true'
+
       transformedUsers = transformedUsers.filter(user => user.is_active === activeFilter)
     }
 
@@ -59,7 +64,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ users: transformedUsers })
   } catch (error) {
     console.error('Error in GET /api/users:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -87,7 +93,8 @@ export async function POST(request: NextRequest) {
 
     if (authError) {
       console.error('Error creating user:', authError)
-      return NextResponse.json({ error: authError.message }, { status: 400 })
+      
+return NextResponse.json({ error: authError.message }, { status: 400 })
     }
 
     // Transform the response
@@ -106,6 +113,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ user }, { status: 201 })
   } catch (error) {
     console.error('Error in POST /api/users:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

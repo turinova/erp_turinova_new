@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface Customer {
   id: string
@@ -58,6 +61,7 @@ export default function NewCustomerPage() {
     
     // If it starts with 36, keep it as is, otherwise add 36
     let formatted = digits
+
     if (!digits.startsWith('36') && digits.length > 0) {
       formatted = '36' + digits
     }
@@ -70,6 +74,7 @@ export default function NewCustomerPage() {
       const secondPart = formatted.substring(7, 11)
       
       let result = `+${countryCode}`
+
       if (areaCode) result += ` ${areaCode}`
       if (firstPart) result += ` ${firstPart}`
       if (secondPart) result += ` ${secondPart}`
@@ -119,12 +124,16 @@ export default function NewCustomerPage() {
   // Validation helpers
   const validateTaxNumber = (value: string) => {
     const regex = /^\d{8}-\d-\d{2}$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const validateCompanyRegNumber = (value: string) => {
     const regex = /^\d{2}-\d{2}-\d{6}$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const handleInputChange = (field: keyof Customer, value: string | number) => {
@@ -146,6 +155,8 @@ export default function NewCustomerPage() {
     }
     
     setCustomer(prev => ({ ...prev, [field]: processedValue }))
+
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
@@ -172,7 +183,8 @@ export default function NewCustomerPage() {
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
@@ -188,6 +200,7 @@ export default function NewCustomerPage() {
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Új ügyfél sikeresen létrehozva!', {
           position: "top-right",
           autoClose: 3000,
@@ -196,15 +209,18 @@ export default function NewCustomerPage() {
           pauseOnHover: true,
           draggable: true,
         })
-        // Navigate to the new customer's detail page
-        router.push(`/customers/${result.customer.id}`)
+
+        // Invalidate cache and navigate to the new customer's detail page
+        invalidateApiCache('/api/customers')
+        router.push(`/customers/${result.data.id}`)
       } else {
         const errorData = await response.json()
         
         // Handle duplicate email error specifically
         if (response.status === 409 && errorData.message.includes('e-mail')) {
           setErrors({ email: 'Egy ügyfél már létezik ezzel az e-mail címmel' })
-          return
+          
+return
         }
         
         throw new Error(errorData.message || 'Mentés sikertelen')

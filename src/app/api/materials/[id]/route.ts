@@ -1,77 +1,49 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest } from 'next/server'
-import { redisCache } from '@/lib/redis'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseKey)
-
-const CACHE_TTL = 300 // 5 minutes in seconds
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET - Get single material
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: materialId } = await params
-    const cacheKey = `material:${materialId}`
-    console.log(`Fetching material ${materialId} with Redis caching...`)
+    const { id } = await params
 
-    // Try to get from Redis cache first
-    const cachedMaterial = await redisCache.get<any>(cacheKey)
-    if (cachedMaterial) {
-      console.log(`Material ${materialId} served from Redis cache`)
-      return Response.json(cachedMaterial, {
-        headers: {
-          'X-Cache': 'HIT',
-          'X-Cache-Source': 'Redis',
-        },
-      })
-    }
+    console.log(`Fetching material ${id}`)
 
-    console.log(`Redis cache miss for material ${materialId}, fetching from database...`)
-    const startTime = performance.now()
-    
     // Fetch material from materials_with_settings view
     const { data, error } = await supabase
       .from('materials_with_settings')
       .select('*')
-      .eq('id', materialId)
+      .eq('id', id)
       .single()
 
     if (error) {
-      console.error('Error fetching material:', error)
-      return Response.json({ 
-        success: false, 
-        error: error.message 
-      }, { status: 404 })
+      console.error('Supabase error:', error)
+      
+      if (error.code === 'PGRST116' || error.message.includes('No rows found')) {
+        return NextResponse.json({ error: 'Material not found' }, { status: 404 })
+      }
+      
+      return NextResponse.json({ error: 'Failed to fetch material' }, { status: 500 })
     }
 
     if (!data) {
-      return Response.json({ 
-        success: false, 
-        error: 'Material not found' 
-      }, { status: 404 })
+      return NextResponse.json({ error: 'Material not found' }, { status: 404 })
     }
 
     // Fetch brand_id from materials table
     const { data: materialData } = await supabase
       .from('materials')
       .select('brand_id')
-      .eq('id', materialId)
+      .eq('id', id)
       .single()
 
     // Fetch machine code from machine_material_map
     const { data: machineData } = await supabase
       .from('machine_material_map')
       .select('machine_code')
-      .eq('material_id', materialId)
+      .eq('material_id', id)
       .eq('machine_type', 'Korpus')
       .single()
-
-    const endTime = performance.now()
-    const queryTime = endTime - startTime
-    console.log(`Material ${materialId} database query took: ${queryTime.toFixed(2)}ms`)
 
     // Transform the data to match the expected format
     const transformedData = {
@@ -97,37 +69,22 @@ export async function GET(
       updated_at: data.updated_at
     }
 
-    console.log(`Fetched material successfully: ${transformedData.name}`)
+    console.log(`Material fetched successfully: ${transformedData.name}`)
+    return NextResponse.json(transformedData)
 
-    // Cache the result in Redis
-    await redisCache.set(cacheKey, transformedData, CACHE_TTL)
-
-    return Response.json(transformedData, {
-      headers: {
-        'X-Cache': 'MISS',
-        'X-Cache-Source': 'Database',
-        'X-Cache-Time': `${queryTime.toFixed(2)}ms`,
-      },
-    })
   } catch (error) {
-    console.error('Error in GET /api/materials/[id]:', error)
-    return Response.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    }, { status: 500 })
+    console.error('Error fetching material:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// PATCH - Update material
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: materialId } = await params
+    const { id } = await params
     const body = await request.json()
-    
-    console.log(`Updating material ${materialId}, invalidating Redis cache...`)
-    console.log('Update data:', body)
+
+    console.log(`Updating material ${id}:`, body)
     
     // Update the materials table
     const { data: materialData, error: materialError } = await supabase
@@ -143,15 +100,29 @@ export async function PUT(
         brand_id: body.brand_id,
         updated_at: new Date().toISOString()
       })
-      .eq('id', materialId)
+      .eq('id', id)
       .select()
       .single()
 
     if (materialError) {
-      console.error('Error updating materials table:', materialError)
-      return Response.json({ 
-        success: false, 
-        error: materialError.message 
+      console.error('Supabase error:', materialError)
+      
+      // Handle specific error cases
+      if (materialError.code === '23505') {
+        return NextResponse.json(
+          {
+            success: false,
+            message: 'Egy anyag már létezik ezzel a névvel',
+            error: 'Name already exists'
+          },
+          { status: 409 }
+        )
+      }
+      
+      return NextResponse.json({ 
+        error: 'Failed to update material', 
+        details: materialError.message,
+        code: materialError.code
       }, { status: 500 })
     }
 
@@ -159,7 +130,7 @@ export async function PUT(
     const { data: settingsData, error: settingsError } = await supabase
       .from('material_settings')
       .upsert({
-        material_id: materialId,
+        material_id: id,
         kerf_mm: body.kerf_mm,
         trim_top_mm: body.trim_top_mm,
         trim_right_mm: body.trim_right_mm,
@@ -175,10 +146,11 @@ export async function PUT(
       .single()
 
     if (settingsError) {
-      console.error('Error updating material_settings table:', settingsError)
-      return Response.json({ 
-        success: false, 
-        error: settingsError.message 
+      console.error('Supabase error:', settingsError)
+      return NextResponse.json({ 
+        error: 'Failed to update material settings', 
+        details: settingsError.message,
+        code: settingsError.code
       }, { status: 500 })
     }
 
@@ -187,7 +159,7 @@ export async function PUT(
       const { data: machineData, error: machineError } = await supabase
         .from('machine_material_map')
         .upsert({
-          material_id: materialId,
+          material_id: id,
           machine_type: 'Korpus',
           machine_code: body.machine_code,
           created_at: new Date().toISOString()
@@ -198,29 +170,64 @@ export async function PUT(
         .single()
 
       if (machineError) {
-        console.error('Error updating machine_material_map table:', machineError)
-        return Response.json({ 
-          success: false, 
-          error: machineError.message 
+        console.error('Supabase error:', machineError)
+        return NextResponse.json({ 
+          error: 'Failed to update machine mapping', 
+          details: machineError.message,
+          code: machineError.code
         }, { status: 500 })
       }
     }
 
-    // Invalidate cache for this specific material and all materials list
-    await redisCache.del(`material:${materialId}`)
-    await redisCache.delPattern('materials:*')
-
-    console.log(`Material updated successfully and cache invalidated: ${body.name}`)
-    return Response.json({ 
-      success: true, 
+    console.log(`Material updated successfully: ${body.name}`)
+    
+    return NextResponse.json({
+      success: true,
       message: 'Material updated successfully',
       data: { material: materialData, settings: settingsData }
     })
   } catch (error) {
-    console.error('Error in PUT /api/materials/[id]:', error)
-    return Response.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    }, { status: 500 })
+    console.error('Error updating material:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// DELETE - Delete material
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+
+    console.log(`Soft deleting material ${id}`)
+
+    // Try soft delete first
+    let { error } = await supabase
+      .from('materials')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+
+    // If deleted_at column doesn't exist, fall back to hard delete
+    if (error && error.message.includes('column "deleted_at" does not exist')) {
+      console.log('deleted_at column not found, using hard delete...')
+
+      const result = await supabase
+        .from('materials')
+        .delete()
+        .eq('id', id)
+
+      error = result.error
+    }
+
+    if (error) {
+      console.error('Supabase delete error:', error)
+      return NextResponse.json({ error: 'Failed to delete material' }, { status: 500 })
+    }
+
+    console.log(`Material ${id} deleted successfully`)
+    
+    return NextResponse.json({ success: true })
+
+  } catch (error) {
+    console.error('Error deleting material:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

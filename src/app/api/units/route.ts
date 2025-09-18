@@ -1,16 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+// GET - List all units with optional search
 export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching all units...')
-
-    // Single optimized query with all columns
-    const { data: units, error } = await supabase
+    const { searchParams } = new URL(request.url)
+    const searchQuery = searchParams.get('q')
+    
+    console.log('Fetching units...', searchQuery ? `with search: ${searchQuery}` : '')
+    
+    let query = supabase
       .from('units')
-      .select('id, name, shortform, created_at, updated_at, deleted_at')
-      .is('deleted_at', null) // Only fetch active records
-      .order('name', { ascending: true })
+      .select('id, name, shortform, created_at, updated_at')
+      .is('deleted_at', null)
+    
+    // Add search filtering if query parameter exists
+    if (searchQuery) {
+      query = query.or(`name.ilike.%${searchQuery}%,shortform.ilike.%${searchQuery}%`)
+    }
+    
+    const { data: units, error } = await query.order('name', { ascending: true })
 
     if (error) {
       console.error('Supabase error:', error)
@@ -19,18 +29,24 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetched ${units?.length || 0} units successfully`)
     return NextResponse.json(units || [])
-
+    
   } catch (error) {
     console.error('Error fetching units:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
+// POST - Create new unit
 export async function POST(request: NextRequest) {
   try {
     console.log('Creating new unit...')
 
     const unitData = await request.json()
+
+    // Validate required fields
+    if (!unitData.name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
 
     const newUnit = {
       name: unitData.name || '',
@@ -42,7 +58,7 @@ export async function POST(request: NextRequest) {
     const { data: unit, error } = await supabase
       .from('units')
       .insert([newUnit])
-      .select()
+      .select('id, name, shortform, created_at, updated_at')
       .single()
 
     if (error) {
@@ -69,7 +85,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         message: 'Unit created successfully',
-        unit: unit
+        data: unit
       },
       { status: 201 }
     )

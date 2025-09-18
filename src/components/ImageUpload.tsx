@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useState, useRef, useCallback } from 'react'
+
 import { Box, Button, Typography, LinearProgress, Alert, IconButton } from '@mui/material'
 import { CloudUpload, Delete, Image as ImageIcon } from '@mui/icons-material'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 
 interface ImageUploadProps {
   currentImageUrl?: string
@@ -19,23 +20,25 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Create Supabase client with proper authentication
-  const supabase = createClientComponentClient()
+  // Using the shared supabase instance
 
   const handleFileSelect = useCallback(async (file: File) => {
     if (!file) return
 
     // Validate file type
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+
     if (!allowedTypes.includes(file.type)) {
       setError('Csak JPEG, PNG, WebP vagy GIF formátumú képek engedélyezettek.')
-      return
+      
+return
     }
 
     // Validate file size (2MB limit)
     if (file.size > 2 * 1024 * 1024) {
       setError('A kép mérete nem lehet nagyobb 2MB-nál.')
-      return
+      
+return
     }
 
     setError(null)
@@ -45,6 +48,7 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
     try {
       // Check authentication status
       const { data: { user } } = await supabase.auth.getUser()
+
       console.log('Current user:', user?.id)
       
       if (!user) {
@@ -81,6 +85,7 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
       // Clean up old image if it exists
       if (currentImageUrl && currentImageUrl !== publicUrl) {
         const oldPath = currentImageUrl.split('/').pop()
+
         if (oldPath) {
           await supabase.storage
             .from('materials')
@@ -104,6 +109,7 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
     if (disabled) return
     
     const files = Array.from(e.dataTransfer.files)
+
     if (files.length > 0) {
       handleFileSelect(files[0])
     }
@@ -111,6 +117,7 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
+
     if (!disabled) {
       setDragOver(true)
     }
@@ -123,6 +130,7 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
+
     if (files && files.length > 0) {
       handleFileSelect(files[0])
     }
@@ -132,11 +140,13 @@ export default function ImageUpload({ currentImageUrl, onImageChange, materialId
     if (currentImageUrl) {
       try {
         const fileName = currentImageUrl.split('/').pop()
+
         if (fileName) {
           await supabase.storage
             .from('materials')
             .remove([`materials/${fileName}`])
         }
+
         onImageChange(null)
       } catch (err) {
         console.error('Error removing image:', err)

@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, use, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface Unit {
   id: string
@@ -37,16 +40,20 @@ export default function UnitDetailPage({ params }: { params: Promise<{ id: strin
     const loadUnit = async () => {
       try {
         const response = await fetch(`/api/units/${resolvedParams.id}`)
+
         if (response.ok) {
           const unitData = await response.json()
+
           setUnit(unitData)
         } else {
           console.error('Failed to load unit')
+
           // Fallback to initial data if API fails
           setUnit(initialUnit)
         }
       } catch (error) {
         console.error('Error loading unit:', error)
+
         // Fallback to initial data if API fails
         setUnit(initialUnit)
       } finally {
@@ -64,6 +71,8 @@ export default function UnitDetailPage({ params }: { params: Promise<{ id: strin
   const handleInputChange = (field: keyof Unit, value: string) => {
     if (unit) {
       setUnit(prev => prev ? { ...prev, [field]: value } : null)
+
+
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -87,14 +96,15 @@ export default function UnitDetailPage({ params }: { params: Promise<{ id: strin
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
       const response = await fetch(`/api/units/${unit.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -103,6 +113,7 @@ export default function UnitDetailPage({ params }: { params: Promise<{ id: strin
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Egység adatok sikeresen mentve!', {
           position: "top-right",
           autoClose: 3000,
@@ -111,10 +122,15 @@ export default function UnitDetailPage({ params }: { params: Promise<{ id: strin
           pauseOnHover: true,
           draggable: true,
         })
+
         // Update local state with saved data
-        setUnit(result.unit)
+        setUnit(result.data)
+        
+        // Invalidate cache to refresh list page
+        invalidateApiCache('/api/units')
       } else {
         const errorData = await response.json()
+
         throw new Error(errorData.message || 'Mentés sikertelen')
       }
     } catch (error) {

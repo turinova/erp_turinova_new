@@ -1,18 +1,22 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, Checkbox, IconButton, Tooltip } from '@mui/material'
 import { Home as HomeIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+
+import { usePermissions } from '@/permissions/PermissionProvider'
 import { useEdgeMaterials, useDeleteEdgeMaterial } from '@/hooks/useEdgeMaterials'
 
 export default function OptimizedEdgeMaterialsPage() {
   const router = useRouter()
   
   // Check permission for this page
-  const hasAccess = useDatabasePermission('/edge')
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/edge')
   
   // Use optimized hooks with caching
   const { edgeMaterials, isLoading, error, refresh } = useEdgeMaterials()
@@ -27,7 +31,9 @@ export default function OptimizedEdgeMaterialsPage() {
     if (!searchTerm) return edgeMaterials
     
     const term = searchTerm.toLowerCase()
-    return edgeMaterials.filter(material => 
+
+    
+return edgeMaterials.filter(material => 
       material.type.toLowerCase().includes(term) ||
       material.decor.toLowerCase().includes(term) ||
       material.brands.name.toLowerCase().includes(term) ||
@@ -69,6 +75,7 @@ export default function OptimizedEdgeMaterialsPage() {
     try {
       // Delete all selected materials
       const deletePromises = selectedEdgeMaterials.map(id => deleteEdgeMaterial(id))
+
       await Promise.all(deletePromises)
 
       toast.success(`${selectedEdgeMaterials.length} élzáró sikeresen törölve!`, {

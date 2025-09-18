@@ -1,23 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
-// Create server-side Supabase client with service role key
-function createServerClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
-
+// GET - List all edge materials with optional search
 export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching all edge materials...')
+    const { searchParams } = new URL(request.url)
+    const searchQuery = searchParams.get('q')
     
-    const supabase = createServerClient()
-    console.log('Using server-side supabase client')
-
-    // Get edge materials with brand and VAT information
-    const { data: edgeMaterials, error } = await supabase
+    console.log('Fetching edge materials...', searchQuery ? `with search: ${searchQuery}` : '')
+    
+    let query = supabase
       .from('edge_materials')
       .select(`
         id,
@@ -39,31 +32,43 @@ export async function GET(request: NextRequest) {
         )
       `)
       .is('deleted_at', null)
+    
+    // Add search filtering if query parameter exists
+    if (searchQuery) {
+      query = query.or(`type.ilike.%${searchQuery}%,decor.ilike.%${searchQuery}%`)
+    }
+    
+    const { data: edgeMaterials, error } = await query
       .order('type', { ascending: true })
       .order('decor', { ascending: true })
 
     if (error) {
       console.error('Supabase error:', error)
-      console.error('Error details:', JSON.stringify(error, null, 2))
       return NextResponse.json({ error: 'Failed to fetch edge materials' }, { status: 500 })
     }
 
     console.log(`Fetched ${edgeMaterials?.length || 0} edge materials successfully`)
     return NextResponse.json(edgeMaterials || [])
+    
   } catch (error) {
-    console.error('Error in edge materials API:', error)
+    console.error('Error fetching edge materials:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
+// POST - Create new edge material
 export async function POST(request: NextRequest) {
   try {
     console.log('Creating new edge material...')
     
     const body = await request.json()
-    console.log('Request body:', JSON.stringify(body, null, 2))
+
+    // Validate required fields
+    if (!body.type) {
+      return NextResponse.json({ error: 'Type is required' }, { status: 400 })
+    }
     
-    // Prepare data for insertion - exclude nested objects
+    // Prepare data for insertion
     const newEdgeMaterial = {
       brand_id: body.brand_id || '',
       type: body.type || '',
@@ -75,11 +80,6 @@ export async function POST(request: NextRequest) {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
-    
-    console.log('Prepared data for insertion:', JSON.stringify(newEdgeMaterial, null, 2))
-    
-    const supabase = createServerClient()
-    console.log('Using server-side supabase client')
     
     const { data, error } = await supabase
       .from('edge_materials')
@@ -107,7 +107,6 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Supabase error:', error)
-      console.error('Error details:', JSON.stringify(error, null, 2))
       
       // Handle specific error cases
       if (error.code === '23505') {
@@ -129,13 +128,14 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Edge material created successfully:', data)
+    
     return NextResponse.json({
       success: true,
       message: 'Edge material created successfully',
       data: data
     }, { status: 201 })
   } catch (error) {
-    console.error('Error in edge materials POST API:', error)
+    console.error('Error creating edge material:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

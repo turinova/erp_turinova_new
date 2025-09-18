@@ -59,7 +59,8 @@ export async function GET() {
     
   } catch (error) {
     console.error('Error in test-supabase-fixed:', error)
-    return Response.json({ 
+    
+return Response.json({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
     }, { status: 500 })

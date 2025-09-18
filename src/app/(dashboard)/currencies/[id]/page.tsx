@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, use, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface Currency {
   id: string
@@ -37,16 +40,20 @@ export default function CurrencyDetailPage({ params }: { params: Promise<{ id: s
     const loadCurrency = async () => {
       try {
         const response = await fetch(`/api/currencies/${resolvedParams.id}`)
+
         if (response.ok) {
           const currencyData = await response.json()
+
           setCurrency(currencyData)
         } else {
           console.error('Failed to load currency')
+
           // Fallback to initial data if API fails
           setCurrency(initialCurrency)
         }
       } catch (error) {
         console.error('Error loading currency:', error)
+
         // Fallback to initial data if API fails
         setCurrency(initialCurrency)
       } finally {
@@ -64,6 +71,8 @@ export default function CurrencyDetailPage({ params }: { params: Promise<{ id: s
   const handleInputChange = (field: keyof Currency, value: string | number) => {
     if (currency) {
       setCurrency(prev => prev ? { ...prev, [field]: value } : null)
+
+
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -87,14 +96,15 @@ export default function CurrencyDetailPage({ params }: { params: Promise<{ id: s
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
       const response = await fetch(`/api/currencies/${currency.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -103,6 +113,7 @@ export default function CurrencyDetailPage({ params }: { params: Promise<{ id: s
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Pénznem adatok sikeresen mentve!', {
           position: "top-right",
           autoClose: 3000,
@@ -111,10 +122,15 @@ export default function CurrencyDetailPage({ params }: { params: Promise<{ id: s
           pauseOnHover: true,
           draggable: true,
         })
+
         // Update local state with saved data
-        setCurrency(result.currency)
+        setCurrency(result.data)
+        
+        // Invalidate cache to refresh list page
+        invalidateApiCache('/api/currencies')
       } else {
         const errorData = await response.json()
+
         throw new Error(errorData.message || 'Mentés sikertelen')
       }
     } catch (error) {

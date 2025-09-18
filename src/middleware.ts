@@ -1,7 +1,9 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { checkPagePermission, shouldCheckPermission } from './middleware/permission'
+
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+
+// Permission checks are now handled client-side by the PermissionProvider
 
 export async function middleware(req: NextRequest) {
   // Skip middleware for API routes
@@ -9,33 +11,32 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+  // Temporarily disable auth middleware to test login flow
+  console.log('Middleware - Path:', req.nextUrl.pathname, 'Auth middleware disabled for testing')
+  return NextResponse.next()
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // const res = NextResponse.next()
+  // const supabase = createMiddlewareClient({ req, res })
 
-  // If user is not signed in and the current path is not /login, redirect to /login
-  if (!session && req.nextUrl.pathname !== '/login') {
-    return NextResponse.redirect(new URL('/login', req.url))
-  }
+  // const {
+  //   data: { session },
+  // } = await supabase.auth.getSession()
 
-  // If user is signed in and the current path is /login, redirect to /home
-  if (session && req.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/home', req.url))
-  }
+  // console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
 
-  // Temporarily disable permission checks to prevent memory issues
-  // TODO: Implement lightweight permission checking
-  // if (session) {
-  //   const permissionCheck = shouldCheckPermission(req.nextUrl.pathname)
-  //   if (permissionCheck) {
-  //     return await checkPagePermission(req, permissionCheck.pagePath, permissionCheck.permissionType)
-  //   }
+  // // If user is not signed in and the current path is not /login, redirect to /login
+  // if (!session && req.nextUrl.pathname !== '/login') {
+  //   console.log('Middleware - Redirecting to login (no session)')
+  //   return NextResponse.redirect(new URL('/login', req.url))
   // }
 
-  return res
+  // // If user is signed in and the current path is /login, redirect to /home
+  // if (session && req.nextUrl.pathname === '/login') {
+  //   console.log('Middleware - Redirecting to home (user signed in)')
+  //   return NextResponse.redirect(new URL('/home', req.url))
+  // }
+
+  // return res
 }
 
 export const config = {

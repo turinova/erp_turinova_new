@@ -1,6 +1,9 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+
+import { useRouter, useParams } from 'next/navigation'
+
 import { 
   Box, 
   Typography, 
@@ -23,9 +26,10 @@ import {
   InputLabel
 } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material'
-import { useRouter, useParams } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+import { invalidateApiCache } from '@/hooks/useApiCache'
+
+import { usePermissions } from '@/permissions/PermissionProvider'
 import ImageUpload from '@/components/ImageUpload'
 
 interface Material {
@@ -65,7 +69,8 @@ export default function EditMaterialPage() {
   const materialId = params.id as string
   
   // Check permission for this page
-  const hasAccess = useDatabasePermission('/materials')
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/materials')
   
   const [material, setMaterial] = useState<Material | null>(null)
   const [brands, setBrands] = useState<Brand[]>([])
@@ -97,7 +102,7 @@ export default function EditMaterialPage() {
   useEffect(() => {
     const fetchBrands = async () => {
       try {
-        const response = await fetch('/api/brands/optimized')
+        const response = await fetch('/api/brands')
         const data = await response.json()
         
         if (response.ok) {
@@ -119,8 +124,10 @@ export default function EditMaterialPage() {
       try {
         setIsLoading(true)
         const response = await fetch(`/api/materials/${materialId}`)
+
         if (response.ok) {
           const data = await response.json()
+
           setMaterial(data)
           setFormData({
             name: data.name || '',
@@ -166,8 +173,9 @@ export default function EditMaterialPage() {
   const handleSave = async () => {
     try {
       setIsSaving(true)
+
       const response = await fetch(`/api/materials/${materialId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -176,9 +184,14 @@ export default function EditMaterialPage() {
 
       if (response.ok) {
         toast.success('Anyag sikeresen frissítve!')
+        
+        // Invalidate cache to refresh list page
+        invalidateApiCache('/api/materials')
+        
         router.push('/materials')
       } else {
         const errorData = await response.json()
+
         toast.error(errorData.error || 'Hiba történt a mentés során')
       }
     } catch (err) {
@@ -407,7 +420,7 @@ export default function EditMaterialPage() {
                     fullWidth
                     label="Hulladék szorzó"
                     type="number"
-                    step="0.1"
+                    inputProps={{ step: "0.1" }}
                     value={formData.waste_multi}
                     onChange={(e) => handleInputChange('waste_multi', parseFloat(e.target.value) || 1.0)}
                   />

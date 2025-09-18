@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { supabase } from '@/lib/supabase'
 import { optimizedQuery, PerformanceMonitor } from '@/lib/supabase-optimized'
 
@@ -16,11 +18,13 @@ export async function GET(request: NextRequest) {
     
     // Original query
     const originalUnitsStart = performance.now()
+
     const { data: originalUnits } = await supabase
       .from('units')
       .select('id, name, shortform, created_at, updated_at, deleted_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
+
     const originalUnitsTime = performance.now() - originalUnitsStart
 
     // Optimized query
@@ -52,11 +56,13 @@ export async function GET(request: NextRequest) {
     
     // Original query
     const originalCurrenciesStart = performance.now()
+
     const { data: originalCurrencies } = await supabase
       .from('currencies')
       .select('id, name, rate, created_at, updated_at, deleted_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
+
     const originalCurrenciesTime = performance.now() - originalCurrenciesStart
 
     // Optimized query
@@ -88,11 +94,13 @@ export async function GET(request: NextRequest) {
     
     // Original query
     const originalBrandsStart = performance.now()
+
     const { data: originalBrands } = await supabase
       .from('brands')
       .select('id, name, comment, created_at, updated_at, deleted_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
+
     const originalBrandsTime = performance.now() - originalBrandsStart
 
     // Optimized query
@@ -132,10 +140,12 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('Performance test completed:', results.summary)
-    return NextResponse.json(results)
+    
+return NextResponse.json(results)
 
   } catch (error) {
     console.error('Error running performance test:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,11 +1,16 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, CircularProgress, Chip } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+import { useApiCache } from '@/hooks/useApiCache'
+import { invalidateApiCache } from '@/hooks/useApiCache'
+
+import { usePermissions } from '@/permissions/PermissionProvider'
 
 interface Material {
   id: string
@@ -24,116 +29,21 @@ export default function MaterialsPage() {
   const router = useRouter()
   
   // Check permission for this page
-  const hasAccess = useDatabasePermission('/materials')
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/materials')
   
-  const [materials, setMaterials] = useState<Material[]>([])
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
 
-  // Fetch materials from API
-  useEffect(() => {
-    const fetchMaterials = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/materials/optimized')
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success) {
-            setMaterials(result.data)
-          } else {
-            console.error('Failed to fetch materials:', result.error)
-            // Fallback to sample data
-            setMaterials([
-              {
-                id: '1',
-                name: 'U205',
-                length_mm: 2800,
-                width_mm: 2070,
-                thickness_mm: 18,
-                grain_direction: true,
-                on_stock: true,
-                created_at: '2025-09-13T06:00:00Z',
-                updated_at: '2025-09-13T06:00:00Z'
-              },
-              {
-                id: '2',
-                name: 'MDF 18mm',
-                length_mm: 2500,
-                width_mm: 1850,
-                thickness_mm: 18,
-                grain_direction: false,
-                on_stock: false,
-                created_at: '2025-09-13T06:00:00Z',
-                updated_at: '2025-09-13T06:00:00Z'
-              }
-            ])
-          }
-        } else {
-          console.error('Failed to fetch materials')
-          // Fallback to sample data
-          setMaterials([
-            {
-              id: '1',
-              name: 'U205',
-              length_mm: 2800,
-              width_mm: 2070,
-              thickness_mm: 18,
-              grain_direction: true,
-              on_stock: true,
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            },
-            {
-              id: '2',
-              name: 'MDF 18mm',
-              length_mm: 2500,
-              width_mm: 1850,
-              thickness_mm: 18,
-              grain_direction: false,
-              on_stock: false,
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            }
-          ])
-        }
-      } catch (error) {
-        console.error('Failed to fetch materials:', error)
-        // Fallback to sample data
-        setMaterials([
-          {
-            id: '1',
-            name: 'U205',
-            length_mm: 2800,
-            width_mm: 2070,
-            thickness_mm: 18,
-            grain_direction: true,
-            on_stock: true,
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          },
-          {
-            id: '2',
-            name: 'MDF 18mm',
-            length_mm: 2500,
-            width_mm: 1850,
-            thickness_mm: 18,
-            grain_direction: false,
-            on_stock: false,
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          }
-        ])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // Use unified API with caching
+  const { data: materials = [], isLoading, error, refresh } = useApiCache<Material[]>('/api/materials', {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-    fetchMaterials()
-  }, [])
-
-  // Filter materials based on search term
+  // Filter materials based on search term (client-side fallback)
   const filteredMaterials = useMemo(() => {
+    if (!materials || !Array.isArray(materials)) return []
     if (!searchTerm) return materials
     
     const term = searchTerm.toLowerCase()

@@ -1,8 +1,10 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+
 import type { User } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
+
 import type { PermissionMatrix } from '@/types/permission'
 
 interface AuthContextType {
@@ -22,7 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [permissions, setPermissions] = useState<PermissionMatrix[]>([])
   const [permissionsLoading, setPermissionsLoading] = useState(false)
-  const supabase = createClientComponentClient()
+  // Using the shared supabase instance
 
   // Simplified - no complex permission fetching
   const refreshPermissions = async () => {
@@ -30,14 +32,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
+    let mounted = true
+    
     // Get initial session
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
-      setLoading(false)
-      
-      // Don't fetch permissions on initial load for performance
-      // They will be fetched when needed
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+
+        if (mounted) {
+          setUser(session?.user ?? null)
+          setLoading(false)
+        }
+        
+        // Don't fetch permissions on initial load for performance
+        // They will be fetched when needed
+      } catch (error) {
+        console.error('Error getting initial session:', error)
+        if (mounted) {
+          setLoading(false)
+        }
+      }
     }
 
     getInitialSession()
@@ -45,6 +59,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return
+        
+        console.log('Auth state change:', event, session?.user?.email)
+        
         setUser(session?.user ?? null)
         setLoading(false)
         
@@ -57,8 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [supabase.auth])
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const signOut = async () => {
     try {
@@ -86,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       console.error('Error during sign out:', error)
+
       // Still clear local state even if Supabase signOut fails
       setUser(null)
       setPermissions([])
@@ -106,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     
     const permission = permissions.find(p => p.page_path === pagePath)
+
     if (!permission) return false
 
     switch (permissionType) {
@@ -135,8 +158,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
+
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
-  return context
+
+  
+return context
 }

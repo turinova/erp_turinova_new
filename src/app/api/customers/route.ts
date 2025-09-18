@@ -1,209 +1,125 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { randomUUID } from 'crypto'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
-// Create Supabase client for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-// Check if Supabase is configured
-const isSupabaseConfigured = supabaseUrl && supabaseServiceKey
-const supabase = isSupabaseConfigured ? createClient(supabaseUrl, supabaseServiceKey) : null
-
+// GET - List all customers with optional search
 export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching all customers...')
+    const { searchParams } = new URL(request.url)
+    const searchQuery = searchParams.get('q')
     
-    if (!isSupabaseConfigured) {
-      console.log('Supabase not configured, returning sample data...')
-      // Return sample data for development
-      const sampleCustomers = [
-        {
-          id: 'b016c425-ff23-4340-98b6-55148c597b7a',
-          name: 'Mező Dávid',
-          email: 'zsofia.nagy@example.com',
-          mobile: '+36 20 765 1202',
-          discount_percent: 10,
-          billing_name: 'Nagy Zsófia',
-          billing_country: 'Magyarország',
-          billing_city: 'Budapest',
-          billing_postal_code: '1051',
-          billing_street: 'Bajcsy-Zsilinszky út',
-          billing_house_number: '5',
-          billing_tax_number: '23123123-1-23',
-          billing_company_reg_number: '32-13-213123'
-        },
-        {
-          id: 'fcee2e83-beb7-4bc0-b2d1-05b76f1bf681',
-          name: 'Kovács Péter',
-          email: 'peter.kovacs@example.com',
-          mobile: '+36 30 999 2800',
-          discount_percent: 10,
-          billing_name: 'Kovács Kft.',
-          billing_country: 'Hungary',
-          billing_city: 'Kecskemét',
-          billing_postal_code: '6000',
-          billing_street: 'Mindszenti krt.',
-          billing_house_number: '10',
-          billing_tax_number: '12345678-1-02',
-          billing_company_reg_number: '01-09-999999'
-        }
-      ]
-      return NextResponse.json(sampleCustomers, { status: 200 })
-    }
+    console.log('Fetching customers...', searchQuery ? `with search: ${searchQuery}` : '')
     
-    // Try to fetch with all columns including soft delete filter
-    let { data, error } = await supabase!
+    let query = supabase
       .from('customers')
-      .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
+      .select(`
+        id,
+        name,
+        email,
+        mobile,
+        discount_percent,
+        billing_name,
+        billing_country,
+        billing_city,
+        billing_postal_code,
+        billing_street,
+        billing_house_number,
+        billing_tax_number,
+        billing_company_reg_number,
+        created_at,
+        updated_at
+      `)
       .is('deleted_at', null)
-      .order('name')
-
-    // If deleted_at column doesn't exist, try without soft delete filter
-    if (error && error.message.includes('column "deleted_at" does not exist')) {
-      console.log('deleted_at column not found, fetching all customers...')
-      const result = await supabase!
-        .from('customers')
-        .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
-        .order('name')
-      
-      data = result.data
-      error = result.error
-    }
-
-    // If updated_at column doesn't exist, try without it
-    if (error && error.message.includes('column "updated_at" does not exist')) {
-      console.log('updated_at column not found, fetching without it...')
-      const result = await supabase!
-        .from('customers')
-        .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at')
-        .order('name')
-      
-      data = result.data
-      error = result.error
+    
+    // Add search filtering if query parameter exists
+    if (searchQuery) {
+      query = query.or(`name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,mobile.ilike.%${searchQuery}%,billing_name.ilike.%${searchQuery}%`)
     }
     
+    const { data: customers, error } = await query
+      .order('name', { ascending: true })
+
     if (error) {
       console.error('Supabase error:', error)
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Failed to fetch customers from database',
-          error: error.message 
-        },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: 'Failed to fetch customers' }, { status: 500 })
     }
-    
-    console.log(`Fetched ${data?.length || 0} customers successfully`)
-    
-    return NextResponse.json(data || [], { status: 200 })
+
+    console.log(`Fetched ${customers?.length || 0} customers successfully`)
+    return NextResponse.json(customers || [])
     
   } catch (error) {
     console.error('Error fetching customers:', error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to fetch customers',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
+// POST - Create new customer
 export async function POST(request: NextRequest) {
   try {
     console.log('Creating new customer...')
     
-    const customerData = await request.json()
+    const body = await request.json()
+
+    // Validate required fields
+    if (!body.name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
     
-    // Generate a new UUID for the customer
-    const customerId = randomUUID()
-    
-    // Prepare customer data with generated ID and timestamp
+    // Prepare data for insertion
     const newCustomer = {
-      id: customerId,
-      name: customerData.name || '',
-      email: customerData.email || '',
-      mobile: customerData.mobile || '',
-      billing_name: customerData.billing_name || '',
-      billing_country: customerData.billing_country || 'Magyarország',
-      billing_city: customerData.billing_city || '',
-      billing_postal_code: customerData.billing_postal_code || '',
-      billing_street: customerData.billing_street || '',
-      billing_house_number: customerData.billing_house_number || '',
-      billing_tax_number: customerData.billing_tax_number || '',
-      billing_company_reg_number: customerData.billing_company_reg_number || '',
-      discount_percent: customerData.discount_percent || 0,
-      created_at: new Date().toISOString()
+      name: body.name,
+      email: body.email || '',
+      mobile: body.mobile || '',
+      billing_name: body.billing_name || '',
+      billing_country: body.billing_country || 'Magyarország',
+      billing_city: body.billing_city || '',
+      billing_postal_code: body.billing_postal_code || '',
+      billing_street: body.billing_street || '',
+      billing_house_number: body.billing_house_number || '',
+      billing_tax_number: body.billing_tax_number || '',
+      billing_company_reg_number: body.billing_company_reg_number || '',
+      discount_percent: parseFloat(body.discount_percent) || 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
     }
     
-    if (!isSupabaseConfigured) {
-      console.log('Supabase not configured, returning mock created customer...')
-      // Return mock data for development
-      return NextResponse.json(
-        { 
-          success: true, 
-          message: 'Customer created successfully',
-          customer: newCustomer
-        },
-        { status: 201 }
-      )
-    }
-    
-    // Insert customer into Supabase database
-    const { data, error } = await supabase!
+    const { data: customer, error } = await supabase
       .from('customers')
       .insert([newCustomer])
-      .select()
+      .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
       .single()
-    
+
     if (error) {
       console.error('Supabase error:', error)
       
-      // Handle duplicate email error specifically
-      if (error.code === '23505' && error.message.includes('email')) {
+      // Handle specific error cases
+      if (error.code === '23505') {
         return NextResponse.json(
-          { 
-            success: false, 
+          {
+            success: false,
             message: 'Egy ügyfél már létezik ezzel az e-mail címmel',
-            error: 'Email already exists' 
+            error: 'Email already exists'
           },
           { status: 409 }
         )
       }
       
-      return NextResponse.json(
-        { 
-          success: false, 
-          message: 'Failed to create customer in database',
-          error: error.message 
-        },
-        { status: 500 }
-      )
+      return NextResponse.json({ 
+        error: 'Failed to create customer',
+        details: error.message,
+        code: error.code
+      }, { status: 500 })
     }
+
+    console.log('Customer created successfully:', customer)
     
-    console.log('Customer created successfully:', data)
-    
-    return NextResponse.json(
-      { 
-        success: true, 
-        message: 'Customer created successfully',
-        customer: data
-      },
-      { status: 201 }
-    )
-    
+    return NextResponse.json({
+      success: true,
+      message: 'Customer created successfully',
+      data: customer
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating customer:', error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: 'Failed to create customer',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

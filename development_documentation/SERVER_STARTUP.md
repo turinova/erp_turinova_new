@@ -7,6 +7,7 @@ This document provides comprehensive instructions for starting both the Next.js 
 - Node.js (LTS version recommended)
 - pnpm package manager installed
 - PHP 7.4+ with built-in web server
+- Redis server (for caching)
 - All dependencies installed (`pnpm install`)
 
 ## Architecture Overview
@@ -15,7 +16,7 @@ The ERP Turinova project consists of three main components:
 
 1. **Next.js Frontend Server** (Port 3000) - React-based admin interface
 2. **PHP Optimization Service** (Port 8000) - Panel optimization algorithm
-3. **Rust Optimizer Service** (Port 8080) - High-performance optimization engine (optional)
+3. **Redis Cache Server** (Port 6379) - Performance caching
 
 ## Server Startup Instructions
 
@@ -47,29 +48,20 @@ Start the development server:
 pnpm dev
 ```
 
-### 3. Start the Rust Optimizer Service (Optional)
+### 3. Start the Redis Cache Server
 
-In a **third terminal window**, navigate to the optimizer service directory:
-
-```bash
-cd /Volumes/T7/erp_turinova_new/services/optimizer
-```
-
-Build and start the service:
+In a **third terminal window**, navigate to the starter-kit directory and start Redis:
 
 ```bash
-# Option 1: Using make (if available)
-make build
-make run
-
-# Option 2: Direct cargo commands (recommended)
-cargo build --release
-cargo run --release
+cd /Volumes/T7/erp_turinova_new/starter-kit
+./start-redis.sh
 ```
 
 **Expected Output:**
 ```
-2025-09-16T07:48:44.892033Z  INFO optimizer: Optimizer service running on http://0.0.0.0:8080
+🚀 Starting Redis for development...
+✅ Redis server started on port 6379
+✅ Redis is responding to ping
 ```
 
 ### 4. Expected Output
@@ -93,15 +85,17 @@ PHP 8.3.0 Development Server (http://localhost:8000) started
  ✓ Ready in 938ms
 ```
 
-**Rust Optimizer Server (Terminal 3):**
+**Redis Cache Server (Terminal 3):**
 ```
-2025-09-16T07:48:44.892033Z  INFO optimizer: Optimizer service running on http://0.0.0.0:8080
+🚀 Starting Redis for development...
+✅ Redis server started on port 6379
+✅ Redis is responding to ping
 ```
 
 ### 5. Access the Application
 - **Frontend URL**: http://localhost:3000
 - **PHP Optimization Service**: http://localhost:8000
-- **Rust Optimizer Service**: http://localhost:8080
+- **Redis Cache Server**: redis://localhost:6379
 - **Network URL**: http://192.168.3.1:3000
 
 ## API Routes Documentation
@@ -324,6 +318,25 @@ curl -X POST http://localhost:8000/test_optimization.php \
 
 ## Common Issues and Solutions
 
+### Issue: OptiTest Page Freezing / Not Loading ✅ RESOLVED
+**Error Message**: OptiTest page loads but shows loading spinner indefinitely or freezes the entire application
+
+**Solution**: This issue has been resolved by switching to Redis-optimized API endpoints. Follow these steps:
+1. **Verify All Services**: 
+   - Redis: `redis-cli ping` (Expected: PONG)
+   - PHP Service: `curl -I http://localhost:8000/test_optimization.php` (Expected: HTTP/1.1 200 OK)
+   - Next.js: `curl -I http://localhost:3000` (Expected: HTTP/1.1 308 Permanent Redirect)
+2. **Test Redis-Optimized API**: `curl -s "http://localhost:3000/api/materials/optimized" | jq '.success, .cached'`
+3. **Verify Cache Headers**: `curl -I "http://localhost:3000/api/materials/optimized"` (Expected: x-cache: HIT)
+
+**Root Cause**: The page was calling `/api/test-supabase` (no Redis caching) instead of `/api/materials/optimized` (Redis-cached), causing 500ms+ response times and page freezing.
+
+**Resolution**: Switched to Redis-optimized endpoint with 5-minute cache TTL, reducing response times to <100ms for cached requests.
+
+**Performance Improvement**: 80%+ faster page loads with Redis caching.
+
+**Documentation**: See [OPTITEST_FREEZING_ISSUE_RESOLUTION.md](./OPTITEST_FREEZING_ISSUE_RESOLUTION.md) for detailed analysis.
+
 ### Issue: Opti Page Not Loading / Freezing
 **Error Message**: Opti page loads but shows loading spinner indefinitely or freezes
 
@@ -401,26 +414,27 @@ USING (bucket_id = 'materials');
 3. Try accessing http://localhost:3000 directly
 4. Check browser console for CORS errors
 
-### Issue: Rust Optimizer Service Won't Start
-**Error Message**: `make: *** No rule to make target 'run'. Stop.`
+### Issue: Redis Server Won't Start
+**Error Message**: `Redis is not installed`
 
-**Solution**: You're in the wrong directory. Make sure you're in:
+**Solution**: Install Redis on your system:
 ```bash
-cd /Volumes/T7/erp_turinova_new/services/optimizer
+# macOS
+brew install redis
+
+# Ubuntu/Debian
+sudo apt-get install redis-server
+
+# Or use Docker
+docker run -d -p 6379:6379 redis:alpine
 ```
 
-**Alternative Solution**: Use direct cargo commands:
-```bash
-cd /Volumes/T7/erp_turinova_new/services/optimizer
-cargo run --release
-```
-
-### Issue: Rust Service Health Check Fails
+### Issue: Redis Connection Fails
 **Solution**:
-1. Wait a few seconds for the service to fully start
-2. Check the terminal output for error messages
-3. Verify the service is running: `ps aux | grep optimizer`
-4. Check if port 8080 is available: `lsof -i :8080`
+1. Check if Redis is running: `redis-cli ping`
+2. Verify Redis is listening on port 6379: `lsof -i :6379`
+3. Check Redis logs for errors
+4. Restart Redis service if needed
 
 ## Running in Background
 
@@ -434,9 +448,9 @@ cd /Volumes/T7/erp_turinova_new/starter-kit/development_documentation && php -S 
 cd /Volumes/T7/erp_turinova_new/starter-kit && pnpm dev
 ```
 
-### Rust Optimizer Server (Terminal 3)
+### Redis Cache Server (Terminal 3)
 ```bash
-cd /Volumes/T7/erp_turinova_new/services/optimizer && cargo run --release
+cd /Volumes/T7/erp_turinova_new/starter-kit && ./start-redis.sh
 ```
 
 ## Stopping the Servers
@@ -456,6 +470,9 @@ curl -I http://localhost:3000
 
 # Check PHP server
 curl -I http://localhost:8000/test_optimization.php
+
+# Check Redis server
+redis-cli ping
 ```
 
 ### Check running processes:
@@ -465,6 +482,9 @@ ps aux | grep "next dev" | grep -v grep
 
 # Check PHP process
 ps aux | grep "php -S" | grep -v grep
+
+# Check Redis process
+ps aux | grep "redis-server" | grep -v grep
 ```
 
 ### Check port usage:
@@ -474,6 +494,9 @@ lsof -i :3000
 
 # Check port 8000
 lsof -i :8000
+
+# Check port 6379
+lsof -i :6379
 ```
 
 ### Update browserslist (if needed):
@@ -512,16 +535,16 @@ cd /Volumes/T7/erp_turinova_new/starter-kit/development_documentation && php -S 
 cd /Volumes/T7/erp_turinova_new/starter-kit && pnpm dev
 ```
 
-**Terminal 3 (Rust Optimizer Server):**
+**Terminal 3 (Redis Cache Server):**
 ```bash
-cd /Volumes/T7/erp_turinova_new/services/optimizer && cargo run --release
+cd /Volumes/T7/erp_turinova_new/starter-kit && ./start-redis.sh
 ```
 
 ## Development Workflow
 
-1. **Start PHP Server First** - Required for optimization API
-2. **Start Next.js Server** - Frontend interface
-3. **Start Rust Optimizer Server** - High-performance optimization engine (optional)
+1. **Start Redis Server First** - Required for caching and performance
+2. **Start PHP Server** - Required for optimization API
+3. **Start Next.js Server** - Frontend interface
 4. **Access Application** - Navigate to http://localhost:3000/optitest
 5. **Test Optimization** - Use the interface or curl commands
 6. **Monitor Logs** - Check all terminal outputs for errors
@@ -530,7 +553,8 @@ cd /Volumes/T7/erp_turinova_new/services/optimizer && cargo run --release
 
 - **PHP Server**: Lightweight, handles optimization calculations
 - **Next.js Server**: Full-featured React development server with hot reload
-- **Memory Usage**: Both servers are optimized for development
+- **Redis Cache**: Improves performance by caching database queries and API responses
+- **Memory Usage**: All servers are optimized for development
 - **Response Times**: Optimization API typically responds in <100ms for small datasets
 
 ## Security Considerations
@@ -541,6 +565,7 @@ cd /Volumes/T7/erp_turinova_new/services/optimizer && cargo run --release
 - **Production Deployment**: Requires proper security configuration
 
 ---
-**Last Updated**: December 2024
+**Last Updated**: September 2025
 **Project**: ERP Turinova Optimization Service
 **Template Version**: Materialize Next.js Admin Template v5.0.0
+**Services**: Next.js Frontend, PHP Optimization, Redis Cache

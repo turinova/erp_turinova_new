@@ -1,30 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
-// Create server-side Supabase client with service role key
-function createServerClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET - Get single edge material
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    console.log('=== EDGE MATERIAL GET API START ===')
     const { id } = await params
-    console.log('Edge material ID:', id)
-    console.log('ID type:', typeof id)
-    console.log('ID length:', id?.length)
-    
-    const supabase = createServerClient()
-    console.log('Using server-side supabase client')
-    
-    console.log('Querying edge_materials table...')
-    const { data, error } = await supabase
+
+    console.log(`Fetching edge material ${id}`)
+
+    const { data: edgeMaterial, error } = await supabase
       .from('edge_materials')
       .select(`
         id,
@@ -49,70 +34,34 @@ export async function GET(
       .is('deleted_at', null)
       .single()
 
-    console.log('Supabase query completed')
-    console.log('Data:', data)
-    console.log('Error:', error)
-
     if (error) {
-      console.error('=== SUPABASE ERROR DETAILS ===')
-      console.error('Error message:', error.message)
-      console.error('Error code:', error.code)
-      console.error('Error details:', error.details)
-      console.error('Error hint:', error.hint)
-      console.error('Full error object:', JSON.stringify(error, null, 2))
+      console.error('Supabase error:', error)
       
-      // Check if it's a "not found" error vs other database errors
       if (error.code === 'PGRST116' || error.message.includes('No rows found')) {
-        return NextResponse.json({ 
-          error: 'Edge material not found', 
-          details: error.message,
-          code: error.code,
-          hint: error.hint
-        }, { status: 404 })
-      } else {
-        // Other database errors should return 500
-        return NextResponse.json({ 
-          error: 'Database error', 
-          details: error.message,
-          code: error.code,
-          hint: error.hint
-        }, { status: 500 })
+        return NextResponse.json({ error: 'Edge material not found' }, { status: 404 })
       }
+      
+      return NextResponse.json({ error: 'Failed to fetch edge material' }, { status: 500 })
     }
 
-    console.log('=== SUCCESS ===')
-    console.log('Fetched edge material:', JSON.stringify(data, null, 2))
-    return NextResponse.json(data)
+    console.log('Edge material fetched successfully:', edgeMaterial)
+    return NextResponse.json(edgeMaterial)
+
   } catch (error) {
-    console.error('=== CATCH BLOCK ERROR ===')
-    console.error('Error type:', typeof error)
-    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error')
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
-    console.error('Full error:', error)
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    }, { status: 500 })
+    console.error('Error fetching edge material:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// PATCH - Update edge material
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    console.log('=== EDGE MATERIAL PUT API START ===')
     const { id } = await params
-    console.log('Edge material ID:', id)
-    console.log('ID type:', typeof id)
-    
     const body = await request.json()
-    console.log('Request body:', JSON.stringify(body, null, 2))
-    console.log('Body keys:', Object.keys(body))
-    console.log('Body values:', Object.values(body))
+
+    console.log(`Updating edge material ${id}:`, body)
     
-    // Prepare data for update - exclude nested objects and timestamps
+    // Prepare data for update
     const updateData = {
       brand_id: body.brand_id || '',
       type: body.type || '',
@@ -123,13 +72,8 @@ export async function PUT(
       vat_id: body.vat_id || '',
       updated_at: new Date().toISOString()
     }
-    
-    console.log('Prepared update data:', JSON.stringify(updateData, null, 2))
-    const supabase = createServerClient()
-    console.log('Using server-side supabase client')
-    
-    console.log('Updating edge_materials table...')
-    const { data, error } = await supabase
+
+    const { data: edgeMaterial, error } = await supabase
       .from('edge_materials')
       .update(updateData)
       .eq('id', id)
@@ -154,17 +98,8 @@ export async function PUT(
       `)
       .single()
 
-    console.log('Supabase update completed')
-    console.log('Data:', data)
-    console.log('Error:', error)
-
     if (error) {
-      console.error('=== SUPABASE UPDATE ERROR DETAILS ===')
-      console.error('Error message:', error.message)
-      console.error('Error code:', error.code)
-      console.error('Error details:', error.details)
-      console.error('Error hint:', error.hint)
-      console.error('Full error object:', JSON.stringify(error, null, 2))
+      console.error('Supabase error:', error)
       
       // Handle specific error cases
       if (error.code === '23505') {
@@ -181,62 +116,59 @@ export async function PUT(
       return NextResponse.json({ 
         error: 'Failed to update edge material', 
         details: error.message,
-        code: error.code,
-        hint: error.hint
+        code: error.code
       }, { status: 500 })
     }
 
-    console.log('=== UPDATE SUCCESS ===')
-    console.log('Updated edge material:', JSON.stringify(data, null, 2))
+    console.log('Edge material updated successfully:', edgeMaterial)
+    
     return NextResponse.json({
       success: true,
       message: 'Edge material updated successfully',
-      data: data
+      data: edgeMaterial
     })
   } catch (error) {
-    console.error('=== PUT CATCH BLOCK ERROR ===')
-    console.error('Error type:', typeof error)
-    console.error('Error message:', error instanceof Error ? error.message : 'Unknown error')
-    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
-    console.error('Full error:', error)
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    }, { status: 500 })
+    console.error('Error updating edge material:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// DELETE - Delete edge material
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    console.log('Deleting edge material with ID:', id)
-    
-    const supabase = createServerClient()
-    console.log('Using server-side supabase client')
-    
-    // Soft delete by setting deleted_at timestamp
-    const { error } = await supabase
+
+    console.log(`Soft deleting edge material ${id}`)
+
+    // Try soft delete first
+    let { error } = await supabase
       .from('edge_materials')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
 
+    // If deleted_at column doesn't exist, fall back to hard delete
+    if (error && error.message.includes('column "deleted_at" does not exist')) {
+      console.log('deleted_at column not found, using hard delete...')
+
+      const result = await supabase
+        .from('edge_materials')
+        .delete()
+        .eq('id', id)
+
+      error = result.error
+    }
+
     if (error) {
-      console.error('Error deleting edge material:', error)
-      console.error('Error details:', JSON.stringify(error, null, 2))
+      console.error('Supabase delete error:', error)
       return NextResponse.json({ error: 'Failed to delete edge material' }, { status: 500 })
     }
 
-    console.log('Edge material deleted successfully')
-    return NextResponse.json({ 
-      success: true,
-      message: 'Edge material deleted successfully' 
-    })
+    console.log(`Edge material ${id} deleted successfully`)
+    
+    return NextResponse.json({ success: true })
+
   } catch (error) {
-    console.error('Error in edge material DELETE API:', error)
+    console.error('Error deleting edge material:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+
 import { Button, Card, CardContent, Typography, Alert, CircularProgress } from '@mui/material'
 
 export default function SetupPermissionsPage() {

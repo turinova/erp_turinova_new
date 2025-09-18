@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, use, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+
 import { useApiCache, invalidateApiCache } from '../../../../hooks/useApiCache'
 
 interface Customer {
@@ -28,33 +31,22 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   const router = useRouter()
   const resolvedParams = use(params)
   
-  // Sample data - replace with actual API call
-  const initialCustomer: Customer = {
-    id: resolvedParams.id,
-    name: 'Kovács Péter',
-    email: 'peter.kovacs@example.com',
-    mobile: '+36 30 123 4567',
-    billing_name: 'Kovács Kft.',
-    billing_country: 'Hungary',
-    billing_city: 'Kecskemét',
-    billing_postal_code: '6000',
-    billing_street: 'Mindszenti krt.',
-    billing_house_number: '10',
-    billing_tax_number: '12345678-1-02',
-    billing_company_reg_number: '01-09-999999',
-    discount_percent: 5.00,
-    created_at: '2024-01-15T10:30:00Z'
-  }
+  // Fetch actual customer data from API
+  const { data: customer, isLoading, error } = useApiCache<Customer>(`/api/customers/${resolvedParams.id}`, {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-  const [customerData, setCustomerData] = useState<Customer | null>(initialCustomer)
+  const [customerData, setCustomerData] = useState<Customer | null>(null)
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
 
-  // Use cached API data with 5-minute TTL for individual records
-  const { data: customer, isLoading, error, refresh } = useApiCache<Customer>(`/api/customers/${resolvedParams.id}`, {
-    ttl: 5 * 60 * 1000, // 5 minutes cache for individual records
-    staleWhileRevalidate: true
-  })
+  // Update local state when customer data is loaded
+  useEffect(() => {
+    if (customer) {
+      setCustomerData(customer)
+    }
+  }, [customer])
 
   const handleBack = () => {
     router.push('/customers')
@@ -67,6 +59,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     
     // If it starts with 36, keep it as is, otherwise add 36
     let formatted = digits
+
     if (!digits.startsWith('36') && digits.length > 0) {
       formatted = '36' + digits
     }
@@ -79,6 +72,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
       const secondPart = formatted.substring(7, 11)
       
       let result = `+${countryCode}`
+
       if (areaCode) result += ` ${areaCode}`
       if (firstPart) result += ` ${firstPart}`
       if (secondPart) result += ` ${secondPart}`
@@ -128,12 +122,16 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
   // Validation helpers
   const validateTaxNumber = (value: string) => {
     const regex = /^\d{8}-\d-\d{2}$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const validateCompanyRegNumber = (value: string) => {
     const regex = /^\d{2}-\d{2}-\d{6}$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const handleInputChange = (field: keyof Customer, value: string | number) => {
@@ -156,6 +154,8 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
       }
       
       setCustomerData(prev => prev ? { ...prev, [field]: processedValue } : null)
+
+
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -185,14 +185,15 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
       const response = await fetch(`/api/customers/${customerData.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -201,6 +202,7 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Ügyfél adatok sikeresen mentve!', {
           position: "top-right",
           autoClose: 3000,
@@ -210,11 +212,15 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
           draggable: true,
         })
         
+        // Update local state with the response data
+        setCustomerData(result.data)
+        
         // Invalidate cache and refresh data
+        invalidateApiCache('/api/customers')
         invalidateApiCache(`/api/customers/${customerData.id}`)
-        await refresh()
       } else {
         const errorData = await response.json()
+
         throw new Error(errorData.message || 'Mentés sikertelen')
       }
     } catch (error) {
@@ -248,23 +254,14 @@ export default function CustomerDetailPage({ params }: { params: Promise<{ id: s
     )
   }
 
-  if (!customer) {
+  if (!customerData) {
     return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h4" color="error">
-          Ügyfél nem található
-        </Typography>
-        <Button
-          variant="outlined"
-          startIcon={<ArrowBackIcon />}
-          onClick={handleBack}
-          sx={{ mt: 2 }}
-        >
-          Vissza
-        </Button>
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
+        <CircularProgress />
       </Box>
     )
   }
+
 
   return (
     <Box sx={{ p: 3 }}>

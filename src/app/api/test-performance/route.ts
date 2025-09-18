@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
@@ -9,10 +11,12 @@ export async function GET(request: NextRequest) {
     
     // Test 1: Simple query
     const queryStart = Date.now()
+
     const { data, error } = await supabase
       .from('brands')
       .select('id, name')
       .limit(5)
+
     const queryTime = Date.now() - queryStart
     
     if (error) {

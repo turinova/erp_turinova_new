@@ -1,11 +1,16 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+import { useApiCache } from '@/hooks/useApiCache'
+import { invalidateApiCache } from '@/hooks/useApiCache'
+
+import { usePermissions } from '@/permissions/PermissionProvider'
 
 interface EdgeMaterial {
   id: string
@@ -31,55 +36,23 @@ export default function EdgeMaterialsPage() {
   const router = useRouter()
   
   // Check permission for this page
-  const hasAccess = useDatabasePermission('/edge')
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/edge')
   
-  const [edgeMaterials, setEdgeMaterials] = useState<EdgeMaterial[]>([])
   const [selectedEdgeMaterials, setSelectedEdgeMaterials] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Fetch edge materials from API
-  useEffect(() => {
-    const fetchEdgeMaterials = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/edge-materials')
-        if (response.ok) {
-          const data = await response.json()
-          setEdgeMaterials(data)
-        } else {
-          console.error('Failed to fetch edge materials')
-          toast.error('Hiba történt az élzárók betöltése során!', {
-            position: "top-right",
-            autoClose: 3000,
-            hideProgressBar: false,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-          })
-        }
-      } catch (error) {
-        console.error('Failed to fetch edge materials:', error)
-        toast.error('Hiba történt az élzárók betöltése során!', {
-          position: "top-right",
-          autoClose: 3000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // Use unified API with caching
+  const { data: edgeMaterials = [], isLoading, error, refresh } = useApiCache<EdgeMaterial[]>('/api/edge-materials', {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-    fetchEdgeMaterials()
-  }, [])
-
-  // Filter edge materials based on search term
+  // Filter edge materials based on search term (client-side fallback)
   const filteredEdgeMaterials = useMemo(() => {
+    if (!edgeMaterials || !Array.isArray(edgeMaterials)) return []
     if (!searchTerm) return edgeMaterials
     
     const term = searchTerm.toLowerCase()
@@ -130,8 +103,10 @@ export default function EdgeMaterialsPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 
@@ -167,8 +142,9 @@ export default function EdgeMaterialsPage() {
           draggable: true,
         })
         
-        // Remove deleted edge materials from local state
-        setEdgeMaterials(prev => prev.filter(material => !selectedEdgeMaterials.includes(material.id)))
+        // Invalidate cache and refresh data
+        invalidateApiCache('/api/edge-materials')
+        await refresh()
         setSelectedEdgeMaterials([])
       } else {
         // Some deletions failed

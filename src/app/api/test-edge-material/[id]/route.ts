@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
 
 // Create server-side Supabase client with service role key
@@ -15,10 +17,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+
     console.log('=== TESTING EDGE MATERIAL EXISTENCE ===')
     console.log('Testing ID:', id)
     
     const supabase = createServerClient()
+
     console.log('Using server-side supabase client')
     
     // First, check if the record exists at all (including deleted ones)
@@ -56,7 +60,8 @@ export async function GET(
     })
   } catch (error) {
     console.error('Test error:', error)
-    return NextResponse.json({ 
+    
+return NextResponse.json({ 
       error: 'Test failed',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })

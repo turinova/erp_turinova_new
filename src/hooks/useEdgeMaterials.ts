@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+
 import { useApiCache } from './useApiCache'
 
 interface EdgeMaterial {
@@ -136,20 +137,24 @@ export function useCreateEdgeMaterial() {
 
       if (response.ok) {
         const result = await response.json()
+
         console.log('Create response:', result)
         
         // Invalidate cache to force refresh
         const { invalidateApiCache } = await import('./useApiCache')
+
         invalidateApiCache('/api/edge-materials/optimized')
         
         return result
       } else {
         const errorData = await response.json()
+
         console.error('Create error response:', errorData)
         throw new Error(errorData.message || 'Létrehozás sikertelen')
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
       setError(errorMessage)
       throw err
     } finally {
@@ -184,21 +189,25 @@ export function useUpdateEdgeMaterial() {
 
       if (response.ok) {
         const result = await response.json()
+
         console.log('Update response:', result)
         
         // Invalidate caches to force refresh
         const { invalidateApiCache } = await import('./useApiCache')
+
         invalidateApiCache(`/api/edge-materials/${id}/optimized`)
         invalidateApiCache('/api/edge-materials/optimized')
         
         return result
       } else {
         const errorData = await response.json()
+
         console.error('Update error response:', errorData)
         throw new Error(errorData.message || 'Mentés sikertelen')
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
       setError(errorMessage)
       throw err
     } finally {
@@ -229,21 +238,25 @@ export function useDeleteEdgeMaterial() {
 
       if (response.ok) {
         const result = await response.json()
+
         console.log('Delete response:', result)
         
         // Invalidate caches to force refresh
         const { invalidateApiCache } = await import('./useApiCache')
+
         invalidateApiCache(`/api/edge-materials/${id}/optimized`)
         invalidateApiCache('/api/edge-materials/optimized')
         
         return result
       } else {
         const errorData = await response.json()
+
         console.error('Delete error response:', errorData)
         throw new Error(errorData.message || 'Törlés sikertelen')
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
       setError(errorMessage)
       throw err
     } finally {

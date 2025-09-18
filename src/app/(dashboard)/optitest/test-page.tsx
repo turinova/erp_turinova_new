@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+
 import { Button, Box, Typography } from '@mui/material'
 
 export default function TestPage() {
@@ -48,6 +49,7 @@ export default function TestPage() {
       }
 
       const data = await response.json()
+
       setResult(`Success! Placed ${data.placements.length} panels`)
       console.log('Optimization result:', data)
     } catch (error) {

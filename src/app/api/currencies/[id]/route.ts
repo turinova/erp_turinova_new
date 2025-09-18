@@ -1,15 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { supabase } from '@/lib/supabase'
 
+// GET - Get single currency
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+
     console.log(`Fetching currency ${id}`)
 
     const { data: currency, error } = await supabase
       .from('currencies')
-      .select('*')
+      .select('id, name, rate, created_at, updated_at')
       .eq('id', id)
+      .is('deleted_at', null)
       .single()
 
     if (error) {
@@ -30,7 +35,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// PATCH - Update currency
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const currencyData = await request.json()
@@ -45,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .select()
+      .select('id, name, rate, created_at, updated_at')
       .single()
 
     if (error) {
@@ -67,10 +73,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     console.log('Currency updated successfully:', currency)
+    
     return NextResponse.json({
       success: true,
       message: 'Currency updated successfully',
-      currency: currency
+      data: currency
     })
 
   } catch (error) {
@@ -79,9 +86,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+// DELETE - Delete currency
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+
     console.log(`Soft deleting currency ${id}`)
 
     // Try soft delete first
@@ -93,6 +102,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     // If deleted_at column doesn't exist, fall back to hard delete
     if (error && error.message.includes('column "deleted_at" does not exist')) {
       console.log('deleted_at column not found, using hard delete...')
+
       const result = await supabase
         .from('currencies')
         .delete()
@@ -107,6 +117,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     }
 
     console.log(`Currency ${id} deleted successfully`)
+    
     return NextResponse.json({ success: true })
 
   } catch (error) {

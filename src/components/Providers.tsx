@@ -1,15 +1,16 @@
 // Type Imports
+import { ToastContainer } from 'react-toastify'
+
 import type { ChildrenType, Direction } from '@core/types'
 
 // Context Imports
 import { VerticalNavProvider } from '@menu/contexts/verticalNavContext'
 import { SettingsProvider } from '@core/contexts/settingsContext'
 import { AuthProvider } from '../contexts/AuthContext'
-import { PermissionProvider } from '../contexts/PermissionContext'
+import { PermissionProvider } from '../permissions/PermissionProvider'
 import ThemeProvider from '@components/theme'
 
 // Third-party Imports
-import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 
 // Util Imports

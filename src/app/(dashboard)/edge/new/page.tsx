@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface EdgeMaterial {
   id: string
@@ -61,15 +64,19 @@ export default function NewEdgeMaterialPage() {
         
         // Load brands for dropdown
         const brandsResponse = await fetch('/api/brands')
+
         if (brandsResponse.ok) {
           const brandsData = await brandsResponse.json()
+
           setBrands(brandsData)
         }
         
         // Load VAT rates for dropdown
         const vatResponse = await fetch('/api/vat')
+
         if (vatResponse.ok) {
           const vatData = await vatResponse.json()
+
           setVatRates(vatData)
         }
         
@@ -97,6 +104,8 @@ export default function NewEdgeMaterialPage() {
 
   const handleInputChange = (field: keyof EdgeMaterial, value: string | number) => {
     setEdgeMaterial(prev => ({ ...prev, [field]: value }))
+
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
@@ -137,13 +146,15 @@ export default function NewEdgeMaterialPage() {
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
       console.log('Sending edge material data:', JSON.stringify(edgeMaterial, null, 2))
+
       const response = await fetch('/api/edge-materials', {
         method: 'POST',
         headers: {
@@ -157,6 +168,7 @@ export default function NewEdgeMaterialPage() {
       
       if (response.ok) {
         const result = await response.json()
+
         console.log('Create response:', result)
         toast.success('Új élzáró sikeresen létrehozva!', {
           position: "top-right",
@@ -166,9 +178,14 @@ export default function NewEdgeMaterialPage() {
           pauseOnHover: true,
           draggable: true,
         })
+        
+        // Invalidate cache to refresh list page
+        invalidateApiCache('/api/edge-materials')
+        
         router.push('/edge')
       } else {
         const errorData = await response.json()
+
         console.error('Create error response:', errorData)
         throw new Error(errorData.message || 'Létrehozás sikertelen')
       }

@@ -15,7 +15,7 @@ import { GenerateVerticalMenu } from '@components/GenerateMenu'
 import verticalMenuData from '@/data/navigation/verticalMenuData'
 
 // Hook Imports
-import { useDatabaseNavigation } from '@/hooks/useFastNavigation'
+import { useNavigation } from '@/hooks/useNavigation'
 
 // Hook Imports
 import useVerticalNav from '@menu/hooks/useVerticalNav'
@@ -46,7 +46,7 @@ const VerticalMenu = ({ scrollMenu }: Props) => {
   // Hooks
   const theme = useTheme()
   const verticalNavOptions = useVerticalNav()
-  const permissionAwareMenuData = useDatabaseNavigation()
+  const permissionAwareMenuData = useNavigation()
 
   // Vars
   const { isBreakpointReached, transitionDuration } = verticalNavOptions

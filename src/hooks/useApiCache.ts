@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect, useCallback } from 'react'
 
 interface CacheEntry<T> {
@@ -34,7 +36,8 @@ export function useApiCache<T>(
       setData(cachedEntry.data)
       setIsLoading(false)
       setError(null)
-      return cachedEntry.data
+      
+return cachedEntry.data
     }
 
     // If we have stale data and staleWhileRevalidate is enabled, return it immediately
@@ -48,6 +51,7 @@ export function useApiCache<T>(
 
     try {
       const response = await fetch(endpoint)
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
@@ -64,9 +68,11 @@ export function useApiCache<T>(
       setData(freshData)
       setIsLoading(false)
       setError(null)
-      return freshData
+      
+return freshData
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
       setError(errorMessage)
       setIsLoading(false)
       

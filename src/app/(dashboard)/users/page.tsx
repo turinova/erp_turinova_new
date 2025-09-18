@@ -1,14 +1,16 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Select, MenuItem, FormControl, InputLabel, Chip, Tabs, Tab, Switch, FormControlLabel } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Security as SecurityIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+
 import type { User, CreateUserRequest, UpdateUserRequest, UserFilters } from '@/types/user'
 import type { Page, PermissionMatrix, UpdateUserPermissionsRequest } from '@/types/permission'
-import { useLightweightPermissions } from '@/hooks/useLightweightPermissions'
-import { PermissionGuard } from '@/components/PermissionGuard'
+import { usePagePermission } from '@/hooks/usePagePermission'
 
 export default function UsersPage() {
   const router = useRouter()
@@ -21,6 +23,7 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+
   const [formData, setFormData] = useState<CreateUserRequest>({
     email: '',
     password: '',
@@ -33,8 +36,16 @@ export default function UsersPage() {
   const [savingPermissions, setSavingPermissions] = useState(false)
   const [userPermissions, setUserPermissions] = useState<{[key: string]: boolean}>({})
   
-  // Use lightweight permissions hook
-  const { isAdmin, canAccessPage } = useLightweightPermissions()
+  // Use optimized permission hook
+  const { hasAccess, loading: permissionsLoading } = usePagePermission('/users')
+
+  // Handle redirect if no access - moved to useEffect to avoid setState during render
+  useEffect(() => {
+    // Only redirect if permissions are loaded and user doesn't have access
+    if (!permissionsLoading && !hasAccess) {
+      router.push('/403')
+    }
+  }, [hasAccess, permissionsLoading, router])
 
   // Fetch users
   const fetchUsers = async () => {
@@ -59,53 +70,57 @@ export default function UsersPage() {
     fetchUsers()
   }, [])
 
-  // Available pages for permission management - ALL pages in the system
+  // Available pages for permission management - matches the actual navigation structure
   const availablePages = [
-    { path: '/home', name: 'Főoldal' },
-    { path: '/company', name: 'Cégadatok' },
-    { path: '/customers', name: 'Ügyfelek' },
-    { path: '/vat', name: 'Adónemek' },
-    { path: '/brands', name: 'Márkák' },
-    { path: '/currencies', name: 'Pénznemek' },
-    { path: '/units', name: 'Mértékegységek' },
-    { path: '/materials', name: 'Táblás anyagok' },
-    { path: '/szalas-anyagok', name: 'Szálas anyagok' },
-    { path: '/edge', name: 'Elzárók' },
-    { path: '/opti', name: 'Optimalizáló' },
-    { path: '/opti-beallitasok', name: 'Opti beállítások' },
-    { path: '/users', name: 'Felhasználók' },
-    { path: '/test-toast', name: 'Toast teszt' }
+    { path: '/home', name: 'Főoldal', category: 'Főoldal' },
+    { path: '/opti', name: 'Opti', category: 'Optimalizáló' },
+    { path: '/customers', name: 'Ügyfelek', category: 'Törzsadatok' },
+    { path: '/brands', name: 'Gyártók', category: 'Törzsadatok' },
+    { path: '/vat', name: 'Adónem', category: 'Törzsadatok' },
+    { path: '/currencies', name: 'Pénznem', category: 'Törzsadatok' },
+    { path: '/units', name: 'Egységek', category: 'Törzsadatok' },
+    { path: '/materials', name: 'Táblás anyagok', category: 'Törzsadatok' },
+    { path: '/szalas-anyagok', name: 'Szálas anyagok', category: 'Törzsadatok' },
+    { path: '/edge', name: 'Élzárók', category: 'Törzsadatok' },
+    { path: '/company', name: 'Cégadatok', category: 'Beállítások' },
+    { path: '/users', name: 'Felhasználók', category: 'Beállítások' },
+    { path: '/opti-beallitasok', name: 'Opti beállítások', category: 'Beállítások' }
   ]
 
-  // Permission save function
+  // Permission save function - now actually saves to database
   const saveUserPermissions = async () => {
     if (!selectedUserForPermissions) return
 
     try {
       setSavingPermissions(true)
       
-      // Prepare permissions data for API
+      // Prepare permissions data
       const permissionsData = availablePages.map(page => ({
-        page_path: page.path,
-        can_access: userPermissions[page.path] || false
+        path: page.path,
+        can_view: userPermissions[page.path] || false,
+        can_edit: userPermissions[page.path] || false,
+        can_delete: false // For now, only allow view permissions
       }))
 
-      // Call the API to save permissions
-      const response = await fetch(`/api/permissions/simple/user/${selectedUserForPermissions.id}`, {
+      const response = await fetch(`/api/permissions/user/${selectedUserForPermissions.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ permissions: permissionsData }),
+        body: JSON.stringify({
+          permissions: permissionsData
+        })
       })
 
-      if (!response.ok) {
-        throw new Error('Failed to save permissions')
-      }
+      const result = await response.json()
 
-      toast.success('Jogosultságok sikeresen mentve!')
-      setPermissionsDialogOpen(false)
-      setSelectedUserForPermissions(null)
+      if (response.ok) {
+        toast.success(`Jogosultságok sikeresen mentve! (${result.updatedPermissions} oldal)`)
+        setPermissionsDialogOpen(false)
+        setSelectedUserForPermissions(null)
+      } else {
+        toast.error(result.error || 'Hiba a jogosultságok mentése során')
+      }
     } catch (error) {
       console.error('Error saving permissions:', error)
       toast.error('Hiba a jogosultságok mentése során')
@@ -123,34 +138,43 @@ export default function UsersPage() {
   }
 
 
-  // Open permissions dialog - load individual permissions
+  // Open permissions dialog - now fetches actual permissions
   const handleOpenPermissions = async (user: User) => {
     setSelectedUserForPermissions(user)
+    setPermissionsDialogOpen(true)
     
     try {
-      // Fetch user's actual permissions from the API
-      const response = await fetch(`/api/permissions/simple/user/${user.id}`)
-      const data = await response.json()
+      // Fetch current permissions for this user
+      const response = await fetch(`/api/permissions/user/${user.id}`)
+      const result = await response.json()
       
-      // Initialize userPermissions based on actual permissions or default to true
-      const initialPermissions: {[key: string]: boolean} = {}
-      availablePages.forEach(page => {
-        // Find if user has permission for this page
-        const userPermission = data.permissions?.find((p: any) => p.page_path === page.path)
-        initialPermissions[page.path] = userPermission?.can_access ?? true // Default to true if no permission found
-      })
-      setUserPermissions(initialPermissions)
+      if (response.ok) {
+        // Initialize permissions based on current user permissions
+        const initialPermissions: {[key: string]: boolean} = {}
+        availablePages.forEach(page => {
+          // Check if user has access to this page
+          initialPermissions[page.path] = result.paths?.includes(page.path) || false
+        })
+        setUserPermissions(initialPermissions)
+      } else {
+        // If error, initialize all to false
+        const initialPermissions: {[key: string]: boolean} = {}
+        availablePages.forEach(page => {
+          initialPermissions[page.path] = false
+        })
+        setUserPermissions(initialPermissions)
+        toast.error('Hiba a jogosultságok betöltése során')
+      }
     } catch (error) {
-      console.error('Error fetching user permissions:', error)
-      // Fallback: default all to true
+      console.error('Error fetching permissions:', error)
+      // Initialize all to false on error
       const initialPermissions: {[key: string]: boolean} = {}
       availablePages.forEach(page => {
-        initialPermissions[page.path] = true 
+        initialPermissions[page.path] = false
       })
       setUserPermissions(initialPermissions)
+      toast.error('Hiba a jogosultságok betöltése során')
     }
-    
-    setPermissionsDialogOpen(true)
   }
 
   // Filter users based on search term
@@ -159,6 +183,7 @@ export default function UsersPage() {
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
+
       filtered = filtered.filter(user => 
         user.email.toLowerCase().includes(term) ||
         (user.full_name && user.full_name.toLowerCase().includes(term))
@@ -191,6 +216,7 @@ export default function UsersPage() {
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     try {
       const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users'
       const method = editingUser ? 'PUT' : 'POST'
@@ -243,8 +269,10 @@ export default function UsersPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 
@@ -326,6 +354,31 @@ export default function UsersPage() {
     })
   }
 
+  // Show loading while permissions are being checked
+  if (permissionsLoading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <CircularProgress sx={{ mb: 2 }} />
+          <Typography variant="h6">
+            Loading permissions...
+          </Typography>
+        </Box>
+      </Box>
+    )
+  }
+
+  // Show loading or no access message while checking permissions
+  if (!hasAccess) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h6" color="error">
+          Access Denied - Redirecting...
+        </Typography>
+      </Box>
+    )
+  }
+
   if (isLoading) {
     return (
       <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -336,7 +389,6 @@ export default function UsersPage() {
   }
 
   return (
-    <PermissionGuard requiredPage="/users">
       <Box sx={{ p: 3 }}>
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
         <Link
@@ -559,7 +611,7 @@ export default function UsersPage() {
                 Jogosultságok kezelése
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {selectedUserForPermissions?.email} - Oldal hozzáférés beállítása
+                {selectedUserForPermissions?.email} ({selectedUserForPermissions?.role}) - Oldal hozzáférés beállítása
               </Typography>
             </Box>
           </Box>
@@ -575,43 +627,86 @@ export default function UsersPage() {
               </Box>
             ) : (
               <>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Válassza ki, hogy mely oldalakhoz férhet hozzá ez a felhasználó:
-                </Typography>
-                
-                {/* Simple List of Pages */}
-                <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
-                  {availablePages.map((page) => (
-                    <Box 
-                      key={page.path} 
-                      sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between',
-                        py: 1.5,
-                        px: 1,
-                        borderBottom: 1,
-                        borderColor: 'grey.200',
-                        '&:hover': {
-                          bgcolor: 'grey.50'
-                        }
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Válassza ki, hogy mely oldalakhoz férhet hozzá ez a felhasználó:
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        const allPermissions: {[key: string]: boolean} = {}
+                        availablePages.forEach(page => {
+                          allPermissions[page.path] = true
+                        })
+                        setUserPermissions(allPermissions)
                       }}
                     >
-                      <Box>
-                        <Typography variant="body1" fontWeight="medium">
-                          {page.name}
+                      Minden engedélyezése
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        const noPermissions: {[key: string]: boolean} = {}
+                        availablePages.forEach(page => {
+                          noPermissions[page.path] = false
+                        })
+                        setUserPermissions(noPermissions)
+                      }}
+                    >
+                      Minden megtagadása
+                    </Button>
+                  </Box>
+                </Box>
+                
+                {/* Grouped List of Pages */}
+                <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+                  {['Főoldal', 'Optimalizáló', 'Törzsadatok', 'Beállítások'].map((category) => {
+                    const categoryPages = availablePages.filter(page => page.category === category)
+                    if (categoryPages.length === 0) return null
+                    
+                    return (
+                      <Box key={category} sx={{ mb: 3 }}>
+                        <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'primary.main' }}>
+                          {category}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {page.path}
-                        </Typography>
+                        {categoryPages.map((page) => (
+                          <Box 
+                            key={page.path} 
+                            sx={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'space-between',
+                              py: 1.5,
+                              px: 2,
+                              ml: 1,
+                              borderBottom: 1,
+                              borderColor: 'grey.200',
+                              '&:hover': {
+                                bgcolor: 'grey.50'
+                              }
+                            }}
+                          >
+                            <Box>
+                              <Typography variant="body1" fontWeight="medium">
+                                {page.name}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {page.path}
+                              </Typography>
+                            </Box>
+                            <Switch
+                              checked={userPermissions[page.path] || false}
+                              onChange={() => togglePermission(page.path)}
+                              color="primary"
+                            />
+                          </Box>
+                        ))}
                       </Box>
-                      <Switch
-                        checked={userPermissions[page.path] || false}
-                        onChange={() => togglePermission(page.path)}
-                        color="primary"
-                      />
-                    </Box>
-                  ))}
+                    )
+                  })}
                 </Box>
               </>
             )}
@@ -678,6 +773,5 @@ export default function UsersPage() {
         </DialogActions>
       </Dialog>
       </Box>
-    </PermissionGuard>
   )
 }

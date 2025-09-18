@@ -1,39 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { supabase } from '@/lib/supabase'
-import { redisCache } from '@/lib/redis'
 
-const CACHE_TTL = 300 // 5 minutes in seconds
-
+// GET - Get single unit
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const cacheKey = `unit:${id}`
-    console.log(`Fetching unit ${id} with Redis caching...`)
 
-    // Try to get from Redis cache first
-    const cachedUnit = await redisCache.get<any>(cacheKey)
-    if (cachedUnit) {
-      console.log(`Unit ${id} served from Redis cache`)
-      return NextResponse.json(cachedUnit, {
-        headers: {
-          'X-Cache': 'HIT',
-          'X-Cache-Source': 'Redis',
-        },
-      })
-    }
-
-    console.log(`Redis cache miss for unit ${id}, fetching from database...`)
-    const startTime = performance.now()
+    console.log(`Fetching unit ${id}`)
 
     const { data: unit, error } = await supabase
       .from('units')
-      .select('id, name, shortform, created_at, updated_at, deleted_at')
+      .select('id, name, shortform, created_at, updated_at')
       .eq('id', id)
+      .is('deleted_at', null)
       .single()
-
-    const endTime = performance.now()
-    const queryTime = endTime - startTime
-    console.log(`Unit ${id} database query took: ${queryTime.toFixed(2)}ms`)
 
     if (error) {
       console.error('Supabase error:', error)
@@ -45,29 +27,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     console.log('Unit fetched successfully:', unit)
-
-    // Cache the result in Redis
-    await redisCache.set(cacheKey, unit, CACHE_TTL)
-
-    return NextResponse.json(unit, {
-      headers: {
-        'X-Cache': 'MISS',
-        'X-Cache-Source': 'Database',
-        'X-Cache-Time': `${queryTime.toFixed(2)}ms`,
-      },
-    })
+    return NextResponse.json(unit)
 
   } catch (error) {
-    console.error('Error fetching unit with Redis caching:', error)
+    console.error('Error fetching unit:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// PATCH - Update unit
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    console.log(`Updating unit ${id}, invalidating Redis cache...`)
     const unitData = await request.json()
+
+    console.log(`Updating unit ${id}:`, unitData)
 
     const { data: unit, error } = await supabase
       .from('units')
@@ -77,7 +51,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .select()
+      .select('id, name, shortform, created_at, updated_at')
       .single()
 
     if (error) {
@@ -98,15 +72,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Failed to update unit' }, { status: 500 })
     }
 
-    // Invalidate cache for this specific unit and all units list
-    await redisCache.del(`unit:${id}`)
-    await redisCache.delPattern('units:*')
-
-    console.log('Unit updated successfully and cache invalidated:', unit)
+    console.log('Unit updated successfully:', unit)
+    
     return NextResponse.json({
       success: true,
       message: 'Unit updated successfully',
-      unit: unit
+      data: unit
     })
 
   } catch (error) {
@@ -115,10 +86,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
+// DELETE - Delete unit
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    console.log(`Soft deleting unit ${id}, invalidating Redis cache...`)
+
+    console.log(`Soft deleting unit ${id}`)
 
     // Try soft delete first
     let { error } = await supabase
@@ -129,6 +102,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     // If deleted_at column doesn't exist, fall back to hard delete
     if (error && error.message.includes('column "deleted_at" does not exist')) {
       console.log('deleted_at column not found, using hard delete...')
+
       const result = await supabase
         .from('units')
         .delete()
@@ -142,11 +116,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Failed to delete unit' }, { status: 500 })
     }
 
-    // Invalidate cache for this specific unit and all units list
-    await redisCache.del(`unit:${id}`)
-    await redisCache.delPattern('units:*')
-
-    console.log(`Unit ${id} deleted successfully and cache invalidated`)
+    console.log(`Unit ${id} deleted successfully`)
+    
     return NextResponse.json({ success: true })
 
   } catch (error) {

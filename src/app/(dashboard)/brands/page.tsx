@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+
 import { useApiCache, invalidateApiCache } from '../../../hooks/useApiCache'
 
 interface Brand {
@@ -24,18 +27,20 @@ export default function GyartokPage() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Use cached API data with 2-minute TTL
-  const { data: brands = [], isLoading, error, refresh } = useApiCache<Brand[]>('/api/brands/optimized', {
+  const { data: brands = [], isLoading, error, refresh } = useApiCache<Brand[]>('/api/brands', {
     ttl: 2 * 60 * 1000, // 2 minutes cache
     staleWhileRevalidate: true
   })
 
-  // Filter brands based on search term
+  // Filter brands based on search term (client-side fallback)
   const filteredBrands = useMemo(() => {
     if (!brands || !Array.isArray(brands)) return []
     if (!searchTerm) return brands
     
     const term = searchTerm.toLowerCase()
-    return brands.filter(brand => 
+
+    
+return brands.filter(brand => 
       brand.name.toLowerCase().includes(term) ||
       (brand.comment && brand.comment.toLowerCase().includes(term))
     )
@@ -78,8 +83,10 @@ export default function GyartokPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 

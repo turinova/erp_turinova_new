@@ -49,6 +49,10 @@ import 'react-toastify/dist/ReactToastify.css'
 import type { AccordionSummaryProps } from '@mui/material/AccordionSummary'
 import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 
+// Components
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { useApiCache } from '@/hooks/useApiCache'
+
 // Styled component for Accordion component
 const Accordion = styled(MuiAccordion)<AccordionProps>(({ theme }) => ({
   boxShadow: 'none !important',
@@ -120,19 +124,30 @@ interface Customer {
   email: string
   mobile: string
   discount_percent: number
+  billing_name: string
+  billing_country: string
+  billing_city: string
+  billing_postal_code: string
+  billing_street: string
+  billing_house_number: string
+  billing_tax_number: string
+  billing_company_reg_number: string
+  created_at: string
+  updated_at: string
 }
 
 interface Panel {
   id: string
-  material: Material
-  length: number
-  width: number
-  quantity: number
-  marking: string
-  edgeTop: string
-  edgeRight: string
-  edgeBottom: string
-  edgeLeft: string
+  táblásAnyag: string
+  hosszúság: string
+  szélesség: string
+  darab: string
+  jelölés: string
+  élzárás: string
+  élzárásA: string
+  élzárásB: string
+  élzárásC: string
+  élzárásD: string
 }
 
 interface Placement {
@@ -206,9 +221,41 @@ interface EdgeMaterial {
 
 
 export default function OptiPage() {
+  // Use unified API with caching
+  const { data: materialsData, isLoading: materialsLoading, error: materialsError } = useApiCache<Material[]>('/api/materials', {
+    ttl: 5 * 60 * 1000, // 5 minutes cache
+    staleWhileRevalidate: true
+  })
+  
+  const { data: customersData, isLoading: customersLoading, error: customersError } = useApiCache<Customer[]>('/api/customers', {
+    ttl: 5 * 60 * 1000, // 5 minutes cache
+    staleWhileRevalidate: true
+  })
+  
+  const { data: edgeMaterialsData, isLoading: edgeMaterialsLoading, error: edgeMaterialsError } = useApiCache<EdgeMaterial[]>('/api/edge-materials', {
+    ttl: 5 * 60 * 1000, // 5 minutes cache
+    staleWhileRevalidate: true
+  })
+
+  // Ensure arrays are never null
+  const materials = materialsData || []
+  const customers = customersData || []
+  const edgeMaterials = edgeMaterialsData || []
+
+  // Debug logging
+  console.log('🔍 Opti Page Data Status:', {
+    materialsCount: materials.length,
+    customersCount: customers.length,
+    edgeMaterialsCount: edgeMaterials.length,
+    materialsLoading,
+    customersLoading,
+    edgeMaterialsLoading,
+    materialsError: materialsError ? 'Error' : 'OK',
+    customersError: customersError ? 'Error' : 'OK',
+    edgeMaterialsError: edgeMaterialsError ? 'Error' : 'OK'
+  })
+
   // State
-  const [materials, setMaterials] = useState<Material[]>([])
-  const [materialsLoading, setMaterialsLoading] = useState(true)
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -221,16 +268,10 @@ export default function OptiPage() {
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
   
-  // Edge materials state
-  const [edgeMaterials, setEdgeMaterials] = useState<EdgeMaterial[]>([])
-  const [edgeMaterialsLoading, setEdgeMaterialsLoading] = useState(false)
-  
   // State for showing optimization data card
   const [showOptimizationData, setShowOptimizationData] = useState(false)
   
   // Customer data state
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [customersLoading, setCustomersLoading] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customerData, setCustomerData] = useState({
     name: '',
@@ -294,15 +335,7 @@ export default function OptiPage() {
   }
   
   // Separate panels table state
-  const [addedPanels, setAddedPanels] = useState<Array<{
-    id: string
-    táblásAnyag: string
-    hosszúság: string
-    szélesség: string
-    darab: string
-    jelölés: string
-    élzárás: string
-  }>>([])
+  const [addedPanels, setAddedPanels] = useState<Panel[]>([])
 
   // Load panels from session storage on component mount
   useEffect(() => {
@@ -658,79 +691,27 @@ export default function OptiPage() {
     }
   }
 
-  // Fetch materials from database
+  // Handle API errors
   useEffect(() => {
-    const fetchMaterials = async () => {
-      try {
-        setMaterialsLoading(true)
-        const response = await fetch('/api/test-supabase')
-        const result = await response.json()
-        
-        if (result.success) {
-          // Use the data directly from API (already properly formatted)
-          console.log('Materials loaded:', result.data.length, 'materials')
-          console.log('First material:', result.data[0])
-          setMaterials(result.data)
-        } else {
-          console.error('Failed to fetch materials:', result.error)
-          setError('Failed to load materials from database')
-        }
-      } catch (error) {
-        console.error('Error fetching materials:', error)
-        setError('Error loading materials from database')
-      } finally {
-        setMaterialsLoading(false)
-      }
+    if (materialsError) {
+      console.error('💥 Materials API error:', materialsError)
+      setError('Error loading materials from database')
     }
+  }, [materialsError])
 
-    fetchMaterials()
-  }, [])
-
-  // Fetch customers from database
+  // Handle customers API errors
   useEffect(() => {
-    const fetchCustomers = async () => {
-      try {
-        setCustomersLoading(true)
-        const response = await fetch('/api/customers/optimized')
-        if (response.ok) {
-          const data = await response.json()
-          setCustomers(data)
-        } else {
-          console.error('Failed to fetch customers:', response.statusText)
-        }
-      } catch (error) {
-        console.error('Error fetching customers:', error)
-      } finally {
-        setCustomersLoading(false)
-      }
+    if (customersError) {
+      console.error('💥 Customers API error:', customersError)
     }
+  }, [customersError])
 
-    fetchCustomers()
-  }, [])
-
-  // Fetch edge materials from database
+  // Handle edge materials API errors
   useEffect(() => {
-    const fetchEdgeMaterials = async () => {
-      try {
-        setEdgeMaterialsLoading(true)
-        const response = await fetch('/api/edge-materials')
-        const data = await response.json()
-        
-        if (response.ok) {
-          setEdgeMaterials(data)
-          console.log('Edge materials loaded:', data.length, 'materials')
-        } else {
-          console.error('Failed to fetch edge materials:', data.error)
-        }
-      } catch (error) {
-        console.error('Error fetching edge materials:', error)
-      } finally {
-        setEdgeMaterialsLoading(false)
-      }
+    if (edgeMaterialsError) {
+      console.error('💥 Edge materials API error:', edgeMaterialsError)
     }
-
-    fetchEdgeMaterials()
-  }, [])
+  }, [edgeMaterialsError])
 
   // Initialize board indices when optimization result changes
   useEffect(() => {
@@ -799,46 +780,7 @@ export default function OptiPage() {
     return lines
   }, [materials, selectedTáblásAnyag])
 
-  // Convert addedPanels to panels format for compatibility
-  const convertAddedPanelsToPanels = (): Panel[] => {
-    return addedPanels.map(addedPanel => {
-      // Extract material name from táblásAnyag (format: "Material Name (width×lengthmm)")
-      const materialMatch = addedPanel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
-      if (!materialMatch) {
-        console.warn('Could not parse material from:', addedPanel.táblásAnyag)
-        return null
-      }
-      
-      const materialName = materialMatch[1].trim()
-      const materialWidth = parseInt(materialMatch[2])
-      const materialLength = parseInt(materialMatch[3])
-      
-      // Find the material in our materials array
-      const material = materials.find(m => 
-        m.name === materialName && 
-        m.width_mm === materialWidth && 
-        m.length_mm === materialLength
-      )
-      
-      if (!material) {
-        console.warn('Material not found in materials array:', materialName, materialWidth, materialLength)
-        return null
-      }
-      
-      return {
-        id: addedPanel.id,
-        material: material,
-        length: parseInt(addedPanel.hosszúság),
-        width: parseInt(addedPanel.szélesség),
-        quantity: parseInt(addedPanel.darab),
-        marking: addedPanel.jelölés,
-        edgeTop: addedPanel.élzárás.includes('A') ? 'A' : 'None',
-        edgeRight: addedPanel.élzárás.includes('B') ? 'B' : 'None',
-        edgeBottom: addedPanel.élzárás.includes('C') ? 'C' : 'None',
-        edgeLeft: addedPanel.élzárás.includes('D') ? 'D' : 'None'
-      }
-    }).filter(panel => panel !== null) as Panel[]
-  }
+  // addedPanels already have the correct Panel structure
 
   // Optimize with multiple materials using addedPanels
   const optimize = async () => {
@@ -1013,8 +955,85 @@ export default function OptiPage() {
 
 
 
+  // Check if any data is still loading
+  const isDataLoading = materialsLoading || customersLoading || edgeMaterialsLoading
+  
+  // Show loading state if any data is still loading
+  if (isDataLoading) {
+    return (
+      <ErrorBoundary>
+        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+          <CircularProgress size={60} sx={{ mb: 3 }} />
+          <Typography variant="h6" gutterBottom>
+            Loading Optimization Data...
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Fetching materials, customers, and edge materials
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} color={materialsLoading ? 'primary' : 'success'} />
+              <Typography variant="caption">
+                Materials {materialsLoading ? 'Loading...' : '✓'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} color={customersLoading ? 'primary' : 'success'} />
+              <Typography variant="caption">
+                Customers {customersLoading ? 'Loading...' : '✓'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} color={edgeMaterialsLoading ? 'primary' : 'success'} />
+              <Typography variant="caption">
+                Edge Materials {edgeMaterialsLoading ? 'Loading...' : '✓'}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </ErrorBoundary>
+    )
+  }
+
+  // Show error state if there are critical errors
+  if (materialsError || customersError || edgeMaterialsError) {
+    return (
+      <ErrorBoundary>
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            Opti - Multi-Material Panel Optimization
+          </Typography>
+          <Alert severity="error" sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Failed to load optimization data
+            </Typography>
+            {materialsError && (
+              <Typography variant="body2">
+                • Materials API Error: {materialsError}
+              </Typography>
+            )}
+            {customersError && (
+              <Typography variant="body2">
+                • Customers API Error: {customersError}
+              </Typography>
+            )}
+            {edgeMaterialsError && (
+              <Typography variant="body2">
+                • Edge Materials API Error: {edgeMaterialsError}
+              </Typography>
+            )}
+            <Typography variant="body2" sx={{ mt: 2 }}>
+              Please refresh the page or check your connection.
+            </Typography>
+          </Alert>
+        </Box>
+      </ErrorBoundary>
+    )
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
+    <ErrorBoundary>
+      <Box sx={{ p: 3 }}>
       <Typography variant="h4" gutterBottom>
         Opti - Multi-Material Panel Optimization
       </Typography>
@@ -2686,7 +2705,7 @@ export default function OptiPage() {
                       </Typography>
                       
                       <Typography variant="body2" sx={{ mb: 1 }}>
-                        <strong>Méret:</strong> {(material?.length_mm / 1000).toFixed(2)}×{(material?.width_mm / 1000).toFixed(2)}m
+                        <strong>Méret:</strong> {material?.length_mm ? (material.length_mm / 1000).toFixed(2) : 'N/A'}×{material?.width_mm ? (material.width_mm / 1000).toFixed(2) : 'N/A'}m
                       </Typography>
                       
                       <Typography variant="body2" sx={{ mb: 1 }}>
@@ -2831,6 +2850,7 @@ export default function OptiPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+      </Box>
+    </ErrorBoundary>
   )
 }

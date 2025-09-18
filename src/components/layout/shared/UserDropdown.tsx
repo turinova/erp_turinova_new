@@ -66,9 +66,11 @@ const UserDropdown = () => {
   const handleUserLogout = async () => {
     try {
       await signOut()
+
       // signOut now handles the redirect/reload
     } catch (error) {
       console.error('Error during logout:', error)
+
       // Force redirect to login on error
       window.location.href = '/login'
     }

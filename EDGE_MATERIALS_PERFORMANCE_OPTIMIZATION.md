@@ -175,7 +175,7 @@ apiCache.invalidatePattern('edge-material-*')
 ## Future Optimizations
 
 ### Planned Improvements
-1. **Redis Cache**: Server-side distributed caching
+1. **Supabase API**: Direct database queries without caching
 2. **CDN Integration**: Static asset caching
 3. **Service Worker**: Offline caching
 4. **Real-time Updates**: WebSocket-based cache invalidation

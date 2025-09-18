@@ -1,16 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+// GET - List all currencies with optional search
 export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching all currencies...')
-
-    // Single optimized query with all columns
-    const { data: currencies, error } = await supabase
+    const { searchParams } = new URL(request.url)
+    const searchQuery = searchParams.get('q')
+    
+    console.log('Fetching currencies...', searchQuery ? `with search: ${searchQuery}` : '')
+    
+    let query = supabase
       .from('currencies')
-      .select('id, name, rate, created_at, updated_at, deleted_at')
-      .is('deleted_at', null) // Only fetch active records
-      .order('name', { ascending: true })
+      .select('id, name, rate, created_at, updated_at')
+      .is('deleted_at', null)
+    
+    // Add search filtering if query parameter exists
+    if (searchQuery) {
+      query = query.or(`name.ilike.%${searchQuery}%,rate.eq.${parseFloat(searchQuery) || 0}`)
+    }
+    
+    const { data: currencies, error } = await query.order('name', { ascending: true })
 
     if (error) {
       console.error('Supabase error:', error)
@@ -19,18 +29,24 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetched ${currencies?.length || 0} currencies successfully`)
     return NextResponse.json(currencies || [])
-
+    
   } catch (error) {
     console.error('Error fetching currencies:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
+// POST - Create new currency
 export async function POST(request: NextRequest) {
   try {
     console.log('Creating new currency...')
 
     const currencyData = await request.json()
+
+    // Validate required fields
+    if (!currencyData.name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
 
     const newCurrency = {
       name: currencyData.name || '',
@@ -42,7 +58,7 @@ export async function POST(request: NextRequest) {
     const { data: currency, error } = await supabase
       .from('currencies')
       .insert([newCurrency])
-      .select()
+      .select('id, name, rate, created_at, updated_at')
       .single()
 
     if (error) {
@@ -69,7 +85,7 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         message: 'Currency created successfully',
-        currency: currency
+        data: currency
       },
       { status: 201 }
     )

@@ -1,10 +1,14 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { useApiCache } from '@/hooks/useApiCache'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface Unit {
   id: string
@@ -17,71 +21,20 @@ interface Unit {
 export default function UnitsPage() {
   const router = useRouter()
   
-  const [units, setUnits] = useState<Unit[]>([])
   const [selectedUnits, setSelectedUnits] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Fetch units from API
-  useEffect(() => {
-    const fetchUnits = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/units/optimized')
-        if (response.ok) {
-          const data = await response.json()
-          setUnits(data)
-        } else {
-          console.error('Failed to fetch units')
-          // Fallback to sample data
-          setUnits([
-            {
-              id: '1',
-              name: 'Darab',
-              shortform: 'db',
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            },
-            {
-              id: '2',
-              name: 'Kilogramm',
-              shortform: 'kg',
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            }
-          ])
-        }
-      } catch (error) {
-        console.error('Failed to fetch units:', error)
-        // Fallback to sample data
-        setUnits([
-          {
-            id: '1',
-            name: 'Darab',
-            shortform: 'db',
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          },
-          {
-            id: '2',
-            name: 'Kilogramm',
-            shortform: 'kg',
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          }
-        ])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // Use unified API with caching
+  const { data: units = [], isLoading, error, refresh } = useApiCache<Unit[]>('/api/units', {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-    fetchUnits()
-  }, [])
-
-  // Filter units based on search term
+  // Filter units based on search term (client-side fallback)
   const filteredUnits = useMemo(() => {
+    if (!units || !Array.isArray(units)) return []
     if (!searchTerm) return units
     
     const term = searchTerm.toLowerCase()
@@ -128,8 +81,10 @@ export default function UnitsPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 
@@ -165,8 +120,9 @@ export default function UnitsPage() {
           draggable: true,
         })
         
-        // Remove deleted units from local state
-        setUnits(prev => prev.filter(unit => !selectedUnits.includes(unit.id)))
+        // Invalidate cache and refresh data
+        invalidateApiCache('/api/units')
+        await refresh()
         setSelectedUnits([])
       } else {
         // Some deletions failed

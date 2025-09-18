@@ -1,20 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+
     console.log(`Fetching VAT rate ${id}`)
 
     const { data: vat, error } = await supabase
       .from('vat')
-      .select('*')
+      .select('id, name, kulcs, created_at, updated_at')
       .eq('id', id)
+      .is('deleted_at', null)
       .single()
 
     if (error) {
       console.error('Supabase error:', error)
-      return NextResponse.json({ error: 'Failed to fetch VAT rate' }, { status: 500 })
+      
+return NextResponse.json({ error: 'Failed to fetch VAT rate' }, { status: 500 })
     }
 
     if (!vat) {
@@ -22,15 +27,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     console.log('VAT rate fetched successfully:', vat)
-    return NextResponse.json(vat)
+    
+return NextResponse.json(vat)
 
   } catch (error) {
     console.error('Error fetching VAT rate:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const vatData = await request.json()
@@ -45,7 +52,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .select()
+      .select('id, name, kulcs, created_at, updated_at')
       .single()
 
     if (error) {
@@ -67,21 +74,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     console.log('VAT rate updated successfully:', vat)
-    return NextResponse.json({
+    
+return NextResponse.json({
       success: true,
       message: 'VAT rate updated successfully',
-      vat: vat
+      data: vat
     })
 
   } catch (error) {
     console.error('Error updating VAT rate:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+
     console.log(`Soft deleting VAT rate ${id}`)
 
     // Try soft delete first
@@ -93,6 +103,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     // If deleted_at column doesn't exist, fall back to hard delete
     if (error && error.message.includes('column "deleted_at" does not exist')) {
       console.log('deleted_at column not found, using hard delete...')
+
       const result = await supabase
         .from('vat')
         .delete()
@@ -103,14 +114,17 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     if (error) {
       console.error('Supabase delete error:', error)
-      return NextResponse.json({ error: 'Failed to delete VAT rate' }, { status: 500 })
+      
+return NextResponse.json({ error: 'Failed to delete VAT rate' }, { status: 500 })
     }
 
     console.log(`VAT rate ${id} deleted successfully`)
-    return NextResponse.json({ success: true })
+    
+return NextResponse.json({ success: true })
 
   } catch (error) {
     console.error('Error deleting VAT rate:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

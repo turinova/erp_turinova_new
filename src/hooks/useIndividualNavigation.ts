@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+
 import { useAuth } from '@/contexts/AuthContext'
 import { useCurrentUserPermissions } from './useIndividualPermission'
 import verticalMenuData from '@/data/navigation/verticalMenuData'
@@ -19,7 +20,9 @@ export function useIndividualNavigation() {
         // If item has children, filter children first
         if (item.children) {
           const filteredChildren = filterMenuItems(item.children)
-          return filteredChildren.length > 0
+
+          
+return filteredChildren.length > 0
         }
         
         // Check individual permissions for page access

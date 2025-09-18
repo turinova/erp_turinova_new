@@ -19,6 +19,7 @@ export const supabaseOptimized = createClient(supabaseUrl, supabaseServiceKey, {
       'X-Client-Info': 'nextjs-optimized',
     },
   },
+
   // Performance optimizations
   realtime: {
     enabled: false, // Disable realtime for better performance
@@ -65,7 +66,8 @@ export class OptimizedQueryBuilder {
 
     if (error) {
       console.error(`Error fetching ${tableName} by ID:`, error)
-      return null
+      
+return null
     }
 
     return data
@@ -130,7 +132,8 @@ export class OptimizedQueryBuilder {
 
     if (error) {
       console.error(`Error soft deleting ${tableName}:`, error)
-      return false
+      
+return false
     }
 
     return true
@@ -153,7 +156,8 @@ export class OptimizedQueryBuilder {
 
     if (error) {
       console.error(`Error searching ${tableName}:`, error)
-      return []
+      
+return []
     }
 
     return data || []
@@ -216,12 +220,15 @@ export class PerformanceMonitor {
 
   static endTimer(label: string): number {
     const startTime = this.timers.get(label)
+
     if (!startTime) {
       console.warn(`Timer ${label} was not started`)
-      return 0
+      
+return 0
     }
 
     const duration = performance.now() - startTime
+
     this.timers.delete(label)
     
     // Log slow queries (>100ms)
@@ -237,11 +244,14 @@ export class PerformanceMonitor {
     queryFn: () => Promise<T>
   ): Promise<T> {
     this.startTimer(label)
+
     try {
       const result = await queryFn()
       const duration = this.endTimer(label)
+
       console.log(`Query ${label} completed in ${duration.toFixed(2)}ms`)
-      return result
+      
+return result
     } catch (error) {
       this.endTimer(label)
       throw error
@@ -262,6 +272,7 @@ export const connectionConfig = {
     reapIntervalMillis: 1000,
     createRetryIntervalMillis: 200,
   },
+
   // Query timeout settings
   query: {
     timeout: 30000, // 30 seconds

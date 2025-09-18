@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest, NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -27,7 +28,8 @@ async function isUserAdmin(userId: string): Promise<boolean> {
 
     if (error) {
       console.error('Error fetching first user:', error)
-      return false
+      
+return false
     }
 
     const isAdmin = firstUser?.id === userId
@@ -38,7 +40,8 @@ async function isUserAdmin(userId: string): Promise<boolean> {
     return isAdmin
   } catch (error) {
     console.error('Error checking admin status:', error)
-    return false
+    
+return false
   }
 }
 
@@ -77,6 +80,7 @@ export async function checkPagePermission(
     return null // Allow the request to proceed
   } catch (error) {
     console.error('Error in permission check:', error)
-    return null // Allow the request to proceed on error
+    
+return null // Allow the request to proceed on error
   }
 }

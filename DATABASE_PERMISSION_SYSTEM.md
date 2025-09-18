@@ -398,7 +398,7 @@ curl -X PUT "http://localhost:3000/api/permissions/simple/user/[userId]" \
 ### Technical Improvements
 
 1. **Caching Layer**
-   - Redis for permission caching
+   - Supabase API for permission management
    - Reduced database queries
    - Faster permission checks
 

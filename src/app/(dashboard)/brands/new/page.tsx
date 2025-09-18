@@ -1,9 +1,11 @@
 'use client'
 
 import React, { useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 
 interface Brand {
@@ -35,6 +37,8 @@ export default function NewBrandPage() {
 
   const handleInputChange = (field: keyof Brand, value: string) => {
     setBrand(prev => ({ ...prev, [field]: value }))
+
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
@@ -51,7 +55,8 @@ export default function NewBrandPage() {
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
@@ -67,6 +72,7 @@ export default function NewBrandPage() {
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Új gyártó sikeresen létrehozva!', {
           position: "top-right",
           autoClose: 3000,
@@ -75,6 +81,7 @@ export default function NewBrandPage() {
           pauseOnHover: true,
           draggable: true,
         })
+
         // Navigate to the new brand's detail page
         router.push(`/brands/${result.brand.id}`)
       } else {
@@ -83,7 +90,8 @@ export default function NewBrandPage() {
         // Handle duplicate name error specifically
         if (response.status === 409 && errorData.message.includes('név')) {
           setErrors({ name: 'Egy gyártó már létezik ezzel a névvel' })
-          return
+          
+return
         }
         
         throw new Error(errorData.message || 'Mentés sikertelen')

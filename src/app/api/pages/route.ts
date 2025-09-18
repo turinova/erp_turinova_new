@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
 
 // Create server-side Supabase client
@@ -28,7 +30,8 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching pages:', error)
-      return NextResponse.json({ 
+      
+return NextResponse.json({ 
         error: 'Failed to fetch pages',
         pages: [] 
       }, { status: 500 })
@@ -37,7 +40,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ pages })
   } catch (error) {
     console.error('Error in pages GET:', error)
-    return NextResponse.json({ 
+    
+return NextResponse.json({ 
       error: 'Internal server error',
       pages: [] 
     }, { status: 500 })

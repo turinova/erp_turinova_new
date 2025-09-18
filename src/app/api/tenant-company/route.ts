@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
 
 // Create Supabase client for server-side operations
@@ -15,6 +17,7 @@ export async function GET() {
     
     if (!isSupabaseConfigured) {
       console.log('Supabase not configured, returning sample data...')
+
       // Return sample data for development
       return NextResponse.json({
         id: '1',
@@ -48,7 +51,8 @@ export async function GET() {
       // If table doesn't exist, return sample data
       if (error.message.includes('Could not find the table') || error.message.includes('relation') && error.message.includes('does not exist')) {
         console.log('Table not found, returning sample data...')
-        return NextResponse.json({
+        
+return NextResponse.json({
           id: '1',
           name: 'Turinova Kft.',
           country: 'Magyarország',
@@ -82,7 +86,8 @@ export async function GET() {
     
   } catch (error) {
     console.error('Error fetching tenant company:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { 
         success: false, 
         message: 'Failed to fetch tenant company',
@@ -101,9 +106,11 @@ export async function PUT(request: NextRequest) {
     
     if (!isSupabaseConfigured) {
       console.log('Supabase not configured, simulating save...')
+
       // Simulate successful save for development
       await new Promise(resolve => setTimeout(resolve, 1000))
-      return NextResponse.json(
+      
+return NextResponse.json(
         { 
           success: true, 
           message: 'Tenant company updated successfully (simulated)',
@@ -140,7 +147,8 @@ export async function PUT(request: NextRequest) {
       // If table doesn't exist, simulate successful save
       if (error.message.includes('Could not find the table') || error.message.includes('relation') && error.message.includes('does not exist')) {
         console.log('Table not found, simulating save...')
-        return NextResponse.json(
+        
+return NextResponse.json(
           { 
             success: true, 
             message: 'Tenant company updated successfully (simulated)',
@@ -174,7 +182,8 @@ export async function PUT(request: NextRequest) {
     
   } catch (error) {
     console.error('Error updating tenant company:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { 
         success: false, 
         message: 'Failed to update tenant company',

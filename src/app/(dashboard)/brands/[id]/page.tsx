@@ -1,9 +1,11 @@
 'use client'
 
 import React, { useState, use, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
 
 interface Brand {
@@ -37,16 +39,20 @@ export default function BrandDetailPage({ params }: { params: Promise<{ id: stri
     const loadBrand = async () => {
       try {
         const response = await fetch(`/api/brands/${resolvedParams.id}`)
+
         if (response.ok) {
           const brandData = await response.json()
+
           setBrand(brandData)
         } else {
           console.error('Failed to load brand')
+
           // Fallback to initial data if API fails
           setBrand(initialBrand)
         }
       } catch (error) {
         console.error('Error loading brand:', error)
+
         // Fallback to initial data if API fails
         setBrand(initialBrand)
       } finally {
@@ -64,6 +70,8 @@ export default function BrandDetailPage({ params }: { params: Promise<{ id: stri
   const handleInputChange = (field: keyof Brand, value: string) => {
     if (brand) {
       setBrand(prev => prev ? { ...prev, [field]: value } : null)
+
+
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -83,14 +91,15 @@ export default function BrandDetailPage({ params }: { params: Promise<{ id: stri
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
       const response = await fetch(`/api/brands/${brand.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -99,6 +108,7 @@ export default function BrandDetailPage({ params }: { params: Promise<{ id: stri
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Gyártó adatok sikeresen mentve!', {
           position: "top-right",
           autoClose: 3000,
@@ -107,10 +117,12 @@ export default function BrandDetailPage({ params }: { params: Promise<{ id: stri
           pauseOnHover: true,
           draggable: true,
         })
+
         // Update local state with saved data
         setBrand(result.brand)
       } else {
         const errorData = await response.json()
+
         throw new Error(errorData.message || 'Mentés sikertelen')
       }
     } catch (error) {

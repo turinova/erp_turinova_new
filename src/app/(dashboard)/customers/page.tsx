@@ -1,11 +1,16 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+import { useApiCache } from '@/hooks/useApiCache'
+import { invalidateApiCache } from '@/hooks/useApiCache'
+
+import { usePermissions } from '@/permissions/PermissionProvider'
 
 interface Customer {
   id: string
@@ -19,12 +24,11 @@ export default function UgyfelekPage() {
   const router = useRouter()
   
   // Check permission for this page
-  const hasAccess = useDatabasePermission('/customers')
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/customers')
   
-  const [customers, setCustomers] = useState<Customer[]>([])
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
@@ -37,66 +41,16 @@ export default function UgyfelekPage() {
     }
   }, [hasAccess, router])
 
-  // Fetch customers from API
-  useEffect(() => {
-    if (!hasAccess) return // Don't fetch if no access
-    
-    const fetchCustomers = async () => {
-      try {
-        setIsLoading(true)
-        // Try to fetch from Supabase first
-        const response = await fetch('/api/customers')
-        if (response.ok) {
-          const data = await response.json()
-          setCustomers(data)
-        } else {
-          // Fallback to sample data if API fails
-          setCustomers([
-            {
-              id: 'b016c425-ff23-4340-98b6-55148c597b7a',
-              name: 'Kovács Péter',
-              email: 'peter.kovacs@example.com',
-              mobile: '+36 30 123 4567',
-              discount_percent: 5.00
-            },
-            {
-              id: 'fcee2e83-beb7-4bc0-b2d1-05b76f1bf681',
-              name: 'Nagy Zsófia',
-              email: 'zsofia.nagy@example.com',
-              mobile: '+36 20 765 4321',
-              discount_percent: 0.00
-            }
-          ])
-        }
-      } catch (error) {
-        console.error('Failed to fetch customers:', error)
-        // Fallback to sample data with real UUIDs
-        setCustomers([
-          {
-            id: 'b016c425-ff23-4340-98b6-55148c597b7a',
-            name: 'Kovács Péter',
-            email: 'peter.kovacs@example.com',
-            mobile: '+36 30 123 4567',
-            discount_percent: 5.00
-          },
-          {
-            id: 'fcee2e83-beb7-4bc0-b2d1-05b76f1bf681',
-            name: 'Nagy Zsófia',
-            email: 'zsofia.nagy@example.com',
-            mobile: '+36 20 765 4321',
-            discount_percent: 0.00
-          }
-        ])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // Use unified API with caching
+  const { data: customers = [], isLoading, error, refresh } = useApiCache<Customer[]>('/api/customers', {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-    fetchCustomers()
-  }, [hasAccess])
 
-  // Filter customers based on search term
+  // Filter customers based on search term (client-side fallback)
   const filteredCustomers = useMemo(() => {
+    if (!customers || !Array.isArray(customers)) return []
     if (!searchTerm) return customers
     
     const term = searchTerm.toLowerCase()
@@ -144,8 +98,10 @@ export default function UgyfelekPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 
@@ -181,8 +137,9 @@ export default function UgyfelekPage() {
           draggable: true,
         })
         
-        // Remove deleted customers from local state
-        setCustomers(prev => prev.filter(customer => !selectedCustomers.includes(customer.id)))
+        // Invalidate cache and refresh data
+        invalidateApiCache('/api/customers')
+        await refresh()
         setSelectedCustomers([])
       } else {
         // Some deletions failed

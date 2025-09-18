@@ -1,10 +1,14 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { useApiCache } from '@/hooks/useApiCache'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface Currency {
   id: string
@@ -17,71 +21,20 @@ interface Currency {
 export default function CurrenciesPage() {
   const router = useRouter()
   
-  const [currencies, setCurrencies] = useState<Currency[]>([])
   const [selectedCurrencies, setSelectedCurrencies] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Fetch currencies from API
-  useEffect(() => {
-    const fetchCurrencies = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/currencies/optimized')
-        if (response.ok) {
-          const data = await response.json()
-          setCurrencies(data)
-        } else {
-          console.error('Failed to fetch currencies')
-          // Fallback to sample data
-          setCurrencies([
-            {
-              id: '1',
-              name: 'HUF',
-              rate: 1.0000,
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            },
-            {
-              id: '2',
-              name: 'EUR',
-              rate: 0.0025,
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            }
-          ])
-        }
-      } catch (error) {
-        console.error('Failed to fetch currencies:', error)
-        // Fallback to sample data
-        setCurrencies([
-          {
-            id: '1',
-            name: 'HUF',
-            rate: 1.0000,
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          },
-          {
-            id: '2',
-            name: 'EUR',
-            rate: 0.0025,
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          }
-        ])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // Use unified API with caching
+  const { data: currencies = [], isLoading, error, refresh } = useApiCache<Currency[]>('/api/currencies', {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-    fetchCurrencies()
-  }, [])
-
-  // Filter currencies based on search term
+  // Filter currencies based on search term (client-side fallback)
   const filteredCurrencies = useMemo(() => {
+    if (!currencies || !Array.isArray(currencies)) return []
     if (!searchTerm) return currencies
     
     const term = searchTerm.toLowerCase()
@@ -128,8 +81,10 @@ export default function CurrenciesPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 
@@ -165,8 +120,9 @@ export default function CurrenciesPage() {
           draggable: true,
         })
         
-        // Remove deleted currencies from local state
-        setCurrencies(prev => prev.filter(currency => !selectedCurrencies.includes(currency.id)))
+        // Invalidate cache and refresh data
+        invalidateApiCache('/api/currencies')
+        await refresh()
         setSelectedCurrencies([])
       } else {
         // Some deletions failed

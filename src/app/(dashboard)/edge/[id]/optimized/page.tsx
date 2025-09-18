@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, use } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+
 import { useEdgeMaterial, useBrands, useVatRates, useUpdateEdgeMaterial } from '@/hooks/useEdgeMaterials'
 
 interface EdgeMaterial {
@@ -56,6 +59,8 @@ export default function OptimizedEdgeMaterialDetailPage({ params }: { params: Pr
   const handleInputChange = (field: keyof EdgeMaterial, value: string | number) => {
     if (localEdgeMaterial) {
       setLocalEdgeMaterial(prev => prev ? { ...prev, [field]: value } : null)
+
+
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -99,7 +104,8 @@ export default function OptimizedEdgeMaterialDetailPage({ params }: { params: Pr
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     try {

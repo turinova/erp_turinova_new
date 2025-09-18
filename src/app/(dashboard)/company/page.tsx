@@ -1,9 +1,11 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+
 import { useApiCache, invalidateApiCache } from '../../../hooks/useApiCache'
 
 interface TenantCompany {
@@ -29,10 +31,13 @@ export default function CompanyDataPage() {
   const [formData, setFormData] = useState<TenantCompany | null>(null)
 
   // Use cached API data with 5-minute TTL
-  const { data: company, isLoading, error, refresh } = useApiCache<TenantCompany>('/api/tenant-company', {
+  const { data: companies = [], isLoading, error, refresh } = useApiCache<TenantCompany[]>('/api/companies', {
     ttl: 5 * 60 * 1000, // 5 minutes cache
     staleWhileRevalidate: true
   })
+
+  // Get the first (and only) company from the array
+  const company = companies?.[0] || null
 
   // Update form data when company data is loaded
   useEffect(() => {
@@ -48,6 +53,7 @@ export default function CompanyDataPage() {
     
     // If it starts with 36, keep it as is, otherwise add 36
     let formatted = digits
+
     if (!digits.startsWith('36') && digits.length > 0) {
       formatted = '36' + digits
     }
@@ -60,6 +66,7 @@ export default function CompanyDataPage() {
       const secondPart = formatted.substring(7, 11)
       
       let result = `+${countryCode}`
+
       if (areaCode) result += ` ${areaCode}`
       if (firstPart) result += ` ${firstPart}`
       if (secondPart) result += ` ${secondPart}`
@@ -109,23 +116,31 @@ export default function CompanyDataPage() {
   // Validation helpers
   const validateTaxNumber = (value: string) => {
     const regex = /^\d{8}-\d-\d{2}$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const validateCompanyRegNumber = (value: string) => {
     const regex = /^\d{2}-\d{2}-\d{6}$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const validateEmail = (value: string) => {
     const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const validateWebsite = (value: string) => {
     if (!value) return true // Optional field
     const regex = /^https?:\/\/.+\..+/
-    return regex.test(value)
+
+    
+return regex.test(value)
   }
 
   const handleInputChange = (field: keyof TenantCompany, value: string) => {
@@ -189,14 +204,15 @@ export default function CompanyDataPage() {
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
-      const response = await fetch('/api/tenant-company', {
-        method: 'PUT',
+      const response = await fetch(`/api/companies/${formData.id}`, {
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -205,6 +221,7 @@ export default function CompanyDataPage() {
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Cégadatok sikeresen mentve!', {
           position: "top-right",
           autoClose: 3000,
@@ -214,11 +231,15 @@ export default function CompanyDataPage() {
           draggable: true,
         })
         
+        // Update local state with saved data
+        setFormData(result.company)
+        
         // Invalidate cache and refresh data
-        invalidateApiCache('/api/tenant-company')
+        invalidateApiCache('/api/companies')
         await refresh()
       } else {
         const errorData = await response.json()
+
         throw new Error(errorData.message || 'Mentés sikertelen')
       }
     } catch (error) {

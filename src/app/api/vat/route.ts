@@ -1,28 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('Fetching all VAT rates...')
+    const { searchParams } = new URL(request.url)
+    const searchQuery = searchParams.get('q')
+    
+    console.log('Fetching VAT rates...', searchQuery ? `with search: ${searchQuery}` : '')
 
-    // Single optimized query with all columns
-    const { data: vatRates, error } = await supabase
+    let query = supabase
       .from('vat')
-      .select('id, name, kulcs, created_at, updated_at, deleted_at')
-      .is('deleted_at', null) // Only fetch active records
-      .order('name', { ascending: true })
+      .select('id, name, kulcs, created_at, updated_at')
+      .is('deleted_at', null)
+    
+    // Add search filtering if query parameter exists
+    if (searchQuery) {
+      query = query.or(`name.ilike.%${searchQuery}%,kulcs.eq.${parseFloat(searchQuery) || 0}`)
+    }
+    
+    const { data: vatRates, error } = await query.order('name', { ascending: true })
 
     if (error) {
       console.error('Supabase error:', error)
-      return NextResponse.json({ error: 'Failed to fetch VAT rates' }, { status: 500 })
+      
+return NextResponse.json({ error: 'Failed to fetch VAT rates' }, { status: 500 })
     }
 
     console.log(`Fetched ${vatRates?.length || 0} VAT rates successfully`)
-    return NextResponse.json(vatRates || [])
+    
+return NextResponse.json(vatRates || [])
 
   } catch (error) {
     console.error('Error fetching VAT rates:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -31,6 +44,11 @@ export async function POST(request: NextRequest) {
     console.log('Creating new VAT rate...')
 
     const vatData = await request.json()
+
+    // Validate required fields
+    if (!vatData.name) {
+      return NextResponse.json({ error: 'Name is required' }, { status: 400 })
+    }
 
     const newVat = {
       name: vatData.name || '',
@@ -42,7 +60,7 @@ export async function POST(request: NextRequest) {
     const { data: vat, error } = await supabase
       .from('vat')
       .insert([newVat])
-      .select()
+      .select('id, name, kulcs, created_at, updated_at')
       .single()
 
     if (error) {
@@ -69,13 +87,14 @@ export async function POST(request: NextRequest) {
       {
         success: true,
         message: 'VAT rate created successfully',
-        vat: vat
+        data: vat
       },
       { status: 201 }
     )
 
   } catch (error) {
     console.error('Error creating VAT rate:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

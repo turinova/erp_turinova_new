@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState, use, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface EdgeMaterial {
   id: string
@@ -56,8 +59,10 @@ export default function EdgeMaterialDetailPage({ params }: { params: Promise<{ i
         
         // Load edge material
         const materialResponse = await fetch(`/api/edge-materials/${resolvedParams.id}`)
+
         if (materialResponse.ok) {
           const materialData = await materialResponse.json()
+
           setEdgeMaterial(materialData)
         } else {
           throw new Error('Failed to load edge material')
@@ -65,15 +70,19 @@ export default function EdgeMaterialDetailPage({ params }: { params: Promise<{ i
         
         // Load brands for dropdown
         const brandsResponse = await fetch('/api/brands')
+
         if (brandsResponse.ok) {
           const brandsData = await brandsResponse.json()
+
           setBrands(brandsData)
         }
         
         // Load VAT rates for dropdown
         const vatResponse = await fetch('/api/vat')
+
         if (vatResponse.ok) {
           const vatData = await vatResponse.json()
+
           setVatRates(vatData)
         }
         
@@ -102,6 +111,8 @@ export default function EdgeMaterialDetailPage({ params }: { params: Promise<{ i
   const handleInputChange = (field: keyof EdgeMaterial, value: string | number) => {
     if (edgeMaterial) {
       setEdgeMaterial(prev => prev ? { ...prev, [field]: value } : null)
+
+
       // Clear error when user starts typing
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
@@ -145,15 +156,17 @@ export default function EdgeMaterialDetailPage({ params }: { params: Promise<{ i
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
     
     try {
       console.log('Sending edge material update data:', JSON.stringify(edgeMaterial, null, 2))
+
       const response = await fetch(`/api/edge-materials/${edgeMaterial.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -165,6 +178,7 @@ export default function EdgeMaterialDetailPage({ params }: { params: Promise<{ i
       
       if (response.ok) {
         const result = await response.json()
+
         console.log('Update response:', result)
         toast.success('Élzáró adatok sikeresen mentve!', {
           position: "top-right",
@@ -174,10 +188,15 @@ export default function EdgeMaterialDetailPage({ params }: { params: Promise<{ i
           pauseOnHover: true,
           draggable: true,
         })
+
         // Update local state with saved data
-        setEdgeMaterial(result.data || result)
+        setEdgeMaterial(result.data)
+        
+        // Invalidate cache to refresh list page
+        invalidateApiCache('/api/edge-materials')
       } else {
         const errorData = await response.json()
+
         console.error('Update error response:', errorData)
         throw new Error(errorData.message || 'Mentés sikertelen')
       }

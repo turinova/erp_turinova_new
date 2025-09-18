@@ -1,11 +1,16 @@
 'use client'
 
 import React, { useState, useMemo, useEffect } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
-import { useDatabasePermission } from '@/hooks/useDatabasePermission'
+
+import { usePermissions } from '@/permissions/PermissionProvider'
+import { useApiCache } from '@/hooks/useApiCache'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface VatRate {
   id: string
@@ -19,77 +24,29 @@ export default function VatPage() {
   const router = useRouter()
   
   // Check permission for this page
-  const hasAccess = useDatabasePermission('/vat')
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/vat')
   
-  const [vatRates, setVatRates] = useState<VatRate[]>([])
   const [selectedVatRates, setSelectedVatRates] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [isLoading, setIsLoading] = useState(true)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Fetch VAT rates from API
-  useEffect(() => {
-    const fetchVatRates = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/api/vat')
-        if (response.ok) {
-          const data = await response.json()
-          setVatRates(data)
-        } else {
-          console.error('Failed to fetch VAT rates')
-          // Fallback to sample data
-          setVatRates([
-            {
-              id: '1',
-              name: 'ÁFA mentes',
-              kulcs: 0.00,
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            },
-            {
-              id: '2',
-              name: 'ÁFA 27%',
-              kulcs: 27.00,
-              created_at: '2025-09-13T06:00:00Z',
-              updated_at: '2025-09-13T06:00:00Z'
-            }
-          ])
-        }
-      } catch (error) {
-        console.error('Failed to fetch VAT rates:', error)
-        // Fallback to sample data
-        setVatRates([
-          {
-            id: '1',
-            name: 'ÁFA mentes',
-            kulcs: 0.00,
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          },
-          {
-            id: '2',
-            name: 'ÁFA 27%',
-            kulcs: 27.00,
-            created_at: '2025-09-13T06:00:00Z',
-            updated_at: '2025-09-13T06:00:00Z'
-          }
-        ])
-      } finally {
-        setIsLoading(false)
-      }
-    }
+  // Use cached API data with 2-minute TTL
+  const { data: vatRates = [], isLoading, error, refresh } = useApiCache<VatRate[]>('/api/vat', {
+    ttl: 2 * 60 * 1000, // 2 minutes cache
+    staleWhileRevalidate: true
+  })
 
-    fetchVatRates()
-  }, [])
-
-  // Filter VAT rates based on search term
+  // Filter VAT rates based on search term (client-side fallback)
   const filteredVatRates = useMemo(() => {
+    if (!vatRates || !Array.isArray(vatRates)) return []
     if (!searchTerm) return vatRates
     
     const term = searchTerm.toLowerCase()
-    return vatRates.filter(vatRate => 
+
+    
+return vatRates.filter(vatRate => 
       vatRate.name.toLowerCase().includes(term) ||
       vatRate.kulcs.toString().includes(term)
     )
@@ -132,8 +89,10 @@ export default function VatPage() {
         pauseOnHover: true,
         draggable: true,
       })
-      return
+      
+return
     }
+
     setDeleteModalOpen(true)
   }
 
@@ -169,8 +128,9 @@ export default function VatPage() {
           draggable: true,
         })
         
-        // Remove deleted VAT rates from local state
-        setVatRates(prev => prev.filter(vatRate => !selectedVatRates.includes(vatRate.id)))
+        // Invalidate cache and refresh data
+        invalidateApiCache('/api/vat')
+        await refresh()
         setSelectedVatRates([])
       } else {
         // Some deletions failed

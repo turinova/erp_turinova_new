@@ -23,12 +23,14 @@ class ApiCache {
   // Get cache entry
   get<T>(key: string): T | null {
     const entry = this.cache.get(key)
+
     if (!entry) return null
 
     // Check if expired
     if (Date.now() - entry.timestamp > entry.ttl) {
       this.cache.delete(key)
-      return null
+      
+return null
     }
 
     return entry.data
@@ -42,6 +44,7 @@ class ApiCache {
   // Invalidate all cache entries matching pattern
   invalidatePattern(pattern: string): void {
     const regex = new RegExp(pattern)
+
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
         this.cache.delete(key)
@@ -99,9 +102,11 @@ export async function withCache<T>(
 ): Promise<T> {
   // Try to get from cache first
   const cached = apiCache.get<T>(key)
+
   if (cached) {
     console.log(`Cache hit for ${key}`)
-    return cached
+    
+return cached
   }
 
   // Fetch fresh data

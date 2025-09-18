@@ -1,5 +1,8 @@
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
-import { NextRequest, NextResponse } from 'next/server'
+
 import type { UpdateUserRequest } from '@/types/user'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -19,7 +22,8 @@ export async function GET(
 
     if (error) {
       console.error('Error fetching user:', error)
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      
+return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Transform the response
@@ -38,7 +42,8 @@ export async function GET(
     return NextResponse.json({ user: transformedUser })
   } catch (error) {
     console.error('Error in GET /api/users/[id]:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -64,6 +69,7 @@ export async function PUT(
     
     // Merge user metadata
     const newMetadata = { ...currentMetadata }
+
     if (full_name !== undefined) newMetadata.full_name = full_name
     if (phone !== undefined) newMetadata.phone = phone
     if (role !== undefined) newMetadata.role = role
@@ -80,7 +86,8 @@ export async function PUT(
 
     if (error) {
       console.error('Error updating user:', error)
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      
+return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     // Transform the response
@@ -99,7 +106,8 @@ export async function PUT(
     return NextResponse.json({ user: transformedUser })
   } catch (error) {
     console.error('Error in PUT /api/users/[id]:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -115,12 +123,14 @@ export async function DELETE(
 
     if (error) {
       console.error('Error deleting user:', error)
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      
+return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
     return NextResponse.json({ message: 'User deleted successfully' })
   } catch (error) {
     console.error('Error in DELETE /api/users/[id]:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

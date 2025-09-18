@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
-import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface VatRate {
   id: string
@@ -35,6 +38,8 @@ export default function NewVatPage() {
 
   const handleInputChange = (field: keyof VatRate, value: string | number) => {
     setVatRate(prev => ({ ...prev, [field]: value }))
+
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
@@ -55,7 +60,8 @@ export default function NewVatPage() {
     
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
@@ -71,6 +77,7 @@ export default function NewVatPage() {
       
       if (response.ok) {
         const result = await response.json()
+
         toast.success('Új adónem sikeresen létrehozva!', {
           position: "top-right",
           autoClose: 3000,
@@ -79,15 +86,20 @@ export default function NewVatPage() {
           pauseOnHover: true,
           draggable: true,
         })
+
+        // Invalidate cache to refresh list page
+        invalidateApiCache('/api/vat')
+        
         // Navigate to the new VAT rate's detail page
-        router.push(`/vat/${result.vat.id}`)
+        router.push(`/vat/${result.data.id}`)
       } else {
         const errorData = await response.json()
         
         // Handle duplicate name error specifically
         if (response.status === 409 && errorData.message.includes('név')) {
           setErrors({ name: 'Egy adónem már létezik ezzel a névvel' })
-          return
+          
+return
         }
         
         throw new Error(errorData.message || 'Mentés sikertelen')

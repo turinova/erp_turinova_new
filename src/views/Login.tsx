@@ -18,7 +18,7 @@ import Divider from '@mui/material/Divider'
 
 // Third-party Imports
 import classnames from 'classnames'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { supabase } from '@/lib/supabase'
 import { toast } from 'react-toastify'
 
 // Type Imports
@@ -55,7 +55,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
   const router = useRouter()
   const { settings } = useSettings()
   const authBackground = useImageVariant(mode, lightImg, darkImg)
-  const supabase = createClientComponentClient()
+  // Using the shared supabase instance
 
   const characterIllustration = useImageVariant(
     mode,
@@ -71,33 +71,54 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
   useEffect(() => {
     const checkUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
+
       if (user) {
         setUser(user)
-        router.push('/')
+        router.push('/home')
       }
     }
+
     checkUser()
   }, [supabase.auth, router])
 
   // Handle login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Prevent multiple simultaneous login attempts
+    if (isLoading) return
+    
     setIsLoading(true)
 
     try {
+      // Add a small delay to prevent rapid-fire requests
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       })
 
       if (error) {
-        toast.error(error.message)
+        console.error('Login error:', error)
+        if (error.message.includes('429') || error.message.includes('rate limit')) {
+          toast.error('Túl sok bejelentkezési kísérlet. Kérjük, várjon egy kicsit és próbálja újra.')
+        } else {
+          toast.error(error.message)
+        }
       } else if (data.user) {
+        console.log('Login successful, user:', data.user.email, 'redirecting to /home')
         toast.success('Login successful!')
         setUser(data.user)
-        router.push('/')
+        
+        // Wait a moment for the session to be properly set
+        setTimeout(() => {
+          console.log('Redirecting to /home after login')
+          window.location.href = '/home'
+        }, 100)
       }
     } catch (error) {
+      console.error('Login exception:', error)
       toast.error('An unexpected error occurred')
     } finally {
       setIsLoading(false)

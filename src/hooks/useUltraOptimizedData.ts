@@ -25,9 +25,11 @@ export function useUltraOptimizedData<T>(
 
     // Check if data is still fresh
     const now = Date.now()
+
     if (!force && data && (now - lastFetch) < staleTime) {
       console.log(`Using cached data for ${endpoint}`)
-      return
+      
+return
     }
 
     setLoading(true)
@@ -42,11 +44,13 @@ export function useUltraOptimizedData<T>(
       }
 
       const result = await response.json()
+
       setData(result)
       setLastFetch(now)
       console.log(`Successfully fetched data from ${endpoint}`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+
       console.error(`Error fetching ${endpoint}:`, errorMessage)
       setError(errorMessage)
     } finally {
