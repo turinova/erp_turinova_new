@@ -6,8 +6,6 @@ import { supabase } from '@/lib/supabase'
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-
-    console.log(`Fetching brand ${id}`)
     
     const { data: brand, error } = await supabase
       .from('brands')
@@ -18,22 +16,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     
     if (error) {
       console.error('Supabase error:', error)
-      
-return NextResponse.json({ error: 'Failed to fetch brand' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to fetch brand' }, { status: 500 })
     }
     
     if (!brand) {
       return NextResponse.json({ error: 'Brand not found' }, { status: 404 })
     }
     
-    console.log('Brand fetched successfully:', brand)
-    
-return NextResponse.json(brand)
+    return NextResponse.json(brand)
     
   } catch (error) {
     console.error('Error fetching brand:', error)
-    
-return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -41,8 +35,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const { id } = await params
     const brandData = await request.json()
-    
-    console.log(`Updating brand ${id}:`, brandData)
     
     const { data: brand, error } = await supabase
       .from('brands')
@@ -73,9 +65,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Failed to update brand' }, { status: 500 })
     }
     
-    console.log('Brand updated successfully:', brand)
-    
-return NextResponse.json({ 
+    return NextResponse.json({ 
       success: true, 
       message: 'Brand updated successfully',
       brand: brand 
@@ -83,16 +73,13 @@ return NextResponse.json({
     
   } catch (error) {
     console.error('Error updating brand:', error)
-    
-return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-
-    console.log(`Soft deleting brand ${id}`)
     
     // Try soft delete first
     let { error } = await supabase
@@ -102,8 +89,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     // If deleted_at column doesn't exist, fall back to hard delete
     if (error && error.message.includes('column "deleted_at" does not exist')) {
-      console.log('deleted_at column not found, using hard delete...')
-
       const result = await supabase
         .from('brands')
         .delete()
@@ -114,17 +99,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     if (error) {
       console.error('Supabase delete error:', error)
-      
-return NextResponse.json({ error: 'Failed to delete brand' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to delete brand' }, { status: 500 })
     }
-
-    console.log(`Brand ${id} deleted successfully`)
     
-return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true })
     
   } catch (error) {
     console.error('Error deleting brand:', error)
-    
-return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

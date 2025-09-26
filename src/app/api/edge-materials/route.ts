@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 // GET - List all edge materials with optional search
 export async function GET(request: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching edge materials...', searchQuery ? `with search: ${searchQuery}` : '')
     
-    let query = supabase
+    let query = supabaseServer
       .from('edge_materials')
       .select(`
         id,
@@ -48,7 +48,14 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Fetched ${edgeMaterials?.length || 0} edge materials successfully`)
-    return NextResponse.json(edgeMaterials || [])
+    
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(edgeMaterials || [])
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+
+    return response
     
   } catch (error) {
     console.error('Error fetching edge materials:', error)

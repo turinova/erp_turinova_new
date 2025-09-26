@@ -42,8 +42,13 @@ export default function UsersPage() {
   // Handle redirect if no access - moved to useEffect to avoid setState during render
   useEffect(() => {
     // Only redirect if permissions are loaded and user doesn't have access
+    // Add a small delay to prevent redirects during page refresh
     if (!permissionsLoading && !hasAccess) {
-      router.push('/403')
+      const timer = setTimeout(() => {
+        router.push('/403')
+      }, 100) // Small delay to prevent redirects during page refresh
+      
+      return () => clearTimeout(timer)
     }
   }, [hasAccess, permissionsLoading, router])
 

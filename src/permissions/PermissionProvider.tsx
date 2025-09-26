@@ -22,7 +22,6 @@ interface PermissionProviderProps {
 
 // Extract the existing permission SQL/logic into a single function (reuse existing query from API)
 async function fetchAllowedPaths(userId: string): Promise<string[]> {
-  console.log('⚡ fetchAllowedPaths called for user:', userId)
   
   try {
     // Reuse the same query logic from the existing API endpoint
@@ -43,7 +42,6 @@ async function fetchAllowedPaths(userId: string): Promise<string[]> {
 
     const paths = data?.map((item: any) => item.pages.path) || []
     
-    console.log(`⚡ Fetched ${paths.length} allowed paths directly:`, paths)
     
     return paths
   } catch (error) {
@@ -99,7 +97,6 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
       
       setAllowedPaths(normalizedPaths)
       setCurrentUserId(userId)
-      console.log('✅ Permissions cached locally!', normalizedPaths.length, 'pages')
 
     } catch (err) {
       console.error('Error loading user permissions:', err)
@@ -107,7 +104,17 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
       
       setError(err instanceof Error ? err.message : 'Unknown error')
       
-      // Sign out user on permission fetch failure
+      // Don't sign out user on permission fetch failure during page refresh
+      // Only sign out if it's a persistent error (not a temporary network issue)
+      if (err instanceof Error && err.message.includes('Failed to fetch')) {
+        // Network error - don't sign out, just set loading to false
+        if (mountedRef.current) {
+          setLoading(false)
+        }
+        return
+      }
+      
+      // Only sign out on persistent errors
       try {
         await supabase.auth.signOut()
         router.push('/login')

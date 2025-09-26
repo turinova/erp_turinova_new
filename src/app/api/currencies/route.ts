@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 // GET - List all currencies with optional search
 export async function GET(request: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching currencies...', searchQuery ? `with search: ${searchQuery}` : '')
     
-    let query = supabase
+    let query = supabaseServer
       .from('currencies')
       .select('id, name, rate, created_at, updated_at')
       .is('deleted_at', null)
@@ -28,7 +28,14 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Fetched ${currencies?.length || 0} currencies successfully`)
-    return NextResponse.json(currencies || [])
+    
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(currencies || [])
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+
+    return response
     
   } catch (error) {
     console.error('Error fetching currencies:', error)
@@ -55,7 +62,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }
 
-    const { data: currency, error } = await supabase
+    const { data: currency, error } = await supabaseServer
       .from('currencies')
       .insert([newCurrency])
       .select('id, name, rate, created_at, updated_at')

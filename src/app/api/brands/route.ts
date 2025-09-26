@@ -1,16 +1,14 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const searchQuery = searchParams.get('q')
     
-    console.log('Fetching brands...', searchQuery ? `with search: ${searchQuery}` : '')
-    
-    let query = supabase
+    let query = supabaseServer
       .from('brands')
       .select('id, name, comment, created_at, updated_at')
       .is('deleted_at', null)
@@ -24,8 +22,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Supabase error:', error)
-      
-return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 })
+      return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 })
     }
 
     // Ensure comment field exists (fallback to null if column doesn't exist)
@@ -33,22 +30,17 @@ return NextResponse.json({ error: 'Failed to fetch brands' }, { status: 500 })
       ...brand,
       comment: brand.comment || null
     })) || []
-
-    console.log(`Fetched ${brandsWithComment.length} brands successfully`)
     
-return NextResponse.json(brandsWithComment)
+    return NextResponse.json(brandsWithComment)
     
   } catch (error) {
     console.error('Error fetching brands:', error)
-    
-return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('Creating new brand...')
-    
     const brandData = await request.json()
     
     // Prepare brand data with timestamp
@@ -60,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Insert brand into Supabase database
-    const { data: brand, error } = await supabase
+    const { data: brand, error } = await supabaseServer
       .from('brands')
       .insert([newBrand])
       .select('id, name, comment, created_at, updated_at')
@@ -84,8 +76,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create brand' }, { status: 500 })
     }
     
-    console.log('Brand created successfully:', brand)
-    
     return NextResponse.json(
       { 
         success: true, 
@@ -97,9 +87,7 @@ export async function POST(request: NextRequest) {
     
   } catch (error) {
     console.error('Error creating brand:', error)
-    
-return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-
 }
 

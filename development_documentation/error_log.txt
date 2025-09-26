@@ -37,3 +37,8 @@ Stack trace:
 #0 /Volumes/T7/erp_turinova_new/starter-kit/development_documentation/test_optimization.php(12): require_once()
 #1 {main}
   thrown in /Volumes/T7/erp_turinova_new/starter-kit/development_documentation/calculate_price.php on line 15
+[26-Sep-2025 05:31:12 UTC] PHP Warning:  require(./db.php): Failed to open stream: No such file or directory in /Volumes/T7/erp_turinova_new/starter-kit/development_documentation/calculate_price.php on line 15
+[26-Sep-2025 05:31:12 UTC] PHP Fatal error:  Uncaught Error: Failed opening required './db.php' (include_path='.:/opt/homebrew/Cellar/php/8.4.7/share/php/pear') in /Volumes/T7/erp_turinova_new/starter-kit/development_documentation/calculate_price.php:15
+Stack trace:
+#0 {main}
+  thrown in /Volumes/T7/erp_turinova_new/starter-kit/development_documentation/calculate_price.php on line 15

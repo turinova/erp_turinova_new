@@ -1,7 +1,7 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching VAT rates...', searchQuery ? `with search: ${searchQuery}` : '')
 
-    let query = supabase
+    let query = supabaseServer
       .from('vat')
       .select('id, name, kulcs, created_at, updated_at')
       .is('deleted_at', null)
@@ -30,7 +30,13 @@ return NextResponse.json({ error: 'Failed to fetch VAT rates' }, { status: 500 }
 
     console.log(`Fetched ${vatRates?.length || 0} VAT rates successfully`)
     
-return NextResponse.json(vatRates || [])
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(vatRates || [])
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+
+    return response
 
   } catch (error) {
     console.error('Error fetching VAT rates:', error)
@@ -57,7 +63,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }
 
-    const { data: vat, error } = await supabase
+    const { data: vat, error } = await supabaseServer
       .from('vat')
       .insert([newVat])
       .select('id, name, kulcs, created_at, updated_at')

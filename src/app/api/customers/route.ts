@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 // GET - List all customers with optional search
 export async function GET(request: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching customers...', searchQuery ? `with search: ${searchQuery}` : '')
     
-    let query = supabase
+    let query = supabaseServer
       .from('customers')
       .select(`
         id,
@@ -45,7 +45,14 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Fetched ${customers?.length || 0} customers successfully`)
-    return NextResponse.json(customers || [])
+    
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(customers || [])
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+
+    return response
     
   } catch (error) {
     console.error('Error fetching customers:', error)
@@ -83,7 +90,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }
     
-    const { data: customer, error } = await supabase
+    const { data: customer, error } = await supabaseServer
       .from('customers')
       .insert([newCustomer])
       .select('id, name, email, mobile, discount_percent, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')

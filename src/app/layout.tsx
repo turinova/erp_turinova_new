@@ -16,9 +16,17 @@ import '@/app/globals.css'
 // Generated Icon CSS Imports
 import '@assets/iconify-icons/generated-icons.css'
 
+// Component Imports
+// PerformanceMonitor removed - was causing React hook errors
+
 export const metadata = {
   title: 'Materialize - Material Next.js Admin Template',
-  description: 'Materialize - Material Next.js Admin Template'
+  description: 'Materialize - Material Next.js Admin Template',
+  other: {
+    // Preload critical resources
+    'preload': '/api/brands',
+    'prefetch': '/brands',
+  }
 }
 
 const RootLayout = async (props: ChildrenType) => {
@@ -31,6 +39,29 @@ const RootLayout = async (props: ChildrenType) => {
 
   return (
     <html id='__next' lang='en' dir={direction} suppressHydrationWarning>
+      <head>
+        {/* Preload critical resources */}
+        <link rel="preload" href="/api/brands" as="fetch" crossOrigin="anonymous" />
+        <link rel="preload" href="/api/materials" as="fetch" crossOrigin="anonymous" />
+        <link rel="preload" href="/api/units" as="fetch" crossOrigin="anonymous" />
+        <link rel="preload" href="/api/currencies" as="fetch" crossOrigin="anonymous" />
+        <link rel="preload" href="/api/vat" as="fetch" crossOrigin="anonymous" />
+        <link rel="preload" href="/api/customers" as="fetch" crossOrigin="anonymous" />
+        <link rel="prefetch" href="/brands" />
+        <link rel="prefetch" href="/materials" />
+        <link rel="prefetch" href="/units" />
+        <link rel="prefetch" href="/currencies" />
+        <link rel="prefetch" href="/vat" />
+        <link rel="prefetch" href="/customers" />
+        
+        {/* Preload critical fonts */}
+        <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" as="style" />
+        <link rel="preload" href="https://fonts.googleapis.com/icon?family=Material+Icons" as="style" />
+        
+        {/* DNS prefetch for external resources */}
+        <link rel="dns-prefetch" href="//fonts.googleapis.com" />
+        <link rel="dns-prefetch" href="//fonts.gstatic.com" />
+      </head>
       <body className='flex is-full min-bs-full flex-auto flex-col'>
         <InitColorSchemeScript attribute='data' defaultMode={systemMode} />
         {children}

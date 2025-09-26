@@ -1,11 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { supabaseServer } from '@/lib/supabase-server'
 import { invalidateApiCache } from '@/hooks/useApiCache'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseKey)
 
 // GET /api/materials - List materials with optional search
 export async function GET(request: NextRequest) {
@@ -16,7 +12,7 @@ export async function GET(request: NextRequest) {
     console.log('Fetching materials...')
     const startTime = performance.now()
     
-    let query = supabase
+    let query = supabaseServer
       .from('materials_with_settings')
       .select('*')
       .limit(50) // Limit results to prevent memory issues
@@ -68,7 +64,13 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetched ${transformedMaterials.length} materials successfully`)
     
-    return NextResponse.json(transformedMaterials)
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(transformedMaterials)
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    
+    return response
   } catch (error) {
     console.error('Error in materials API:', error)
     return NextResponse.json({ 

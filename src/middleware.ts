@@ -11,9 +11,28 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Performance optimizations
+  const response = NextResponse.next()
+  
+  // Add performance headers
+  response.headers.set('X-DNS-Prefetch-Control', 'on')
+  response.headers.set('X-Content-Type-Options', 'nosniff')
+  response.headers.set('X-Frame-Options', 'DENY')
+  response.headers.set('X-XSS-Protection', '1; mode=block')
+  
+  // Add cache headers for static assets
+  if (req.nextUrl.pathname.startsWith('/_next/static/')) {
+    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+  }
+  
+  // Add cache headers for brand pages
+  if (req.nextUrl.pathname.startsWith('/brands/')) {
+    response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=60')
+  }
+  
   // Temporarily disable auth middleware to test login flow
   console.log('Middleware - Path:', req.nextUrl.pathname, 'Auth middleware disabled for testing')
-  return NextResponse.next()
+  return response
 
   // const res = NextResponse.next()
   // const supabase = createMiddlewareClient({ req, res })

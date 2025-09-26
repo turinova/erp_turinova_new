@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 // GET - List all units with optional search
 export async function GET(request: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching units...', searchQuery ? `with search: ${searchQuery}` : '')
     
-    let query = supabase
+    let query = supabaseServer
       .from('units')
       .select('id, name, shortform, created_at, updated_at')
       .is('deleted_at', null)
@@ -28,7 +28,14 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Fetched ${units?.length || 0} units successfully`)
-    return NextResponse.json(units || [])
+    
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(units || [])
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+
+    return response
     
   } catch (error) {
     console.error('Error fetching units:', error)
@@ -55,7 +62,7 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString()
     }
 
-    const { data: unit, error } = await supabase
+    const { data: unit, error } = await supabaseServer
       .from('units')
       .insert([newUnit])
       .select('id, name, shortform, created_at, updated_at')

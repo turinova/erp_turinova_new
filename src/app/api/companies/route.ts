@@ -1,7 +1,7 @@
 import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     console.log('Fetching companies...', searchQuery ? `with search: ${searchQuery}` : '')
     
-    let query = supabase
+    let query = supabaseServer
       .from('tenant_company')
       .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, created_at, updated_at')
       .is('deleted_at', null)
@@ -54,7 +54,13 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetched ${companies?.length || 0} companies successfully`)
     
-    return NextResponse.json(companies || [])
+    // Add cache control headers for dynamic ERP data
+    const response = NextResponse.json(companies || [])
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+
+    return response
     
   } catch (error) {
     console.error('Error fetching companies:', error)
@@ -87,7 +93,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Insert company into Supabase database
-    const { data: company, error } = await supabase
+    const { data: company, error } = await supabaseServer
       .from('tenant_company')
       .insert([newCompany])
       .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, created_at, updated_at')

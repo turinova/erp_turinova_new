@@ -51,7 +51,6 @@ import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 
 // Components
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { useApiCache } from '@/hooks/useApiCache'
 import { usePermissions } from '@/permissions/PermissionProvider'
 
 // Styled component for Accordion component
@@ -218,34 +217,26 @@ interface EdgeMaterial {
   }
 }
 
-// Materials will be fetched from database
+// Props interface for OptiClient
+interface OptiClientProps {
+  initialMaterials: Material[]
+  initialCustomers: Customer[]
+  initialEdgeMaterials: EdgeMaterial[]
+}
 
-
-export default function OptiPage() {
+export default function OptiClient({ 
+  initialMaterials, 
+  initialCustomers, 
+  initialEdgeMaterials 
+}: OptiClientProps) {
   // Check permission for this page
   const { canAccess } = usePermissions()
   const hasAccess = canAccess('/opti')
   
-  // Use unified API with caching
-  const { data: materialsData, isLoading: materialsLoading, error: materialsError } = useApiCache<Material[]>('/api/materials', {
-    ttl: 5 * 60 * 1000, // 5 minutes cache
-    staleWhileRevalidate: true
-  })
-  
-  const { data: customersData, isLoading: customersLoading, error: customersError } = useApiCache<Customer[]>('/api/customers', {
-    ttl: 5 * 60 * 1000, // 5 minutes cache
-    staleWhileRevalidate: true
-  })
-  
-  const { data: edgeMaterialsData, isLoading: edgeMaterialsLoading, error: edgeMaterialsError } = useApiCache<EdgeMaterial[]>('/api/edge-materials', {
-    ttl: 5 * 60 * 1000, // 5 minutes cache
-    staleWhileRevalidate: true
-  })
-
-  // Ensure arrays are never null
-  const materials = materialsData || []
-  const customers = customersData || []
-  const edgeMaterials = edgeMaterialsData || []
+  // Use SSR data instead of API calls
+  const materials = initialMaterials || []
+  const customers = initialCustomers || []
+  const edgeMaterials = initialEdgeMaterials || []
 
 
   // State
@@ -678,27 +669,7 @@ export default function OptiPage() {
     }
   }
 
-  // Handle API errors
-  useEffect(() => {
-    if (materialsError) {
-      console.error('💥 Materials API error:', materialsError)
-      setError('Error loading materials from database')
-    }
-  }, [materialsError])
-
-  // Handle customers API errors
-  useEffect(() => {
-    if (customersError) {
-      console.error('💥 Customers API error:', customersError)
-    }
-  }, [customersError])
-
-  // Handle edge materials API errors
-  useEffect(() => {
-    if (edgeMaterialsError) {
-      console.error('💥 Edge materials API error:', edgeMaterialsError)
-    }
-  }, [edgeMaterialsError])
+  // API errors handled via SSR, no client-side error handling needed
 
   // Initialize board indices when optimization result changes
   useEffect(() => {
@@ -945,81 +916,9 @@ export default function OptiPage() {
     )
   }
 
-  // Check if any data is still loading
-  const isDataLoading = materialsLoading || customersLoading || edgeMaterialsLoading
-  
-  // Show loading state if any data is still loading
-  if (isDataLoading) {
-    return (
-      <ErrorBoundary>
-        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
-          <CircularProgress size={60} sx={{ mb: 3 }} />
-          <Typography variant="h6" gutterBottom>
-            Loading Optimization Data...
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Fetching materials, customers, and edge materials
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={16} color={materialsLoading ? 'primary' : 'success'} />
-              <Typography variant="caption">
-                Materials {materialsLoading ? 'Loading...' : '✓'}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={16} color={customersLoading ? 'primary' : 'success'} />
-              <Typography variant="caption">
-                Customers {customersLoading ? 'Loading...' : '✓'}
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <CircularProgress size={16} color={edgeMaterialsLoading ? 'primary' : 'success'} />
-              <Typography variant="caption">
-                Edge Materials {edgeMaterialsLoading ? 'Loading...' : '✓'}
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-      </ErrorBoundary>
-    )
-  }
+  // Data is now provided via SSR props, no loading states needed
 
-  // Show error state if there are critical errors
-  if (materialsError || customersError || edgeMaterialsError) {
-    return (
-      <ErrorBoundary>
-        <Box sx={{ p: 3 }}>
-          <Typography variant="h4" gutterBottom>
-            Opti - Multi-Material Panel Optimization
-          </Typography>
-          <Alert severity="error" sx={{ mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Failed to load optimization data
-            </Typography>
-            {materialsError && (
-              <Typography variant="body2">
-                • Materials API Error: {materialsError}
-              </Typography>
-            )}
-            {customersError && (
-              <Typography variant="body2">
-                • Customers API Error: {customersError}
-              </Typography>
-            )}
-            {edgeMaterialsError && (
-              <Typography variant="body2">
-                • Edge Materials API Error: {edgeMaterialsError}
-              </Typography>
-            )}
-            <Typography variant="body2" sx={{ mt: 2 }}>
-              Please refresh the page or check your connection.
-            </Typography>
-          </Alert>
-        </Box>
-      </ErrorBoundary>
-    )
-  }
+  // Data is provided via SSR, no error states needed
 
   return (
     <ErrorBoundary>
@@ -1330,8 +1229,8 @@ export default function OptiPage() {
                      }
                    }}
                    freeSolo
-                   disabled={customersLoading}
-                   loading={customersLoading}
+                   disabled={false}
+                   loading={false}
                    loadingText="Ügyfelek betöltése..."
                    noOptionsText="Nincs találat"
                    renderInput={(params) => (
@@ -1343,7 +1242,7 @@ export default function OptiPage() {
                          ...params.InputProps,
                          endAdornment: (
                            <>
-                             {customersLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                             {null}
                              {params.InputProps.endAdornment}
                            </>
                          ),
@@ -1568,8 +1467,8 @@ export default function OptiPage() {
                    setSelectedTáblásAnyag(newValue ? newValue.id : '')
                    clearValidationError('táblásAnyag')
                  }}
-                 disabled={materialsLoading}
-                 loading={materialsLoading}
+                 disabled={false}
+                 loading={false}
                  loadingText="Anyagok betöltése..."
                  noOptionsText="Nincs találat"
                  renderInput={(params) => (
@@ -1583,7 +1482,7 @@ export default function OptiPage() {
                        ...params.InputProps,
                        endAdornment: (
                          <>
-                           {materialsLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                           {null}
                            {params.InputProps.endAdornment}
                          </>
                        ),
@@ -1816,7 +1715,7 @@ export default function OptiPage() {
                     onChange={(event, newValue) => {
                       setSelectedA(newValue ? newValue.id : '')
                     }}
-                    disabled={edgeMaterialsLoading}
+                    disabled={false}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -1844,7 +1743,7 @@ export default function OptiPage() {
                     onChange={(event, newValue) => {
                       setSelectedC(newValue ? newValue.id : '')
                     }}
-                    disabled={edgeMaterialsLoading}
+                    disabled={false}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -1872,7 +1771,7 @@ export default function OptiPage() {
                     onChange={(event, newValue) => {
                       setSelectedD(newValue ? newValue.id : '')
                     }}
-                    disabled={edgeMaterialsLoading}
+                    disabled={false}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -1900,7 +1799,7 @@ export default function OptiPage() {
                     onChange={(event, newValue) => {
                       setSelectedB(newValue ? newValue.id : '')
                     }}
-                    disabled={edgeMaterialsLoading}
+                    disabled={false}
                     renderInput={(params) => (
                       <TextField
                         {...params}

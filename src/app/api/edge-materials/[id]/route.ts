@@ -7,7 +7,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
 
-    console.log(`Fetching edge material ${id}`)
 
     const { data: edgeMaterial, error } = await supabase
       .from('edge_materials')
@@ -44,7 +43,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Failed to fetch edge material' }, { status: 500 })
     }
 
-    console.log('Edge material fetched successfully:', edgeMaterial)
     return NextResponse.json(edgeMaterial)
 
   } catch (error) {
@@ -59,7 +57,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const { id } = await params
     const body = await request.json()
 
-    console.log(`Updating edge material ${id}:`, body)
     
     // Prepare data for update
     const updateData = {
@@ -120,7 +117,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }, { status: 500 })
     }
 
-    console.log('Edge material updated successfully:', edgeMaterial)
     
     return NextResponse.json({
       success: true,
@@ -138,7 +134,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
 
-    console.log(`Soft deleting edge material ${id}`)
 
     // Try soft delete first
     let { error } = await supabase
@@ -148,7 +143,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     // If deleted_at column doesn't exist, fall back to hard delete
     if (error && error.message.includes('column "deleted_at" does not exist')) {
-      console.log('deleted_at column not found, using hard delete...')
 
       const result = await supabase
         .from('edge_materials')
@@ -163,7 +157,6 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'Failed to delete edge material' }, { status: 500 })
     }
 
-    console.log(`Edge material ${id} deleted successfully`)
     
     return NextResponse.json({ success: true })
 

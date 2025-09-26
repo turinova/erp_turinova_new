@@ -1,16 +1,6 @@
-'use client'
-
-import React, { useState, useMemo, useEffect } from 'react'
-
-import { useRouter } from 'next/navigation'
-
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
-import { toast } from 'react-toastify'
-import { useApiCache } from '@/hooks/useApiCache'
-import { invalidateApiCache } from '@/hooks/useApiCache'
-
-import { usePermissions } from '@/permissions/PermissionProvider'
+import React, { Suspense } from 'react'
+import { getAllCustomers } from '@/lib/supabase-server'
+import CustomersListClient from './CustomersListClient'
 
 interface Customer {
   id: string
@@ -18,306 +8,51 @@ interface Customer {
   email: string
   mobile: string
   discount_percent: number
+  billing_name: string
+  billing_country: string
+  billing_city: string
+  billing_postal_code: string
+  billing_street: string
+  billing_house_number: string
+  billing_tax_number: string
+  billing_company_reg_number: string
+  created_at: string
+  updated_at: string
 }
 
-export default function UgyfelekPage() {
-  const router = useRouter()
-  
-  // Check permission for this page
-  const { canAccess } = usePermissions()
-  const hasAccess = canAccess('/customers')
-  
-  const [selectedCustomers, setSelectedCustomers] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-
-  // Check permission and redirect if no access
-  useEffect(() => {
-    if (!hasAccess) {
-      toast.error('Nincs jogosultságod az ügyfelek oldal megtekintéséhez')
-      router.push('/users') // Redirect to users page
-      return
-    }
-  }, [hasAccess, router])
-
-  // Use unified API with caching
-  const { data: customers = [], isLoading, error, refresh } = useApiCache<Customer[]>('/api/customers', {
-    ttl: 2 * 60 * 1000, // 2 minutes cache
-    staleWhileRevalidate: true
-  })
-
-
-  // Filter customers based on search term (client-side fallback)
-  const filteredCustomers = useMemo(() => {
-    if (!customers || !Array.isArray(customers)) return []
-    if (!searchTerm) return customers
-    
-    const term = searchTerm.toLowerCase()
-    return customers.filter(customer => 
-      customer.name.toLowerCase().includes(term) ||
-      customer.email.toLowerCase().includes(term) ||
-      customer.mobile.toLowerCase().includes(term)
-    )
-  }, [customers, searchTerm])
-
-  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      setSelectedCustomers(filteredCustomers.map(customer => customer.id))
-    } else {
-      setSelectedCustomers([])
-    }
-  }
-
-  const handleSelectCustomer = (customerId: string) => {
-    setSelectedCustomers(prev => 
-      prev.includes(customerId) 
-        ? prev.filter(id => id !== customerId)
-        : [...prev, customerId]
-    )
-  }
-
-  const isAllSelected = selectedCustomers.length === filteredCustomers.length && filteredCustomers.length > 0
-  const isIndeterminate = selectedCustomers.length > 0 && selectedCustomers.length < filteredCustomers.length
-
-  const handleRowClick = (customerId: string) => {
-    router.push(`/customers/${customerId}`)
-  }
-
-  const handleAddNewCustomer = () => {
-    router.push('/customers/new')
-  }
-
-  const handleDeleteClick = () => {
-    if (selectedCustomers.length === 0) {
-      toast.warning('Válasszon ki legalább egy ügyfelet a törléshez!', {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      })
-      
-return
-    }
-
-    setDeleteModalOpen(true)
-  }
-
-  const handleDeleteConfirm = async () => {
-    if (selectedCustomers.length === 0) return
-    
-    setIsDeleting(true)
-    
-    try {
-      // Delete customers one by one
-      const deletePromises = selectedCustomers.map(customerId => 
-        fetch(`/api/customers/${customerId}`, {
-          method: 'DELETE',
-        })
-      )
-      
-      const results = await Promise.allSettled(deletePromises)
-      
-      // Check if all deletions were successful
-      const failedDeletions = results.filter(result => 
-        result.status === 'rejected' || 
-        (result.status === 'fulfilled' && !result.value.ok)
-      )
-      
-      if (failedDeletions.length === 0) {
-        // All deletions successful
-        toast.success(`${selectedCustomers.length} ügyfél sikeresen törölve!`, {
-          position: "top-right",
-          autoClose: 3000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
-        
-        // Invalidate cache and refresh data
-        invalidateApiCache('/api/customers')
-        await refresh()
-        setSelectedCustomers([])
-      } else {
-        // Some deletions failed
-        toast.error(`${failedDeletions.length} ügyfél törlése sikertelen!`, {
-          position: "top-right",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
-      }
-    } catch (error) {
-      console.error('Delete error:', error)
-      toast.error('Hiba történt a törlés során!', {
-        position: "top-right",
-        autoClose: 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      })
-    } finally {
-      setIsDeleting(false)
-      setDeleteModalOpen(false)
-    }
-  }
-
-  const handleDeleteCancel = () => {
-    setDeleteModalOpen(false)
-  }
-
-
-  // Show loading while fetching customers
-  if (isLoading) {
-    return (
-      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
-        <Typography sx={{ ml: 2 }}>Ügyfelek betöltése...</Typography>
-      </Box>
-    )
-  }
-
+// Loading skeleton component
+function CustomersSkeleton() {
   return (
-    <Box sx={{ p: 3 }}>
-      <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
-        <Link
-          underline="hover"
-          color="inherit"
-          href="/"
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-        >
-          <HomeIcon fontSize="small" />
-          Főoldal
-        </Link>
-        <Link
-          underline="hover"
-          color="inherit"
-          href="#"
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-        >
-          Törzsadatok
-        </Link>
-        <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          Ügyfelek
-        </Typography>
-      </Breadcrumbs>
-      
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<DeleteIcon />}
-          color="error"
-          onClick={handleDeleteClick}
-          disabled={selectedCustomers.length === 0}
-        >
-          Törlés ({selectedCustomers.length})
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          color="primary"
-          onClick={handleAddNewCustomer}
-        >
-          Új ügyfél hozzáadása
-        </Button>
-      </Box>
-      
-      <TextField
-        fullWidth
-        placeholder="Keresés név, e-mail vagy telefonszám szerint..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        sx={{ mt: 2, mb: 2 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon />
-            </InputAdornment>
-          ),
-        }}
-      />
-      
-      <TableContainer component={Paper} sx={{ mt: 2 }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  indeterminate={isIndeterminate}
-                  checked={isAllSelected}
-                  onChange={handleSelectAll}
-                />
-              </TableCell>
-              <TableCell>Név</TableCell>
-              <TableCell>E-mail</TableCell>
-              <TableCell>Telefonszám</TableCell>
-              <TableCell>Kedvezmény</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredCustomers.map((customer) => (
-              <TableRow 
-                key={customer.id} 
-                hover 
-                sx={{ cursor: 'pointer' }}
-                onClick={() => handleRowClick(customer.id)}
-              >
-                <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
-                  <Checkbox
-                    checked={selectedCustomers.includes(customer.id)}
-                    onChange={() => handleSelectCustomer(customer.id)}
-                  />
-                </TableCell>
-                <TableCell>{customer.name}</TableCell>
-                <TableCell>{customer.email}</TableCell>
-                <TableCell>{customer.mobile}</TableCell>
-                <TableCell>{customer.discount_percent}%</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+    <div className="p-6">
+      <div className="animate-pulse">
+        <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+        <div className="h-10 bg-gray-200 rounded mb-4"></div>
+        <div className="space-y-3">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-16 bg-gray-200 rounded"></div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
-      {/* Delete Confirmation Modal */}
-      <Dialog
-        open={deleteModalOpen}
-        onClose={handleDeleteCancel}
-        aria-labelledby="delete-dialog-title"
-        aria-describedby="delete-dialog-description"
-      >
-        <DialogTitle id="delete-dialog-title">
-          Ügyfelek törlése
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText id="delete-dialog-description">
-            Biztosan törölni szeretné a kiválasztott {selectedCustomers.length} ügyfelet? 
-            Ez a művelet nem vonható vissza.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={handleDeleteCancel} 
-            disabled={isDeleting}
-          >
-            Mégse
-          </Button>
-          <Button 
-            onClick={handleDeleteConfirm} 
-            color="error" 
-            variant="contained"
-            disabled={isDeleting}
-            startIcon={isDeleting ? <CircularProgress size={20} /> : <DeleteIcon />}
-          >
-            {isDeleting ? 'Törlés...' : 'Törlés'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+// Server-side rendered customers list page
+export default async function CustomersPage() {
+  const startTime = performance.now()
+
+  // Fetch customers data on the server
+  const customers = await getAllCustomers()
+
+  const totalTime = performance.now()
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[PERF] Customers Page SSR: ${(totalTime - startTime).toFixed(2)}ms`)
+  }
+
+  // Pass pre-loaded data to client component with Suspense boundary
+  return (
+    <Suspense fallback={<CustomersSkeleton />}>
+      <CustomersListClient initialCustomers={customers} />
+    </Suspense>
   )
 }
