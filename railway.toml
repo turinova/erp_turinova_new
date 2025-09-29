@@ -2,7 +2,7 @@
 # This forces Railway to use npm instead of pnpm
 
 [build]
-command = "npm install --legacy-peer-deps && npm run build"
+command = "npm ci --legacy-peer-deps && npm run build"
 
 [deploy]
 startCommand = "npm start"
