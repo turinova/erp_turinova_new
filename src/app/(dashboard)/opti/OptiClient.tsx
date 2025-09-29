@@ -842,7 +842,13 @@ export default function OptiClient({
       // Call multi-material optimization service
       const request = { materials: materialsForOptimization }
         
-      const response = await fetch('http://localhost:8000/test_optimization.php', {
+      // Use Railway PHP service URL for production, localhost for development
+      const phpServiceUrl = process.env.NEXT_PUBLIC_PHP_SERVICE_URL || 
+        (process.env.NODE_ENV === 'production' 
+          ? 'https://php-service-production.up.railway.app/test_optimization.php'
+          : 'http://localhost:8000/test_optimization.php')
+        
+      const response = await fetch(phpServiceUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
