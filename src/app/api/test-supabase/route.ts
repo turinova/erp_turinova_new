@@ -1,11 +1,26 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseKey)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+// Check if Supabase is configured
+const isSupabaseConfigured = supabaseUrl && supabaseKey
+
+if (!isSupabaseConfigured) {
+  console.warn('Supabase not configured for test-supabase API')
+}
+
+const supabase = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseKey!) : null
 
 export async function GET() {
   try {
+    if (!supabase) {
+      return new Response(JSON.stringify({ error: 'Supabase not configured' }), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
     console.log('Fetching materials for opti page (fixed version)...')
     
     const startTime = performance.now()

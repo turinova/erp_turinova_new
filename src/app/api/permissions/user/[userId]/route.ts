@@ -4,8 +4,13 @@ import { createClient } from '@supabase/supabase-js'
 
 // Create server-side Supabase client for permissions
 function createServerClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn('Supabase not configured for permissions API')
+    return null
+  }
   
   return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
@@ -17,6 +22,12 @@ function createServerClient() {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   try {
+    const supabase = createServerClient()
+    
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const { userId } = await params
 
     console.log(`Fetching permissions for user: ${userId}`)
@@ -69,6 +80,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ userId: string }> }) {
   try {
+    const supabase = createServerClient()
+    
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const { userId } = await params
     const body = await request.json()
     const { permissions } = body // permissions should be an array of { path: string, can_view: boolean }

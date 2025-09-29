@@ -5,8 +5,13 @@ import { createClient } from '@supabase/supabase-js'
 
 // Create server-side Supabase client
 function createServerClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn('Supabase not configured for pages API')
+    return null
+  }
   
   return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
@@ -20,6 +25,10 @@ function createServerClient() {
 export async function GET(request: NextRequest) {
   try {
     const supabase = createServerClient()
+
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
 
     // Fetch all pages with their actual UUIDs
     const { data: pages, error } = await supabase

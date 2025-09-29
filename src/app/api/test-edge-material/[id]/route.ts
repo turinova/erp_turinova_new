@@ -5,10 +5,15 @@ import { createClient } from '@supabase/supabase-js'
 
 // Create server-side Supabase client with service role key
 function createServerClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.warn('Supabase not configured for test-edge-material API')
+    return null
+  }
+  
+  return createClient(supabaseUrl, supabaseServiceKey)
 }
 
 export async function GET(
@@ -16,13 +21,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = createServerClient()
+    
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const { id } = await params
 
     console.log('=== TESTING EDGE MATERIAL EXISTENCE ===')
     console.log('Testing ID:', id)
     
-    const supabase = createServerClient()
-
     console.log('Using server-side supabase client')
     
     // First, check if the record exists at all (including deleted ones)

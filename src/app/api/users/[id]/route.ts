@@ -5,10 +5,17 @@ import { createClient } from '@supabase/supabase-js'
 
 import type { UpdateUserRequest } from '@/types/user'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+// Check if Supabase is configured
+const isSupabaseConfigured = supabaseUrl && supabaseServiceKey
+
+if (!isSupabaseConfigured) {
+  console.warn('Supabase not configured for users/[id] API')
+}
+
+const supabase = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseServiceKey!) : null
 
 // GET /api/users/[id] - Get a specific user
 export async function GET(
@@ -16,6 +23,10 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const { id } = await params
 
     const { data: user, error } = await supabase.auth.admin.getUserById(id)
@@ -53,6 +64,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const { id } = await params
     const body: UpdateUserRequest = await request.json()
     const { email, password, full_name, phone, role, is_active } = body

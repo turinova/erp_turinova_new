@@ -5,14 +5,25 @@ import { createClient } from '@supabase/supabase-js'
 
 import type { CreateUserRequest, UserFilters } from '@/types/user'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+// Check if Supabase is configured
+const isSupabaseConfigured = supabaseUrl && supabaseServiceKey
+
+if (!isSupabaseConfigured) {
+  console.warn('Supabase not configured for users API. Some features may not work.')
+}
+
+const supabase = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseServiceKey!) : null
 
 // GET /api/users - Get all users
 export async function GET(request: NextRequest) {
   try {
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const role = searchParams.get('role')
@@ -72,6 +83,10 @@ return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
 // POST /api/users - Create a new user
 export async function POST(request: NextRequest) {
   try {
+    if (!supabase) {
+      return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 })
+    }
+
     const body: CreateUserRequest = await request.json()
     const { email, password, full_name, phone, role, is_active = true } = body
 
