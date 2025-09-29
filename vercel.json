@@ -1,7 +1,4 @@
 {
-  "buildCommand": "npm run build:icons && npm run build",
-  "devCommand": "npm run dev",
   "installCommand": "npm install --legacy-peer-deps",
-  "framework": "nextjs",
-  "regions": ["fra1"]
+  "framework": "nextjs"
 }
