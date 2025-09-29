@@ -1,0 +1,12 @@
+# Railway configuration for Next.js frontend
+# This forces Railway to use npm instead of pnpm
+
+[build]
+command = "npm install --legacy-peer-deps && npm run build"
+
+[deploy]
+startCommand = "npm start"
+
+# Force npm usage
+[build.environment]
+NPM_CONFIG_PACKAGE_MANAGER = "npm"
