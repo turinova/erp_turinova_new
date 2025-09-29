@@ -179,7 +179,7 @@ const colorSchemes = (skin: Skin): Theme['colorSchemes'] => {
       },
       overlays: []
     }
-  } as Theme['colorSchemes']
+  } as unknown as Theme['colorSchemes']
 }
 
 export default colorSchemes
