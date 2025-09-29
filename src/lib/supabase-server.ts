@@ -10,15 +10,43 @@ function logTiming(operation: string, startTime: number, additionalInfo?: string
   }
 }
 
-// Server-side Supabase client with service role key for SSR
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseServiceKey) {
-  throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for server-side operations')
+// Helper function to check if Supabase is configured
+function checkSupabaseConfig() {
+  if (!supabaseServer) {
+    console.warn('Supabase not configured for server-side operations')
+    return false
+  }
+  return true
 }
 
-export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey, {
+// Server-side Supabase client with service role key for SSR
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+// Check if Supabase is configured
+const isSupabaseConfigured = supabaseUrl && supabaseServiceKey
+
+if (!isSupabaseConfigured) {
+  console.warn('Supabase not configured for server-side operations. Some features may not work.')
+}
+
+// Create a mock Supabase client for build time
+const createMockSupabaseClient = () => ({
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        is: () => ({
+          single: () => ({ data: null, error: null })
+        })
+      }),
+      is: () => ({
+        order: () => ({ data: [], error: null })
+      })
+    })
+  })
+})
+
+export const supabaseServer = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseServiceKey!, {
   auth: {
     persistSession: false, // Don't persist session on server
     autoRefreshToken: false, // No token refresh needed on server
@@ -32,7 +60,7 @@ export const supabaseServer = createClient(supabaseUrl, supabaseServiceKey, {
   realtime: {
     enabled: false, // Disable realtime for server-side performance
   },
-})
+}) : createMockSupabaseClient()
 
 // Server-side optimized query functions
 export async function getBrandById(id: string) {
