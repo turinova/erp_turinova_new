@@ -1,12 +1,12 @@
-# Railway configuration for Next.js frontend
-# This forces Railway to use npm instead of pnpm
+# Railway configuration for PHP service only
+# This tells Railway to run PHP instead of Next.js
 
 [build]
-command = "npm install --legacy-peer-deps && npm run build"
+command = "echo 'PHP service ready'"
 
 [deploy]
-startCommand = "npm start"
+startCommand = "cd php-service && php -S 0.0.0.0:$PORT"
 
-# Force npm usage
+# Force PHP usage
 [build.environment]
-NPM_CONFIG_PACKAGE_MANAGER = "npm"
+NODE_ENV = "production"
