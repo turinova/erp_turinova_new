@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  basePath: process.env.BASEPATH,
+  // basePath: process.env.BASEPATH, // Temporarily disabled for custom domain testing
   
   // Disable ESLint during build for deployment
   eslint: {
@@ -215,7 +215,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/',
-        destination: '/admin',
+        destination: '/home',
         permanent: true,
         locale: false
       }
