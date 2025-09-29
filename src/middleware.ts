@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 
 // Permission checks are now handled client-side by the PermissionProvider
 
@@ -30,32 +30,52 @@ export async function middleware(req: NextRequest) {
     response.headers.set('Cache-Control', 'public, max-age=60, s-maxage=60')
   }
   
-  // Temporarily disable auth middleware to test login flow
-  console.log('Middleware - Path:', req.nextUrl.pathname, 'Auth middleware disabled for testing')
+  // Define public routes that don't require authentication
+  const publicRoutes = ['/', '/home', '/login']
+  const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
+  
+  // Skip authentication for public routes
+  if (isPublicRoute) {
+    console.log('Middleware - Public route:', req.nextUrl.pathname)
+    return response
+  }
+
+  // Enable authentication for all other routes
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => req.cookies.set(name, value))
+          response.cookies.set(name, value, options)
+        },
+      },
+    }
+  )
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+
+  console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
+
+  // If user is not signed in and the current path is not /login, redirect to /login
+  if (!session && req.nextUrl.pathname !== '/login') {
+    console.log('Middleware - Redirecting to login (no session)')
+    return NextResponse.redirect(new URL('/login', req.url))
+  }
+
+  // If user is signed in and the current path is /login, redirect to /home
+  if (session && req.nextUrl.pathname === '/login') {
+    console.log('Middleware - Redirecting to home (user signed in)')
+    return NextResponse.redirect(new URL('/home', req.url))
+  }
+
   return response
-
-  // const res = NextResponse.next()
-  // const supabase = createMiddlewareClient({ req, res })
-
-  // const {
-  //   data: { session },
-  // } = await supabase.auth.getSession()
-
-  // console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
-
-  // // If user is not signed in and the current path is not /login, redirect to /login
-  // if (!session && req.nextUrl.pathname !== '/login') {
-  //   console.log('Middleware - Redirecting to login (no session)')
-  //   return NextResponse.redirect(new URL('/login', req.url))
-  // }
-
-  // // If user is signed in and the current path is /login, redirect to /home
-  // if (session && req.nextUrl.pathname === '/login') {
-  //   console.log('Middleware - Redirecting to home (user signed in)')
-  //   return NextResponse.redirect(new URL('/home', req.url))
-  // }
-
-  // return res
 }
 
 export const config = {

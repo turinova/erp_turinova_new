@@ -74,7 +74,8 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
 
       if (user) {
         setUser(user)
-        router.push('/home')
+        // Let middleware handle the redirect to avoid conflicts
+        // router.push('/home')
       }
     }
 
@@ -107,15 +108,14 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
           toast.error(error.message)
         }
       } else if (data.user) {
-        console.log('Login successful, user:', data.user.email, 'redirecting to /home')
+        console.log('Login successful, user:', data.user.email)
         toast.success('Login successful!')
         setUser(data.user)
         
-        // Wait a moment for the session to be properly set
+        // Redirect to home after successful login
         setTimeout(() => {
-          console.log('Redirecting to /home after login')
-          window.location.href = '/home'
-        }, 100)
+          router.push('/home')
+        }, 1000) // Small delay to show success message
       }
     } catch (error) {
       console.error('Login exception:', error)
@@ -160,6 +160,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             className='flex flex-col gap-5'
           >
             <TextField 
+              id="login-email"
               autoFocus 
               fullWidth 
               label='Email' 
@@ -169,6 +170,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               required
             />
             <TextField
+              id="login-password"
               fullWidth
               label='Password'
               type={isPasswordShown ? 'text' : 'password'}
@@ -193,7 +195,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               }}
             />
             <div className='flex justify-between items-center flex-wrap gap-x-3 gap-y-1'>
-              <FormControlLabel control={<Checkbox />} label='Remember me' />
+              <FormControlLabel control={<Checkbox id="remember-me" />} label='Remember me' />
               <Typography className='text-end' color='primary.main' component={Link}>
                 Forgot password?
               </Typography>
