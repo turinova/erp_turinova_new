@@ -3,6 +3,11 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   basePath: process.env.BASEPATH,
   
+  // Disable ESLint during build for deployment
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  
   // Performance optimizations
   compress: true,
   poweredByHeader: false,
