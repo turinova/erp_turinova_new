@@ -170,16 +170,9 @@ const colorSchemes = (skin: Skin): Theme['colorSchemes'] => {
           tooltipText: '#FFFFFF',
           trackBg: '#F5F5F8'
         }
-      },
-      opacity: {
-        inputPlaceholder: 0.42,
-        inputUnderline: 0.42,
-        switchTrackDisabled: 0.12,
-        switchTrack: 0.38
-      },
-      overlays: []
+      }
     }
-  } as unknown as Theme['colorSchemes']
+  } as Theme['colorSchemes']
 }
 
 export default colorSchemes
