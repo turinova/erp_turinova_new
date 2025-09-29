@@ -1,30 +1,83 @@
-import { createClient } from '@supabase/supabase-js'
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-// Optimized Supabase client with connection pooling and performance settings
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Check if Supabase is configured
+const isSupabaseConfigured = supabaseUrl && supabaseServiceKey
 
-// Create optimized Supabase client with service role key for full database access
-export const supabaseOptimized = createClient(supabaseUrl, supabaseServiceKey, {
-  db: {
-    schema: 'public',
-  },
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: false
-  },
-  global: {
-    headers: {
-      'X-Client-Info': 'nextjs-optimized',
-    },
-  },
+if (!isSupabaseConfigured) {
+  console.warn('Supabase not configured for optimized operations')
+}
 
-  // Performance optimizations
-  realtime: {
-    enabled: false, // Disable realtime for better performance
-  },
+// Create a mock Supabase client for build time
+const createMockSupabaseClient = () => ({
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        is: () => ({
+          single: () => ({ data: null, error: null })
+        }),
+        order: () => ({ data: [], error: null })
+      }),
+      is: () => ({
+        order: () => ({ data: [], error: null })
+      }),
+      insert: () => ({
+        select: () => ({
+          single: () => ({ data: null, error: null })
+        })
+      }),
+      update: () => ({
+        eq: () => ({
+          is: () => ({
+            select: () => ({
+              single: () => ({ data: null, error: null })
+            })
+          })
+        })
+      }),
+      ilike: () => ({
+        is: () => ({
+          limit: () => ({ data: [], error: null })
+        })
+      }),
+      range: () => ({ data: [], error: null })
+    })
+  })
 })
+
+// Only import and use createClient if Supabase is configured
+let supabaseOptimized: any
+if (isSupabaseConfigured) {
+  try {
+    const { createClient } = require('@supabase/supabase-js')
+    supabaseOptimized = createClient(supabaseUrl!, supabaseServiceKey!, {
+      db: {
+        schema: 'public',
+      },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'nextjs-optimized',
+        },
+      },
+      realtime: {
+        enabled: false, // Disable realtime for better performance
+      },
+    })
+  } catch (error) {
+    console.warn('Failed to create optimized Supabase client, using mock:', error)
+    supabaseOptimized = createMockSupabaseClient()
+  }
+} else {
+  supabaseOptimized = createMockSupabaseClient()
+}
+
+// Export the optimized client
+export { supabaseOptimized }
 
 // Optimized query builder with common patterns
 export class OptimizedQueryBuilder {

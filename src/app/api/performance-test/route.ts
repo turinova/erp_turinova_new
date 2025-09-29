@@ -2,10 +2,18 @@ import type { NextRequest} from 'next/server';
 import { NextResponse } from 'next/server'
 
 import { supabase } from '@/lib/supabase'
-import { optimizedQuery, PerformanceMonitor } from '@/lib/supabase-optimized'
+import { optimizedQuery, PerformanceMonitor, supabaseOptimized } from '@/lib/supabase-optimized'
 
 export async function GET(request: NextRequest) {
   try {
+    // Check if Supabase is configured
+    if (!supabase || !supabaseOptimized) {
+      return NextResponse.json({ 
+        error: 'Supabase not configured',
+        message: 'Performance test requires Supabase configuration'
+      }, { status: 503 })
+    }
+
     console.log('Running performance comparison test...')
 
     const results = {
