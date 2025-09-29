@@ -842,10 +842,10 @@ export default function OptiClient({
       // Call multi-material optimization service
       const request = { materials: materialsForOptimization }
         
-      // Use Railway PHP service URL for production, localhost for development
+      // Use Next.js API route for optimization (proxies to PHP service)
       const phpServiceUrl = process.env.NEXT_PUBLIC_PHP_SERVICE_URL || 
         (process.env.NODE_ENV === 'production' 
-          ? 'https://php-service-production.up.railway.app/test_optimization.php'
+          ? '/api/optimize'
           : 'http://localhost:8000/test_optimization.php')
         
       const response = await fetch(phpServiceUrl, {
