@@ -9,7 +9,7 @@ export default async function OptiPage() {
     getAllEdgeMaterials()
   ])
   
-  return (
+    return (
     <OptiClient 
       initialMaterials={materials}
       initialCustomers={customers}
