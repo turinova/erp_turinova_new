@@ -211,16 +211,16 @@ const nextConfig: NextConfig = {
   //   return config
   // },
   
-  redirects: async () => {
-    return [
-      {
-        source: '/',
-        destination: '/home',
-        permanent: true,
-        locale: false
-      }
-    ]
-  }
+  // redirects: async () => {
+  //   return [
+  //     {
+  //       source: '/',
+  //       destination: '/home',
+  //       permanent: true,
+  //       locale: false
+  //     }
+  //   ]
+  // }
 }
 
 export default nextConfig
