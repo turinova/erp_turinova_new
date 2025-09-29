@@ -215,7 +215,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/',
-        destination: '/home',
+        destination: '/admin',
         permanent: true,
         locale: false
       }
