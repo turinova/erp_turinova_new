@@ -541,6 +541,114 @@ export async function getAllVatRatesForEdgeMaterials() {
 }
 
 // Companies SSR functions
+// Partners SSR functions
+export async function getPartnerById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('partners')
+    .select(`
+      id,
+      name,
+      country,
+      postal_code,
+      city,
+      address,
+      mobile,
+      email,
+      tax_number,
+      company_registration_number,
+      bank_account,
+      notes,
+      status,
+      contact_person,
+      vat_id,
+      currency_id,
+      payment_terms,
+      created_at,
+      updated_at
+    `)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching partner:', error)
+    return null
+  }
+
+  return data
+}
+
+export async function getAllPartners() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('partners')
+    .select(`
+      id,
+      name,
+      country,
+      postal_code,
+      city,
+      address,
+      mobile,
+      email,
+      tax_number,
+      company_registration_number,
+      bank_account,
+      notes,
+      status,
+      contact_person,
+      vat_id,
+      currency_id,
+      payment_terms,
+      created_at,
+      updated_at
+    `)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  const queryTime = performance.now()
+  logTiming('Partners DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching partners:', error)
+    return []
+  }
+
+  logTiming('Partners Total', startTime, `returned ${data?.length || 0} records`)
+  return data || []
+}
+
+export async function getAllVatRatesForPartners() {
+  const { data, error } = await supabaseServer
+    .from('vat')
+    .select('id, name, kulcs, created_at, updated_at')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching VAT rates for partners:', error)
+    return []
+  }
+
+  return data || []
+}
+
+export async function getAllCurrenciesForPartners() {
+  const { data, error } = await supabaseServer
+    .from('currencies')
+    .select('id, name, rate, created_at, updated_at')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching currencies for partners:', error)
+    return []
+  }
+
+  return data || []
+}
+
 export async function getCompanyById(id: string) {
   const { data, error } = await supabaseServer
     .from('tenant_company')
