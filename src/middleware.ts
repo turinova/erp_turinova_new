@@ -11,6 +11,13 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Skip middleware for static files
+  if (req.nextUrl.pathname.startsWith('/_next/static/') || 
+      req.nextUrl.pathname.startsWith('/_next/image/') ||
+      req.nextUrl.pathname.includes('.') && !req.nextUrl.pathname.includes('/')) {
+    return NextResponse.next()
+  }
+
   // Performance optimizations
   const response = NextResponse.next()
   
@@ -50,18 +57,43 @@ export async function middleware(req: NextRequest) {
           return req.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => req.cookies.set(name, value))
-          response.cookies.set(name, value, options)
+          cookiesToSet.forEach(({ name, value, options }) => {
+            req.cookies.set(name, value)
+            response.cookies.set(name, value, options)
+          })
         },
       },
     }
   )
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+  // Try to get session with better error handling
+  let session = null
+  try {
+    // First try to get session from cookies
+    const { data: { session: sessionData }, error } = await supabase.auth.getSession()
+    if (error) {
+      console.log('Middleware - Session error:', error.message)
+    } else {
+      session = sessionData
+    }
+    
+    // If no session found, try to get user directly
+    if (!session) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError) {
+        console.log('Middleware - User error:', userError.message)
+      } else if (user) {
+        console.log('Middleware - Found user without session:', user.email)
+        // Create a minimal session object
+        session = { user }
+      }
+    }
+  } catch (error) {
+    console.log('Middleware - Session exception:', error)
+  }
 
   console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
+  console.log('Middleware - Cookies:', req.cookies.getAll().map(c => c.name).join(', '))
 
   // If user is not signed in and the current path is not /login, redirect to /login
   if (!session && req.nextUrl.pathname !== '/login') {
@@ -87,6 +119,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|css|js|woff|woff2|ttf|eot)$).*)',
   ],
 }
