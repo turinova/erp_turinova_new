@@ -192,8 +192,7 @@ const nextConfig: NextConfig = {
   },
   
   // Webpack configuration to disable source maps
-  webpack: (config, { dev, isServer }) => {
-    // Disable source maps in development to prevent console warnings
+  webpack: (config, { dev }) => {
     if (dev) {
       config.devtool = false
     }
