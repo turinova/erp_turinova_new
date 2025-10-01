@@ -43,6 +43,7 @@ export function useSimpleNavigation() {
             case '/materials':
             case '/szalas-anyagok':
             case '/edge':
+            case '/media':
               return isAdmin
             case '/opti':
             case '/optimalizalo':

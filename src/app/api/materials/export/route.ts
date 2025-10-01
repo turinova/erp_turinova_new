@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         grain_direction,
         on_stock,
         price_per_sqm,
+        image_url,
         brands:brand_id(name),
         currencies:currency_id(name),
         vat:vat_id(kulcs),
@@ -75,9 +76,28 @@ export async function GET(request: NextRequest) {
     console.log(`Fetched ${materials?.length || 0} materials from database`)
     console.log(`After filters: ${filteredMaterials?.length || 0} materials`)
     
-    // Log first material for debugging
-    if (filteredMaterials && filteredMaterials.length > 0) {
-      console.log('Sample material data:', JSON.stringify(filteredMaterials[0], null, 2))
+    // Fetch all media files to map stored_filename -> original_filename
+    const { data: mediaFiles } = await supabaseServer
+      .from('media_files')
+      .select('stored_filename, original_filename')
+    
+    const mediaMap = new Map(
+      mediaFiles?.map(mf => [mf.stored_filename, mf.original_filename]) || []
+    )
+    
+    console.log(`Loaded ${mediaMap.size} media files for filename mapping`)
+    
+    // Helper function to extract filename from image URL and get original name
+    const getOriginalFilename = (imageUrl: string | null): string => {
+      if (!imageUrl) return ''
+      
+      // Extract stored filename from URL
+      // URL format: https://.../materials/materials/filename.webp
+      const match = imageUrl.match(/materials\/materials\/(.+\.webp)/)
+      if (!match) return ''
+      
+      const storedFilename = match[1]
+      return mediaMap.get(storedFilename) || storedFilename  // Return original or fallback to stored
     }
 
     // Transform data for Excel export
@@ -85,6 +105,7 @@ export async function GET(request: NextRequest) {
       'Gépkód': m.machine_material_map?.[0]?.machine_code || '',
       'Anyag neve': m.name,
       'Márka': m.brands?.name || '',
+      'Kép fájlnév': getOriginalFilename(m.image_url),  // NEW: Image filename
       'Hossz (mm)': m.length_mm,
       'Szélesség (mm)': m.width_mm,
       'Vastagság (mm)': m.thickness_mm,

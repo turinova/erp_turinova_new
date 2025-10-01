@@ -39,6 +39,7 @@ import { invalidateApiCache } from '@/hooks/useApiCache'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
 import ImageUpload from '@/components/ImageUpload'
+import MediaLibraryModal from '@/components/MediaLibraryModal'
 import { formatPriceWithCurrency, calculateFullBoardCost, calculateSquareMeters, calculateGrossPrice } from '@/utils/priceFormatters'
 
 interface Material {
@@ -125,12 +126,19 @@ export default function MaterialsEditClient({
   const [material, setMaterial] = useState<Material>(initialMaterial)
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
   const [isSaving, setIsSaving] = useState(false)
+  const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   
   // All data from SSR - no client-side fetching needed!
   const [currencies] = useState<Currency[]>(initialCurrencies)
   const [vatRates] = useState<VAT[]>(initialVatRates)
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>(initialPriceHistory)
   const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
+  
+  // Ensure client-side only rendering for media library button
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   
   // Form state
   const [formData, setFormData] = useState({
@@ -187,6 +195,12 @@ export default function MaterialsEditClient({
       ...prev,
       [field]: value
     }))
+  }
+  
+  // Handle media library image selection
+  const handleMediaSelect = (imageUrl: string, filename: string) => {
+    handleInputChange('image_url', imageUrl)
+    toast.success(`Kép kiválasztva: ${filename}`)
   }
 
   const handleSave = async () => {
@@ -408,6 +422,21 @@ export default function MaterialsEditClient({
                 materialId={material.id}
                 disabled={isSaving}
               />
+              {mounted && (
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    vagy
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setMediaLibraryOpen(true)}
+                    disabled={isSaving}
+                    fullWidth
+                  >
+                    Média könyvtárból választás
+                  </Button>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -776,6 +805,14 @@ export default function MaterialsEditClient({
           {isSaving ? 'Mentés...' : 'Mentés'}
         </Button>
       </Box>
+      
+      {/* Media Library Modal */}
+      <MediaLibraryModal
+        open={mediaLibraryOpen}
+        onClose={() => setMediaLibraryOpen(false)}
+        onSelect={handleMediaSelect}
+        currentImageUrl={formData.image_url}
+      />
     </Box>
   )
 }

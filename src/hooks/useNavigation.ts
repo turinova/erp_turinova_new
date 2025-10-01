@@ -46,6 +46,11 @@ export function useNavigation() {
             return true
           }
           
+          // Bypass permission check for pages that don't use it (same as page-level bypass)
+          if (item.href === '/materials' || item.href === '/media') {
+            return true // Temporarily bypass until permission system is fully activated
+          }
+          
           // Use cached permissions with local check - no API calls
           return canAccess(item.href)
         }

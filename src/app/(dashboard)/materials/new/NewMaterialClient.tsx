@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Box, 
@@ -27,6 +27,7 @@ import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 import ImageUpload from '@/components/ImageUpload'
+import MediaLibraryModal from '@/components/MediaLibraryModal'
 
 interface Brand {
   id: string
@@ -59,6 +60,13 @@ export default function NewMaterialClient({
   
   const [isSaving, setIsSaving] = useState(false)
   const [tempMaterialId] = useState(`temp-${Date.now()}`) // Temp ID for image upload
+  const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  
+  // Ensure client-side only rendering for media library button
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   
   // Find defaults
   const hufCurrency = initialCurrencies.find(c => c.name === 'HUF')
@@ -92,6 +100,12 @@ export default function NewMaterialClient({
       ...prev,
       [field]: value
     }))
+  }
+  
+  // Handle media library image selection
+  const handleMediaSelect = (imageUrl: string, filename: string) => {
+    handleInputChange('image_url', imageUrl)
+    toast.success(`Kép kiválasztva: ${filename}`)
   }
 
   const handleBack = () => {
@@ -290,6 +304,21 @@ export default function NewMaterialClient({
                 materialId={tempMaterialId}
                 disabled={isSaving}
               />
+              {mounted && (
+                <Box sx={{ mt: 2, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    vagy
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    onClick={() => setMediaLibraryOpen(true)}
+                    disabled={isSaving}
+                    fullWidth
+                  >
+                    Média könyvtárból választás
+                  </Button>
+                </Box>
+              )}
             </CardContent>
           </Card>
         </Grid>
@@ -511,6 +540,14 @@ export default function NewMaterialClient({
           {isSaving ? 'Mentés...' : 'Mentés'}
         </Button>
       </Box>
+      
+      {/* Media Library Modal */}
+      <MediaLibraryModal
+        open={mediaLibraryOpen}
+        onClose={() => setMediaLibraryOpen(false)}
+        onSelect={handleMediaSelect}
+        currentImageUrl={formData.image_url}
+      />
     </Box>
   )
 }

@@ -58,6 +58,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Beszállítók',
         href: '/partners'
+      },
+      {
+        label: 'Media',
+        href: '/media'
       }
     ]
   },

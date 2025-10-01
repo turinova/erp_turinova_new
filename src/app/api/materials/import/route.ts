@@ -24,14 +24,15 @@ export async function POST(request: NextRequest) {
     console.log(`Parsed ${jsonData.length} rows from Excel`)
 
     // Fetch lookup data
-    const [brandsRes, currenciesRes, vatRes, existingMaterialsRes] = await Promise.all([
+    const [brandsRes, currenciesRes, vatRes, existingMaterialsRes, mediaFilesRes] = await Promise.all([
       supabaseServer.from('brands').select('id, name'),
       supabaseServer.from('currencies').select('id, name'),
       supabaseServer.from('vat').select('id, kulcs'),
       supabaseServer
         .from('machine_material_map')
         .select('machine_code, material_id, materials!inner(deleted_at)')
-        .is('materials.deleted_at', null)
+        .is('materials.deleted_at', null),
+      supabaseServer.from('media_files').select('original_filename, stored_filename, full_url')
     ])
 
     console.log(`Import: Found ${existingMaterialsRes.data?.length || 0} existing materials`)
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
     const currenciesByName = new Map(currenciesRes.data?.map(c => [c.name.toUpperCase(), c]) || [])
     const vatByPercent = new Map(vatRes.data?.map(v => [v.kulcs, v]) || [])
     const materialsByCode = new Map(existingMaterialsRes.data?.map(m => [m.machine_code?.trim(), m.material_id]) || [])
+    const mediaFilesByOriginalName = new Map(mediaFilesRes.data?.map(mf => [mf.original_filename, mf.full_url]) || [])
 
     const results = {
       created: 0,
@@ -93,6 +95,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Prepare material data
+        // Get image URL from media library if filename provided
+        const imageFilename = String(row['Kép fájlnév'] || '').trim()
+        const imageUrl = imageFilename ? mediaFilesByOriginalName.get(imageFilename) || null : null
+        
         const materialData = {
           name: String(row['Anyag neve'] || ''),
           brand_id: brand.id,
@@ -103,7 +109,8 @@ export async function POST(request: NextRequest) {
           on_stock: parseBoolean(row['Raktáron']),
           price_per_sqm: Number(row['Ár/m² (Ft)'] || 0),
           currency_id: currency.id,
-          vat_id: vat.id
+          vat_id: vat.id,
+          image_url: imageUrl  // NEW: Set image URL from media library
         }
 
         const settingsData = {

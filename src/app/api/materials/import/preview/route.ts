@@ -39,16 +39,18 @@ export async function POST(request: NextRequest) {
       existingMaterials?.map(m => [m.machine_code?.trim(), m]) || []
     )
 
-    // Fetch all brands and currencies/VAT for validation
-    const [brandsRes, currenciesRes, vatRes] = await Promise.all([
+    // Fetch all brands, currencies/VAT, and media files for validation
+    const [brandsRes, currenciesRes, vatRes, mediaFilesRes] = await Promise.all([
       supabaseServer.from('brands').select('id, name'),
       supabaseServer.from('currencies').select('id, name'),
-      supabaseServer.from('vat').select('id, kulcs')
+      supabaseServer.from('vat').select('id, kulcs'),
+      supabaseServer.from('media_files').select('original_filename, stored_filename, full_url')
     ])
 
     const brandsByName = new Map(brandsRes.data?.map(b => [b.name.toLowerCase(), b]) || [])
     const currenciesByName = new Map(currenciesRes.data?.map(c => [c.name.toUpperCase(), c]) || [])
     const vatByPercent = new Map(vatRes.data?.map(v => [v.kulcs, v]) || [])
+    const mediaFilesByOriginalName = new Map(mediaFilesRes.data?.map(mf => [mf.original_filename, mf]) || [])
 
     // Validate and transform data
     const validationErrors: string[] = []
@@ -93,6 +95,12 @@ export async function POST(request: NextRequest) {
       const brandName = String(row['Márka'] || '').trim()
       if (brandName && !brandsByName.has(brandName.toLowerCase())) {
         newBrands.add(brandName)
+      }
+      
+      // Check if image filename exists (optional field)
+      const imageFilename = String(row['Kép fájlnév'] || '').trim()
+      if (imageFilename && !mediaFilesByOriginalName.has(imageFilename)) {
+        validationErrors.push(`Sor ${rowNum}: Kép fájl "${imageFilename}" nem található a Media könyvtárban!`)
       }
 
       // Determine if update or create
