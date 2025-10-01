@@ -26,6 +26,7 @@ interface Material {
   trim_left_mm: number
   rotatable: boolean
   waste_multi: number
+  usage_limit: number
   machine_code: string
   price_per_sqm: number
   currency_id: string | null

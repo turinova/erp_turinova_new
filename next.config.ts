@@ -13,6 +13,9 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   
+  // Disable CSS source maps in development to prevent console warnings
+  productionBrowserSourceMaps: false,
+  
   // Performance optimizations
   compress: true,
   poweredByHeader: false,
@@ -188,28 +191,14 @@ const nextConfig: NextConfig = {
     // optimizePackageImports: ['@mui/material', '@mui/icons-material'], // Disabled - might cause MUI issues
   },
   
-  // Webpack optimizations - disabled to prevent MUI syntax errors
-  // webpack: (config, { dev, isServer }) => {
-  //   if (!dev && !isServer) {
-  //     // Production client-side optimizations
-  //     config.optimization.splitChunks = {
-  //       chunks: 'all',
-  //       cacheGroups: {
-  //         vendor: {
-  //           test: /[\\/]node_modules[\\/]/,
-  //           name: 'vendors',
-  //           chunks: 'all',
-  //         },
-  //         mui: {
-  //           test: /[\\/]node_modules[\\/]@mui[\\/]/,
-  //           name: 'mui',
-  //           chunks: 'all',
-  //         },
-  //       },
-  //     }
-  //   }
-  //   return config
-  // },
+  // Webpack configuration to disable source maps
+  webpack: (config, { dev, isServer }) => {
+    // Disable source maps in development to prevent console warnings
+    if (dev) {
+      config.devtool = false
+    }
+    return config
+  },
   
   // redirects: async () => {
   //   return [

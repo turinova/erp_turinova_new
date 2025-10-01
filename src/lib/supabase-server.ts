@@ -135,7 +135,7 @@ export async function getMaterialById(id: string) {
   // Fetch settings from material_settings
   const { data: settingsData } = await supabaseServer
     .from('material_settings')
-    .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi')
+    .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi, usage_limit')
     .eq('material_id', id)
     .single()
 
@@ -166,6 +166,7 @@ export async function getMaterialById(id: string) {
     trim_left_mm: settingsData?.trim_left_mm || 0,
     rotatable: settingsData?.rotatable !== false,
     waste_multi: settingsData?.waste_multi || 1.0,
+    usage_limit: settingsData?.usage_limit || 0.65,
     machine_code: machineData?.machine_code || '',
     price_per_sqm: materialData.price_per_sqm || 0,
     currency_id: materialData.currency_id || null,

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Fetch settings from material_settings
     const { data: settingsData } = await supabase
       .from('material_settings')
-      .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi')
+      .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi, usage_limit')
       .eq('material_id', id)
       .single()
 
@@ -82,6 +82,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       trim_left_mm: settingsData?.trim_left_mm || 0,
       rotatable: settingsData?.rotatable !== false,
       waste_multi: settingsData?.waste_multi || 1.0,
+      usage_limit: settingsData?.usage_limit || 0.65,
       machine_code: machineData?.machine_code || '',
       // Pricing fields
       price_per_sqm: materialData.price_per_sqm || 0,
@@ -175,6 +176,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         trim_left_mm: body.trim_left_mm,
         rotatable: body.rotatable,
         waste_multi: body.waste_multi,
+        usage_limit: body.usage_limit,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'material_id'

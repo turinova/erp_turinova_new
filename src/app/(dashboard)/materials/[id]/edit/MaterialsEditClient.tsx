@@ -59,6 +59,7 @@ interface Material {
   trim_left_mm: number
   rotatable: boolean
   waste_multi: number
+  usage_limit: number
   machine_code: string
   price_per_sqm: number
   currency_id: string | null
@@ -143,6 +144,7 @@ export default function MaterialsEditClient({
     trim_left_mm: initialMaterial.trim_left_mm || 0,
     rotatable: initialMaterial.rotatable !== undefined ? initialMaterial.rotatable : true,
     waste_multi: initialMaterial.waste_multi || 1.0,
+    usage_limit: initialMaterial.usage_limit || 0.65,
     machine_code: initialMaterial.machine_code || '',
     price_per_sqm: initialMaterial.price_per_sqm || 0,
     currency_id: initialMaterial.currency_id || '',
@@ -445,6 +447,17 @@ export default function MaterialsEditClient({
                     inputProps={{ step: "0.1" }}
                     value={formData.waste_multi}
                     onChange={(e) => handleInputChange('waste_multi', parseFloat(e.target.value) || 1.0)}
+                  />
+                </Grid>
+                <Grid item xs={3}>
+                  <TextField
+                    fullWidth
+                    label="Kihasználtság küszöb (%)"
+                    type="number"
+                    inputProps={{ step: "1", min: "0", max: "100" }}
+                    value={Math.round(formData.usage_limit * 100)}
+                    onChange={(e) => handleInputChange('usage_limit', (parseFloat(e.target.value) || 65) / 100)}
+                    helperText="Minimális kihasználtsági arány"
                   />
                 </Grid>
                 <Grid item xs={3}>
