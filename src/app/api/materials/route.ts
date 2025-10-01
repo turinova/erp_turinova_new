@@ -86,82 +86,99 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
+    console.log('Creating new material:', body)
+    
     // Validate required fields
-    if (!body.brand_name || !body.material_name) {
-      return NextResponse.json({
-        success: false,
-        message: 'Brand name and material name are required'
-      }, { status: 400 })
+    if (!body.name?.trim()) {
+      return NextResponse.json({ error: 'Material name is required' }, { status: 400 })
+    }
+    if (!body.brand_id) {
+      return NextResponse.json({ error: 'Brand is required' }, { status: 400 })
+    }
+    if (!body.currency_id) {
+      return NextResponse.json({ error: 'Currency is required' }, { status: 400 })
+    }
+    if (!body.vat_id) {
+      return NextResponse.json({ error: 'VAT is required' }, { status: 400 })
     }
 
-    console.log('Creating new material:', body.brand_name, body.material_name)
+    // Get current user
+    const { data: { user } } = await supabaseServer.auth.getUser()
     
-    const { data, error } = await supabase
+    // Insert into materials table
+    const { data: materialData, error: materialError } = await supabaseServer
       .from('materials')
-      .insert([{
-        brand_name: body.brand_name,
-        material_name: body.material_name,
+      .insert({
+        name: body.name,
+        brand_id: body.brand_id,
         length_mm: body.length_mm || 2800,
         width_mm: body.width_mm || 2070,
         thickness_mm: body.thickness_mm || 18,
         grain_direction: body.grain_direction || false,
         on_stock: body.on_stock !== undefined ? body.on_stock : true,
-        kerf_mm: body.kerf_mm || 3,
-        trim_top_mm: body.trim_top_mm || 40,
-        trim_right_mm: body.trim_right_mm || 40,
-        trim_bottom_mm: body.trim_bottom_mm || 40,
-        trim_left_mm: body.trim_left_mm || 40,
-        rotatable: body.rotatable || false,
-        waste_multi: body.waste_multi || 3
-      }])
+        image_url: body.image_url || null,
+        price_per_sqm: body.price_per_sqm || 0,
+        currency_id: body.currency_id,
+        vat_id: body.vat_id
+      })
       .select()
       .single()
 
-    if (error) {
-      console.error('Error creating material:', error)
-      return NextResponse.json({
-        success: false,
-        message: 'Failed to create material',
-        error: error.message
-      }, { status: 500 })
+    if (materialError) {
+      console.error('Error creating material:', materialError)
+      return NextResponse.json({ error: 'Failed to create material', details: materialError.message }, { status: 500 })
     }
 
-    console.log('Material created successfully:', data.id)
-    
-    // Invalidate cache
-    invalidateApiCache('/api/materials')
+    const materialId = materialData.id
+    console.log('Material created with ID:', materialId)
+
+    // Insert into material_settings
+    const { error: settingsError } = await supabaseServer
+      .from('material_settings')
+      .insert({
+        material_id: materialId,
+        kerf_mm: body.kerf_mm || 3,
+        trim_top_mm: body.trim_top_mm || 10,
+        trim_right_mm: body.trim_right_mm || 10,
+        trim_bottom_mm: body.trim_bottom_mm || 10,
+        trim_left_mm: body.trim_left_mm || 10,
+        rotatable: body.rotatable !== undefined ? body.rotatable : true,
+        waste_multi: body.waste_multi || 1.0,
+        usage_limit: body.usage_limit || 0.65
+      })
+
+    if (settingsError) {
+      console.error('Error creating material settings:', settingsError)
+      // Don't fail - settings are optional
+    }
+
+    // Insert into machine_material_map if machine_code provided
+    if (body.machine_code) {
+      const { error: machineError } = await supabaseServer
+        .from('machine_material_map')
+        .insert({
+          material_id: materialId,
+          machine_type: 'Korpus',
+          machine_code: body.machine_code
+        })
+
+      if (machineError) {
+        console.error('Error creating machine mapping:', machineError)
+        // Don't fail - machine mapping is optional
+      }
+    }
+
+    console.log('Material created successfully:', materialData.name)
     
     return NextResponse.json({
       success: true,
-      message: 'Material created successfully',
-      data: {
-        id: data.id,
-        name: `${data.brand_name} ${data.material_name}`,
-        brand_name: data.brand_name,
-        material_name: data.material_name,
-        length_mm: data.length_mm,
-        width_mm: data.width_mm,
-        thickness_mm: data.thickness_mm,
-        grain_direction: data.grain_direction,
-        on_stock: data.on_stock,
-        image_url: data.image_url,
-        kerf_mm: data.kerf_mm,
-        trim_top_mm: data.trim_top_mm,
-        trim_right_mm: data.trim_right_mm,
-        trim_bottom_mm: data.trim_bottom_mm,
-        trim_left_mm: data.trim_left_mm,
-        rotatable: data.rotatable,
-        waste_multi: data.waste_multi,
-        created_at: data.created_at,
-        updated_at: data.updated_at
-      }
+      id: materialId
     })
   } catch (error) {
     console.error('Error in materials POST API:', error)
     return NextResponse.json({
-      success: false,
-      message: 'Internal server error',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
 }

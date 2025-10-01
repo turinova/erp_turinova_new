@@ -398,6 +398,28 @@ export async function getAllVatRates() {
   return data || []
 }
 
+export async function getMaterialPriceHistory(materialId: string) {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('material_price_history')
+    .select('id, old_price_per_sqm, new_price_per_sqm, changed_at, changed_by')
+    .eq('material_id', materialId)
+    .order('changed_at', { ascending: false })
+    .limit(10)
+
+  const queryTime = performance.now()
+  logTiming('Price History DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching price history:', error)
+    return []
+  }
+
+  logTiming('Price History Total', startTime, `returned ${data?.length || 0} records`)
+  return data || []
+}
+
 // Customers SSR functions
 export async function getCustomerById(id: string) {
   const { data, error } = await supabaseServer

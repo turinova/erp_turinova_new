@@ -4,7 +4,8 @@ import {
   getMaterialById, 
   getAllBrandsForMaterials,
   getAllCurrencies,
-  getAllVatRates
+  getAllVatRates,
+  getMaterialPriceHistory
 } from '@/lib/supabase-server'
 import MaterialsEditClient from './MaterialsEditClient'
 
@@ -54,11 +55,12 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
   const resolvedParams = await params
   
   // Fetch all data on the server for SSR (prevents hydration issues)
-  const [material, brands, currencies, vatRates] = await Promise.all([
+  const [material, brands, currencies, vatRates, priceHistory] = await Promise.all([
     getMaterialById(resolvedParams.id),
     getAllBrandsForMaterials(),
     getAllCurrencies(),
-    getAllVatRates()
+    getAllVatRates(),
+    getMaterialPriceHistory(resolvedParams.id)
   ])
   
   if (!material) {
@@ -72,6 +74,7 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
       initialBrands={brands}
       initialCurrencies={currencies}
       initialVatRates={vatRates}
+      initialPriceHistory={priceHistory}
     />
   )
 }

@@ -4,12 +4,13 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
 import { formatPriceWithCurrency, calculateGrossPrice } from '@/utils/priceFormatters'
+import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface Material {
   id: string
@@ -51,6 +52,8 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   const [materials, setMaterials] = useState<Material[]>(initialMaterials)
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Filter materials based on search term (client-side fallback)
   const filteredMaterials = useMemo(() => {
@@ -100,6 +103,55 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
     }).catch(() => {
       // Ignore prefetch errors
     })
+  }
+
+  const handleAddNew = () => {
+    router.push('/materials/new')
+  }
+
+  const handleDeleteClick = () => {
+    if (selectedMaterials.length > 0) {
+      setDeleteDialogOpen(true)
+    }
+  }
+
+  const handleDeleteConfirm = async () => {
+    if (selectedMaterials.length === 0) return
+
+    setIsDeleting(true)
+    try {
+      // Delete all selected materials
+      const deletePromises = selectedMaterials.map(async (id) => {
+        const response = await fetch(`/api/materials/${id}`, {
+          method: 'DELETE',
+        })
+        if (!response.ok) throw new Error(`Failed to delete material ${id}`)
+      })
+
+      await Promise.all(deletePromises)
+
+      toast.success(`${selectedMaterials.length} anyag sikeresen törölve!`)
+      
+      // Refresh materials list
+      invalidateApiCache('/api/materials')
+      const response = await fetch('/api/materials')
+      if (response.ok) {
+        const data = await response.json()
+        setMaterials(data)
+      }
+
+      setSelectedMaterials([])
+      setDeleteDialogOpen(false)
+    } catch (error) {
+      console.error('Delete error:', error)
+      toast.error('Hiba történt a törlés során!')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false)
   }
 
   const isAllSelected = selectedMaterials.length === filteredMaterials.length && filteredMaterials.length > 0
@@ -158,6 +210,26 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
           Táblás anyagok
         </Typography>
       </Breadcrumbs>
+      
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={<DeleteIcon />}
+          color="error"
+          onClick={handleDeleteClick}
+          disabled={selectedMaterials.length === 0}
+        >
+          Törlés ({selectedMaterials.length})
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          color="primary"
+          onClick={handleAddNew}
+        >
+          Új anyag hozzáadása
+        </Button>
+      </Box>
       
       <TextField
         fullWidth
@@ -273,6 +345,27 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+      >
+        <DialogTitle>Anyagok törlése</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Biztosan törölni szeretné a kiválasztott {selectedMaterials.length} anyagot? Ez a művelet nem vonható vissza.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteCancel} disabled={isDeleting}>
+            Mégse
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={isDeleting}>
+            {isDeleting ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

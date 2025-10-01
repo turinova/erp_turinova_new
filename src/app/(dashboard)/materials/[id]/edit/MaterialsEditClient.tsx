@@ -103,15 +103,20 @@ interface MaterialsEditClientProps {
   initialBrands: Brand[]
   initialCurrencies: Currency[]
   initialVatRates: VAT[]
+  initialPriceHistory: PriceHistory[]
 }
 
 export default function MaterialsEditClient({ 
   initialMaterial, 
   initialBrands,
   initialCurrencies,
-  initialVatRates 
+  initialVatRates,
+  initialPriceHistory 
 }: MaterialsEditClientProps) {
   const router = useRouter()
+  
+  console.log('MaterialsEditClient initialized with material:', initialMaterial?.id, initialMaterial?.name)
+  console.log('Initial price history entries:', initialPriceHistory.length)
   
   // Check permission for this page - temporarily bypassed to fix hook errors
   // const { canAccess } = usePermissions()
@@ -121,10 +126,10 @@ export default function MaterialsEditClient({
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
   const [isSaving, setIsSaving] = useState(false)
   
-  // Pricing state - use SSR data to prevent hydration issues
+  // All data from SSR - no client-side fetching needed!
   const [currencies] = useState<Currency[]>(initialCurrencies)
   const [vatRates] = useState<VAT[]>(initialVatRates)
-  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([])
+  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>(initialPriceHistory)
   const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
   
   // Form state
@@ -175,25 +180,7 @@ export default function MaterialsEditClient({
     return calculateGrossPrice(netFullBoardCost, currentVatPercent)
   }, [netFullBoardCost, currentVatPercent])
   
-  // Fetch price history only (currencies and VAT come from SSR props)
-  useEffect(() => {
-    const fetchPriceHistory = async () => {
-      setLoadingPriceHistory(true)
-      try {
-        const historyRes = await fetch(`/api/materials/${material.id}/price-history`)
-        if (historyRes.ok) {
-          const historyData = await historyRes.json()
-          setPriceHistory(historyData)
-        }
-      } catch (error) {
-        console.error('Error fetching price history:', error)
-      } finally {
-        setLoadingPriceHistory(false)
-      }
-    }
-    
-    fetchPriceHistory()
-  }, [material.id])
+  // No useEffect needed - all data comes from SSR! 🎉
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -206,7 +193,7 @@ export default function MaterialsEditClient({
     try {
       setIsSaving(true)
 
-      const response = await fetch(`/api/materials/${material.id}`, {
+      const response = await fetch(`/api/materials/${initialMaterial.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -215,20 +202,23 @@ export default function MaterialsEditClient({
       })
 
       if (response.ok) {
-        const updatedMaterial = await response.json()
-        
         toast.success('Anyag sikeresen frissítve!')
-        
-        // Update material state with new data
-        setMaterial(updatedMaterial)
         
         // Invalidate cache to refresh list page
         invalidateApiCache('/api/materials')
         
+        // Re-fetch the full material data to ensure we have complete updated info
+        const materialRes = await fetch(`/api/materials/${initialMaterial.id}`)
+        if (materialRes.ok) {
+          const updatedMaterial = await materialRes.json()
+          setMaterial(updatedMaterial)
+        }
+        
         // Refresh price history to show the new change
-        const historyRes = await fetch(`/api/materials/${material.id}/price-history`)
+        const historyRes = await fetch(`/api/materials/${initialMaterial.id}/price-history`)
         if (historyRes.ok) {
           const historyData = await historyRes.json()
+          console.log(`Updated price history after save, new length: ${historyData.length}`)
           setPriceHistory(historyData)
         }
         
