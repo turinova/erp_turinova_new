@@ -4,8 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, CircularProgress } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
@@ -54,6 +54,18 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   const [searchTerm, setSearchTerm] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  
+  // Import states
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<any>(null)
+  const [isImporting, setIsImporting] = useState(false)
+
+  // Ensure client-side only rendering for buttons to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Filter materials based on search term (client-side fallback)
   const filteredMaterials = useMemo(() => {
@@ -154,6 +166,141 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
     setDeleteDialogOpen(false)
   }
 
+  // Export handler
+  const handleExport = async () => {
+    try {
+      console.log('Exporting materials...')
+      const response = await fetch('/api/materials/export')
+      
+      if (!response.ok) {
+        throw new Error('Export failed')
+      }
+
+      // Download the file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `anyagok_export_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success('Anyagok sikeresen exportálva!')
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Hiba történt az exportálás során!')
+    }
+  }
+
+  // Import file selection handler
+  const handleImportFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      toast.error('Csak Excel fájlokat (.xlsx, .xls) lehet importálni!')
+      return
+    }
+
+    setImportFile(file)
+    setIsImporting(true)
+
+    try {
+      // Send to preview API
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/materials/import/preview', {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        // Show validation errors
+        if (data.details && Array.isArray(data.details)) {
+          const errorMsg = data.details.join('\n')
+          toast.error(errorMsg, { autoClose: 10000 })
+        } else {
+          toast.error(data.error || 'Hiba az előnézet betöltésekor')
+        }
+        setImportFile(null)
+        return
+      }
+
+      setImportPreview(data)
+      setImportDialogOpen(true)
+    } catch (error) {
+      console.error('Import preview error:', error)
+      toast.error('Hiba az előnézet betöltésekor!')
+      setImportFile(null)
+    } finally {
+      setIsImporting(false)
+      // Reset file input
+      event.target.value = ''
+    }
+  }
+
+  // Confirm import
+  const handleImportConfirm = async () => {
+    if (!importFile) return
+
+    setIsImporting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+
+      const response = await fetch('/api/materials/import', {
+        method: 'POST',
+        body: formData
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Import failed')
+      }
+
+      const { results } = data
+
+      // Show success message
+      let message = `Import sikeres!\n`
+      if (results.created > 0) message += `${results.created} új anyag létrehozva\n`
+      if (results.updated > 0) message += `${results.updated} anyag frissítve\n`
+      if (results.brandsCreated.length > 0) message += `Új márkák: ${results.brandsCreated.join(', ')}`
+
+      toast.success(message)
+
+      // Refresh materials list
+      invalidateApiCache('/api/materials')
+      const materialsRes = await fetch('/api/materials')
+      if (materialsRes.ok) {
+        const materialsData = await materialsRes.json()
+        setMaterials(materialsData)
+      }
+
+      setImportDialogOpen(false)
+      setImportFile(null)
+      setImportPreview(null)
+    } catch (error) {
+      console.error('Import error:', error)
+      toast.error('Hiba történt az importálás során!')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const handleImportCancel = () => {
+    setImportDialogOpen(false)
+    setImportFile(null)
+    setImportPreview(null)
+  }
+
   const isAllSelected = selectedMaterials.length === filteredMaterials.length && filteredMaterials.length > 0
   const isIndeterminate = selectedMaterials.length > 0 && selectedMaterials.length < filteredMaterials.length
 
@@ -211,25 +358,56 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
         </Typography>
       </Breadcrumbs>
       
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<DeleteIcon />}
-          color="error"
-          onClick={handleDeleteClick}
-          disabled={selectedMaterials.length === 0}
-        >
-          Törlés ({selectedMaterials.length})
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          color="primary"
-          onClick={handleAddNew}
-        >
-          Új anyag hozzáadása
-        </Button>
-      </Box>
+      {mounted && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          {/* Left side: Export/Import buttons */}
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<ExportIcon />}
+              onClick={handleExport}
+              disabled={materials.length === 0}
+            >
+              Export
+            </Button>
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={isImporting ? <CircularProgress size={20} /> : <ImportIcon />}
+              disabled={isImporting}
+            >
+              Import
+              <input
+                type="file"
+                hidden
+                accept=".xlsx,.xls"
+                onChange={handleImportFileSelect}
+              />
+            </Button>
+          </Box>
+
+          {/* Right side: Delete/Add buttons */}
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              color="error"
+              onClick={handleDeleteClick}
+              disabled={selectedMaterials.length === 0}
+            >
+              Törlés ({selectedMaterials.length})
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              color="primary"
+              onClick={handleAddNew}
+            >
+              Új anyag hozzáadása
+            </Button>
+          </Box>
+        </Box>
+      )}
       
       <TextField
         fullWidth
@@ -363,6 +541,92 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
           </Button>
           <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={isDeleting}>
             {isDeleting ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import Preview Dialog */}
+      <Dialog
+        open={importDialogOpen}
+        onClose={handleImportCancel}
+        maxWidth="lg"
+        fullWidth
+      >
+        <DialogTitle>Import előnézet</DialogTitle>
+        <DialogContent>
+          {importPreview && (
+            <>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body1" gutterBottom>
+                  <strong>Összesen:</strong> {importPreview.stats?.total || 0} anyag
+                </Typography>
+                <Typography variant="body2" color="success.main">
+                  Új anyagok: {importPreview.stats?.create || 0}
+                </Typography>
+                <Typography variant="body2" color="info.main">
+                  Frissítések: {importPreview.stats?.update || 0}
+                </Typography>
+                {importPreview.newBrands && importPreview.newBrands.length > 0 && (
+                  <Typography variant="body2" color="warning.main">
+                    Új márkák létrehozva: {importPreview.newBrands.join(', ')}
+                  </Typography>
+                )}
+              </Box>
+
+              <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Művelet</strong></TableCell>
+                      <TableCell><strong>Gépkód</strong></TableCell>
+                      <TableCell><strong>Anyag neve</strong></TableCell>
+                      <TableCell><strong>Márka</strong></TableCell>
+                      <TableCell><strong>Méretek</strong></TableCell>
+                      <TableCell><strong>Ár/m²</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importPreview.preview?.map((item: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <Chip 
+                            label={item.action === 'CREATE' ? 'Hozzáadás' : 'Frissítés'} 
+                            color={item.action === 'CREATE' ? 'success' : 'info'} 
+                            size="small" 
+                          />
+                        </TableCell>
+                        <TableCell>{item.machineCode}</TableCell>
+                        <TableCell>
+                          {item.name}
+                          {item.action === 'UPDATE' && item.existingName && (
+                            <Typography variant="caption" display="block" color="text.secondary">
+                              Jelenlegi: {item.existingName}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>{item.brand}</TableCell>
+                        <TableCell>{item.dimensions}</TableCell>
+                        <TableCell>{item.price} {item.currency}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleImportCancel} disabled={isImporting}>
+            Mégse
+          </Button>
+          <Button 
+            onClick={handleImportConfirm} 
+            color="primary" 
+            variant="contained" 
+            disabled={isImporting}
+            startIcon={isImporting ? <CircularProgress size={20} /> : null}
+          >
+            {isImporting ? 'Importálás...' : 'Importálás megerősítése'}
           </Button>
         </DialogActions>
       </Dialog>
