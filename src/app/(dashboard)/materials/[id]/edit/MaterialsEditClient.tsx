@@ -356,6 +356,18 @@ export default function MaterialsEditClient({
                     onChange={(e) => handleInputChange('thickness_mm', parseInt(e.target.value) || 0)}
                   />
                 </Grid>
+                <Grid item xs={12}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={formData.on_stock}
+                        onChange={(e) => handleInputChange('on_stock', e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Raktáron"
+                  />
+                </Grid>
               </Grid>
             </CardContent>
           </Card>
@@ -378,13 +390,14 @@ export default function MaterialsEditClient({
 
         {/* Optimization Settings */}
         <Grid item xs={12}>
-          <Typography variant="h4" component="h2" gutterBottom sx={{ mt: 3, mb: 2 }}>
-            Optimalizálási beállítások
-          </Typography>
           <Card>
-            <CardHeader title={<Typography variant="h5" component="h3">Szélezési beállítások</Typography>} />
+            <CardHeader title="Optimalizálási beállítások" />
             <CardContent>
-              <Grid container spacing={2}>
+              {/* Szélezési beállítások section */}
+              <Typography variant="h6" component="h3" gutterBottom>
+                Szélezési beállítások
+              </Typography>
+              <Grid container spacing={2} sx={{ mb: 4 }}>
                 <Grid item xs={3}>
                   <TextField
                     fullWidth
@@ -422,14 +435,15 @@ export default function MaterialsEditClient({
                   />
                 </Grid>
               </Grid>
-            </CardContent>
-            
-            {/* Egyéb beállítások section */}
-            <Box sx={{ px: 3, pb: 3 }}>
-              <Typography variant="h5" component="h3" gutterBottom sx={{ mt: 3, mb: 2 }}>
+              
+              <Divider sx={{ mb: 3 }} />
+              
+              {/* Egyéb beállítások section */}
+              <Typography variant="h6" component="h3" gutterBottom>
                 Egyéb beállítások
               </Typography>
               <Grid container spacing={2}>
+                {/* Row 1: Kerf, Waste Multi, Usage Limit */}
                 <Grid item xs={3}>
                   <TextField
                     fullWidth
@@ -460,6 +474,11 @@ export default function MaterialsEditClient({
                     helperText="Minimális kihasználtsági arány"
                   />
                 </Grid>
+                
+                {/* Row 2: Spacer */}
+                <Grid item xs={3}></Grid>
+                
+                {/* Row 3: Szálirány and Forgatható switches side by side */}
                 <Grid item xs={3}>
                   <FormControlLabel
                     control={
@@ -485,36 +504,37 @@ export default function MaterialsEditClient({
                   />
                 </Grid>
               </Grid>
-            </Box>
-            
-            {/* Machine Code */}
-            <Box sx={{ px: 3, pb: 3 }}>
-              <Typography variant="h5" component="h3" gutterBottom sx={{ mt: 3, mb: 2 }}>
-                Gépi beállítások
-              </Typography>
+            </CardContent>
+          </Card>
+          
+          {/* Export Settings Card */}
+          <Card sx={{ mt: 4 }}>
+            <CardHeader title="Export beállítások" />
+            <CardContent>
               <Grid container spacing={2}>
-                <Grid item xs={6}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Gép típus</InputLabel>
+                    <Select
+                      value="Korpus"
+                      label="Gép típus"
+                      disabled
+                    >
+                      <MenuItem value="Korpus">Korpus</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth
                     label="Gépkód"
                     value={formData.machine_code}
                     onChange={(e) => handleInputChange('machine_code', e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={6}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={formData.on_stock}
-                        onChange={(e) => handleInputChange('on_stock', e.target.checked)}
-                        color="primary"
-                      />
-                    }
-                    label="Raktáron"
+                    helperText="A gép azonosítója az optimalizáláshoz"
                   />
                 </Grid>
               </Grid>
-            </Box>
+            </CardContent>
           </Card>
 
           {/* Pricing Settings Card */}
