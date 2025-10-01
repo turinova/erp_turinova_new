@@ -770,3 +770,37 @@ export async function getAllCompanies() {
   logTiming('Companies Total', startTime, `returned ${data?.length || 0} records`)
   return data || []
 }
+
+// Media files SSR function
+export async function getAllMediaFiles() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('media_files')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(1000)
+
+  const queryTime = performance.now()
+  logTiming('Media Files DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching media files:', error)
+    return []
+  }
+
+  // Transform to match expected format
+  const transformedFiles = data?.map(file => ({
+    id: file.id,
+    name: file.original_filename,  // Show original filename
+    storedName: file.stored_filename,  // Include stored name for reference
+    path: file.storage_path,
+    fullUrl: file.full_url,
+    size: file.size,
+    created_at: file.created_at,
+    updated_at: file.updated_at
+  })) || []
+
+  logTiming('Media Files Total', startTime, `returned ${transformedFiles.length} records`)
+  return transformedFiles
+}

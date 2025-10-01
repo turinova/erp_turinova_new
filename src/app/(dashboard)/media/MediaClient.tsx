@@ -47,13 +47,17 @@ interface MediaFile {
   updated_at: string
 }
 
-export default function MediaClient() {
+interface MediaClientProps {
+  initialMediaFiles: MediaFile[]
+}
+
+export default function MediaClient({ initialMediaFiles }: MediaClientProps) {
   const router = useRouter()
   
-  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([])
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>(initialMediaFiles)
   const [selectedFiles, setSelectedFiles] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false) // Start with false since we have SSR data
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -69,11 +73,6 @@ export default function MediaClient() {
   // Ensure client-side only rendering for buttons to avoid hydration mismatch
   useEffect(() => {
     setMounted(true)
-  }, [])
-
-  // Fetch media files on mount
-  useEffect(() => {
-    fetchMediaFiles()
   }, [])
 
   const fetchMediaFiles = async () => {
