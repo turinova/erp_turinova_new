@@ -190,6 +190,40 @@ export default function MaterialsEditClient({
   }
 
   const handleSave = async () => {
+    // Validate required fields
+    if (!formData.name.trim()) {
+      toast.error('Az anyag neve kötelező!')
+      return
+    }
+    if (!formData.brand_id) {
+      toast.error('A márka kiválasztása kötelező!')
+      return
+    }
+    if (formData.length_mm <= 0) {
+      toast.error('A hossz nagyobb kell legyen mint 0!')
+      return
+    }
+    if (formData.width_mm <= 0) {
+      toast.error('A szélesség nagyobb kell legyen mint 0!')
+      return
+    }
+    if (formData.thickness_mm <= 0) {
+      toast.error('A vastagság nagyobb kell legyen mint 0!')
+      return
+    }
+    if (!formData.currency_id) {
+      toast.error('A pénznem kiválasztása kötelező!')
+      return
+    }
+    if (!formData.vat_id) {
+      toast.error('Az ÁFA kiválasztása kötelező!')
+      return
+    }
+    if (!formData.machine_code.trim()) {
+      toast.error('A gépkód kötelező!')
+      return
+    }
+
     try {
       setIsSaving(true)
 
