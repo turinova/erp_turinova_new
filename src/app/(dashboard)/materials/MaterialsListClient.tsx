@@ -9,6 +9,7 @@ import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon } from '@mui
 import { toast } from 'react-toastify'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
+import { formatPriceWithCurrency, calculateGrossPrice } from '@/utils/priceFormatters'
 
 interface Material {
   id: string
@@ -29,6 +30,8 @@ interface Material {
   rotatable: boolean
   waste_multi: number
   machine_code: string
+  price_per_sqm: number
+  vat_percent: number
   created_at: string
   updated_at: string
 }
@@ -187,6 +190,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
               <TableCell>Hossz (mm)</TableCell>
               <TableCell>Szélesség (mm)</TableCell>
               <TableCell>Vastagság (mm)</TableCell>
+              <TableCell align="right">Bruttó ár/m²</TableCell>
               <TableCell>Szálirány</TableCell>
               <TableCell>Raktári</TableCell>
             </TableRow>
@@ -239,6 +243,14 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
                 <TableCell>{material.length_mm.toLocaleString()}</TableCell>
                 <TableCell>{material.width_mm.toLocaleString()}</TableCell>
                 <TableCell>{material.thickness_mm}</TableCell>
+                <TableCell align="right">
+                  <Typography variant="body2" fontWeight="medium">
+                    {material.price_per_sqm > 0 
+                      ? formatPriceWithCurrency(calculateGrossPrice(material.price_per_sqm, material.vat_percent))
+                      : '-'
+                    }
+                  </Typography>
+                </TableCell>
                 <TableCell>
                   <Typography 
                     variant="body2" 

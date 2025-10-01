@@ -102,28 +102,27 @@ export async function getAllBrands() {
 
 // Materials SSR functions
 export async function getMaterialById(id: string) {
-  // Fetch material from materials_with_settings view
-  const { data, error } = await supabaseServer
-    .from('materials_with_settings')
+  // Fetch material from materials table with pricing data
+  const { data: materialData, error } = await supabaseServer
+    .from('materials')
     .select(`
-      id, 
-      material_name, 
-      length_mm, 
-      width_mm, 
-      thickness_mm, 
-      grain_direction, 
-      on_stock, 
-      image_url, 
-      brand_name,
-      kerf_mm, 
-      trim_top_mm, 
-      trim_right_mm, 
-      trim_bottom_mm, 
-      trim_left_mm, 
-      rotatable, 
-      waste_multi, 
-      created_at, 
-      updated_at
+      id,
+      name,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      grain_direction,
+      on_stock,
+      image_url,
+      brand_id,
+      price_per_sqm,
+      currency_id,
+      vat_id,
+      created_at,
+      updated_at,
+      brands(id, name),
+      currencies(id, name),
+      vat(id, name, kulcs)
     `)
     .eq('id', id)
     .single()
@@ -133,11 +132,11 @@ export async function getMaterialById(id: string) {
     return null
   }
 
-  // Fetch brand_id from materials table
-  const { data: materialData } = await supabaseServer
-    .from('materials')
-    .select('brand_id')
-    .eq('id', id)
+  // Fetch settings from material_settings
+  const { data: settingsData } = await supabaseServer
+    .from('material_settings')
+    .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi')
+    .eq('material_id', id)
     .single()
 
   // Fetch machine code from machine_material_map
@@ -150,26 +149,31 @@ export async function getMaterialById(id: string) {
 
   // Transform the data to match the expected format
   return {
-    id: data.id,
-    name: data.material_name || `Material ${data.id}`,
-    length_mm: data.length_mm || 2800,
-    width_mm: data.width_mm || 2070,
-    thickness_mm: data.thickness_mm || 18,
-    grain_direction: Boolean(data.grain_direction),
-    on_stock: data.on_stock !== undefined ? Boolean(data.on_stock) : true,
-    image_url: data.image_url || null,
-    brand_id: materialData?.brand_id || '',
-    brand_name: data.brand_name || 'Unknown',
-    kerf_mm: data.kerf_mm || 3,
-    trim_top_mm: data.trim_top_mm || 0,
-    trim_right_mm: data.trim_right_mm || 0,
-    trim_bottom_mm: data.trim_bottom_mm || 0,
-    trim_left_mm: data.trim_left_mm || 0,
-    rotatable: data.rotatable !== false,
-    waste_multi: data.waste_multi || 1.0,
+    id: materialData.id,
+    name: materialData.name || `Material ${materialData.id}`,
+    length_mm: materialData.length_mm || 2800,
+    width_mm: materialData.width_mm || 2070,
+    thickness_mm: materialData.thickness_mm || 18,
+    grain_direction: Boolean(materialData.grain_direction),
+    on_stock: materialData.on_stock !== undefined ? Boolean(materialData.on_stock) : true,
+    image_url: materialData.image_url || null,
+    brand_id: materialData.brand_id || '',
+    brand_name: materialData.brands?.name || 'Unknown',
+    kerf_mm: settingsData?.kerf_mm || 3,
+    trim_top_mm: settingsData?.trim_top_mm || 0,
+    trim_right_mm: settingsData?.trim_right_mm || 0,
+    trim_bottom_mm: settingsData?.trim_bottom_mm || 0,
+    trim_left_mm: settingsData?.trim_left_mm || 0,
+    rotatable: settingsData?.rotatable !== false,
+    waste_multi: settingsData?.waste_multi || 1.0,
     machine_code: machineData?.machine_code || '',
-    created_at: data.created_at,
-    updated_at: data.updated_at
+    price_per_sqm: materialData.price_per_sqm || 0,
+    currency_id: materialData.currency_id || null,
+    vat_id: materialData.vat_id || null,
+    currencies: materialData.currencies || null,
+    vat: materialData.vat || null,
+    created_at: materialData.created_at,
+    updated_at: materialData.updated_at
   }
 }
 
@@ -208,29 +212,57 @@ export async function getAllMaterials() {
     return []
   }
 
+  // Fetch pricing data from materials table
+  const materialIds = (data || []).map(m => m.id)
+  const { data: pricingData } = await supabaseServer
+    .from('materials')
+    .select(`
+      id,
+      price_per_sqm,
+      vat(kulcs)
+    `)
+    .in('id', materialIds)
+
+  // Create pricing map for quick lookup
+  const pricingMap = new Map(
+    (pricingData || []).map(p => [
+      p.id, 
+      { 
+        price_per_sqm: p.price_per_sqm || 0, 
+        vat_percent: p.vat?.kulcs || 0 
+      }
+    ])
+  )
+
   // Transform the data to match the expected format
-  const transformedData = (data || []).map(material => ({
-    id: material.id,
-    name: material.material_name || `Material ${material.id}`,
-    length_mm: material.length_mm || 2800,
-    width_mm: material.width_mm || 2070,
-    thickness_mm: material.thickness_mm || 18,
-    grain_direction: Boolean(material.grain_direction),
-    on_stock: material.on_stock !== undefined ? Boolean(material.on_stock) : true,
-    image_url: material.image_url || null,
-    brand_id: '', // For list view, we don't need brand_id
-    brand_name: material.brand_name || 'Unknown',
-    kerf_mm: material.kerf_mm || 3,
-    trim_top_mm: material.trim_top_mm || 0,
-    trim_right_mm: material.trim_right_mm || 0,
-    trim_bottom_mm: material.trim_bottom_mm || 0,
-    trim_left_mm: material.trim_left_mm || 0,
-    rotatable: material.rotatable !== false,
-    waste_multi: material.waste_multi || 1.0,
-    machine_code: '', // For list view, we don't need machine_code
-    created_at: material.created_at,
-    updated_at: material.updated_at
-  }))
+  const transformedData = (data || []).map(material => {
+    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0 }
+    
+    return {
+      id: material.id,
+      name: material.material_name || `Material ${material.id}`,
+      length_mm: material.length_mm || 2800,
+      width_mm: material.width_mm || 2070,
+      thickness_mm: material.thickness_mm || 18,
+      grain_direction: Boolean(material.grain_direction),
+      on_stock: material.on_stock !== undefined ? Boolean(material.on_stock) : true,
+      image_url: material.image_url || null,
+      brand_id: '', // For list view, we don't need brand_id
+      brand_name: material.brand_name || 'Unknown',
+      kerf_mm: material.kerf_mm || 3,
+      trim_top_mm: material.trim_top_mm || 0,
+      trim_right_mm: material.trim_right_mm || 0,
+      trim_bottom_mm: material.trim_bottom_mm || 0,
+      trim_left_mm: material.trim_left_mm || 0,
+      rotatable: material.rotatable !== false,
+      waste_multi: material.waste_multi || 1.0,
+      machine_code: '', // For list view, we don't need machine_code
+      price_per_sqm: pricing.price_per_sqm,
+      vat_percent: pricing.vat_percent,
+      created_at: material.created_at,
+      updated_at: material.updated_at
+    }
+  })
 
   logTiming('Materials Total', startTime, `transformed ${transformedData.length} records`)
   return transformedData

@@ -9,10 +9,28 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`Fetching material ${id}`)
 
-    // Fetch material from materials_with_settings view
-    const { data, error } = await supabase
-      .from('materials_with_settings')
-      .select('*')
+    // Fetch material from materials table with pricing data
+    const { data: materialData, error } = await supabase
+      .from('materials')
+      .select(`
+        id,
+        name,
+        length_mm,
+        width_mm,
+        thickness_mm,
+        grain_direction,
+        on_stock,
+        image_url,
+        brand_id,
+        price_per_sqm,
+        currency_id,
+        vat_id,
+        created_at,
+        updated_at,
+        brands(id, name),
+        currencies(id, name),
+        vat(id, name, kulcs)
+      `)
       .eq('id', id)
       .single()
 
@@ -26,15 +44,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Failed to fetch material' }, { status: 500 })
     }
 
-    if (!data) {
+    if (!materialData) {
       return NextResponse.json({ error: 'Material not found' }, { status: 404 })
     }
 
-    // Fetch brand_id from materials table
-    const { data: materialData } = await supabase
-      .from('materials')
-      .select('brand_id')
-      .eq('id', id)
+    // Fetch settings from material_settings
+    const { data: settingsData } = await supabase
+      .from('material_settings')
+      .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi')
+      .eq('material_id', id)
       .single()
 
     // Fetch machine code from machine_material_map
@@ -47,26 +65,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Transform the data to match the expected format
     const transformedData = {
-      id: data.id,
-      name: data.material_name || `Material ${data.id}`,
-      length_mm: data.length_mm || 2800,
-      width_mm: data.width_mm || 2070,
-      thickness_mm: data.thickness_mm || 18,
-      grain_direction: Boolean(data.grain_direction),
-      on_stock: data.on_stock !== undefined ? Boolean(data.on_stock) : true,
-      image_url: data.image_url || null,
-      brand_id: materialData?.brand_id || '',
-      brand_name: data.brand_name || 'Unknown',
-      kerf_mm: data.kerf_mm || 3,
-      trim_top_mm: data.trim_top_mm || 0,
-      trim_right_mm: data.trim_right_mm || 0,
-      trim_bottom_mm: data.trim_bottom_mm || 0,
-      trim_left_mm: data.trim_left_mm || 0,
-      rotatable: data.rotatable !== false,
-      waste_multi: data.waste_multi || 1.0,
+      id: materialData.id,
+      name: materialData.name || `Material ${materialData.id}`,
+      length_mm: materialData.length_mm || 2800,
+      width_mm: materialData.width_mm || 2070,
+      thickness_mm: materialData.thickness_mm || 18,
+      grain_direction: Boolean(materialData.grain_direction),
+      on_stock: materialData.on_stock !== undefined ? Boolean(materialData.on_stock) : true,
+      image_url: materialData.image_url || null,
+      brand_id: materialData.brand_id || '',
+      brand_name: materialData.brands?.name || 'Unknown',
+      kerf_mm: settingsData?.kerf_mm || 3,
+      trim_top_mm: settingsData?.trim_top_mm || 0,
+      trim_right_mm: settingsData?.trim_right_mm || 0,
+      trim_bottom_mm: settingsData?.trim_bottom_mm || 0,
+      trim_left_mm: settingsData?.trim_left_mm || 0,
+      rotatable: settingsData?.rotatable !== false,
+      waste_multi: settingsData?.waste_multi || 1.0,
       machine_code: machineData?.machine_code || '',
-      created_at: data.created_at,
-      updated_at: data.updated_at
+      // Pricing fields
+      price_per_sqm: materialData.price_per_sqm || 0,
+      currency_id: materialData.currency_id || null,
+      vat_id: materialData.vat_id || null,
+      currencies: materialData.currencies || null,
+      vat: materialData.vat || null,
+      created_at: materialData.created_at,
+      updated_at: materialData.updated_at
     }
 
     console.log(`Material fetched successfully: ${transformedData.name}`)
@@ -86,6 +110,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     console.log(`Updating material ${id}:`, body)
     
+    // FIRST: Get current material to check if price changed
+    const { data: currentMaterial } = await supabase
+      .from('materials')
+      .select('price_per_sqm')
+      .eq('id', id)
+      .single()
+    
+    // Get current user for price history tracking
+    const { data: { user } } = await supabase.auth.getUser()
+    
     // Update the materials table
     const { data: materialData, error: materialError } = await supabase
       .from('materials')
@@ -98,6 +132,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         on_stock: body.on_stock,
         image_url: body.image_url || null,
         brand_id: body.brand_id,
+        price_per_sqm: body.price_per_sqm,
+        currency_id: body.currency_id,
+        vat_id: body.vat_id,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
@@ -176,6 +213,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           details: machineError.message,
           code: machineError.code
         }, { status: 500 })
+      }
+    }
+
+    // Track price history if price changed
+    if (currentMaterial && body.price_per_sqm !== undefined && currentMaterial.price_per_sqm !== body.price_per_sqm) {
+      console.log(`Price changed from ${currentMaterial.price_per_sqm} to ${body.price_per_sqm}, logging to history`)
+      
+      const { error: historyError } = await supabase
+        .from('material_price_history')
+        .insert({
+          material_id: id,
+          old_price_per_sqm: currentMaterial.price_per_sqm,
+          new_price_per_sqm: body.price_per_sqm,
+          changed_by: user?.id || null
+        })
+      
+      if (historyError) {
+        console.error('Error logging price history:', historyError)
+        // Don't fail the update if history logging fails
+      } else {
+        console.log('Price history logged successfully')
       }
     }
 

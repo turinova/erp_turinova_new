@@ -1,6 +1,11 @@
 import React from 'react'
 import { notFound } from 'next/navigation'
-import { getMaterialById, getAllBrandsForMaterials } from '@/lib/supabase-server'
+import { 
+  getMaterialById, 
+  getAllBrandsForMaterials,
+  getAllCurrencies,
+  getAllVatRates
+} from '@/lib/supabase-server'
 import MaterialsEditClient from './MaterialsEditClient'
 
 interface Material {
@@ -22,6 +27,11 @@ interface Material {
   rotatable: boolean
   waste_multi: number
   machine_code: string
+  price_per_sqm: number
+  currency_id: string | null
+  vat_id: string | null
+  currencies?: { id: string; name: string } | null
+  vat?: { id: string; name: string; kulcs: number } | null
   created_at: string
   updated_at: string
 }
@@ -42,10 +52,12 @@ interface MaterialsEditPageProps {
 export default async function MaterialsEditPage({ params }: MaterialsEditPageProps) {
   const resolvedParams = await params
   
-  // Fetch material and brands data on the server
-  const [material, brands] = await Promise.all([
+  // Fetch all data on the server for SSR (prevents hydration issues)
+  const [material, brands, currencies, vatRates] = await Promise.all([
     getMaterialById(resolvedParams.id),
-    getAllBrandsForMaterials()
+    getAllBrandsForMaterials(),
+    getAllCurrencies(),
+    getAllVatRates()
   ])
   
   if (!material) {
@@ -53,5 +65,12 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
   }
 
   // Pass pre-loaded data to client component
-  return <MaterialsEditClient initialMaterial={material} initialBrands={brands} />
+  return (
+    <MaterialsEditClient 
+      initialMaterial={material} 
+      initialBrands={brands}
+      initialCurrencies={currencies}
+      initialVatRates={vatRates}
+    />
+  )
 }

@@ -22,7 +22,16 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  Autocomplete,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Divider,
+  CircularProgress
 } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
@@ -30,6 +39,7 @@ import { invalidateApiCache } from '@/hooks/useApiCache'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
 import ImageUpload from '@/components/ImageUpload'
+import { formatPriceWithCurrency, calculateFullBoardCost, calculateSquareMeters, calculateGrossPrice } from '@/utils/priceFormatters'
 
 interface Material {
   id: string
@@ -50,8 +60,33 @@ interface Material {
   rotatable: boolean
   waste_multi: number
   machine_code: string
+  price_per_sqm: number
+  currency_id: string | null
+  vat_id: string | null
+  currencies?: { id: string; name: string } | null
+  vat?: { id: string; name: string; kulcs: number } | null
   created_at: string
   updated_at: string
+}
+
+interface Currency {
+  id: string
+  name: string
+  rate: number
+}
+
+interface VAT {
+  id: string
+  name: string
+  kulcs: number
+}
+
+interface PriceHistory {
+  id: string
+  old_price_per_sqm: number
+  new_price_per_sqm: number
+  changed_at: string
+  changed_by: string | null
 }
 
 interface Brand {
@@ -65,9 +100,16 @@ interface Brand {
 interface MaterialsEditClientProps {
   initialMaterial: Material
   initialBrands: Brand[]
+  initialCurrencies: Currency[]
+  initialVatRates: VAT[]
 }
 
-export default function MaterialsEditClient({ initialMaterial, initialBrands }: MaterialsEditClientProps) {
+export default function MaterialsEditClient({ 
+  initialMaterial, 
+  initialBrands,
+  initialCurrencies,
+  initialVatRates 
+}: MaterialsEditClientProps) {
   const router = useRouter()
   
   // Check permission for this page - temporarily bypassed to fix hook errors
@@ -77,6 +119,12 @@ export default function MaterialsEditClient({ initialMaterial, initialBrands }: 
   const [material, setMaterial] = useState<Material>(initialMaterial)
   const [brands, setBrands] = useState<Brand[]>(initialBrands)
   const [isSaving, setIsSaving] = useState(false)
+  
+  // Pricing state - use SSR data to prevent hydration issues
+  const [currencies] = useState<Currency[]>(initialCurrencies)
+  const [vatRates] = useState<VAT[]>(initialVatRates)
+  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>([])
+  const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
   
   // Form state
   const [formData, setFormData] = useState({
@@ -95,8 +143,55 @@ export default function MaterialsEditClient({ initialMaterial, initialBrands }: 
     trim_left_mm: initialMaterial.trim_left_mm || 0,
     rotatable: initialMaterial.rotatable !== undefined ? initialMaterial.rotatable : true,
     waste_multi: initialMaterial.waste_multi || 1.0,
-    machine_code: initialMaterial.machine_code || ''
+    machine_code: initialMaterial.machine_code || '',
+    price_per_sqm: initialMaterial.price_per_sqm || 0,
+    currency_id: initialMaterial.currency_id || '',
+    vat_id: initialMaterial.vat_id || ''
   })
+  
+  // Get current VAT percentage
+  const currentVatPercent = React.useMemo(() => {
+    const selectedVat = vatRates.find(v => v.id === formData.vat_id)
+    return selectedVat?.kulcs || 0
+  }, [vatRates, formData.vat_id])
+  
+  // Calculate prices in real-time
+  const squareMeters = React.useMemo(() => {
+    return calculateSquareMeters(formData.length_mm, formData.width_mm)
+  }, [formData.length_mm, formData.width_mm])
+  
+  const netPricePerSqm = formData.price_per_sqm
+  const grossPricePerSqm = React.useMemo(() => {
+    return calculateGrossPrice(netPricePerSqm, currentVatPercent)
+  }, [netPricePerSqm, currentVatPercent])
+  
+  const netFullBoardCost = React.useMemo(() => {
+    return calculateFullBoardCost(formData.length_mm, formData.width_mm, formData.price_per_sqm)
+  }, [formData.length_mm, formData.width_mm, formData.price_per_sqm])
+  
+  const grossFullBoardCost = React.useMemo(() => {
+    return calculateGrossPrice(netFullBoardCost, currentVatPercent)
+  }, [netFullBoardCost, currentVatPercent])
+  
+  // Fetch price history only (currencies and VAT come from SSR props)
+  useEffect(() => {
+    const fetchPriceHistory = async () => {
+      setLoadingPriceHistory(true)
+      try {
+        const historyRes = await fetch(`/api/materials/${material.id}/price-history`)
+        if (historyRes.ok) {
+          const historyData = await historyRes.json()
+          setPriceHistory(historyData)
+        }
+      } catch (error) {
+        console.error('Error fetching price history:', error)
+      } finally {
+        setLoadingPriceHistory(false)
+      }
+    }
+    
+    fetchPriceHistory()
+  }, [material.id])
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -118,12 +213,24 @@ export default function MaterialsEditClient({ initialMaterial, initialBrands }: 
       })
 
       if (response.ok) {
+        const updatedMaterial = await response.json()
+        
         toast.success('Anyag sikeresen frissítve!')
+        
+        // Update material state with new data
+        setMaterial(updatedMaterial)
         
         // Invalidate cache to refresh list page
         invalidateApiCache('/api/materials')
         
-        router.push('/materials')
+        // Refresh price history to show the new change
+        const historyRes = await fetch(`/api/materials/${material.id}/price-history`)
+        if (historyRes.ok) {
+          const historyData = await historyRes.json()
+          setPriceHistory(historyData)
+        }
+        
+        // Stay on the same page (removed router.push)
       } else {
         const errorData = await response.json()
 
@@ -395,6 +502,202 @@ export default function MaterialsEditClient({ initialMaterial, initialBrands }: 
                 </Grid>
               </Grid>
             </Box>
+          </Card>
+
+          {/* Pricing Settings Card */}
+          <Card sx={{ mt: 4 }}>
+            <CardHeader title="Árazási beállítások" />
+            <CardContent>
+              <Grid container spacing={3}>
+                {/* Price per m² */}
+                <Grid item xs={12} sm={4}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Nettó ár (Ft/m²)"
+                    type="number"
+                    inputProps={{ step: "0.01", min: "0" }}
+                    value={formData.price_per_sqm}
+                    onChange={(e) => handleInputChange('price_per_sqm', parseFloat(e.target.value) || 0)}
+                  />
+                </Grid>
+
+                {/* Currency */}
+                <Grid item xs={12} sm={4}>
+                  <Autocomplete
+                    options={currencies}
+                    getOptionLabel={(option) => option.name}
+                    value={currencies.find(c => c.id === formData.currency_id) || null}
+                    onChange={(_, newValue) => handleInputChange('currency_id', newValue?.id || '')}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Pénznem" required />
+                    )}
+                  />
+                </Grid>
+
+                {/* VAT */}
+                <Grid item xs={12} sm={4}>
+                  <Autocomplete
+                    options={vatRates}
+                    getOptionLabel={(option) => option.name}
+                    value={vatRates.find(v => v.id === formData.vat_id) || null}
+                    onChange={(_, newValue) => handleInputChange('vat_id', newValue?.id || '')}
+                    renderInput={(params) => (
+                      <TextField {...params} label="ÁFA" required />
+                    )}
+                  />
+                </Grid>
+
+                {/* Calculated Prices */}
+                <Grid item xs={12}>
+                  <Box sx={{ 
+                    p: 2, 
+                    bgcolor: 'action.hover', 
+                    borderRadius: 1,
+                    border: '1px solid',
+                    borderColor: 'divider'
+                  }}>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Számított árak
+                    </Typography>
+                    
+                    {/* Price per m² */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2">
+                        Nettó ár/m²:
+                      </Typography>
+                      <Typography variant="body2" fontWeight="medium">
+                        {formatPriceWithCurrency(netPricePerSqm)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2">
+                        Bruttó ár/m² ({currentVatPercent}% ÁFA):
+                      </Typography>
+                      <Typography variant="body2" fontWeight="medium">
+                        {formatPriceWithCurrency(grossPricePerSqm)}
+                      </Typography>
+                    </Box>
+                    
+                    <Divider sx={{ my: 1.5 }} />
+                    
+                    {/* Full board cost */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2">
+                        Teljes tábla nettó:
+                      </Typography>
+                      <Typography variant="body2" fontWeight="medium" color="primary">
+                        {formatPriceWithCurrency(netFullBoardCost)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2">
+                        Teljes tábla bruttó:
+                      </Typography>
+                      <Typography variant="h6" color="primary">
+                        {formatPriceWithCurrency(grossFullBoardCost)}
+                      </Typography>
+                    </Box>
+                    
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      {formData.length_mm} × {formData.width_mm} mm = {squareMeters.toFixed(3)} m²
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+
+              {/* Price History */}
+              {priceHistory.length > 0 && (
+                <>
+                  <Divider sx={{ my: 3 }} />
+                  <Typography variant="h6" gutterBottom>
+                    Ár történet (utolsó 10)
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Dátum</TableCell>
+                          <TableCell align="right">Régi nettó</TableCell>
+                          <TableCell align="right">Régi bruttó</TableCell>
+                          <TableCell align="right">Új nettó</TableCell>
+                          <TableCell align="right">Új bruttó</TableCell>
+                          <TableCell align="right">Változás</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {priceHistory.map((history) => {
+                          const netDiff = history.new_price_per_sqm - history.old_price_per_sqm
+                          const netChangePercent = history.old_price_per_sqm > 0 
+                            ? ((netDiff / history.old_price_per_sqm) * 100).toFixed(1)
+                            : '0'
+                          
+                          // Calculate gross prices with current VAT
+                          const oldGross = calculateGrossPrice(history.old_price_per_sqm, currentVatPercent)
+                          const newGross = calculateGrossPrice(history.new_price_per_sqm, currentVatPercent)
+                          const grossDiff = newGross - oldGross
+                          
+                          return (
+                            <TableRow key={history.id}>
+                              <TableCell>
+                                {new Date(history.changed_at).toLocaleString('hu-HU', {
+                                  year: 'numeric',
+                                  month: '2-digit',
+                                  day: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'error.lighter', borderLeft: '3px solid', borderLeftColor: 'error.main' }}>
+                                <Typography variant="body2" color="error.dark">
+                                  {formatPriceWithCurrency(history.old_price_per_sqm)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                                <Typography variant="body2" fontWeight="medium" color="error.dark">
+                                  {formatPriceWithCurrency(oldGross)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'success.lighter', borderLeft: '3px solid', borderLeftColor: 'success.main' }}>
+                                <Typography variant="body2" color="success.dark">
+                                  {formatPriceWithCurrency(history.new_price_per_sqm)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                                <Typography variant="body2" fontWeight="medium" color="success.dark">
+                                  {formatPriceWithCurrency(newGross)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Box>
+                                  <Typography 
+                                    variant="body2" 
+                                    color={netDiff >= 0 ? 'error.main' : 'success.main'}
+                                    fontWeight="medium"
+                                  >
+                                    Nettó: {netDiff >= 0 ? '+' : ''}{formatPriceWithCurrency(netDiff)}
+                                  </Typography>
+                                  <Typography 
+                                    variant="body2" 
+                                    color={grossDiff >= 0 ? 'error.main' : 'success.main'}
+                                    fontWeight="bold"
+                                  >
+                                    Bruttó: {grossDiff >= 0 ? '+' : ''}{formatPriceWithCurrency(grossDiff)}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    ({netDiff >= 0 ? '+' : ''}{netChangePercent}%)
+                                  </Typography>
+                                </Box>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
+              )}
+            </CardContent>
           </Card>
         </Grid>
       </Grid>

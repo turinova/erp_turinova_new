@@ -21,6 +21,8 @@ interface Material {
   rotatable: boolean
   waste_multi: number
   machine_code: string
+  price_per_sqm: number
+  vat_percent: number
   created_at: string
   updated_at: string
 }
