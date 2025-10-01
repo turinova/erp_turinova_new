@@ -230,7 +230,7 @@ export default function OptiClient({
   initialEdgeMaterials 
 }: OptiClientProps) {
   // Check permission for this page
-  const { canAccess } = usePermissions()
+  const { canAccess, loading: permissionsLoading } = usePermissions()
   const hasAccess = canAccess('/opti')
   
   // Use SSR data instead of API calls
@@ -891,20 +891,33 @@ export default function OptiClient({
 
 
 
-  // Check access permission
+  // Check access permission - only redirect if permissions are loaded and user doesn't have access
   useEffect(() => {
-    if (!hasAccess) {
-      toast.error('Nincs jogosultsága az Opti oldal megtekintéséhez!', {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      })
-      window.location.href = '/users'
+    if (!permissionsLoading && !hasAccess) {
+      const timer = setTimeout(() => {
+        toast.error('Nincs jogosultsága az Opti oldal megtekintéséhez!', {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        })
+        window.location.href = '/users'
+      }, 100) // Small delay to prevent redirects during page refresh
+      
+      return () => clearTimeout(timer)
     }
-  }, [hasAccess])
+  }, [hasAccess, permissionsLoading])
+
+  // Show loading state while permissions are being checked
+  if (permissionsLoading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress />
+      </Box>
+    )
+  }
 
   if (!hasAccess) {
     return (
