@@ -36,7 +36,7 @@ import {
   Radio,
   RadioGroup
 } from '@mui/material'
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
 import MuiAccordionSummary from '@mui/material/AccordionSummary'
@@ -841,8 +841,23 @@ export default function OptiClient({
 
       // Call multi-material optimization service
       const request = { materials: materialsForOptimization }
-        
-      const response = await fetch('/api/optimize', {
+      
+      // Debug: Log environment variables
+      console.log('Environment check:', {
+        NODE_ENV: process.env.NODE_ENV,
+        NEXT_PUBLIC_PHP_SERVICE_URL: process.env.NEXT_PUBLIC_PHP_SERVICE_URL,
+        isProduction: process.env.NODE_ENV === 'production'
+      })
+      
+      // Use Next.js API route for optimization (proxies to PHP service)
+      const phpServiceUrl = process.env.NEXT_PUBLIC_PHP_SERVICE_URL || 
+        (process.env.NODE_ENV === 'production' 
+          ? '/api/optimize'
+          : 'http://localhost:8000/test_optimization.php')
+      
+      console.log('Using PHP service URL:', phpServiceUrl)
+      
+      const response = await fetch(phpServiceUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -857,6 +872,12 @@ export default function OptiClient({
         }
 
       const results = await response.json()
+
+      // Check if results is an error object instead of an array
+      if (!Array.isArray(results)) {
+        console.error('PHP service returned error:', results)
+        throw new Error(results.error || 'PHP service returned invalid data')
+      }
 
       // Calculate total metrics
       const totalUsedArea = results.reduce((sum: number, result: any) => sum + result.metrics.used_area_mm2, 0)

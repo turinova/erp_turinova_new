@@ -160,7 +160,6 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             className='flex flex-col gap-5'
           >
             <TextField 
-              id="login-email"
               autoFocus 
               fullWidth 
               label='Email' 
@@ -170,7 +169,6 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               required
             />
             <TextField
-              id="login-password"
               fullWidth
               label='Password'
               type={isPasswordShown ? 'text' : 'password'}
@@ -195,7 +193,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               }}
             />
             <div className='flex justify-between items-center flex-wrap gap-x-3 gap-y-1'>
-              <FormControlLabel control={<Checkbox id="remember-me" />} label='Remember me' />
+              <FormControlLabel control={<Checkbox />} label='Remember me' />
               <Typography className='text-end' color='primary.main' component={Link}>
                 Forgot password?
               </Typography>

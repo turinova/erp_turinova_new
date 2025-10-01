@@ -14,7 +14,7 @@ import { getSystemMode } from '@core/utils/serverHelpers'
 import '@/app/globals.css'
 
 // Generated Icon CSS Imports
-// import '@assets/iconify-icons/generated-icons.css'
+import '@assets/iconify-icons/generated-icons.css'
 
 // Component Imports
 // PerformanceMonitor removed - was causing React hook errors

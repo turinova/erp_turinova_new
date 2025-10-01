@@ -29,7 +29,6 @@
     "@supabase/supabase-js": "^2.57.2",
     "@tanstack/react-query": "^5.89.0",
     "@tanstack/react-query-devtools": "^5.89.0",
-    "@turinova/optimizer-sdk": "file:../packages/optimizer-sdk",
     "@types/uuid": "^10.0.0",
     "classnames": "2.5.1",
     "critters": "^0.0.23",
