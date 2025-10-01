@@ -5,10 +5,22 @@ import * as XLSX from 'xlsx'
 // Export all materials to Excel (.xlsx)
 export async function GET(request: NextRequest) {
   try {
-    console.log('Exporting materials to Excel...')
+    // Get filter parameters from query string
+    const { searchParams } = new URL(request.url)
+    const brandFilter = searchParams.get('brand')
+    const lengthFilter = searchParams.get('length')
+    const widthFilter = searchParams.get('width')
+    const thicknessFilter = searchParams.get('thickness')
 
-    // Fetch all materials with related data
-    const { data: materials, error } = await supabaseServer
+    console.log('Exporting materials to Excel with filters:', {
+      brand: brandFilter,
+      length: lengthFilter,
+      width: widthFilter,
+      thickness: thicknessFilter
+    })
+
+    // Build query with filters
+    let query = supabaseServer
       .from('materials')
       .select(`
         id,
@@ -35,7 +47,25 @@ export async function GET(request: NextRequest) {
         machine_material_map(machine_code)
       `)
       .is('deleted_at', null)
-      .order('name')
+
+    // Apply filters if provided
+    if (lengthFilter) {
+      query = query.eq('length_mm', Number(lengthFilter))
+    }
+    if (widthFilter) {
+      query = query.eq('width_mm', Number(widthFilter))
+    }
+    if (thicknessFilter) {
+      query = query.eq('thickness_mm', Number(thicknessFilter))
+    }
+
+    const { data: materials, error } = await query.order('name')
+
+    // Filter by brand name (post-query since it's a joined field)
+    let filteredMaterials = materials
+    if (brandFilter && materials) {
+      filteredMaterials = materials.filter(m => m.brands?.name === brandFilter)
+    }
 
     if (error) {
       console.error('Error fetching materials for export:', error)
@@ -43,14 +73,15 @@ export async function GET(request: NextRequest) {
     }
 
     console.log(`Fetched ${materials?.length || 0} materials from database`)
+    console.log(`After filters: ${filteredMaterials?.length || 0} materials`)
     
     // Log first material for debugging
-    if (materials && materials.length > 0) {
-      console.log('Sample material data:', JSON.stringify(materials[0], null, 2))
+    if (filteredMaterials && filteredMaterials.length > 0) {
+      console.log('Sample material data:', JSON.stringify(filteredMaterials[0], null, 2))
     }
 
     // Transform data for Excel export
-    const excelData = materials.map(m => ({
+    const excelData = filteredMaterials.map(m => ({
       'Gépkód': m.machine_material_map?.[0]?.machine_code || '',
       'Anyag neve': m.name,
       'Márka': m.brands?.name || '',

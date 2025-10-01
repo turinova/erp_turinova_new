@@ -124,12 +124,42 @@ export async function POST(request: NextRequest) {
           // UPDATE existing material
           console.log(`Updating material with gépkód: ${machineCode}`)
 
+          // Fetch current price for history tracking
+          const { data: currentMaterial } = await supabaseServer
+            .from('materials')
+            .select('price_per_sqm')
+            .eq('id', existingMaterialId)
+            .single()
+
+          const oldPrice = currentMaterial?.price_per_sqm || 0
+          const newPrice = materialData.price_per_sqm
+
           const { error: materialError } = await supabaseServer
             .from('materials')
             .update(materialData)
             .eq('id', existingMaterialId)
 
           if (materialError) throw materialError
+
+          // Log price change to history if price changed
+          if (oldPrice !== newPrice) {
+            const { data: { user } } = await supabaseServer.auth.getUser()
+            
+            console.log(`Price changed from ${oldPrice} to ${newPrice} via import, logging to history`)
+            
+            const { error: historyError } = await supabaseServer
+              .from('material_price_history')
+              .insert({
+                material_id: existingMaterialId,
+                old_price_per_sqm: oldPrice,
+                new_price_per_sqm: newPrice,
+                changed_by: user?.id || null
+              })
+
+            if (historyError) {
+              console.error('Failed to log price history:', historyError)
+            }
+          }
 
           // Update settings
           const { error: settingsError } = await supabaseServer

@@ -4,8 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, CircularProgress } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, CircularProgress, Select, MenuItem, FormControl, InputLabel, Grid } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, FilterList as FilterIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
@@ -56,6 +56,12 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   const [isDeleting, setIsDeleting] = useState(false)
   const [mounted, setMounted] = useState(false)
   
+  // Filter states
+  const [filterBrand, setFilterBrand] = useState<string>('')
+  const [filterLength, setFilterLength] = useState<string>('')
+  const [filterWidth, setFilterWidth] = useState<string>('')
+  const [filterThickness, setFilterThickness] = useState<string>('')
+  
   // Import states
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
@@ -67,20 +73,67 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
     setMounted(true)
   }, [])
 
-  // Filter materials based on search term (client-side fallback)
+  // Get unique values for filter dropdowns
+  const uniqueBrands = useMemo(() => {
+    const brands = new Set(materials.map(m => m.brand_name))
+    return Array.from(brands).sort()
+  }, [materials])
+
+  const uniqueLengths = useMemo(() => {
+    const lengths = new Set(materials.map(m => m.length_mm))
+    return Array.from(lengths).sort((a, b) => a - b)
+  }, [materials])
+
+  const uniqueWidths = useMemo(() => {
+    const widths = new Set(materials.map(m => m.width_mm))
+    return Array.from(widths).sort((a, b) => a - b)
+  }, [materials])
+
+  const uniqueThicknesses = useMemo(() => {
+    const thicknesses = new Set(materials.map(m => m.thickness_mm))
+    return Array.from(thicknesses).sort((a, b) => a - b)
+  }, [materials])
+
+  // Filter materials based on search term and filters
   const filteredMaterials = useMemo(() => {
     if (!materials || !Array.isArray(materials)) return []
-    if (!searchTerm) return materials
     
-    const term = searchTerm.toLowerCase()
-    return materials.filter(material => 
-      material.name.toLowerCase().includes(term) ||
-      material.length_mm.toString().includes(term) ||
-      material.width_mm.toString().includes(term) ||
-      material.thickness_mm.toString().includes(term) ||
-      (material.on_stock ? 'igen' : 'nem').includes(term)
-    )
-  }, [materials, searchTerm])
+    let filtered = materials
+
+    // Apply brand filter
+    if (filterBrand) {
+      filtered = filtered.filter(m => m.brand_name === filterBrand)
+    }
+
+    // Apply length filter
+    if (filterLength) {
+      filtered = filtered.filter(m => m.length_mm === Number(filterLength))
+    }
+
+    // Apply width filter
+    if (filterWidth) {
+      filtered = filtered.filter(m => m.width_mm === Number(filterWidth))
+    }
+
+    // Apply thickness filter
+    if (filterThickness) {
+      filtered = filtered.filter(m => m.thickness_mm === Number(filterThickness))
+    }
+
+    // Apply search term
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(material => 
+        material.name.toLowerCase().includes(term) ||
+        material.length_mm.toString().includes(term) ||
+        material.width_mm.toString().includes(term) ||
+        material.thickness_mm.toString().includes(term) ||
+        (material.on_stock ? 'igen' : 'nem').includes(term)
+      )
+    }
+    
+    return filtered
+  }, [materials, searchTerm, filterBrand, filterLength, filterWidth, filterThickness])
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -169,8 +222,19 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   // Export handler
   const handleExport = async () => {
     try {
-      console.log('Exporting materials...')
-      const response = await fetch('/api/materials/export')
+      console.log('Exporting materials with filters:', { filterBrand, filterLength, filterWidth, filterThickness })
+      
+      // Build query params for filters
+      const params = new URLSearchParams()
+      if (filterBrand) params.set('brand', filterBrand)
+      if (filterLength) params.set('length', filterLength)
+      if (filterWidth) params.set('width', filterWidth)
+      if (filterThickness) params.set('thickness', filterThickness)
+      
+      const queryString = params.toString()
+      const url = `/api/materials/export${queryString ? `?${queryString}` : ''}`
+      
+      const response = await fetch(url)
       
       if (!response.ok) {
         throw new Error('Export failed')
@@ -178,16 +242,22 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
 
       // Download the file
       const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
+      const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
-      a.href = url
+      a.href = downloadUrl
       a.download = `anyagok_export_${new Date().toISOString().split('T')[0]}.xlsx`
       document.body.appendChild(a)
       a.click()
-      window.URL.revokeObjectURL(url)
+      window.URL.revokeObjectURL(downloadUrl)
       document.body.removeChild(a)
 
-      toast.success('Anyagok sikeresen exportálva!')
+      const filterCount = filteredMaterials.length
+      const totalCount = materials.length
+      const message = filterCount < totalCount 
+        ? `${filterCount} szűrt anyag exportálva (összesen: ${totalCount})`
+        : `Mind a ${totalCount} anyag exportálva!`
+      
+      toast.success(message)
     } catch (error) {
       console.error('Export error:', error)
       toast.error('Hiba történt az exportálás során!')
@@ -409,12 +479,106 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
         </Box>
       )}
       
+      {/* Filter Section - Client-side only to prevent hydration mismatch */}
+      {mounted && (
+        <Box sx={{ mt: 2, mb: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <FilterIcon sx={{ mr: 1 }} />
+            <Typography variant="h6">Szűrők</Typography>
+            {(filterBrand || filterLength || filterWidth || filterThickness) && (
+              <Button 
+                size="small" 
+                onClick={() => {
+                  setFilterBrand('')
+                  setFilterLength('')
+                  setFilterWidth('')
+                  setFilterThickness('')
+                }}
+                sx={{ ml: 'auto' }}
+              >
+                Szűrők törlése
+              </Button>
+            )}
+          </Box>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Márka</InputLabel>
+                <Select
+                  value={filterBrand}
+                  label="Márka"
+                  onChange={(e) => setFilterBrand(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>Összes</em>
+                  </MenuItem>
+                  {uniqueBrands.map(brand => (
+                    <MenuItem key={brand} value={brand}>{brand}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Hossz (mm)</InputLabel>
+                <Select
+                  value={filterLength}
+                  label="Hossz (mm)"
+                  onChange={(e) => setFilterLength(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>Összes</em>
+                  </MenuItem>
+                  {uniqueLengths.map(length => (
+                    <MenuItem key={length} value={length.toString()}>{length}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Szélesség (mm)</InputLabel>
+                <Select
+                  value={filterWidth}
+                  label="Szélesség (mm)"
+                  onChange={(e) => setFilterWidth(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>Összes</em>
+                  </MenuItem>
+                  {uniqueWidths.map(width => (
+                    <MenuItem key={width} value={width.toString()}>{width}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Vastagság (mm)</InputLabel>
+                <Select
+                  value={filterThickness}
+                  label="Vastagság (mm)"
+                  onChange={(e) => setFilterThickness(e.target.value)}
+                >
+                  <MenuItem value="">
+                    <em>Összes</em>
+                  </MenuItem>
+                  {uniqueThicknesses.map(thickness => (
+                    <MenuItem key={thickness} value={thickness.toString()}>{thickness}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </Box>
+      )}
+      
       <TextField
         fullWidth
         placeholder="Keresés név, hossz, szélesség, vastagság vagy raktár szerint..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        sx={{ mt: 2, mb: 2 }}
+        sx={{ mb: 2 }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
