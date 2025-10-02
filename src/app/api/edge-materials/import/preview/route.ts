@@ -90,6 +90,12 @@ export async function POST(request: NextRequest) {
       const vatName = vatMatch ? vatMatch[1].trim() : vatString.trim()
       const vatPercentage = vatMatch ? parseInt(vatMatch[2]) : null
 
+      // Parse favourite_priority
+      const favouritePriorityValue = row['Kedvenc sorrend']
+      const favouritePriority = favouritePriorityValue && favouritePriorityValue !== '' 
+        ? parseInt(favouritePriorityValue.toString()) 
+        : null
+
       preview.push({
         row: rowNum,
         action,
@@ -102,6 +108,7 @@ export async function POST(request: NextRequest) {
         price: row['Ár (Ft)'],
         vat: vatName,
         ráhagyás: row['Ráhagyás (mm)'] || 0,
+        favouritePriority: favouritePriority,
         active: row['Aktív'] === 'Igen'
       })
     }

@@ -21,6 +21,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         vat_id,
         active,
         ráhagyás,
+        favourite_priority,
         created_at,
         updated_at,
         brands (
@@ -82,6 +83,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       vat_id: body.vat_id || '',
       active: body.active !== undefined ? body.active : true,
       ráhagyás: parseInt(body.ráhagyás) || 0,
+      favourite_priority: body.favourite_priority !== undefined ? body.favourite_priority : null,
       updated_at: new Date().toISOString()
     }
 
@@ -100,6 +102,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         vat_id,
         active,
         ráhagyás,
+        favourite_priority,
         created_at,
         updated_at,
         brands (

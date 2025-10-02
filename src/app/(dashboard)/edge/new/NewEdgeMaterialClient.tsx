@@ -18,6 +18,7 @@ interface EdgeMaterial {
   vat_id: string
   active: boolean
   ráhagyás: number
+  favourite_priority: number | null
   created_at: string
   updated_at: string
 }
@@ -54,6 +55,7 @@ export default function NewEdgeMaterialClient({ brands, vatRates, defaultVatId }
     vat_id: defaultVatId,
     active: true,
     ráhagyás: 0,
+    favourite_priority: null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   })
@@ -145,6 +147,7 @@ export default function NewEdgeMaterialClient({ brands, vatRates, defaultVatId }
           vat_id: edgeMaterial.vat_id,
           active: edgeMaterial.active,
           ráhagyás: edgeMaterial.ráhagyás,
+          favourite_priority: edgeMaterial.favourite_priority,
           machineCode: machineCode
         }),
       })
@@ -290,10 +293,14 @@ export default function NewEdgeMaterialClient({ brands, vatRates, defaultVatId }
                     label="Szélesség (mm)"
                     type="number"
                     value={edgeMaterial.width}
-                    onChange={(e) => handleInputChange('width', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(',', '.')
+                      handleInputChange('width', parseFloat(val) || 0)
+                    }}
                     error={!!errors.width}
                     helperText={errors.width}
                     required
+                    inputProps={{ step: 0.1 }}
                   />
                 </Grid>
                 
@@ -303,13 +310,33 @@ export default function NewEdgeMaterialClient({ brands, vatRates, defaultVatId }
                     label="Vastagság (mm)"
                     type="number"
                     value={edgeMaterial.thickness}
-                    onChange={(e) => handleInputChange('thickness', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(',', '.')
+                      handleInputChange('thickness', parseFloat(val) || 0)
+                    }}
                     error={!!errors.thickness}
                     helperText={errors.thickness}
                     required
+                    inputProps={{ step: 0.1 }}
                   />
                 </Grid>
           
+                <Grid item xs={12} md={2.4}>
+                  <TextField
+                    fullWidth
+                    label="Kedvenc sorrend"
+                    type="number"
+                    value={edgeMaterial.favourite_priority ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value
+                      handleInputChange('favourite_priority', val === '' ? null : parseInt(val))
+                    }}
+                    inputProps={{ min: 1 }}
+                    placeholder="Nem kedvenc"
+                    helperText="1 = első, 2 = második, stb. Hagyd üresen ha nem kedvenc"
+                  />
+                </Grid>
+                
                 <Grid item xs={12} md={2.4}>
                   <FormControlLabel
                     control={
@@ -339,10 +366,14 @@ export default function NewEdgeMaterialClient({ brands, vatRates, defaultVatId }
                     label="Ár (Ft)"
                     type="number"
                     value={edgeMaterial.price}
-                    onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(',', '.')
+                      handleInputChange('price', parseFloat(val) || 0)
+                    }}
                     error={!!errors.price}
                     helperText={errors.price}
                     required
+                    inputProps={{ step: 0.01 }}
                   />
                 </Grid>
           

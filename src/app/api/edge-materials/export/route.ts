@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
         'Ár (Ft)': em.price || 0,
         'Adónem': vatInfo,
         'Ráhagyás (mm)': em.ráhagyás || 0,
+        'Kedvenc sorrend': em.favourite_priority || '',
         'Aktív': em.active ? 'Igen' : 'Nem',
       }
     }) || []
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
       { wch: 12 }, // Ár
       { wch: 20 }, // Adónem
       { wch: 15 }, // Ráhagyás
+      { wch: 15 }, // Kedvenc sorrend
       { wch: 10 }, // Aktív
     ]
 

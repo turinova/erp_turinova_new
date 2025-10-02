@@ -14,6 +14,7 @@ interface EdgeMaterial {
   vat_id: string
   active: boolean
   ráhagyás: number
+  favourite_priority: number | null
   machine_code?: string
   created_at: string
   updated_at: string

@@ -19,6 +19,7 @@ interface EdgeMaterial {
   vat_id: string
   active: boolean
   ráhagyás: number
+  favourite_priority: number | null
   created_at: string
   updated_at: string
   brands: {
@@ -495,6 +496,7 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
               </TableCell>
               <TableCell>Név</TableCell>
               <TableCell>Ár</TableCell>
+              <TableCell>Kedvenc</TableCell>
               <TableCell>Aktív</TableCell>
             </TableRow>
           </TableHead>
@@ -514,6 +516,21 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
                 </TableCell>
                 <TableCell>{material.type}-{material.width}/{material.thickness}-{material.decor}</TableCell>
                 <TableCell>{material.price.toLocaleString('hu-HU')} Ft</TableCell>
+                <TableCell>
+                  {material.favourite_priority ? (
+                    <Typography 
+                      variant="body2" 
+                      color="warning.main"
+                      sx={{ fontWeight: 'bold' }}
+                    >
+                      ⭐ {material.favourite_priority}
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      -
+                    </Typography>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Typography 
                     variant="body2" 

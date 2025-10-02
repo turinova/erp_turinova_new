@@ -207,6 +207,7 @@ interface EdgeMaterial {
   decor: string
   price: number
   vat_id: string
+  favourite_priority: number | null
   created_at: string
   updated_at: string
   brands: {
@@ -237,12 +238,74 @@ export default function OptiClient({
   // Use SSR data instead of API calls
   const materials = initialMaterials || []
   const customers = initialCustomers || []
-  const edgeMaterials = initialEdgeMaterials || []
+  const rawEdgeMaterials = initialEdgeMaterials || []
 
   // Filter only active materials for optimization
   const activeMaterials = useMemo(() => {
     return materials.filter(m => m.active !== false)
   }, [materials])
+
+  // Sort edge materials by favourite_priority (favourites first, then alphabetically)
+  const edgeMaterials = useMemo(() => {
+    return [...rawEdgeMaterials].sort((a, b) => {
+      const aPriority = a.favourite_priority ?? 999999
+      const bPriority = b.favourite_priority ?? 999999
+      
+      // If priorities are different, sort by priority
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority
+      }
+      
+      // If same priority (or both non-favourite), sort alphabetically by decor
+      return a.decor.localeCompare(b.decor, 'hu')
+    })
+  }, [rawEdgeMaterials])
+
+  // Custom render for edge material options with favourites highlighted
+  const renderEdgeMaterialOption = (props: any, option: EdgeMaterial, index: number) => {
+    const isFavourite = option.favourite_priority !== null && option.favourite_priority !== undefined
+    
+    // Check if this is the last favourite (for separator)
+    const isLastFavourite = isFavourite && 
+      (index === edgeMaterials.length - 1 || 
+       !edgeMaterials[index + 1]?.favourite_priority)
+    
+    // Extract key from props to avoid spreading it
+    const { key, ...otherProps } = props
+    
+    return (
+      <React.Fragment key={key}>
+        <Box
+          component="li"
+          {...otherProps}
+          sx={{
+            ...otherProps.sx,
+            backgroundColor: isFavourite ? 'rgba(255, 193, 7, 0.15)' : 'transparent',
+            '&:hover': {
+              backgroundColor: isFavourite ? 'rgba(255, 193, 7, 0.25)' : 'rgba(0, 0, 0, 0.04)',
+            },
+            borderLeft: isFavourite ? '4px solid #ffc107' : 'none',
+            paddingLeft: isFavourite ? '12px' : '16px',
+          }}
+        >
+          {formatEdgeMaterialName(option)}
+        </Box>
+        {isLastFavourite && (
+          <Box 
+            component="li" 
+            sx={{ 
+              borderBottom: '2px solid #ffc107',
+              height: 0,
+              padding: 0,
+              margin: 0,
+              pointerEvents: 'none',
+              listStyle: 'none'
+            }}
+          />
+        )}
+      </React.Fragment>
+    )
+  }
 
   // State
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
@@ -1734,6 +1797,10 @@ export default function OptiClient({
                       setSelectedA(newValue ? newValue.id : '')
                     }}
                     disabled={false}
+                    renderOption={(props, option) => {
+                      const index = edgeMaterials.findIndex(em => em.id === option.id)
+                      return renderEdgeMaterialOption(props, option, index)
+                    }}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -1762,6 +1829,10 @@ export default function OptiClient({
                       setSelectedC(newValue ? newValue.id : '')
                     }}
                     disabled={false}
+                    renderOption={(props, option) => {
+                      const index = edgeMaterials.findIndex(em => em.id === option.id)
+                      return renderEdgeMaterialOption(props, option, index)
+                    }}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -1790,6 +1861,10 @@ export default function OptiClient({
                       setSelectedD(newValue ? newValue.id : '')
                     }}
                     disabled={false}
+                    renderOption={(props, option) => {
+                      const index = edgeMaterials.findIndex(em => em.id === option.id)
+                      return renderEdgeMaterialOption(props, option, index)
+                    }}
                     renderInput={(params) => (
                       <TextField
                         {...params}
@@ -1818,6 +1893,10 @@ export default function OptiClient({
                       setSelectedB(newValue ? newValue.id : '')
                     }}
                     disabled={false}
+                    renderOption={(props, option) => {
+                      const index = edgeMaterials.findIndex(em => em.id === option.id)
+                      return renderEdgeMaterialOption(props, option, index)
+                    }}
                     renderInput={(params) => (
                       <TextField
                         {...params}

@@ -87,6 +87,12 @@ export async function POST(request: NextRequest) {
         // Parse active status
         const active = row['Aktív'] === 'Igen'
 
+        // Parse favourite_priority
+        const favouritePriorityValue = row['Kedvenc sorrend']
+        const favouritePriority = favouritePriorityValue && favouritePriorityValue !== '' 
+          ? parseInt(favouritePriorityValue.toString()) 
+          : null
+
         // Prepare edge material data
         const edgeMaterialData = {
           brand_id: brandId,
@@ -97,6 +103,7 @@ export async function POST(request: NextRequest) {
           price: parseFloat(row['Ár (Ft)']) || 0,
           vat_id: vatId,
           ráhagyás: parseInt(row['Ráhagyás (mm)']) || 0,
+          favourite_priority: favouritePriority,
           active: active,
         }
 

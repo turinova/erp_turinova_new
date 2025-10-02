@@ -510,6 +510,7 @@ export async function getEdgeMaterialById(id: string) {
       vat_id,
       active,
       ráhagyás,
+      favourite_priority,
       created_at,
       updated_at,
       brands (
@@ -559,6 +560,7 @@ export async function getAllEdgeMaterials() {
       vat_id,
       active,
       ráhagyás,
+      favourite_priority,
       created_at,
       updated_at,
       brands (

@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
         vat_id,
         active,
         ráhagyás,
+        favourite_priority,
         created_at,
         updated_at,
         brands (
@@ -71,6 +72,7 @@ export async function POST(request: NextRequest) {
     console.log('Creating new edge material...')
     
     const body = await request.json()
+    console.log('Request body:', body)
 
     // Validate required fields
     if (!body.type) {
@@ -88,9 +90,13 @@ export async function POST(request: NextRequest) {
       vat_id: body.vat_id || '',
       active: body.active !== undefined ? body.active : true,
       ráhagyás: parseInt(body.ráhagyás) || 0,
+      favourite_priority: body.favourite_priority !== undefined ? body.favourite_priority : null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
+    
+    console.log('Prepared edge material data:', newEdgeMaterial)
+    console.log('Thickness value:', newEdgeMaterial.thickness, 'Type:', typeof newEdgeMaterial.thickness)
     
     const { data, error } = await supabaseServer
       .from('edge_materials')
@@ -106,6 +112,7 @@ export async function POST(request: NextRequest) {
         vat_id,
         active,
         ráhagyás,
+        favourite_priority,
         created_at,
         updated_at,
         brands (
