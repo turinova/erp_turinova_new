@@ -79,6 +79,7 @@ export default function NewMaterialClient({
     thickness_mm: 18,
     grain_direction: false,
     on_stock: true,
+    active: true,
     image_url: '',
     brand_id: '',
     kerf_mm: 3,
@@ -201,17 +202,38 @@ export default function NewMaterialClient({
       </Breadcrumbs>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={handleBack}
-          sx={{ mr: 2 }}
-        >
-          Vissza
-        </Button>
-        <Typography variant="h4" component="h1">
-          Új anyag hozzáadása
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={handleBack}
+            sx={{ mr: 2 }}
+          >
+            Vissza
+          </Button>
+          <Typography variant="h4" component="h1">
+            Új anyag hozzáadása
+          </Typography>
+        </Box>
+        {mounted && (
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={handleBack}
+              disabled={isSaving}
+            >
+              Mégse
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={isSaving ? <CircularProgress size={20} /> : <SaveIcon />}
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Mentés...' : 'Mentés'}
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Grid container spacing={3}>
@@ -521,25 +543,6 @@ export default function NewMaterialClient({
           </Card>
         </Grid>
       </Grid>
-
-      {/* Action Buttons */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 3 }}>
-        <Button
-          variant="outlined"
-          onClick={handleBack}
-          disabled={isSaving}
-        >
-          Mégse
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={isSaving ? <CircularProgress size={20} /> : <SaveIcon />}
-          onClick={handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? 'Mentés...' : 'Mentés'}
-        </Button>
-      </Box>
       
       {/* Media Library Modal */}
       <MediaLibraryModal

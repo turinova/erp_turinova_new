@@ -107,6 +107,7 @@ export async function POST(request: NextRequest) {
           thickness_mm: Number(row['Vastagság (mm)'] || 18),
           grain_direction: parseBoolean(row['Szálirány']),
           on_stock: parseBoolean(row['Raktáron']),
+          active: parseBoolean(row['Aktív']),
           price_per_sqm: Number(row['Ár/m² (Ft)'] || 0),
           currency_id: currency.id,
           vat_id: vat.id,
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
 
         if (existingMaterialId) {
           // UPDATE existing material
-          console.log(`Updating material with gépkód: ${machineCode}`)
+          console.log(`Updating material with gépkód: ${machineCode}, active: ${materialData.active}`)
 
           // Fetch current price for history tracking
           const { data: currentMaterial } = await supabaseServer
@@ -141,12 +142,19 @@ export async function POST(request: NextRequest) {
           const oldPrice = currentMaterial?.price_per_sqm || 0
           const newPrice = materialData.price_per_sqm
 
+          console.log(`Updating material data:`, materialData)
+
           const { error: materialError } = await supabaseServer
             .from('materials')
             .update(materialData)
             .eq('id', existingMaterialId)
 
-          if (materialError) throw materialError
+          if (materialError) {
+            console.error(`Failed to update material ${existingMaterialId}:`, materialError)
+            throw materialError
+          }
+          
+          console.log(`Material ${existingMaterialId} updated successfully with active=${materialData.active}`)
 
           // Log price change to history if price changed
           if (oldPrice !== newPrice) {

@@ -20,6 +20,7 @@ interface Material {
   thickness_mm: number
   grain_direction: boolean
   on_stock: boolean
+  active: boolean
   image_url: string | null
   brand_id: string
   brand_name: string
@@ -61,6 +62,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   const [filterLength, setFilterLength] = useState<string>('')
   const [filterWidth, setFilterWidth] = useState<string>('')
   const [filterThickness, setFilterThickness] = useState<string>('')
+  const [filterActive, setFilterActive] = useState<string>('all') // 'all', 'active', 'inactive'
   
   // Import states
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -120,6 +122,13 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
       filtered = filtered.filter(m => m.thickness_mm === Number(filterThickness))
     }
 
+    // Apply active filter
+    if (filterActive === 'active') {
+      filtered = filtered.filter(m => m.active === true)
+    } else if (filterActive === 'inactive') {
+      filtered = filtered.filter(m => m.active === false)
+    }
+
     // Apply search term
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
@@ -133,7 +142,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
     }
     
     return filtered
-  }, [materials, searchTerm, filterBrand, filterLength, filterWidth, filterThickness])
+  }, [materials, searchTerm, filterBrand, filterLength, filterWidth, filterThickness, filterActive])
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -222,7 +231,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   // Export handler
   const handleExport = async () => {
     try {
-      console.log('Exporting materials with filters:', { filterBrand, filterLength, filterWidth, filterThickness })
+      console.log('Exporting materials with filters:', { filterBrand, filterLength, filterWidth, filterThickness, filterActive })
       
       // Build query params for filters
       const params = new URLSearchParams()
@@ -230,6 +239,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
       if (filterLength) params.set('length', filterLength)
       if (filterWidth) params.set('width', filterWidth)
       if (filterThickness) params.set('thickness', filterThickness)
+      if (filterActive && filterActive !== 'all') params.set('active', filterActive)
       
       const queryString = params.toString()
       const url = `/api/materials/export${queryString ? `?${queryString}` : ''}`
@@ -485,7 +495,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <FilterIcon sx={{ mr: 1 }} />
             <Typography variant="h6">Szűrők</Typography>
-            {(filterBrand || filterLength || filterWidth || filterThickness) && (
+            {(filterBrand || filterLength || filterWidth || filterThickness || filterActive !== 'all') && (
               <Button 
                 size="small" 
                 onClick={() => {
@@ -493,6 +503,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
                   setFilterLength('')
                   setFilterWidth('')
                   setFilterThickness('')
+                  setFilterActive('all')
                 }}
                 sx={{ ml: 'auto' }}
               >
@@ -569,6 +580,22 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Aktív</InputLabel>
+                <Select
+                  value={filterActive}
+                  label="Aktív"
+                  onChange={(e) => setFilterActive(e.target.value)}
+                >
+                  <MenuItem value="all">
+                    <em>Összes</em>
+                  </MenuItem>
+                  <MenuItem value="active">Aktív</MenuItem>
+                  <MenuItem value="inactive">Inaktív</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
         </Box>
       )}
@@ -607,6 +634,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
               <TableCell align="right">Bruttó ár/m²</TableCell>
               <TableCell>Szálirány</TableCell>
               <TableCell>Raktári</TableCell>
+              <TableCell>Aktív</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -681,6 +709,15 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
                    variant="filled"
                    size="small"
                  />
+               </TableCell>
+               <TableCell>
+                 <Typography 
+                   variant="body2" 
+                   color={material.active ? "success.main" : "error.main"}
+                   sx={{ fontWeight: material.active ? 'bold' : 'normal' }}
+                 >
+                   {material.active ? 'Igen' : 'Nem'}
+                 </Typography>
                </TableCell>
               </TableRow>
             ))}

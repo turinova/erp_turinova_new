@@ -113,6 +113,7 @@ export async function getMaterialById(id: string) {
       thickness_mm,
       grain_direction,
       on_stock,
+      active,
       image_url,
       brand_id,
       price_per_sqm,
@@ -156,6 +157,7 @@ export async function getMaterialById(id: string) {
     thickness_mm: materialData.thickness_mm || 18,
     grain_direction: Boolean(materialData.grain_direction),
     on_stock: materialData.on_stock !== undefined ? Boolean(materialData.on_stock) : true,
+    active: materialData.active !== undefined ? Boolean(materialData.active) : true,
     image_url: materialData.image_url || null,
     brand_id: materialData.brand_id || '',
     brand_name: materialData.brands?.name || 'Unknown',
@@ -190,7 +192,7 @@ export async function getAllMaterials() {
       width_mm, 
       thickness_mm, 
       grain_direction, 
-      on_stock, 
+      on_stock,
       image_url, 
       brand_name,
       kerf_mm, 
@@ -220,6 +222,7 @@ export async function getAllMaterials() {
     .select(`
       id,
       price_per_sqm,
+      active,
       vat(kulcs)
     `)
     .in('id', materialIds)
@@ -230,14 +233,15 @@ export async function getAllMaterials() {
       p.id, 
       { 
         price_per_sqm: p.price_per_sqm || 0, 
-        vat_percent: p.vat?.kulcs || 0 
+        vat_percent: p.vat?.kulcs || 0,
+        active: p.active !== undefined ? p.active : true
       }
     ])
   )
 
   // Transform the data to match the expected format
   const transformedData = (data || []).map(material => {
-    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0 }
+    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0, active: true }
     
     return {
       id: material.id,
@@ -247,6 +251,7 @@ export async function getAllMaterials() {
       thickness_mm: material.thickness_mm || 18,
       grain_direction: Boolean(material.grain_direction),
       on_stock: material.on_stock !== undefined ? Boolean(material.on_stock) : true,
+      active: pricing.active !== undefined ? Boolean(pricing.active) : true,
       image_url: material.image_url || null,
       brand_id: '', // For list view, we don't need brand_id
       brand_name: material.brand_name || 'Unknown',

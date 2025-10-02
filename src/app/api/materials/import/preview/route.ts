@@ -70,13 +70,20 @@ export async function POST(request: NextRequest) {
         'Szélesség (mm)': row['Szélesség (mm)'],
         'Vastagság (mm)': row['Vastagság (mm)'],
         'Pénznem': row['Pénznem'],
-        'ÁFA (%)': row['ÁFA (%)']
+        'ÁFA (%)': row['ÁFA (%)'],
+        'Aktív': row['Aktív']
       }
 
       for (const [fieldName, value] of Object.entries(requiredFields)) {
         if (value === undefined || value === null || value === '') {
           validationErrors.push(`Sor ${rowNum}: "${fieldName}" mező kötelező!`)
         }
+      }
+      
+      // Validate Aktív field (must be "Igen" or "Nem")
+      const activeValue = String(row['Aktív'] || '').trim().toLowerCase()
+      if (activeValue && activeValue !== 'igen' && activeValue !== 'nem') {
+        validationErrors.push(`Sor ${rowNum}: "Aktív" mező csak "Igen" vagy "Nem" lehet`)
       }
 
       // Check if currency exists

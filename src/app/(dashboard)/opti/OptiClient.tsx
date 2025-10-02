@@ -106,6 +106,7 @@ interface Material {
   length_mm: number
   thickness_mm: number
   grain_direction: boolean
+  active: boolean
   image_url?: string
   kerf_mm: number
   trim_top_mm: number
@@ -238,6 +239,10 @@ export default function OptiClient({
   const customers = initialCustomers || []
   const edgeMaterials = initialEdgeMaterials || []
 
+  // Filter only active materials for optimization
+  const activeMaterials = useMemo(() => {
+    return materials.filter(m => m.active !== false)
+  }, [materials])
 
   // State
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
@@ -1473,9 +1478,9 @@ export default function OptiClient({
                <Autocomplete
                  fullWidth
                  size="small"
-                 options={materials}
+                 options={activeMaterials}
                  getOptionLabel={(option) => `${option.name} (${option.width_mm}×${option.length_mm}mm)`}
-                 value={materials.find(m => m.id === selectedTáblásAnyag) || null}
+                 value={activeMaterials.find(m => m.id === selectedTáblásAnyag) || null}
                  onChange={(event, newValue) => {
                    setSelectedTáblásAnyag(newValue ? newValue.id : '')
                    clearValidationError('táblásAnyag')

@@ -50,6 +50,7 @@ interface Material {
   thickness_mm: number
   grain_direction: boolean
   on_stock: boolean
+  active: boolean
   image_url: string | null
   brand_id: string
   brand_name: string
@@ -148,6 +149,7 @@ export default function MaterialsEditClient({
     thickness_mm: initialMaterial.thickness_mm || 0,
     grain_direction: initialMaterial.grain_direction || false,
     on_stock: initialMaterial.on_stock !== undefined ? initialMaterial.on_stock : true,
+    active: initialMaterial.active !== undefined ? initialMaterial.active : true,
     image_url: initialMaterial.image_url || '',
     brand_id: initialMaterial.brand_id || '',
     kerf_mm: initialMaterial.kerf_mm || 3,
@@ -323,17 +325,37 @@ export default function MaterialsEditClient({
       </Breadcrumbs>
 
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <Button
-          startIcon={<ArrowBackIcon />}
-          onClick={handleCancel}
-          sx={{ mr: 2 }}
-        >
-          Vissza
-        </Button>
-        <Typography variant="h4" component="h1">
-          Anyag szerkesztése: {material?.name || 'Ismeretlen'}
-        </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <Button
+            startIcon={<ArrowBackIcon />}
+            onClick={handleCancel}
+            sx={{ mr: 2 }}
+          >
+            Vissza
+          </Button>
+          <Typography variant="h4" component="h1">
+            Anyag szerkesztése: {material?.name || 'Ismeretlen'}
+          </Typography>
+        </Box>
+        {mounted && (
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={handleCancel}
+              disabled={isSaving}
+            >
+              Mégse
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? 'Mentés...' : 'Mentés'}
+            </Button>
+          </Box>
+        )}
       </Box>
 
       <Grid container spacing={3}>
@@ -394,7 +416,7 @@ export default function MaterialsEditClient({
                     onChange={(e) => handleInputChange('thickness_mm', parseInt(e.target.value) || 0)}
                   />
                 </Grid>
-                <Grid item xs={12}>
+                <Grid item xs={6}>
                   <FormControlLabel
                     control={
                       <Switch
@@ -404,6 +426,18 @@ export default function MaterialsEditClient({
                       />
                     }
                     label="Raktáron"
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={formData.active}
+                        onChange={(e) => handleInputChange('active', e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Aktív"
                   />
                 </Grid>
               </Grid>
@@ -787,24 +821,6 @@ export default function MaterialsEditClient({
           </Card>
         </Grid>
       </Grid>
-
-      {/* Action Buttons */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 4 }}>
-        <Button
-          variant="outlined"
-          onClick={handleCancel}
-          disabled={isSaving}
-        >
-          Mégse
-        </Button>
-        <Button
-          variant="contained"
-          onClick={handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? 'Mentés...' : 'Mentés'}
-        </Button>
-      </Box>
       
       {/* Media Library Modal */}
       <MediaLibraryModal

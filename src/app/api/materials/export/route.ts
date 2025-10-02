@@ -11,12 +11,14 @@ export async function GET(request: NextRequest) {
     const lengthFilter = searchParams.get('length')
     const widthFilter = searchParams.get('width')
     const thicknessFilter = searchParams.get('thickness')
+    const activeFilter = searchParams.get('active') // 'active' or 'inactive'
 
     console.log('Exporting materials to Excel with filters:', {
       brand: brandFilter,
       length: lengthFilter,
       width: widthFilter,
-      thickness: thicknessFilter
+      thickness: thicknessFilter,
+      active: activeFilter
     })
 
     // Build query with filters
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
         thickness_mm,
         grain_direction,
         on_stock,
+        active,
         price_per_sqm,
         image_url,
         brands:brand_id(name),
@@ -59,6 +62,9 @@ export async function GET(request: NextRequest) {
     if (thicknessFilter) {
       query = query.eq('thickness_mm', Number(thicknessFilter))
     }
+    if (activeFilter) {
+      query = query.eq('active', activeFilter === 'active')
+    }
 
     const { data: materials, error } = await query.order('name')
 
@@ -75,6 +81,12 @@ export async function GET(request: NextRequest) {
 
     console.log(`Fetched ${materials?.length || 0} materials from database`)
     console.log(`After filters: ${filteredMaterials?.length || 0} materials`)
+    
+    // Debug: Check active field values
+    if (filteredMaterials && filteredMaterials.length > 0) {
+      console.log('First material active status:', filteredMaterials[0].name, 'active:', filteredMaterials[0].active)
+      console.log('Sample of active values:', filteredMaterials.slice(0, 3).map(m => ({ name: m.name, active: m.active })))
+    }
     
     // Fetch all media files to map stored_filename -> original_filename
     const { data: mediaFiles } = await supabaseServer
@@ -113,6 +125,7 @@ export async function GET(request: NextRequest) {
       'Pénznem': m.currencies?.name || '',
       'ÁFA (%)': m.vat?.kulcs || '',
       'Raktáron': m.on_stock ? 'Igen' : 'Nem',
+      'Aktív': m.active ? 'Igen' : 'Nem',
       'Szálirány': m.grain_direction ? 'Igen' : 'Nem',
       'Forgatható': m.material_settings?.[0]?.rotatable ? 'Igen' : 'Nem',
       'Fűrészlap vastagság (mm)': m.material_settings?.[0]?.kerf_mm || 3,
@@ -135,6 +148,7 @@ export async function GET(request: NextRequest) {
       { wch: 20 }, // Gépkód
       { wch: 35 }, // Anyag neve
       { wch: 15 }, // Márka
+      { wch: 20 }, // Kép fájlnév
       { wch: 12 }, // Hossz
       { wch: 12 }, // Szélesség
       { wch: 12 }, // Vastagság
@@ -142,6 +156,7 @@ export async function GET(request: NextRequest) {
       { wch: 10 }, // Pénznem
       { wch: 10 }, // ÁFA
       { wch: 10 }, // Raktáron
+      { wch: 10 }, // Aktív
       { wch: 10 }, // Szálirány
       { wch: 12 }, // Forgatható
       { wch: 18 }, // Fűrészlap vastagság
