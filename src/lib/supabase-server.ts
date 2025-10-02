@@ -421,8 +421,28 @@ export async function getMaterialPriceHistory(materialId: string) {
     return []
   }
 
-  logTiming('Price History Total', startTime, `returned ${data?.length || 0} records`)
-  return data || []
+  // Enrich with user emails using admin API
+  const enrichedData = await Promise.all((data || []).map(async (h: any) => {
+    let userEmail = null
+    if (h.changed_by) {
+      try {
+        const { data: userData } = await supabaseServer.auth.admin.getUserById(h.changed_by)
+        if (userData?.user) {
+          userEmail = userData.user.email
+        }
+      } catch (err) {
+        console.error('Error fetching user for price history:', err)
+      }
+    }
+    
+    return {
+      ...h,
+      changed_by_user: userEmail
+    }
+  }))
+
+  logTiming('Price History Total', startTime, `returned ${enrichedData?.length || 0} records`)
+  return enrichedData || []
 }
 
 // Customers SSR functions
@@ -611,6 +631,176 @@ export async function getAllVatRatesForEdgeMaterials() {
 
   if (error) {
     console.error('Error fetching VAT rates for edge materials:', error)
+    return []
+  }
+
+  return data || []
+}
+
+// Linear Materials SSR functions
+export async function getAllLinearMaterials() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('linear_materials')
+    .select(`
+      id,
+      brand_id,
+      name,
+      width,
+      length,
+      thickness,
+      type,
+      image_url,
+      price_per_m,
+      currency_id,
+      vat_id,
+      on_stock,
+      active,
+      created_at,
+      updated_at,
+      brands (
+        name
+      ),
+      currencies (
+        name
+      ),
+      vat (
+        name,
+        kulcs
+      )
+    `)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  const queryTime = performance.now()
+  logTiming('Linear Materials DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching linear materials:', error)
+    return []
+  }
+
+  // Fetch machine codes for all linear materials
+  const linearMaterialIds = data?.map(lm => lm.id) || []
+  const { data: machineCodes } = await supabaseServer
+    .from('machine_linear_material_map')
+    .select('linear_material_id, machine_code')
+    .in('linear_material_id', linearMaterialIds)
+    .eq('machine_type', 'Korpus')
+
+  const machineCodeMap = new Map(
+    machineCodes?.map(mc => [mc.linear_material_id, mc.machine_code]) || []
+  )
+
+  // Transform data to include machine codes
+  const transformedData = data?.map(lm => ({
+    ...lm,
+    machine_code: machineCodeMap.get(lm.id) || '',
+    brand_name: lm.brands?.name || '',
+    currency_code: lm.currencies?.name || '',
+    currency_name: lm.currencies?.name || '',
+    vat_name: lm.vat?.name || '',
+    vat_percent: lm.vat?.kulcs || 0
+  })) || []
+
+  logTiming('Linear Materials Total', startTime, `returned ${transformedData.length} records`)
+  
+  return transformedData
+}
+
+export async function getLinearMaterialById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('linear_materials')
+    .select(`
+      id,
+      brand_id,
+      name,
+      width,
+      length,
+      thickness,
+      type,
+      image_url,
+      price_per_m,
+      currency_id,
+      vat_id,
+      on_stock,
+      active,
+      created_at,
+      updated_at,
+      brands (
+        name
+      ),
+      currencies (
+        name
+      ),
+      vat (
+        name,
+        kulcs
+      )
+    `)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching linear material:', error)
+    return null
+  }
+
+  // Fetch machine code
+  const { data: machineData } = await supabaseServer
+    .from('machine_linear_material_map')
+    .select('machine_code')
+    .eq('linear_material_id', id)
+    .eq('machine_type', 'Korpus')
+    .single()
+
+  return {
+    ...data,
+    machine_code: machineData?.machine_code || ''
+  }
+}
+
+export async function getAllBrandsForLinearMaterials() {
+  const { data, error} = await supabaseServer
+    .from('brands')
+    .select('id, name')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching brands for linear materials:', error)
+    return []
+  }
+
+  return data || []
+}
+
+export async function getAllVatRatesForLinearMaterials() {
+  const { data, error } = await supabaseServer
+    .from('vat')
+    .select('id, name, kulcs')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching VAT rates for linear materials:', error)
+    return []
+  }
+
+  return data || []
+}
+
+export async function getAllCurrenciesForLinearMaterials() {
+  const { data, error } = await supabaseServer
+    .from('currencies')
+    .select('id, name')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching currencies for linear materials:', error)
     return []
   }
 

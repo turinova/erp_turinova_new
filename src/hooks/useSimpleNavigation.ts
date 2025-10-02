@@ -41,7 +41,7 @@ export function useSimpleNavigation() {
             case '/units':
               return isAdmin
             case '/materials':
-            case '/szalas-anyagok':
+            case '/linear-materials':
             case '/edge':
             case '/media':
               return isAdmin

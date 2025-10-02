@@ -119,6 +119,7 @@ export default function MaterialsEditClient({
   
   console.log('MaterialsEditClient initialized with material:', initialMaterial?.id, initialMaterial?.name)
   console.log('Initial price history entries:', initialPriceHistory.length)
+  console.log('Price history data:', initialPriceHistory)
   
   // Check permission for this page - temporarily bypassed to fix hook errors
   // const { canAccess } = usePermissions()
@@ -743,6 +744,7 @@ export default function MaterialsEditClient({
                           <TableCell align="right">Új nettó</TableCell>
                           <TableCell align="right">Új bruttó</TableCell>
                           <TableCell align="right">Változás</TableCell>
+                          <TableCell>Módosító</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -808,6 +810,11 @@ export default function MaterialsEditClient({
                                     ({netDiff >= 0 ? '+' : ''}{netChangePercent}%)
                                   </Typography>
                                 </Box>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {history.changed_by_user || 'Rendszer'}
+                                </Typography>
                               </TableCell>
                             </TableRow>
                           )

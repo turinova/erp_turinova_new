@@ -85,7 +85,7 @@ export default function UsersPage() {
     { path: '/currencies', name: 'Pénznem', category: 'Törzsadatok' },
     { path: '/units', name: 'Egységek', category: 'Törzsadatok' },
     { path: '/materials', name: 'Táblás anyagok', category: 'Törzsadatok' },
-    { path: '/szalas-anyagok', name: 'Szálas anyagok', category: 'Törzsadatok' },
+    { path: '/linear-materials', name: 'Szálas anyagok', category: 'Törzsadatok' },
     { path: '/edge', name: 'Élzárók', category: 'Törzsadatok' },
     { path: '/company', name: 'Cégadatok', category: 'Beállítások' },
     { path: '/users', name: 'Felhasználók', category: 'Beállítások' },

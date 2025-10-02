@@ -49,7 +49,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       },
       {
         label: 'Szálas anyagok',
-        href: '/szalas-anyagok'
+        href: '/linear-materials'
       },
       {
         label: 'Élzárók',

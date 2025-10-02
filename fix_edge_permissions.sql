@@ -17,7 +17,7 @@ INSERT INTO pages (path, name, description, category, is_active) VALUES
   ('/currencies', 'Pénznemek', 'Pénznemek kezelése', 'Törzsadatok', true),
   ('/units', 'Mértékegységek', 'Mértékegységek kezelése', 'Törzsadatok', true),
   ('/materials', 'Táblás anyagok', 'Táblás anyagok kezelése', 'Anyagok', true),
-  ('/szalas-anyagok', 'Szálas anyagok', 'Szálas anyagok kezelése', 'Anyagok', true),
+  ('/linear-materials', 'Szálas anyagok', 'Szálas anyagok kezelése', 'Anyagok', true),
   ('/opti-beallitasok', 'Opti beállítások', 'Optimalizáló beállítások', 'Eszközök', true)
 ON CONFLICT (path) DO UPDATE SET
   name = EXCLUDED.name,
@@ -65,7 +65,7 @@ DECLARE
 BEGIN
   -- For each page that was just added
   FOR page_record IN 
-    SELECT id, path FROM pages WHERE path IN ('/brands', '/currencies', '/units', '/materials', '/szalas-anyagok', '/opti-beallitasok')
+    SELECT id, path FROM pages WHERE path IN ('/brands', '/currencies', '/units', '/materials', '/linear-materials', '/opti-beallitasok')
   LOOP
     -- For each user, add permission for this page
     FOR user_record IN 
@@ -91,7 +91,7 @@ SELECT
   COUNT(up.user_id) as user_count
 FROM pages p
 LEFT JOIN user_permissions up ON p.id = up.page_id
-WHERE p.path IN ('/edge', '/brands', '/currencies', '/units', '/materials', '/szalas-anyagok', '/opti-beallitasok')
+WHERE p.path IN ('/edge', '/brands', '/currencies', '/units', '/materials', '/linear-materials', '/opti-beallitasok')
 GROUP BY p.id, p.path, p.name, p.category
 ORDER BY p.path;
 
