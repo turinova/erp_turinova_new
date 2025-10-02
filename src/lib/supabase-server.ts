@@ -508,6 +508,8 @@ export async function getEdgeMaterialById(id: string) {
       decor,
       price,
       vat_id,
+      active,
+      ráhagyás,
       created_at,
       updated_at,
       brands (
@@ -527,7 +529,18 @@ export async function getEdgeMaterialById(id: string) {
     return null
   }
 
-  return data
+  // Fetch machine code from machine_edge_material_map
+  const { data: machineData } = await supabaseServer
+    .from('machine_edge_material_map')
+    .select('machine_code')
+    .eq('edge_material_id', id)
+    .eq('machine_type', 'Korpus')
+    .single()
+
+  return {
+    ...data,
+    machine_code: machineData?.machine_code || ''
+  }
 }
 
 export async function getAllEdgeMaterials() {
@@ -544,6 +557,8 @@ export async function getAllEdgeMaterials() {
       decor,
       price,
       vat_id,
+      active,
+      ráhagyás,
       created_at,
       updated_at,
       brands (

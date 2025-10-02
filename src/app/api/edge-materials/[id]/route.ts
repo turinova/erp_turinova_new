@@ -19,6 +19,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         decor,
         price,
         vat_id,
+        active,
+        ráhagyás,
         created_at,
         updated_at,
         brands (
@@ -43,7 +45,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Failed to fetch edge material' }, { status: 500 })
     }
 
-    return NextResponse.json(edgeMaterial)
+    // Fetch machine code from machine_edge_material_map
+    const { data: machineData } = await supabase
+      .from('machine_edge_material_map')
+      .select('machine_code')
+      .eq('edge_material_id', id)
+      .eq('machine_type', 'Korpus')
+      .single()
+
+    return NextResponse.json({
+      ...edgeMaterial,
+      machine_code: machineData?.machine_code || ''
+    })
 
   } catch (error) {
     console.error('Error fetching edge material:', error)
@@ -67,6 +80,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       decor: body.decor || '',
       price: parseFloat(body.price) || 0,
       vat_id: body.vat_id || '',
+      active: body.active !== undefined ? body.active : true,
+      ráhagyás: parseInt(body.ráhagyás) || 0,
       updated_at: new Date().toISOString()
     }
 
@@ -83,6 +98,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         decor,
         price,
         vat_id,
+        active,
+        ráhagyás,
         created_at,
         updated_at,
         brands (
@@ -115,6 +132,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         details: error.message,
         code: error.code
       }, { status: 500 })
+    }
+
+    // Handle machine_code mapping (upsert)
+    const machineCode = body.machine_code || ''
+    
+    if (machineCode.trim()) {
+      // Upsert machine code mapping
+      await supabase
+        .from('machine_edge_material_map')
+        .upsert({
+          edge_material_id: id,
+          machine_type: 'Korpus',
+          machine_code: machineCode
+        }, {
+          onConflict: 'edge_material_id,machine_type'
+        })
+    } else {
+      // If machine code is empty, keep the existing mapping or create empty one
+      await supabase
+        .from('machine_edge_material_map')
+        .upsert({
+          edge_material_id: id,
+          machine_type: 'Korpus',
+          machine_code: ''
+        }, {
+          onConflict: 'edge_material_id,machine_type'
+        })
     }
 
     

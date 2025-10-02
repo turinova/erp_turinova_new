@@ -21,6 +21,8 @@ export async function GET(request: NextRequest) {
         decor,
         price,
         vat_id,
+        active,
+        ráhagyás,
         created_at,
         updated_at,
         brands (
@@ -84,11 +86,13 @@ export async function POST(request: NextRequest) {
       decor: body.decor || '',
       price: parseFloat(body.price) || 0,
       vat_id: body.vat_id || '',
+      active: body.active !== undefined ? body.active : true,
+      ráhagyás: parseInt(body.ráhagyás) || 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
     
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('edge_materials')
       .insert([newEdgeMaterial])
       .select(`
@@ -100,6 +104,8 @@ export async function POST(request: NextRequest) {
         decor,
         price,
         vat_id,
+        active,
+        ráhagyás,
         created_at,
         updated_at,
         brands (
@@ -132,6 +138,23 @@ export async function POST(request: NextRequest) {
         details: error.message,
         code: error.code
       }, { status: 500 })
+    }
+
+    const edgeMaterialId = data.id
+    console.log('Edge material created with ID:', edgeMaterialId)
+
+    // Handle machine_code mapping if provided
+    const machineCode = body.machine_code || ''
+    
+    if (machineCode.trim() || machineCode === '') {
+      // Always create mapping (even if empty)
+      await supabaseServer
+        .from('machine_edge_material_map')
+        .insert({
+          edge_material_id: edgeMaterialId,
+          machine_type: 'Korpus',
+          machine_code: machineCode
+        })
     }
 
     console.log('Edge material created successfully:', data)

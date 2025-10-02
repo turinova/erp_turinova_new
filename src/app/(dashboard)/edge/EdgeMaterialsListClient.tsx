@@ -2,8 +2,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 import { usePermissions } from '@/permissions/PermissionProvider'
@@ -17,6 +17,8 @@ interface EdgeMaterial {
   decor: string
   price: number
   vat_id: string
+  active: boolean
+  ráhagyás: number
   created_at: string
   updated_at: string
   brands: {
@@ -46,6 +48,12 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isLoading, setIsLoading] = useState(false) // Manage loading state for client-side operations
+  
+  // Import states
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<any>(null)
+  const [isImporting, setIsImporting] = useState(false)
 
   // Filter edge materials based on search term (client-side fallback)
   const filteredEdgeMaterials = useMemo(() => {
@@ -205,6 +213,162 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
     setDeleteModalOpen(false)
   }
 
+  // Export handler
+  const handleExport = async () => {
+    try {
+      console.log('Starting export...')
+      const response = await fetch('/api/edge-materials/export')
+      console.log('Export response status:', response.status)
+      
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type')
+        console.log('Error response content-type:', contentType)
+        
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          const text = await response.text()
+          console.error('Error response (text):', text)
+          throw new Error(`Export failed with status ${response.status}`)
+        }
+        
+        console.error('Export error response:', errorData)
+        throw new Error(errorData.details || 'Export failed')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `elzarok_${new Date().toISOString().split('T')[0]}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success('Élzárók sikeresen exportálva!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+    } catch (error) {
+      console.error('Export error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      toast.error(`Hiba történt az export során: ${errorMessage}`, {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+    }
+  }
+
+  // Import file selection handler - opens immediately when Import button clicked
+  const handleImportFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      toast.error('Csak Excel fájlokat (.xlsx, .xls) lehet importálni!')
+      return
+    }
+
+    setImportFile(file)
+    setIsImporting(true)
+
+    try {
+      // Send to preview API
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/edge-materials/import/preview', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        // Show validation errors
+        if (result.errors && Array.isArray(result.errors)) {
+          const errorMsg = result.errors.join('\n')
+          toast.error(errorMsg, { autoClose: 10000 })
+        } else {
+          toast.error(result.error || 'Hiba az előnézet betöltésekor')
+        }
+        setImportFile(null)
+        return
+      }
+
+      setImportPreview(result.preview)
+      setImportDialogOpen(true)
+    } catch (error) {
+      console.error('Import preview error:', error)
+      toast.error('Hiba az előnézet betöltésekor!')
+      setImportFile(null)
+    } finally {
+      setIsImporting(false)
+      // Reset file input
+      event.target.value = ''
+    }
+  }
+
+  const handleImportConfirm = async () => {
+    if (!importFile) return
+
+    setIsImporting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+
+      const response = await fetch('/api/edge-materials/import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        toast.error(result.errors?.join('\n') || 'Import sikertelen!', { autoClose: 10000 })
+      } else {
+        // Show success message
+        let message = `Import sikeres!\n`
+        if (result.created > 0) message += `${result.created} új élzáró létrehozva\n`
+        if (result.updated > 0) message += `${result.updated} élzáró frissítve`
+
+        toast.success(message)
+
+        // Refresh edge materials list
+        invalidateApiCache('/api/edge-materials')
+        await refreshEdgeMaterials()
+        
+        // Close dialog
+        setImportDialogOpen(false)
+        setImportFile(null)
+        setImportPreview(null)
+      }
+    } catch (error) {
+      console.error('Import error:', error)
+      toast.error('Hiba történt az importálás során!')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const handleImportCancel = () => {
+    setImportDialogOpen(false)
+    setImportFile(null)
+    setImportPreview(null)
+  }
+
   // Show loading state while permissions are being checked
   if (permissionsLoading) {
     return (
@@ -258,24 +422,49 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
         </Typography>
       </Breadcrumbs>
       
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<DeleteIcon />}
-          color="error"
-          onClick={handleDeleteClick}
-          disabled={selectedEdgeMaterials.length === 0}
-        >
-          Törlés ({selectedEdgeMaterials.length})
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          color="primary"
-          onClick={handleAddNewEdgeMaterial}
-        >
-          Új élzáró hozzáadása
-        </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<ExportIcon />}
+            onClick={handleExport}
+          >
+            Export
+          </Button>
+          <Button
+            variant="outlined"
+            component="label"
+            startIcon={isImporting ? <CircularProgress size={20} /> : <ImportIcon />}
+            disabled={isImporting}
+          >
+            Import
+            <input
+              type="file"
+              hidden
+              accept=".xlsx,.xls"
+              onChange={handleImportFileSelect}
+            />
+          </Button>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<DeleteIcon />}
+            color="error"
+            onClick={handleDeleteClick}
+            disabled={selectedEdgeMaterials.length === 0}
+          >
+            Törlés ({selectedEdgeMaterials.length})
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            color="primary"
+            onClick={handleAddNewEdgeMaterial}
+          >
+            Új élzáró hozzáadása
+          </Button>
+        </Box>
       </Box>
       
       <TextField
@@ -306,6 +495,7 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
               </TableCell>
               <TableCell>Név</TableCell>
               <TableCell>Ár</TableCell>
+              <TableCell>Aktív</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -324,6 +514,15 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
                 </TableCell>
                 <TableCell>{material.type}-{material.width}/{material.thickness}-{material.decor}</TableCell>
                 <TableCell>{material.price.toLocaleString('hu-HU')} Ft</TableCell>
+                <TableCell>
+                  <Typography 
+                    variant="body2" 
+                    color={material.active ? "success.main" : "error.main"}
+                    sx={{ fontWeight: material.active ? 'bold' : 'normal' }}
+                  >
+                    {material.active ? 'Igen' : 'Nem'}
+                  </Typography>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -361,6 +560,79 @@ export default function EdgeMaterialsListClient({ initialEdgeMaterials }: EdgeMa
             startIcon={isDeleting ? <CircularProgress size={20} /> : <DeleteIcon />}
           >
             {isDeleting ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onClose={handleImportCancel} maxWidth="md" fullWidth>
+        <DialogTitle>Import előnézet</DialogTitle>
+        <DialogContent>
+          {importPreview && importPreview.length > 0 && (
+            <>
+              <Box sx={{ mb: 2, mt: 2 }}>
+                <Typography variant="body1" gutterBottom>
+                  <strong>Összesen:</strong> {importPreview.length} élzáró
+                </Typography>
+                <Typography variant="body2" color="success.main">
+                  Új élzárók: {importPreview.filter((p: any) => p.action === 'Új').length}
+                </Typography>
+                <Typography variant="body2" color="info.main">
+                  Frissítések: {importPreview.filter((p: any) => p.action === 'Frissítés').length}
+                </Typography>
+              </Box>
+
+              <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Művelet</strong></TableCell>
+                      <TableCell><strong>Gépkód</strong></TableCell>
+                      <TableCell><strong>Márka</strong></TableCell>
+                      <TableCell><strong>Típus</strong></TableCell>
+                      <TableCell><strong>Dekor</strong></TableCell>
+                      <TableCell><strong>Szélesség</strong></TableCell>
+                      <TableCell><strong>Vastagság</strong></TableCell>
+                      <TableCell><strong>Ár</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importPreview.map((row: any, index: number) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <Chip 
+                            label={row.action === 'Új' ? 'Hozzáadás' : 'Frissítés'} 
+                            color={row.action === 'Új' ? 'success' : 'info'} 
+                            size="small" 
+                          />
+                        </TableCell>
+                        <TableCell>{row.machineCode}</TableCell>
+                        <TableCell>{row.brand}</TableCell>
+                        <TableCell>{row.type}</TableCell>
+                        <TableCell>{row.decor}</TableCell>
+                        <TableCell>{row.width} mm</TableCell>
+                        <TableCell>{row.thickness} mm</TableCell>
+                        <TableCell>{row.price} Ft</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleImportCancel} disabled={isImporting}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleImportConfirm}
+            variant="contained"
+            color="primary"
+            disabled={!importPreview || isImporting}
+            startIcon={isImporting ? <CircularProgress size={20} /> : <ImportIcon />}
+          >
+            {isImporting ? 'Import...' : 'Import megerősítése'}
           </Button>
         </DialogActions>
       </Dialog>

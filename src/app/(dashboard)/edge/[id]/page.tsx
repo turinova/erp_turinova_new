@@ -12,6 +12,9 @@ interface EdgeMaterial {
   decor: string
   price: number
   vat_id: string
+  active: boolean
+  ráhagyás: number
+  machine_code?: string
   created_at: string
   updated_at: string
   brands: {
@@ -54,5 +57,12 @@ export default async function EdgeMaterialEditPage({ params }: EdgeMaterialEditP
     notFound()
   }
 
-  return <EdgeMaterialEditClient initialEdgeMaterial={edgeMaterial} allBrands={brands} allVatRates={vatRates} />
+  return (
+    <EdgeMaterialEditClient 
+      initialEdgeMaterial={edgeMaterial} 
+      allBrands={brands} 
+      allVatRates={vatRates} 
+      initialMachineCode={edgeMaterial.machine_code || ''}
+    />
+  )
 }

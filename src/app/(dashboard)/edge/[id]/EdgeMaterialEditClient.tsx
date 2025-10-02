@@ -1,8 +1,8 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
+import { Box, Typography, Breadcrumbs, Link, Grid, Button, TextField, FormControl, InputLabel, Select, MenuItem, Card, CardHeader, CardContent, Switch, FormControlLabel } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
@@ -17,6 +17,8 @@ interface EdgeMaterial {
   decor: string
   price: number
   vat_id: string
+  active: boolean
+  ráhagyás: number
   created_at: string
   updated_at: string
   brands: {
@@ -48,9 +50,10 @@ interface EdgeMaterialEditClientProps {
   initialEdgeMaterial: EdgeMaterial
   allBrands: Brand[]
   allVatRates: VatRate[]
+  initialMachineCode: string
 }
 
-export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands, allVatRates }: EdgeMaterialEditClientProps) {
+export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands, allVatRates, initialMachineCode }: EdgeMaterialEditClientProps) {
   const router = useRouter()
 
   // Check permission for this page - temporarily bypassed to fix hook errors
@@ -59,6 +62,7 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
   const permissionsLoading = false
 
   const [edgeMaterial, setEdgeMaterial] = useState<EdgeMaterial>(initialEdgeMaterial)
+  const [machineCode, setMachineCode] = useState<string>(initialMachineCode)
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
 
@@ -99,6 +103,10 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
       newErrors.price = 'Az ár értéke nagyobb kell legyen mint 0'
     }
 
+    if (!machineCode.trim()) {
+      newErrors.machine_code = 'A gépkód mező kötelező'
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
@@ -112,7 +120,10 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(edgeMaterial),
+        body: JSON.stringify({
+          ...edgeMaterial,
+          machine_code: machineCode
+        }),
       })
 
       if (response.ok) {
@@ -227,88 +238,14 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
         </Box>
       </Box>
 
-      <Paper sx={{ p: 3 }}>
-        <Grid container spacing={3}>
-          {/* Basic Information */}
-          <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom color="primary">
-              Alapadatok
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Típus"
-              value={edgeMaterial.type}
-              onChange={(e) => handleInputChange('type', e.target.value)}
-              required
-              error={!!errors.type}
-              helperText={errors.type}
-              placeholder="pl. PVC, ABS, PP..."
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Dekor"
-              value={edgeMaterial.decor}
-              onChange={(e) => handleInputChange('decor', e.target.value)}
-              required
-              error={!!errors.decor}
-              helperText={errors.decor}
-              placeholder="pl. Fehér, Fekete, Fahéj..."
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Vastagság (mm)"
-              type="number"
-              value={edgeMaterial.thickness}
-              onChange={(e) => handleInputChange('thickness', parseFloat(e.target.value) || 0)}
-              required
-              error={!!errors.thickness}
-              helperText={errors.thickness}
-              inputProps={{ min: 0, step: 0.1 }}
-              placeholder="0.0"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Szélesség (mm)"
-              type="number"
-              value={edgeMaterial.width}
-              onChange={(e) => handleInputChange('width', parseFloat(e.target.value) || 0)}
-              required
-              error={!!errors.width}
-              helperText={errors.width}
-              inputProps={{ min: 0, step: 0.1 }}
-              placeholder="0.0"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Ár (Ft)"
-              type="number"
-              value={edgeMaterial.price}
-              onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
-              required
-              error={!!errors.price}
-              helperText={errors.price}
-              inputProps={{ min: 0, step: 0.01 }}
-              placeholder="0.00"
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
+      <Grid container spacing={3}>
+        {/* Alap adatok section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader title="Alap adatok" />
+            <CardContent>
+              <Grid container spacing={3}>
+          <Grid item xs={12} md={2.4}>
             <FormControl fullWidth required error={!!errors.brand_id}>
               <InputLabel>Márka</InputLabel>
               <Select
@@ -324,33 +261,180 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
               </Select>
             </FormControl>
           </Grid>
-
-          <Grid item xs={12} md={6}>
-            <FormControl fullWidth required error={!!errors.vat_id}>
-              <InputLabel>ÁFA kulcs</InputLabel>
-              <Select
-                value={edgeMaterial.vat_id}
-                onChange={(e) => handleInputChange('vat_id', e.target.value)}
-                label="ÁFA kulcs"
-              >
-                {allVatRates.map((vatRate) => (
-                  <MenuItem key={vatRate.id} value={vatRate.id}>
-                    {vatRate.name} ({vatRate.kulcs}%)
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+          
+          <Grid item xs={12} md={2.4}>
+            <TextField
+              fullWidth
+              label="Típus"
+              value={edgeMaterial.type}
+              onChange={(e) => handleInputChange('type', e.target.value)}
+              error={!!errors.type}
+              helperText={errors.type}
+              required
+            />
           </Grid>
-
-          {/* Metadata */}
-          <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
-              Metaadatok
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
+          
+          <Grid item xs={12} md={2.4}>
+            <TextField
+              fullWidth
+              label="Dekor"
+              value={edgeMaterial.decor}
+              onChange={(e) => handleInputChange('decor', e.target.value)}
+              error={!!errors.decor}
+              helperText={errors.decor}
+              required
+            />
           </Grid>
+          
+          <Grid item xs={12} md={2.4}>
+            <TextField
+              fullWidth
+              label="Szélesség (mm)"
+              type="number"
+              value={edgeMaterial.width}
+              onChange={(e) => handleInputChange('width', parseFloat(e.target.value) || 0)}
+              error={!!errors.width}
+              helperText={errors.width}
+              required
+            />
+          </Grid>
+          
+          <Grid item xs={12} md={2.4}>
+            <TextField
+              fullWidth
+              label="Vastagság (mm)"
+              type="number"
+              value={edgeMaterial.thickness}
+              onChange={(e) => handleInputChange('thickness', parseFloat(e.target.value) || 0)}
+              error={!!errors.thickness}
+              helperText={errors.thickness}
+              required
+            />
+          </Grid>
+          
+                <Grid item xs={12} md={2.4}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={edgeMaterial.active}
+                        onChange={(e) => handleInputChange('active', e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Aktív"
+                  />
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
 
-          <Grid item xs={12} md={6}>
+        {/* Árazási adatok section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader title="Árazási adatok" />
+            <CardContent>
+              <Grid container spacing={3}>
+          <Grid item xs={12} md={2.4}>
+            <TextField
+              fullWidth
+              label="Ár (Ft)"
+              type="number"
+              value={edgeMaterial.price}
+              onChange={(e) => handleInputChange('price', parseFloat(e.target.value) || 0)}
+              error={!!errors.price}
+              helperText={errors.price}
+              required
+            />
+          </Grid>
+          
+                <Grid item xs={12} md={2.4}>
+                  <FormControl fullWidth required error={!!errors.vat_id}>
+                    <InputLabel>Adónem</InputLabel>
+                    <Select
+                      value={edgeMaterial.vat_id}
+                      onChange={(e) => handleInputChange('vat_id', e.target.value)}
+                      label="Adónem"
+                    >
+                      {allVatRates.map((vatRate) => (
+                        <MenuItem key={vatRate.id} value={vatRate.id}>
+                          {vatRate.name} ({vatRate.kulcs}%)
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Optimalizálási beállítások section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader title="Optimalizálási beállítások" />
+            <CardContent>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Ráhagyás (mm)"
+                    type="number"
+                    value={edgeMaterial.ráhagyás}
+                    onChange={(e) => handleInputChange('ráhagyás', parseInt(e.target.value) || 0)}
+                    inputProps={{ min: 0 }}
+                    placeholder="0"
+                    helperText="Élzáró túlnyúlás milliméterben (alapértelmezett: 0)"
+                  />
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Export beállítások section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader title="Export beállítások" />
+            <CardContent>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Gép típus</InputLabel>
+                    <Select
+                      value="Korpus"
+                      label="Gép típus"
+                      disabled
+                    >
+                      <MenuItem value="Korpus">Korpus</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+                
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Gépkód"
+                    value={machineCode}
+                    onChange={(e) => setMachineCode(e.target.value)}
+                    placeholder="Adja meg a gépkódot..."
+                    required
+                    error={!!errors.machine_code}
+                    helperText={errors.machine_code}
+                  />
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Metadata section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader title="Metaadatok" />
+            <CardContent>
+              <Grid container spacing={3}>
+          <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="Létrehozva"
@@ -360,7 +444,7 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
             />
           </Grid>
 
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={4}>
             <TextField
               fullWidth
               label="Utoljára módosítva"
@@ -370,18 +454,21 @@ export default function EdgeMaterialEditClient({ initialEdgeMaterial, allBrands,
             />
           </Grid>
 
-          <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Élzáró ID"
-              value={edgeMaterial.id}
-              InputProps={{ readOnly: true }}
-              variant="filled"
-              sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace' } }}
-            />
-          </Grid>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Élzáró ID"
+                    value={edgeMaterial.id}
+                    InputProps={{ readOnly: true }}
+                    variant="filled"
+                    sx={{ '& .MuiInputBase-input': { fontFamily: 'monospace' } }}
+                  />
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
         </Grid>
-      </Paper>
+      </Grid>
     </Box>
   )
 }
