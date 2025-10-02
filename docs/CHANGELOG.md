@@ -4,6 +4,39 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-10-02] - Active Field & Action Button Improvements
+
+### Added
+- **Material Active Field**
+  - New `active` boolean field in `materials` table (default: TRUE)
+  - Inactive materials excluded from optimization
+  - Filter dropdown on materials list page (Összes/Aktív/Inaktív)
+  - "Aktív" column in materials table
+  - Switcher in "Alapadatok" card (edit page)
+  - Excel import/export includes "Aktív" column
+  - Validation: Must be "Igen" or "Nem" on import
+  
+- **Optimization Filtering**
+  - Opti page "Táblás anyag" dropdown now shows only active materials
+  - `activeMaterials` computed array filters inactive materials
+  - Prevents inactive materials from being used in calculations
+
+### Changed
+- **Action Buttons UX**
+  - Moved "Mentés" and "Mégse" buttons to top-right header
+  - Always visible, no need to scroll to bottom
+  - Consistent placement on edit and new material pages
+  - Client-side rendering wrapped in `{mounted}` to prevent hydration
+
+### Technical Details
+- **Files Modified**: 10
+- **Files Created**: 1 (`add_active_field_to_materials.sql`)
+- **Commit**: `44e1afe`
+- **SSR**: All queries updated to include `active` field
+- **API**: Export filter supports `active` parameter
+
+---
+
 ## [2025-10-01] - Media Library & SSR Implementation
 
 ### Added
@@ -192,13 +225,14 @@ All notable changes to the Turinova ERP system will be documented in this file.
 4. `vat` - VAT rate reference data
 
 ### Tables Modified
-1. `materials` - Added pricing columns
+1. `materials` - Added pricing columns, `usage_limit`, `active` field
 2. `material_settings` - Added `usage_limit` column
 
 ### Migrations Applied
 1. `20251001_add_material_pricing.sql` - Pricing system
 2. `create_media_files_table.sql` - Media tracking
 3. `add_usage_limit_to_materials.sql` - Usage limit field
+4. `add_active_field_to_materials.sql` - Active status field
 
 ---
 
@@ -239,7 +273,7 @@ All notable changes to the Turinova ERP system will be documented in this file.
 ### Local Development
 - ✅ Running on `http://localhost:3000`
 - ✅ All features tested and working
-- ✅ Committed to git: `863cb85`, `4752191`
+- ✅ Committed to git: `863cb85`, `4752191`, `44e1afe`
 
 ### GitHub
 - ✅ Pushed to `origin/main`

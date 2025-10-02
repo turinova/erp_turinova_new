@@ -45,10 +45,13 @@ git reset --soft HEAD~1
 psql [connection-string]
 
 # Run migration
-psql [connection-string] -f create_media_files_table.sql
+psql [connection-string] -f add_active_field_to_materials.sql
 
 # Check table
-SELECT * FROM media_files LIMIT 10;
+SELECT * FROM materials WHERE deleted_at IS NULL;
+
+# Verify active field
+SELECT name, active FROM materials LIMIT 10;
 ```
 
 ---
@@ -148,7 +151,8 @@ rm -rf node_modules && pnpm install
 
 ### Issue: Import Failed
 **Common Causes**:
-- Missing required fields → Check validation in preview
+- Missing required fields → Check validation in preview (includes "Aktív")
+- Invalid "Aktív" value → Must be "Igen" or "Nem"
 - Invalid brand → Check brands exist or will be auto-created
 - Image filename not in Media library → Upload image first
 
@@ -201,6 +205,19 @@ SELECT * FROM media_files ORDER BY created_at DESC;
 SELECT id, name FROM materials 
 WHERE (image_url IS NULL OR image_url = '') 
 AND deleted_at IS NULL;
+
+-- Find inactive materials
+SELECT id, name, active FROM materials 
+WHERE active = FALSE 
+AND deleted_at IS NULL;
+
+-- Count active vs inactive materials
+SELECT 
+  active,
+  COUNT(*) as count
+FROM materials 
+WHERE deleted_at IS NULL
+GROUP BY active;
 
 -- Count images in Media library
 SELECT COUNT(*) FROM media_files;
