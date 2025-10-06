@@ -4,6 +4,149 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-06] - Additional Services Implementation
+
+### Added
+- **Additional Services on Opti Page**
+  - Three new services for panel processing:
+    - **Pánthelyfúrás (Hinge Hole Drilling)**: Quantity (0, 2, 3, 4) and side (hosszú/rövid)
+    - **Duplungolás (Groove Cutting)**: Boolean toggle
+    - **Szögvágás (Angle Cutting)**: Boolean toggle
+  - Services stored per panel in client state
+  - Service data passed to optimization API
+  - Services multiply by panel quantity (darab)
+
+- **Service Pricing System**
+  - New columns in `cutting_fees` table:
+    - `panthelyfuras_fee_per_hole` (default: 50 HUF)
+    - `duplungolas_fee_per_sqm` (default: 200 HUF)
+    - `szogvagas_fee_per_panel` (default: 100 HUF)
+  - All services use same VAT rate and currency as cutting fee
+  - Pricing calculations in `quoteCalculations.ts`
+  
+- **Quote Display Enhancement**
+  - New "Kiegészítő szolgáltatások" section per material
+  - Individual service rows with Net/VAT/Gross breakdown
+  - Summary row showing total services cost
+  - Appears after "Vágási költség" and before "Anyag összesen"
+  - Calculations:
+    - Pánthelyfúrás: `total_holes × fee_per_hole`
+    - Duplungolás: `panel_area_m² × fee_per_sqm`
+    - Szögvágás: `total_panels × fee_per_panel`
+
+- **UI Components**
+  - Service selection UI in panel input section
+  - Radio buttons for Pánthelyfúrás quantity and side
+  - Toggle switches for Duplungolás and Szögvágás (side-by-side)
+  - New "Szolgáltatások" column in panel table
+  - Service icons with tooltips:
+    - **Pánthelyfúrás**: `LocationSearchingSharpIcon` with quantity chip (primary color)
+    - **Duplungolás**: `GridViewSharpIcon` (info color)
+    - **Szögvágás**: Scissors icon (warning color)
+  - Shows "-" when no services selected
+
+### Changed
+- **OptiClient.tsx**
+  - Added service-related state variables
+  - Extended Panel interface with service fields
+  - Updated panel addition logic to include services
+  - Modified quote calculation to integrate services
+  - Added service icons and UI components
+  
+- **quoteCalculations.ts**
+  - Created `ServicePricing` interface
+  - Created `AdditionalServicesPricing` interface
+  - Created `PanelWithServices` interface
+  - Added `calculateAdditionalServices()` function
+  - Updated `MaterialPricing` interface with service fields
+  - Integrated services into `calculateMaterialPricing()`
+  
+- **supabase-server.ts**
+  - Updated `getCuttingFee()` to fetch new service fee columns
+  - Changed `currencies.code` to `currencies.name`
+
+### Fixed
+- **Database Column Reference**
+  - Fixed SQL query using `currencies.name` instead of non-existent `currencies.code`
+  
+- **Cutting Length Calculation**
+  - Fixed `TypeError` by using `result.metrics.total_cut_length_mm` directly
+  - Removed incorrect `.reduce()` call on non-array property
+  
+- **React Hook Initialization**
+  - Fixed `ReferenceError` by reordering useMemo hooks
+  - Moved `quoteResult` useMemo after all state declarations
+  
+- **Variable Naming**
+  - Fixed `pricing_method` vs `pricingMethod` mismatch
+  - Ensured consistent snake_case usage in object properties
+
+### UI/UX Improvements
+- **Icon Spacing**
+  - Removed Chip wrapper for Duplungolás and Szögvágás
+  - Used plain icons with tooltips for cleaner appearance
+  - Eliminated unnecessary spacing around boolean service icons
+  
+- **Color Visibility**
+  - Changed Pánthelyfúrás chip from secondary (grey) to primary (purple/blue)
+  - Improved visibility while maintaining site color scheme
+  - Final color scheme:
+    - Pánthelyfúrás: Primary (purple/blue) - clear and visible
+    - Duplungolás: Info (blue) - distinct but harmonious
+    - Szögvágás: Warning (orange) - stands out for attention
+
+### Database Changes
+- **Migration**: `add_additional_services_to_cutting_fees.sql`
+  ```sql
+  ALTER TABLE cutting_fees
+  ADD COLUMN panthelyfuras_fee_per_hole NUMERIC(10,2) DEFAULT 50.00 NOT NULL,
+  ADD COLUMN duplungolas_fee_per_sqm NUMERIC(10,2) DEFAULT 200.00 NOT NULL,
+  ADD COLUMN szogvagas_fee_per_panel NUMERIC(10,2) DEFAULT 100.00 NOT NULL;
+  ```
+- Added column comments for documentation
+- Set default values for immediate usability
+
+### Documentation
+- **New Files**:
+  - `docs/ADDITIONAL_SERVICES_IMPLEMENTATION.md` - Comprehensive feature documentation
+  - `docs/chat-archives/2025-01-06_additional_services.md` - Chat history and development log
+- **Updated Files**:
+  - `docs/CHANGELOG.md` - This entry
+
+### Technical Details
+- **Files Modified**: 3
+  - `src/app/(dashboard)/opti/OptiClient.tsx`
+  - `src/lib/pricing/quoteCalculations.ts`
+  - `src/lib/supabase-server.ts`
+- **Files Created**: 3
+  - `add_additional_services_to_cutting_fees.sql`
+  - `docs/ADDITIONAL_SERVICES_IMPLEMENTATION.md`
+  - `docs/chat-archives/2025-01-06_additional_services.md`
+- **Lines Added**: ~400
+- **Lines Modified**: ~150
+- **Functions Added**: 2
+- **Interfaces Added**: 4
+- **Development Time**: ~2 hours 45 minutes
+
+### Testing
+- ✅ Service selection UI functional
+- ✅ Icon display correct with tooltips
+- ✅ Quote calculations accurate
+- ✅ Services multiply by panel quantity
+- ✅ VAT calculation correct (27%)
+- ✅ Currency display correct (HUF)
+- ✅ No console errors
+- ✅ Performance acceptable
+
+### Future Enhancements
+- Admin UI for managing service fees
+- Save services with optimization results
+- Service usage analytics
+- Volume discounts
+- Service bundles
+
+---
+
 ## [2025-10-02] - Active Field & Action Button Improvements
 
 ### Added

@@ -417,6 +417,9 @@ export async function getCuttingFee() {
     .select(`
       id,
       fee_per_meter,
+      panthelyfuras_fee_per_hole,
+      duplungolas_fee_per_sqm,
+      szogvagas_fee_per_panel,
       currency_id,
       vat_id,
       currencies (

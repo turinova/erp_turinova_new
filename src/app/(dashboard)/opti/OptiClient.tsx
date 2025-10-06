@@ -37,6 +37,8 @@ import {
   RadioGroup
 } from '@mui/material'
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material'
+import GridViewSharpIcon from '@mui/icons-material/GridViewSharp'
+import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
 import MuiAccordionSummary from '@mui/material/AccordionSummary'
@@ -157,6 +159,10 @@ interface Panel {
   élzárásB: string
   élzárásC: string
   élzárásD: string
+  pánthelyfúrás_mennyiség: number  // 0, 2, 3, or 4
+  pánthelyfúrás_oldal: string      // 'hosszú' or 'rövid'
+  duplungolás: boolean
+  szögvágás: boolean
 }
 
 interface Placement {
@@ -530,9 +536,47 @@ export default function OptiClient({
 
     console.log('[QUOTE] Edge material map keys (IDs):', Array.from(edgeMaterialInfoMap.keys()))
 
+    // Group panels by material ID for services calculation
+    const panelsByMaterial = new Map<string, any[]>()
+    addedPanels.forEach(panel => {
+      // Extract material ID from táblásAnyag string
+      const materialMatch = panel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
+      if (!materialMatch) return
+      
+      const materialName = materialMatch[1].trim()
+      const materialWidth = parseInt(materialMatch[2])
+      const materialLength = parseInt(materialMatch[3])
+      
+      const material = materials.find(m => 
+        m.name === materialName && 
+        m.width_mm === materialWidth && 
+        m.length_mm === materialLength
+      )
+      if (!material) return
+
+      if (!panelsByMaterial.has(material.id)) {
+        panelsByMaterial.set(material.id, [])
+      }
+      
+      panelsByMaterial.get(material.id)!.push({
+        width_mm: parseInt(panel.szélesség),
+        height_mm: parseInt(panel.hosszúság),
+        quantity: parseInt(panel.darab),
+        panthelyfuras_quantity: panel.pánthelyfúrás_mennyiség || 0,
+        panthelyfuras_side: panel.pánthelyfúrás_oldal || 'hosszú',
+        duplungolas: panel.duplungolás || false,
+        szogvagas: panel.szögvágás || false
+      })
+    })
+
+    console.log('[QUOTE] Panels grouped by material:', Array.from(panelsByMaterial.entries()).map(([id, panels]) => ({ material_id: id, panel_count: panels.length })))
+
     // Convert cutting fee to CuttingFeeInfo format
     const cuttingFeeInfo = initialCuttingFee ? {
       fee_per_meter: initialCuttingFee.fee_per_meter || 0,
+      panthelyfuras_fee_per_hole: initialCuttingFee.panthelyfuras_fee_per_hole || 50,
+      duplungolas_fee_per_sqm: initialCuttingFee.duplungolas_fee_per_sqm || 200,
+      szogvagas_fee_per_panel: initialCuttingFee.szogvagas_fee_per_panel || 100,
       vat_rate: (initialCuttingFee.vat?.kulcs || 0) / 100, // Convert from percentage to decimal
       currency: initialCuttingFee.currencies?.name || 'HUF'
     } : null
@@ -545,7 +589,8 @@ export default function OptiClient({
         materialInfos,
         panelEdgesByMaterial,
         edgeMaterialInfoMap,
-        cuttingFeeInfo
+        cuttingFeeInfo,
+        panelsByMaterial
       )
       console.log('[QUOTE] Quote calculated successfully:', result)
       return result
@@ -558,6 +603,7 @@ export default function OptiClient({
   // Edit state
   const [editingPanel, setEditingPanel] = useState<string | null>(null)
   const [duplungolas, setDuplungolas] = useState(false)
+  const [szögvágás, setSzögvágás] = useState(false)
   
   // Pánthelyfúrás modal state
   const [panthelyfurasModalOpen, setPanthelyfurasModalOpen] = useState(false)
@@ -604,7 +650,7 @@ export default function OptiClient({
       .join(', ')
 
     // Add new panel to table
-    const newPanel = {
+    const newPanel: Panel = {
       id: Date.now().toString(),
       táblásAnyag: materialName,
       hosszúság: panelForm.hosszúság,
@@ -615,7 +661,11 @@ export default function OptiClient({
       élzárásA: selectedA || '',
       élzárásB: selectedB || '',
       élzárásC: selectedC || '',
-      élzárásD: selectedD || ''
+      élzárásD: selectedD || '',
+      pánthelyfúrás_mennyiség: panthelyfurasSaved ? parseInt(panthelyfurasMennyiseg) : 0,
+      pánthelyfúrás_oldal: panthelyfurasSaved ? panthelyfurasOldal : 'hosszú',
+      duplungolás: duplungolas,
+      szögvágás: szögvágás
     }
 
     setAddedPanels(prev => [...prev, newPanel])
@@ -637,6 +687,11 @@ export default function OptiClient({
     setSelectedB('')
     setSelectedC('')
     setSelectedD('')
+    setDuplungolas(false)
+    setSzögvágás(false)
+    setPanthelyfurasSaved(false)
+    setPanthelyfurasMennyiseg('2')
+    setPanthelyfurasOldal('hosszu')
     // Keep selectedTáblásAnyag unchanged for next entry
   }
 
@@ -679,6 +734,19 @@ export default function OptiClient({
     setSelectedC(panel.élzárásC || '')
     setSelectedD(panel.élzárásD || '')
     
+    // Load additional services
+    setDuplungolas(panel.duplungolás || false)
+    setSzögvágás(panel.szögvágás || false)
+    if (panel.pánthelyfúrás_mennyiség && panel.pánthelyfúrás_mennyiség > 0) {
+      setPanthelyfurasSaved(true)
+      setPanthelyfurasMennyiseg(panel.pánthelyfúrás_mennyiség.toString())
+      setPanthelyfurasOldal(panel.pánthelyfúrás_oldal || 'hosszú')
+    } else {
+      setPanthelyfurasSaved(false)
+      setPanthelyfurasMennyiseg('2')
+      setPanthelyfurasOldal('hosszú')
+    }
+    
     // Scroll to the top of the page
     setTimeout(() => {
       window.scrollTo({ 
@@ -718,7 +786,11 @@ export default function OptiClient({
             élzárásA: selectedA || '',
             élzárásB: selectedB || '',
             élzárásC: selectedC || '',
-            élzárásD: selectedD || ''
+            élzárásD: selectedD || '',
+            pánthelyfúrás_mennyiség: panthelyfurasSaved ? parseInt(panthelyfurasMennyiseg) : 0,
+            pánthelyfúrás_oldal: panthelyfurasSaved ? panthelyfurasOldal : 'hosszú',
+            duplungolás: duplungolas,
+            szögvágás: szögvágás
           }
         : panel
     ))
@@ -758,6 +830,11 @@ export default function OptiClient({
     setSelectedB('')
     setSelectedC('')
     setSelectedD('')
+    setDuplungolas(false)
+    setSzögvágás(false)
+    setPanthelyfurasSaved(false)
+    setPanthelyfurasMennyiseg('2')
+    setPanthelyfurasOldal('hosszú')
   }
 
   // Hungarian phone number formatting helper
@@ -2089,6 +2166,18 @@ export default function OptiClient({
                     label="Duplungolás"
                     sx={{ ml: 2 }}
                   />
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={szögvágás}
+                        onChange={(e) => setSzögvágás(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Szögvágás"
+                    sx={{ ml: 2 }}
+                  />
                 </Box>
               </Grid>
               
@@ -2136,6 +2225,7 @@ export default function OptiClient({
                     <TableCell align="center"><strong>Hosszú alsó</strong></TableCell>
                     <TableCell align="center"><strong>Széles bal</strong></TableCell>
                     <TableCell align="center"><strong>Széles jobb</strong></TableCell>
+                    <TableCell align="center"><strong>Szolgáltatások</strong></TableCell>
                     <TableCell><strong>Műveletek</strong></TableCell>
                   </TableRow>
                 </TableHead>
@@ -2201,6 +2291,32 @@ export default function OptiClient({
                           color={panel.élzárásB ? 'primary' : 'default'}
                           variant={panel.élzárásB ? 'filled' : 'outlined'}
                         />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', alignItems: 'center' }}>
+                          {panel.pánthelyfúrás_mennyiség > 0 && (
+                            <Chip 
+                              icon={<LocationSearchingSharpIcon sx={{ fontSize: 16 }} />}
+                              label={`${panel.pánthelyfúrás_mennyiség}db`}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          )}
+                          {panel.duplungolás && (
+                            <Tooltip title="Duplungolás">
+                              <GridViewSharpIcon sx={{ fontSize: 20, color: 'info.main' }} />
+                            </Tooltip>
+                          )}
+                          {panel.szögvágás && (
+                            <Tooltip title="Szögvágás">
+                              <i className="ri-scissors-cut-line" style={{ fontSize: 20, color: 'var(--mui-palette-warning-main)' }} />
+                            </Tooltip>
+                          )}
+                          {!panel.pánthelyfúrás_mennyiség && !panel.duplungolás && !panel.szögvágás && (
+                            <Typography variant="body2" color="text.secondary">-</Typography>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Button
@@ -3087,6 +3203,76 @@ export default function OptiClient({
                               <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.cutting_cost.net_price, material.cutting_cost.currency)}</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.cutting_cost.vat_amount, material.cutting_cost.currency)}</TableCell>
                               <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.cutting_cost.gross_price, material.cutting_cost.currency)}</TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+
+                    {/* Additional Services */}
+                    {material.additional_services && (
+                      material.additional_services.panthelyfuras || 
+                      material.additional_services.duplungolas || 
+                      material.additional_services.szogvagas
+                    ) && (
+                      <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Kiegészítő szolgáltatások</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Ár</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Nettó</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>ÁFA</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Bruttó</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {material.additional_services.panthelyfuras && (
+                              <TableRow>
+                                <TableCell>
+                                  Pánthelyfúrás: {material.additional_services.panthelyfuras.quantity} {material.additional_services.panthelyfuras.unit}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {formatPrice(material.additional_services.panthelyfuras.unit_price, material.additional_services.panthelyfuras.currency)}/{material.additional_services.panthelyfuras.unit}
+                                </TableCell>
+                                <TableCell align="right">{formatPrice(material.additional_services.panthelyfuras.net_price, material.additional_services.panthelyfuras.currency)}</TableCell>
+                                <TableCell align="right">{formatPrice(material.additional_services.panthelyfuras.vat_amount, material.additional_services.panthelyfuras.currency)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.additional_services.panthelyfuras.gross_price, material.additional_services.panthelyfuras.currency)}</TableCell>
+                              </TableRow>
+                            )}
+                            {material.additional_services.duplungolas && (
+                              <TableRow>
+                                <TableCell>
+                                  Duplungolás: {material.additional_services.duplungolas.quantity.toFixed(2)} {material.additional_services.duplungolas.unit}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {formatPrice(material.additional_services.duplungolas.unit_price, material.additional_services.duplungolas.currency)}/{material.additional_services.duplungolas.unit}
+                                </TableCell>
+                                <TableCell align="right">{formatPrice(material.additional_services.duplungolas.net_price, material.additional_services.duplungolas.currency)}</TableCell>
+                                <TableCell align="right">{formatPrice(material.additional_services.duplungolas.vat_amount, material.additional_services.duplungolas.currency)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.additional_services.duplungolas.gross_price, material.additional_services.duplungolas.currency)}</TableCell>
+                              </TableRow>
+                            )}
+                            {material.additional_services.szogvagas && (
+                              <TableRow>
+                                <TableCell>
+                                  Szögvágás: {material.additional_services.szogvagas.quantity} {material.additional_services.szogvagas.unit}
+                                </TableCell>
+                                <TableCell align="right">
+                                  {formatPrice(material.additional_services.szogvagas.unit_price, material.additional_services.szogvagas.currency)}/{material.additional_services.szogvagas.unit}
+                                </TableCell>
+                                <TableCell align="right">{formatPrice(material.additional_services.szogvagas.net_price, material.additional_services.szogvagas.currency)}</TableCell>
+                                <TableCell align="right">{formatPrice(material.additional_services.szogvagas.vat_amount, material.additional_services.szogvagas.currency)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.additional_services.szogvagas.gross_price, material.additional_services.szogvagas.currency)}</TableCell>
+                              </TableRow>
+                            )}
+                            <TableRow sx={{ bgcolor: 'grey.50' }}>
+                              <TableCell colSpan={2} sx={{ fontWeight: 'bold' }}>
+                                Kiegészítő szolgáltatások összesen:
+                              </TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_services_net, material.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_services_vat, material.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_services_gross, material.currency)}</TableCell>
                             </TableRow>
                           </TableBody>
                         </Table>

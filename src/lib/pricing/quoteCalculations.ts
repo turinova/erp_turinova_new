@@ -8,6 +8,7 @@ export interface MaterialPricing {
   boards: BoardPricing[];
   edge_materials: EdgeMaterialPricing[]; // Edge materials for THIS material
   cutting_cost: CuttingCostPricing | null; // Cutting cost for THIS material
+  additional_services: AdditionalServicesPricing | null; // Additional services for THIS material
   total_material_net: number;
   total_material_vat: number;
   total_material_gross: number;
@@ -17,6 +18,9 @@ export interface MaterialPricing {
   total_cutting_net: number;
   total_cutting_vat: number;
   total_cutting_gross: number;
+  total_services_net: number;
+  total_services_vat: number;
+  total_services_gross: number;
   total_net: number;
   total_vat: number;
   total_gross: number;
@@ -56,6 +60,23 @@ export interface CuttingCostPricing {
   currency: string;
 }
 
+export interface AdditionalServicesPricing {
+  panthelyfuras: ServicePricing | null;
+  duplungolas: ServicePricing | null;
+  szogvagas: ServicePricing | null;
+}
+
+export interface ServicePricing {
+  quantity: number;      // Total count (holes, panels, or m²)
+  unit_price: number;    // Price per unit
+  net_price: number;
+  vat_rate: number;
+  vat_amount: number;
+  gross_price: number;
+  currency: string;
+  unit: string;          // 'db' or 'm²'
+}
+
 export interface QuoteResult {
   materials: MaterialPricing[];
   grand_total_net: number;
@@ -93,8 +114,21 @@ export interface PanelEdge {
 
 export interface CuttingFeeInfo {
   fee_per_meter: number;
+  panthelyfuras_fee_per_hole: number;
+  duplungolas_fee_per_sqm: number;
+  szogvagas_fee_per_panel: number;
   vat_rate: number; // as decimal (e.g., 0.27 for 27%)
   currency: string;
+}
+
+export interface PanelWithServices {
+  width_mm: number;
+  height_mm: number;
+  quantity: number;
+  panthelyfuras_quantity: number;  // Holes per panel
+  panthelyfuras_side: string;      // 'hosszú' or 'rövid'
+  duplungolas: boolean;
+  szogvagas: boolean;
 }
 
 /**
@@ -105,22 +139,33 @@ export function calculateQuote(
   materials: MaterialInfo[],
   panelEdgesByMaterial: Map<string, PanelEdge[]>, // Edges grouped by material_id
   edgeMaterials: Map<string, EdgeMaterialInfo>,
-  cuttingFeeInfo: CuttingFeeInfo | null = null
+  cuttingFeeInfo: CuttingFeeInfo | null = null,
+  panelsByMaterial: Map<string, PanelWithServices[]> = new Map() // Panels grouped by material_id
 ): QuoteResult {
   const materialPricings: MaterialPricing[] = [];
   let grandTotalNet = 0;
   let grandTotalVat = 0;
   let grandTotalGross = 0;
 
-  // Calculate material costs with their edge materials
+  // Calculate material costs with their edge materials and services
   for (const result of optimizationResults) {
     const material = materials.find(m => m.id === result.material_id);
     if (!material) continue;
 
     // Get edges for this specific material
     const materialEdges = panelEdgesByMaterial.get(result.material_id) || [];
+    
+    // Get panels for this specific material
+    const materialPanels = panelsByMaterial.get(result.material_id) || [];
 
-    const materialPricing = calculateMaterialPricing(result, material, materialEdges, edgeMaterials, cuttingFeeInfo);
+    const materialPricing = calculateMaterialPricing(
+      result, 
+      material, 
+      materialEdges, 
+      edgeMaterials, 
+      cuttingFeeInfo,
+      materialPanels
+    );
     materialPricings.push(materialPricing);
     
     grandTotalNet += materialPricing.total_net;
@@ -148,7 +193,8 @@ function calculateMaterialPricing(
   material: MaterialInfo,
   panelEdges: PanelEdge[],
   edgeMaterials: Map<string, EdgeMaterialInfo>,
-  cuttingFeeInfo: CuttingFeeInfo | null = null
+  cuttingFeeInfo: CuttingFeeInfo | null = null,
+  panels: PanelWithServices[] = []
 ): MaterialPricing {
   const boardArea = (material.width_mm * material.length_mm) / 1_000_000; // m²
   const boards: BoardPricing[] = [];
@@ -264,6 +310,26 @@ function calculateMaterialPricing(
   const totalCuttingVat = cuttingCostPricing?.vat_amount || 0;
   const totalCuttingGross = cuttingCostPricing?.gross_price || 0;
 
+  // Calculate additional services for this material
+  const additionalServicesPricing = cuttingFeeInfo && panels.length > 0
+    ? calculateAdditionalServices(panels, cuttingFeeInfo)
+    : null;
+  const totalServicesNet = additionalServicesPricing 
+    ? (additionalServicesPricing.panthelyfuras?.net_price || 0) +
+      (additionalServicesPricing.duplungolas?.net_price || 0) +
+      (additionalServicesPricing.szogvagas?.net_price || 0)
+    : 0;
+  const totalServicesVat = additionalServicesPricing
+    ? (additionalServicesPricing.panthelyfuras?.vat_amount || 0) +
+      (additionalServicesPricing.duplungolas?.vat_amount || 0) +
+      (additionalServicesPricing.szogvagas?.vat_amount || 0)
+    : 0;
+  const totalServicesGross = additionalServicesPricing
+    ? (additionalServicesPricing.panthelyfuras?.gross_price || 0) +
+      (additionalServicesPricing.duplungolas?.gross_price || 0) +
+      (additionalServicesPricing.szogvagas?.gross_price || 0)
+    : 0;
+
   return {
     material_id: material.id,
     material_name: material.name,
@@ -271,6 +337,7 @@ function calculateMaterialPricing(
     boards,
     edge_materials: edgePricings,
     cutting_cost: cuttingCostPricing,
+    additional_services: additionalServicesPricing,
     total_material_net: totalMaterialNet,
     total_material_vat: totalMaterialVat,
     total_material_gross: totalMaterialGross,
@@ -280,9 +347,12 @@ function calculateMaterialPricing(
     total_cutting_net: totalCuttingNet,
     total_cutting_vat: totalCuttingVat,
     total_cutting_gross: totalCuttingGross,
-    total_net: totalMaterialNet + totalEdgeNet + totalCuttingNet,
-    total_vat: totalMaterialVat + totalEdgeVat + totalCuttingVat,
-    total_gross: totalMaterialGross + totalEdgeGross + totalCuttingGross,
+    total_services_net: totalServicesNet,
+    total_services_vat: totalServicesVat,
+    total_services_gross: totalServicesGross,
+    total_net: totalMaterialNet + totalEdgeNet + totalCuttingNet + totalServicesNet,
+    total_vat: totalMaterialVat + totalEdgeVat + totalCuttingVat + totalServicesVat,
+    total_gross: totalMaterialGross + totalEdgeGross + totalCuttingGross + totalServicesGross,
     currency: material.currency
   };
 }
@@ -364,6 +434,79 @@ function calculateCuttingCost(
     vat_amount: vatAmount,
     gross_price: grossPrice,
     currency: cuttingFeeInfo.currency
+  };
+}
+
+/**
+ * Calculate additional services (Pánthelyfúrás, Duplungolás, Szögvágás) for panels
+ */
+function calculateAdditionalServices(
+  panels: PanelWithServices[],
+  feeInfo: CuttingFeeInfo
+): AdditionalServicesPricing {
+  let totalHoles = 0;
+  let totalDuplungolasArea = 0;
+  let totalSzogvagasPanels = 0;
+
+  // Aggregate service quantities across all panels
+  for (const panel of panels) {
+    // Pánthelyfúrás: holes × quantity
+    if (panel.panthelyfuras_quantity > 0) {
+      totalHoles += panel.panthelyfuras_quantity * panel.quantity;
+    }
+
+    // Duplungolás: panel area × quantity (only if duplungolás is true)
+    if (panel.duplungolas) {
+      const panelAreaM2 = (panel.width_mm * panel.height_mm) / 1_000_000;
+      totalDuplungolasArea += panelAreaM2 * panel.quantity;
+    }
+
+    // Szögvágás: panel count (only if szögvágás is true)
+    if (panel.szogvagas) {
+      totalSzogvagasPanels += panel.quantity;
+    }
+  }
+
+  // Calculate Pánthelyfúrás pricing
+  const panthelyfuras = totalHoles > 0 ? {
+    quantity: totalHoles,
+    unit_price: feeInfo.panthelyfuras_fee_per_hole,
+    net_price: totalHoles * feeInfo.panthelyfuras_fee_per_hole,
+    vat_rate: feeInfo.vat_rate,
+    vat_amount: totalHoles * feeInfo.panthelyfuras_fee_per_hole * feeInfo.vat_rate,
+    gross_price: totalHoles * feeInfo.panthelyfuras_fee_per_hole * (1 + feeInfo.vat_rate),
+    currency: feeInfo.currency,
+    unit: 'db'
+  } : null;
+
+  // Calculate Duplungolás pricing
+  const duplungolas = totalDuplungolasArea > 0 ? {
+    quantity: totalDuplungolasArea,
+    unit_price: feeInfo.duplungolas_fee_per_sqm,
+    net_price: totalDuplungolasArea * feeInfo.duplungolas_fee_per_sqm,
+    vat_rate: feeInfo.vat_rate,
+    vat_amount: totalDuplungolasArea * feeInfo.duplungolas_fee_per_sqm * feeInfo.vat_rate,
+    gross_price: totalDuplungolasArea * feeInfo.duplungolas_fee_per_sqm * (1 + feeInfo.vat_rate),
+    currency: feeInfo.currency,
+    unit: 'm²'
+  } : null;
+
+  // Calculate Szögvágás pricing
+  const szogvagas = totalSzogvagasPanels > 0 ? {
+    quantity: totalSzogvagasPanels,
+    unit_price: feeInfo.szogvagas_fee_per_panel,
+    net_price: totalSzogvagasPanels * feeInfo.szogvagas_fee_per_panel,
+    vat_rate: feeInfo.vat_rate,
+    vat_amount: totalSzogvagasPanels * feeInfo.szogvagas_fee_per_panel * feeInfo.vat_rate,
+    gross_price: totalSzogvagasPanels * feeInfo.szogvagas_fee_per_panel * (1 + feeInfo.vat_rate),
+    currency: feeInfo.currency,
+    unit: 'db'
+  } : null;
+
+  return {
+    panthelyfuras,
+    duplungolas,
+    szogvagas
   };
 }
 
