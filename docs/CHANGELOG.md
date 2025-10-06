@@ -4,6 +4,134 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-06b] - Opti UI/UX Improvements & Discount Calculation
+
+### Added
+- **Discount Calculation**
+  - Automatic discount calculation in quote accordion header
+  - Dynamic display based on "Kedvezmény (%)" field from customer data
+  - Visual equation: Nettó + ÁFA = Bruttó - Kedvezmény = Végösszeg
+  - Color-coded chips for each amount:
+    - Nettó: Blue chip (`info.100`)
+    - ÁFA: Orange chip (`warning.100`)
+    - Bruttó (before discount): Grey chip (`grey.300`)
+    - Kedvezmény: Red chip (`error.100`) with percentage
+    - Végösszeg (final): Green chip (`success.main`) - most prominent
+  - Conditional display: discount chips only show when discount > 0
+
+- **Customer Name Validation**
+  - Required field for starting optimization
+  - Validation in `optimize()` function
+  - Multiple levels of user feedback:
+    - Field marked with asterisk (*)
+    - `required` attribute on TextField
+    - Red error state when empty and panels added
+    - Helper text: "A megrendelő neve kötelező az optimalizáláshoz"
+    - Toast notification on validation failure
+    - Tooltip on disabled button
+  - Button disabled when customer name is empty or whitespace only
+
+- **Quote Calculation Display**
+  - M² calculation display in quote breakdown
+  - For panel area pricing: "2.45m² × 1.2 = 2.94m² (panel × hulladékszorzó)"
+  - For full board pricing: "5.796m² (teljes tábla árazva)"
+  - Makes pricing logic transparent to users
+
+### Changed
+- **Árajánlat Display Structure**
+  - Converted from Card to Accordion component
+  - `defaultExpanded` prop for open-by-default behavior
+  - VÉGÖSSZEG moved from bottom to accordion header
+  - Detailed breakdown (materials, edges, cutting, services) in collapsible content
+  - Accordion header styling:
+    - Light grey background (`grey.50`)
+    - Green bottom border (`success.main`)
+    - Hover effect (`grey.100`)
+
+- **Service Icon Display**
+  - Removed Chip wrapper for Duplungolás and Szögvágás
+  - Used plain icons with tooltips for cleaner appearance
+  - Kept Chip with label for Pánthelyfúrás (shows quantity)
+  - Icon size increased to 20px for better visibility
+  - Eliminated unnecessary spacing
+
+- **Service Icon Updates**
+  - Pánthelyfúrás: Changed to `LocationSearchingSharpIcon` (from hammer icon)
+  - Better semantic meaning for hinge hole positioning
+  - Color changed from `secondary` (grey) to `primary` (purple/blue)
+  - Improved visibility while maintaining site color scheme
+
+- **Panel Preview Edge Colors**
+  - Changed from option-based colors to material-based colors
+  - Each edge material UUID generates consistent color via hash function
+  - Color palette: 10 distinct colors (Blue, Green, Orange, Red, Purple, Cyan, Pink, Brown, Blue Grey, Yellow)
+  - Same edge material = same color consistently
+  - Different edge materials = different colors
+  - Applied to both edge labels and border highlights
+  - `getEdgeMaterialColor()` function with hash-based color selection
+
+### Fixed
+- **Hungarian Label Translations**
+  - Accordion labels now in Hungarian:
+    - "No Grain" → "Nem szálirányos"
+    - "Cut length:" → "Vágási hossz:"
+    - "Total:" → "Összesen:"
+  - Consistent language throughout interface
+
+### UI/UX Improvements
+- **Visual Hierarchy**
+  - Clear equation format for pricing (+ and = symbols)
+  - Stacked layout in chips (label on top, value below)
+  - Larger font for final total (h6 vs body1)
+  - Prominent green background for final amount
+
+- **User Guidance**
+  - Tooltip on disabled optimization button
+  - Context-specific error messages
+  - Required field indicators
+  - Helper text for validation rules
+
+- **Color Consistency**
+  - Service icons: Primary (blue), Info (blue), Warning (orange)
+  - Quote amounts: Info (blue), Warning (orange), Error (red), Success (green)
+  - Edge materials: 10-color palette for distinct visualization
+
+### Technical Details
+- **Files Modified**: 1
+  - `src/app/(dashboard)/opti/OptiClient.tsx`
+- **Lines Modified**: ~150
+- **Functions Modified**: 2
+  - `optimize()` - added customer name validation
+  - `getEdgeMaterialColor()` - material-based color generation
+- **Components Updated**: 7
+  - Service icons, Accordion, Chips, Tooltips, Labels, TextField validation
+- **New Features**: 2
+  - Discount calculation with visual display
+  - Customer name validation with multi-level feedback
+- **Development Time**: ~1 hour
+
+### Testing
+- ✅ Service icons spacing fixed
+- ✅ Icons display correctly with proper colors
+- ✅ Hungarian labels display correctly
+- ✅ Accordion opens by default
+- ✅ Discount calculation accurate (0%, 10%, 20%, 100%)
+- ✅ Discount chips show/hide conditionally
+- ✅ Customer name validation prevents optimization
+- ✅ Error messages display in Hungarian
+- ✅ Tooltip shows on disabled button
+- ✅ Panel preview colors unique per edge material
+- ✅ M² calculations display correctly
+- ✅ All pricing equations visible and accurate
+
+### Documentation
+- **New Files**:
+  - `docs/chat-archives/2025-01-06_ui_improvements_and_discount.md` - Session history
+- **Updated Files**:
+  - `docs/CHANGELOG.md` - This entry
+
+---
+
 ## [2025-01-06] - Additional Services Implementation
 
 ### Added

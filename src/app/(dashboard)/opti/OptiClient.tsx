@@ -1033,6 +1033,12 @@ export default function OptiClient({
   // Optimize with multiple materials using addedPanels
   const optimize = async () => {
     
+    if (!customerData.name.trim()) {
+      setError('Kérjük, töltse ki a megrendelő nevét!')
+      toast.error('Kérjük, töltse ki a megrendelő nevét!')
+      return
+    }
+    
     if (addedPanels.length === 0) {
       setError('Please add at least one panel to optimize')
       return
@@ -1268,18 +1274,29 @@ export default function OptiClient({
                   >
                     {/* Grain direction lines - horizontal lines if material has grain direction */}
                     {grainDirectionLines}
-                    {/* Edge labels with Hungarian names and option-based colors */}
+                    {/* Edge labels with Hungarian names and material-based colors */}
                     {(() => {
-                      // Color mapping based on option values
-                      const getOptionColor = (option: string) => {
-                        if (!option) return '#666'
-                        switch (option) {
-                          case 'option1': return '#1976d2' // Blue
-                          case 'option2': return '#388e3c' // Green
-                          case 'option3': return '#f57c00' // Orange
-                          case 'option4': return '#d32f2f' // Red
-                          default: return '#666'
-                        }
+                      // Color mapping based on edge material ID - generate distinct colors for each material
+                      const getEdgeMaterialColor = (edgeMaterialId: string) => {
+                        if (!edgeMaterialId) return '#666'
+                        
+                        // Define a set of distinct colors
+                        const colors = [
+                          '#1976d2', // Blue
+                          '#388e3c', // Green
+                          '#f57c00', // Orange
+                          '#d32f2f', // Red
+                          '#7b1fa2', // Purple
+                          '#0097a7', // Cyan
+                          '#c2185b', // Pink
+                          '#5d4037', // Brown
+                          '#455a64', // Blue Grey
+                          '#f9a825', // Yellow
+                        ]
+                        
+                        // Use a simple hash of the UUID to pick a color
+                        const hash = edgeMaterialId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+                        return colors[hash % colors.length]
                       }
                       
                       return (
@@ -1292,7 +1309,7 @@ export default function OptiClient({
                               transform: 'translateX(-50%)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedA)
+                              color: getEdgeMaterialColor(selectedA)
                             }}
                           >
                             Hosszú felső
@@ -1305,7 +1322,7 @@ export default function OptiClient({
                               transform: 'translateX(-50%)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedC)
+                              color: getEdgeMaterialColor(selectedC)
                             }}
                           >
                             Hosszú alsó
@@ -1318,7 +1335,7 @@ export default function OptiClient({
                               transform: 'translateY(-50%) rotate(-90deg)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedD)
+                              color: getEdgeMaterialColor(selectedD)
                             }}
                           >
                             Széles bal
@@ -1331,7 +1348,7 @@ export default function OptiClient({
                               transform: 'translateY(-50%) rotate(90deg)',
                               fontSize: '12px',
                               fontWeight: 'bold',
-                              color: getOptionColor(selectedB)
+                              color: getEdgeMaterialColor(selectedB)
                             }}
                           >
                             Széles jobb
@@ -1340,18 +1357,29 @@ export default function OptiClient({
                       )
                     })()}
                     
-                    {/* Special borders for selected edges with option-based colors */}
+                    {/* Special borders for selected edges with material-based colors */}
                     {(() => {
-                      // Color mapping based on option values
-                      const getOptionColor = (option: string) => {
-                        if (!option) return '#666'
-                        switch (option) {
-                          case 'option1': return '#1976d2' // Blue
-                          case 'option2': return '#388e3c' // Green
-                          case 'option3': return '#f57c00' // Orange
-                          case 'option4': return '#d32f2f' // Red
-                          default: return '#666'
-                        }
+                      // Color mapping based on edge material ID - generate distinct colors for each material
+                      const getEdgeMaterialColor = (edgeMaterialId: string) => {
+                        if (!edgeMaterialId) return '#666'
+                        
+                        // Define a set of distinct colors
+                        const colors = [
+                          '#1976d2', // Blue
+                          '#388e3c', // Green
+                          '#f57c00', // Orange
+                          '#d32f2f', // Red
+                          '#7b1fa2', // Purple
+                          '#0097a7', // Cyan
+                          '#c2185b', // Pink
+                          '#5d4037', // Brown
+                          '#455a64', // Blue Grey
+                          '#f9a825', // Yellow
+                        ]
+                        
+                        // Use a simple hash of the UUID to pick a color
+                        const hash = edgeMaterialId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+                        return colors[hash % colors.length]
                       }
                       
                       return (
@@ -1364,7 +1392,7 @@ export default function OptiClient({
                                 left: -3,
                                 right: -3,
                                 height: 3,
-                                backgroundColor: getOptionColor(selectedA),
+                                backgroundColor: getEdgeMaterialColor(selectedA),
                                 borderRadius: '2px'
                               }}
                             />
@@ -1377,7 +1405,7 @@ export default function OptiClient({
                                 left: -3,
                                 right: -3,
                                 height: 3,
-                                backgroundColor: getOptionColor(selectedC),
+                                backgroundColor: getEdgeMaterialColor(selectedC),
                                 borderRadius: '2px'
                               }}
                             />
@@ -1390,7 +1418,7 @@ export default function OptiClient({
                                 left: -3,
                                 bottom: -3,
                                 width: 3,
-                                backgroundColor: getOptionColor(selectedD),
+                                backgroundColor: getEdgeMaterialColor(selectedD),
                                 borderRadius: '2px'
                               }}
                             />
@@ -1403,7 +1431,7 @@ export default function OptiClient({
                                 right: -3,
                                 bottom: -3,
                                 width: 3,
-                                backgroundColor: getOptionColor(selectedB),
+                                backgroundColor: getEdgeMaterialColor(selectedB),
                                 borderRadius: '2px'
                               }}
                             />
@@ -1539,8 +1567,11 @@ export default function OptiClient({
                    renderInput={(params) => (
                      <TextField
                        {...params}
-                       label="Név (válasszon ügyfelet vagy írjon be új nevet)"
+                       label="Név (válasszon ügyfelet vagy írjon be új nevet) *"
                        size="small"
+                       required
+                       error={!customerData.name.trim() && addedPanels.length > 0}
+                       helperText={!customerData.name.trim() && addedPanels.length > 0 ? 'A megrendelő neve kötelező az optimalizáláshoz' : ''}
                        InputProps={{
                          ...params.InputProps,
                          endAdornment: (
@@ -2343,27 +2374,40 @@ export default function OptiClient({
             
             {/* Optimalizálás Button */}
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2 }}>
-              <Button
-                variant="contained"
-                color={optimizationResult && !isOptimizing ? "success" : "warning"}
-                size="large"
-                onClick={optimize}
-                disabled={addedPanels.length === 0 || isOptimizing}
-                sx={{ 
-                  minWidth: 200,
-                  py: 1.5,
-                  px: 4
-                }}
+              <Tooltip 
+                title={
+                  !customerData.name.trim() 
+                    ? 'Kérjük, töltse ki a megrendelő nevét!' 
+                    : addedPanels.length === 0 
+                      ? 'Adjon hozzá legalább egy panelt!' 
+                      : ''
+                }
+                arrow
               >
-                {isOptimizing ? (
-                  <>
-                    <CircularProgress size={20} sx={{ mr: 1 }} />
-                    Optimalizálás...
-                  </>
-                ) : (
-                  'Optimalizálás'
-                )}
-              </Button>
+                <span>
+                  <Button
+                    variant="contained"
+                    color={optimizationResult && !isOptimizing ? "success" : "warning"}
+                    size="large"
+                    onClick={optimize}
+                    disabled={addedPanels.length === 0 || isOptimizing || !customerData.name.trim()}
+                    sx={{ 
+                      minWidth: 200,
+                      py: 1.5,
+                      px: 4
+                    }}
+                  >
+                    {isOptimizing ? (
+                      <>
+                        <CircularProgress size={20} sx={{ mr: 1 }} />
+                        Optimalizálás...
+                      </>
+                    ) : (
+                      'Optimalizálás'
+                    )}
+                  </Button>
+                </span>
+              </Tooltip>
             </Box>
             
             {/* Error Display */}
@@ -2432,7 +2476,7 @@ export default function OptiClient({
                           variant="outlined"
                         />
                         <Chip 
-                          label={material?.grain_direction ? "Szálirányos" : "No Grain"} 
+                          label={material?.grain_direction ? "Szálirányos" : "Nem szálirányos"} 
                           size="small" 
                           color={material?.grain_direction ? "warning" : "default"} 
                           variant="outlined"
@@ -2476,7 +2520,7 @@ export default function OptiClient({
                         {/* Cut length information */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <Typography variant="body2" color="text.secondary" sx={{ fontSize: '11px' }}>
-                            Cut length:
+                            Vágási hossz:
                     </Typography>
                           {boardIds.map((boardId) => {
                             const boardCutLength = materialResult.board_cut_lengths[boardId] || 0
@@ -2494,7 +2538,7 @@ export default function OptiClient({
                           })}
                           <Tooltip title="Total cut length for this material" arrow>
                             <Chip
-                              label={`Total: ${(materialResult.metrics.total_cut_length_mm / 1000).toFixed(1)}m`}
+                              label={`Összesen: ${(materialResult.metrics.total_cut_length_mm / 1000).toFixed(1)}m`}
                               size="small"
                               variant="filled"
                               color="secondary"
@@ -3042,15 +3086,100 @@ export default function OptiClient({
       </Grid>
         )}
 
-        {/* Árajánlat (Quote) Card */}
-        {optimizationResult && quoteResult && (
+        {/* Árajánlat (Quote) Accordion */}
+        {optimizationResult && quoteResult && (() => {
+          const discountPercent = parseFloat(customerData.discount) || 0
+          const discountAmount = (quoteResult.grand_total_gross * discountPercent) / 100
+          const finalTotal = quoteResult.grand_total_gross - discountAmount
+          
+          return (
           <Grid item xs={12} sx={{ mt: 3 }}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
-                  Árajánlat
-                </Typography>
-
+            <Accordion defaultExpanded>
+              <AccordionSummary 
+                expandIcon={<ExpandMoreIcon />}
+                sx={{ 
+                  bgcolor: 'grey.50',
+                  borderBottom: '2px solid',
+                  borderColor: 'success.main',
+                  '&:hover': { bgcolor: 'grey.100' }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                    Árajánlat
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                    <Typography variant="body1" sx={{ fontWeight: 'bold', mr: 2 }}>
+                      VÉGÖSSZEG
+                    </Typography>
+                    <Chip
+                      label={
+                        <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>Nettó</Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_net, quoteResult.currency)}</Typography>
+                        </Box>
+                      }
+                      sx={{ height: 'auto', bgcolor: 'info.100', color: 'info.dark', px: 2 }}
+                    />
+                    <Typography variant="h6" sx={{ mx: 0.5 }}>+</Typography>
+                    <Chip
+                      label={
+                        <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>ÁFA</Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_vat, quoteResult.currency)}</Typography>
+                        </Box>
+                      }
+                      sx={{ height: 'auto', bgcolor: 'warning.100', color: 'warning.dark', px: 2 }}
+                    />
+                    <Typography variant="h6" sx={{ mx: 0.5 }}>=</Typography>
+                    <Chip
+                      label={
+                        <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>Bruttó</Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}</Typography>
+                        </Box>
+                      }
+                      sx={{ height: 'auto', bgcolor: 'grey.300', color: 'text.primary', px: 2 }}
+                    />
+                    {discountPercent > 0 && (
+                      <>
+                        <Typography variant="h6" sx={{ mx: 0.5 }}>-</Typography>
+                        <Chip
+                          label={
+                            <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                              <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>Kedvezmény ({discountPercent}%)</Typography>
+                              <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{formatPrice(discountAmount, quoteResult.currency)}</Typography>
+                            </Box>
+                          }
+                          sx={{ height: 'auto', bgcolor: 'error.100', color: 'error.dark', px: 2 }}
+                        />
+                        <Typography variant="h6" sx={{ mx: 0.5 }}>=</Typography>
+                        <Chip
+                          label={
+                            <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                              <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>Végösszeg</Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{formatPrice(finalTotal, quoteResult.currency)}</Typography>
+                            </Box>
+                          }
+                          sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2 }}
+                        />
+                      </>
+                    )}
+                    {discountPercent === 0 && (
+                      <Chip
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>Végösszeg</Typography>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}</Typography>
+                          </Box>
+                        }
+                        sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2, ml: 1 }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+              </AccordionSummary>
+              <AccordionDetails>
                 {/* Material Costs */}
                 {quoteResult.materials.map((material, idx) => (
                   <Box key={idx} sx={{ mb: 4 }}>
@@ -3087,14 +3216,14 @@ export default function OptiClient({
                               <TableRow key={boardIdx}>
                                 <TableCell>
                                   {material.on_stock ? `Tábla ${board.board_id}` : `${board.board_id} tábla`}
-                                  {board.pricing_method === 'panel_area' && material.on_stock && (
+                                  {board.pricing_method === 'panel_area' && material.on_stock && actualMaterial && (
                                     <Typography variant="caption" display="block" color="text.secondary">
-                                      (panel × hulladékszorzó)
+                                      {board.area_m2.toFixed(2)}m² × {actualMaterial.waste_multi.toFixed(1)} = {(board.area_m2 * actualMaterial.waste_multi).toFixed(2)}m² (panel × hulladékszorzó)
                                     </Typography>
                                   )}
                                   {board.pricing_method === 'full_board' && (
                                     <Typography variant="caption" display="block" color="warning.main">
-                                      (teljes tábla árazva)
+                                      {board.charged_area_m2.toFixed(3)}m² (teljes tábla árazva)
                                     </Typography>
                                   )}
                                 </TableCell>
@@ -3299,27 +3428,11 @@ export default function OptiClient({
                     </Box>
                   </Box>
                 ))}
-
-                {/* Grand Total */}
-                <Divider sx={{ my: 3 }} />
-                <TableContainer component={Paper}>
-                  <Table>
-                    <TableBody>
-                      <TableRow sx={{ bgcolor: 'success.50' }}>
-                        <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>VÉGÖSSZEG</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Nettó: {formatPrice(quoteResult.grand_total_net, quoteResult.currency)}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>ÁFA: {formatPrice(quoteResult.grand_total_vat, quoteResult.currency)}</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'success.dark' }}>
-                          Bruttó: {formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </CardContent>
-            </Card>
+              </AccordionDetails>
+            </Accordion>
           </Grid>
-        )}
+          )
+        })()}
       </Grid>
 
       
