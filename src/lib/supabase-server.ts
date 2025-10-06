@@ -1084,3 +1084,122 @@ export async function getAllMediaFiles() {
   logTiming('Media Files Total', startTime, `returned ${transformedFiles.length} records`)
   return transformedFiles
 }
+
+// Get single quote by ID with all data (for editing)
+export async function getQuoteById(quoteId: string) {
+  const startTime = performance.now()
+  
+  console.log(`[SSR] Fetching quote ${quoteId}`)
+
+  try {
+    // Fetch quote with customer data
+    const { data: quote, error: quoteError } = await supabaseServer
+      .from('quotes')
+      .select(`
+        id,
+        quote_number,
+        status,
+        customer_id,
+        discount_percent,
+        total_net,
+        total_vat,
+        total_gross,
+        final_total_after_discount,
+        created_at,
+        updated_at,
+        customers(
+          id,
+          name,
+          email,
+          mobile,
+          discount_percent,
+          billing_name,
+          billing_country,
+          billing_city,
+          billing_postal_code,
+          billing_street,
+          billing_house_number,
+          billing_tax_number,
+          billing_company_reg_number
+        )
+      `)
+      .eq('id', quoteId)
+      .is('deleted_at', null)
+      .single()
+
+    if (quoteError) {
+      console.error('[SSR] Error fetching quote:', quoteError)
+      logTiming('Quote Fetch Failed', startTime)
+      return null
+    }
+
+    if (!quote) {
+      console.error('[SSR] Quote not found:', quoteId)
+      logTiming('Quote Not Found', startTime)
+      return null
+    }
+
+    logTiming('Quote DB Query', startTime, `fetched quote ${quote.quote_number}`)
+
+    // Fetch panels for this quote
+    const panelStartTime = performance.now()
+    const { data: panels, error: panelsError } = await supabaseServer
+      .from('quote_panels')
+      .select(`
+        id,
+        material_id,
+        width_mm,
+        height_mm,
+        quantity,
+        label,
+        edge_material_a_id,
+        edge_material_b_id,
+        edge_material_c_id,
+        edge_material_d_id,
+        panthelyfuras_quantity,
+        panthelyfuras_oldal,
+        duplungolas,
+        szogvagas,
+        materials(id, name, brand_id, length_mm, width_mm, brands(name))
+      `)
+      .eq('quote_id', quoteId)
+      .order('created_at', { ascending: true })
+
+    if (panelsError) {
+      console.error('[SSR] Error fetching panels:', panelsError)
+      logTiming('Panels Fetch Failed', panelStartTime)
+      return null
+    }
+
+    logTiming('Panels DB Query', panelStartTime, `fetched ${panels?.length || 0} panels`)
+
+    // Transform the response to include all necessary data
+    const transformedQuote = {
+      id: quote.id,
+      quote_number: quote.quote_number,
+      status: quote.status,
+      customer_id: quote.customer_id,
+      discount_percent: quote.discount_percent,
+      customer: quote.customers,
+      panels: panels || [],
+      totals: {
+        total_net: quote.total_net,
+        total_vat: quote.total_vat,
+        total_gross: quote.total_gross,
+        final_total_after_discount: quote.final_total_after_discount
+      },
+      created_at: quote.created_at,
+      updated_at: quote.updated_at
+    }
+
+    logTiming('Quote Fetch Total', startTime, `returned quote ${quote.quote_number} with ${panels?.length || 0} panels`)
+    console.log(`[SSR] Quote fetched successfully: ${quote.quote_number}`)
+    
+    return transformedQuote
+
+  } catch (error) {
+    console.error('[SSR] Error fetching quote:', error)
+    logTiming('Quote Fetch Error', startTime)
+    return null
+  }
+}
