@@ -37,8 +37,8 @@ import {
   RadioGroup
 } from '@mui/material'
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material'
-import GridViewSharpIcon from '@mui/icons-material/GridViewSharp'
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
+import Filter2Icon from '@mui/icons-material/Filter2'
 import { styled } from '@mui/material/styles'
 import MuiAccordion from '@mui/material/Accordion'
 import MuiAccordionSummary from '@mui/material/AccordionSummary'
@@ -2607,7 +2607,7 @@ export default function OptiClient({
                           )}
                           {panel.duplungolás && (
                             <Tooltip title="Duplungolás">
-                              <GridViewSharpIcon sx={{ fontSize: 20, color: 'info.main' }} />
+                              <Filter2Icon sx={{ fontSize: 20, color: 'info.main' }} />
                             </Tooltip>
                           )}
                           {panel.szögvágás && (
