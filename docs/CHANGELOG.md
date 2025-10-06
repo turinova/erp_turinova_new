@@ -4,6 +4,101 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-06c] - Quote Saving System
+
+### Added
+- **Complete Quote/Proposal Saving System**
+  - Save optimization results as formal quotes with unique numbers (Q-2025-001, Q-2025-002, etc.)
+  - "Árajánlat mentése" button on `/opti` page (appears after optimization)
+  - Auto-generate sequential quote numbers per year using `generate_quote_number()` database function
+  - Quote status workflow: Draft → Accepted → In Production → Done → Rejected
+  - Button states: Default → Loading (with spinner) → Success (shows quote number)
+
+- **Customer Auto-Creation**
+  - Automatically create new customer if user types name not in dropdown
+  - Use tenant company email (`tenant_company.email`) as default for new customers
+  - Store all customer data: name, email, mobile, billing address, tax number, etc.
+  - Handle duplicate customer names gracefully (find and use existing)
+  - Preserve all data from "Megrendelő adatai" and "Számlázási adatok" accordions
+
+- **Complete Data Snapshots**
+  - Store complete pricing at time of quote creation (immune to future price changes)
+  - Material pricing snapshots: price_per_sqm, VAT rate, currency, usage_limit, waste_multi
+  - Board specifications: width, length, thickness, grain_direction
+  - Optimization results: boards_used, usage_percentage, charged_sqm
+  - All panel specifications: dimensions, quantity, label, edges (4 sides), services
+  - Edge materials breakdown: per material, per edge type, with lengths and costs
+  - Additional services breakdown: Pánthelyfúrás, Duplungolás, Szögvágás with quantities and costs
+  - Cutting costs: length and fees per material
+
+- **Database Schema (6 new tables)**
+  - `quotes` - Main quote table with customer, totals, status, audit trail
+  - `quote_panels` - Panel specifications with edges and services
+  - `quote_materials_pricing` - Complete pricing snapshot per material
+  - `quote_edge_materials_breakdown` - Edge material cost details
+  - `quote_services_breakdown` - Additional services cost details
+  - `quote_status` ENUM type for workflow management
+
+- **Backend Functions**
+  - `getTenantCompany()` in `supabase-server.ts` - Fetch company email for defaults
+  - `generate_quote_number()` SQL function - Auto-increment quote numbers per year
+  - POST `/api/quotes` - Save complete quote with customer auto-creation
+  - GET `/api/quotes` - List all quotes with customer join
+
+- **Comprehensive Documentation**
+  - `docs/QUOTE_SYSTEM_IMPLEMENTATION.md` - 500+ line technical documentation
+  - Complete database schema documentation
+  - API endpoint specifications
+  - Frontend implementation details
+  - Data flow diagrams
+  - Testing procedures
+  - Troubleshooting guide
+  - Future enhancement roadmap
+
+### Changed
+- **OptiClient.tsx**
+  - Added `saveQuote()` function (150+ lines) for complete quote data preparation
+  - Added quote saving state management (`isSavingQuote`, `savedQuoteNumber`)
+  - Save button placement: Next to "Optimalizálás" button
+  - Button visibility: Only after optimization completes
+  - Data mapping: Panel state → API format, QuoteResult → Database format
+  - Edge material reverse lookup: Formatted name → UUID
+
+- **Authentication in API Routes**
+  - Proper authentication using `@supabase/ssr` with cookies
+  - Pattern matches materials API route
+  - Extracts user ID for `created_by` audit trail
+
+### Technical Details
+- **charged_sqm Logic**
+  - For `on_stock=true` with panel_area pricing: Sum of (panel area × waste_multi)
+  - For `on_stock=false` or full_board pricing: NULL
+  - Allows exact reproduction of Árajánlat accordion display
+
+- **Quote Editing Strategy**
+  - Delete existing panels and pricing (CASCADE deletes breakdowns)
+  - Re-insert all data with updated values
+  - Keep same quote ID and number
+  - Update `updated_at` timestamp
+
+- **Data Integrity**
+  - ON DELETE CASCADE for child tables
+  - ON DELETE RESTRICT for reference data (customers, materials, edge_materials)
+  - Unique constraint on quote_number
+  - Indexes on all foreign keys and filter columns
+
+### Database Files
+- `create_quotes_system.sql` - Complete schema with tables, indexes, triggers, functions (280 lines)
+
+### API Files
+- `src/app/api/quotes/route.ts` - POST (save quote), GET (list quotes)
+
+### Documentation Files
+- `docs/QUOTE_SYSTEM_IMPLEMENTATION.md` - Complete technical documentation
+- `docs/chat-archives/2025-01-06_quote_system.md` - Detailed chat history archive
+
+---
+
 ## [2025-01-06b] - Opti UI/UX Improvements & Discount Calculation
 
 ### Added

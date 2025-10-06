@@ -357,6 +357,10 @@ export default function OptiClient({
     billing_company_reg_number: ''
   })
   
+  // Quote saving state
+  const [isSavingQuote, setIsSavingQuote] = useState(false)
+  const [savedQuoteNumber, setSavedQuoteNumber] = useState<string | null>(null)
+  
   // Panel form state for the separate table
   const [panelForm, setPanelForm] = useState({
     hosszúság: '',
@@ -1185,7 +1189,179 @@ export default function OptiClient({
     }
   }
 
+  // Save Quote function
+  const saveQuote = async () => {
+    if (!optimizationResult || !quoteResult) {
+      toast.error('Futtassa le az optimalizálást mentés előtt!')
+      return
+    }
 
+    if (!customerData.name.trim()) {
+      toast.error('Kérjük, töltse ki a megrendelő nevét!')
+      return
+    }
+
+    setIsSavingQuote(true)
+
+    try {
+      // Prepare panels data for saving
+      const panelsToSave = addedPanels.map(panel => {
+        // Extract material ID from táblásAnyag
+        const materialMatch = panel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
+        const materialName = materialMatch ? materialMatch[1].trim() : ''
+        const material = materials.find(m => m.name === materialName)
+        
+        return {
+          material_id: material?.id || '',
+          width_mm: parseInt(panel.hosszúság),
+          height_mm: parseInt(panel.szélesség),
+          quantity: parseInt(panel.darab),
+          label: panel.jelölés || null,
+          edge_material_a_id: panel.élzárásA || null,
+          edge_material_b_id: panel.élzárásB || null,
+          edge_material_c_id: panel.élzárásC || null,
+          edge_material_d_id: panel.élzárásD || null,
+          panthelyfuras_quantity: panel.pánthelyfúrás_mennyiség || 0,
+          panthelyfuras_oldal: panel.pánthelyfúrás_oldal || null,
+          duplungolas: panel.duplungolás || false,
+          szogvagas: panel.szögvágás || false
+        }
+      })
+
+      // Prepare customer data
+      const customerPayload = {
+        id: selectedCustomer?.id || null,
+        name: customerData.name,
+        email: customerData.email,
+        mobile: customerData.phone,
+        discount_percent: customerData.discount,
+        billing_name: customerData.billing_name,
+        billing_country: customerData.billing_country,
+        billing_city: customerData.billing_city,
+        billing_postal_code: customerData.billing_postal_code,
+        billing_street: customerData.billing_street,
+        billing_house_number: customerData.billing_house_number,
+        billing_tax_number: customerData.billing_tax_number,
+        billing_company_reg_number: customerData.billing_company_reg_number
+      }
+
+      // Prepare quote calculations with all necessary data
+      const quoteCalculationsPayload = {
+        total_net: quoteResult.grand_total_net,
+        total_vat: quoteResult.grand_total_vat,
+        total_gross: quoteResult.grand_total_gross,
+        materials: quoteResult.materials.map(materialPricing => {
+          const material = materials.find(m => m.id === materialPricing.material_id)
+          
+          // Calculate boards used and average usage percentage
+          const boardsUsed = materialPricing.boards.length
+          const averageUsage = boardsUsed > 0 
+            ? materialPricing.boards.reduce((sum, b) => sum + b.usage_percentage, 0) / boardsUsed 
+            : 0
+          
+          // Calculate charged_sqm (sum of charged areas for panel_area pricing)
+          const chargedSqm = materialPricing.on_stock && materialPricing.boards.some(b => b.pricing_method === 'panel_area')
+            ? materialPricing.boards.reduce((sum, b) => sum + b.charged_area_m2, 0)
+            : null
+          
+          // Get pricing method (use first board's method, they should all be the same)
+          const pricingMethod = materialPricing.boards[0]?.pricing_method || 'panel_area'
+          
+          return {
+            material_id: materialPricing.material_id,
+            material_name: materialPricing.material_name,
+            board_width_mm: material?.width_mm || 0,
+            board_length_mm: material?.length_mm || 0,
+            thickness_mm: material?.thickness_mm || 0,
+            grain_direction: material?.grain_direction || false,
+            on_stock: materialPricing.on_stock,
+            boards_used: boardsUsed,
+            usage_percentage: averageUsage,
+            pricing_method: pricingMethod,
+            charged_sqm: chargedSqm,
+            price_per_sqm: material?.price_per_sqm || 0,
+            vat_rate: (material?.vat_percent || 0) / 100,
+            currency: material?.currency || 'HUF',
+            usage_limit: material?.usage_limit || 0.65,
+            waste_multi: material?.waste_multi || 1.2,
+            material_cost: {
+              net: materialPricing.total_material_net,
+              vat: materialPricing.total_material_vat,
+              gross: materialPricing.total_material_gross
+            },
+            edge_materials_cost: {
+              net: materialPricing.total_edge_net,
+              vat: materialPricing.total_edge_vat,
+              gross: materialPricing.total_edge_gross
+            },
+            cutting_cost: {
+              length_m: materialPricing.cutting_cost?.total_cutting_length_m || 0,
+              net: materialPricing.total_cutting_net,
+              vat: materialPricing.total_cutting_vat,
+              gross: materialPricing.total_cutting_gross
+            },
+            edge_materials: materialPricing.edge_materials.map(edge => {
+              // Find edge material ID by formatted name
+              const edgeMaterial = edgeMaterials.find(em => {
+                const displayName = `${em.type}-${em.width}/${em.thickness}-${em.decor}`
+                return displayName === edge.edge_material_name
+              })
+              
+              return {
+                edge_material_id: edgeMaterial?.id || '',
+                name: edge.edge_material_name,
+                total_length_m: edge.length_with_overhang_m,
+                price_per_m: edge.price_per_m,
+                net: edge.net_price,
+                vat: edge.vat_amount,
+                gross: edge.gross_price
+              }
+            }),
+            additional_services: materialPricing.additional_services,
+            total_services_net: materialPricing.total_services_net,
+            total_services_vat: materialPricing.total_services_vat,
+            total_services_gross: materialPricing.total_services_gross,
+            total: {
+              net: materialPricing.total_net,
+              vat: materialPricing.total_vat,
+              gross: materialPricing.total_gross
+            }
+          }
+        })
+      }
+
+      // Call API to save quote
+      const response = await fetch('/api/quotes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          quoteId: null, // Always create new quote (later we can add edit functionality)
+          customerData: customerPayload,
+          panels: panelsToSave,
+          optimizationResults: optimizationResult,
+          quoteCalculations: quoteCalculationsPayload
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save quote')
+      }
+
+      const result = await response.json()
+      
+      setSavedQuoteNumber(result.quoteNumber)
+      toast.success(`Árajánlat sikeresen mentve: ${result.quoteNumber}`)
+      
+    } catch (err) {
+      console.error('Error saving quote:', err)
+      toast.error(`Hiba az árajánlat mentése során: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setIsSavingQuote(false)
+    }
+  }
 
   // Check access permission - only redirect if permissions are loaded and user doesn't have access
   useEffect(() => {
@@ -2372,8 +2548,8 @@ export default function OptiClient({
               </Table>
             </TableContainer>
             
-            {/* Optimalizálás Button */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2 }}>
+            {/* Optimalizálás and Save Quote Buttons */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 3, mb: 2 }}>
               <Tooltip 
                 title={
                   !customerData.name.trim() 
@@ -2408,6 +2584,40 @@ export default function OptiClient({
                   </Button>
                 </span>
               </Tooltip>
+              
+              {/* Save Quote Button - Only show after optimization */}
+              {optimizationResult && quoteResult && (
+                <Tooltip 
+                  title={!customerData.name.trim() ? 'Kérjük, töltse ki a megrendelő nevét!' : ''}
+                  arrow
+                >
+                  <span>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      size="large"
+                      onClick={saveQuote}
+                      disabled={isSavingQuote || !customerData.name.trim()}
+                      sx={{ 
+                        minWidth: 200,
+                        py: 1.5,
+                        px: 4
+                      }}
+                    >
+                      {isSavingQuote ? (
+                        <>
+                          <CircularProgress size={20} sx={{ mr: 1 }} />
+                          Mentés...
+                        </>
+                      ) : savedQuoteNumber ? (
+                        `Mentve: ${savedQuoteNumber}`
+                      ) : (
+                        'Árajánlat mentése'
+                      )}
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
             </Box>
             
             {/* Error Display */}

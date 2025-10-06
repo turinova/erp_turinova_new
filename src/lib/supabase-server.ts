@@ -1028,6 +1028,29 @@ export async function getAllCompanies() {
   return data || []
 }
 
+// Get tenant company (for default email in customer auto-creation)
+export async function getTenantCompany() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('tenant_company')
+    .select('id, name, email')
+    .is('deleted_at', null)
+    .limit(1)
+    .single()
+
+  const queryTime = performance.now()
+  logTiming('Tenant Company DB Query', startTime, `fetched ${data ? 1 : 0} records`)
+
+  if (error) {
+    console.error('Error fetching tenant company:', error)
+    return null
+  }
+
+  logTiming('Tenant Company Total', startTime, `returned ${data ? 1 : 0} records`)
+  return data
+}
+
 // Media files SSR function
 export async function getAllMediaFiles() {
   const startTime = performance.now()
