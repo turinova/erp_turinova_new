@@ -44,6 +44,7 @@ import MuiAccordion from '@mui/material/Accordion'
 import MuiAccordionSummary from '@mui/material/AccordionSummary'
 import MuiAccordionDetails from '@mui/material/AccordionDetails'
 import type { AccordionProps } from '@mui/material/Accordion'
+import { useRouter } from 'next/navigation'
 
 // Third-party Imports
 import { toast } from 'react-toastify'
@@ -239,14 +240,18 @@ interface OptiClientProps {
   initialCustomers: Customer[]
   initialEdgeMaterials: EdgeMaterial[]
   initialCuttingFee: any // From database: { fee_per_meter, currencies, vat }
+  initialQuoteData?: any // Optional: Quote data for editing mode
 }
 
 export default function OptiClient({ 
   initialMaterials, 
   initialCustomers, 
   initialEdgeMaterials,
-  initialCuttingFee
+  initialCuttingFee,
+  initialQuoteData
 }: OptiClientProps) {
+  const router = useRouter()
+  
   // Check permission for this page
   const { canAccess, loading: permissionsLoading } = usePermissions()
   const hasAccess = canAccess('/opti')
@@ -361,6 +366,10 @@ export default function OptiClient({
   const [isSavingQuote, setIsSavingQuote] = useState(false)
   const [savedQuoteNumber, setSavedQuoteNumber] = useState<string | null>(null)
   
+  // Quote editing state
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null)
+  const [isEditMode, setIsEditMode] = useState(false)
+  
   // Panel form state for the separate table
   const [panelForm, setPanelForm] = useState({
     hosszúság: '',
@@ -430,6 +439,76 @@ export default function OptiClient({
       sessionStorage.removeItem('opti-panels')
     }
   }, [addedPanels])
+
+  // Load quote data for editing (if initialQuoteData is provided)
+  useEffect(() => {
+    if (initialQuoteData && materials.length > 0 && edgeMaterials.length > 0) {
+      console.log('Loading quote for editing:', initialQuoteData.quote_number)
+      
+      setIsEditMode(true)
+      setEditingQuoteId(initialQuoteData.id)
+      // Don't set savedQuoteNumber here - only after successful save
+      
+      // Populate customer data
+      if (initialQuoteData.customer) {
+        const customer = initialQuoteData.customer
+        
+        // Find and set customer in dropdown
+        const customerInList = customers.find(c => c.id === customer.id)
+        if (customerInList) {
+          setSelectedCustomer(customerInList)
+        }
+        
+        setCustomerData({
+          name: customer.name || '',
+          email: customer.email || '',
+          phone: customer.mobile || '',
+          discount: customer.discount_percent?.toString() || '0',
+          billing_name: customer.billing_name || '',
+          billing_country: customer.billing_country || 'Magyarország',
+          billing_city: customer.billing_city || '',
+          billing_postal_code: customer.billing_postal_code || '',
+          billing_street: customer.billing_street || '',
+          billing_house_number: customer.billing_house_number || '',
+          billing_tax_number: customer.billing_tax_number || '',
+          billing_company_reg_number: customer.billing_company_reg_number || ''
+        })
+      }
+      
+      // Populate panels
+      if (initialQuoteData.panels && initialQuoteData.panels.length > 0) {
+        const loadedPanels: Panel[] = initialQuoteData.panels.map((panel: any, index: number) => {
+          // Reconstruct táblásAnyag format: "Material Name (width×lengthmm)"
+          // Use material.name from materials array (already includes brand)
+          const material = materials.find(m => m.id === panel.material_id)
+          const táblásAnyag = material 
+            ? `${material.name} (${material.width_mm}×${material.length_mm}mm)`
+            : 'Unknown Material'
+          
+          return {
+            id: `panel-${Date.now()}-${index}`,
+            táblásAnyag: táblásAnyag,
+            hosszúság: panel.width_mm.toString(),
+            szélesség: panel.height_mm.toString(),
+            darab: panel.quantity.toString(),
+            jelölés: panel.label || '',
+            élzárás: '', // Not used
+            élzárásA: panel.edge_material_a_id || '',
+            élzárásB: panel.edge_material_b_id || '',
+            élzárásC: panel.edge_material_c_id || '',
+            élzárásD: panel.edge_material_d_id || '',
+            pánthelyfúrás_mennyiség: panel.panthelyfuras_quantity || 0,
+            pánthelyfúrás_oldal: panel.panthelyfuras_oldal || '',
+            duplungolás: panel.duplungolas || false,
+            szögvágás: panel.szogvagas || false
+          }
+        })
+        
+        setAddedPanels(loadedPanels)
+        console.log(`Loaded ${loadedPanels.length} panels from quote`)
+      }
+    }
+  }, [initialQuoteData, materials, edgeMaterials, customers])
 
   // Calculate quote from optimization results
   const quoteResult = useMemo<QuoteResult | null>(() => {
@@ -1050,6 +1129,9 @@ export default function OptiClient({
 
     setIsOptimizing(true)
     setError(null)
+    
+    // Reset saved state when re-optimizing (user made changes)
+    setSavedQuoteNumber(null)
 
     try {
       // Group addedPanels by material
@@ -1337,7 +1419,7 @@ export default function OptiClient({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          quoteId: null, // Always create new quote (later we can add edit functionality)
+          quoteId: editingQuoteId, // null for new quote, UUID for editing
           customerData: customerPayload,
           panels: panelsToSave,
           optimizationResults: optimizationResult,
@@ -1353,11 +1435,24 @@ export default function OptiClient({
       const result = await response.json()
       
       setSavedQuoteNumber(result.quoteNumber)
-      toast.success(`Árajánlat sikeresen mentve: ${result.quoteNumber}`)
+      
+      // Different message for edit vs create
+      if (isEditMode) {
+        toast.success(`Árajánlat sikeresen frissítve: ${result.quoteNumber}`)
+      } else {
+        toast.success(`Árajánlat sikeresen mentve: ${result.quoteNumber}`)
+      }
+      
+      // Clear cache after save
+      sessionStorage.removeItem('opti-panels')
+      
+      // Refresh the page to clear any cached data
+      router.refresh()
       
     } catch (err) {
       console.error('Error saving quote:', err)
-      toast.error(`Hiba az árajánlat mentése során: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      const errorMessage = isEditMode ? 'frissítése' : 'mentése'
+      toast.error(`Hiba az árajánlat ${errorMessage} során: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setIsSavingQuote(false)
     }
@@ -2607,10 +2702,14 @@ export default function OptiClient({
                       {isSavingQuote ? (
                         <>
                           <CircularProgress size={20} sx={{ mr: 1 }} />
-                          Mentés...
+                          {isEditMode ? 'Frissítés...' : 'Mentés...'}
                         </>
+                      ) : savedQuoteNumber && isEditMode ? (
+                        `Frissítve: ${savedQuoteNumber}`
                       ) : savedQuoteNumber ? (
                         `Mentve: ${savedQuoteNumber}`
+                      ) : isEditMode ? (
+                        'Árajánlat frissítése'
                       ) : (
                         'Árajánlat mentése'
                       )}

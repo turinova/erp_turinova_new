@@ -747,9 +747,325 @@ The quote saving system is now **production-ready** with:
 - Frontend updates (150+ lines)
 - Comprehensive documentation (this file)
 
-**Next Session:** Implement quote management page and quote loading functionality.
+---
+
+## Session 2: Quote Editing & Loading Implementation
+
+**Time:** ~1 hour after initial implementation  
+**Status:** ✅ Complete
+
+### User Request
+
+"now i need you to create the edit url and populate with the data the necessary fields"
+
+### Requirements Gathering (Q&A)
+
+**Q1: URL format?**  
+A: `/opti?quote_id=xxx` (stays on opti page)
+
+**Q2: Navigation source?**  
+A: From future `/quotes` page
+
+**Q3: What to populate?**  
+A: Restore panels and customer data. Do NOT auto-run optimization. Do NOT restore Árajánlat accordion.
+
+**Q4: Customer handling if deleted?**  
+A: Soft delete is used, customer should always exist.
+
+**Q5: Optimization behavior?**  
+A: User required to click "Optimalizálás". Saved pricing should not be shown.
+
+**Q6: Save behavior in edit mode?**  
+A: Keep same quote number, update same quote record.
+
+**Q7: Price change warnings?**  
+A: Silently update (no warnings).
+
+**Q8: Button text in edit mode?**  
+A: "Árajánlat frissítése", after save "Frissítve: Q-2025-XXX"
+
+**Q9: URL after save?**  
+A: Do nothing (stay on same URL).
+
+**Q10: Permissions?**  
+A: Anyone can edit.
+
+**Q11: Status editing?**  
+A: Status is read-only on opti page (editable on future /quotes edit page).
+
+**Q12: API endpoints needed?**  
+A: Use SSR for data fetching.
+
+**Q13: táblásAnyag reconstruction?**  
+A: Yes, reconstruct from material_id by fetching material data.
 
 ---
 
-**End of Chat Archive**
+### Implementation Steps
+
+#### Step 1: Create GET /api/quotes/[id] Endpoint
+
+**File:** `src/app/api/quotes/[id]/route.ts`
+
+**Features:**
+- Fetch quote with customer JOIN
+- Fetch panels with materials and brands JOINs
+- Return complete data for editing
+- Do NOT return pricing snapshots (will recalculate)
+
+---
+
+#### Step 2: Update page.tsx for SSR
+
+**Changes:**
+- Added `searchParams` prop
+- Check for `quote_id` parameter
+- Fetch quote data via API (SSR, no cache)
+- Pass `initialQuoteData` to OptiClient
+
+---
+
+#### Step 3: Add Quote Loading Hook
+
+**Location:** OptiClient.tsx, lines 440-510
+
+**Triggers:** When `initialQuoteData` prop exists
+
+**Actions:**
+- Set edit mode flags
+- Populate customer dropdown and form
+- Reconstruct panels with táblásAnyag format
+- Load edge materials and services
+
+---
+
+#### Step 4: Update Button Logic
+
+**Dynamic text based on mode:**
+- New mode: "Árajánlat mentése" / "Mentés..." / "Mentve: Q-XXX"
+- Edit mode: "Árajánlat frissítése" / "Frissítés..." / "Frissítve: Q-XXX"
+
+---
+
+#### Step 5: Update Save Function
+
+**Changes:**
+- Pass `editingQuoteId` to API (null or UUID)
+- Different toast messages for create vs update
+- Clear cache after save
+- Refresh router to reload SSR data
+
+---
+
+### Issues Encountered & Fixes
+
+#### Issue 1: Material Name Format Mismatch
+
+**Error:** `"Material not found in materials array: Egger F021 ST75 Szürke Triestino terrazzo 2070 2800"`
+
+**Cause:** Reconstructed name as "Brand Name + Material Name" but `material.name` already includes brand.
+
+**Fix:**
+```typescript
+// WRONG
+const fullName = `${brandName} ${materialName}`  // "Egger Egger F021..."
+
+// CORRECT
+const táblásAnyag = `${material.name} (${material.width_mm}×${material.length_mm}mm)`
+```
+
+---
+
+#### Issue 2: Button Shows "Frissítve" Immediately
+
+**Symptom:** When loading quote, button immediately shows "Frissítve: Q-2025-004" without user doing anything.
+
+**Cause:** `setSavedQuoteNumber(initialQuoteData.quote_number)` in loading hook.
+
+**Fix:** Remove that line. Only set `savedQuoteNumber` after successful save.
+
+**Result:**
+- On load: Button shows "Árajánlat frissítése" ✓
+- After save: Button shows "Frissítve: Q-2025-004" ✓
+
+---
+
+#### Issue 3: Toast Shows "undefined"
+
+**Symptom:** After save, toast shows "Árajánlat sikeresen frissítve: undefined"
+
+**Cause:** API didn't return `quoteNumber` on update.
+
+**Root Cause:**
+```typescript
+let quoteNumber = body.quoteNumber  // Only for new quotes
+
+if (quoteId) {
+  const { data: updatedQuote } = await ...
+  // quoteNumber NOT updated ← Bug
+}
+
+return { quoteNumber: quoteNumber }  // ← Undefined
+```
+
+**Fix:**
+```typescript
+let finalQuoteNumber = quoteNumber
+
+if (quoteId) {
+  finalQuoteNumber = updatedQuote.quote_number
+}
+
+return { quoteNumber: finalQuoteNumber }
+```
+
+---
+
+#### Issue 4: Button Doesn't Reset After Re-Optimization
+
+**Symptom:** User loads quote, saves (button: "Frissítve"), modifies, re-optimizes, button still shows "Frissítve".
+
+**Expected:** Button should reset to "Árajánlat frissítése" after re-optimization.
+
+**Fix:** Add `setSavedQuoteNumber(null)` in `optimize()` function.
+
+**Result:** Button properly resets when user makes changes and re-optimizes.
+
+---
+
+#### Issue 5: Cache Not Cleared
+
+**Symptom:** After saving, old data persists in session storage.
+
+**Fix:** Added cache clearing in save function:
+```typescript
+sessionStorage.removeItem('opti-panels')
+router.refresh()
+```
+
+---
+
+### Testing Results
+
+**User Report:** "okay it works"
+
+**After fixes, all issues resolved:**
+✅ Button shows correct text in edit mode  
+✅ Toast shows quote number correctly  
+✅ Button resets after re-optimization  
+✅ Cache cleared after save  
+✅ Material matching works correctly  
+
+---
+
+### Final User Request
+
+"make a very detailed documentation about this save the chat history commit to git than to main"
+
+**Actions:**
+1. ✅ Create comprehensive documentation (QUOTE_EDITING_IMPLEMENTATION.md)
+2. ✅ Update chat history (this file)
+3. ✅ Update CHANGELOG.md
+4. ✅ Commit to git
+5. ✅ Push to main
+
+---
+
+## Technical Learnings
+
+### 1. SSR searchParams in Next.js 15
+
+**Pattern:**
+```typescript
+interface PageProps {
+  searchParams: Promise<{ quote_id?: string }>  // ← Promise!
+}
+
+export default async function Page({ searchParams }: PageProps) {
+  const resolvedParams = await searchParams  // ← Must await
+  const quoteId = resolvedParams.quote_id
+}
+```
+
+**Next.js 15 Change:** `searchParams` is now a Promise, must be awaited.
+
+---
+
+### 2. Material Name Already Includes Brand
+
+**Lesson:** Don't assume database normalization.
+
+**Expected:** Separate `brand_name` and `material_name` fields.
+
+**Reality:** `material.name` is already the full display name: "F021 ST75 Szürke Triestino terrazzo"
+
+**Impact:** Affects string reconstruction, matching logic, display formatting.
+
+---
+
+### 3. State Reset is Critical for Edit Mode
+
+**Lesson:** Saved state must be reset when user makes changes.
+
+**Without reset:**
+- User loads quote
+- Button: "Frissítve: Q-2025-004" (wrong!)
+- User makes changes
+- Button still: "Frissítve: Q-2025-004" (very wrong!)
+- User confused: "Did my changes save?"
+
+**With reset (in optimize()):**
+- User makes changes
+- Clicks "Optimalizálás"
+- Button resets to: "Árajánlat frissítése" (correct!)
+- Clear indication that changes haven't been saved yet
+
+---
+
+### 4. Cache Management After Mutations
+
+**Lesson:** After any mutation (create, update), clear all related caches.
+
+**Caches to clear:**
+1. Session storage (`opti-panels`)
+2. Router cache (`router.refresh()`)
+3. (Future) React Query cache
+4. (Future) SWR cache
+
+**Without cache clearing:**
+- User saves
+- Reloads page
+- Sees stale data from cache
+- Confusion: "Did it save?"
+
+---
+
+## Code Metrics
+
+### Lines of Code
+
+**New Files:**
+- `src/app/api/quotes/[id]/route.ts`: 108 lines
+
+**Modified Files:**
+- `src/app/(dashboard)/opti/page.tsx`: +29 lines
+- `src/app/(dashboard)/opti/OptiClient.tsx`: +88 lines (quote loading hook, button logic updates, cache clearing)
+- `src/app/api/quotes/route.ts`: +3 lines (finalQuoteNumber fix)
+
+**Documentation:**
+- `docs/QUOTE_EDITING_IMPLEMENTATION.md`: 750+ lines
+
+**Total:** ~980 lines of code + documentation
+
+---
+
+## Related Documentation
+
+- [QUOTE_SYSTEM_IMPLEMENTATION.md](./QUOTE_SYSTEM_IMPLEMENTATION.md) - Quote saving system
+- [QUOTE_EDITING_IMPLEMENTATION.md](./QUOTE_EDITING_IMPLEMENTATION.md) - This feature
+- [CHANGELOG.md](./CHANGELOG.md) - Project changelog
+
+---
+
+**End of Chat Archive - Session 2**
 

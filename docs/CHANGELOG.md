@@ -4,6 +4,101 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-06d] - Quote Editing & Loading via URL
+
+### Added
+- **Quote Loading via URL Parameter**
+  - Navigate to `/opti?quote_id=xxx` to load existing quote for editing
+  - Server-Side Rendering (SSR) for quote data fetching (no client-side loading)
+  - Automatic data population: panels, customer data, billing information
+  - GET /api/quotes/[id] endpoint for fetching complete quote data
+  - Quote data includes customer JOIN and panels with materials/brands JOINs
+
+- **Edit Mode Functionality**
+  - Automatic detection of edit mode via `initialQuoteData` prop
+  - Edit mode state flags: `isEditMode`, `editingQuoteId`
+  - Different button text: "Árajánlat frissítése" instead of "mentése"
+  - Different loading text: "Frissítés..." instead of "Mentés..."
+  - Different success text: "Frissítve: Q-2025-XXX" instead of "Mentve"
+  - Different toast messages for update vs create
+
+- **Data Restoration**
+  - Customer dropdown auto-selects loaded customer
+  - All customer form fields populated from quote data
+  - All billing fields populated (Számlázási adatok accordion)
+  - Panels reconstructed with correct táblásAnyag format: "Material Name (width×lengthmm)"
+  - Edge materials restored for all 4 sides (A, B, C, D)
+  - Additional services restored: Pánthelyfúrás, Duplungolás, Szögvágás
+  - Panel labels (Jelölés) restored
+
+- **Cache Management**
+  - Session storage cleared after save (`opti-panels` key)
+  - Router refresh after save to reload SSR data
+  - Ensures UI stays in sync with database
+  - Prevents stale data from appearing
+
+### Changed
+- **OptiClient.tsx**
+  - Added `initialQuoteData` prop to component interface
+  - Added quote loading useEffect hook (lines 440-510)
+  - Added edit mode state variables (`isEditMode`, `editingQuoteId`)
+  - Updated `saveQuote()` to pass `editingQuoteId` to API
+  - Updated optimization reset logic: `setSavedQuoteNumber(null)` when re-optimizing
+  - Updated button text logic with 6 different states (new/edit × before/during/after save)
+  - Added cache clearing: `sessionStorage.removeItem()` + `router.refresh()`
+  - Added `useRouter` hook import from 'next/navigation'
+
+- **page.tsx (OptiPage)**
+  - Added `searchParams` prop with quote_id parameter handling
+  - Added SSR fetch for quote data when quote_id exists
+  - Added `initialQuoteData` prop passing to OptiClient
+  - Uses `cache: 'no-store'` for fresh data
+
+- **POST /api/quotes**
+  - Fixed `finalQuoteNumber` variable to capture updated quote number
+  - Ensures API response always includes quote_number (was undefined on updates)
+  - Different toast messages for create ("mentve") vs update ("frissítve")
+
+### Technical Details
+- **Panel Reconstruction Logic**
+  - Uses `material.name` directly from materials array (already includes brand)
+  - Avoids double brand name bug: NOT "Egger" + "Egger F021..." = "Egger Egger F021..."
+  - Correct format: "F021 ST75 Szürke Triestino terrazzo (2070×2800mm)"
+  - Material matching in optimization depends on exact name match
+
+- **State Reset on Re-Optimization**
+  - `setSavedQuoteNumber(null)` called in `optimize()` function
+  - Ensures button resets to "Árajánlat frissítése" after user modifies and re-optimizes
+  - Provides clear visual feedback that changes haven't been saved yet
+
+- **Quote Update Process**
+  - Same as create: DELETE old panels + pricing, INSERT new data
+  - Quote ID and quote_number preserved
+  - Only `updated_at` timestamp changes
+  - CASCADE deletes ensure data integrity
+
+- **Soft Delete Handling**
+  - Quotes can reference soft-deleted customers (FK still valid)
+  - Customer data still accessible via JOIN
+  - Customer may not appear in dropdown but form fields still populate
+  - User can still edit and save quote with soft-deleted customer
+
+### API Files
+- `src/app/api/quotes/[id]/route.ts` - GET endpoint for single quote (108 lines)
+
+### Documentation Files
+- `docs/QUOTE_EDITING_IMPLEMENTATION.md` - Complete technical documentation (750+ lines)
+- `docs/chat-archives/2025-01-06_quote_system.md` - Updated with Session 2 (310+ new lines)
+
+### Bug Fixes
+- Fixed button showing "Frissítve" immediately on quote load
+- Fixed toast showing "undefined" after quote update
+- Fixed button not resetting after re-optimization
+- Fixed cache not clearing after save
+- Fixed material name format causing optimization failures
+
+---
+
 ## [2025-01-06c] - Quote Saving System
 
 ### Added

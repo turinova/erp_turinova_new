@@ -174,6 +174,7 @@ export async function POST(request: NextRequest) {
     }
 
     let finalQuoteId = quoteId
+    let finalQuoteNumber = quoteNumber
 
     if (quoteId) {
       // Update existing quote
@@ -192,6 +193,7 @@ export async function POST(request: NextRequest) {
         }, { status: 500 })
       }
 
+      finalQuoteNumber = updatedQuote.quote_number
       console.log('Quote updated successfully:', updatedQuote.quote_number)
     } else {
       // Create new quote
@@ -210,6 +212,7 @@ export async function POST(request: NextRequest) {
       }
 
       finalQuoteId = newQuote.id
+      finalQuoteNumber = newQuote.quote_number
       console.log('Quote created successfully:', newQuote.quote_number)
     }
 
@@ -380,7 +383,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Árajánlat sikeresen mentve',
       quoteId: finalQuoteId,
-      quoteNumber: quoteNumber
+      quoteNumber: finalQuoteNumber
     }, { status: quoteId ? 200 : 201 })
 
   } catch (error) {
