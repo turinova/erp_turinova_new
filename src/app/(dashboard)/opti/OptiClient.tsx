@@ -2495,57 +2495,13 @@ export default function OptiClient({
                           color="primary" 
                           variant="outlined"
                         />
-                        {/* Board usage breakdown */}
-                        {boardIds.length > 1 && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                            {boardIds.map((boardId) => {
-                              const boardPlacements = placementsByBoard.get(boardId) || []
-                              const boardUsedArea = boardPlacements.reduce((sum, placement) => sum + (placement.w_mm * placement.h_mm), 0)
-                              const boardArea = (materialResult.debug?.board_width || material?.width_mm || 1) * (materialResult.debug?.board_height || material?.length_mm || 1)
-                              const boardUsage = (boardUsedArea / boardArea) * 100
-                              return (
-                                <Tooltip key={boardId} title="Tábla kihasználtsága" arrow>
-                                  <Chip
-                                    label={`${boardUsage.toFixed(0)}%`}
-                                    size="medium"
-                                    variant="outlined"
-                                    sx={{ fontSize: '14px', height: '28px', fontWeight: 'bold' }}
-                                  />
-                                </Tooltip>
-                              )
-                            })}
-                        </Box>
-                      )}
-                        
-                        {/* Cut length information */}
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '11px' }}>
-                            Vágási hossz:
-                    </Typography>
-                          {boardIds.map((boardId) => {
-                            const boardCutLength = materialResult.board_cut_lengths[boardId] || 0
-                            return (
-                              <Tooltip key={boardId} title={`Board ${boardId} cut length`} arrow>
-                                <Chip
-                                  label={`B${boardId}: ${(boardCutLength / 1000).toFixed(1)}m`}
-                                  size="small"
-                                  variant="outlined"
-                                  color="secondary"
-                                  sx={{ fontSize: '10px', height: '20px' }}
-                                />
-                              </Tooltip>
-                            )
-                          })}
-                          <Tooltip title="Total cut length for this material" arrow>
-                            <Chip
-                              label={`Összesen: ${(materialResult.metrics.total_cut_length_mm / 1000).toFixed(1)}m`}
-                              size="small"
-                              variant="filled"
-                              color="secondary"
-                              sx={{ fontSize: '10px', height: '20px', fontWeight: 'bold' }}
-                            />
-                          </Tooltip>
-                        </Box>
+                        <Chip
+                          label={`Összes vágási hossz: ${(materialResult.metrics.total_cut_length_mm / 1000).toFixed(1)}m`}
+                          size="small"
+                          variant="filled"
+                          color="secondary"
+                          sx={{ fontWeight: 'bold' }}
+                        />
                       </Box>
                     </Box>
                   </AccordionSummary>
