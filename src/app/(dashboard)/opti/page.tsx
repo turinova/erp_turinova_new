@@ -1,12 +1,13 @@
 import React from 'react'
-import { getAllMaterials, getAllCustomers, getAllEdgeMaterials } from '@/lib/supabase-server'
+import { getAllMaterials, getAllCustomers, getAllEdgeMaterials, getCuttingFee } from '@/lib/supabase-server'
 import OptiClient from './OptiClient'
 
 export default async function OptiPage() {
-  const [materials, customers, edgeMaterials] = await Promise.all([
+  const [materials, customers, edgeMaterials, cuttingFee] = await Promise.all([
     getAllMaterials(),
     getAllCustomers(),
-    getAllEdgeMaterials()
+    getAllEdgeMaterials(),
+    getCuttingFee()
   ])
   
   return (
@@ -14,6 +15,7 @@ export default async function OptiPage() {
       initialMaterials={materials}
       initialCustomers={customers}
       initialEdgeMaterials={edgeMaterials}
+      initialCuttingFee={cuttingFee}
     />
   )
 }

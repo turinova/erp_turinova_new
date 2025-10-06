@@ -53,6 +53,9 @@ import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { usePermissions } from '@/permissions/PermissionProvider'
 
+// Pricing
+import { calculateQuote, formatPrice, type QuoteResult } from '@/lib/pricing/quoteCalculations'
+
 // Styled component for Accordion component
 const Accordion = styled(MuiAccordion)<AccordionProps>(({ theme }) => ({
   boxShadow: 'none !important',
@@ -107,6 +110,7 @@ interface Material {
   thickness_mm: number
   grain_direction: boolean
   active: boolean
+  on_stock: boolean
   image_url?: string
   kerf_mm: number
   trim_top_mm: number
@@ -115,6 +119,10 @@ interface Material {
   trim_right_mm: number
   rotatable: boolean
   waste_multi: number
+  usage_limit: number
+  price_per_sqm: number
+  vat_percent: number
+  currency: string
   created_at: string
   updated_at: string
 }
@@ -224,12 +232,14 @@ interface OptiClientProps {
   initialMaterials: Material[]
   initialCustomers: Customer[]
   initialEdgeMaterials: EdgeMaterial[]
+  initialCuttingFee: any // From database: { fee_per_meter, currencies, vat }
 }
 
 export default function OptiClient({ 
   initialMaterials, 
   initialCustomers, 
-  initialEdgeMaterials 
+  initialEdgeMaterials,
+  initialCuttingFee
 }: OptiClientProps) {
   // Check permission for this page
   const { canAccess, loading: permissionsLoading } = usePermissions()
@@ -322,6 +332,7 @@ export default function OptiClient({
   
   // State for showing optimization data card
   const [showOptimizationData, setShowOptimizationData] = useState(false)
+  const [showQuote, setShowQuote] = useState(false)
   
   // Customer data state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -409,6 +420,140 @@ export default function OptiClient({
       sessionStorage.removeItem('opti-panels')
     }
   }, [addedPanels])
+
+  // Calculate quote from optimization results
+  const quoteResult = useMemo<QuoteResult | null>(() => {
+    if (!optimizationResult || !optimizationResult.materials || optimizationResult.materials.length === 0) {
+      return null
+    }
+
+    console.log('[QUOTE] Starting quote calculation for', optimizationResult.materials.length, 'materials')
+
+    // Convert materials to MaterialInfo format
+    const materialInfos = optimizationResult.materials.map(result => {
+      const material = materials.find(m => m.id === result.material_id)
+      if (!material) return null
+
+      return {
+        id: material.id,
+        name: material.name,
+        width_mm: material.width_mm,
+        length_mm: material.length_mm,
+        on_stock: material.on_stock,
+        usage_limit: material.usage_limit,
+        price_per_sqm: material.price_per_sqm,
+        vat_rate: material.vat_percent / 100, // Convert from percentage to decimal
+        waste_multi: material.waste_multi,
+        currency: material.currency
+      }
+    }).filter(Boolean) as any[]
+
+    // Extract panel edges grouped by material
+    const panelEdgesByMaterial = new Map<string, any[]>()
+    
+    addedPanels.forEach(panel => {
+      // Extract material ID from táblásAnyag string
+      const materialMatch = panel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
+      if (!materialMatch) return
+      
+      const materialName = materialMatch[1].trim()
+      const materialWidth = parseInt(materialMatch[2])
+      const materialLength = parseInt(materialMatch[3])
+      
+      const material = materials.find(m => 
+        m.name === materialName && 
+        m.width_mm === materialWidth && 
+        m.length_mm === materialLength
+      )
+      if (!material) return
+
+      const length = parseInt(panel.hosszúság)
+      const width = parseInt(panel.szélesség)
+      const quantity = parseInt(panel.darab)
+
+      // Initialize array for this material if needed
+      if (!panelEdgesByMaterial.has(material.id)) {
+        panelEdgesByMaterial.set(material.id, [])
+      }
+      const materialEdges = panelEdgesByMaterial.get(material.id)!
+
+      console.log('[QUOTE] Panel edges for', material.name, ':', panel.élzárásA, panel.élzárásB, panel.élzárásC, panel.élzárásD)
+
+      // Top edge (A)
+      if (panel.élzárásA && panel.élzárásA !== '') {
+        materialEdges.push({
+          edge_material_name: panel.élzárásA,
+          length_mm: length,
+          quantity: quantity
+        })
+      }
+      // Right edge (B)
+      if (panel.élzárásB && panel.élzárásB !== '') {
+        materialEdges.push({
+          edge_material_name: panel.élzárásB,
+          length_mm: width,
+          quantity: quantity
+        })
+      }
+      // Bottom edge (C)
+      if (panel.élzárásC && panel.élzárásC !== '') {
+        materialEdges.push({
+          edge_material_name: panel.élzárásC,
+          length_mm: length,
+          quantity: quantity
+        })
+      }
+      // Left edge (D)
+      if (panel.élzárásD && panel.élzárásD !== '') {
+        materialEdges.push({
+          edge_material_name: panel.élzárásD,
+          length_mm: width,
+          quantity: quantity
+        })
+      }
+    })
+
+    console.log('[QUOTE] Edges grouped by material:', Array.from(panelEdgesByMaterial.entries()).map(([id, edges]) => ({ material_id: id, edge_count: edges.length })))
+
+    // Convert edge materials to EdgeMaterialInfo map (use ID as key)
+    const edgeMaterialInfoMap = new Map()
+    edgeMaterials.forEach(em => {
+      const displayName = `${em.type}-${em.width}/${em.thickness}-${em.decor}`
+      edgeMaterialInfoMap.set(em.id, { // Use ID as key
+        name: displayName, // But use formatted name for display
+        price_per_m: em.price || 0,
+        vat_rate: (em.vat?.kulcs || 0) / 100, // Convert from percentage to decimal
+        overhang_mm: em.ráhagyás || 0,
+        currency: 'HUF' // Assuming HUF for now
+      })
+    })
+
+    console.log('[QUOTE] Edge material map keys (IDs):', Array.from(edgeMaterialInfoMap.keys()))
+
+    // Convert cutting fee to CuttingFeeInfo format
+    const cuttingFeeInfo = initialCuttingFee ? {
+      fee_per_meter: initialCuttingFee.fee_per_meter || 0,
+      vat_rate: (initialCuttingFee.vat?.kulcs || 0) / 100, // Convert from percentage to decimal
+      currency: initialCuttingFee.currencies?.name || 'HUF'
+    } : null
+
+    console.log('[QUOTE] Cutting fee info:', cuttingFeeInfo)
+
+    try {
+      const result = calculateQuote(
+        optimizationResult.materials,
+        materialInfos,
+        panelEdgesByMaterial,
+        edgeMaterialInfoMap,
+        cuttingFeeInfo
+      )
+      console.log('[QUOTE] Quote calculated successfully:', result)
+      return result
+    } catch (error) {
+      console.error('[QUOTE] Error calculating quote:', error)
+      return null
+    }
+  }, [optimizationResult, materials, addedPanels, edgeMaterials, initialCuttingFee])
   
   // Edit state
   const [editingPanel, setEditingPanel] = useState<string | null>(null)
@@ -963,15 +1108,15 @@ export default function OptiClient({
   useEffect(() => {
     if (!permissionsLoading && !hasAccess) {
       const timer = setTimeout(() => {
-        toast.error('Nincs jogosultsága az Opti oldal megtekintéséhez!', {
-          position: "top-right",
-          autoClose: 3000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
-        window.location.href = '/users'
+      toast.error('Nincs jogosultsága az Opti oldal megtekintéséhez!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+      window.location.href = '/users'
       }, 100) // Small delay to prevent redirects during page refresh
       
       return () => clearTimeout(timer)
@@ -2781,18 +2926,212 @@ export default function OptiClient({
       </Grid>
         )}
 
-        {/* Árajnálat generálás Button */}
-        {optimizationResult && (
-          <Grid item xs={12} sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-            <Button
-              variant="contained"
-              color="primary"
-              size="large"
-              sx={{ px: 4, py: 1.5 }}
-              onClick={() => setShowOptimizationData(true)}
-            >
-              Árajnálat generálás
-            </Button>
+        {/* Árajánlat (Quote) Card */}
+        {optimizationResult && quoteResult && (
+          <Grid item xs={12} sx={{ mt: 3 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                  Árajánlat
+                </Typography>
+
+                {/* Material Costs */}
+                {quoteResult.materials.map((material, idx) => (
+                  <Box key={idx} sx={{ mb: 4 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                        {material.material_name}
+                      </Typography>
+                      <Chip 
+                        label={material.on_stock ? 'Raktári' : 'Nem raktári'} 
+                        color={material.on_stock ? 'success' : 'warning'}
+                        size="small"
+                      />
+                    </Box>
+                    
+                    {/* Lapanyag Table */}
+                    <TableContainer component={Paper} sx={{ mb: 2 }}>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow sx={{ bgcolor: 'grey.100' }}>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Tábla</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>Kihasználtság</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>Nettó</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>ÁFA</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>Bruttó</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {material.boards.map((board, boardIdx) => {
+                            // Get the actual material to access usage_limit
+                            const actualMaterial = materials.find(m => m.id === material.material_id)
+                            const isOverLimit = actualMaterial && (board.usage_percentage / 100) >= actualMaterial.usage_limit
+                            
+                            return (
+                              <TableRow key={boardIdx}>
+                                <TableCell>
+                                  {material.on_stock ? `Tábla ${board.board_id}` : `${board.board_id} tábla`}
+                                  {board.pricing_method === 'panel_area' && material.on_stock && (
+                                    <Typography variant="caption" display="block" color="text.secondary">
+                                      (panel × hulladékszorzó)
+                                    </Typography>
+                                  )}
+                                  {board.pricing_method === 'full_board' && (
+                                    <Typography variant="caption" display="block" color="warning.main">
+                                      (teljes tábla árazva)
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Typography 
+                                    component="span" 
+                                    sx={{ 
+                                      fontWeight: isOverLimit ? 'bold' : 'normal',
+                                      color: isOverLimit ? 'error.main' : 'inherit'
+                                    }}
+                                  >
+                                    {board.usage_percentage.toFixed(1)}%
+                                  </Typography>
+                                  {!material.on_stock && (
+                                    <Typography variant="caption" display="block" color="text.secondary">
+                                      (tényleges kihasználtság)
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell align="right">{formatPrice(board.net_price, material.currency)}</TableCell>
+                                <TableCell align="right">{formatPrice(board.vat_amount, material.currency)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(board.gross_price, material.currency)}</TableCell>
+                              </TableRow>
+                            )
+                          })}
+                          <TableRow sx={{ bgcolor: 'grey.50' }}>
+                            <TableCell colSpan={2} sx={{ fontWeight: 'bold' }}>Lapanyag összesen:</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_material_net, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_material_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_material_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+
+                    {/* Edge Materials Table */}
+                    {material.edge_materials.length > 0 && (
+                      <TableContainer component={Paper} sx={{ mb: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow sx={{ bgcolor: 'grey.100' }}>
+                              <TableCell sx={{ fontWeight: 'bold' }}>Élzáró anyag</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>Hossz</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>Ár/m</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>Nettó</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>ÁFA</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>Bruttó</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {material.edge_materials.map((edge, edgeIdx) => (
+                              <TableRow key={edgeIdx}>
+                                <TableCell>
+                                  {edge.edge_material_name}
+                                  <Typography variant="caption" display="block" color="text.secondary">
+                                    {edge.length_m.toFixed(2)}m + {((edge.length_with_overhang_m - edge.length_m) * 1000).toFixed(0)}mm ráhagyás
+                                  </Typography>
+                                </TableCell>
+                                <TableCell align="right">{edge.length_with_overhang_m.toFixed(2)}m</TableCell>
+                                <TableCell align="right">{formatPrice(edge.price_per_m, edge.currency)}</TableCell>
+                                <TableCell align="right">{formatPrice(edge.net_price, edge.currency)}</TableCell>
+                                <TableCell align="right">{formatPrice(edge.vat_amount, edge.currency)}</TableCell>
+                                <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(edge.gross_price, edge.currency)}</TableCell>
+                              </TableRow>
+                            ))}
+                            <TableRow sx={{ bgcolor: 'grey.50' }}>
+                              <TableCell colSpan={3} sx={{ fontWeight: 'bold' }}>Élzáró összesen:</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_edge_net, material.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_edge_vat, material.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_edge_gross, material.currency)}</TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+
+                    {/* Cutting Cost */}
+                    {material.cutting_cost && (
+                      <TableContainer component={Paper} variant="outlined" sx={{ mb: 2 }}>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Vágási költség</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Ár/m</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Nettó</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>ÁFA</TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'grey.100', fontWeight: 'bold' }}>Bruttó</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            <TableRow>
+                              <TableCell>
+                                {material.cutting_cost.total_cutting_length_m.toFixed(1)}m
+                              </TableCell>
+                              <TableCell align="right">
+                                {formatPrice(material.cutting_cost.fee_per_meter, material.cutting_cost.currency)}/m
+                              </TableCell>
+                              <TableCell align="right">{formatPrice(material.cutting_cost.net_price, material.cutting_cost.currency)}</TableCell>
+                              <TableCell align="right">{formatPrice(material.cutting_cost.vat_amount, material.cutting_cost.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.cutting_cost.gross_price, material.cutting_cost.currency)}</TableCell>
+                            </TableRow>
+                            <TableRow sx={{ bgcolor: 'grey.50' }}>
+                              <TableCell colSpan={2} sx={{ fontWeight: 'bold' }}>
+                                Vágási költség összesen:
+                              </TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.cutting_cost.net_price, material.cutting_cost.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.cutting_cost.vat_amount, material.cutting_cost.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.cutting_cost.gross_price, material.cutting_cost.currency)}</TableCell>
+                            </TableRow>
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    )}
+
+                    {/* Material Total */}
+                    <Box sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                            {material.material_name} összesen:
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                            {formatPrice(material.total_gross, material.currency)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            (Nettó: {formatPrice(material.total_net, material.currency)} + ÁFA: {formatPrice(material.total_vat, material.currency)})
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  </Box>
+                ))}
+
+                {/* Grand Total */}
+                <Divider sx={{ my: 3 }} />
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableBody>
+                      <TableRow sx={{ bgcolor: 'success.50' }}>
+                        <TableCell sx={{ fontWeight: 'bold', fontSize: '1.1rem' }}>VÉGÖSSZEG</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Nettó: {formatPrice(quoteResult.grand_total_net, quoteResult.currency)}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>ÁFA: {formatPrice(quoteResult.grand_total_vat, quoteResult.currency)}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '1.2rem', color: 'success.dark' }}>
+                          Bruttó: {formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
           </Grid>
         )}
       </Grid>

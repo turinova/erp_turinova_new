@@ -202,6 +202,7 @@ export async function getAllMaterials() {
       trim_left_mm, 
       rotatable, 
       waste_multi, 
+      usage_limit,
       created_at, 
       updated_at
     `)
@@ -223,7 +224,8 @@ export async function getAllMaterials() {
       id,
       price_per_sqm,
       active,
-      vat(kulcs)
+      vat(kulcs),
+      currencies(name)
     `)
     .in('id', materialIds)
 
@@ -234,6 +236,7 @@ export async function getAllMaterials() {
       { 
         price_per_sqm: p.price_per_sqm || 0, 
         vat_percent: p.vat?.kulcs || 0,
+        currency: p.currencies?.name || 'HUF',
         active: p.active !== undefined ? p.active : true
       }
     ])
@@ -241,7 +244,7 @@ export async function getAllMaterials() {
 
   // Transform the data to match the expected format
   const transformedData = (data || []).map(material => {
-    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0, active: true }
+    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0, currency: 'HUF', active: true }
     
     return {
       id: material.id,
@@ -262,9 +265,11 @@ export async function getAllMaterials() {
       trim_left_mm: material.trim_left_mm || 0,
       rotatable: material.rotatable !== false,
       waste_multi: material.waste_multi || 1.0,
+      usage_limit: material.usage_limit !== undefined && material.usage_limit !== null ? material.usage_limit : 0.65,
       machine_code: '', // For list view, we don't need machine_code
       price_per_sqm: pricing.price_per_sqm,
       vat_percent: pricing.vat_percent,
+      currency: pricing.currency,
       created_at: material.created_at,
       updated_at: material.updated_at
     }
@@ -401,6 +406,43 @@ export async function getAllVatRates() {
 
   logTiming('VAT Total', startTime, `returned ${data?.length || 0} records`)
   return data || []
+}
+
+// Cutting Fees SSR functions
+export async function getCuttingFee() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('cutting_fees')
+    .select(`
+      id,
+      fee_per_meter,
+      currency_id,
+      vat_id,
+      currencies (
+        id,
+        name
+      ),
+      vat (
+        id,
+        kulcs
+      ),
+      created_at,
+      updated_at
+    `)
+    .limit(1)
+    .single()
+
+  const queryTime = performance.now()
+  logTiming('Cutting Fee DB Query', startTime, `fetched ${data ? 1 : 0} records`)
+
+  if (error) {
+    console.error('Error fetching cutting fee:', error)
+    return null
+  }
+
+  logTiming('Cutting Fee Total', startTime, `returned ${data ? 1 : 0} records`)
+  return data || null
 }
 
 export async function getMaterialPriceHistory(materialId: string) {
