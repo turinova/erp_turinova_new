@@ -332,6 +332,136 @@ export async function getAllUnits() {
   return data || []
 }
 
+// Production Machines SSR functions
+export async function getAllProductionMachines() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('production_machines')
+    .select('id, machine_name, comment, usage_limit_per_day, created_at, updated_at')
+    .is('deleted_at', null)
+    .order('machine_name', { ascending: true })
+
+  const queryTime = performance.now()
+  logTiming('Production Machines DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching production machines:', error)
+    return []
+  }
+
+  logTiming('Production Machines Total', startTime, `returned ${data?.length || 0} records`)
+  return data || []
+}
+
+export async function getProductionMachineById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('production_machines')
+    .select('id, machine_name, comment, usage_limit_per_day, created_at, updated_at')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching production machine:', error)
+    return null
+  }
+
+  return data
+}
+
+// Fee Types SSR functions
+export async function getAllFeeTypes() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('feetypes')
+    .select(`
+      id, 
+      name, 
+      net_price, 
+      created_at, 
+      updated_at,
+      vat_id,
+      currency_id,
+      vat (
+        id,
+        name,
+        kulcs
+      ),
+      currencies (
+        id,
+        name
+      )
+    `)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  const queryTime = performance.now()
+  logTiming('Fee Types DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching fee types:', error)
+    return []
+  }
+
+  // Transform the data to include calculated fields
+  const transformedData = data?.map(feeType => ({
+    ...feeType,
+    vat_name: feeType.vat?.name || '',
+    vat_percent: feeType.vat?.kulcs || 0,
+    currency_name: feeType.currencies?.name || '',
+    vat_amount: (feeType.net_price * (feeType.vat?.kulcs || 0)) / 100,
+    gross_price: feeType.net_price + ((feeType.net_price * (feeType.vat?.kulcs || 0)) / 100)
+  })) || []
+
+  logTiming('Fee Types Total', startTime, `returned ${transformedData.length} records`)
+  return transformedData
+}
+
+export async function getFeeTypeById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('feetypes')
+    .select(`
+      id, 
+      name, 
+      net_price, 
+      created_at, 
+      updated_at,
+      vat_id,
+      currency_id,
+      vat (
+        id,
+        name,
+        kulcs
+      ),
+      currencies (
+        id,
+        name
+      )
+    `)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching fee type:', error)
+    return null
+  }
+
+  // Transform the data to include calculated fields
+  const transformedData = {
+    ...data,
+    vat_name: data.vat?.name || '',
+    vat_percent: data.vat?.kulcs || 0,
+    currency_name: data.currencies?.name || '',
+    vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
+    gross_price: data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+  }
+
+  return transformedData
+}
+
 // Currencies SSR functions
 export async function getCurrencyById(id: string) {
   const { data, error } = await supabaseServer
@@ -1028,13 +1158,13 @@ export async function getAllCompanies() {
   return data || []
 }
 
-// Get tenant company (for default email in customer auto-creation)
+// Get tenant company (for default email in customer auto-creation and quote display)
 export async function getTenantCompany() {
   const startTime = performance.now()
   
   const { data, error } = await supabaseServer
     .from('tenant_company')
-    .select('id, name, email')
+    .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id')
     .is('deleted_at', null)
     .limit(1)
     .single()
@@ -1314,4 +1444,126 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
     logTiming('Quotes Fetch Error', startTime)
     return { quotes: [], totalCount: 0, totalPages: 0 }
   }
+}
+
+// Accessories SSR functions
+export async function getAllAccessories() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('accessories')
+    .select(`
+      id, 
+      name, 
+      sku, 
+      net_price, 
+      created_at, 
+      updated_at,
+      vat_id,
+      currency_id,
+      units_id,
+      partners_id,
+      vat (
+        id,
+        name,
+        kulcs
+      ),
+      currencies (
+        id,
+        name
+      ),
+      units (
+        id,
+        name,
+        shortform
+      ),
+      partners (
+        id,
+        name
+      )
+    `)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  const queryTime = performance.now()
+  logTiming('Accessories DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching accessories:', error)
+    return []
+  }
+
+  // Transform the data to include calculated fields
+  const transformedData = data?.map(accessory => ({
+    ...accessory,
+    vat_name: accessory.vat?.name || '',
+    vat_percent: accessory.vat?.kulcs || 0,
+    currency_name: accessory.currencies?.name || '',
+    unit_name: accessory.units?.name || '',
+    unit_shortform: accessory.units?.shortform || '',
+    partner_name: accessory.partners?.name || '',
+    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+    gross_price: accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
+  })) || []
+
+  logTiming('Accessories Total', startTime, `returned ${transformedData.length} records`)
+  return transformedData
+}
+
+export async function getAccessoryById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('accessories')
+    .select(`
+      id, 
+      name, 
+      sku, 
+      net_price, 
+      created_at, 
+      updated_at,
+      vat_id,
+      currency_id,
+      units_id,
+      partners_id,
+      vat (
+        id,
+        name,
+        kulcs
+      ),
+      currencies (
+        id,
+        name
+      ),
+      units (
+        id,
+        name,
+        shortform
+      ),
+      partners (
+        id,
+        name
+      )
+    `)
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching accessory:', error)
+    return null
+  }
+
+  // Transform the data to include calculated fields
+  const transformedData = {
+    ...data,
+    vat_name: data.vat?.name || '',
+    vat_percent: data.vat?.kulcs || 0,
+    currency_name: data.currencies?.name || '',
+    unit_name: data.units?.name || '',
+    unit_shortform: data.units?.shortform || '',
+    partner_name: data.partners?.name || '',
+    vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
+    gross_price: data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+  }
+
+  return transformedData
 }

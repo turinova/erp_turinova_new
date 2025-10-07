@@ -385,10 +385,12 @@ function calculateEdgeMaterialPricing(
 
     const lengthM = totalLengthMm / 1000;
     
-    // Add overhang (ráhagyás) per edge segment
-    // Count number of edges
-    const edgeCount = panelEdges.filter(e => e.edge_material_name === edgeId).length;
-    const overhangLengthMm = edgeCount * edgeInfo.overhang_mm;
+    // Add overhang (ráhagyás) per panel quantity
+    // Count total quantity of panels using this edge material
+    const totalQuantity = panelEdges
+      .filter(e => e.edge_material_name === edgeId)
+      .reduce((sum, e) => sum + e.quantity, 0);
+    const overhangLengthMm = totalQuantity * edgeInfo.overhang_mm;
     const lengthWithOverhangM = (totalLengthMm + overhangLengthMm) / 1000;
 
     // Formula: length_with_overhang × price_per_m × (1 + VAT_rate)

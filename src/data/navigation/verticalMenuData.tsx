@@ -68,6 +68,18 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Media',
         href: '/media'
+      },
+      {
+        label: 'Díj típusok',
+        href: '/feetypes'
+      },
+      {
+        label: 'Gépek',
+        href: '/machines'
+      },
+      {
+        label: 'Termékek',
+        href: '/accessories'
       }
     ]
   },

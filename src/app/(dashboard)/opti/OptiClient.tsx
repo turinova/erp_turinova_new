@@ -1443,11 +1443,10 @@ export default function OptiClient({
       // Different message for edit vs create
       if (isEditMode) {
         toast.success(`Árajánlat sikeresen frissítve: ${result.quoteNumber}`)
-        
         // Redirect back to quote detail page after successful update
         setTimeout(() => {
           router.push(`/quotes/${editingQuoteId}`)
-        }, 1500) // Wait 1.5 seconds to show the success message
+        }, 1500) // Small delay to show the success message
       } else {
         toast.success(`Árajánlat sikeresen mentve: ${result.quoteNumber}`)
       }
@@ -1455,10 +1454,8 @@ export default function OptiClient({
       // Clear cache after save
       sessionStorage.removeItem('opti-panels')
       
-      // Refresh the page to clear any cached data (only for new quotes)
-      if (!isEditMode) {
-        router.refresh()
-      }
+      // Refresh the page to clear any cached data
+      router.refresh()
       
     } catch (err) {
       console.error('Error saving quote:', err)
@@ -2667,27 +2664,27 @@ export default function OptiClient({
                 arrow
               >
                 <span>
-                  <Button
-                    variant="contained"
-                    color={optimizationResult && !isOptimizing ? "success" : "warning"}
-                    size="large"
-                    onClick={optimize}
+              <Button
+                variant="contained"
+                color={optimizationResult && !isOptimizing ? "success" : "warning"}
+                size="large"
+                onClick={optimize}
                     disabled={addedPanels.length === 0 || isOptimizing || !customerData.name.trim()}
-                    sx={{ 
-                      minWidth: 200,
-                      py: 1.5,
-                      px: 4
-                    }}
-                  >
-                    {isOptimizing ? (
-                      <>
-                        <CircularProgress size={20} sx={{ mr: 1 }} />
-                        Optimalizálás...
-                      </>
-                    ) : (
-                      'Optimalizálás'
-                    )}
-                  </Button>
+                sx={{ 
+                  minWidth: 200,
+                  py: 1.5,
+                  px: 4
+                }}
+              >
+                {isOptimizing ? (
+                  <>
+                    <CircularProgress size={20} sx={{ mr: 1 }} />
+                    Optimalizálás...
+                  </>
+                ) : (
+                  'Optimalizálás'
+                )}
+              </Button>
                 </span>
               </Tooltip>
               
@@ -2815,13 +2812,13 @@ export default function OptiClient({
                           color="primary" 
                           variant="outlined"
                         />
-                        <Chip
+                                  <Chip
                           label={`Összes vágási hossz: ${(materialResult.metrics.total_cut_length_mm / 1000).toFixed(1)}m`}
-                          size="small"
-                          variant="filled"
-                          color="secondary"
+                              size="small"
+                              variant="filled"
+                              color="secondary"
                           sx={{ fontWeight: 'bold' }}
-                        />
+                            />
                       </Box>
                     </Box>
                   </AccordionSummary>

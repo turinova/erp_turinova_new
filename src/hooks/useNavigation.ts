@@ -47,7 +47,7 @@ export function useNavigation() {
           }
           
           // Bypass permission check for pages that don't use it (same as page-level bypass)
-          if (item.href === '/materials' || item.href === '/media') {
+          if (item.href === '/materials' || item.href === '/media' || item.href === '/feetypes' || item.href === '/machines' || item.href === '/accessories') {
             return true // Temporarily bypass until permission system is fully activated
           }
           

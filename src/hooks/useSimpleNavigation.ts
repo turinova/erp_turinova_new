@@ -44,6 +44,9 @@ export function useSimpleNavigation() {
             case '/linear-materials':
             case '/edge':
             case '/media':
+            case '/feetypes':
+            case '/machines':
+            case '/accessories':
               return isAdmin
             case '/opti':
             case '/optimalizalo':

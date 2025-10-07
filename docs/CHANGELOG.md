@@ -4,6 +4,27 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Edge Material Ráhagyás Calculation Fix
+
+### Fixed
+- **Edge Material Pricing**: Fixed ráhagyás (overhang/allowance) calculation to multiply by panel quantity instead of counting edge segments only
+- **Accessories Page**: Updated UI to match machines page exactly (button placement, search bar, table styling)
+- **Toast Notifications**: Standardized accessories page to use react-toastify for consistency
+- **Edit Functionality**: Fixed accessory edit form to properly pass ID for updates
+- **Quote Redirect**: Restored automatic redirect to quote detail page after successful update
+
+### Technical Changes
+- Modified `calculateEdgeMaterialPricing()` in `quoteCalculations.ts` to count total panel quantity
+- Updated accessories components for UI consistency and proper functionality
+- Fixed OptiClient redirect logic for edit mode
+
+### Impact
+- Edge material costs now accurately reflect panel quantities
+- Improved user experience with consistent UI and proper feedback
+- Quote editing workflow now works seamlessly
+
+---
+
 ## [2025-01-27] - Critical Quote Pricing System Fixes
 
 ### Fixed

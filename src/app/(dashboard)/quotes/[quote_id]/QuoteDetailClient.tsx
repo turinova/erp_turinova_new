@@ -262,62 +262,88 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
 
       <Grid container spacing={3}>
         {/* Left Column - Quote Details */}
-        <Grid item xs={12} md={8}>
-          {/* Company & Customer Info */}
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Grid container spacing={3}>
-              {/* Company Info */}
-              <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom>
-                  Cégadatok
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {quoteData.tenant_company ? (
-                    <>
-                      <strong>{quoteData.tenant_company.name}</strong><br />
-                      {quoteData.tenant_company.postal_code} {quoteData.tenant_company.city}<br />
-                      {quoteData.tenant_company.address}<br />
-                      {quoteData.tenant_company.phone_number && `Tel: ${quoteData.tenant_company.phone_number}`}<br />
-                      {quoteData.tenant_company.email && `Email: ${quoteData.tenant_company.email}`}<br />
-                      {quoteData.tenant_company.tax_number && `Adószám: ${quoteData.tenant_company.tax_number}`}
-                    </>
-                  ) : (
-                    <>
-                      Turinova Kft.<br />
-                      Budapest, Hungary<br />
-                      Adószám: 12345678-1-41
-                    </>
-                  )}
-                </Typography>
-              </Grid>
-              
+        <Grid item xs={12} md={9}>
+          {/* All Quote Information in One Card */}
+          <Paper sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0' }}>
+            {/* Company Info */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                Cégadatok
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                {quoteData.tenant_company ? (
+                  <>
+                    <strong>{quoteData.tenant_company.name}</strong><br />
+                    {quoteData.tenant_company.postal_code} {quoteData.tenant_company.city}, {quoteData.tenant_company.address}<br />
+                    {quoteData.tenant_company.tax_number && `Adószám: ${quoteData.tenant_company.tax_number}`}<br />
+                    {quoteData.tenant_company.company_registration_number && `Cégjegyzékszám: ${quoteData.tenant_company.company_registration_number}`}<br />
+                    {quoteData.tenant_company.email && `Email: ${quoteData.tenant_company.email}`}<br />
+                    {quoteData.tenant_company.phone_number && `Tel: ${quoteData.tenant_company.phone_number}`}
+                  </>
+                ) : (
+                  <>
+                    Turinova Kft.<br />
+                    Budapest, Hungary<br />
+                    Adószám: 12345678-1-41
+                  </>
+                )}
+              </Typography>
+            </Box>
+
+            {/* Customer & Billing Info */}
+            <Grid container spacing={4} sx={{ mb: 4 }}>
               {/* Customer Info */}
               <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
                   Ügyfél adatok
                 </Typography>
-                <Typography variant="body2">
+                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
                   <strong>{quoteData.customer.name}</strong><br />
                   {quoteData.customer.email}<br />
                   {quoteData.customer.mobile}
                 </Typography>
-                {quoteData.customer.billing_name && (
-                  <Box sx={{ mt: 1 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      <strong>Számlázási cím:</strong><br />
-                      {quoteData.customer.billing_name}<br />
-                      {quoteData.customer.billing_postal_code} {quoteData.customer.billing_city}<br />
-                      {quoteData.customer.billing_street} {quoteData.customer.billing_house_number}
+              </Grid>
+
+              {/* Billing Details */}
+              <Grid item xs={12} md={6}>
+                {quoteData.customer.billing_name ? (
+                  <>
+                    <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                      Számlázási adatok
                     </Typography>
-                  </Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                      <strong>{quoteData.customer.billing_name}</strong><br />
+                      {quoteData.customer.billing_postal_code} {quoteData.customer.billing_city}<br />
+                      {quoteData.customer.billing_street} {quoteData.customer.billing_house_number}<br />
+                      {quoteData.customer.billing_country}
+                      {quoteData.customer.billing_tax_number && (
+                        <>
+                          <br />Adószám: {quoteData.customer.billing_tax_number}
+                        </>
+                      )}
+                      {quoteData.customer.billing_company_reg_number && (
+                        <>
+                          <br />Cégjegyzékszám: {quoteData.customer.billing_company_reg_number}
+                        </>
+                      )}
+                    </Typography>
+                  </>
+                ) : (
+                  <>
+                    <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                      Számlázási adatok
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                      Nincs számlázási adat megadva
+                    </Typography>
+                  </>
                 )}
               </Grid>
             </Grid>
-          </Paper>
 
-          {/* Quote Summary */}
-          <Paper sx={{ p: 3, mb: 3 }}>
-            <Typography variant="h6" gutterBottom>
+            {/* Quote Summary */}
+            <Divider sx={{ mb: 3 }} />
+            <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
               Árajánlat összesítése
             </Typography>
             
@@ -370,68 +396,127 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
               <Typography variant="subtitle2" gutterBottom>
                 Szolgáltatások
               </Typography>
-              <Box sx={{ pl: 2 }}>
-                {/* Use actual saved breakdown data from database */}
-                {(() => {
-                  if (!quoteData.pricing || quoteData.pricing.length === 0) {
-                    return (
-                      <Typography variant="body2" color="text.secondary">
-                        Nincs szolgáltatási adat elérhető.
-                      </Typography>
-                    )
-                  }
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Szolgáltatás</strong></TableCell>
+                      <TableCell align="right"><strong>Mennyiség</strong></TableCell>
+                      <TableCell align="right"><strong>Nettó ár</strong></TableCell>
+                      <TableCell align="right"><strong>Bruttó ár</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {(() => {
+                      if (!quoteData.pricing || quoteData.pricing.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={4} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                Nincs szolgáltatási adat elérhető.
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      }
 
-                  // Calculate totals from saved breakdown data
-                  const totalCuttingCost = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_gross || 0), 0)
-                  const totalEdgeCost = quoteData.pricing.reduce((sum, p) => sum + (p.edge_materials_gross || 0), 0)
-                  
-                  // Collect all services from breakdown data
-                  const allServices: Array<{type: string, quantity: number, gross_price: number}> = []
-                  
-                  quoteData.pricing.forEach(pricing => {
-                    if (pricing.quote_services_breakdown) {
-                      pricing.quote_services_breakdown.forEach(service => {
-                        const existingService = allServices.find(s => s.type === service.service_type)
-                        if (existingService) {
-                          existingService.quantity += service.quantity
-                          existingService.gross_price += service.gross_price
-                        } else {
-                          allServices.push({
-                            type: service.service_type,
-                            quantity: service.quantity,
-                            gross_price: service.gross_price
+                      // Calculate totals from saved breakdown data
+                      const totalCuttingCost = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_gross || 0), 0)
+                      const totalCuttingNet = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_net || 0), 0)
+                      const totalCuttingLength = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_length_m || 0), 0)
+                      
+                      // Calculate total edge materials from breakdown data
+                      let totalEdgeLength = 0
+                      let totalEdgeNet = 0
+                      let totalEdgeGross = 0
+                      
+                      quoteData.pricing.forEach(pricing => {
+                        if (pricing.quote_edge_materials_breakdown) {
+                          pricing.quote_edge_materials_breakdown.forEach(edge => {
+                            totalEdgeLength += edge.total_length_m
+                            totalEdgeNet += edge.net_price
+                            totalEdgeGross += edge.gross_price
                           })
                         }
                       })
-                    }
-                  })
-                  
-                  return (
-                    <>
-                      {totalCuttingCost > 0 && (
-                        <Typography variant="body2">
-                          Szabás díj: {formatCurrency(totalCuttingCost)}
-                        </Typography>
-                      )}
-                      {totalEdgeCost > 0 && (
-                        <Typography variant="body2">
-                          Élzárás díj: {formatCurrency(totalEdgeCost)}
-                        </Typography>
-                      )}
-                      {allServices.map(service => {
+                      
+                      // Collect all services from breakdown data
+                      const allServices: Array<{type: string, quantity: number, net_price: number, gross_price: number}> = []
+                      
+                      quoteData.pricing.forEach(pricing => {
+                        if (pricing.quote_services_breakdown) {
+                          pricing.quote_services_breakdown.forEach(service => {
+                            const existingService = allServices.find(s => s.type === service.service_type)
+                            if (existingService) {
+                              existingService.quantity += service.quantity
+                              existingService.net_price += service.net_price || 0
+                              existingService.gross_price += service.gross_price
+                            } else {
+                              allServices.push({
+                                type: service.service_type,
+                                quantity: service.quantity,
+                                net_price: service.net_price || 0,
+                                gross_price: service.gross_price
+                              })
+                            }
+                          })
+                        }
+                      })
+                      
+                      const servicesRows = []
+                      
+                      // Add cutting cost if exists
+                      if (totalCuttingCost > 0) {
+                        servicesRows.push(
+                          <TableRow key="cutting">
+                            <TableCell>Szabás díj</TableCell>
+                            <TableCell align="right">{totalCuttingLength.toFixed(2)} m</TableCell>
+                            <TableCell align="right">{formatCurrency(totalCuttingNet)}</TableCell>
+                            <TableCell align="right">{formatCurrency(totalCuttingCost)}</TableCell>
+                          </TableRow>
+                        )
+                      }
+                      
+                      // Add total edge materials if exists
+                      if (totalEdgeGross > 0) {
+                        servicesRows.push(
+                          <TableRow key="edge-total">
+                            <TableCell>Élzárás</TableCell>
+                            <TableCell align="right">{totalEdgeLength.toFixed(2)} m</TableCell>
+                            <TableCell align="right">{formatCurrency(totalEdgeNet)}</TableCell>
+                            <TableCell align="right">{formatCurrency(totalEdgeGross)}</TableCell>
+                          </TableRow>
+                        )
+                      }
+                      
+                      // Add individual services
+                      allServices.forEach(service => {
                         const serviceName = service.type === 'panthelyfuras' ? 'Pánthely fúrás' :
                                           service.type === 'duplungolas' ? 'Duplung' :
                                           service.type === 'szogvagas' ? 'Szögvágás' : service.type
-                        return (
-                          <Typography key={service.type} variant="body2">
-                            {serviceName}: {service.quantity} db - {formatCurrency(service.gross_price)}
-                          </Typography>
+                        servicesRows.push(
+                          <TableRow key={service.type}>
+                            <TableCell>{serviceName}</TableCell>
+                            <TableCell align="right">{service.quantity} db</TableCell>
+                            <TableCell align="right">{formatCurrency(service.net_price)}</TableCell>
+                            <TableCell align="right">{formatCurrency(service.gross_price)}</TableCell>
+                          </TableRow>
                         )
-                      })}
-                    </>
-                  )
-                })()}
-              </Box>
+                      })
+                      
+                      return servicesRows.length > 0 ? servicesRows : (
+                        <TableRow>
+                          <TableCell colSpan={4} align="center">
+                            <Typography variant="body2" color="text.secondary">
+                              Nincs szolgáltatási adat elérhető.
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })()}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </Box>
 
             <Divider sx={{ my: 2 }} />
@@ -477,7 +562,7 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
         </Grid>
 
         {/* Right Column - Actions */}
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={3}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
