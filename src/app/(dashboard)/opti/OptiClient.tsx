@@ -1443,6 +1443,11 @@ export default function OptiClient({
       // Different message for edit vs create
       if (isEditMode) {
         toast.success(`Árajánlat sikeresen frissítve: ${result.quoteNumber}`)
+        
+        // Redirect back to quote detail page after successful update
+        setTimeout(() => {
+          router.push(`/quotes/${editingQuoteId}`)
+        }, 1500) // Wait 1.5 seconds to show the success message
       } else {
         toast.success(`Árajánlat sikeresen mentve: ${result.quoteNumber}`)
       }
@@ -1450,8 +1455,10 @@ export default function OptiClient({
       // Clear cache after save
       sessionStorage.removeItem('opti-panels')
       
-      // Refresh the page to clear any cached data
-      router.refresh()
+      // Refresh the page to clear any cached data (only for new quotes)
+      if (!isEditMode) {
+        router.refresh()
+      }
       
     } catch (err) {
       console.error('Error saving quote:', err)
