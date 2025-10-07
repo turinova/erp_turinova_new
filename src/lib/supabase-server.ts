@@ -1208,6 +1208,11 @@ export async function getQuoteById(quoteId: string) {
 
     logTiming('Pricing DB Query', pricingStartTime, `fetched ${pricingData?.length || 0} pricing records`)
 
+    // Fetch tenant company data
+    const companyStartTime = performance.now()
+    const tenantCompany = await getTenantCompany()
+    logTiming('Company DB Query', companyStartTime, `fetched ${tenantCompany ? 1 : 0} company records`)
+
     // Transform the response to include all necessary data
     const transformedQuote = {
       id: quote.id,
@@ -1218,6 +1223,7 @@ export async function getQuoteById(quoteId: string) {
       customer: quote.customers,
       panels: panels || [],
       pricing: pricingData || [],
+      tenant_company: tenantCompany,
       totals: {
         total_net: quote.total_net,
         total_vat: quote.total_vat,

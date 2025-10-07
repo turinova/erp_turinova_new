@@ -56,6 +56,20 @@ interface QuoteData {
     billing_tax_number: string
     billing_company_reg_number: string
   }
+  tenant_company: {
+    id: string
+    name: string
+    country: string
+    postal_code: string
+    city: string
+    address: string
+    phone_number: string
+    email: string
+    website: string
+    tax_number: string
+    company_registration_number: string
+    vat_id: string
+  } | null
   panels: Array<{
     id: string
     material_id: string
@@ -258,9 +272,22 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
                   Cégadatok
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Turinova Kft.<br />
-                  Budapest, Hungary<br />
-                  Adószám: 12345678-1-41
+                  {quoteData.tenant_company ? (
+                    <>
+                      <strong>{quoteData.tenant_company.name}</strong><br />
+                      {quoteData.tenant_company.postal_code} {quoteData.tenant_company.city}<br />
+                      {quoteData.tenant_company.address}<br />
+                      {quoteData.tenant_company.phone_number && `Tel: ${quoteData.tenant_company.phone_number}`}<br />
+                      {quoteData.tenant_company.email && `Email: ${quoteData.tenant_company.email}`}<br />
+                      {quoteData.tenant_company.tax_number && `Adószám: ${quoteData.tenant_company.tax_number}`}
+                    </>
+                  ) : (
+                    <>
+                      Turinova Kft.<br />
+                      Budapest, Hungary<br />
+                      Adószám: 12345678-1-41
+                    </>
+                  )}
                 </Typography>
               </Grid>
               
