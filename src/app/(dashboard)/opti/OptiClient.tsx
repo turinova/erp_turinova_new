@@ -1341,13 +1341,17 @@ export default function OptiClient({
             ? materialPricing.boards.reduce((sum, b) => sum + b.usage_percentage, 0) / boardsUsed 
             : 0
           
-          // Calculate charged_sqm (sum of charged areas for panel_area pricing)
-          const chargedSqm = materialPricing.on_stock && materialPricing.boards.some(b => b.pricing_method === 'panel_area')
-            ? materialPricing.boards.reduce((sum, b) => sum + b.charged_area_m2, 0)
-            : null
+          // Calculate charged_sqm (sum of panel area pricing only, exclude full board areas)
+          const chargedSqm = materialPricing.boards
+            .filter(b => b.pricing_method === 'panel_area')
+            .reduce((sum, b) => sum + b.charged_area_m2, 0)
           
-          // Get pricing method (use first board's method, they should all be the same)
-          const pricingMethod = materialPricing.boards[0]?.pricing_method || 'panel_area'
+          // Calculate boards sold (only boards sold as full board pricing)
+          const boardsSold = materialPricing.boards.filter(b => b.pricing_method === 'full_board').length
+          
+          // Determine pricing method based on board usage
+          const hasFullBoardPricing = materialPricing.boards.some(b => b.pricing_method === 'full_board')
+          const pricingMethod = hasFullBoardPricing ? 'full_board' : 'panel_area'
           
           return {
             material_id: materialPricing.material_id,
@@ -1357,7 +1361,7 @@ export default function OptiClient({
             thickness_mm: material?.thickness_mm || 0,
             grain_direction: material?.grain_direction || false,
             on_stock: materialPricing.on_stock,
-            boards_used: boardsUsed,
+            boards_used: boardsSold,
             usage_percentage: averageUsage,
             pricing_method: pricingMethod,
             charged_sqm: chargedSqm,

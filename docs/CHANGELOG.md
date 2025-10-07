@@ -4,6 +4,85 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Critical Quote Pricing System Fixes
+
+### Fixed
+- **Mixed Pricing Logic Error**
+  - Materials with both panel area and full board pricing now correctly calculate `charged_sqm` and `boards_used`
+  - `charged_sqm` now only includes panel area pricing (panel area × waste multiplier)
+  - `boards_used` now only counts boards sold as full board pricing
+  - Fixed OptiClient calculation logic to filter by pricing method
+
+- **On-Stock False Materials Board Counting**
+  - Materials with `on_stock = false` now correctly display actual board count instead of always showing `1 db`
+  - Fixed `quoteCalculations.ts` to create separate board entries for each board used
+  - OptiClient can now properly count boards by iterating through the `boards` array
+
+- **Quote Detail Page Display**
+  - Quote detail table now shows only `material_gross` instead of `total_gross` in "Bruttó ár" column
+  - Services (cutting, edge materials, additional services) are displayed separately in "Szolgáltatások" section
+  - Provides clearer separation between material costs and service costs
+
+- **Waste Multiplier Integration**
+  - Fixed `charged_area_m2` calculation to include waste multiplier directly for panel area pricing
+  - Simplified net price calculation by removing redundant waste multiplier multiplication
+  - Ensures accurate pricing calculations in all scenarios
+
+### Changed
+- **OptiClient.tsx**
+  - Modified `chargedSqm` calculation to filter boards by `pricing_method === 'panel_area'`
+  - Modified `boardsSold` calculation to filter boards by `pricing_method === 'full_board'`
+  - Updated `boards_used` field in API payload to use `boardsSold` value
+
+- **quoteCalculations.ts**
+  - Fixed waste multiplier calculation for panel area pricing
+  - Fixed on-stock false materials to create separate board entries instead of single virtual entry
+  - Each board entry now has individual `board_id` (1, 2, 3...) for proper counting
+
+- **QuoteDetailClient.tsx**
+  - Changed table display from `pricing.total_net/total_gross` to `pricing.material_net/material_gross`
+  - Services are now displayed separately in dedicated "Szolgáltatások" section
+
+### Technical Details
+- **Business Logic Clarification**:
+  - Panel Area Pricing: Charge for actual panel area × waste multiplier
+  - Full Board Pricing: Charge for entire board regardless of usage
+  - These pricing methods are mutually exclusive in calculations, not additive
+
+- **Display Format**: `{charged_sqm} m² / {boards_used} db`
+  - Example: `1.20 m² / 2 db` (1.20 m² panel area pricing + 2 full boards sold)
+
+- **Database Schema**: No changes required - fixes work with existing `quote_materials_pricing` table
+
+### Testing Scenarios
+- ✅ Mixed Pricing: `1.20 m² / 1 db` (correct)
+- ✅ On-Stock False: `0.00 m² / 3 db` (correct)
+- ✅ Panel Area Only: `2.94 m² / 0 db` (correct)
+- ✅ Full Board Only: `0.00 m² / 4 db` (correct)
+
+### Impact Assessment
+- **Positive**: Accurate material quantity displays, correct pricing calculations, clear cost separation
+- **Considerations**: Legacy quotes may show incorrect values until re-saved, requires re-running optimization
+
+### Documentation
+- **New Files**:
+  - `docs/QUOTE_PRICING_FIXES_2025-01-27.md` - Comprehensive technical documentation
+  - `docs/chat-archives/2025-01-27-quote-pricing-fixes.md` - Complete chat history archive
+  - `docs/decisions/2025-01-27-quote-pricing-fixes.md` - Technical decision record
+
+### Files Modified
+1. `src/lib/pricing/quoteCalculations.ts` - Fixed waste multiplier and board creation logic
+2. `src/app/(dashboard)/opti/OptiClient.tsx` - Fixed charged_sqm and boards_used calculations
+3. `src/app/(dashboard)/quotes/[quote_id]/QuoteDetailClient.tsx` - Fixed table display
+
+### Development Time
+- **Session Duration**: Full day
+- **Lines Modified**: ~50
+- **Critical Issues Resolved**: 4
+- **Business Logic Clarified**: Mixed pricing scenarios
+
+---
+
 ## [2025-01-06d] - Quote Editing & Loading via URL
 
 ### Added

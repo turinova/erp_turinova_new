@@ -19,6 +19,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {
+    label: 'Ajánlatok',
+    href: '/quotes',
+    icon: 'ri-file-list-3-line',
+    iconColor: '#E67E22' // Orange for quotes/proposals
+  },
+  {
     label: 'Törzsadatok',
     icon: 'ri-database-2-line',
     iconColor: '#2ECC71', // Green for master data

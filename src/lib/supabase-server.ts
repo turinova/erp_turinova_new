@@ -1173,6 +1173,41 @@ export async function getQuoteById(quoteId: string) {
 
     logTiming('Panels DB Query', panelStartTime, `fetched ${panels?.length || 0} panels`)
 
+    // Fetch pricing data with detailed breakdowns
+    const pricingStartTime = performance.now()
+    const { data: pricingData, error: pricingError } = await supabaseServer
+      .from('quote_materials_pricing')
+      .select(`
+        id, material_id, material_name, board_width_mm, board_length_mm, thickness_mm, grain_direction,
+        on_stock, boards_used, usage_percentage, pricing_method, charged_sqm,
+        price_per_sqm, vat_rate, currency, usage_limit, waste_multi,
+        material_net, material_vat, material_gross,
+        edge_materials_net, edge_materials_vat, edge_materials_gross,
+        cutting_length_m, cutting_net, cutting_vat, cutting_gross,
+        services_net, services_vat, services_gross,
+        total_net, total_vat, total_gross,
+        materials(id, name, brands(name)),
+        quote_edge_materials_breakdown(
+          id, edge_material_id, edge_material_name, total_length_m, price_per_m,
+          net_price, vat_amount, gross_price
+        ),
+        quote_services_breakdown(
+          id, service_type, quantity, unit_price, net_price, vat_amount, gross_price
+        )
+      `)
+      .eq('quote_id', quoteId)
+      .order('created_at', { ascending: true })
+
+    if (pricingError) {
+      console.error('[SSR] Error fetching pricing:', pricingError)
+      console.error('[SSR] Pricing error details:', JSON.stringify(pricingError, null, 2))
+      logTiming('Pricing Fetch Failed', pricingStartTime)
+      // Don't return null, continue with empty pricing data
+      console.log('[SSR] Continuing without pricing data...')
+    }
+
+    logTiming('Pricing DB Query', pricingStartTime, `fetched ${pricingData?.length || 0} pricing records`)
+
     // Transform the response to include all necessary data
     const transformedQuote = {
       id: quote.id,
@@ -1182,6 +1217,7 @@ export async function getQuoteById(quoteId: string) {
       discount_percent: quote.discount_percent,
       customer: quote.customers,
       panels: panels || [],
+      pricing: pricingData || [],
       totals: {
         total_net: quote.total_net,
         total_vat: quote.total_vat,
@@ -1201,5 +1237,75 @@ export async function getQuoteById(quoteId: string) {
     console.error('[SSR] Error fetching quote:', error)
     logTiming('Quote Fetch Error', startTime)
     return null
+  }
+}
+
+// Get quotes with pagination (for quotes list page)
+export async function getQuotesWithPagination(page: number = 1, limit: number = 20, searchTerm?: string) {
+  const startTime = performance.now()
+  
+  console.log(`[SSR] Fetching quotes page ${page}, limit ${limit}, search: "${searchTerm || 'none'}"`)
+
+  try {
+    const offset = (page - 1) * limit
+    
+    // Build query with search if provided
+    let query = supabaseServer
+      .from('quotes')
+      .select(`
+        id,
+        quote_number,
+        status,
+        final_total_after_discount,
+        updated_at,
+        customers!inner(
+          id,
+          name
+        )
+      `)
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    // Apply search filter if provided
+    if (searchTerm && searchTerm.trim()) {
+      query = query.ilike('customers.name', `%${searchTerm.trim()}%`)
+    }
+
+    const { data: quotes, error: quotesError, count } = await query
+
+    if (quotesError) {
+      console.error('[SSR] Error fetching quotes:', quotesError)
+      logTiming('Quotes Fetch Failed', startTime)
+      return { quotes: [], totalCount: 0, totalPages: 0 }
+    }
+
+    // Transform the data to flatten customer name
+    const transformedQuotes = quotes?.map(quote => ({
+      id: quote.id,
+      quote_number: quote.quote_number,
+      status: quote.status,
+      customer_name: quote.customers?.name || 'Unknown Customer',
+      final_total_after_discount: quote.final_total_after_discount,
+      updated_at: quote.updated_at
+    })) || []
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Quotes Fetch Total', startTime, `returned ${transformedQuotes.length} quotes (page ${page}/${totalPages})`)
+    console.log(`[SSR] Quotes fetched successfully: ${transformedQuotes.length} quotes, total: ${totalCount}`)
+    
+    return {
+      quotes: transformedQuotes,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+
+  } catch (error) {
+    console.error('[SSR] Error fetching quotes:', error)
+    logTiming('Quotes Fetch Error', startTime)
+    return { quotes: [], totalCount: 0, totalPages: 0 }
   }
 }

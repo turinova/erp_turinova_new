@@ -224,11 +224,11 @@ function calculateMaterialPricing(
 
       if (boardUsagePercentage < material.usage_limit) {
         // Under limit: charge for panel area with waste multiplier
-        chargedAreaM2 = panelAreaM2;
+        chargedAreaM2 = panelAreaM2 * material.waste_multi;
         pricingMethod = 'panel_area';
         
         // Formula: panel_area × price_per_sqm × (1 + VAT_rate) × waste_multi
-        const netPrice = chargedAreaM2 * material.price_per_sqm * material.waste_multi;
+        const netPrice = chargedAreaM2 * material.price_per_sqm;
         const vatAmount = netPrice * material.vat_rate;
         const grossPrice = netPrice + vatAmount;
 
@@ -278,17 +278,19 @@ function calculateMaterialPricing(
     const vatAmount = netPrice * material.vat_rate;
     const grossPrice = netPrice + vatAmount;
 
-    // Create a single "board" entry for all boards
-    boards.push({
-      board_id: boardsUsed,
-      usage_percentage: actualUsagePercentage, // Real usage, not 100%
-      area_m2: actualUsedArea / 1_000_000,
-      charged_area_m2: totalBoardArea, // But charge for full boards
-      net_price: netPrice,
-      vat_amount: vatAmount,
-      gross_price: grossPrice,
-      pricing_method: 'full_board'
-    });
+    // Create separate board entries for each board used (so OptiClient can count them correctly)
+    for (let i = 1; i <= boardsUsed; i++) {
+      boards.push({
+        board_id: i,
+        usage_percentage: actualUsagePercentage, // Real usage, not 100%
+        area_m2: actualUsedArea / 1_000_000,
+        charged_area_m2: boardArea, // Each board is charged as full board
+        net_price: netPrice / boardsUsed, // Split price across boards
+        vat_amount: vatAmount / boardsUsed, // Split VAT across boards
+        gross_price: grossPrice / boardsUsed, // Split gross across boards
+        pricing_method: 'full_board'
+      });
+    }
   }
 
   // Calculate board totals
