@@ -1349,7 +1349,7 @@ export async function getQuoteById(quoteId: string) {
     const { data: fees, error: feesError } = await supabaseServer
       .from('quote_fees')
       .select(`
-        id, fee_name, unit_price_net, vat_rate, vat_amount, gross_price, currency_id,
+        id, fee_name, quantity, unit_price_net, vat_rate, vat_amount, gross_price, currency_id, comment,
         created_at,
         feetypes(id, name),
         currencies(id, name)

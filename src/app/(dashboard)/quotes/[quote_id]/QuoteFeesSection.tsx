@@ -28,11 +28,13 @@ import { toast } from 'react-toastify'
 interface QuoteFee {
   id: string
   fee_name: string
+  quantity: number
   unit_price_net: number
   vat_rate: number
   vat_amount: number
   gross_price: number
   currency_id: string
+  comment: string
 }
 
 interface QuoteFeesSectionProps {
@@ -133,9 +135,18 @@ export default function QuoteFeesSection({
   const isAllSelected = selectedFees.length === fees.length && fees.length > 0
   const isIndeterminate = selectedFees.length > 0 && selectedFees.length < fees.length
 
-  const totalNet = fees.reduce((sum, fee) => sum + Number(fee.unit_price_net), 0)
-  const totalVat = fees.reduce((sum, fee) => sum + Number(fee.vat_amount), 0)
-  const totalGross = fees.reduce((sum, fee) => sum + Number(fee.gross_price), 0)
+  const totalNet = fees.reduce((sum, fee) => {
+    const feeNet = Number(fee.unit_price_net) * Number(fee.quantity || 1)
+    return sum + feeNet
+  }, 0)
+  
+  const totalVat = fees.reduce((sum, fee) => {
+    const feeNet = Number(fee.unit_price_net) * Number(fee.quantity || 1)
+    const feeVat = feeNet * Number(fee.vat_rate)
+    return sum + feeVat
+  }, 0)
+  
+  const totalGross = totalNet + totalVat
 
   return (
     <>
@@ -184,9 +195,10 @@ export default function QuoteFeesSection({
                         />
                       </TableCell>
                       <TableCell>Díj neve</TableCell>
-                      <TableCell align="right">Nettó ár</TableCell>
-                      <TableCell align="right">ÁFA</TableCell>
-                      <TableCell align="right">Bruttó ár</TableCell>
+                      <TableCell>Megjegyzés</TableCell>
+                      <TableCell align="right">Mennyiség</TableCell>
+                      <TableCell align="right">Egységár</TableCell>
+                      <TableCell align="right">Összeg</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -199,25 +211,16 @@ export default function QuoteFeesSection({
                           />
                         </TableCell>
                         <TableCell>{fee.fee_name}</TableCell>
+                        <TableCell>{fee.comment || '-'}</TableCell>
+                        <TableCell align="right">{fee.quantity}</TableCell>
                         <TableCell align="right">{formatCurrency(fee.unit_price_net)}</TableCell>
-                        <TableCell align="right">{formatCurrency(fee.vat_amount)}</TableCell>
                         <TableCell align="right">{formatCurrency(fee.gross_price)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow>
-                      <TableCell colSpan={2}>
+                      <TableCell colSpan={5}>
                         <Typography variant="subtitle2" fontWeight="bold">
                           Összesen:
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {formatCurrency(totalNet)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {formatCurrency(totalVat)}
                         </Typography>
                       </TableCell>
                       <TableCell align="right">

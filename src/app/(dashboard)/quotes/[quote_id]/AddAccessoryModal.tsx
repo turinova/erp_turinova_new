@@ -92,7 +92,7 @@ export default function AddAccessoryModal({
     currency_id: '',
     units_id: '',
     partners_id: '',
-    quantity: 1
+    quantity: 1 as number | ''
   })
   const [loading, setLoading] = useState(false)
 
@@ -147,7 +147,9 @@ export default function AddAccessoryModal({
       return
     }
 
-    if (accessoryData.quantity < 1) {
+    const finalQuantity = typeof accessoryData.quantity === 'number' ? accessoryData.quantity : parseInt(String(accessoryData.quantity)) || 1
+    
+    if (finalQuantity < 1) {
       toast.error('A mennyiség legalább 1 kell legyen!', {
         position: "top-right",
         autoClose: 3000,
@@ -216,7 +218,7 @@ export default function AddAccessoryModal({
         },
         body: JSON.stringify({
           accessory_id: accessoryId,
-          quantity: accessoryData.quantity,
+          quantity: finalQuantity,
         }),
       })
 
@@ -270,7 +272,8 @@ export default function AddAccessoryModal({
   // Calculate preview
   const selectedVat = vatRates.find(v => v.id === accessoryData.vat_id)
   const vatRate = selectedVat ? selectedVat.kulcs / 100 : 0
-  const calculatedNetTotal = accessoryData.net_price * accessoryData.quantity
+  const previewQuantity = typeof accessoryData.quantity === 'number' ? accessoryData.quantity : (accessoryData.quantity === '' ? 0 : parseInt(String(accessoryData.quantity)) || 0)
+  const calculatedNetTotal = accessoryData.net_price * previewQuantity
   const calculatedVatTotal = calculatedNetTotal * vatRate
   const calculatedGrossTotal = calculatedNetTotal + calculatedVatTotal
 
@@ -367,7 +370,20 @@ export default function AddAccessoryModal({
               label="Mennyiség *"
               type="number"
               value={accessoryData.quantity}
-              onChange={(e) => setAccessoryData(prev => ({ ...prev, quantity: parseInt(e.target.value) || 1 }))}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val === '' || val === '0') {
+                  setAccessoryData(prev => ({ ...prev, quantity: '' as any }))
+                } else {
+                  setAccessoryData(prev => ({ ...prev, quantity: parseInt(val) || 1 }))
+                }
+              }}
+              onBlur={(e) => {
+                // Set to 1 if empty on blur
+                if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                  setAccessoryData(prev => ({ ...prev, quantity: 1 }))
+                }
+              }}
               inputProps={{ min: 1 }}
               required
             />
@@ -481,7 +497,7 @@ export default function AddAccessoryModal({
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2">Mennyiség:</Typography>
                 <Typography variant="body2" fontWeight="medium">
-                  {accessoryData.quantity}
+                  {previewQuantity}
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1, pt: 1, borderTop: 1, borderColor: 'grey.300' }}>

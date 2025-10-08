@@ -38,6 +38,7 @@ import QuoteFeesSection from './QuoteFeesSection'
 import QuoteAccessoriesSection from './QuoteAccessoriesSection'
 import AddFeeModal from './AddFeeModal'
 import AddAccessoryModal from './AddAccessoryModal'
+import EditDiscountModal from './EditDiscountModal'
 
 interface QuoteData {
   id: string
@@ -160,11 +161,13 @@ interface QuoteData {
   fees: Array<{
     id: string
     fee_name: string
+    quantity: number
     unit_price_net: number
     vat_rate: number
     vat_amount: number
     gross_price: number
     currency_id: string
+    comment: string
   }>
   accessories: Array<{
     id: string
@@ -271,6 +274,7 @@ export default function QuoteDetailClient({
   const [isLoading, setIsLoading] = useState(false)
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false)
   const [addAccessoryModalOpen, setAddAccessoryModalOpen] = useState(false)
+  const [discountModalOpen, setDiscountModalOpen] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -351,6 +355,14 @@ export default function QuoteDetailClient({
     refreshQuoteData()
   }
 
+  const handleEditDiscount = () => {
+    setDiscountModalOpen(true)
+  }
+
+  const handleDiscountUpdated = () => {
+    refreshQuoteData()
+  }
+
   if (!hasAccess) {
     return (
       <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -384,10 +396,12 @@ export default function QuoteDetailClient({
           {/* All Quote Information in One Card */}
           <Paper sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0' }}>
             {/* Company Info */}
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
-                Cégadatok
-              </Typography>
+            <Box sx={{ 
+              mb: 3, 
+              p: 3, 
+              backgroundColor: '#f5f5f5', 
+              borderRadius: 2 
+            }}>
               <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
                 {quoteData.tenant_company ? (
                   <>
@@ -412,108 +426,133 @@ export default function QuoteDetailClient({
             <Grid container spacing={4} sx={{ mb: 4 }}>
               {/* Customer Info */}
               <Grid item xs={12} md={6}>
-                <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
-                  Ügyfél adatok
-                </Typography>
-                <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
-                  <strong>{quoteData.customer.name}</strong><br />
-                  {quoteData.customer.email}<br />
-                  {quoteData.customer.mobile}
-                </Typography>
+                <Box sx={{ 
+                  p: 2, 
+                  border: '1px solid #e0e0e0', 
+                  borderRadius: 1,
+                  backgroundColor: '#fcfcfc',
+                  height: '100%'
+                }}>
+                  <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                    Ügyfél adatok
+                  </Typography>
+                  <Typography variant="body2" sx={{ lineHeight: 1.6 }}>
+                    <strong>{quoteData.customer.name}</strong><br />
+                    {quoteData.customer.email}<br />
+                    {quoteData.customer.mobile}
+                  </Typography>
+                </Box>
               </Grid>
 
               {/* Billing Details */}
               <Grid item xs={12} md={6}>
-                {quoteData.customer.billing_name ? (
-                  <>
-                    <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
-                      Számlázási adatok
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                      <strong>{quoteData.customer.billing_name}</strong><br />
-                      {quoteData.customer.billing_postal_code} {quoteData.customer.billing_city}<br />
-                      {quoteData.customer.billing_street} {quoteData.customer.billing_house_number}<br />
-                      {quoteData.customer.billing_country}
-                      {quoteData.customer.billing_tax_number && (
-                        <>
-                          <br />Adószám: {quoteData.customer.billing_tax_number}
-                        </>
-                      )}
-                      {quoteData.customer.billing_company_reg_number && (
-                        <>
-                          <br />Cégjegyzékszám: {quoteData.customer.billing_company_reg_number}
-                        </>
-                      )}
-                    </Typography>
-                  </>
-                ) : (
-                  <>
-                    <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
-                      Számlázási adatok
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                      Nincs számlázási adat megadva
-                    </Typography>
-                  </>
-                )}
+                <Box sx={{ 
+                  p: 2, 
+                  border: '1px solid #e0e0e0', 
+                  borderRadius: 1,
+                  backgroundColor: '#fcfcfc',
+                  height: '100%'
+                }}>
+                  {quoteData.customer.billing_name ? (
+                    <>
+                      <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                        Számlázási adatok
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                        <strong>{quoteData.customer.billing_name}</strong><br />
+                        {quoteData.customer.billing_postal_code} {quoteData.customer.billing_city}<br />
+                        {quoteData.customer.billing_street} {quoteData.customer.billing_house_number}<br />
+                        {quoteData.customer.billing_country}
+                        {quoteData.customer.billing_tax_number && (
+                          <>
+                            <br />Adószám: {quoteData.customer.billing_tax_number}
+                          </>
+                        )}
+                        {quoteData.customer.billing_company_reg_number && (
+                          <>
+                            <br />Cégjegyzékszám: {quoteData.customer.billing_company_reg_number}
+                          </>
+                        )}
+                      </Typography>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+                        Számlázási adatok
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                        Nincs számlázási adat megadva
+                      </Typography>
+                    </>
+                  )}
+                </Box>
               </Grid>
             </Grid>
 
             {/* Quote Summary */}
             <Divider sx={{ mb: 3 }} />
-            <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600 }}>
+            <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', fontWeight: 600, textAlign: 'center' }}>
               Árajánlat összesítése
             </Typography>
             
             {/* Materials Breakdown */}
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell><strong>Anyag</strong></TableCell>
-                    <TableCell align="right"><strong>Mennyiség</strong></TableCell>
-                    <TableCell align="right"><strong>Nettó ár</strong></TableCell>
-                    <TableCell align="right"><strong>Bruttó ár</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {quoteData.pricing && quoteData.pricing.length > 0 ? (
-                    quoteData.pricing.map((pricing) => (
-                      <TableRow key={pricing.id}>
-                        <TableCell>{pricing.materials?.name || pricing.material_name}</TableCell>
-                        <TableCell align="right">
-                          {(() => {
-                            const chargedSqm = pricing.charged_sqm || 0
-                            const boardsSold = pricing.boards_used || 0
-                            
-                            // Simple logic: display the stored values
-                            return `${chargedSqm.toFixed(2)} m² / ${boardsSold} db`
-                          })()}
-                        </TableCell>
-                        <TableCell align="right">{formatCurrency(pricing.material_net)}</TableCell>
-                        <TableCell align="right">{formatCurrency(pricing.material_gross)}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
+            <Box sx={{ 
+              mb: 4, 
+              p: 2, 
+              border: '1px solid #e0e0e0', 
+              borderRadius: 1,
+              backgroundColor: '#fcfcfc'
+            }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          Nincs árazási adat elérhető. Ez az árajánlat a régi rendszerben lett mentve.
-                        </Typography>
-                      </TableCell>
+                      <TableCell><strong>Anyag</strong></TableCell>
+                      <TableCell align="right"><strong>Mennyiség</strong></TableCell>
+                      <TableCell align="right"><strong>Nettó ár</strong></TableCell>
+                      <TableCell align="right"><strong>Bruttó ár</strong></TableCell>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-
-            <Divider sx={{ my: 2 }} />
+                  </TableHead>
+                  <TableBody>
+                    {quoteData.pricing && quoteData.pricing.length > 0 ? (
+                      quoteData.pricing.map((pricing) => (
+                        <TableRow key={pricing.id}>
+                          <TableCell>{pricing.materials?.name || pricing.material_name}</TableCell>
+                          <TableCell align="right">
+                            {(() => {
+                              const chargedSqm = pricing.charged_sqm || 0
+                              const boardsSold = pricing.boards_used || 0
+                              
+                              // Simple logic: display the stored values
+                              return `${chargedSqm.toFixed(2)} m² / ${boardsSold} db`
+                            })()}
+                          </TableCell>
+                          <TableCell align="right">{formatCurrency(pricing.material_net)}</TableCell>
+                          <TableCell align="right">{formatCurrency(pricing.material_gross)}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={4} align="center">
+                          <Typography variant="body2" color="text.secondary">
+                            Nincs árazási adat elérhető. Ez az árajánlat a régi rendszerben lett mentve.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
 
             {/* Services Breakdown */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Szolgáltatások
-              </Typography>
+            <Box sx={{ 
+              mb: 2, 
+              p: 2, 
+              border: '1px solid #e0e0e0', 
+              borderRadius: 1,
+              backgroundColor: '#fcfcfc'
+            }}>
               <TableContainer>
                 <Table size="small">
                   <TableHead>
@@ -640,70 +679,125 @@ export default function QuoteDetailClient({
 
             {/* Totals Summary */}
             <Box>
-              {/* Materials with discount */}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Anyagok összesen:
-                </Typography>
-                <Typography variant="body2">
-                  {formatCurrency(quoteData.totals.total_gross)}
-                </Typography>
-              </Box>
-              
-              {quoteData.discount_percent > 0 && (
-                <>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2" color="error">
-                      Kedvezmény ({quoteData.discount_percent}%):
-                    </Typography>
-                    <Typography variant="body2" color="error">
-                      -{formatCurrency(quoteData.totals.total_gross * (quoteData.discount_percent / 100))}
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="body2">
-                      Anyagok kedvezménnyel:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="medium">
-                      {formatCurrency(quoteData.totals.total_gross * (1 - quoteData.discount_percent / 100))}
-                    </Typography>
-                  </Box>
-                </>
-              )}
+              {/* Calculate components */}
+              {(() => {
+                const materialsGross = quoteData.totals.total_gross
+                const feesGross = quoteData.totals.fees_total_gross || 0
+                const accessoriesGross = quoteData.totals.accessories_total_gross || 0
+                
+                // Only positive values get discount
+                const feesPositive = Math.max(0, feesGross)
+                const accessoriesPositive = Math.max(0, accessoriesGross)
+                const feesNegative = Math.min(0, feesGross)
+                const accessoriesNegative = Math.min(0, accessoriesGross)
+                
+                const subtotal = materialsGross + feesPositive + accessoriesPositive
+                const discountAmount = subtotal * (quoteData.discount_percent / 100)
+                const finalTotal = subtotal - discountAmount + feesNegative + accessoriesNegative
+                
+                return (
+                  <>
+                    {/* Item Breakdown with Frame */}
+                    <Box sx={{ 
+                      p: 2, 
+                      mb: 2, 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: 1,
+                      backgroundColor: '#fafafa'
+                    }}>
+                      {/* Materials */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body1" fontWeight="600">
+                          Lapszabászat:
+                        </Typography>
+                        <Typography variant="body1" fontWeight="600">
+                          {formatCurrency(materialsGross)}
+                        </Typography>
+                      </Box>
 
-              <Divider sx={{ my: 1 }} />
+                      {/* Fees */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body1" fontWeight="600">
+                          Díjak:
+                        </Typography>
+                        <Typography variant="body1" fontWeight="600">
+                          {formatCurrency(feesGross)}
+                        </Typography>
+                      </Box>
 
-              {/* Fees total */}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Díjak összesen:
-                </Typography>
-                <Typography variant="body2">
-                  {formatCurrency(quoteData.totals.fees_total_gross || 0)}
-                </Typography>
-              </Box>
+                      {/* Accessories */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0 }}>
+                        <Typography variant="body1" fontWeight="600">
+                          Termékek:
+                        </Typography>
+                        <Typography variant="body1" fontWeight="600">
+                          {formatCurrency(accessoriesGross)}
+                        </Typography>
+                      </Box>
+                    </Box>
 
-              {/* Accessories total */}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Termékek összesen:
-                </Typography>
-                <Typography variant="body2">
-                  {formatCurrency(quoteData.totals.accessories_total_gross || 0)}
-                </Typography>
-              </Box>
+                    <Divider sx={{ my: 1 }} />
 
-              <Divider sx={{ my: 2 }} />
+                    {/* Subtotal, Discount, Final Total Frame */}
+                    <Box sx={{ 
+                      p: 2, 
+                      border: '1px solid #e0e0e0', 
+                      borderRadius: 1,
+                      backgroundColor: '#fcfcfc'
+                    }}>
+                      {/* Subtotal */}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                        <Typography variant="body1" fontWeight="700">
+                          Részösszeg:
+                        </Typography>
+                        <Typography variant="body1" fontWeight="700">
+                          {formatCurrency(subtotal)}
+                        </Typography>
+                      </Box>
 
-              {/* Final total */}
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="h6">
-                  Végösszeg:
-                </Typography>
-                <Typography variant="h6" color="primary">
-                  {formatCurrency(quoteData.totals.final_total_after_discount)}
-                </Typography>
-              </Box>
+                      {/* Discount */}
+                      {quoteData.discount_percent > 0 && (
+                        <Box sx={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          mb: 2,
+                          p: 1,
+                          backgroundColor: '#f5f5f5',
+                          borderRadius: 1,
+                          border: '1px solid #d0d0d0'
+                        }}>
+                          <Typography variant="body1" fontWeight="700">
+                            Kedvezmény ({quoteData.discount_percent}%):
+                          </Typography>
+                          <Typography variant="body1" fontWeight="700">
+                            -{formatCurrency(discountAmount)}
+                          </Typography>
+                        </Box>
+                      )}
+
+                      <Divider sx={{ my: 2 }} />
+
+                      {/* Final total - highlighted */}
+                      <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        p: 1.5,
+                        backgroundColor: '#e8e8e8',
+                        borderRadius: 1,
+                        border: '1px solid #c0c0c0'
+                      }}>
+                        <Typography variant="h6" fontWeight="700">
+                          Végösszeg:
+                        </Typography>
+                        <Typography variant="h6" fontWeight="700">
+                          {formatCurrency(finalTotal)}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </>
+                )
+              })()}
             </Box>
           </Paper>
 
@@ -740,6 +834,15 @@ export default function QuoteDetailClient({
                   fullWidth
                 >
                   Opti szerkesztés
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  startIcon={<EditIcon />}
+                  onClick={handleEditDiscount}
+                  fullWidth
+                >
+                  Kedvezmény ({quoteData.discount_percent}%)
                 </Button>
 
                 <Divider />
@@ -831,6 +934,15 @@ export default function QuoteDetailClient({
         currencies={currencies}
         units={units}
         partners={partners}
+      />
+
+      {/* Edit Discount Modal */}
+      <EditDiscountModal
+        open={discountModalOpen}
+        onClose={() => setDiscountModalOpen(false)}
+        quoteId={quoteData.id}
+        currentDiscountPercent={quoteData.discount_percent}
+        onSuccess={handleDiscountUpdated}
       />
     </Box>
   )

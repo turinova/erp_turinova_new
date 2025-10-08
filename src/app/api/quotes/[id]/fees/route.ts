@@ -53,11 +53,18 @@ export async function POST(
   try {
     const { id: quoteId } = await params
     const body = await request.json()
-    const { feetype_id } = body
+    const { feetype_id, quantity = 1, unit_price_net, comment = '' } = body
 
     if (!feetype_id) {
       return NextResponse.json(
         { error: 'feetype_id is required' },
+        { status: 400 }
+      )
+    }
+
+    if (quantity < 1) {
+      return NextResponse.json(
+        { error: 'quantity must be at least 1' },
         { status: 400 }
       )
     }
@@ -81,10 +88,14 @@ export async function POST(
       )
     }
 
-    // Calculate VAT and gross price
+    // Use provided unit price or default from fee type
+    const finalUnitPrice = unit_price_net !== undefined ? unit_price_net : feeType.net_price
+    
+    // Calculate totals with quantity
     const vatRate = (feeType.vat?.kulcs || 0) / 100
-    const vatAmount = feeType.net_price * vatRate
-    const grossPrice = feeType.net_price + vatAmount
+    const totalNet = finalUnitPrice * quantity
+    const totalVat = totalNet * vatRate
+    const totalGross = totalNet + totalVat
 
     // Insert fee
     const { data: newFee, error: insertError } = await supabase
@@ -93,11 +104,13 @@ export async function POST(
         quote_id: quoteId,
         feetype_id: feetype_id,
         fee_name: feeType.name,
-        unit_price_net: feeType.net_price,
+        quantity: quantity,
+        unit_price_net: finalUnitPrice,
         vat_rate: vatRate,
-        vat_amount: vatAmount,
-        gross_price: grossPrice,
-        currency_id: feeType.currency_id
+        vat_amount: totalVat,
+        gross_price: totalGross,
+        currency_id: feeType.currency_id,
+        comment: comment
       })
       .select()
       .single()
@@ -125,7 +138,7 @@ async function recalculateQuoteTotals(quoteId: string) {
   // Get all fees
   const { data: fees } = await supabase
     .from('quote_fees')
-    .select('unit_price_net, vat_amount, gross_price')
+    .select('unit_price_net, quantity, vat_rate, vat_amount, gross_price')
     .eq('quote_id', quoteId)
     .is('deleted_at', null)
 
@@ -136,10 +149,19 @@ async function recalculateQuoteTotals(quoteId: string) {
     .eq('quote_id', quoteId)
     .is('deleted_at', null)
 
-  // Calculate totals
-  const feesTotalNet = fees?.reduce((sum, f) => sum + Number(f.unit_price_net), 0) || 0
-  const feesTotalVat = fees?.reduce((sum, f) => sum + Number(f.vat_amount), 0) || 0
-  const feesTotalGross = fees?.reduce((sum, f) => sum + Number(f.gross_price), 0) || 0
+  // Calculate totals (fees with quantity support)
+  const feesTotalNet = fees?.reduce((sum, f) => {
+    const totalNet = Number(f.unit_price_net) * Number(f.quantity || 1)
+    return sum + totalNet
+  }, 0) || 0
+  
+  const feesTotalVat = fees?.reduce((sum, f) => {
+    const totalNet = Number(f.unit_price_net) * Number(f.quantity || 1)
+    const totalVat = totalNet * Number(f.vat_rate)
+    return sum + totalVat
+  }, 0) || 0
+  
+  const feesTotalGross = feesTotalNet + feesTotalVat
 
   const accessoriesTotalNet = accessories?.reduce((sum, a) => sum + Number(a.total_net), 0) || 0
   const accessoriesTotalVat = accessories?.reduce((sum, a) => sum + Number(a.total_vat), 0) || 0
@@ -153,14 +175,24 @@ async function recalculateQuoteTotals(quoteId: string) {
     .single()
 
   if (quote) {
-    const discountMultiplier = 1 - (Number(quote.discount_percent) / 100)
-    const materialsNetAfterDiscount = Number(quote.total_net) * discountMultiplier
-    const materialsVatAfterDiscount = Number(quote.total_vat) * discountMultiplier
-    const materialsGrossAfterDiscount = Number(quote.total_gross) * discountMultiplier
-
-    const finalTotalNet = materialsNetAfterDiscount + feesTotalNet + accessoriesTotalNet
-    const finalTotalVat = materialsVatAfterDiscount + feesTotalVat + accessoriesTotalVat
-    const finalTotalGross = materialsGrossAfterDiscount + feesTotalGross + accessoriesTotalGross
+    const discountPercent = Number(quote.discount_percent) / 100
+    
+    // Calculate subtotal (before discount) - only positive values
+    const materialsGross = Number(quote.total_gross)
+    const feesGrossPositive = Math.max(0, feesTotalGross) // Only positive fees get discount
+    const accessoriesGrossPositive = Math.max(0, accessoriesTotalGross) // Only positive accessories get discount
+    
+    const subtotalBeforeDiscount = materialsGross + feesGrossPositive + accessoriesGrossPositive
+    
+    // Calculate discount amount (only on positive values)
+    const discountAmount = subtotalBeforeDiscount * discountPercent
+    
+    // Add negative fees/accessories (no discount on these)
+    const feesNegative = Math.min(0, feesTotalGross)
+    const accessoriesNegative = Math.min(0, accessoriesTotalGross)
+    
+    // Final total = (positive values with discount) + (negative values without discount)
+    const finalTotalGross = subtotalBeforeDiscount - discountAmount + feesNegative + accessoriesNegative
 
     // Update quote
     await supabase

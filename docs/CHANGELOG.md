@@ -4,6 +4,80 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Quote Detail Page UI Improvements
+
+### Added
+- **Visual Hierarchy**: Framed sections for company info, customer/billing, tables, and summaries
+- **Print-Friendly Design**: Grayscale color scheme for perfect B&W printing
+- **Enhanced Typography**: Larger, bolder text for better readability
+- **Professional Layout**: Invoice-like appearance with clear visual structure
+
+### UI Changes
+- **Company Info**: Added light grey background box with rounded corners, removed title
+- **Customer & Billing**: Added equal-height frames for both sections
+- **Materials & Services Tables**: Added frames, removed section titles (tables are self-explanatory)
+- **Summary Title**: Center-aligned "Árajánlat összesítése"
+- **Summary Breakdown**: 
+  - Renamed "Anyagok" to "Lapszabászat"
+  - Framed item breakdown (Lapszabászat, Díjak, Termékek)
+  - Framed calculation section (Részösszeg, Kedvezmény, Végösszeg)
+  - Grey highlight for Kedvezmény (#f5f5f5 background, #d0d0d0 border)
+  - Darker grey highlight for Végösszeg (#e8e8e8 background, #c0c0c0 border)
+- **Typography**: 
+  - Item breakdown: body1 + fontWeight: 600
+  - Calculations: body1 + fontWeight: 700
+  - Final total: h6 + fontWeight: 700
+
+### Technical Changes
+- Grayscale palette: #fcfcfc, #fafafa, #f5f5f5, #e8e8e8, #e0e0e0, #d0d0d0, #c0c0c0
+- All visual hierarchy achieved through grey shades, not colors
+- Print-tested for black/white printing
+
+### Documentation
+- Created `QUOTE_DETAIL_UI_IMPROVEMENTS_2025-01-27.md` - Complete visual design guide
+- Created `chat-archives/2025-01-27-quote-detail-ui-improvements.md` - Design iteration history
+
+---
+
+## [2025-01-27] - Universal Discount System
+
+### Added
+- **Discount on All Categories**: Apply discount percentage to materials, fees, AND accessories
+- **Negative Value Exclusion**: Negative fees/accessories excluded from discount calculation
+- **Editable Discount**: "Kedvezmény" button in right column to edit discount percentage
+- **Clear Math Display**: Simple breakdown showing subtotal → discount → final total
+
+### Business Logic Changes
+- **Old**: Discount only on materials
+- **New**: Discount on all positive values (materials + positive fees + positive accessories)
+- Negative values (adjustments) added after discount without modification
+- Final total can be negative (allowed)
+
+### UI Changes
+- Added "Kedvezmény (X%)" button to quote detail page right column
+- New `EditDiscountModal` for changing discount percentage (0-100%)
+- Updated summary display:
+  - Shows: Lapszabászat, Díjak, Termékek
+  - Calculates: Részösszeg (subtotal of positive values)
+  - Applies: Kedvezmény (discount)
+  - Results: Végösszeg (final total)
+
+### API Changes
+- **New Endpoint**: `PATCH /api/quotes/[id]` - Update discount percentage
+- Updated `recalculateQuoteTotals()` to apply discount to all categories
+- Server-side validation (0-100%)
+
+### Technical Implementation
+- Modified `src/app/api/quotes/[id]/fees/route.ts` - New calculation logic
+- Modified `src/app/api/quotes/[id]/route.ts` - Added PATCH endpoint
+- Created `src/app/(dashboard)/quotes/[quote_id]/EditDiscountModal.tsx`
+- Updated `QuoteDetailClient.tsx` with new discount logic
+
+### Documentation
+- Created `DISCOUNT_SYSTEM_UPDATE_2025-01-27.md` - Complete discount logic guide
+
+---
+
 ## [2025-01-27] - Fees and Accessories Management System
 
 ### Added
