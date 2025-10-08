@@ -34,6 +34,10 @@ import {
 import { toast } from 'react-toastify'
 
 import { usePermissions } from '@/permissions/PermissionProvider'
+import QuoteFeesSection from './QuoteFeesSection'
+import QuoteAccessoriesSection from './QuoteAccessoriesSection'
+import AddFeeModal from './AddFeeModal'
+import AddAccessoryModal from './AddAccessoryModal'
 
 interface QuoteData {
   id: string
@@ -153,27 +157,120 @@ interface QuoteData {
       gross_price: number
     }>
   }>
+  fees: Array<{
+    id: string
+    fee_name: string
+    unit_price_net: number
+    vat_rate: number
+    vat_amount: number
+    gross_price: number
+    currency_id: string
+  }>
+  accessories: Array<{
+    id: string
+    accessory_name: string
+    sku: string
+    quantity: number
+    unit_price_net: number
+    vat_rate: number
+    unit_name: string
+    total_net: number
+    total_vat: number
+    total_gross: number
+    currency_id: string
+  }>
   totals: {
     total_net: number
     total_vat: number
     total_gross: number
     final_total_after_discount: number
+    fees_total_net: number
+    fees_total_vat: number
+    fees_total_gross: number
+    accessories_total_net: number
+    accessories_total_vat: number
+    accessories_total_gross: number
   }
   created_at: string
   updated_at: string
 }
 
-interface QuoteDetailClientProps {
-  initialQuoteData: QuoteData
+interface FeeType {
+  id: string
+  name: string
+  net_price: number
+  vat_percent: number
+  vat_amount: number
+  gross_price: number
 }
 
-export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClientProps) {
+interface Accessory {
+  id: string
+  name: string
+  sku: string
+  net_price: number
+  vat_id: string
+  currency_id: string
+  units_id: string
+  partners_id: string
+  vat_percent: number
+  vat_amount: number
+  gross_price: number
+  unit_name: string
+  unit_shortform: string
+  currency_name: string
+  partner_name: string
+}
+
+interface VatRate {
+  id: string
+  name: string
+  kulcs: number
+}
+
+interface Currency {
+  id: string
+  name: string
+}
+
+interface Unit {
+  id: string
+  name: string
+  shortform: string
+}
+
+interface Partner {
+  id: string
+  name: string
+}
+
+interface QuoteDetailClientProps {
+  initialQuoteData: QuoteData
+  feeTypes: FeeType[]
+  accessories: Accessory[]
+  vatRates: VatRate[]
+  currencies: Currency[]
+  units: Unit[]
+  partners: Partner[]
+}
+
+export default function QuoteDetailClient({ 
+  initialQuoteData,
+  feeTypes,
+  accessories,
+  vatRates,
+  currencies,
+  units,
+  partners
+}: QuoteDetailClientProps) {
   const router = useRouter()
   const { canAccess } = usePermissions()
   const hasAccess = canAccess('/quotes')
   
   const [quoteData, setQuoteData] = useState<QuoteData>(initialQuoteData)
   const [isLoading, setIsLoading] = useState(false)
+  const [addFeeModalOpen, setAddFeeModalOpen] = useState(false)
+  const [addAccessoryModalOpen, setAddAccessoryModalOpen] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -223,14 +320,35 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
     toast.info('Megrendelés létrehozása hamarosan elérhető')
   }
 
+  // Handle refresh quote data
+  const refreshQuoteData = async () => {
+    try {
+      const response = await fetch(`/api/quotes/${quoteData.id}`)
+      if (response.ok) {
+        const updatedQuote = await response.json()
+        setQuoteData(updatedQuote)
+      }
+    } catch (error) {
+      console.error('Error refreshing quote:', error)
+    }
+  }
+
   // Handle add fee
   const handleAddFee = () => {
-    toast.info('Díj hozzáadása hamarosan elérhető')
+    setAddFeeModalOpen(true)
   }
 
   // Handle add accessory
   const handleAddAccessory = () => {
-    toast.info('Kiegészítő hozzáadása hamarosan elérhető')
+    setAddAccessoryModalOpen(true)
+  }
+
+  const handleFeeAdded = () => {
+    refreshQuoteData()
+  }
+
+  const handleAccessoryAdded = () => {
+    refreshQuoteData()
   }
 
   if (!hasAccess) {
@@ -519,46 +637,91 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
               </TableContainer>
             </Box>
 
-            <Divider sx={{ my: 2 }} />
 
-            {/* Fees Section */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Díjak
-              </Typography>
-              <Box sx={{ pl: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Még nincsenek hozzáadott díjak
+            {/* Totals Summary */}
+            <Box>
+              {/* Materials with discount */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  Anyagok összesen:
+                </Typography>
+                <Typography variant="body2">
+                  {formatCurrency(quoteData.totals.total_gross)}
                 </Typography>
               </Box>
-            </Box>
+              
+              {quoteData.discount_percent > 0 && (
+                <>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="error">
+                      Kedvezmény ({quoteData.discount_percent}%):
+                    </Typography>
+                    <Typography variant="body2" color="error">
+                      -{formatCurrency(quoteData.totals.total_gross * (quoteData.discount_percent / 100))}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">
+                      Anyagok kedvezménnyel:
+                    </Typography>
+                    <Typography variant="body2" fontWeight="medium">
+                      {formatCurrency(quoteData.totals.total_gross * (1 - quoteData.discount_percent / 100))}
+                    </Typography>
+                  </Box>
+                </>
+              )}
 
-            <Divider sx={{ my: 2 }} />
+              <Divider sx={{ my: 1 }} />
 
-            {/* Accessories Section */}
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Kiegészítők
-              </Typography>
-              <Box sx={{ pl: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Még nincsenek hozzáadott kiegészítők
+              {/* Fees total */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  Díjak összesen:
+                </Typography>
+                <Typography variant="body2">
+                  {formatCurrency(quoteData.totals.fees_total_gross || 0)}
                 </Typography>
               </Box>
-            </Box>
 
-            <Divider sx={{ my: 2 }} />
+              {/* Accessories total */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="body2">
+                  Termékek összesen:
+                </Typography>
+                <Typography variant="body2">
+                  {formatCurrency(quoteData.totals.accessories_total_gross || 0)}
+                </Typography>
+              </Box>
 
-            {/* Totals */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="h6">
-                Végösszeg:
-              </Typography>
-              <Typography variant="h6" color="primary">
-                {formatCurrency(quoteData.totals.final_total_after_discount)}
-              </Typography>
+              <Divider sx={{ my: 2 }} />
+
+              {/* Final total */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="h6">
+                  Végösszeg:
+                </Typography>
+                <Typography variant="h6" color="primary">
+                  {formatCurrency(quoteData.totals.final_total_after_discount)}
+                </Typography>
+              </Box>
             </Box>
           </Paper>
+
+          {/* Fees Section */}
+          <QuoteFeesSection
+            quoteId={quoteData.id}
+            fees={quoteData.fees}
+            onFeesChange={handleFeeAdded}
+            onAddFeeClick={handleAddFee}
+          />
+
+          {/* Accessories Section */}
+          <QuoteAccessoriesSection
+            quoteId={quoteData.id}
+            accessories={quoteData.accessories}
+            onAccessoriesChange={handleAccessoryAdded}
+            onAddAccessoryClick={handleAddAccessory}
+          />
         </Grid>
 
         {/* Right Column - Actions */}
@@ -577,24 +740,6 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
                   fullWidth
                 >
                   Opti szerkesztés
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddFee}
-                  fullWidth
-                >
-                  Díj hozzáadása
-                </Button>
-
-                <Button
-                  variant="outlined"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddAccessory}
-                  fullWidth
-                >
-                  Kiegészítő hozzáadása
                 </Button>
 
                 <Divider />
@@ -665,6 +810,28 @@ export default function QuoteDetailClient({ initialQuoteData }: QuoteDetailClien
           </Card>
         </Grid>
       </Grid>
+
+      {/* Add Fee Modal */}
+      <AddFeeModal
+        open={addFeeModalOpen}
+        onClose={() => setAddFeeModalOpen(false)}
+        quoteId={quoteData.id}
+        onSuccess={handleFeeAdded}
+        feeTypes={feeTypes}
+      />
+
+      {/* Add Accessory Modal */}
+      <AddAccessoryModal
+        open={addAccessoryModalOpen}
+        onClose={() => setAddAccessoryModalOpen(false)}
+        quoteId={quoteData.id}
+        onSuccess={handleAccessoryAdded}
+        accessories={accessories}
+        vatRates={vatRates}
+        currencies={currencies}
+        units={units}
+        partners={partners}
+      />
     </Box>
   )
 }

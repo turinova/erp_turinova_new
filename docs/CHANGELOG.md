@@ -4,6 +4,37 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Fees and Accessories Management System
+
+### Added
+- **Fees Management**: Add predefined fees to quotes (e.g., Shipping, SOS)
+- **Accessories Management**: Add accessories with quantity to quotes
+- **Advanced Accessory Modal**: Autocomplete with freeSolo pattern - select existing, modify globally, or create new
+- **Bulk Operations**: Select all and bulk delete for fees and accessories
+- **Auto-Calculation**: Totals automatically recalculate on any change
+- **SSR Optimization**: All catalog data fetched on page load for instant modal opening
+
+### Database Changes
+- Created `quote_fees` table with snapshot pricing
+- Created `quote_accessories` table with quantity support
+- Added totals columns to `quotes` table (fees_total_*, accessories_total_*)
+- Indexes and RLS policies for security
+
+### Technical Improvements
+- **Performance**: Modal opening improved from 1.4s to instant (0ms)
+- **UX**: Autocomplete pattern matches Opti page customer selector
+- **Global Updates**: Modifying accessories from quote page updates master table
+- **Snapshot Pricing**: Historical quotes maintain pricing integrity
+
+### UI Changes
+- Added "Díjak" card on quote detail page with bulk operations
+- Added "Termékek" card on quote detail page with bulk operations
+- Updated summary card to show materials (with discount), fees, accessories, and final total
+- Removed "Művelet" columns from both tables for cleaner UI
+- Removed redundant buttons from right column
+
+---
+
 ## [2025-01-27] - Edge Material Ráhagyás Calculation Fix
 
 ### Fixed

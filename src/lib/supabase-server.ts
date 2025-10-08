@@ -1235,6 +1235,12 @@ export async function getQuoteById(quoteId: string) {
         total_vat,
         total_gross,
         final_total_after_discount,
+        fees_total_net,
+        fees_total_vat,
+        fees_total_gross,
+        accessories_total_net,
+        accessories_total_vat,
+        accessories_total_gross,
         created_at,
         updated_at,
         customers(
@@ -1338,6 +1344,47 @@ export async function getQuoteById(quoteId: string) {
 
     logTiming('Pricing DB Query', pricingStartTime, `fetched ${pricingData?.length || 0} pricing records`)
 
+    // Fetch fees for this quote
+    const feesStartTime = performance.now()
+    const { data: fees, error: feesError } = await supabaseServer
+      .from('quote_fees')
+      .select(`
+        id, fee_name, unit_price_net, vat_rate, vat_amount, gross_price, currency_id,
+        created_at,
+        feetypes(id, name),
+        currencies(id, name)
+      `)
+      .eq('quote_id', quoteId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+
+    if (feesError) {
+      console.error('[SSR] Error fetching fees:', feesError)
+    }
+
+    logTiming('Fees DB Query', feesStartTime, `fetched ${fees?.length || 0} fees`)
+
+    // Fetch accessories for this quote
+    const accessoriesStartTime = performance.now()
+    const { data: accessories, error: accessoriesError } = await supabaseServer
+      .from('quote_accessories')
+      .select(`
+        id, accessory_name, sku, quantity, unit_price_net, vat_rate, unit_name, currency_id,
+        total_net, total_vat, total_gross, created_at,
+        accessories(id, name, sku),
+        units(id, name, shortform),
+        currencies(id, name)
+      `)
+      .eq('quote_id', quoteId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+
+    if (accessoriesError) {
+      console.error('[SSR] Error fetching accessories:', accessoriesError)
+    }
+
+    logTiming('Accessories DB Query', accessoriesStartTime, `fetched ${accessories?.length || 0} accessories`)
+
     // Fetch tenant company data
     const companyStartTime = performance.now()
     const tenantCompany = await getTenantCompany()
@@ -1353,12 +1400,20 @@ export async function getQuoteById(quoteId: string) {
       customer: quote.customers,
       panels: panels || [],
       pricing: pricingData || [],
+      fees: fees || [],
+      accessories: accessories || [],
       tenant_company: tenantCompany,
       totals: {
         total_net: quote.total_net,
         total_vat: quote.total_vat,
         total_gross: quote.total_gross,
-        final_total_after_discount: quote.final_total_after_discount
+        final_total_after_discount: quote.final_total_after_discount,
+        fees_total_net: quote.fees_total_net || 0,
+        fees_total_vat: quote.fees_total_vat || 0,
+        fees_total_gross: quote.fees_total_gross || 0,
+        accessories_total_net: quote.accessories_total_net || 0,
+        accessories_total_vat: quote.accessories_total_vat || 0,
+        accessories_total_gross: quote.accessories_total_gross || 0
       },
       created_at: quote.created_at,
       updated_at: quote.updated_at

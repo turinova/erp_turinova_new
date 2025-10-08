@@ -1,5 +1,13 @@
 import React from 'react'
-import { getQuoteById } from '@/lib/supabase-server'
+import { 
+  getQuoteById, 
+  getAllFeeTypes, 
+  getAllAccessories,
+  getAllVatRates,
+  getAllCurrencies,
+  getAllUnits,
+  getAllPartners
+} from '@/lib/supabase-server'
 import QuoteDetailClient from './QuoteDetailClient'
 
 interface PageProps {
@@ -10,8 +18,16 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   const resolvedParams = await params
   const quoteId = resolvedParams.quote_id
   
-  // Fetch quote data
-  const quoteData = await getQuoteById(quoteId)
+  // Fetch all data in parallel for SSR
+  const [quoteData, feeTypes, accessories, vatRates, currencies, units, partners] = await Promise.all([
+    getQuoteById(quoteId),
+    getAllFeeTypes(),
+    getAllAccessories(),
+    getAllVatRates(),
+    getAllCurrencies(),
+    getAllUnits(),
+    getAllPartners()
+  ])
   
   if (!quoteData) {
     return (
@@ -27,6 +43,12 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   return (
     <QuoteDetailClient 
       initialQuoteData={quoteData}
+      feeTypes={feeTypes}
+      accessories={accessories}
+      vatRates={vatRates}
+      currencies={currencies}
+      units={units}
+      partners={partners}
     />
   )
 }
