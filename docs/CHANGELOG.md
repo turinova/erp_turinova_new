@@ -4,6 +4,52 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Excel Export (Complete)
+
+### Added
+- **Excel Export Function**: Complete machine-ready cutting list export
+- **ExcelJS Integration**: Professional Excel generation with full data population
+- **Formatted Headers**: Two-row header structure with merged cells
+  - Row 1: Main sections (Bútorlap, Élzárás 1-4)
+  - Row 2: Sub-headers (Azonosító, Hosszúság, Szélesség, Darab, Megnevezés, Forgatható?, etc.)
+- **Data Population**: Complete panel and edge material data from quote_panels
+- **Machine Code Integration**: Uses machine_material_map and machine_edge_material_map
+- **Edge Banding Algorithm**: PHP logic replicated for edge material grouping
+- **Direct Download**: File downloads immediately with proper filename
+
+### Excel Structure
+- **18 columns total**
+- **Bútorlap section** (6 columns):
+  - Azonosító: Material machine code (from machine_material_map)
+  - Hosszúság: Panel width_mm
+  - Szélesség: Panel height_mm
+  - Darab: Panel quantity
+  - Megnevezés: Panel label
+  - Forgatható?: I (grain_direction=true) or N (false)
+- **Élzárás sections** (4 × 3 columns):
+  - Hossz: Count of long edges (top + bottom) with this material
+  - Szél: Count of short edges (left + right) with this material
+  - Azon: Edge material machine code
+
+### Edge Banding Logic
+- Edge A (top) + Edge B (bottom) = Long edges
+- Edge C (left) + Edge D (right) = Short edges
+- Groups edges by material code
+- Counts occurrences per group
+- Up to 4 different edge materials per panel
+
+### Technical Implementation
+- **API route:** `/api/quotes/[id]/export-excel`
+- **Data sources:** quote_panels, machine_material_map, machine_edge_material_map, quote_materials_pricing
+- **Algorithm:** Exact replication of PHP edge banding calculation
+- **Styling:** Bold headers, grey background (#E4E4E4), centered, bordered
+- **Filename:** `quote_Q-2025-001.xlsx` (uses quote number)
+
+### Documentation
+- Created `EXCEL_EXPORT_COMPLETE_2025-01-27.md` - Complete implementation guide with algorithm details
+
+---
+
 ## [2025-01-27] - Quote Print Functionality
 
 ### Added

@@ -335,8 +335,52 @@ export default function QuoteDetailClient({
   }
 
   // Handle export Excel
-  const handleExportExcel = () => {
-    toast.info('Excel export funkció hamarosan elérhető')
+  const handleExportExcel = async () => {
+    try {
+      // Show loading toast
+      toast.info('Excel generálása...', {
+        position: "top-right",
+        autoClose: 2000,
+      })
+
+      // Call API to generate Excel
+      const response = await fetch(`/api/quotes/${quoteData.id}/export-excel`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate Excel')
+      }
+
+      // Get the blob from response
+      const blob = await response.blob()
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      const filenameMatch = contentDisposition?.match(/filename="(.+)"/)
+      const filename = filenameMatch ? filenameMatch[1] : `quote_${quoteData.quote_number}.xlsx`
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      
+      // Cleanup
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      toast.success('Excel sikeresen letöltve!', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+    } catch (error) {
+      console.error('Error exporting Excel:', error)
+      toast.error('Hiba történt az Excel exportálás során!', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+    }
   }
 
   // Handle add payment
