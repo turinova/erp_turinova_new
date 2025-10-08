@@ -304,9 +304,34 @@ export default function QuoteDetailClient({
     router.push(`/opti?quote_id=${quoteData.id}`)
   }
 
-  // Handle print
+  // Handle print - Materialize approach
   const handlePrint = () => {
+    // Fix colspan values for totals rows (reduce by 1 since checkbox column is hidden)
+    const page2Tables = document.querySelectorAll('.print-page-2 tbody tr:last-child td[colspan]')
+    const originalColspans: { element: HTMLElement; value: string | null }[] = []
+    
+    page2Tables.forEach((cell) => {
+      const td = cell as HTMLTableCellElement
+      const currentColspan = td.getAttribute('colspan')
+      originalColspans.push({ element: td, value: currentColspan })
+      
+      if (currentColspan) {
+        const newColspan = parseInt(currentColspan) - 1
+        td.setAttribute('colspan', newColspan.toString())
+      }
+    })
+    
+    // Print
     window.print()
+    
+    // Restore original colspan values after print
+    setTimeout(() => {
+      originalColspans.forEach(({ element, value }) => {
+        if (value) {
+          element.setAttribute('colspan', value)
+        }
+      })
+    }, 100)
   }
 
   // Handle export Excel
@@ -374,9 +399,128 @@ export default function QuoteDetailClient({
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+    <>
+      {/* Print Styles - Always present in DOM */}
+      <style jsx global>{`
+        @media print {
+          /* Hide everything except print content */
+          body * {
+            visibility: hidden;
+          }
+          
+          .printable-content,
+          .printable-content * {
+            visibility: visible;
+          }
+          
+          .printable-content {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+
+          /* Hide non-printable elements */
+          .no-print,
+          button,
+          .MuiIconButton-root,
+          .MuiButton-root,
+          .MuiCheckbox-root,
+          .print-hide-actions {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          /* Remove card borders */
+          .MuiPaper-root,
+          .MuiCard-root {
+            border: none !important;
+            box-shadow: none !important;
+          }
+
+          /* Page breaks */
+          .print-page-1 {
+            page-break-after: always !important;
+            break-after: page !important;
+          }
+
+          .print-page-2 {
+            page-break-before: always !important;
+            break-before: page !important;
+          }
+
+          /* Page setup - no top/bottom margins */
+          @page {
+            size: portrait;
+            margin: 0 1cm;
+          }
+
+          /* Scale to fit */
+          .printable-content {
+            transform: scale(0.95);
+            transform-origin: top left;
+          }
+
+          /* Force customer and billing to stay side-by-side */
+          .MuiGrid-item[class*="md-6"] {
+            flex: 0 0 50% !important;
+            max-width: 50% !important;
+          }
+
+          /* Hide titles in fees and accessories cards on page 2 */
+          .print-page-2 .MuiCard-root .MuiCardContent-root > div:first-child {
+            display: none !important;
+          }
+
+          /* Make page 2 cards same width and fit properly */
+          .print-page-2 .MuiCard-root {
+            width: 100% !important;
+            max-width: 100% !important;
+            overflow: visible !important;
+          }
+
+          /* Scale tables uniformly */
+          .print-page-2 .MuiTableContainer-root {
+            transform: scale(0.8);
+            transform-origin: top left;
+            width: 125% !important;
+          }
+
+          .print-page-2 .MuiTable-root {
+            width: 100% !important;
+            table-layout: fixed !important;
+          }
+
+          .print-page-2 .MuiTableCell-root {
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+          }
+
+          /* Hide checkbox columns in tables */
+          th:first-child:has(.MuiCheckbox-root),
+          td:first-child:has(.MuiCheckbox-root) {
+            display: none !important;
+          }
+
+          /* Fix totals row to match table width exactly */
+          .print-page-2 tbody tr:last-child td:first-child {
+            width: auto !important;
+          }
+
+          .print-page-2 tbody tr:last-child td:last-child {
+            width: auto !important;
+          }
+
+          /* Ensure totals row doesn't overflow */
+          .print-page-2 tbody tr:last-child {
+            display: table-row !important;
+          }
+        }
+      `}</style>
+
+      <Box sx={{ p: 3 }} className="printable-content">
+        {/* Header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }} className="no-print">
         <IconButton onClick={handleBack} sx={{ mr: 2 }}>
           <ArrowBackIcon />
         </IconButton>
@@ -392,9 +536,9 @@ export default function QuoteDetailClient({
 
       <Grid container spacing={3}>
         {/* Left Column - Quote Details */}
-        <Grid item xs={12} md={9}>
-          {/* All Quote Information in One Card */}
-          <Paper sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0' }}>
+        <Grid item xs={12} md={9} className="print-full-width">
+          {/* Page 1: First Card - All Quote Information */}
+          <Paper sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0' }} className="print-page-1">
             {/* Company Info */}
             <Box sx={{ 
               mb: 3, 
@@ -801,25 +945,28 @@ export default function QuoteDetailClient({
             </Box>
           </Paper>
 
-          {/* Fees Section */}
-          <QuoteFeesSection
-            quoteId={quoteData.id}
-            fees={quoteData.fees}
-            onFeesChange={handleFeeAdded}
-            onAddFeeClick={handleAddFee}
-          />
+          {/* Page 2: Second Card (Fees) and Third Card (Accessories) */}
+          <Box className="print-page-2">
+            {/* Second Card: Fees Section */}
+            <QuoteFeesSection
+              quoteId={quoteData.id}
+              fees={quoteData.fees}
+              onFeesChange={handleFeeAdded}
+              onAddFeeClick={handleAddFee}
+            />
 
-          {/* Accessories Section */}
-          <QuoteAccessoriesSection
-            quoteId={quoteData.id}
-            accessories={quoteData.accessories}
-            onAccessoriesChange={handleAccessoryAdded}
-            onAddAccessoryClick={handleAddAccessory}
-          />
+            {/* Third Card: Accessories Section */}
+            <QuoteAccessoriesSection
+              quoteId={quoteData.id}
+              accessories={quoteData.accessories}
+              onAccessoriesChange={handleAccessoryAdded}
+              onAddAccessoryClick={handleAddAccessory}
+            />
+          </Box>
         </Grid>
 
         {/* Right Column - Actions */}
-        <Grid item xs={12} md={3}>
+        <Grid item xs={12} md={3} className="print-hide-actions">
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -944,6 +1091,7 @@ export default function QuoteDetailClient({
         currentDiscountPercent={quoteData.discount_percent}
         onSuccess={handleDiscountUpdated}
       />
-    </Box>
+      </Box>
+    </>
   )
 }

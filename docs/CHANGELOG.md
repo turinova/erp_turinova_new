@@ -4,6 +4,46 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Quote Print Functionality
+
+### Added
+- **Print Function**: Implemented "Nyomtatás" button functionality for quote detail page
+- **2-Page Layout**: Automatic page breaks for professional printing
+  - Page 1: Company info, customer/billing info, materials, services, summary (fits on one page)
+  - Page 2: Fees and accessories tables (titles hidden, data only)
+- **Print Optimization**: Multiple iterations to perfect the layout
+- **Colspan Fix**: JavaScript dynamically adjusts table colspan values before printing
+
+### Print Features
+- Portrait A4 orientation with minimal margins (0cm top/bottom, 1cm left/right)
+- Overall content scaled to 95% to fit page 1
+- Page 2 tables scaled to 80% to show all columns
+- Customer/Billing forced side-by-side (50% each)
+- Hidden elements: buttons, checkboxes, right column, breadcrumbs, nav, page 2 card titles
+- Removed: card borders and shadows for clean print
+- Preserved: background colors, table styling, typography
+- Perfect alignment: "Összesen" totals rows align with table columns
+
+### Technical Implementation
+- Materialize pattern: Visibility-based hiding (`body * { visibility: hidden }`)
+- CSS classes: `printable-content`, `no-print`, `print-page-1`, `print-page-2`, `print-hide-actions`
+- CSS media queries: `@media print` with page breaks and scaling
+- JavaScript: Dynamic colspan adjustment for totals rows when checkbox column hidden
+- Fixed table layout for consistent column widths
+
+### Print Optimizations
+1. Reduced margins from 2cm to 0cm (top/bottom)
+2. Scaled content to 95% overall
+3. Forced Grid items to 50% width (customer/billing)
+4. Scaled page 2 tables to 80%
+5. Hidden page 2 card titles
+6. Dynamic colspan adjustment in handlePrint()
+
+### Documentation
+- Created `QUOTE_PRINT_FUNCTIONALITY_2025-01-27.md` - Complete print implementation guide with optimization journey
+
+---
+
 ## [2025-01-27] - Quote Detail Page UI Improvements
 
 ### Added
