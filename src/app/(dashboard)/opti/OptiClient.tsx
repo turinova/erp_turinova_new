@@ -282,6 +282,17 @@ export default function OptiClient({
     })
   }, [rawEdgeMaterials])
 
+  // OPTIMIZATION: Create material lookup map for O(1) access
+  const materialLookup = useMemo(() => {
+    const map = new Map()
+    materials.forEach(m => {
+      const key = `${m.name}|${m.width_mm}|${m.length_mm}`
+      map.set(key, m)
+    })
+    console.log(`[PERF] Material lookup map created with ${map.size} entries`)
+    return map
+  }, [materials])
+
   // Custom render for edge material options with favourites highlighted
   const renderEdgeMaterialOption = (props: any, option: EdgeMaterial, index: number) => {
     const isFavourite = option.favourite_priority !== null && option.favourite_priority !== undefined
@@ -1127,6 +1138,7 @@ export default function OptiClient({
       return
     }
 
+    console.time('[OPTI] Total Optimization Time')
     setIsOptimizing(true)
     setError(null)
     
@@ -1135,6 +1147,7 @@ export default function OptiClient({
 
     try {
       // Group addedPanels by material
+      console.time('[OPTI] Panel Grouping')
       const panelsByMaterial = new Map<string, { material: Material; panels: any[] }>()
       
       addedPanels.forEach(addedPanel => {
@@ -1149,12 +1162,9 @@ export default function OptiClient({
         const materialWidth = parseInt(materialMatch[2])
         const materialLength = parseInt(materialMatch[3])
         
-        // Find the material in our materials array
-        const material = materials.find(m => 
-          m.name === materialName && 
-          m.width_mm === materialWidth && 
-          m.length_mm === materialLength
-        )
+        // OPTIMIZATION: Use lookup map instead of find() - O(1) instead of O(n)
+        const lookupKey = `${materialName}|${materialWidth}|${materialLength}`
+        const material = materialLookup.get(lookupKey)
         
         if (!material) {
           console.warn('Material not found in materials array:', materialName, materialWidth, materialLength)
@@ -1185,8 +1195,9 @@ export default function OptiClient({
         
         panelsByMaterial.get(materialId)!.panels.push(panel)
       })
+      console.timeEnd('[OPTI] Panel Grouping')
 
-      
+      console.time('[OPTI] Request Preparation')
       const materialsForOptimization = Array.from(panelsByMaterial.values()).map(({ material, panels: materialPanels }) => {
         // Prepare all parts for this material
         const allParts = materialPanels.flatMap(panel => 
@@ -1219,11 +1230,13 @@ export default function OptiClient({
                }
              }
       })
-
+      console.timeEnd('[OPTI] Request Preparation')
 
       // Call multi-material optimization service
       const request = { materials: materialsForOptimization }
-        
+      console.log(`[OPTI] Calling optimization API with ${materialsForOptimization.length} materials`)
+      
+      console.time('[OPTI] API Call (Guillotine Algorithm)')
       const response = await fetch('/api/optimize', {
           method: 'POST',
           headers: {
@@ -1239,7 +1252,9 @@ export default function OptiClient({
         }
 
       const results = await response.json()
+      console.timeEnd('[OPTI] API Call (Guillotine Algorithm)')
 
+      console.time('[OPTI] Results Processing')
       // Calculate total metrics
       const totalUsedArea = results.reduce((sum: number, result: any) => sum + result.metrics.used_area_mm2, 0)
       const totalBoardArea = results.reduce((sum: number, result: any) => sum + result.metrics.board_area_mm2, 0)
@@ -1260,7 +1275,11 @@ export default function OptiClient({
       }
 
       setOptimizationResult(finalResult)
+      console.timeEnd('[OPTI] Results Processing')
+      console.timeEnd('[OPTI] Total Optimization Time')
+      console.log(`[OPTI] ✅ Optimization complete: ${results.length} materials, ${totalPlaced} panels placed, ${totalUnplaced} unplaced`)
     } catch (err) {
+      console.timeEnd('[OPTI] Total Optimization Time')
       console.error('\n=== OPTIMIZATION ERROR ===')
       console.error('Error details:', err)
       console.error('Error message:', err instanceof Error ? err.message : 'Unknown error')

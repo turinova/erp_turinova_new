@@ -19,6 +19,8 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
+  const apiStartTime = performance.now()
+  
   try {
     // Get the request data from the frontend
     const input = await request.json();
@@ -30,22 +32,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`Processing optimization request with ${input.materials.length} materials`);
+    console.log(`[API] Processing optimization request with ${input.materials.length} materials`);
+    console.time('[API] Total Optimization Time')
 
     // Process each material from the request
     const results: OptimizationResult[] = [];
 
     for (const materialData of input.materials) {
+      const materialStartTime = performance.now()
       const materialId = materialData.id;
       const materialName = materialData.name;
       const parts = materialData.parts;
       const board = materialData.board;
       const params = materialData.params;
 
-      console.log(`Processing material: ${materialName} (${materialId}) - Board: ${board.w_mm}x${board.h_mm}mm`);
+      console.log(`[API] Processing material: ${materialName} (${materialId}) - ${parts.length} parts`);
 
       // Process panels for this material - expand by quantity
+      console.time(`[API] Process Panels: ${materialName}`)
       const panels = processPanelsForMaterial(parts, false); // grain_direction not in current data structure
+      console.timeEnd(`[API] Process Panels: ${materialName}`)
 
       // Get board dimensions
       const boardWidth = board.w_mm;
@@ -72,7 +78,10 @@ export async function POST(request: NextRequest) {
       );
 
       // Use the guillotine cutting algorithm
+      console.time(`[API] Guillotine Algorithm: ${materialName}`)
       const bins = guillotineCutting(panels, usableWidth, usableHeight, kerfSize);
+      console.timeEnd(`[API] Guillotine Algorithm: ${materialName}`)
+      console.log(`[API] ${materialName}: Created ${bins.length} bins for ${panels.length} panels`)
 
       // Convert to response format - process ALL boards
       const placements: Placement[] = [];
@@ -81,6 +90,7 @@ export async function POST(request: NextRequest) {
       const boardCutLengths: Record<number, number> = {};
 
       // Process all bins (all boards)
+      console.time(`[API] Process Bins: ${materialName}`)
       if (bins.length > 0) {
         for (let binIndex = 0; binIndex < bins.length; binIndex++) {
           const bin = bins[binIndex];
@@ -145,6 +155,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+      console.timeEnd(`[API] Process Bins: ${materialName}`)
 
       // Mark remaining panels as unplaced
       for (let i = 0; i < parts.length; i++) {
@@ -208,7 +219,14 @@ export async function POST(request: NextRequest) {
           panels_count: panels.length
         }
       });
+
+      const materialDuration = performance.now() - materialStartTime
+      console.log(`[API] ✅ ${materialName} complete in ${materialDuration.toFixed(2)}ms (${bins.length} boards, ${placements.length} placements)`)
     }
+
+    console.timeEnd('[API] Total Optimization Time')
+    const totalDuration = performance.now() - apiStartTime
+    console.log(`[API] ✅ All materials optimized in ${totalDuration.toFixed(2)}ms`)
 
     // Return results array directly as expected by OptiClient
     return NextResponse.json(results, { headers: corsHeaders });

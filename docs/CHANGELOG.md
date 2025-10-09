@@ -4,6 +4,57 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-27] - Cutting List (Szabásjegyzék) Display
+
+### Added
+- **Cutting List Section**: New "Szabásjegyzék" card on quote detail page
+- **Comprehensive Panel Data**: Displays all panels with machine codes and services
+- **Machine Code Integration**: Material and edge material machine codes from mapping tables
+- **Edge Material Display**: Shows machine codes for all 4 edges (Hosszú alsó, Hosszú felső, Széles bal, Széles jobb)
+- **Services Display**: Icon-based display with tooltips (Pánthelyfúrás 🎯, Duplungolás 🔢, Szögvágás ✂️)
+
+### Table Structure
+**Columns:**
+1. Anyag (Material machine code from machine_material_map)
+2. Hosszúság (Panel width_mm, no "mm" unit)
+3. Szélesség (Panel height_mm, no "mm" unit)
+4. Darab (Panel quantity, no "db" unit)
+5. Jelölés (Panel label or "-")
+6. Hosszú alsó (Edge A machine code - Top, empty if none)
+7. Hosszú felső (Edge C machine code - Bottom, empty if none)
+8. Széles bal (Edge B machine code - Left, empty if none)
+9. Széles jobb (Edge D machine code - Right, empty if none)
+10. Egyéb (Services as MUI icons with tooltips)
+
+### Display Logic
+- Material: Shows machine_code from machine_material_map
+- Edges: Shows machine_code from machine_edge_material_map, empty string if no edge
+- Egyéb: Uses MUI icons (LocationSearchingSharpIcon, Filter2Icon, ContentCutIcon), shows "-" if none
+- Units removed from dimension columns for cleaner look
+- Read-only table (no buttons, no checkboxes, no search)
+- Static display of all panels
+
+### UI Styling
+- **Compact table**: Small size, reduced cell padding (6px 8px)
+- **Vertical borders**: All columns separated with vertical lines
+- **Outer border**: 1px solid grey border around entire table
+- **Font size**: 0.875rem (14px) for compact display
+- **Alignment**: Numbers right-aligned, text left-aligned, icons centered
+
+### Technical Implementation
+- Updated `getQuoteById()` to fetch machine codes in parallel
+- Enriched panels data with material_machine_code and edge_X_code fields
+- New component: QuoteCuttingListSection.tsx
+- Integrated into quote detail page below accessories
+- Part of print Page 2
+
+### Documentation
+- Created `CUTTING_LIST_FEATURE_2025-01-27.md` - Complete feature documentation
+- Component follows existing quote section patterns
+- Machine code lookups optimized with parallel queries
+
+---
+
 ## [2025-01-27] - Excel Export (Complete)
 
 ### Added

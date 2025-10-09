@@ -1219,50 +1219,142 @@ export async function getAllMediaFiles() {
 export async function getQuoteById(quoteId: string) {
   const startTime = performance.now()
   
-  console.log(`[SSR] Fetching quote ${quoteId}`)
+  console.log(`[SSR] Fetching quote ${quoteId} - OPTIMIZED`)
 
   try {
-    // Fetch quote with customer data
-    const { data: quote, error: quoteError } = await supabaseServer
-      .from('quotes')
-      .select(`
-        id,
-        quote_number,
-        status,
-        customer_id,
-        discount_percent,
-        total_net,
-        total_vat,
-        total_gross,
-        final_total_after_discount,
-        fees_total_net,
-        fees_total_vat,
-        fees_total_gross,
-        accessories_total_net,
-        accessories_total_vat,
-        accessories_total_gross,
-        created_at,
-        updated_at,
-        customers(
+    // OPTIMIZATION: Fetch all data in parallel instead of sequential
+    const parallelStartTime = performance.now()
+    
+    const [quoteResult, panelsResult, pricingResult, feesResult, accessoriesResult, tenantCompany] = await Promise.all([
+      // 1. Quote with customer data
+      supabaseServer
+        .from('quotes')
+        .select(`
           id,
-          name,
-          email,
-          mobile,
+          quote_number,
+          status,
+          customer_id,
           discount_percent,
-          billing_name,
-          billing_country,
-          billing_city,
-          billing_postal_code,
-          billing_street,
-          billing_house_number,
-          billing_tax_number,
-          billing_company_reg_number
-        )
-      `)
-      .eq('id', quoteId)
-      .is('deleted_at', null)
-      .single()
+          total_net,
+          total_vat,
+          total_gross,
+          final_total_after_discount,
+          fees_total_net,
+          fees_total_vat,
+          fees_total_gross,
+          accessories_total_net,
+          accessories_total_vat,
+          accessories_total_gross,
+          created_at,
+          updated_at,
+          customers(
+            id,
+            name,
+            email,
+            mobile,
+            discount_percent,
+            billing_name,
+            billing_country,
+            billing_city,
+            billing_postal_code,
+            billing_street,
+            billing_house_number,
+            billing_tax_number,
+            billing_company_reg_number
+          )
+        `)
+        .eq('id', quoteId)
+        .is('deleted_at', null)
+        .single(),
 
+      // 2. Panels with materials
+      supabaseServer
+        .from('quote_panels')
+        .select(`
+          id,
+          material_id,
+          width_mm,
+          height_mm,
+          quantity,
+          label,
+          edge_material_a_id,
+          edge_material_b_id,
+          edge_material_c_id,
+          edge_material_d_id,
+          panthelyfuras_quantity,
+          panthelyfuras_oldal,
+          duplungolas,
+          szogvagas,
+          materials(id, name, brand_id, length_mm, width_mm, brands(name))
+        `)
+        .eq('quote_id', quoteId)
+        .order('created_at', { ascending: true }),
+
+      // 3. Pricing with breakdowns
+      supabaseServer
+        .from('quote_materials_pricing')
+        .select(`
+          id, material_id, material_name, board_width_mm, board_length_mm, thickness_mm, grain_direction,
+          on_stock, boards_used, usage_percentage, pricing_method, charged_sqm,
+          price_per_sqm, vat_rate, currency, usage_limit, waste_multi,
+          material_net, material_vat, material_gross,
+          edge_materials_net, edge_materials_vat, edge_materials_gross,
+          cutting_length_m, cutting_net, cutting_vat, cutting_gross,
+          services_net, services_vat, services_gross,
+          total_net, total_vat, total_gross,
+          materials(id, name, brands(name)),
+          quote_edge_materials_breakdown(
+            id, edge_material_id, edge_material_name, total_length_m, price_per_m,
+            net_price, vat_amount, gross_price
+          ),
+          quote_services_breakdown(
+            id, service_type, quantity, unit_price, net_price, vat_amount, gross_price
+          )
+        `)
+        .eq('quote_id', quoteId)
+        .order('created_at', { ascending: true }),
+
+      // 4. Fees
+      supabaseServer
+        .from('quote_fees')
+        .select(`
+          id, fee_name, quantity, unit_price_net, vat_rate, vat_amount, gross_price, currency_id, comment,
+          created_at,
+          feetypes(id, name),
+          currencies(id, name)
+        `)
+        .eq('quote_id', quoteId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true }),
+
+      // 5. Accessories
+      supabaseServer
+        .from('quote_accessories')
+        .select(`
+          id, accessory_name, sku, quantity, unit_price_net, vat_rate, unit_name, currency_id,
+          total_net, total_vat, total_gross, created_at,
+          accessories(id, name, sku),
+          units(id, name, shortform),
+          currencies(id, name)
+        `)
+        .eq('quote_id', quoteId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true }),
+
+      // 6. Tenant company
+      getTenantCompany()
+    ])
+
+    logTiming('Parallel Queries Complete', parallelStartTime, 'all 6 queries executed in parallel')
+
+    // Extract data and errors from results
+    const { data: quote, error: quoteError } = quoteResult
+    const { data: panels, error: panelsError } = panelsResult
+    const { data: pricingData, error: pricingError } = pricingResult
+    const { data: fees, error: feesError } = feesResult
+    const { data: accessories, error: accessoriesError } = accessoriesResult
+
+    // Handle errors
     if (quoteError) {
       console.error('[SSR] Error fetching quote:', quoteError)
       logTiming('Quote Fetch Failed', startTime)
@@ -1275,120 +1367,74 @@ export async function getQuoteById(quoteId: string) {
       return null
     }
 
-    logTiming('Quote DB Query', startTime, `fetched quote ${quote.quote_number}`)
-
-    // Fetch panels for this quote
-    const panelStartTime = performance.now()
-    const { data: panels, error: panelsError } = await supabaseServer
-      .from('quote_panels')
-      .select(`
-        id,
-        material_id,
-        width_mm,
-        height_mm,
-        quantity,
-        label,
-        edge_material_a_id,
-        edge_material_b_id,
-        edge_material_c_id,
-        edge_material_d_id,
-        panthelyfuras_quantity,
-        panthelyfuras_oldal,
-        duplungolas,
-        szogvagas,
-        materials(id, name, brand_id, length_mm, width_mm, brands(name))
-      `)
-      .eq('quote_id', quoteId)
-      .order('created_at', { ascending: true })
-
     if (panelsError) {
       console.error('[SSR] Error fetching panels:', panelsError)
-      logTiming('Panels Fetch Failed', panelStartTime)
-      return null
     }
-
-    logTiming('Panels DB Query', panelStartTime, `fetched ${panels?.length || 0} panels`)
-
-    // Fetch pricing data with detailed breakdowns
-    const pricingStartTime = performance.now()
-    const { data: pricingData, error: pricingError } = await supabaseServer
-      .from('quote_materials_pricing')
-      .select(`
-        id, material_id, material_name, board_width_mm, board_length_mm, thickness_mm, grain_direction,
-        on_stock, boards_used, usage_percentage, pricing_method, charged_sqm,
-        price_per_sqm, vat_rate, currency, usage_limit, waste_multi,
-        material_net, material_vat, material_gross,
-        edge_materials_net, edge_materials_vat, edge_materials_gross,
-        cutting_length_m, cutting_net, cutting_vat, cutting_gross,
-        services_net, services_vat, services_gross,
-        total_net, total_vat, total_gross,
-        materials(id, name, brands(name)),
-        quote_edge_materials_breakdown(
-          id, edge_material_id, edge_material_name, total_length_m, price_per_m,
-          net_price, vat_amount, gross_price
-        ),
-        quote_services_breakdown(
-          id, service_type, quantity, unit_price, net_price, vat_amount, gross_price
-        )
-      `)
-      .eq('quote_id', quoteId)
-      .order('created_at', { ascending: true })
 
     if (pricingError) {
       console.error('[SSR] Error fetching pricing:', pricingError)
-      console.error('[SSR] Pricing error details:', JSON.stringify(pricingError, null, 2))
-      logTiming('Pricing Fetch Failed', pricingStartTime)
-      // Don't return null, continue with empty pricing data
       console.log('[SSR] Continuing without pricing data...')
     }
-
-    logTiming('Pricing DB Query', pricingStartTime, `fetched ${pricingData?.length || 0} pricing records`)
-
-    // Fetch fees for this quote
-    const feesStartTime = performance.now()
-    const { data: fees, error: feesError } = await supabaseServer
-      .from('quote_fees')
-      .select(`
-        id, fee_name, quantity, unit_price_net, vat_rate, vat_amount, gross_price, currency_id, comment,
-        created_at,
-        feetypes(id, name),
-        currencies(id, name)
-      `)
-      .eq('quote_id', quoteId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
 
     if (feesError) {
       console.error('[SSR] Error fetching fees:', feesError)
     }
 
-    logTiming('Fees DB Query', feesStartTime, `fetched ${fees?.length || 0} fees`)
-
-    // Fetch accessories for this quote
-    const accessoriesStartTime = performance.now()
-    const { data: accessories, error: accessoriesError } = await supabaseServer
-      .from('quote_accessories')
-      .select(`
-        id, accessory_name, sku, quantity, unit_price_net, vat_rate, unit_name, currency_id,
-        total_net, total_vat, total_gross, created_at,
-        accessories(id, name, sku),
-        units(id, name, shortform),
-        currencies(id, name)
-      `)
-      .eq('quote_id', quoteId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
-
     if (accessoriesError) {
       console.error('[SSR] Error fetching accessories:', accessoriesError)
     }
 
-    logTiming('Accessories DB Query', accessoriesStartTime, `fetched ${accessories?.length || 0} accessories`)
+    // Log individual query results for debugging
+    console.log(`[PERF] Quote data: ${quote ? 'OK' : 'MISSING'}`)
+    console.log(`[PERF] Panels: ${panels?.length || 0} records`)
+    console.log(`[PERF] Pricing: ${pricingData?.length || 0} records`)
+    console.log(`[PERF] Fees: ${fees?.length || 0} records`)
+    console.log(`[PERF] Accessories: ${accessories?.length || 0} records`)
+    console.log(`[PERF] Company: ${tenantCompany ? 'OK' : 'MISSING'}`)
 
-    // Fetch tenant company data
-    const companyStartTime = performance.now()
-    const tenantCompany = await getTenantCompany()
-    logTiming('Company DB Query', companyStartTime, `fetched ${tenantCompany ? 1 : 0} company records`)
+    // Fetch machine codes for panels (for cutting list)
+    const materialIds = panels?.map(p => p.material_id) || []
+    const edgeMaterialIds = panels?.flatMap(p => [
+      p.edge_material_a_id,
+      p.edge_material_b_id,
+      p.edge_material_c_id,
+      p.edge_material_d_id
+    ].filter(Boolean)) || []
+
+    const machineCodesStartTime = performance.now()
+    const [materialMaps, edgeMaterialMaps] = await Promise.all([
+      materialIds.length > 0 ? supabaseServer
+        .from('machine_material_map')
+        .select('material_id, machine_code')
+        .in('material_id', materialIds)
+        .eq('machine_type', 'Korpus') : Promise.resolve({ data: [] }),
+      
+      edgeMaterialIds.length > 0 ? supabaseServer
+        .from('machine_edge_material_map')
+        .select('edge_material_id, machine_code')
+        .in('edge_material_id', edgeMaterialIds)
+        .eq('machine_type', 'Korpus') : Promise.resolve({ data: [] })
+    ])
+
+    logTiming('Machine Codes Fetch', machineCodesStartTime, `fetched ${materialMaps.data?.length || 0} material codes, ${edgeMaterialMaps.data?.length || 0} edge codes`)
+
+    // Create lookup maps for machine codes
+    const materialCodeMap = new Map(
+      materialMaps.data?.map(m => [m.material_id, m.machine_code]) || []
+    )
+    const edgeCodeMap = new Map(
+      edgeMaterialMaps.data?.map(e => [e.edge_material_id, e.machine_code]) || []
+    )
+
+    // Enrich panels with machine codes for cutting list
+    const enrichedPanels = panels?.map(panel => ({
+      ...panel,
+      material_machine_code: materialCodeMap.get(panel.material_id) || '',
+      edge_a_code: panel.edge_material_a_id ? edgeCodeMap.get(panel.edge_material_a_id) || null : null,
+      edge_b_code: panel.edge_material_b_id ? edgeCodeMap.get(panel.edge_material_b_id) || null : null,
+      edge_c_code: panel.edge_material_c_id ? edgeCodeMap.get(panel.edge_material_c_id) || null : null,
+      edge_d_code: panel.edge_material_d_id ? edgeCodeMap.get(panel.edge_material_d_id) || null : null
+    })) || []
 
     // Transform the response to include all necessary data
     const transformedQuote = {
@@ -1398,7 +1444,7 @@ export async function getQuoteById(quoteId: string) {
       customer_id: quote.customer_id,
       discount_percent: quote.discount_percent,
       customer: quote.customers,
-      panels: panels || [],
+      panels: enrichedPanels,
       pricing: pricingData || [],
       fees: fees || [],
       accessories: accessories || [],
@@ -1420,7 +1466,7 @@ export async function getQuoteById(quoteId: string) {
     }
 
     logTiming('Quote Fetch Total', startTime, `returned quote ${quote.quote_number} with ${panels?.length || 0} panels`)
-    console.log(`[SSR] Quote fetched successfully: ${quote.quote_number}`)
+    console.log(`[SSR] Quote fetched successfully: ${quote.quote_number} (OPTIMIZED)`)
     
     return transformedQuote
 

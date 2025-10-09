@@ -36,6 +36,7 @@ import { toast } from 'react-toastify'
 import { usePermissions } from '@/permissions/PermissionProvider'
 import QuoteFeesSection from './QuoteFeesSection'
 import QuoteAccessoriesSection from './QuoteAccessoriesSection'
+import QuoteCuttingListSection from './QuoteCuttingListSection'
 import AddFeeModal from './AddFeeModal'
 import AddAccessoryModal from './AddAccessoryModal'
 import EditDiscountModal from './EditDiscountModal'
@@ -86,6 +87,11 @@ interface QuoteData {
     panthelyfuras_oldal: string
     duplungolas: boolean
     szogvagas: boolean
+    material_machine_code?: string
+    edge_a_code?: string | null
+    edge_b_code?: string | null
+    edge_c_code?: string | null
+    edge_d_code?: string | null
     materials: {
       id: string
       name: string
@@ -1005,6 +1011,11 @@ export default function QuoteDetailClient({
               accessories={quoteData.accessories}
               onAccessoriesChange={handleAccessoryAdded}
               onAddAccessoryClick={handleAddAccessory}
+            />
+
+            {/* Fourth Card: Cutting List Section */}
+            <QuoteCuttingListSection
+              panels={quoteData.panels}
             />
           </Box>
         </Grid>
