@@ -4,9 +4,21 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
-## [2025-01-28] - Production Assignment & Barcode Display
+## [2025-01-28] - Inline Production Editing & Bulk Assignment
 
 ### Added
+- **Inline Production Editing on /orders page**: Fast bulk production assignment workflow
+  - Customer name tooltip showing mobile + email on separate lines
+  - Status filter chips with live counts (Összes, Megrendelve, Gyártásban, Kész, Lezárva)
+  - Instant client-side filtering by order status
+  - Three new editable columns: Vonalkód, Gép, Gyártás dátuma
+  - Auto-save on barcode blur (Tab or click out)
+  - Smart defaults: First machine + Next business day
+  - Barcode deletion reverts status to 'ordered'
+  - Per-row loading indicators
+  - No modal needed - all editing inline
+  - Physical barcode scanner optimized
+  - Bulk workflow: Scan → Tab → Scan → Tab (rapid entry)
 - **Production Assignment Modal (Gyártásba adás)**: Complete production machine assignment system
   - Machine dropdown from `production_machines` table
   - Date picker with smart business day calculation (skip weekends)

@@ -1593,9 +1593,18 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
         payment_status,
         final_total_after_discount,
         updated_at,
+        production_machine_id,
+        production_date,
+        barcode,
         customers!inner(
           id,
-          name
+          name,
+          mobile,
+          email
+        ),
+        production_machines(
+          id,
+          machine_name
         )
       `, { count: 'exact' })
       .in('status', ['ordered', 'in_production', 'ready', 'finished']) // Only show orders
@@ -1623,8 +1632,14 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
       status: order.status,
       payment_status: order.payment_status || 'not_paid',
       customer_name: order.customers?.name || 'Unknown Customer',
+      customer_mobile: order.customers?.mobile || '',
+      customer_email: order.customers?.email || '',
       final_total: order.final_total_after_discount || 0,
-      updated_at: order.updated_at
+      updated_at: order.updated_at,
+      production_machine_id: order.production_machine_id || null,
+      production_machine_name: order.production_machines?.machine_name || null,
+      production_date: order.production_date || null,
+      barcode: order.barcode || ''
     })) || []
 
     const totalCount = count || 0

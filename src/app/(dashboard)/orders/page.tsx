@@ -1,5 +1,5 @@
 import React from 'react'
-import { getOrdersWithPagination } from '@/lib/supabase-server'
+import { getOrdersWithPagination, getAllProductionMachines } from '@/lib/supabase-server'
 import OrdersListClient from './OrdersListClient'
 
 interface PageProps {
@@ -14,8 +14,11 @@ export default async function OrdersPage({ searchParams }: PageProps) {
   const page = parseInt(resolvedParams.page || '1')
   const searchTerm = resolvedParams.search || ''
   
-  // Fetch orders with pagination and search
-  const ordersData = await getOrdersWithPagination(page, 20, searchTerm)
+  // Fetch orders and machines in parallel
+  const [ordersData, machines] = await Promise.all([
+    getOrdersWithPagination(page, 20, searchTerm),
+    getAllProductionMachines()
+  ])
   
   return (
     <OrdersListClient 
@@ -24,6 +27,7 @@ export default async function OrdersPage({ searchParams }: PageProps) {
       totalPages={ordersData.totalPages}
       currentPage={ordersData.currentPage}
       initialSearchTerm={searchTerm}
+      machines={machines}
     />
   )
 }
