@@ -383,6 +383,16 @@ export async function POST(request: NextRequest) {
 
     console.log('Quote saved successfully!')
 
+    // Recalculate totals to include fees and accessories (if any exist)
+    // This is especially important when editing existing quotes/orders
+    if (quoteId) {
+      console.log('Recalculating totals to include fees and accessories...')
+      
+      // Import and call recalculateQuoteTotals
+      const { recalculateQuoteTotals } = await import('./[id]/fees/route')
+      await recalculateQuoteTotals(finalQuoteId)
+    }
+
     // Fetch the saved quote to get order_number if it exists
     const { data: savedQuote } = await supabaseServer
       .from('quotes')

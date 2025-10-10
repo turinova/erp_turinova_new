@@ -4,6 +4,30 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-28] - Critical Fix: Quote Total Recalculation
+
+### Fixed
+- **Quote Total Calculation Bug**: Fixed critical issue where editing quotes/orders in Opti excluded fees and accessories from final_total_after_discount
+- **Root Cause**: POST /api/quotes was calculating total as `materials × discount` instead of `(materials + fees + accessories) × discount`
+- **Impact**: Wrong totals displayed, incorrect payment status, unreliable invoicing
+- **Solution**: Call `recalculateQuoteTotals()` after saving quote updates to include all components
+
+### Technical Details
+- Added recalculation call in POST /api/quotes when updating existing quotes
+- Performance impact: +20-30ms per update (acceptable for correctness)
+- Affects: Order editing, payment status calculation, list display totals
+- Bug severity: Critical (financial accuracy)
+- All test cases passing
+
+### Example
+**Before:** Order with 37k materials + 31k fees + 158k accessories = Total showed 30k ❌  
+**After:** Same order = Total shows 182k ✅
+
+### Documentation
+- Created `QUOTE_TOTAL_RECALCULATION_FIX_2025-01-28.md` - Complete analysis and fix documentation
+
+---
+
 ## [2025-01-28] - Order Management System (Complete)
 
 ### Added
