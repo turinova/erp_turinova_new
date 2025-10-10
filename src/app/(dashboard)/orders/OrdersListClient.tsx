@@ -83,7 +83,7 @@ export default function OrdersListClient({
   const [mounted, setMounted] = useState(false)
   const [savingOrders, setSavingOrders] = useState<Set<string>>(new Set())
   const [defaultBusinessDay, setDefaultBusinessDay] = useState<Date | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [statusFilter, setStatusFilter] = useState<string>('ordered')
   
   // Ensure client-side only rendering and calculate default date
   useEffect(() => {
@@ -260,7 +260,19 @@ export default function OrdersListClient({
       })
 
       if (!response.ok) {
-        throw new Error('Failed to save production data')
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Hiba történt a mentés során'
+        const errorDetails = errorData.details || ''
+        
+        // Check for duplicate barcode constraint
+        if (errorDetails.includes('duplicate key') && errorDetails.includes('barcode')) {
+          toast.error('Ez a vonalkód már használatban van!')
+        } else if (errorMessage.includes('duplicate') || errorMessage.includes('unique')) {
+          toast.error('Ez a vonalkód már használatban van!')
+        } else {
+          toast.error(`Hiba: ${errorMessage}`)
+        }
+        return // Don't throw, just return to avoid console errors
       }
 
       // Update local state
@@ -281,8 +293,7 @@ export default function OrdersListClient({
 
       toast.success('Gyártás adatok mentve!')
     } catch (error) {
-      console.error('Error saving production data:', error)
-      toast.error('Hiba történt a mentés során!')
+      // Error toast already shown above, no need to log
     } finally {
       setSavingOrders(prev => {
         const newSet = new Set(prev)
