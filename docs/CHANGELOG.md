@@ -4,6 +4,57 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-28] - Add Payment Feature
+
+### Added
+- **Add Payment Modal**: Comprehensive payment addition interface for orders
+- **Remaining Balance Display**: Prominent display of amount owed (Hátralék)
+- **Auto-Validation**: Automatic capping of amounts exceeding remaining balance
+- **Refund Support**: Negative amounts allowed for customer refunds
+- **Real-time Preview**: Shows new payment status and remaining balance before saving
+- **Payment Method Selection**: Dropdown with Készpénz, Utalás, Bankkártya options
+
+### Features
+- **Auto-Cap Amount**: If user enters more than remaining, automatically formats to max remaining
+- **Negative Amounts**: Supports refunds (e.g., -10,000 Ft for damaged goods)
+- **Exact Remaining**: Allows paying exactly the remaining balance
+- **Payment Status Preview**: Shows "Kifizetve" or "Részben fizetve" before submitting
+- **Immediate Update**: Payment history and status chips update after adding payment
+- **Smooth UX**: No page reload, instant feedback via toast
+
+### API Endpoint
+- **POST /api/quotes/[id]/payments**: Add payment with validation
+  - Validates amount against remaining balance
+  - Prevents overpayment (positive amounts only)
+  - Allows refunds (negative amounts)
+  - Auto-updates payment_status via trigger
+  - Performance: ~40ms average
+
+### UI/UX
+- Summary card shows: Végösszeg, Eddig fizetve, Hátralék (color-coded)
+- Amount input accepts positive/negative/decimal
+- Real-time alert with new status and remaining
+- Helper text guides user (positive for payment, negative for refund)
+- Button disabled during submission with loading spinner
+
+### Integration
+- "Fizetés hozzáadás" button on order detail page
+- Opens AddPaymentModal with current payment state
+- Refreshes data after successful payment
+- Updates payment history card immediately
+- Payment status chip reflects new status
+
+### Validation
+- Positive amounts: Cannot exceed remaining balance (auto-cap)
+- Negative amounts: No limit (refunds)
+- Payment method: Required
+- Comment: Optional
+
+### Documentation
+- Created `ADD_PAYMENT_FEATURE_2025-01-28.md` - Complete feature documentation
+
+---
+
 ## [2025-01-28] - Critical Fix: Quote Total Recalculation
 
 ### Fixed

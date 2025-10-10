@@ -41,6 +41,7 @@ import AddFeeModal from './AddFeeModal'
 import AddAccessoryModal from './AddAccessoryModal'
 import EditDiscountModal from './EditDiscountModal'
 import CreateOrderModal from './CreateOrderModal'
+import AddPaymentModal from '../../orders/[order_id]/AddPaymentModal'
 
 interface QuoteData {
   id: string
@@ -295,6 +296,7 @@ export default function QuoteDetailClient({
   const [addAccessoryModalOpen, setAddAccessoryModalOpen] = useState(false)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
   const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
+  const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -412,6 +414,11 @@ export default function QuoteDetailClient({
   const handleOrderCreated = (quoteId: string, orderNumber: string) => {
     // Redirect to order detail page (same ID, different URL)
     router.push(`/orders/${quoteId}`)
+  }
+
+  // Handle payment added success
+  const handlePaymentAdded = async () => {
+    await refreshQuoteData()
   }
 
   // Handle refresh quote data
@@ -1117,7 +1124,7 @@ export default function QuoteDetailClient({
                   <Button
                     variant="outlined"
                     startIcon={<PaymentIcon />}
-                    onClick={() => toast.info('Fizetés hozzáadás hamarosan elérhető')}
+                    onClick={() => setAddPaymentModalOpen(true)}
                     fullWidth
                   >
                     Fizetés hozzáadás
@@ -1276,6 +1283,35 @@ export default function QuoteDetailClient({
         })()}
         onSuccess={handleOrderCreated}
       />
+
+      {/* Add Payment Modal */}
+      {isOrderView && (
+        <AddPaymentModal
+          open={addPaymentModalOpen}
+          onClose={() => setAddPaymentModalOpen(false)}
+          quoteId={quoteData.id}
+          orderNumber={quoteData.order_number || quoteData.quote_number}
+          finalTotal={(() => {
+            // Calculate final total (same logic as CreateOrderModal)
+            const materialsGross = quoteData.totals?.total_gross || 0
+            const feesGross = quoteData.totals?.fees_total_gross || 0
+            const accessoriesGross = quoteData.totals?.accessories_total_gross || 0
+            
+            const feesPositive = Math.max(0, feesGross)
+            const accessoriesPositive = Math.max(0, accessoriesGross)
+            const feesNegative = Math.min(0, feesGross)
+            const accessoriesNegative = Math.min(0, accessoriesGross)
+            
+            const subtotal = materialsGross + feesPositive + accessoriesPositive
+            const discountAmount = subtotal * ((quoteData.discount_percent || 0) / 100)
+            const calculatedTotal = subtotal - discountAmount + feesNegative + accessoriesNegative
+            
+            return quoteData.final_total_after_discount || calculatedTotal
+          })()}
+          totalPaid={quoteData.payments?.reduce((sum, p) => sum + p.amount, 0) || 0}
+          onSuccess={handlePaymentAdded}
+        />
+      )}
       </Box>
     </>
   )
