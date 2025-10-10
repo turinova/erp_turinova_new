@@ -110,6 +110,14 @@ export default function ScannerClient() {
 
       const order = await response.json()
 
+      // Check if already finished
+      if (order.status === 'finished') {
+        toast.warning('Ez a megrendelés már lezárva')
+        setBarcodeInput('')
+        setIsLoading(false)
+        return
+      }
+
       // Check if already in list
       if (scannedOrders.some(o => o.id === order.id)) {
         toast.warning('Ez a megrendelés már a listában van')
