@@ -1461,10 +1461,14 @@ export default function OptiClient({
       
       // Different message for edit vs create
       if (isEditMode) {
-        toast.success(`Árajánlat sikeresen frissítve: ${result.quoteNumber}`)
-        // Redirect back to quote detail page after successful update
+        // Check if this is an order (has order_number) or a quote
+        const isOrder = result.orderNumber || initialQuoteData?.order_number
+        const redirectPath = isOrder ? `/orders/${editingQuoteId}` : `/quotes/${editingQuoteId}`
+        
+        toast.success(`${isOrder ? 'Megrendelés' : 'Árajánlat'} sikeresen frissítve: ${isOrder ? result.orderNumber : result.quoteNumber}`)
+        // Redirect back to appropriate detail page after successful update
         setTimeout(() => {
-          router.push(`/quotes/${editingQuoteId}`)
+          router.push(redirectPath)
         }, 1500) // Small delay to show the success message
       } else {
         toast.success(`Árajánlat sikeresen mentve: ${result.quoteNumber}`)

@@ -50,6 +50,8 @@ export function useSimpleNavigation() {
               return isAdmin
             case '/opti':
             case '/optimalizalo':
+            case '/quotes':
+            case '/orders':
             case '/opti-beallitasok':
               return isAdmin
             default:

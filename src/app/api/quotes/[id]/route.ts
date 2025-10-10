@@ -47,6 +47,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'discount_percent must be between 0 and 100' }, { status: 400 })
     }
 
+    // Get customer_id from quote
+    const { data: quote } = await supabase
+      .from('quotes')
+      .select('customer_id')
+      .eq('id', quoteId)
+      .single()
+
+    if (!quote) {
+      return NextResponse.json({ error: 'Quote not found' }, { status: 404 })
+    }
+
     // Update quote discount
     const { error } = await supabase
       .from('quotes')
@@ -56,6 +67,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error) {
       console.error('Error updating quote discount:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // Also update customer's default discount
+    const { error: customerError } = await supabase
+      .from('customers')
+      .update({ discount_percent: discount_percent })
+      .eq('id', quote.customer_id)
+
+    if (customerError) {
+      console.error('Error updating customer discount:', customerError)
+      // Continue anyway - quote discount is updated
     }
 
     // Recalculate totals with new discount

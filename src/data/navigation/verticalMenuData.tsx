@@ -25,6 +25,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#E67E22' // Orange for quotes/proposals
   },
   {
+    label: 'Megrendelések',
+    href: '/orders',
+    icon: 'ri-shopping-cart-2-line',
+    iconColor: '#27AE60' // Green for orders
+  },
+  {
     label: 'Törzsadatok',
     icon: 'ri-database-2-line',
     iconColor: '#2ECC71', // Green for master data

@@ -160,24 +160,28 @@ export async function POST(request: NextRequest) {
     const finalTotal = totalGross * (1 - discountPercent / 100)
 
     // Create or update quote
-    const quoteData = {
+    const quoteData: any = {
       customer_id: customerId,
       quote_number: quoteNumber,
-      status: body.status || 'draft',
       total_net: totalNet,
       total_vat: totalVat,
       total_gross: totalGross,
       discount_percent: discountPercent,
       final_total_after_discount: finalTotal,
-      created_by: user.id,
       updated_at: new Date().toISOString()
+    }
+
+    // Only set status for NEW quotes, not when updating
+    if (!quoteId) {
+      quoteData.status = body.status || 'draft'
+      quoteData.created_by = user.id
     }
 
     let finalQuoteId = quoteId
     let finalQuoteNumber = quoteNumber
 
     if (quoteId) {
-      // Update existing quote
+      // Update existing quote - DON'T change status or order_number
       const { data: updatedQuote, error: quoteError } = await supabaseServer
         .from('quotes')
         .update(quoteData)
@@ -379,11 +383,19 @@ export async function POST(request: NextRequest) {
 
     console.log('Quote saved successfully!')
 
+    // Fetch the saved quote to get order_number if it exists
+    const { data: savedQuote } = await supabaseServer
+      .from('quotes')
+      .select('order_number')
+      .eq('id', finalQuoteId)
+      .single()
+
     return NextResponse.json({
       success: true,
       message: 'Árajánlat sikeresen mentve',
       quoteId: finalQuoteId,
-      quoteNumber: finalQuoteNumber
+      quoteNumber: finalQuoteNumber,
+      orderNumber: savedQuote?.order_number || null
     }, { status: quoteId ? 200 : 201 })
 
   } catch (error) {

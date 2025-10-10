@@ -40,13 +40,16 @@ import QuoteCuttingListSection from './QuoteCuttingListSection'
 import AddFeeModal from './AddFeeModal'
 import AddAccessoryModal from './AddAccessoryModal'
 import EditDiscountModal from './EditDiscountModal'
+import CreateOrderModal from './CreateOrderModal'
 
 interface QuoteData {
   id: string
   quote_number: string
+  order_number?: string | null
   status: string
   customer_id: string
   discount_percent: number
+  payment_status?: string
   customer: {
     id: string
     name: string
@@ -175,6 +178,14 @@ interface QuoteData {
     currency_id: string
     comment: string
   }>
+  payments: Array<{
+    id: string
+    amount: number
+    payment_method: string
+    comment: string | null
+    payment_date: string
+    created_by: string
+  }>
   accessories: Array<{
     id: string
     accessory_name: string
@@ -261,6 +272,7 @@ interface QuoteDetailClientProps {
   currencies: Currency[]
   units: Unit[]
   partners: Partner[]
+  isOrderView?: boolean // True when viewing from /orders page
 }
 
 export default function QuoteDetailClient({ 
@@ -270,7 +282,8 @@ export default function QuoteDetailClient({
   vatRates,
   currencies,
   units,
-  partners
+  partners,
+  isOrderView = false
 }: QuoteDetailClientProps) {
   const router = useRouter()
   const { canAccess } = usePermissions()
@@ -281,6 +294,7 @@ export default function QuoteDetailClient({
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false)
   const [addAccessoryModalOpen, setAddAccessoryModalOpen] = useState(false)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
+  const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -302,7 +316,7 @@ export default function QuoteDetailClient({
 
   // Handle back navigation
   const handleBack = () => {
-    router.push('/quotes')
+    router.push(isOrderView ? '/orders' : '/quotes')
   }
 
   // Handle edit optimization
@@ -389,14 +403,15 @@ export default function QuoteDetailClient({
     }
   }
 
-  // Handle add payment
-  const handleAddPayment = () => {
-    toast.info('Fizetés hozzáadása hamarosan elérhető')
-  }
-
   // Handle create order
   const handleCreateOrder = () => {
-    toast.info('Megrendelés létrehozása hamarosan elérhető')
+    setCreateOrderModalOpen(true)
+  }
+
+  // Handle order creation success
+  const handleOrderCreated = (quoteId: string, orderNumber: string) => {
+    // Redirect to order detail page (same ID, different URL)
+    router.push(`/orders/${quoteId}`)
   }
 
   // Handle refresh quote data
@@ -575,11 +590,11 @@ export default function QuoteDetailClient({
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h4" component="h1">
-          Árajánlat: {quoteData.quote_number}
+          {isOrderView ? `Megrendelés: ${quoteData.order_number || quoteData.quote_number}` : `Árajánlat: ${quoteData.quote_number}`}
         </Typography>
         <Chip 
-          label={quoteData.status} 
-          color={quoteData.status === 'draft' ? 'default' : 'success'}
+          label={quoteData.status === 'draft' ? 'Piszkozat' : quoteData.status === 'ordered' ? 'Megrendelve' : quoteData.status === 'in_production' ? 'Gyártásban' : quoteData.status === 'ready' ? 'Leadva' : quoteData.status === 'finished' ? 'Átadva' : quoteData.status} 
+          color={quoteData.status === 'draft' ? 'error' : quoteData.status === 'ordered' ? 'success' : quoteData.status === 'in_production' ? 'warning' : quoteData.status === 'finished' ? 'success' : 'info'}
           sx={{ ml: 2 }}
         />
       </Box>
@@ -1029,22 +1044,26 @@ export default function QuoteDetailClient({
               </Typography>
               
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {/* Opti szerkesztés - disabled if in_production or later */}
                 <Button
                   variant="outlined"
                   startIcon={<EditIcon />}
                   onClick={handleEditOptimization}
                   fullWidth
+                  disabled={isOrderView && ['in_production', 'ready', 'finished'].includes(quoteData.status)}
                 >
-                  Opti szerkesztés
+                  Opti szerkesztés {isOrderView && ['in_production', 'ready', 'finished'].includes(quoteData.status) && '🔒'}
                 </Button>
 
+                {/* Kedvezmény - disabled if in_production or later */}
                 <Button
                   variant="outlined"
                   startIcon={<EditIcon />}
                   onClick={handleEditDiscount}
                   fullWidth
+                  disabled={isOrderView && ['in_production', 'ready', 'finished'].includes(quoteData.status)}
                 >
-                  Kedvezmény ({quoteData.discount_percent}%)
+                  Kedvezmény ({quoteData.discount_percent}%) {isOrderView && ['in_production', 'ready', 'finished'].includes(quoteData.status) && '🔒'}
                 </Button>
 
                 <Divider />
@@ -1069,38 +1088,60 @@ export default function QuoteDetailClient({
 
                 <Divider />
 
-                <Button
-                  variant="outlined"
-                  startIcon={<PaymentIcon />}
-                  onClick={handleAddPayment}
-                  fullWidth
-                >
-                  Fizetés hozzáadás
-                </Button>
+                {/* Show different buttons based on view type and status */}
+                {!isOrderView && quoteData.status === 'draft' && (
+                  <Button
+                    variant="contained"
+                    startIcon={<OrderIcon />}
+                    onClick={handleCreateOrder}
+                    fullWidth
+                    color="success"
+                  >
+                    Megrendelés
+                  </Button>
+                )}
 
-                <Button
-                  variant="contained"
-                  startIcon={<OrderIcon />}
-                  onClick={handleCreateOrder}
-                  fullWidth
-                  color="success"
-                >
-                  Megrendelés
-                </Button>
+                {isOrderView && quoteData.status === 'ordered' && (
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    onClick={() => toast.info('Gyártásba adás hamarosan elérhető')}
+                    fullWidth
+                    color="warning"
+                  >
+                    Gyártásba adás
+                  </Button>
+                )}
+
+                {isOrderView && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<PaymentIcon />}
+                    onClick={() => toast.info('Fizetés hozzáadás hamarosan elérhető')}
+                    fullWidth
+                  >
+                    Fizetés hozzáadás
+                  </Button>
+                )}
               </Box>
             </CardContent>
           </Card>
 
-          {/* Quote Info */}
+          {/* Quote/Order Info */}
           <Card sx={{ mt: 2 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                Árajánlat információk
+                {isOrderView ? 'Megrendelés információk' : 'Árajánlat információk'}
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Typography variant="body2">
                   <strong>Árajánlat szám:</strong> {quoteData.quote_number}
                 </Typography>
+                {isOrderView && quoteData.order_number && (
+                  <Typography variant="body2">
+                    <strong>Megrendelés szám:</strong> {quoteData.order_number}
+                  </Typography>
+                )}
                 <Typography variant="body2">
                   <strong>Létrehozva:</strong> {formatDate(quoteData.created_at)}
                 </Typography>
@@ -1110,9 +1151,71 @@ export default function QuoteDetailClient({
                 <Typography variant="body2">
                   <strong>Kedvezmény:</strong> {quoteData.discount_percent}%
                 </Typography>
+                {isOrderView && quoteData.payment_status && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body2">
+                      <strong>Fizetési állapot:</strong>
+                    </Typography>
+                    <Chip 
+                      label={quoteData.payment_status === 'not_paid' ? 'Nincs fizetve' : quoteData.payment_status === 'partial' ? 'Részben fizetve' : 'Kifizetve'} 
+                      color={quoteData.payment_status === 'not_paid' ? 'error' : quoteData.payment_status === 'partial' ? 'warning' : 'success'}
+                      size="small"
+                    />
+                  </Box>
+                )}
               </Box>
             </CardContent>
           </Card>
+
+          {/* Payment History - Only show for orders */}
+          {isOrderView && quoteData.payments && quoteData.payments.length > 0 && (
+            <Card sx={{ mt: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Fizetési előzmények
+                </Typography>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Dátum</strong></TableCell>
+                      <TableCell align="right"><strong>Összeg</strong></TableCell>
+                      <TableCell align="center" width={50}><strong>Info</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {quoteData.payments.map((payment) => {
+                      const paymentMethodLabel = payment.payment_method === 'cash' ? 'Készpénz' : 
+                                                 payment.payment_method === 'transfer' ? 'Utalás' : 
+                                                 payment.payment_method === 'card' ? 'Bankkártya' : 
+                                                 payment.payment_method
+                      
+                      const tooltipText = `Fizetési mód: ${paymentMethodLabel}${payment.comment ? '\nMegjegyzés: ' + payment.comment : ''}`
+
+                      return (
+                        <TableRow key={payment.id}>
+                          <TableCell>{formatDate(payment.payment_date)}</TableCell>
+                          <TableCell align="right">{formatCurrency(payment.amount)}</TableCell>
+                          <TableCell align="center">
+                            <Tooltip title={tooltipText} arrow>
+                              <IconButton size="small">
+                                <i className="ri-information-line" style={{ fontSize: '18px' }} />
+                              </IconButton>
+                            </Tooltip>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                    <TableRow>
+                      <TableCell><strong>Összesen:</strong></TableCell>
+                      <TableCell align="right" colSpan={2}>
+                        <strong>{formatCurrency(quoteData.payments.reduce((sum, p) => sum + p.amount, 0))}</strong>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
         </Grid>
       </Grid>
 
@@ -1145,6 +1248,33 @@ export default function QuoteDetailClient({
         quoteId={quoteData.id}
         currentDiscountPercent={quoteData.discount_percent}
         onSuccess={handleDiscountUpdated}
+      />
+
+      {/* Create Order Modal */}
+      <CreateOrderModal
+        open={createOrderModalOpen}
+        onClose={() => setCreateOrderModalOpen(false)}
+        quoteId={quoteData.id}
+        quoteNumber={quoteData.quote_number}
+        finalTotal={(() => {
+          // Calculate final total if not stored in database
+          const materialsGross = quoteData.totals?.total_gross || 0
+          const feesGross = quoteData.totals?.fees_total_gross || 0
+          const accessoriesGross = quoteData.totals?.accessories_total_gross || 0
+          
+          const feesPositive = Math.max(0, feesGross)
+          const accessoriesPositive = Math.max(0, accessoriesGross)
+          const feesNegative = Math.min(0, feesGross)
+          const accessoriesNegative = Math.min(0, accessoriesGross)
+          
+          const subtotal = materialsGross + feesPositive + accessoriesPositive
+          const discountAmount = subtotal * ((quoteData.discount_percent || 0) / 100)
+          const calculatedTotal = subtotal - discountAmount + feesNegative + accessoriesNegative
+          
+          // Use stored value if available, otherwise use calculated value
+          return quoteData.final_total_after_discount || calculatedTotal
+        })()}
+        onSuccess={handleOrderCreated}
       />
       </Box>
     </>

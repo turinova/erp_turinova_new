@@ -1225,14 +1225,16 @@ export async function getQuoteById(quoteId: string) {
     // OPTIMIZATION: Fetch all data in parallel instead of sequential
     const parallelStartTime = performance.now()
     
-    const [quoteResult, panelsResult, pricingResult, feesResult, accessoriesResult, tenantCompany] = await Promise.all([
+    const [quoteResult, panelsResult, pricingResult, feesResult, accessoriesResult, tenantCompany, paymentsResult] = await Promise.all([
       // 1. Quote with customer data
       supabaseServer
         .from('quotes')
         .select(`
           id,
           quote_number,
+          order_number,
           status,
+          payment_status,
           customer_id,
           discount_percent,
           total_net,
@@ -1342,10 +1344,18 @@ export async function getQuoteById(quoteId: string) {
         .order('created_at', { ascending: true }),
 
       // 6. Tenant company
-      getTenantCompany()
+      getTenantCompany(),
+
+      // 7. Payments (for orders)
+      supabaseServer
+        .from('quote_payments')
+        .select('*')
+        .eq('quote_id', quoteId)
+        .is('deleted_at', null)
+        .order('payment_date', { ascending: false })
     ])
 
-    logTiming('Parallel Queries Complete', parallelStartTime, 'all 6 queries executed in parallel')
+    logTiming('Parallel Queries Complete', parallelStartTime, 'all 7 queries executed in parallel')
 
     // Extract data and errors from results
     const { data: quote, error: quoteError } = quoteResult
@@ -1353,6 +1363,7 @@ export async function getQuoteById(quoteId: string) {
     const { data: pricingData, error: pricingError } = pricingResult
     const { data: fees, error: feesError } = feesResult
     const { data: accessories, error: accessoriesError } = accessoriesResult
+    const { data: payments, error: paymentsError } = paymentsResult
 
     // Handle errors
     if (quoteError) {
@@ -1390,6 +1401,7 @@ export async function getQuoteById(quoteId: string) {
     console.log(`[PERF] Pricing: ${pricingData?.length || 0} records`)
     console.log(`[PERF] Fees: ${fees?.length || 0} records`)
     console.log(`[PERF] Accessories: ${accessories?.length || 0} records`)
+    console.log(`[PERF] Payments: ${payments?.length || 0} records`)
     console.log(`[PERF] Company: ${tenantCompany ? 'OK' : 'MISSING'}`)
 
     // Fetch machine codes for panels (for cutting list)
@@ -1440,7 +1452,9 @@ export async function getQuoteById(quoteId: string) {
     const transformedQuote = {
       id: quote.id,
       quote_number: quote.quote_number,
+      order_number: quote.order_number || null,
       status: quote.status,
+      payment_status: quote.payment_status || 'not_paid',
       customer_id: quote.customer_id,
       discount_percent: quote.discount_percent,
       customer: quote.customers,
@@ -1448,6 +1462,7 @@ export async function getQuoteById(quoteId: string) {
       pricing: pricingData || [],
       fees: fees || [],
       accessories: accessories || [],
+      payments: payments || [],
       tenant_company: tenantCompany,
       totals: {
         total_net: quote.total_net,
@@ -1499,7 +1514,8 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
           id,
           name
         )
-      `)
+      `, { count: 'exact' })
+      .eq('status', 'draft') // Only show draft quotes, not orders
       .is('deleted_at', null)
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -1544,6 +1560,78 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
     console.error('[SSR] Error fetching quotes:', error)
     logTiming('Quotes Fetch Error', startTime)
     return { quotes: [], totalCount: 0, totalPages: 0 }
+  }
+}
+
+// Get orders with pagination (for orders list page)
+export async function getOrdersWithPagination(page: number = 1, limit: number = 20, searchTerm?: string) {
+  const startTime = performance.now()
+  
+  console.log(`[SSR] Fetching orders page ${page}, limit ${limit}, search: "${searchTerm || 'none'}"`)
+
+  try {
+    const offset = (page - 1) * limit
+    
+    // Build query - only quotes with order statuses
+    let query = supabaseServer
+      .from('quotes')
+      .select(`
+        id,
+        order_number,
+        status,
+        payment_status,
+        final_total_after_discount,
+        updated_at,
+        customers!inner(
+          id,
+          name
+        )
+      `, { count: 'exact' })
+      .in('status', ['ordered', 'in_production', 'ready', 'finished']) // Only show orders
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    // Apply search filter if provided
+    if (searchTerm && searchTerm.trim()) {
+      query = query.or(`customers.name.ilike.%${searchTerm.trim()}%,order_number.ilike.%${searchTerm.trim()}%`)
+    }
+
+    const { data: orders, error: ordersError, count } = await query
+
+    if (ordersError) {
+      console.error('[SSR] Error fetching orders:', ordersError)
+      logTiming('Orders Fetch Failed', startTime)
+      return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    // Transform the data
+    const transformedOrders = orders?.map(order => ({
+      id: order.id,
+      order_number: order.order_number || 'N/A',
+      status: order.status,
+      payment_status: order.payment_status || 'not_paid',
+      customer_name: order.customers?.name || 'Unknown Customer',
+      final_total: order.final_total_after_discount || 0,
+      updated_at: order.updated_at
+    })) || []
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Orders Fetch Total', startTime, `returned ${transformedOrders.length} orders (page ${page}/${totalPages})`)
+    console.log(`[SSR] Orders fetched successfully: ${transformedOrders.length} orders, total: ${totalCount}`)
+    
+    return {
+      orders: transformedOrders,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Error fetching orders:', error)
+    logTiming('Orders Fetch Error', startTime)
+    return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
   }
 }
 
