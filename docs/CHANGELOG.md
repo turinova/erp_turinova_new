@@ -13,11 +13,12 @@ All notable changes to the Turinova ERP system will be documented in this file.
   - Barcode input for physical scanner integration
   - Edit/Delete functionality for existing assignments
   - Status changes: `ordered` → `in_production`
-- **EAN-13 Barcode Display**: Scannable barcode on order detail pages
+- **Code 128 Barcode Display**: Scannable barcode on order detail pages
   - Positioned next to company info in same row
   - Only displays when barcode exists (after production assignment)
   - Print-friendly white background
   - Responsive layout (side-by-side desktop, stacked mobile)
+  - Supports alphanumeric characters (more flexible than EAN-13)
 - **Production Info Card**: New card displaying machine, date, and barcode details
   - Appears on order detail page after production assignment
   - Located above payment history card
@@ -45,7 +46,7 @@ All notable changes to the Turinova ERP system will be documented in this file.
 ### Dependencies
 - `@mui/x-date-pickers@^8.14.0` - DatePicker component
 - `date-fns@^4.1.0` - Date manipulation and Hungarian locale
-- `react-barcode@^1.6.1` - EAN-13 barcode generation
+- `react-barcode@^1.6.1` - Code 128 barcode generation
 
 ### UI/UX
 - Modal with 3 required fields (machine, date, barcode)
@@ -53,8 +54,9 @@ All notable changes to the Turinova ERP system will be documented in this file.
 - Orange warning color for button
 - Auto-focus on barcode field for scanner
 - Production info card with machine, date, barcode details
-- EAN-13 barcode displayed with numeric value
+- Code 128 barcode displayed with value below
 - Responsive grid layout for barcode display
+- Wider bars (width=2) for better Code 128 readability
 
 ### Database Updates
 - `quotes.production_machine_id` (FK to production_machines)

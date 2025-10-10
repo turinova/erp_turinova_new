@@ -687,8 +687,8 @@ export default function QuoteDetailClient({
                     </Typography>
                     <Barcode 
                       value={quoteData.barcode} 
-                      format="EAN13"
-                      width={1.5}
+                      format="CODE128"
+                      width={2}
                       height={60}
                       displayValue={true}
                       fontSize={14}

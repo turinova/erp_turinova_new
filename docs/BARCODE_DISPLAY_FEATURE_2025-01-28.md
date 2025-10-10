@@ -2,19 +2,19 @@
 
 **Date:** 2025-01-28  
 **Status:** ✅ COMPLETE  
-**Feature:** EAN-13 barcode display on order detail pages
+**Feature:** Code 128 barcode display on order detail pages
 
 ---
 
 ## 📋 Overview
 
-This feature displays a scannable EAN-13 barcode on order detail pages, positioned next to the company information. The barcode is generated from the production assignment's barcode field and can be scanned with a physical barcode scanner.
+This feature displays a scannable Code 128 barcode on order detail pages, positioned next to the company information. The barcode is generated from the production assignment's barcode field and can be scanned with a physical barcode scanner.
 
 ---
 
 ## 🎯 Requirements
 
-- Display EAN-13 barcode on order detail page
+- Display Code 128 barcode on order detail page
 - Position: Same row as company info (left column)
 - Only show when barcode exists (after production assignment)
 - Scannable with physical barcode scanner
@@ -147,24 +147,28 @@ Changed from single Box to Grid layout:
 ### Component Props
 ```typescript
 <Barcode 
-  value={quoteData.barcode}    // The barcode value (EAN-13 format)
-  format="EAN13"                // Barcode format
-  width={1.5}                   // Bar width multiplier
+  value={quoteData.barcode}    // The barcode value (alphanumeric)
+  format="CODE128"              // Barcode format
+  width={2}                     // Bar width multiplier
   height={60}                   // Barcode height in pixels
-  displayValue={true}           // Show numeric value below barcode
-  fontSize={14}                 // Font size for numeric value
+  displayValue={true}           // Show value below barcode
+  fontSize={14}                 // Font size for displayed value
   margin={5}                    // Margin around barcode
 />
 ```
 
-### EAN-13 Format Requirements
-- **Length:** Exactly 13 digits
-- **Structure:** 
-  - 3 digits: Country code
-  - 4-6 digits: Manufacturer code
-  - 3-5 digits: Product code
-  - 1 digit: Check digit (auto-calculated)
-- **Example:** `1234567890128`
+### Code 128 Format
+- **Character Set:** Full ASCII (128 characters)
+- **Supports:** Letters (A-Z, a-z), Numbers (0-9), Special characters
+- **Length:** Variable length (more flexible than EAN-13)
+- **Use Cases:** 
+  - Order numbers
+  - Serial numbers
+  - Alphanumeric identifiers
+- **Examples:** 
+  - `ORD-2025-001`
+  - `ABC123XYZ`
+  - `1234567890`
 
 ---
 
@@ -243,12 +247,13 @@ The barcode section is designed for print-friendly output:
 
 ### Test Data
 ```typescript
-// Valid EAN-13 barcodes for testing
+// Valid Code 128 barcodes for testing
 const testBarcodes = [
-  '1234567890128',  // Generic test barcode
-  '5901234123457',  // Polish product
-  '4006381333931',  // German product
-  '0012345678905'   // US product
+  'ORD-2025-001',      // Order number
+  'TEST-ABC-123',      // Alphanumeric test
+  'PROD-2025-XYZ',     // Production code
+  '1234567890',        // Numeric only
+  'SERIAL#9876543'     // With special char
 ]
 ```
 
@@ -263,13 +268,14 @@ const testBarcodes = [
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 ```
 
-### Issue: Invalid EAN-13 format
+### Issue: Invalid Code 128 format
 **Error:** "Invalid barcode value"  
-**Solution:** Ensure barcode is exactly 13 digits
+**Solution:** Ensure barcode contains valid ASCII characters
 ```typescript
-// Validate before saving
-if (barcode.length !== 13 || !/^\d+$/.test(barcode)) {
-  throw new Error('Barcode must be exactly 13 digits')
+// Code 128 accepts any ASCII character (0-127)
+// No strict validation needed, but recommended length check
+if (barcode.length === 0 || barcode.length > 80) {
+  throw new Error('Barcode must be between 1-80 characters')
 }
 ```
 
@@ -340,10 +346,11 @@ User can scan the displayed barcode
 ## 📝 Notes
 
 - **Dynamic Import:** Required to prevent SSR hydration issues
-- **EAN-13 Only:** Currently hardcoded to EAN-13 format
+- **Code 128 Format:** Supports alphanumeric characters (more flexible than EAN-13)
 - **No Validation:** Barcode validation happens in production assignment modal
 - **Conditional Rendering:** Barcode only shows when value exists
 - **Print-Ready:** White background and proper sizing for scanning after print
+- **Wider Bars:** Width increased to 2 (from 1.5) for better Code 128 readability
 
 ---
 
