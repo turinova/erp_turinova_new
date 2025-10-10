@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 
 import { 
   Box, 
@@ -22,6 +23,9 @@ import {
   IconButton,
   Tooltip
 } from '@mui/material'
+
+// Dynamic import for Barcode to avoid SSR issues
+const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 import { 
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
@@ -42,6 +46,14 @@ import AddAccessoryModal from './AddAccessoryModal'
 import EditDiscountModal from './EditDiscountModal'
 import CreateOrderModal from './CreateOrderModal'
 import AddPaymentModal from '../../orders/[order_id]/AddPaymentModal'
+import AssignProductionModal from '../../orders/[order_id]/AssignProductionModal'
+
+interface Machine {
+  id: string
+  machine_name: string
+  comment: string | null
+  usage_limit_per_day: number
+}
 
 interface QuoteData {
   id: string
@@ -51,6 +63,13 @@ interface QuoteData {
   customer_id: string
   discount_percent: number
   payment_status?: string
+  production_machine_id?: string | null
+  production_date?: string | null
+  barcode?: string | null
+  production_machine?: {
+    id: string
+    machine_name: string
+  } | null
   customer: {
     id: string
     name: string
@@ -273,6 +292,7 @@ interface QuoteDetailClientProps {
   currencies: Currency[]
   units: Unit[]
   partners: Partner[]
+  machines: Machine[]
   isOrderView?: boolean // True when viewing from /orders page
 }
 
@@ -284,6 +304,7 @@ export default function QuoteDetailClient({
   currencies,
   units,
   partners,
+  machines,
   isOrderView = false
 }: QuoteDetailClientProps) {
   const router = useRouter()
@@ -297,6 +318,7 @@ export default function QuoteDetailClient({
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
   const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
   const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false)
+  const [assignProductionModalOpen, setAssignProductionModalOpen] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -418,6 +440,11 @@ export default function QuoteDetailClient({
 
   // Handle payment added success
   const handlePaymentAdded = async () => {
+    await refreshQuoteData()
+  }
+
+  // Handle production assigned success
+  const handleProductionAssigned = async () => {
     await refreshQuoteData()
   }
 
@@ -611,32 +638,66 @@ export default function QuoteDetailClient({
         <Grid item xs={12} md={9} className="print-full-width">
           {/* Page 1: First Card - All Quote Information */}
           <Paper sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0' }} className="print-page-1">
-            {/* Company Info */}
-            <Box sx={{ 
-              mb: 3, 
-              p: 3, 
-              backgroundColor: '#f5f5f5', 
-              borderRadius: 2 
-            }}>
-              <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
-                {quoteData.tenant_company ? (
-                  <>
-                    <strong>{quoteData.tenant_company.name}</strong><br />
-                    {quoteData.tenant_company.postal_code} {quoteData.tenant_company.city}, {quoteData.tenant_company.address}<br />
-                    {quoteData.tenant_company.tax_number && `Adószám: ${quoteData.tenant_company.tax_number}`}<br />
-                    {quoteData.tenant_company.company_registration_number && `Cégjegyzékszám: ${quoteData.tenant_company.company_registration_number}`}<br />
-                    {quoteData.tenant_company.email && `Email: ${quoteData.tenant_company.email}`}<br />
-                    {quoteData.tenant_company.phone_number && `Tel: ${quoteData.tenant_company.phone_number}`}
-                  </>
-                ) : (
-                  <>
-                    Turinova Kft.<br />
-                    Budapest, Hungary<br />
-                    Adószám: 12345678-1-41
-                  </>
-                )}
-              </Typography>
-            </Box>
+            {/* Company Info and Barcode */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={quoteData.barcode ? 7 : 12}>
+                <Box sx={{ 
+                  p: 3, 
+                  backgroundColor: '#f5f5f5', 
+                  borderRadius: 2,
+                  height: '100%'
+                }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6 }}>
+                    {quoteData.tenant_company ? (
+                      <>
+                        <strong>{quoteData.tenant_company.name}</strong><br />
+                        {quoteData.tenant_company.postal_code} {quoteData.tenant_company.city}, {quoteData.tenant_company.address}<br />
+                        {quoteData.tenant_company.tax_number && `Adószám: ${quoteData.tenant_company.tax_number}`}<br />
+                        {quoteData.tenant_company.company_registration_number && `Cégjegyzékszám: ${quoteData.tenant_company.company_registration_number}`}<br />
+                        {quoteData.tenant_company.email && `Email: ${quoteData.tenant_company.email}`}<br />
+                        {quoteData.tenant_company.phone_number && `Tel: ${quoteData.tenant_company.phone_number}`}
+                      </>
+                    ) : (
+                      <>
+                        Turinova Kft.<br />
+                        Budapest, Hungary<br />
+                        Adószám: 12345678-1-41
+                      </>
+                    )}
+                  </Typography>
+                </Box>
+              </Grid>
+              
+              {/* Barcode Display - Only for orders with barcode */}
+              {quoteData.barcode && (
+                <Grid item xs={12} md={5}>
+                  <Box sx={{ 
+                    p: 2, 
+                    backgroundColor: '#ffffff', 
+                    borderRadius: 2,
+                    border: '2px solid #e0e0e0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%'
+                  }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>
+                      Vonalkód
+                    </Typography>
+                    <Barcode 
+                      value={quoteData.barcode} 
+                      format="EAN13"
+                      width={1.5}
+                      height={60}
+                      displayValue={true}
+                      fontSize={14}
+                      margin={5}
+                    />
+                  </Box>
+                </Grid>
+              )}
+            </Grid>
 
             {/* Customer & Billing Info */}
             <Grid container spacing={4} sx={{ mb: 4 }}>
@@ -1108,11 +1169,11 @@ export default function QuoteDetailClient({
                   </Button>
                 )}
 
-                {isOrderView && quoteData.status === 'ordered' && (
+                {isOrderView && (
                   <Button
                     variant="contained"
                     startIcon={<AddIcon />}
-                    onClick={() => toast.info('Gyártásba adás hamarosan elérhető')}
+                    onClick={() => setAssignProductionModalOpen(true)}
                     fullWidth
                     color="warning"
                   >
@@ -1173,6 +1234,32 @@ export default function QuoteDetailClient({
               </Box>
             </CardContent>
           </Card>
+
+          {/* Production Info - Only show for orders with production assignment */}
+          {isOrderView && quoteData.production_machine_id && (
+            <Card sx={{ mt: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Gyártás információk
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="body2">
+                    <strong>Gép:</strong> {quoteData.production_machine?.machine_name || 'N/A'}
+                  </Typography>
+                  {quoteData.production_date && (
+                    <Typography variant="body2">
+                      <strong>Gyártás dátuma:</strong> {formatDate(quoteData.production_date)}
+                    </Typography>
+                  )}
+                  {quoteData.barcode && (
+                    <Typography variant="body2">
+                      <strong>Vonalkód:</strong> {quoteData.barcode}
+                    </Typography>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Payment History - Only show for orders */}
           {isOrderView && quoteData.payments && quoteData.payments.length > 0 && (
@@ -1310,6 +1397,23 @@ export default function QuoteDetailClient({
           })()}
           totalPaid={quoteData.payments?.reduce((sum, p) => sum + p.amount, 0) || 0}
           onSuccess={handlePaymentAdded}
+        />
+      )}
+
+      {/* Assign Production Modal */}
+      {isOrderView && (
+        <AssignProductionModal
+          open={assignProductionModalOpen}
+          onClose={() => setAssignProductionModalOpen(false)}
+          quoteId={quoteData.id}
+          orderNumber={quoteData.order_number || quoteData.quote_number}
+          machines={machines}
+          existingAssignment={{
+            production_machine_id: quoteData.production_machine_id,
+            production_date: quoteData.production_date,
+            barcode: quoteData.barcode
+          }}
+          onSuccess={handleProductionAssigned}
         />
       )}
       </Box>

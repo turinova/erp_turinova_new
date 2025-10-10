@@ -1226,7 +1226,7 @@ export async function getQuoteById(quoteId: string) {
     const parallelStartTime = performance.now()
     
     const [quoteResult, panelsResult, pricingResult, feesResult, accessoriesResult, tenantCompany, paymentsResult] = await Promise.all([
-      // 1. Quote with customer data
+      // 1. Quote with customer data and production machine
       supabaseServer
         .from('quotes')
         .select(`
@@ -1237,6 +1237,9 @@ export async function getQuoteById(quoteId: string) {
           payment_status,
           customer_id,
           discount_percent,
+          production_machine_id,
+          production_date,
+          barcode,
           total_net,
           total_vat,
           total_gross,
@@ -1263,6 +1266,10 @@ export async function getQuoteById(quoteId: string) {
             billing_house_number,
             billing_tax_number,
             billing_company_reg_number
+          ),
+          production_machines(
+            id,
+            machine_name
           )
         `)
         .eq('id', quoteId)
@@ -1457,6 +1464,10 @@ export async function getQuoteById(quoteId: string) {
       payment_status: quote.payment_status || 'not_paid',
       customer_id: quote.customer_id,
       discount_percent: quote.discount_percent,
+      production_machine_id: quote.production_machine_id || null,
+      production_date: quote.production_date || null,
+      barcode: quote.barcode || null,
+      production_machine: quote.production_machines || null,
       customer: quote.customers,
       panels: enrichedPanels,
       pricing: pricingData || [],

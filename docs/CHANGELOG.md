@@ -4,6 +4,77 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
+## [2025-01-28] - Production Assignment & Barcode Display
+
+### Added
+- **Production Assignment Modal (Gyártásba adás)**: Complete production machine assignment system
+  - Machine dropdown from `production_machines` table
+  - Date picker with smart business day calculation (skip weekends)
+  - Barcode input for physical scanner integration
+  - Edit/Delete functionality for existing assignments
+  - Status changes: `ordered` → `in_production`
+- **EAN-13 Barcode Display**: Scannable barcode on order detail pages
+  - Positioned next to company info in same row
+  - Only displays when barcode exists (after production assignment)
+  - Print-friendly white background
+  - Responsive layout (side-by-side desktop, stacked mobile)
+- **Production Info Card**: New card displaying machine, date, and barcode details
+  - Appears on order detail page after production assignment
+  - Located above payment history card
+
+### Features
+- **Business Day Calculation**: Smart date defaulting
+  - Friday → Monday (skip weekend)
+  - Saturday/Sunday → Monday
+  - Other days → Next day
+- **Always Visible Button**: "Gyártásba adás" button always shown on order pages
+- **Edit Mode**: Modal pre-populates with existing data
+- **Delete Assignment**: "Gyártás törlése" button reverts status to 'ordered'
+- **No Capacity Validation**: Unlimited machine assignments allowed per day
+
+### API Endpoints
+- **PATCH /api/quotes/[id]/production**: Assign/update production
+  - Updates `production_machine_id`, `production_date`, `barcode`
+  - Changes status to `in_production`
+  - Performance: ~460ms average
+- **DELETE /api/quotes/[id]/production**: Remove production assignment
+  - Clears production fields
+  - Reverts status to `ordered`
+  - Performance: ~300ms average
+
+### Dependencies
+- `@mui/x-date-pickers@^8.14.0` - DatePicker component
+- `date-fns@^4.1.0` - Date manipulation and Hungarian locale
+- `react-barcode@^1.6.1` - EAN-13 barcode generation
+
+### UI/UX
+- Modal with 3 required fields (machine, date, barcode)
+- Dynamic title: "Gyártásba adás" vs "Gyártás módosítása"
+- Orange warning color for button
+- Auto-focus on barcode field for scanner
+- Production info card with machine, date, barcode details
+- EAN-13 barcode displayed with numeric value
+- Responsive grid layout for barcode display
+
+### Database Updates
+- `quotes.production_machine_id` (FK to production_machines)
+- `quotes.production_date` (DATE)
+- `quotes.barcode` (TEXT)
+- Added to `getQuoteById()` SSR query
+
+### Integration
+- Server-side data fetching for machines (SSR)
+- Modal integrated into order detail page
+- Barcode dynamically imported (SSR-safe)
+- Production info fetched and displayed on order pages
+
+### Documentation
+- `docs/PRODUCTION_ASSIGNMENT_FEATURE_2025-01-28.md` - Complete feature documentation
+- `docs/BARCODE_DISPLAY_FEATURE_2025-01-28.md` - Barcode implementation guide
+- `PRODUCTION_ASSIGNMENT_IMPLEMENTATION_SUMMARY.md` - Quick reference
+
+---
+
 ## [2025-01-28] - Add Payment Feature
 
 ### Added

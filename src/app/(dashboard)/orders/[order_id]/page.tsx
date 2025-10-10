@@ -1,5 +1,5 @@
 import React from 'react'
-import { getQuoteById, getAllFeeTypes, getAllAccessories, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners } from '@/lib/supabase-server'
+import { getQuoteById, getAllFeeTypes, getAllAccessories, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners, getAllProductionMachines } from '@/lib/supabase-server'
 import OrderDetailClient from './OrderDetailClient'
 
 interface PageProps {
@@ -11,14 +11,15 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const orderId = resolvedParams.order_id
   
   // Fetch all data in parallel for SSR (same as quote page)
-  const [orderData, feeTypes, accessories, vatRates, currencies, units, partners] = await Promise.all([
+  const [orderData, feeTypes, accessories, vatRates, currencies, units, partners, machines] = await Promise.all([
     getQuoteById(orderId), // Orders ARE quotes, just use same function
     getAllFeeTypes(),
     getAllAccessories(),
     getAllVatRates(),
     getAllCurrencies(),
     getAllUnits(),
-    getAllPartners()
+    getAllPartners(),
+    getAllProductionMachines()
   ])
   
   if (!orderData) {
@@ -41,6 +42,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
       currencies={currencies}
       units={units}
       partners={partners}
+      machines={machines}
     />
   )
 }
