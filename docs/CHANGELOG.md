@@ -4,9 +4,20 @@ All notable changes to the Turinova ERP system will be documented in this file.
 
 ---
 
-## [2025-01-28] - Inline Production Editing & Bulk Assignment
+## [2025-01-28] - Scanner Page & Bulk Status Updates
 
 ### Added
+- **Scanner Page (/scanner)**: Physical barcode scanner interface for bulk status updates
+  - Auto-scan detection (no Enter key needed, 300ms debounce)
+  - Scan multiple orders rapidly (one after another)
+  - Orders auto-added to list with full details (Order#, Customer, Total, Status, Payment)
+  - All scanned orders auto-selected for bulk operation
+  - Duplicate prevention (same order can't be added twice)
+  - Two bulk action buttons: Kész (ready), Lezárva (finished)
+  - List auto-clears after successful bulk update
+  - Individual remove from list
+  - Clear all functionality
+  - Performance optimized: Single API call for bulk updates
 - **Inline Production Editing on /orders page**: Fast bulk production assignment workflow
   - Customer name tooltip showing mobile + email on separate lines
   - Status filter chips with live counts (Összes, Megrendelve, Gyártásban, Kész, Lezárva)

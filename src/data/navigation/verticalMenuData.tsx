@@ -31,6 +31,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#27AE60' // Green for orders
   },
   {
+    label: 'Scanner',
+    href: '/scanner',
+    icon: 'ri-barcode-line',
+    iconColor: '#3498DB' // Blue for scanner
+  },
+  {
     label: 'Törzsadatok',
     icon: 'ri-database-2-line',
     iconColor: '#2ECC71', // Green for master data
