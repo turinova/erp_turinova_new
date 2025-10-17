@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Box, Typography, Breadcrumbs, Link, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Pagination, TextField, InputAdornment, Checkbox } from '@mui/material'
+import { Box, Typography, Breadcrumbs, Link, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Pagination, TextField, InputAdornment, Checkbox, FormControl, Select, MenuItem } from '@mui/material'
 import { Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -55,7 +55,7 @@ interface CustomerOrdersClientProps {
 export default function CustomerOrdersClient({ orders }: CustomerOrdersClientProps) {
   const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
   const [statusFilter, setStatusFilter] = useState('open')
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
@@ -65,6 +65,11 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Reset page when search or status filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm, statusFilter])
 
   // Don't render until mounted (avoid hydration errors)
   if (!mounted) {
@@ -80,7 +85,8 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
     const matchesSearch = 
       order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.worker_name.toLowerCase().includes(searchTerm.toLowerCase())
+      order.worker_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.worker_nickname.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
     
@@ -98,7 +104,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
 
   // Pagination
   const totalPages = Math.ceil(filteredOrders.length / pageSize)
-  const startIndex = (page - 1) * pageSize
+  const startIndex = (currentPage - 1) * pageSize
   const paginatedOrders = filteredOrders.slice(startIndex, startIndex + pageSize)
 
   // Status color mapping
@@ -135,13 +141,23 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
   }
 
   // Select all functionality
-  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      const allOrderIds = paginatedOrders.map(order => order.id)
-      setSelectedOrders(allOrderIds)
-    } else {
+  const handleSelectAll = () => {
+    const filteredIds = paginatedOrders.map(order => order.id)
+    if (selectedOrders.length === filteredIds.length && filteredIds.length > 0) {
       setSelectedOrders([])
+    } else {
+      setSelectedOrders(filteredIds)
     }
+  }
+
+  // Pagination handlers
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    setCurrentPage(value)
+  }
+
+  const handleLimitChange = (event: any) => {
+    setPageSize(event.target.value)
+    setCurrentPage(1)
   }
 
   const handleSelectOrder = (orderId: string) => {
@@ -325,18 +341,41 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
       </TableContainer>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={totalPages}
-            page={page}
-            onChange={(event, value) => setPage(value)}
-            color="primary"
-            showFirstButton
-            showLastButton
-          />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          {searchTerm || statusFilter !== 'all' 
+            ? `Keresési eredmény: ${filteredOrders.length} rendelés` 
+            : `Összesen ${orders.length} rendelés`
+          }
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={pageSize}
+              onChange={handleLimitChange}
+              displayEmpty
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            Oldal mérete
+          </Typography>
         </Box>
-      )}
+        
+        <Pagination
+          count={totalPages}
+          page={currentPage}
+          onChange={handlePageChange}
+          color="primary"
+          showFirstButton
+          showLastButton
+        />
+      </Box>
     </Box>
   )
 }
