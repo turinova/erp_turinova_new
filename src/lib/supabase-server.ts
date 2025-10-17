@@ -2407,3 +2407,127 @@ export async function getShopOrderById(orderId: string) {
     return null
   }
 }
+
+// Fetch all shop order items for supplier orders page
+export async function getAllShopOrderItems(page: number = 1, limit: number = 50, search: string = '', status: string = '', partnerId: string = '') {
+  if (!checkSupabaseConfig()) return { items: [], totalCount: 0, totalPages: 0 }
+
+  const startTime = performance.now()
+  const offset = (page - 1) * limit
+
+  try {
+    console.log(`[SSR] Fetching shop order items page ${page}, limit ${limit}, search: "${search}", status: "${status}", partner: "${partnerId}"`)
+
+    // Build the query with joins to get all related data
+    let query = supabaseServer
+      .from('shop_order_items')
+      .select(`
+        id,
+        product_name,
+        sku,
+        quantity,
+        base_price,
+        multiplier,
+        megjegyzes,
+        status,
+        created_at,
+        updated_at,
+        order_id,
+        units_id,
+        partner_id,
+        vat_id,
+        shop_orders!inner (
+          id,
+          customer_name,
+          order_number
+        ),
+        units (
+          id,
+          name,
+          shortform
+        ),
+        partners (
+          id,
+          name
+        ),
+        vat (
+          id,
+          name,
+          kulcs
+        )
+      `, { count: 'exact' })
+      .is('shop_orders.deleted_at', null)
+
+    // Apply filters
+    if (search && search.length >= 2) {
+      query = query.or(`product_name.ilike.%${search}%,sku.ilike.%${search}%,shop_orders.customer_name.ilike.%${search}%`)
+    }
+
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    if (partnerId) {
+      query = query.eq('partner_id', partnerId)
+    }
+
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    logTiming('Shop Order Items DB Query', startTime, `Found ${data?.length || 0} items`)
+
+    if (error) {
+      console.error('[SSR] Error fetching shop order items:', error)
+      return { items: [], totalCount: 0, totalPages: 0 }
+    }
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    // Transform the data to include calculated fields
+    const items = data?.map(item => {
+      const grossUnitPrice = Math.round((item.base_price || 0) * (item.multiplier || 1) * (1 + (item.vat?.kulcs || 0) / 100))
+      
+      return {
+        id: item.id,
+        product_name: item.product_name,
+        sku: item.sku,
+        quantity: item.quantity,
+        megjegyzes: item.megjegyzes,
+        status: item.status,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+        order_id: item.order_id,
+        customer_name: item.shop_orders?.customer_name,
+        order_number: item.shop_orders?.order_number,
+        unit_name: item.units?.name,
+        unit_shortform: item.units?.shortform,
+        partner_name: item.partners?.name,
+        partner_id: item.partner_id,
+        vat_name: item.vat?.name,
+        vat_percent: item.vat?.kulcs,
+        base_price: item.base_price,
+        multiplier: item.multiplier,
+        gross_unit_price: grossUnitPrice,
+        gross_total: Math.round(grossUnitPrice * item.quantity)
+      }
+    }) || []
+
+    logTiming('Shop Order Items Total', startTime, `Transformed ${items.length} items`)
+    console.log(`[SSR] Shop order items fetched successfully: ${items.length} items, total: ${totalCount}`)
+
+    return {
+      items,
+      totalCount,
+      totalPages,
+      currentPage: page,
+      limit
+    }
+
+  } catch (error) {
+    console.error('[SSR] Error fetching shop order items:', error)
+    logTiming('Shop Order Items Fetch Error', startTime)
+    return { items: [], totalCount: 0, totalPages: 0 }
+  }
+}

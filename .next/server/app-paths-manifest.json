@@ -1,0 +1,8 @@
+{
+  "/api/supplier-orders/bulk-status/route": "app/api/supplier-orders/bulk-status/route.js",
+  "/(dashboard)/quotes/page": "app/(dashboard)/quotes/page.js",
+  "/(dashboard)/customer-orders/page": "app/(dashboard)/customer-orders/page.js",
+  "/(dashboard)/orders/page": "app/(dashboard)/orders/page.js",
+  "/(dashboard)/customer-orders/[id]/page": "app/(dashboard)/customer-orders/[id]/page.js",
+  "/(dashboard)/supplier-orders/page": "app/(dashboard)/supplier-orders/page.js"
+}

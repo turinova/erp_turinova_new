@@ -1,5 +1,28 @@
 # Change Log - Shop Order System Implementation
 
+## Version 2.0.1 - October 17, 2025
+
+### 🔧 Bug Fixes & Improvements
+
+#### Supplier Orders Page Fixes
+- **Fixed Search Functionality**: Resolved SSR errors in supplier orders search
+- **Fixed Pagination**: Corrected pagination to work with client-side filtering
+- **Enhanced Search Scope**: Added partner name search capability
+- **Improved Performance**: Converted from server-side to client-side filtering
+- **Status Filter Accuracy**: Fixed status count calculations
+
+#### Customer Order Detail Page Enhancements
+- **Worker Display**: Added colored chip display for worker names using worker color
+- **Visual Consistency**: Improved UI consistency across order detail pages
+
+### 🐛 Technical Fixes
+- **Pagination Logic**: Fixed pagination calculation for filtered results
+- **Search Performance**: Eliminated server round-trips for search operations
+- **State Management**: Improved client-side state management for filtering
+- **Error Handling**: Resolved SSR errors in data fetching
+
+---
+
 ## Version 2.0.0 - October 17, 2025
 
 ### 🎯 Major Features Added

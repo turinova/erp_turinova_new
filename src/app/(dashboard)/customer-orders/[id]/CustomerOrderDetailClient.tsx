@@ -136,6 +136,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'warning'
       case 'ordered': return 'info'
       case 'finished': return 'success'
+      case 'deleted': return 'error'
       default: return 'default'
     }
   }
@@ -145,6 +146,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
       case 'finished': return 'Befejezve'
+      case 'deleted': return 'Törölve'
       default: return status
     }
   }
@@ -154,6 +156,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'warning'
       case 'ordered': return 'info'
       case 'arrived': return 'success'
+      case 'deleted': return 'error'
       default: return 'default'
     }
   }
@@ -163,6 +166,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
       case 'arrived': return 'Megérkezett'
+      case 'deleted': return 'Törölve'
       default: return status
     }
   }
@@ -431,6 +435,68 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
                 >
                   Nyomtatás
                 </Button>
+              </Box>
+            </CardContent>
+          </Card>
+
+          {/* Order Information Card */}
+          <Card sx={{ mt: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Rendelés információk
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Dolgozó
+                  </Typography>
+                  <Box sx={{ mt: 0.5 }}>
+                    <Chip
+                      label={orderData.worker?.nickname || orderData.worker?.name || 'Nincs megadva'}
+                      sx={{
+                        backgroundColor: orderData.worker?.color || '#e0e0e0',
+                        color: orderData.worker?.color ? '#ffffff' : '#000000',
+                        fontWeight: 'medium',
+                        '& .MuiChip-label': {
+                          fontWeight: 'medium'
+                        }
+                      }}
+                      size="small"
+                    />
+                  </Box>
+                </Box>
+                
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Létrehozva
+                  </Typography>
+                  <Typography variant="body1" fontWeight="medium">
+                    {new Date(orderData.created_at).toLocaleString('hu-HU', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Typography>
+                </Box>
+                
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Utolsó módosítás
+                  </Typography>
+                  <Typography variant="body1" fontWeight="medium">
+                    {new Date(orderData.updated_at).toLocaleString('hu-HU', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </Typography>
+                </Box>
               </Box>
             </CardContent>
           </Card>

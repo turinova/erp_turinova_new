@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Box, Typography, Breadcrumbs, Link, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Pagination, TextField, InputAdornment, Checkbox } from '@mui/material'
 import { Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
@@ -57,8 +57,23 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
   const [searchTerm, setSearchTerm] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('open')
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
+  const [mounted, setMounted] = useState(false)
+
+  // Ensure client-side only rendering to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Don't render until mounted (avoid hydration errors)
+  if (!mounted) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Typography>Betöltés...</Typography>
+      </Box>
+    )
+  }
 
   // Filter orders based on search term and status
   const filteredOrders = orders.filter(order => {
@@ -77,7 +92,8 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
     all: orders.length,
     open: orders.filter(o => o.status === 'open').length,
     ordered: orders.filter(o => o.status === 'ordered').length,
-    finished: orders.filter(o => o.status === 'finished').length
+    finished: orders.filter(o => o.status === 'finished').length,
+    deleted: orders.filter(o => o.status === 'deleted').length
   }
 
   // Pagination
@@ -91,6 +107,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
       case 'open': return 'warning'
       case 'ordered': return 'info'
       case 'finished': return 'success'
+      case 'deleted': return 'error'
       default: return 'default'
     }
   }
@@ -101,6 +118,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
       case 'finished': return 'Befejezve'
+      case 'deleted': return 'Törölve'
       default: return status
     }
   }
@@ -184,6 +202,13 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
           onClick={() => setStatusFilter('finished')}
           color={statusFilter === 'finished' ? 'primary' : 'default'}
           variant={statusFilter === 'finished' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label={`Törölve (${statusCounts.deleted})`}
+          onClick={() => setStatusFilter('deleted')}
+          color={statusFilter === 'deleted' ? 'primary' : 'default'}
+          variant={statusFilter === 'deleted' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
       </Box>
