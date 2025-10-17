@@ -1,0 +1,2846 @@
+'use client'
+
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  TextField,
+  Button,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Grid,
+  Chip,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Alert,
+  CircularProgress,
+  Pagination,
+  Tooltip,
+  Autocomplete,
+  Divider,
+  Switch,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Radio,
+  RadioGroup
+} from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import { styled } from '@mui/material/styles'
+import MuiAccordion from '@mui/material/Accordion'
+import MuiAccordionSummary from '@mui/material/AccordionSummary'
+import MuiAccordionDetails from '@mui/material/AccordionDetails'
+import type { AccordionProps } from '@mui/material/Accordion'
+
+// Third-party Imports
+import { toast } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
+import type { AccordionSummaryProps } from '@mui/material/AccordionSummary'
+import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
+
+// Components
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { useApiCache } from '@/hooks/useApiCache'
+import { usePermissions } from '@/permissions/PermissionProvider'
+
+// Styled component for Accordion component
+const Accordion = styled(MuiAccordion)<AccordionProps>(({ theme }) => ({
+  boxShadow: 'none !important',
+  border: '1px solid var(--mui-palette-divider) !important',
+  borderRadius: '0 !important',
+  overflow: 'hidden',
+  '&:not(:last-of-type)': {
+    borderBottom: '0 !important'
+  },
+  '&:before': {
+    display: 'none'
+  },
+  '&.Mui-expanded': {
+    margin: 'auto'
+  },
+  '&:first-of-type': {
+    borderTopLeftRadius: 'var(--mui-shape-customBorderRadius-lg) !important',
+    borderTopRightRadius: 'var(--mui-shape-customBorderRadius-lg) !important'
+  },
+  '&:last-of-type': {
+    borderBottomLeftRadius: 'var(--mui-shape-customBorderRadius-lg) !important',
+    borderBottomRightRadius: 'var(--mui-shape-customBorderRadius-lg) !important'
+  }
+}))
+
+// Styled component for AccordionSummary component
+const AccordionSummary = styled(MuiAccordionSummary)<AccordionSummaryProps>(({ theme }) => ({
+  marginBottom: -1,
+  transition: 'none',
+  backgroundColor: 'var(--mui-palette-customColors-greyLightBg)',
+  borderBottom: '1px solid var(--mui-palette-divider) !important'
+}))
+
+// Styled component for AccordionDetails component
+const AccordionDetails = styled(MuiAccordionDetails)<AccordionDetailsProps>(({ theme }) => ({
+  padding: `${theme.spacing(4)} !important`
+}))
+
+// Expand icon component using remix icons
+const expandIcon = (value: string, expandedAccordions: Set<string>) => (
+  <i className={expandedAccordions.has(value) ? 'ri-subtract-line' : 'ri-add-line'} />
+)
+
+// Types
+interface Material {
+  id: string
+  name: string
+  brand_name: string
+  material_name: string
+  width_mm: number
+  length_mm: number
+  thickness_mm: number
+  grain_direction: boolean
+  image_url?: string
+  kerf_mm: number
+  trim_top_mm: number
+  trim_bottom_mm: number
+  trim_left_mm: number
+  trim_right_mm: number
+  rotatable: boolean
+  waste_multi: number
+  created_at: string
+  updated_at: string
+}
+
+interface Customer {
+  id: string
+  name: string
+  email: string
+  mobile: string
+  discount_percent: number
+  billing_name: string
+  billing_country: string
+  billing_city: string
+  billing_postal_code: string
+  billing_street: string
+  billing_house_number: string
+  billing_tax_number: string
+  billing_company_reg_number: string
+  created_at: string
+  updated_at: string
+}
+
+interface Panel {
+  id: string
+  táblásAnyag: string
+  hosszúság: string
+  szélesség: string
+  darab: string
+  jelölés: string
+  élzárás: string
+  élzárásA: string
+  élzárásB: string
+  élzárásC: string
+  élzárásD: string
+}
+
+interface Placement {
+  id: string
+  x_mm: number
+  y_mm: number
+  w_mm: number
+  h_mm: number
+  rot_deg: number
+  board_id?: number
+}
+
+interface MaterialOptimizationResult {
+  material_id: string
+  material_name: string
+    placements: Placement[]
+  unplaced: Array<{ id: string; w_mm: number; h_mm: number }>
+    metrics: {
+      used_area_mm2: number
+      board_area_mm2: number
+      waste_pct: number
+      placed_count: number
+    unplaced_count: number
+    boards_used: number
+    total_cut_length_mm: number
+  }
+  board_cut_lengths: { [boardId: number]: number }
+  debug: {
+    board_width: number
+    board_height: number
+    usable_width: number
+    usable_height: number
+    bins_count: number
+    panels_count: number
+  }
+}
+
+interface OptimizationResult {
+  materials: MaterialOptimizationResult[]
+  totalMetrics: {
+    total_materials: number
+    total_used_area_mm2: number
+    total_board_area_mm2: number
+    overall_waste_pct: number
+    total_placed_count: number
+    total_unplaced_count: number
+  }
+}
+
+interface EdgeMaterial {
+  id: string
+  brand_id: string
+  type: string
+  thickness: number
+  width: number
+  decor: string
+  price: number
+  vat_id: string
+  created_at: string
+  updated_at: string
+  brands: {
+    name: string
+  }
+  vat: {
+    name: string
+    kulcs: number
+  }
+}
+
+// Materials will be fetched from database
+
+
+export default function OptiPage() {
+  // Check permission for this page
+  const { canAccess } = usePermissions()
+  const hasAccess = canAccess('/opti')
+  
+  // Use unified API with caching
+  const { data: materialsData, isLoading: materialsLoading, error: materialsError } = useApiCache<Material[]>('/api/materials', {
+    ttl: 5 * 60 * 1000, // 5 minutes cache
+    staleWhileRevalidate: true
+  })
+  
+  const { data: customersData, isLoading: customersLoading, error: customersError } = useApiCache<Customer[]>('/api/customers', {
+    ttl: 5 * 60 * 1000, // 5 minutes cache
+    staleWhileRevalidate: true
+  })
+  
+  const { data: edgeMaterialsData, isLoading: edgeMaterialsLoading, error: edgeMaterialsError } = useApiCache<EdgeMaterial[]>('/api/edge-materials', {
+    ttl: 5 * 60 * 1000, // 5 minutes cache
+    staleWhileRevalidate: true
+  })
+
+  // Ensure arrays are never null
+  const materials = materialsData || []
+  const customers = customersData || []
+  const edgeMaterials = edgeMaterialsData || []
+
+
+  // State
+  const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
+  const [isOptimizing, setIsOptimizing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [orderPolicy, setOrderPolicy] = useState<'LSF' | 'LAF' | 'DH'>('LAF')
+  const [expandedAccordions, setExpandedAccordions] = useState<Set<string>>(new Set())
+  const [currentBoardPerMaterial, setCurrentBoardPerMaterial] = useState<Map<string, number>>(new Map())
+  const [selectedTáblásAnyag, setSelectedTáblásAnyag] = useState<string>('')
+  const [selectedA, setSelectedA] = useState<string>('')
+  const [selectedB, setSelectedB] = useState<string>('')
+  const [selectedC, setSelectedC] = useState<string>('')
+  const [selectedD, setSelectedD] = useState<string>('')
+  
+  // State for showing optimization data card
+  const [showOptimizationData, setShowOptimizationData] = useState(false)
+  
+  // Customer data state
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [customerData, setCustomerData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    discount: '',
+    billing_name: '',
+    billing_country: 'Magyarország',
+    billing_city: '',
+    billing_postal_code: '',
+    billing_street: '',
+    billing_house_number: '',
+    billing_tax_number: '',
+    billing_company_reg_number: ''
+  })
+  
+  // Panel form state for the separate table
+  const [panelForm, setPanelForm] = useState({
+    hosszúság: '',
+    szélesség: '',
+    darab: '',
+    jelölés: ''
+  })
+
+  // Validation states for required fields
+  const [validationErrors, setValidationErrors] = useState({
+    hosszúság: false,
+    szélesség: false,
+    darab: false,
+    táblásAnyag: false
+  })
+
+  // Validation function
+  const validateForm = () => {
+    const errors = {
+      hosszúság: !panelForm.hosszúság || parseFloat(panelForm.hosszúság) <= 0,
+      szélesség: !panelForm.szélesség || parseFloat(panelForm.szélesség) <= 0,
+      darab: !panelForm.darab || parseInt(panelForm.darab) <= 0,
+      táblásAnyag: !selectedTáblásAnyag
+    }
+    
+    setValidationErrors(errors)
+    return !Object.values(errors).some(error => error)
+  }
+
+  // Clear validation errors when user starts typing
+  const clearValidationError = (field: keyof typeof validationErrors) => {
+    if (validationErrors[field]) {
+      setValidationErrors(prev => ({ ...prev, [field]: false }))
+    }
+  }
+
+  // Format edge material display name
+  const formatEdgeMaterialName = (material: EdgeMaterial) => {
+    return `${material.type}-${material.width}/${material.thickness}-${material.decor}`
+  }
+
+  const getEdgeMaterialNameById = (id: string) => {
+    const material = edgeMaterials.find(m => m.id === id)
+    return material ? formatEdgeMaterialName(material) : id
+  }
+  
+  // Separate panels table state
+  const [addedPanels, setAddedPanels] = useState<Panel[]>([])
+
+  // Load panels from session storage on component mount
+  useEffect(() => {
+    const savedPanels = sessionStorage.getItem('opti-panels')
+    if (savedPanels) {
+      try {
+        setAddedPanels(JSON.parse(savedPanels))
+      } catch (error) {
+        console.error('Error loading panels from session storage:', error)
+      }
+    }
+  }, [])
+
+  // Save panels to session storage whenever addedPanels changes
+  useEffect(() => {
+    if (addedPanels.length > 0) {
+      sessionStorage.setItem('opti-panels', JSON.stringify(addedPanels))
+    } else {
+      sessionStorage.removeItem('opti-panels')
+    }
+  }, [addedPanels])
+  
+  // Edit state
+  const [editingPanel, setEditingPanel] = useState<string | null>(null)
+  const [duplungolas, setDuplungolas] = useState(false)
+  
+  // Pánthelyfúrás modal state
+  const [panthelyfurasModalOpen, setPanthelyfurasModalOpen] = useState(false)
+  const [panthelyfurasMennyiseg, setPanthelyfurasMennyiseg] = useState('2')
+  const [panthelyfurasOldal, setPanthelyfurasOldal] = useState('hosszu')
+  const [panthelyfurasSaved, setPanthelyfurasSaved] = useState(false)
+  
+  // Pánthelyfúrás modal handlers
+  const handlePanthelyfurasOpen = () => {
+    setPanthelyfurasModalOpen(true)
+  }
+  
+  const handlePanthelyfurasClose = () => {
+    setPanthelyfurasModalOpen(false)
+  }
+  
+  const handlePanthelyfurasSave = () => {
+    // Here you can add logic to save the pánthelyfúrás data
+    setPanthelyfurasSaved(true)
+    setPanthelyfurasModalOpen(false)
+  }
+  
+  const handlePanthelyfurasDelete = () => {
+    // Here you can add logic to delete the pánthelyfúrás data
+    setPanthelyfurasSaved(false)
+    setPanthelyfurasModalOpen(false)
+  }
+
+  // Add panel to separate table
+  const addPanelToTable = () => {
+    // Validation
+    if (!validateForm()) {
+      toast.error('Kérjük, töltse ki az összes kötelező mezőt!')
+      return
+    }
+
+    // Get material name
+    const material = materials.find(m => m.id === selectedTáblásAnyag)
+    const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
+
+    // Create élzárás string from Hosszú felső, Széles jobb, Hosszú alsó, Széles bal selections
+    const élzárás = [selectedA, selectedB, selectedC, selectedD]
+      .filter(val => val && val !== '')
+      .join(', ')
+
+    // Add new panel to table
+    const newPanel = {
+      id: Date.now().toString(),
+      táblásAnyag: materialName,
+      hosszúság: panelForm.hosszúság,
+      szélesség: panelForm.szélesség,
+      darab: panelForm.darab,
+      jelölés: panelForm.jelölés || '-',
+      élzárás: élzárás || '-',
+      élzárásA: selectedA || '',
+      élzárásB: selectedB || '',
+      élzárásC: selectedC || '',
+      élzárásD: selectedD || ''
+    }
+
+    setAddedPanels(prev => [...prev, newPanel])
+    
+    // Clear optimization results when new panels are added
+    setOptimizationResult(null)
+
+    // Show success toast
+    toast.success('Panel sikeresen hozzáadva!')
+
+    // Clear form but keep the same material selected for next entry
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
+    // Keep selectedTáblásAnyag unchanged for next entry
+  }
+
+  // Delete panel from table
+  const deletePanelFromTable = (id: string) => {
+    setAddedPanels(prev => prev.filter(panel => panel.id !== id))
+    
+    // Clear optimization results when panels are removed
+    setOptimizationResult(null)
+    
+    // Show error toast
+    toast.error('Panel sikeresen törölve!')
+  }
+
+  // Edit panel - load record into form
+  const editPanel = (panel: any) => {
+    setEditingPanel(panel.id)
+    
+    // Find the material ID from the panel's táblásAnyag string
+    const material = materials.find(m => 
+      panel.táblásAnyag.includes(m.name) && 
+      panel.táblásAnyag.includes(`${m.width_mm}×${m.length_mm}mm`)
+    )
+    
+    if (material) {
+      setSelectedTáblásAnyag(material.id)
+    }
+    
+    // Load form data
+    setPanelForm({
+      hosszúság: panel.hosszúság,
+      szélesség: panel.szélesség,
+      darab: panel.darab,
+      jelölés: panel.jelölés
+    })
+    
+    // Load individual edge finishing selections
+    setSelectedA(panel.élzárásA || '')
+    setSelectedB(panel.élzárásB || '')
+    setSelectedC(panel.élzárásC || '')
+    setSelectedD(panel.élzárásD || '')
+    
+    // Scroll to the top of the page
+    setTimeout(() => {
+      window.scrollTo({ 
+        top: 0, 
+        behavior: 'smooth' 
+      })
+    }, 100)
+  }
+
+  // Save edited panel
+  const savePanel = () => {
+    if (!editingPanel || !selectedTáblásAnyag || !panelForm.hosszúság || !panelForm.szélesség || !panelForm.darab) {
+      alert('Kérjük töltse ki az összes kötelező mezőt!')
+      return
+    }
+
+    // Get material name
+    const material = materials.find(m => m.id === selectedTáblásAnyag)
+    const materialName = material ? `${material.name} (${material.width_mm}×${material.length_mm}mm)` : 'Ismeretlen anyag'
+
+    // Create élzárás string from Hosszú felső, Széles jobb, Hosszú alsó, Széles bal selections
+    const élzárás = [selectedA, selectedB, selectedC, selectedD]
+      .filter(val => val && val !== '')
+      .join(', ')
+
+    // Update panel in table
+    setAddedPanels(prev => prev.map(panel => 
+      panel.id === editingPanel 
+        ? {
+            ...panel,
+            táblásAnyag: materialName,
+            hosszúság: panelForm.hosszúság,
+            szélesség: panelForm.szélesség,
+            darab: panelForm.darab,
+            jelölés: panelForm.jelölés || '-',
+            élzárás: élzárás || '-',
+            élzárásA: selectedA || '',
+            élzárásB: selectedB || '',
+            élzárásC: selectedC || '',
+            élzárásD: selectedD || ''
+          }
+        : panel
+    ))
+    
+    // Clear optimization results when panels are modified
+    setOptimizationResult(null)
+
+    // Show success toast
+    toast.success('Panel sikeresen módosítva!')
+
+    // Clear form and exit edit mode
+    setEditingPanel(null)
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
+    setSelectedTáblásAnyag('')
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
+  }
+
+  // Cancel edit
+  const cancelEdit = () => {
+    setEditingPanel(null)
+    setPanelForm({
+      hosszúság: '',
+      szélesség: '',
+      darab: '',
+      jelölés: ''
+    })
+    // Keep the material selected when canceling edit
+    setSelectedA('')
+    setSelectedB('')
+    setSelectedC('')
+    setSelectedD('')
+  }
+
+  // Hungarian phone number formatting helper
+  const formatPhoneNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 2) {
+      return digits
+    } else if (digits.length <= 4) {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2)}`
+    } else if (digits.length <= 7) {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2, 4)} ${digits.substring(4)}`
+    } else if (digits.length <= 9) {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2, 4)} ${digits.substring(4, 7)} ${digits.substring(7)}`
+    } else {
+      return `+36 ${digits.substring(0, 2)} ${digits.substring(2, 4)} ${digits.substring(4, 7)} ${digits.substring(7, 9)}`
+    }
+  }
+
+  // Hungarian tax number (adószám) formatting helper
+  const formatTaxNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 8) {
+      return digits
+    } else if (digits.length <= 9) {
+      return `${digits.substring(0, 8)}-${digits.substring(8)}`
+    } else if (digits.length <= 11) {
+      return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9)}`
+    } else {
+      return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9, 11)}`
+    }
+  }
+
+  // Hungarian company registration number (cégjegyzékszám) formatting helper
+  const formatCompanyRegNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '')
+    if (digits.length <= 2) {
+      return digits
+    } else if (digits.length <= 4) {
+      return `${digits.substring(0, 2)}-${digits.substring(2)}`
+    } else if (digits.length <= 10) {
+      return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4)}`
+    } else {
+      return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4, 10)}`
+    }
+  }
+
+  // Handle customer selection
+  const handleCustomerSelect = (customer: Customer | null) => {
+    setSelectedCustomer(customer)
+    if (customer) {
+      const newCustomerData = {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.mobile,
+        discount: customer.discount_percent.toString(),
+        billing_name: customer.billing_name || '',
+        billing_country: customer.billing_country || 'Magyarország',
+        billing_city: customer.billing_city || '',
+        billing_postal_code: customer.billing_postal_code || '',
+        billing_street: customer.billing_street || '',
+        billing_house_number: customer.billing_house_number || '',
+        billing_tax_number: customer.billing_tax_number || '',
+        billing_company_reg_number: customer.billing_company_reg_number || ''
+      }
+      setCustomerData(newCustomerData)
+    } else {
+      setCustomerData({
+        name: '',
+        email: '',
+        phone: '',
+        discount: '',
+        billing_name: '',
+        billing_country: 'Magyarország',
+        billing_city: '',
+        billing_postal_code: '',
+        billing_street: '',
+        billing_house_number: '',
+        billing_tax_number: '',
+        billing_company_reg_number: ''
+      })
+    }
+  }
+
+  // Handle customer data input changes
+  const handleCustomerDataChange = (field: string, value: string) => {
+    let formattedValue = value
+    
+    // Apply formatting based on field type
+    if (field === 'phone') {
+      formattedValue = formatPhoneNumber(value)
+    } else if (field === 'billing_tax_number') {
+      formattedValue = formatTaxNumber(value)
+    } else if (field === 'billing_company_reg_number') {
+      formattedValue = formatCompanyRegNumber(value)
+    }
+    
+    setCustomerData(prev => {
+      const newData = {
+        ...prev,
+        [field]: formattedValue
+      }
+      return newData
+    })
+  }
+
+  // Handle Enter key press
+  const handleKeyPress = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      if (editingPanel) {
+        savePanel()
+      } else {
+        addPanelToTable()
+      }
+      // Focus on hosszúság input after action
+      setTimeout(() => {
+        const hosszúságInput = document.querySelector('input[name="hosszúság"]') as HTMLInputElement
+        if (hosszúságInput) {
+          hosszúságInput.focus()
+        }
+      }, 100)
+    }
+  }
+
+  // Handle API errors
+  useEffect(() => {
+    if (materialsError) {
+      console.error('💥 Materials API error:', materialsError)
+      setError('Error loading materials from database')
+    }
+  }, [materialsError])
+
+  // Handle customers API errors
+  useEffect(() => {
+    if (customersError) {
+      console.error('💥 Customers API error:', customersError)
+    }
+  }, [customersError])
+
+  // Handle edge materials API errors
+  useEffect(() => {
+    if (edgeMaterialsError) {
+      console.error('💥 Edge materials API error:', edgeMaterialsError)
+    }
+  }, [edgeMaterialsError])
+
+  // Initialize board indices when optimization result changes
+  useEffect(() => {
+    if (optimizationResult && optimizationResult.materials.length > 0) {
+      // Initialize board indices for each material
+      const newBoardIndices = new Map<string, number>()
+      optimizationResult.materials.forEach(material => {
+        newBoardIndices.set(material.material_id, 0) // Start with first board
+      })
+      setCurrentBoardPerMaterial(newBoardIndices)
+    }
+  }, [optimizationResult])
+
+
+
+
+  // Optimize panel preview calculation
+  const panelPreviewStyle = useMemo(() => {
+    if (!panelForm.hosszúság || !panelForm.szélesség) {
+      return { width: '100px', height: '100px' }
+    }
+    
+    const width = parseFloat(panelForm.hosszúság) || 0
+    const height = parseFloat(panelForm.szélesség) || 0
+    if (width === 0 || height === 0) return { width: '100px', height: '100px' }
+    
+    const aspectRatio = width / height
+    const maxHeight = 170
+    const maxWidth = 300
+    
+    if (aspectRatio > 1) {
+      // Landscape
+      const calculatedWidth = Math.min(maxWidth, maxHeight * aspectRatio)
+      const calculatedHeight = calculatedWidth / aspectRatio
+      return { width: `${calculatedWidth}px`, height: `${calculatedHeight}px` }
+    } else {
+      // Portrait
+      const calculatedHeight = Math.min(maxHeight, maxWidth / aspectRatio)
+      const calculatedWidth = calculatedHeight * aspectRatio
+      return { width: `${calculatedWidth}px`, height: `${calculatedHeight}px` }
+    }
+  }, [panelForm.hosszúság, panelForm.szélesség])
+
+  // Optimize grain direction calculation
+  const grainDirectionLines = useMemo(() => {
+    const selectedMaterial = materials.find(m => m.id === selectedTáblásAnyag)
+    if (!selectedMaterial?.grain_direction) return null
+    
+    const lines = []
+    for (let i = 0; i < 8; i++) {
+      lines.push(
+        <Box
+          key={`grain-${i}`}
+          sx={{
+            position: 'absolute',
+            top: `${(i + 1) * 12.5}%`,
+            left: '5%',
+            right: '5%',
+            height: '1px',
+            backgroundColor: '#999',
+            opacity: 0.6
+          }}
+        />
+      )
+    }
+    return lines
+  }, [materials, selectedTáblásAnyag])
+
+  // addedPanels already have the correct Panel structure
+
+  // Optimize with multiple materials using addedPanels
+  const optimize = async () => {
+    
+    if (addedPanels.length === 0) {
+      setError('Please add at least one panel to optimize')
+      return
+    }
+
+    setIsOptimizing(true)
+    setError(null)
+
+    try {
+      // Group addedPanels by material
+      const panelsByMaterial = new Map<string, { material: Material; panels: any[] }>()
+      
+      addedPanels.forEach(addedPanel => {
+        // Extract material name from táblásAnyag (format: "Material Name (width×lengthmm)")
+        const materialMatch = addedPanel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
+        if (!materialMatch) {
+          console.warn('Could not parse material from:', addedPanel.táblásAnyag)
+          return
+        }
+        
+        const materialName = materialMatch[1].trim()
+        const materialWidth = parseInt(materialMatch[2])
+        const materialLength = parseInt(materialMatch[3])
+        
+        // Find the material in our materials array
+        const material = materials.find(m => 
+          m.name === materialName && 
+          m.width_mm === materialWidth && 
+          m.length_mm === materialLength
+        )
+        
+        if (!material) {
+          console.warn('Material not found in materials array:', materialName, materialWidth, materialLength)
+          return
+        }
+        
+        const materialId = material.id
+        if (!panelsByMaterial.has(materialId)) {
+          panelsByMaterial.set(materialId, {
+            material: material,
+            panels: []
+          })
+        }
+        
+        // Convert addedPanel to panel format
+        const panel = {
+          id: addedPanel.id,
+          material: material,
+          length: parseInt(addedPanel.hosszúság),
+          width: parseInt(addedPanel.szélesség),
+          quantity: parseInt(addedPanel.darab),
+          marking: addedPanel.jelölés,
+          edgeTop: addedPanel.élzárás.includes('A') ? 'A' : 'None',
+          edgeRight: addedPanel.élzárás.includes('B') ? 'B' : 'None',
+          edgeBottom: addedPanel.élzárás.includes('C') ? 'C' : 'None',
+          edgeLeft: addedPanel.élzárás.includes('D') ? 'D' : 'None'
+        }
+        
+        panelsByMaterial.get(materialId)!.panels.push(panel)
+      })
+
+      
+      const materialsForOptimization = Array.from(panelsByMaterial.values()).map(({ material, panels: materialPanels }) => {
+        // Prepare all parts for this material
+        const allParts = materialPanels.flatMap(panel => 
+        Array.from({ length: panel.quantity }, (_, i) => ({
+          id: `${panel.id}-${i + 1}`,
+          w_mm: panel.width,
+          h_mm: panel.length,
+          qty: 1,
+            allow_rot_90: panel.material.rotatable, // Use rotatable field from database
+          grain_locked: panel.material.grain_direction
+        }))
+      )
+      
+        return {
+          id: material.id,
+          name: material.name,
+          parts: allParts,
+               board: {
+            w_mm: material.width_mm,
+            h_mm: material.length_mm,
+            trim_top_mm: material.trim_top_mm || 0,
+            trim_right_mm: material.trim_right_mm || 0,
+            trim_bottom_mm: material.trim_bottom_mm || 0,
+            trim_left_mm: material.trim_left_mm || 0
+          },
+               params: {
+            kerf_mm: material.kerf_mm || 3,
+                 seed: 123456,
+                 order_policy: orderPolicy
+               }
+             }
+      })
+
+
+      // Call multi-material optimization service
+      const request = { materials: materialsForOptimization }
+        
+      const response = await fetch('http://localhost:8000/test_optimization.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(request)
+        })
+
+        
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(`Optimization failed: ${response.statusText}`)
+        }
+
+      const results = await response.json()
+
+      // Calculate total metrics
+      const totalUsedArea = results.reduce((sum: number, result: any) => sum + result.metrics.used_area_mm2, 0)
+      const totalBoardArea = results.reduce((sum: number, result: any) => sum + result.metrics.board_area_mm2, 0)
+      const totalPlaced = results.reduce((sum: number, result: any) => sum + result.metrics.placed_count, 0)
+      const totalUnplaced = results.reduce((sum: number, result: any) => sum + result.metrics.unplaced_count, 0)
+
+
+      const finalResult: OptimizationResult = {
+        materials: results,
+        totalMetrics: {
+          total_materials: results.length,
+          total_used_area_mm2: totalUsedArea,
+          total_board_area_mm2: totalBoardArea,
+          overall_waste_pct: totalBoardArea > 0 ? ((totalBoardArea - totalUsedArea) / totalBoardArea) * 100 : 0,
+          total_placed_count: totalPlaced,
+          total_unplaced_count: totalUnplaced
+        }
+      }
+
+      setOptimizationResult(finalResult)
+    } catch (err) {
+      console.error('\n=== OPTIMIZATION ERROR ===')
+      console.error('Error details:', err)
+      console.error('Error message:', err instanceof Error ? err.message : 'Unknown error')
+      console.error('Error stack:', err instanceof Error ? err.stack : 'No stack trace')
+      setError(`Optimization failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setIsOptimizing(false)
+    }
+  }
+
+
+
+  // Check access permission
+  useEffect(() => {
+    if (!hasAccess) {
+      toast.error('Nincs jogosultsága az Opti oldal megtekintéséhez!', {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+      window.location.href = '/users'
+    }
+  }, [hasAccess])
+
+  if (!hasAccess) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Typography variant="h6" color="error">
+          Nincs jogosultsága az Opti oldal megtekintéséhez!
+        </Typography>
+      </Box>
+    )
+  }
+
+  // Check if any data is still loading
+  const isDataLoading = materialsLoading || customersLoading || edgeMaterialsLoading
+  
+  // Show loading state if any data is still loading
+  if (isDataLoading) {
+    return (
+      <ErrorBoundary>
+        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+          <CircularProgress size={60} sx={{ mb: 3 }} />
+          <Typography variant="h6" gutterBottom>
+            Loading Optimization Data...
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Fetching materials, customers, and edge materials
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} color={materialsLoading ? 'primary' : 'success'} />
+              <Typography variant="caption">
+                Materials {materialsLoading ? 'Loading...' : '✓'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} color={customersLoading ? 'primary' : 'success'} />
+              <Typography variant="caption">
+                Customers {customersLoading ? 'Loading...' : '✓'}
+              </Typography>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <CircularProgress size={16} color={edgeMaterialsLoading ? 'primary' : 'success'} />
+              <Typography variant="caption">
+                Edge Materials {edgeMaterialsLoading ? 'Loading...' : '✓'}
+              </Typography>
+            </Box>
+          </Box>
+        </Box>
+      </ErrorBoundary>
+    )
+  }
+
+  // Show error state if there are critical errors
+  if (materialsError || customersError || edgeMaterialsError) {
+    return (
+      <ErrorBoundary>
+        <Box sx={{ p: 3 }}>
+          <Typography variant="h4" gutterBottom>
+            Opti - Multi-Material Panel Optimization
+          </Typography>
+          <Alert severity="error" sx={{ mb: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Failed to load optimization data
+            </Typography>
+            {materialsError && (
+              <Typography variant="body2">
+                • Materials API Error: {materialsError}
+              </Typography>
+            )}
+            {customersError && (
+              <Typography variant="body2">
+                • Customers API Error: {customersError}
+              </Typography>
+            )}
+            {edgeMaterialsError && (
+              <Typography variant="body2">
+                • Edge Materials API Error: {edgeMaterialsError}
+              </Typography>
+            )}
+            <Typography variant="body2" sx={{ mt: 2 }}>
+              Please refresh the page or check your connection.
+            </Typography>
+          </Alert>
+        </Box>
+      </ErrorBoundary>
+    )
+  }
+
+  return (
+    <ErrorBoundary>
+      <Box sx={{ p: 3 }}>
+      <Typography variant="h4" gutterBottom>
+        Opti - Multi-Material Panel Optimization
+      </Typography>
+
+      <Grid container spacing={3}>
+        {/* Dynamic Rectangle Visualization Card */}
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Panel Előnézet
+              </Typography>
+              <Box
+                sx={{
+                  height: 200,
+                  backgroundColor: '#f5f5f5',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: 1,
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden'
+                }}
+              >
+                {panelForm.hosszúság && panelForm.szélesség ? (
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      backgroundColor: '#e0e0e0',
+                      border: '2px solid #666',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      maxWidth: '90%',
+                      maxHeight: '90%',
+                      width: panelPreviewStyle.width,
+                      height: panelPreviewStyle.height
+                    }}
+                  >
+                    {/* Grain direction lines - horizontal lines if material has grain direction */}
+                    {grainDirectionLines}
+                    {/* Edge labels with Hungarian names and option-based colors */}
+                    {(() => {
+                      // Color mapping based on option values
+                      const getOptionColor = (option: string) => {
+                        if (!option) return '#666'
+                        switch (option) {
+                          case 'option1': return '#1976d2' // Blue
+                          case 'option2': return '#388e3c' // Green
+                          case 'option3': return '#f57c00' // Orange
+                          case 'option4': return '#d32f2f' // Red
+                          default: return '#666'
+                        }
+                      }
+                      
+                      return (
+                        <>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              top: -20,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedA)
+                            }}
+                          >
+                            Hosszú felső
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              bottom: -20,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedC)
+                            }}
+                          >
+                            Hosszú alsó
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              left: -20,
+                              top: '50%',
+                              transform: 'translateY(-50%) rotate(-90deg)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedD)
+                            }}
+                          >
+                            Széles bal
+                          </Box>
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              right: -20,
+                              top: '50%',
+                              transform: 'translateY(-50%) rotate(90deg)',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              color: getOptionColor(selectedB)
+                            }}
+                          >
+                            Széles jobb
+                          </Box>
+                        </>
+                      )
+                    })()}
+                    
+                    {/* Special borders for selected edges with option-based colors */}
+                    {(() => {
+                      // Color mapping based on option values
+                      const getOptionColor = (option: string) => {
+                        if (!option) return '#666'
+                        switch (option) {
+                          case 'option1': return '#1976d2' // Blue
+                          case 'option2': return '#388e3c' // Green
+                          case 'option3': return '#f57c00' // Orange
+                          case 'option4': return '#d32f2f' // Red
+                          default: return '#666'
+                        }
+                      }
+                      
+                      return (
+                        <>
+                          {selectedA && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                right: -3,
+                                height: 3,
+                                backgroundColor: getOptionColor(selectedA),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedC && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                bottom: -3,
+                                left: -3,
+                                right: -3,
+                                height: 3,
+                                backgroundColor: getOptionColor(selectedC),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedD && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                left: -3,
+                                bottom: -3,
+                                width: 3,
+                                backgroundColor: getOptionColor(selectedD),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                          {selectedB && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: -3,
+                                right: -3,
+                                bottom: -3,
+                                width: 3,
+                                backgroundColor: getOptionColor(selectedB),
+                                borderRadius: '2px'
+                              }}
+                            />
+                          )}
+                        </>
+                      )
+                    })()}
+                    
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      width: 100,
+                      height: 100,
+                      backgroundColor: '#e0e0e0',
+                      border: '2px solid #666',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: 1
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontSize: '12px', color: '#666' }}>
+                      X × Y
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontSize: '10px', color: '#999' }}>
+                      mm
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Customer Information Card */}
+        <Grid item xs={12} md={8}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Megrendelő adatai
+              </Typography>
+              
+              <Grid container spacing={2}>
+               {/* Customer Selection and Discount in same row */}
+               <Grid item xs={12} sm={8}>
+                 <Autocomplete
+                   fullWidth
+                   size="small"
+                   options={customers}
+                   getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
+                   value={selectedCustomer}
+                   onChange={(event, newValue) => {
+                     if (typeof newValue === 'string') {
+                       // User typed a new customer name
+                       setSelectedCustomer(null)
+                       setCustomerData({
+                         name: newValue,
+                         email: '',
+                         phone: '',
+                         discount: '0',
+                         billing_name: '',
+                         billing_country: 'Magyarország',
+                         billing_city: '',
+                         billing_postal_code: '',
+                         billing_street: '',
+                         billing_house_number: '',
+                         billing_tax_number: '',
+                         billing_company_reg_number: ''
+                       })
+                     } else if (newValue) {
+                       // User selected an existing customer - set data directly
+                       setSelectedCustomer(newValue)
+                       setCustomerData({
+                         name: newValue.name,
+                         email: newValue.email,
+                         phone: newValue.mobile,
+                         discount: newValue.discount_percent.toString(),
+                         billing_name: newValue.billing_name || '',
+                         billing_country: newValue.billing_country || 'Magyarország',
+                         billing_city: newValue.billing_city || '',
+                         billing_postal_code: newValue.billing_postal_code || '',
+                         billing_street: newValue.billing_street || '',
+                         billing_house_number: newValue.billing_house_number || '',
+                         billing_tax_number: newValue.billing_tax_number || '',
+                         billing_company_reg_number: newValue.billing_company_reg_number || ''
+                       })
+                     } else {
+                       // User cleared selection
+                       setSelectedCustomer(null)
+                       setCustomerData({
+                         name: '',
+                         email: '',
+                         phone: '',
+                         discount: '',
+                         billing_name: '',
+                         billing_country: 'Magyarország',
+                         billing_city: '',
+                         billing_postal_code: '',
+                         billing_street: '',
+                         billing_house_number: '',
+                         billing_tax_number: '',
+                         billing_company_reg_number: ''
+                       })
+                     }
+                   }}
+                   onInputChange={(event, newInputValue) => {
+                     if (event && newInputValue && !customers.find(c => c.name === newInputValue)) {
+                       // User is typing a new customer name
+                       setSelectedCustomer(null)
+                       setCustomerData({
+                         name: newInputValue,
+                         email: '',
+                         phone: '',
+                         discount: '0',
+                         billing_name: '',
+                         billing_country: 'Magyarország',
+                         billing_city: '',
+                         billing_postal_code: '',
+                         billing_street: '',
+                         billing_house_number: '',
+                         billing_tax_number: '',
+                         billing_company_reg_number: ''
+                       })
+                     }
+                   }}
+                   freeSolo
+                   disabled={customersLoading}
+                   loading={customersLoading}
+                   loadingText="Ügyfelek betöltése..."
+                   noOptionsText="Nincs találat"
+                   renderInput={(params) => (
+                     <TextField
+                       {...params}
+                       label="Név (válasszon ügyfelet vagy írjon be új nevet)"
+                       size="small"
+                       InputProps={{
+                         ...params.InputProps,
+                         endAdornment: (
+                           <>
+                             {customersLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                             {params.InputProps.endAdornment}
+                           </>
+                         ),
+                       }}
+                     />
+                   )}
+                   renderOption={(props, option) => {
+                     const { key, ...otherProps } = props;
+                     return (
+                       <Box component="li" key={key} {...otherProps}>
+                         <Box>
+                           <Typography variant="body2" fontWeight="medium">
+                             {option.name}
+                           </Typography>
+                           <Typography variant="caption" color="text.secondary">
+                             {option.email} • {option.mobile}
+                           </Typography>
+                         </Box>
+                       </Box>
+                     );
+                   }}
+                 />
+               </Grid>
+               <Grid item xs={12} sm={4}>
+                 <TextField
+                   fullWidth
+                   size="small"
+                   label="Kedvezmény (%)"
+                   type="number"
+                   value={customerData.discount}
+                   onChange={(e) => handleCustomerDataChange('discount', e.target.value)}
+                   disabled={!!selectedCustomer}
+                   inputProps={{ min: 0, max: 100, step: 0.01 }}
+                 />
+               </Grid>
+
+               {/* Customer Data Fields */}
+               <Grid item xs={12} sm={6}>
+                 <TextField
+                   fullWidth
+                   size="small"
+                   label="E-mail"
+                   value={customerData.email}
+                   onChange={(e) => handleCustomerDataChange('email', e.target.value)}
+                   disabled={!!selectedCustomer}
+                 />
+               </Grid>
+               <Grid item xs={12} sm={6}>
+                 <TextField
+                   fullWidth
+                   size="small"
+                   label="Telefon"
+                   value={customerData.phone}
+                   onChange={(e) => handleCustomerDataChange('phone', e.target.value)}
+                   disabled={!!selectedCustomer}
+                 />
+               </Grid>
+
+               {/* Status and Clear Button */}
+               <Grid item xs={12}>
+                 <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pt: 1, gap: 2 }}>
+                   {selectedCustomer ? (
+                     <>
+                <Typography variant="body2" color="text.secondary">
+                         Adatok automatikusan kitöltve
+                </Typography>
+                       <Button
+                         size="small"
+                         variant="outlined"
+                         color="secondary"
+                         onClick={() => handleCustomerSelect(null)}
+                       >
+                         Törlés
+                       </Button>
+                     </>
+                   ) : customerData.name && !selectedCustomer ? (
+                     <Typography variant="body2" color="primary">
+                       Új ügyfél adatai - kérem töltse ki a mezőket
+                     </Typography>
+                   ) : null}
+              </Box>
+               </Grid>
+
+                {/* Szálázási adatok Collapsible Section */}
+                <Grid item xs={12}>
+         <Accordion
+           defaultExpanded={false}
+         >
+                    <AccordionSummary
+                      expandIcon={<ExpandMoreIcon />}
+                    >
+                      <Typography variant="h6" sx={{ fontWeight: 'medium' }}>
+                        Számlázási adatok
+                      </Typography>
+                    </AccordionSummary>
+                    <AccordionDetails>
+                      <Grid container spacing={2}>
+                        {/* Billing Name */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Szálázási név"
+                            value={customerData.billing_name}
+                            onChange={(e) => handleCustomerDataChange('billing_name', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Country */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Ország"
+                            value={customerData.billing_country}
+                            onChange={(e) => handleCustomerDataChange('billing_country', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* City */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Város"
+                            value={customerData.billing_city}
+                            onChange={(e) => handleCustomerDataChange('billing_city', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Postal Code */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Irányítószám"
+                            value={customerData.billing_postal_code}
+                            onChange={(e) => handleCustomerDataChange('billing_postal_code', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Street */}
+                        <Grid item xs={12} sm={8}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Utca"
+                            value={customerData.billing_street}
+                            onChange={(e) => handleCustomerDataChange('billing_street', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* House Number */}
+                        <Grid item xs={12} sm={4}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Házszám"
+                            value={customerData.billing_house_number}
+                            onChange={(e) => handleCustomerDataChange('billing_house_number', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Tax Number */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Adószám"
+                            placeholder="12345678-1-02"
+                            value={customerData.billing_tax_number}
+                            onChange={(e) => handleCustomerDataChange('billing_tax_number', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+
+                        {/* Company Registration Number */}
+                        <Grid item xs={12} sm={6}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Cégjegyzékszám"
+                            placeholder="01-09-123456"
+                            value={customerData.billing_company_reg_number}
+                            onChange={(e) => handleCustomerDataChange('billing_company_reg_number', e.target.value)}
+                            disabled={!!selectedCustomer}
+                          />
+                        </Grid>
+                      </Grid>
+                    </AccordionDetails>
+                  </Accordion>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Panel Adatok Card */}
+        <Grid item xs={12}>
+          <Card id="panel-adatok-section">
+            <CardContent>
+              {/* Táblás anyag Selection */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Táblás anyag
+                </Typography>
+                <Grid container spacing={2} alignItems="flex-end">
+                  <Grid item xs={12} sm={6} md={4}>
+               <Autocomplete
+                 fullWidth
+                 size="small"
+                 options={materials}
+                 getOptionLabel={(option) => `${option.name} (${option.width_mm}×${option.length_mm}mm)`}
+                 value={materials.find(m => m.id === selectedTáblásAnyag) || null}
+                 onChange={(event, newValue) => {
+                   setSelectedTáblásAnyag(newValue ? newValue.id : '')
+                   clearValidationError('táblásAnyag')
+                 }}
+                 disabled={materialsLoading}
+                 loading={materialsLoading}
+                 loadingText="Anyagok betöltése..."
+                 noOptionsText="Nincs találat"
+                 renderInput={(params) => (
+                   <TextField
+                     {...params}
+                     label="Táblás anyag választás:"
+                     size="small"
+                     error={validationErrors.táblásAnyag}
+                     helperText={validationErrors.táblásAnyag ? 'Táblás anyag kiválasztása kötelező' : ''}
+                     InputProps={{
+                       ...params.InputProps,
+                       endAdornment: (
+                         <>
+                           {materialsLoading ? <CircularProgress color="inherit" size={20} /> : null}
+                           {params.InputProps.endAdornment}
+                         </>
+                       ),
+                     }}
+                   />
+                 )}
+                 renderOption={(props, option) => {
+                   const { key, ...otherProps } = props;
+                   return (
+                     <Box component="li" key={key} {...otherProps}>
+                     {option.name} ({option.width_mm}×{option.length_mm}mm)
+                   </Box>
+                   );
+                 }}
+               />
+        </Grid>
+
+                  {/* Selected Material Details */}
+                  {selectedTáblásAnyag && (() => {
+                    const selectedMaterial = materials.find(m => m.id === selectedTáblásAnyag)
+                    if (!selectedMaterial) return null
+                    
+                    // Color mapping based on material type
+                    const getMaterialColor = (materialName: string) => {
+                      const name = materialName.toLowerCase()
+                      if (name.includes('mdf')) return '#8B4513' // Brown
+                      if (name.includes('plywood')) return '#DEB887' // Burlywood
+                      if (name.includes('chipboard')) return '#D2691E' // Chocolate
+                      if (name.includes('osb')) return '#A0522D' // Sienna
+                      if (name.includes('hardboard')) return '#F5DEB3' // Wheat
+                      return '#696969' // Dim gray (default)
+                    }
+                    
+                    return (
+                      <Grid item xs={12} sm={6} md={8}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                          {/* Material Image */}
+                          <Box
+                            sx={{
+                              width: 60,
+                              height: 60,
+                              background: selectedMaterial.image_url 
+                                ? `url(${selectedMaterial.image_url})`
+                                : `linear-gradient(45deg, ${getMaterialColor(selectedMaterial.name)} 25%, transparent 25%), 
+                                   linear-gradient(-45deg, ${getMaterialColor(selectedMaterial.name)} 25%, transparent 25%), 
+                                   linear-gradient(45deg, transparent 75%, ${getMaterialColor(selectedMaterial.name)} 75%), 
+                                   linear-gradient(-45deg, transparent 75%, ${getMaterialColor(selectedMaterial.name)} 75%)`,
+                              backgroundSize: selectedMaterial.image_url ? 'cover' : '20px 20px',
+                              backgroundPosition: selectedMaterial.image_url ? 'center' : '0 0, 0 10px, 10px -10px, -10px 0px',
+                              border: '2px solid #e0e0e0',
+                              borderRadius: 1,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              mr: 1,
+                              overflow: 'hidden',
+                              position: 'relative'
+                            }}
+                            title={`${selectedMaterial.name} képe`}
+                          >
+                            {selectedMaterial.image_url ? (
+                              <img
+                                src={selectedMaterial.image_url}
+                                alt={selectedMaterial.name}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover'
+                                }}
+                              />
+                            ) : (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: `linear-gradient(135deg, ${getMaterialColor(selectedMaterial.name)} 0%, ${getMaterialColor(selectedMaterial.name)}dd 100%)`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    color: 'white', 
+                                    textAlign: 'center', 
+                                    fontSize: '8px',
+                                    fontWeight: 'bold',
+                                    textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
+                                  }}
+                                >
+                                  {selectedMaterial.name.split(' ')[0]}
+              </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                          
+                          <Chip
+                            label={`${selectedMaterial.length_mm} × ${selectedMaterial.width_mm}mm`}
+                            color="primary"
+                            variant="outlined"
+                            size="small"
+                          />
+                          <Chip
+                            label={`${selectedMaterial.thickness_mm}mm vastag`}
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                          />
+                          {selectedMaterial.grain_direction && (
+                            <Chip
+                              label="Szálirány"
+                              color="warning"
+                              variant="outlined"
+                              size="small"
+                            />
+                          )}
+                          <Chip
+                            label={`Penge vastagság: ${selectedMaterial.kerf_mm}mm`}
+                            color="info"
+                            variant="outlined"
+                            size="small"
+                          />
+                          <Chip
+                            label={`Szélezés: HF${selectedMaterial.trim_top_mm} RB${selectedMaterial.trim_bottom_mm} HA${selectedMaterial.trim_left_mm} RJ${selectedMaterial.trim_right_mm}mm`}
+                            color="secondary"
+                            variant="outlined"
+                            size="small"
+                          />
+                        </Box>
+                      </Grid>
+                    )
+                  })()}
+                </Grid>
+              </Box>
+              
+              {/* Méretek Section */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Méretek
+                </Typography>
+              </Box>
+              
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Szálirány (mm)"
+                    type="number"
+                    required
+                    name="hosszúság"
+                    value={panelForm.hosszúság}
+                    onChange={(e) => {
+                      setPanelForm({...panelForm, hosszúság: e.target.value})
+                      clearValidationError('hosszúság')
+                    }}
+                    onKeyPress={handleKeyPress}
+                    inputProps={{ min: 0, step: 0.1 }}
+                    error={validationErrors.hosszúság}
+                    helperText={validationErrors.hosszúság ? 'Hosszúság megadása kötelező és nagyobb kell legyen 0-nál' : ''}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Keresztirány (mm)"
+                    type="number"
+                    required
+                    value={panelForm.szélesség}
+                    onChange={(e) => {
+                      setPanelForm({...panelForm, szélesség: e.target.value})
+                      clearValidationError('szélesség')
+                    }}
+                    onKeyPress={handleKeyPress}
+                    inputProps={{ min: 0, step: 0.1 }}
+                    error={validationErrors.szélesség}
+                    helperText={validationErrors.szélesség ? 'Szélesség megadása kötelező és nagyobb kell legyen 0-nál' : ''}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Darab"
+                    type="number"
+                    required
+                    value={panelForm.darab}
+                    onChange={(e) => {
+                      setPanelForm({...panelForm, darab: e.target.value})
+                      clearValidationError('darab')
+                    }}
+                    onKeyPress={handleKeyPress}
+                    inputProps={{ min: 1, step: 1 }}
+                    error={validationErrors.darab}
+                    helperText={validationErrors.darab ? 'Darab megadása kötelező és nagyobb kell legyen 0-nál' : ''}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Jelölés"
+                    value={panelForm.jelölés}
+                    onChange={(e) => setPanelForm({...panelForm, jelölés: e.target.value})}
+                    onKeyPress={handleKeyPress}
+                    inputProps={{ maxLength: 50 }}
+                  />
+                </Grid>
+                
+                {/* Élzárás Section */}
+                <Grid item xs={12}>
+                  <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                    Élzárás
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={12} sm={6} md={3}>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedA) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedA(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Hosszú felső"
+                      onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedC) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedC(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Hosszú alsó"
+                      onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedD) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedD(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Széles bal"
+                      onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Autocomplete
+                    fullWidth
+                    size="small"
+                    options={edgeMaterials}
+                    getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                    getOptionKey={(option) => option.id}
+                    value={edgeMaterials.find(material => material.id === selectedB) || null}
+                    onChange={(event, newValue) => {
+                      setSelectedB(newValue ? newValue.id : '')
+                    }}
+                    disabled={edgeMaterialsLoading}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Széles jobb"
+                      onKeyPress={handleKeyPress}
+                      />
+                    )}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: '200px', // Limit to ~3-4 items
+                        overflow: 'auto'
+                      }
+                    }}
+                    noOptionsText="Nincs találat"
+                  />
+                </Grid>
+              </Grid>
+              
+              {/* Megmunkálás Section */}
+              <Grid item xs={12} sx={{ mt: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Megmunkálás
+                </Typography>
+              </Grid>
+              
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    color={panthelyfurasSaved ? "success" : "primary"}
+                    onClick={handlePanthelyfurasOpen}
+                  >
+                    Pánthelyfúrás
+                  </Button>
+                  
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={duplungolas}
+                        onChange={(e) => setDuplungolas(e.target.checked)}
+                        color="primary"
+                      />
+                    }
+                    label="Duplungolás"
+                    sx={{ ml: 2 }}
+                  />
+                </Box>
+              </Grid>
+              
+              <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+                {editingPanel && (
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    size="large"
+                    onClick={cancelEdit}
+                  >
+                    Mégse
+                  </Button>
+                )}
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  onClick={editingPanel ? savePanel : addPanelToTable}
+                  disabled={!selectedTáblásAnyag}
+                >
+                  {editingPanel ? 'Mentés' : 'Hozzáadás'}
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Added Panels Table */}
+        {addedPanels.length > 0 && (
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom>
+              Hozzáadott Panelek
+            </Typography>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Táblás anyag</strong></TableCell>
+                    <TableCell><strong>Szálirány</strong></TableCell>
+                    <TableCell><strong>Keresztirány</strong></TableCell>
+                    <TableCell><strong>Darab</strong></TableCell>
+                    <TableCell><strong>Jelölés</strong></TableCell>
+                    <TableCell align="center"><strong>Hosszú felső</strong></TableCell>
+                    <TableCell align="center"><strong>Hosszú alsó</strong></TableCell>
+                    <TableCell align="center"><strong>Széles bal</strong></TableCell>
+                    <TableCell align="center"><strong>Széles jobb</strong></TableCell>
+                    <TableCell><strong>Műveletek</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {addedPanels.map((panel) => (
+                      <TableRow 
+                        key={panel.id}
+                        onClick={() => editPanel(panel)}
+                        sx={{ 
+                          cursor: 'pointer',
+                          backgroundColor: (() => {
+                            // Get all unique materials and assign colors
+                            const uniqueMaterials = [...new Set(addedPanels.map(p => p.táblásAnyag))]
+                            const materialIndex = uniqueMaterials.indexOf(panel.táblásAnyag)
+                            const colors = [
+                              'rgba(0, 123, 108, 0.05)',    // Green
+                              'rgba(25, 118, 210, 0.05)',   // Blue  
+                              'rgba(156, 39, 176, 0.05)',   // Purple
+                              'rgba(255, 152, 0, 0.05)',    // Orange
+                              'rgba(244, 67, 54, 0.05)',    // Red
+                              'rgba(76, 175, 80, 0.05)',    // Light Green
+                              'rgba(63, 81, 181, 0.05)',    // Indigo
+                              'rgba(255, 193, 7, 0.05)'     // Yellow
+                            ]
+                            return colors[materialIndex % colors.length]
+                          })(),
+                          '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.04)' }
+                        }}
+                      >
+                      <TableCell>{panel.táblásAnyag}</TableCell>
+                      <TableCell>{panel.hosszúság} mm</TableCell>
+                      <TableCell>{panel.szélesség} mm</TableCell>
+                      <TableCell>{panel.darab}</TableCell>
+                      <TableCell>{panel.jelölés}</TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásA ? getEdgeMaterialNameById(panel.élzárásA) : 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásA ? 'primary' : 'default'}
+                          variant={panel.élzárásA ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásC ? getEdgeMaterialNameById(panel.élzárásC) : 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásC ? 'primary' : 'default'}
+                          variant={panel.élzárásC ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásD ? getEdgeMaterialNameById(panel.élzárásD) : 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásD ? 'primary' : 'default'}
+                          variant={panel.élzárásD ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={panel.élzárásB ? getEdgeMaterialNameById(panel.élzárásB) : 'Nincs'} 
+                          size="small" 
+                          color={panel.élzárásB ? 'primary' : 'default'}
+                          variant={panel.élzárásB ? 'filled' : 'outlined'}
+                        />
+                      </TableCell>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant="contained"
+                          color="error"
+                          size="small"
+                          onClick={() => deletePanelFromTable(panel.id)}
+                          sx={{ 
+                            minWidth: 'auto', 
+                            px: 1, 
+                            py: 0.5,
+                            minHeight: 'auto',
+                            fontSize: '12px'
+                          }}
+                        >
+                          Törlés
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            
+            {/* Optimalizálás Button */}
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2 }}>
+              <Button
+                variant="contained"
+                color={optimizationResult && !isOptimizing ? "success" : "warning"}
+                size="large"
+                onClick={optimize}
+                disabled={addedPanels.length === 0 || isOptimizing}
+                sx={{ 
+                  minWidth: 200,
+                  py: 1.5,
+                  px: 4
+                }}
+              >
+                {isOptimizing ? (
+                  <>
+                    <CircularProgress size={20} sx={{ mr: 1 }} />
+                    Optimalizálás...
+                  </>
+                ) : (
+                  'Optimalizálás'
+                )}
+              </Button>
+            </Box>
+            
+            {/* Error Display */}
+              {error && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {error}
+                </Alert>
+              )}
+        </Grid>
+        )}
+
+
+
+
+
+        {/* Multi-Material Visualization */}
+        {optimizationResult && (
+          <Grid item xs={12}>
+            {optimizationResult.materials.map((materialResult) => {
+              const isExpanded = expandedAccordions.has(materialResult.material_id)
+              const material = materials.find(m => m.id === materialResult.material_id)
+              const currentBoardIndex = currentBoardPerMaterial.get(materialResult.material_id) || 0
+              
+              // Group placements by board_id
+              const placementsByBoard = new Map<number, Placement[]>()
+              materialResult.placements.forEach(placement => {
+                const boardId = placement.board_id || 1
+                if (!placementsByBoard.has(boardId)) {
+                  placementsByBoard.set(boardId, [])
+                }
+                placementsByBoard.get(boardId)!.push(placement)
+              })
+              
+              const boardIds = Array.from(placementsByBoard.keys()).sort((a, b) => a - b)
+              const currentBoardId = boardIds[currentBoardIndex] || 1
+              const currentBoardPlacements = placementsByBoard.get(currentBoardId) || []
+              
+              return (
+                <Accordion 
+                  key={materialResult.material_id}
+                  expanded={isExpanded}
+                  onChange={(event, expanded) => {
+                    const newExpanded = new Set(expandedAccordions)
+                    if (expanded) {
+                      newExpanded.add(materialResult.material_id)
+                    } else {
+                      newExpanded.delete(materialResult.material_id)
+                    }
+                    setExpandedAccordions(newExpanded)
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={expandIcon(materialResult.material_id, expandedAccordions)}
+                    aria-controls={`material-${materialResult.material_id}-content`}
+                    id={`material-${materialResult.material_id}-header`}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%' }}>
+                      <Typography variant="h6" component="div">
+                        {materialResult.material_name}
+                          </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip 
+                          label={`${material?.length_mm}×${material?.width_mm}mm`} 
+                          size="small" 
+                          color="info" 
+                          variant="outlined"
+                        />
+                        <Chip 
+                          label={material?.grain_direction ? "Szálirányos" : "No Grain"} 
+                          size="small" 
+                          color={material?.grain_direction ? "warning" : "default"} 
+                          variant="outlined"
+                        />
+                        {materialResult.metrics.unplaced_count > 0 && (
+                          <Chip 
+                            label={`${materialResult.metrics.unplaced_count} unplaced`} 
+                            size="small" 
+                              color="error"
+                            variant="outlined"
+                          />
+                        )}
+                        <Chip 
+                          label={`${materialResult.metrics.boards_used} tábla`} 
+                              size="small"
+                          color="primary" 
+                          variant="outlined"
+                        />
+                        {/* Board usage breakdown */}
+                        {boardIds.length > 1 && (
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            {boardIds.map((boardId) => {
+                              const boardPlacements = placementsByBoard.get(boardId) || []
+                              const boardUsedArea = boardPlacements.reduce((sum, placement) => sum + (placement.w_mm * placement.h_mm), 0)
+                              const boardArea = (materialResult.debug?.board_width || material?.width_mm || 1) * (materialResult.debug?.board_height || material?.length_mm || 1)
+                              const boardUsage = (boardUsedArea / boardArea) * 100
+                              return (
+                                <Tooltip key={boardId} title="Tábla kihasználtsága" arrow>
+                                  <Chip
+                                    label={`${boardUsage.toFixed(0)}%`}
+                                    size="medium"
+                                    variant="outlined"
+                                    sx={{ fontSize: '14px', height: '28px', fontWeight: 'bold' }}
+                                  />
+                                </Tooltip>
+                              )
+                            })}
+                        </Box>
+                      )}
+                        
+                        {/* Cut length information */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '11px' }}>
+                            Cut length:
+                    </Typography>
+                          {boardIds.map((boardId) => {
+                            const boardCutLength = materialResult.board_cut_lengths[boardId] || 0
+                            return (
+                              <Tooltip key={boardId} title={`Board ${boardId} cut length`} arrow>
+                                <Chip
+                                  label={`B${boardId}: ${(boardCutLength / 1000).toFixed(1)}m`}
+                                  size="small"
+                                  variant="outlined"
+                                  color="secondary"
+                                  sx={{ fontSize: '10px', height: '20px' }}
+                                />
+                              </Tooltip>
+                            )
+                          })}
+                          <Tooltip title="Total cut length for this material" arrow>
+                            <Chip
+                              label={`Total: ${(materialResult.metrics.total_cut_length_mm / 1000).toFixed(1)}m`}
+                              size="small"
+                              variant="filled"
+                              color="secondary"
+                              sx={{ fontSize: '10px', height: '20px', fontWeight: 'bold' }}
+                            />
+                          </Tooltip>
+                        </Box>
+                      </Box>
+                    </Box>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    {/* Board Display for this material */}
+                    {currentBoardPlacements.length > 0 && (
+                          <Box
+                            sx={{
+                          p: 3,
+                              backgroundColor: '#ffffff',
+                              position: 'relative',
+                          fontFamily: 'monospace',
+                          maxWidth: 800,
+                          margin: '0 auto'
+                        }}
+                      >
+                        
+                        {/* Board visualization container with dimension labels */}
+                        <Box sx={{ position: 'relative', margin: '0 auto', maxWidth: 700 }}>
+                          {/* Top dimension label (width) */}
+                          <Typography
+                            variant="subtitle2"
+                            sx={{
+                              position: 'absolute',
+                              top: -25,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              fontWeight: 500,
+                              color: 'text.primary'
+                            }}
+                          >
+                            {materialResult.debug?.board_width || material?.width_mm}mm
+                          </Typography>
+                          
+                          {/* Left dimension label (height) */}
+                          <Typography
+                            variant="subtitle2"
+                            sx={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: -40,
+                              transform: 'translateY(-50%)',
+                              fontWeight: 500,
+                              color: 'text.primary',
+                              writingMode: 'vertical-rl',
+                              textOrientation: 'mixed'
+                            }}
+                          >
+                            {materialResult.debug?.board_height || material?.length_mm}mm
+                            </Typography>
+                            
+                             {/* Board visualization container - Blueprint style with proper aspect ratio */}
+                             <Box
+                               sx={{
+                                 width: '100%',
+                              aspectRatio: `${materialResult.debug?.board_width || material?.width_mm || 1} / ${materialResult.debug?.board_height || material?.length_mm || 1}`,
+                              border: '1px solid #000',
+                                 backgroundColor: '#f0f8ff', // Light blue blueprint background
+                                 position: 'relative',
+                                 overflow: 'hidden',
+                              fontFamily: 'monospace'
+                            }}
+                          >
+                          
+                          {/* Trim margins visualization - show individual trim lines only if trim > 0 */}
+                          {/* Top trim area with cross lines */}
+                          {(material?.trim_top_mm ?? 0) > 0 && (
+                              <Box
+                                sx={{
+                                  position: 'absolute',
+                                left: '0%',
+                                top: '0%',
+                                width: '100%',
+                                height: `${((material?.trim_top_mm || 0) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                              }}
+                            />
+                          )}
+                          
+                          {/* Bottom trim area with cross lines */}
+                          {(material?.trim_bottom_mm ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: '0%',
+                                top: `${((materialResult.debug?.board_height || material?.length_mm || 1) - (material?.trim_bottom_mm || 0)) / (materialResult.debug?.board_height || material?.length_mm || 1) * 100}%`,
+                                width: '100%',
+                                height: `${((material?.trim_bottom_mm || 0) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                              }}
+                            />
+                          )}
+                          
+                          {/* Left trim area with cross lines */}
+                          {(material?.trim_left_mm ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: '0%',
+                                top: '0%',
+                                width: `${((material?.trim_left_mm || 0) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                height: '100%',
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                              }}
+                            />
+                          )}
+                          
+                          {/* Right trim area with cross lines */}
+                          {(material?.trim_right_mm ?? 0) > 0 && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                left: `${((materialResult.debug?.board_width || material?.width_mm || 1) - (material?.trim_right_mm || 0)) / (materialResult.debug?.board_width || material?.width_mm || 1) * 100}%`,
+                                top: '0%',
+                                width: `${((material?.trim_right_mm || 0) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                height: '100%',
+                                backgroundColor: 'rgba(158, 158, 158, 0.1)',
+                                border: '1px dashed rgba(158, 158, 158, 0.3)',
+                                zIndex: 2,
+                                '&::before': {
+                                  content: '""',
+                                  position: 'absolute',
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(158, 158, 158, 0.2) 2px, rgba(158, 158, 158, 0.2) 4px)',
+                                }
+                                }}
+                              />
+                          )}
+                              
+                              {/* Placed panels - Blueprint style */}
+                          {currentBoardPlacements.map((placement, index) => {
+                            // Notion-inspired color palette for different panel sizes
+                            const getPanelColor = (w: number, h: number) => {
+                              const area = w * h;
+                              if (area >= 1000000) return '#f1f3f4'; // Light grey for large panels
+                              if (area >= 500000) return '#e8f0fe'; // Light blue for medium-large panels
+                              if (area >= 250000) return '#e6f4ea'; // Light green for medium panels
+                              if (area >= 100000) return '#fef7e0'; // Light yellow for small-medium panels
+                              return '#fce7f3'; // Light pink for small panels
+                            };
+                                
+                                return (
+                                  <Box
+                                    key={placement.id}
+                                    sx={{
+                                      position: 'absolute',
+                                  // Horizontal stacking: x->left, y->top, w->width, h->height
+                                  left: `${(placement.x_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${(placement.y_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(placement.w_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(placement.h_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  backgroundColor: getPanelColor(placement.w_mm, placement.h_mm),
+                                  border: '1px solid #000',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                {/* Grain direction lines - horizontal lines if material has grain direction */}
+                                {material?.grain_direction && (
+                                  <>
+                                    {Array.from({ length: 8 }, (_, i) => (
+                                      <Box
+                                        key={`grain-${placement.id}-${i}`}
+                                        sx={{
+                                          position: 'absolute',
+                                          top: `${(i + 1) * 12.5}%`,
+                                          left: '5%',
+                                          right: '5%',
+                                          height: '1px',
+                                          backgroundColor: '#999',
+                                          opacity: 0.6
+                                        }}
+                                      />
+                                    ))}
+                                  </>
+                                )}
+                                {/* Width label on top edge */}
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                      fontSize: '10px',
+                                    fontFamily: [
+                                      'Inter',
+                                      'sans-serif',
+                                      '-apple-system',
+                                      'BlinkMacSystemFont',
+                                      '"Segoe UI"',
+                                      'Roboto',
+                                      '"Helvetica Neue"',
+                                      'Arial',
+                                      'sans-serif'
+                                    ].join(','),
+                                    fontWeight: 400,
+                                    color: '#000'
+                                  }}
+                                >
+                                  {placement.w_mm}
+                                      </Box>
+                                
+                                {/* Height label on left edge */}
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    top: '50%',
+                                    left: 0,
+                                    transform: 'translateY(-50%)',
+                                    fontSize: '10px',
+                                    fontFamily: [
+                                      'Inter',
+                                      'sans-serif',
+                                      '-apple-system',
+                                      'BlinkMacSystemFont',
+                                      '"Segoe UI"',
+                                      'Roboto',
+                                      '"Helvetica Neue"',
+                                      'Arial',
+                                      'sans-serif'
+                                    ].join(','),
+                                    fontWeight: 400,
+                                    color: '#000',
+                                    writingMode: 'vertical-rl',
+                                    textOrientation: 'mixed'
+                                  }}
+                                >
+                                  {placement.h_mm}
+                                    </Box>
+                                  </Box>
+                                )
+                              })}
+                              
+                          {/* Kerf visualization - red outline around every panel (cutting pattern) */}
+                          {currentBoardPlacements.map((placement, index) => {
+                            const kerfSize = material?.kerf_mm || 3;
+                            const kerfLines = [];
+                            
+                            // Every panel needs to be cut out, so show kerf around the entire perimeter
+                            // Top edge kerf
+                            kerfLines.push(
+                              <Box
+                                key={`kerf-top-${index}`}
+                                sx={{
+                                  position: 'absolute',
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${(placement.x_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${((placement.y_mm - kerfSize/2) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(placement.w_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(kerfSize / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  backgroundColor: '#ff6b6b',
+                                  opacity: 0.7,
+                                  zIndex: 10
+                                }}
+                              />
+                            );
+                            
+                            // Bottom edge kerf
+                            kerfLines.push(
+                              <Box
+                                key={`kerf-bottom-${index}`}
+                                sx={{
+                                  position: 'absolute',
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${(placement.x_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${((placement.y_mm + placement.h_mm - kerfSize/2) / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(placement.w_mm / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(kerfSize / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  backgroundColor: '#ff6b6b',
+                                  opacity: 0.7,
+                                  zIndex: 10
+                                }}
+                              />
+                            );
+                            
+                            // Left edge kerf
+                            kerfLines.push(
+                              <Box
+                                key={`kerf-left-${index}`}
+                                sx={{
+                                  position: 'absolute',
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${((placement.x_mm - kerfSize/2) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${(placement.y_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(kerfSize / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(placement.h_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  backgroundColor: '#ff6b6b',
+                                  opacity: 0.7,
+                                  zIndex: 10
+                                }}
+                              />
+                            );
+                            
+                            // Right edge kerf
+                            kerfLines.push(
+                              <Box
+                                key={`kerf-right-${index}`}
+                                sx={{
+                                  position: 'absolute',
+                                  // Use swapped board dimensions from optimization results
+                                  left: `${((placement.x_mm + placement.w_mm - kerfSize/2) / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  top: `${(placement.y_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  width: `${(kerfSize / (materialResult.debug?.board_width || material?.width_mm || 1)) * 100}%`,
+                                  height: `${(placement.h_mm / (materialResult.debug?.board_height || material?.length_mm || 1)) * 100}%`,
+                                  backgroundColor: '#ff6b6b',
+                                  opacity: 0.7,
+                                  zIndex: 10
+                                }}
+                              />
+                            );
+                            
+                            return kerfLines;
+                          }).flat()}
+                          
+                          
+                              </Box>
+                            </Box>
+                          </Box>
+                    )}
+                    
+                    {/* Board Pagination Controls */}
+                    {boardIds.length > 1 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                        <Pagination
+                          count={boardIds.length}
+                          page={currentBoardIndex + 1}
+                          onChange={(event, page) => {
+                            const newBoardIndices = new Map(currentBoardPerMaterial)
+                            newBoardIndices.set(materialResult.material_id, page - 1)
+                            setCurrentBoardPerMaterial(newBoardIndices)
+                          }}
+                          color="primary"
+                          size="large"
+                        />
+                        </Box>
+                    )}
+                    
+                    {/* Show message if no panels placed */}
+                    {materialResult.placements.length === 0 && (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <Typography color="text.secondary">
+                          No panels could be placed on this material
+                        </Typography>
+                    </Box>
+                    )}
+                  </AccordionDetails>
+                </Accordion>
+              )
+            })}
+          </Grid>
+        )}
+
+        {/* Optimization Data Card */}
+        {optimizationResult && showOptimizationData && (
+          <Grid item xs={12} sx={{ mt: 3 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Optimalizálási adatok
+                </Typography>
+                
+                {optimizationResult.materials.map((materialResult) => {
+                  const material = materials.find(m => m.id === materialResult.material_id)
+                  
+                  // Calculate edge lengths for this material
+                  const materialPanels = addedPanels.filter(panel => {
+                    const materialMatch = panel.táblásAnyag.match(/^(.+?)\s*\((\d+)×(\d+)mm\)$/)
+                    if (!materialMatch) return false
+                    const materialName = materialMatch[1].trim()
+                    const materialWidth = parseInt(materialMatch[2])
+                    const materialLength = parseInt(materialMatch[3])
+                    return material && 
+                           material.name === materialName && 
+                           material.width_mm === materialWidth && 
+                           material.length_mm === materialLength
+                  })
+                  
+                  // Calculate edge material total lengths
+                  const edgeLengths: { [key: string]: number } = {}
+                  materialPanels.forEach(panel => {
+                    const length = parseInt(panel.hosszúság)
+                    const width = parseInt(panel.szélesség)
+                    const quantity = parseInt(panel.darab)
+                    
+                    // Top edge (A)
+                    if (panel.élzárásA && panel.élzárásA !== '') {
+                      edgeLengths[panel.élzárásA] = (edgeLengths[panel.élzárásA] || 0) + (length * quantity)
+                    }
+                    // Right edge (B)
+                    if (panel.élzárásB && panel.élzárásB !== '') {
+                      edgeLengths[panel.élzárásB] = (edgeLengths[panel.élzárásB] || 0) + (width * quantity)
+                    }
+                    // Bottom edge (C)
+                    if (panel.élzárásC && panel.élzárásC !== '') {
+                      edgeLengths[panel.élzárásC] = (edgeLengths[panel.élzárásC] || 0) + (length * quantity)
+                    }
+                    // Left edge (D)
+                    if (panel.élzárásD && panel.élzárásD !== '') {
+                      edgeLengths[panel.élzárásD] = (edgeLengths[panel.élzárásD] || 0) + (width * quantity)
+                    }
+                  })
+                  
+                  return (
+                    <Box key={materialResult.material_id} sx={{ mb: 3, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                      <Typography variant="h6" gutterBottom>
+                        {materialResult.material_name}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Márka:</strong> {material?.brand_name || 'N/A'}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Méret:</strong> {material?.length_mm ? (material.length_mm / 1000).toFixed(2) : 'N/A'}×{material?.width_mm ? (material.width_mm / 1000).toFixed(2) : 'N/A'}m
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Vastagság:</strong> {material?.thickness_mm}mm
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Szálirány:</strong> {material?.grain_direction ? 'Igen' : 'Nem'}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Penge vastagság:</strong> {material?.kerf_mm}mm
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Szélezés:</strong> HF{material?.trim_top_mm} RB{material?.trim_bottom_mm} HA{material?.trim_left_mm} RJ{material?.trim_right_mm}mm
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Hulladékszorzó:</strong> {material?.waste_multi}x
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Felhasznált táblák száma:</strong> {materialResult.metrics.boards_used}
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Táblák kihasználtsága:</strong>
+                      </Typography>
+                      
+                      {/* Individual board usage percentages */}
+                      <Box sx={{ ml: 2, mb: 1 }}>
+                        {(() => {
+                          // Group placements by board_id (same logic as in accordion)
+                          const placementsByBoard = new Map<number, Placement[]>()
+                          materialResult.placements.forEach(placement => {
+                            const boardId = placement.board_id || 1
+                            if (!placementsByBoard.has(boardId)) {
+                              placementsByBoard.set(boardId, [])
+                            }
+                            placementsByBoard.get(boardId)!.push(placement)
+                          })
+                          
+                          const boardIds = Array.from(placementsByBoard.keys()).sort((a, b) => a - b)
+                          
+                          return boardIds.map((boardId) => {
+                            const boardPlacements = placementsByBoard.get(boardId) || []
+                            const boardUsedArea = boardPlacements.reduce((sum, placement) => sum + (placement.w_mm * placement.h_mm), 0)
+                            const boardArea = (materialResult.debug?.board_width || material?.width_mm || 1) * (materialResult.debug?.board_height || material?.length_mm || 1)
+                            const boardUsage = (boardUsedArea / boardArea) * 100
+                            
+                            return (
+                              <Typography key={boardId} variant="body2" sx={{ mb: 0.5 }}>
+                                • Tábla {boardId}: {boardUsage.toFixed(1)}%
+                              </Typography>
+                            )
+                          })
+                        })()}
+                      </Box>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Összes vágási hossz:</strong> {(materialResult.metrics.total_cut_length_mm / 1000).toFixed(2)}m
+                      </Typography>
+                      
+                      <Typography variant="body2" sx={{ mb: 1 }}>
+                        <strong>Élzáró anyagok:</strong>
+                      </Typography>
+                      
+                      {Object.keys(edgeLengths).length > 0 ? (
+                        <Box sx={{ ml: 2 }}>
+                          {Object.entries(edgeLengths).map(([edgeType, length]) => (
+                            <Typography key={edgeType} variant="body2" sx={{ mb: 0.5 }}>
+                              • {edgeType}: {(length / 1000).toFixed(2)}m
+                            </Typography>
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" sx={{ ml: 2, color: 'text.secondary' }}>
+                          Nincs élzáró anyag
+                        </Typography>
+                      )}
+                    </Box>
+                  )
+                })}
+              </CardContent>
+            </Card>
+      </Grid>
+        )}
+
+        {/* Árajnálat generálás Button */}
+        {optimizationResult && (
+          <Grid item xs={12} sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              sx={{ px: 4, py: 1.5 }}
+              onClick={() => setShowOptimizationData(true)}
+            >
+              Árajnálat generálás
+            </Button>
+          </Grid>
+        )}
+      </Grid>
+
+      
+      {/* Pánthelyfúrás Modal */}
+      <Dialog open={panthelyfurasModalOpen} onClose={handlePanthelyfurasClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Pánthelyfúrás beállítások</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Mennyiség"
+              value={panthelyfurasMennyiseg}
+              onChange={(e) => setPanthelyfurasMennyiseg(e.target.value)}
+              type="number"
+              sx={{ mb: 3 }}
+            />
+            
+            <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 'medium' }}>
+              Oldal:
+            </Typography>
+            <RadioGroup
+              value={panthelyfurasOldal}
+              onChange={(e) => setPanthelyfurasOldal(e.target.value)}
+            >
+              <FormControlLabel value="hosszu" control={<Radio />} label="Hosszú oldal" />
+              <FormControlLabel value="rovid" control={<Radio />} label="Rövid oldal" />
+            </RadioGroup>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handlePanthelyfurasClose} color="primary">
+            Mégse
+          </Button>
+          <Button onClick={handlePanthelyfurasDelete} color="error">
+            Törlés
+          </Button>
+          <Button onClick={handlePanthelyfurasSave} variant="contained" color="primary">
+            Mentés
+          </Button>
+        </DialogActions>
+      </Dialog>
+      </Box>
+    </ErrorBoundary>
+  )
+}

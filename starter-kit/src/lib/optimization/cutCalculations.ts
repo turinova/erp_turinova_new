@@ -1,5 +1,6 @@
 // Cut Length Calculation Functions - TypeScript version of PHP cut calculation logic
 import type { Bin, Rectangle } from '@/types/optimization';
+import { BinClass } from './classes';
 
 /**
  * Process a bin and calculate cut length - mirrors PHP processBin function
@@ -20,7 +21,6 @@ export function processBin(
     // Without trim: use simple guillotine cutting
     let currentY = 0;
     let remainingRectangles = [...bin.usedRectangles];
-    let isFirstStrip = true;
     
     // Sort rectangles by Y position to process strips in order
     remainingRectangles.sort((a, b) => a.y - b.y);
@@ -29,18 +29,18 @@ export function processBin(
       const strip = getNextStrip(remainingRectangles, bin, currentY);
       if (!strip) break;
       
-      // Skip first horizontal cut when no trim (no top trim)
-      if (!isFirstStrip) {
-        cuttingLength += bin.width;
-      }
-      
       // Process strip with vertical cuts
       const stripCuttingLength = processStripOptimized(strip, false, strip.stripHeight, trimLeft);
       cuttingLength += stripCuttingLength;
       
       currentY = strip.height;
       remainingRectangles = strip.remainingRectangles;
-      isFirstStrip = false;
+      
+      // Add horizontal cut AFTER the strip if there's remaining board height
+      // This separates the strip from the waste below
+      if (currentY < bin.height) {
+        cuttingLength += bin.width;
+      }
     }
   } else {
     // With trim: calculate exact guillotine sequence
@@ -228,12 +228,19 @@ export function processStripOptimized(
     
     // Vertical cut after this panel (if it doesn't reach the end)
     if (rect.x + rect.width < strip.bin.width) {
-      if (hasTrim) {
-        // With trim: cut through strip height (not full board height)
-        cuttingLength += strip.stripHeight;
-      } else {
-        // Without trim: cut only through strip height
-        cuttingLength += strip.stripHeight;
+      // For single panel: always add cut to separate from waste
+      // For multiple panels: only add cut if there's another panel after this one (cut between panels)
+      const hasNextPanel = strip.rectangles.some((r: Rectangle) => r.x >= rect.x + rect.width);
+      const isSinglePanel = strip.rectangles.length === 1;
+      
+      if (isSinglePanel || hasNextPanel) {
+        if (hasTrim) {
+          // With trim: cut through strip height (not full board height)
+          cuttingLength += strip.stripHeight;
+        } else {
+          // Without trim: cut only through strip height
+          cuttingLength += strip.stripHeight;
+        }
       }
     }
     

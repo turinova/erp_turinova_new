@@ -1,0 +1,12 @@
+# Railway configuration for PHP service only
+# This tells Railway to run PHP instead of Next.js
+
+[build]
+command = "echo 'PHP service ready'"
+
+[deploy]
+startCommand = "cd php-service && php -S 0.0.0.0:$PORT"
+
+# Force PHP usage
+[build.environment]
+NODE_ENV = "production"

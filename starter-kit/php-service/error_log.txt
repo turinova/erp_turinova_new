@@ -1,0 +1,199 @@
+[30-Sep-2025 10:34:43 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:34:44 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:36:32 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:36:33 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:36:56 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:36:56 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:37:51 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:37:51 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:38:32 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:38:33 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:39:20 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:39:21 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:40:23 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:40:24 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:40:36 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:40:37 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:41:21 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:41:22 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:42:38 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:42:39 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:42:49 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:42:50 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:43:15 UTC] PHP Warning:  Undefined array key "path" in /Volumes/T7/erp_turinova_new_backup_20250930_095141/starter-kit/php-service/db.php on line 19
+[30-Sep-2025 10:43:15 UTC] PHP Deprecated:  trim(): Passing null to parameter #1 ($string) of type string is deprecated in /Volumes/T7/erp_turinova_new_backup_20250930_095141/starter-kit/php-service/db.php on line 19
+[30-Sep-2025 10:44:15 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "xgkaviefifbllbmfbyfe.supabase.co" (104.18.38.10), port 5432 failed: timeout expired
+connection to server at "xgkaviefifbllbmfbyfe.supabase.co" (172.64.149.246), port 5432 failed: timeout expired
+[30-Sep-2025 10:44:15 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:45:28 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:45:29 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:56:00 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:56:00 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:57:47 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:57:47 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 10:57:49 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 10:57:50 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 11:03:43 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 11:03:44 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 11:09:41 UTC] Database connection failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: fe_sendauth: no password supplied
+[30-Sep-2025 11:09:42 UTC] Fallback database connection also failed: SQLSTATE[08006] [7] connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "db.xgkaviefifbllbmfbyfe.supabase.co" (2a05:d016:571:a409:9bd7:63fc:1d4c:91ce), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+[30-Sep-2025 11:10:41 UTC] Mock database connection established for local development
+[30-Sep-2025 11:10:41 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:10:43 UTC] Mock database connection established for local development
+[30-Sep-2025 11:10:43 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:11:41 UTC] Supabase REST API connection established
+[30-Sep-2025 11:11:41 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:11:41 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:11:55 UTC] Supabase REST API connection established
+[30-Sep-2025 11:11:56 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:11:56 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:12:43 UTC] Supabase REST API connection established
+[30-Sep-2025 11:12:43 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:12:43 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:12:56 UTC] Supabase REST API connection established
+[30-Sep-2025 11:12:56 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:12:56 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:13:16 UTC] Supabase REST API connection established
+[30-Sep-2025 11:13:16 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:13:16 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:13:46 UTC] Supabase REST API connection established
+[30-Sep-2025 11:13:46 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:13:46 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:13:53 UTC] Supabase REST API connection established
+[30-Sep-2025 11:13:54 UTC] Supabase API error: HTTP 400 - {"code":"42703","details":null,"hint":null,"message":"column materials_with_settings.deleted_at does not exist"}
+[30-Sep-2025 11:13:54 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:14:23 UTC] Supabase REST API connection established
+[30-Sep-2025 11:14:24 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:14:55 UTC] Supabase REST API connection established
+[30-Sep-2025 11:14:56 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:17:30 UTC] Supabase REST API connection established
+[30-Sep-2025 11:17:30 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:17:51 UTC] Supabase REST API connection established
+[30-Sep-2025 11:17:51 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:19:04 UTC] Supabase REST API connection established
+[30-Sep-2025 11:19:04 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:20:59 UTC] Supabase REST API connection established
+[30-Sep-2025 11:20:59 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:22:37 UTC] Supabase REST API connection established
+[30-Sep-2025 11:22:38 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:24:04 UTC] Supabase REST API connection established
+[30-Sep-2025 11:24:04 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:24:09 UTC] Supabase REST API connection established
+[30-Sep-2025 11:24:09 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:24:38 UTC] Supabase REST API connection established
+[30-Sep-2025 11:24:38 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:28:16 UTC] Supabase REST API connection established
+[30-Sep-2025 11:28:16 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:31:42 UTC] Supabase REST API connection established
+[30-Sep-2025 11:31:42 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:32:45 UTC] Supabase REST API connection established
+[30-Sep-2025 11:32:46 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:34:59 UTC] Supabase REST API connection established
+[30-Sep-2025 11:35:00 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:35:09 UTC] Supabase REST API connection established
+[30-Sep-2025 11:35:09 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:35:21 UTC] Supabase REST API connection established
+[30-Sep-2025 11:35:21 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:36:03 UTC] Supabase REST API connection established
+[30-Sep-2025 11:36:04 UTC] Received material_types: Array
+(
+)
+
+[30-Sep-2025 11:38:35 UTC] Supabase REST API connection established
+[30-Sep-2025 11:38:35 UTC] Received material_types: Array
+(
+)
+

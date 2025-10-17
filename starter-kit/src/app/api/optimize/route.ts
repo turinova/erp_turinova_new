@@ -19,38 +19,39 @@ export async function OPTIONS() {
 }
 
 export async function POST(request: NextRequest) {
+  const apiStartTime = performance.now()
+  
   try {
-    console.log('🚀 NODE.JS OPTIMIZATION API CALLED - NOT PHP SERVICE!');
-    console.log('📍 Request from:', request.url);
-    console.log('⏰ Timestamp:', new Date().toISOString());
-    
     // Get the request data from the frontend
     const input = await request.json();
     
     if (!input || !Array.isArray(input.materials)) {
-      console.log('❌ Invalid request data - missing materials array');
       return NextResponse.json(
         { error: 'Invalid request data - missing materials array' },
         { status: 400, headers: corsHeaders }
       );
     }
 
-    console.log(`🧮 Processing optimization request with ${input.materials.length} materials`);
+    console.log(`[API] Processing optimization request with ${input.materials.length} materials`);
+    console.time('[API] Total Optimization Time')
 
     // Process each material from the request
     const results: OptimizationResult[] = [];
 
     for (const materialData of input.materials) {
+      const materialStartTime = performance.now()
       const materialId = materialData.id;
       const materialName = materialData.name;
       const parts = materialData.parts;
       const board = materialData.board;
       const params = materialData.params;
 
-      console.log(`📦 Processing material: ${materialName} (${materialId}) - Board: ${board.w_mm}x${board.h_mm}mm`);
+      console.log(`[API] Processing material: ${materialName} (${materialId}) - ${parts.length} parts`);
 
       // Process panels for this material - expand by quantity
+      console.time(`[API] Process Panels: ${materialName}`)
       const panels = processPanelsForMaterial(parts, false); // grain_direction not in current data structure
+      console.timeEnd(`[API] Process Panels: ${materialName}`)
 
       // Get board dimensions
       const boardWidth = board.w_mm;
@@ -76,11 +77,11 @@ export async function POST(request: NextRequest) {
         trimBottom
       );
 
-      console.log(`🔧 Board dimensions: ${boardWidthSwapped}x${boardHeightSwapped}mm, Usable: ${usableWidth}x${usableHeight}mm`);
-
       // Use the guillotine cutting algorithm
+      console.time(`[API] Guillotine Algorithm: ${materialName}`)
       const bins = guillotineCutting(panels, usableWidth, usableHeight, kerfSize);
-      console.log(`📊 Guillotine cutting created ${bins.length} bins for ${panels.length} panels`);
+      console.timeEnd(`[API] Guillotine Algorithm: ${materialName}`)
+      console.log(`[API] ${materialName}: Created ${bins.length} bins for ${panels.length} panels`)
 
       // Convert to response format - process ALL boards
       const placements: Placement[] = [];
@@ -89,6 +90,7 @@ export async function POST(request: NextRequest) {
       const boardCutLengths: Record<number, number> = {};
 
       // Process all bins (all boards)
+      console.time(`[API] Process Bins: ${materialName}`)
       if (bins.length > 0) {
         for (let binIndex = 0; binIndex < bins.length; binIndex++) {
           const bin = bins[binIndex];
@@ -153,6 +155,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+      console.timeEnd(`[API] Process Bins: ${materialName}`)
 
       // Mark remaining panels as unplaced
       for (let i = 0; i < parts.length; i++) {
@@ -191,8 +194,6 @@ export async function POST(request: NextRequest) {
       // Calculate total cut length
       const totalCutLength = Object.values(boardCutLengths).reduce((sum, length) => sum + length, 0);
 
-      console.log(`✅ Material ${materialName}: ${placements.length} placed, ${unplaced.length} unplaced, ${bins.length} boards used`);
-
       // Add result for this material
       results.push({
         material_id: materialId,
@@ -218,15 +219,20 @@ export async function POST(request: NextRequest) {
           panels_count: panels.length
         }
       });
+
+      const materialDuration = performance.now() - materialStartTime
+      console.log(`[API] ✅ ${materialName} complete in ${materialDuration.toFixed(2)}ms (${bins.length} boards, ${placements.length} placements)`)
     }
 
-    console.log(`🎉 NODE.JS OPTIMIZATION COMPLETE - Returning ${results.length} material results`);
-    
+    console.timeEnd('[API] Total Optimization Time')
+    const totalDuration = performance.now() - apiStartTime
+    console.log(`[API] ✅ All materials optimized in ${totalDuration.toFixed(2)}ms`)
+
     // Return results array directly as expected by OptiClient
     return NextResponse.json(results, { headers: corsHeaders });
 
   } catch (error) {
-    console.error('❌ NODE.JS OPTIMIZATION ERROR:', error);
+    console.error('Optimization error:', error);
     return NextResponse.json(
       {
         status: 'error',

@@ -1,0 +1,13 @@
+# Railway configuration for PHP service
+# This file tells Railway how to run the PHP service
+
+# Use PHP 8.0+
+php_version=8.0
+
+# Start command
+start_command=php -S 0.0.0.0:$PORT
+
+# Health check
+health_check_path=/
+
+# Environment variables will be set in Railway dashboard
