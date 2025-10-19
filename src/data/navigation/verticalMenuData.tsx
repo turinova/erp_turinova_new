@@ -76,56 +76,62 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         href: '/customers'
       },
       {
-        label: 'Gyártók',
-        href: '/brands'
-      },
-      {
-        label: 'Adónem',
-        href: '/vat'
-      },
-      {
-        label: 'Pénznem',
-        href: '/currencies'
-      },
-      {
-        label: 'Egységek',
-        href: '/units'
-      },
-      {
-        label: 'Táblás anyagok',
-        href: '/materials'
-      },
-      {
-        label: 'Szálas anyagok',
-        href: '/linear-materials'
-      },
-      {
-        label: 'Élzárók',
-        href: '/edge'
-      },
-      {
         label: 'Beszállítók',
         href: '/partners'
       },
       {
-        label: 'Media',
-        href: '/media'
+        label: 'Alapanyagok',
+        children: [
+          {
+            label: 'Táblás anyagok',
+            href: '/materials'
+          },
+          {
+            label: 'Szálas anyagok',
+            href: '/linear-materials'
+          },
+          {
+            label: 'Élzárók',
+            href: '/edge'
+          },
+          {
+            label: 'Termékek',
+            href: '/accessories'
+          }
+        ]
       },
       {
-        label: 'Díj típusok',
-        href: '/feetypes'
-      },
-      {
-        label: 'Gépek',
-        href: '/machines'
-      },
-      {
-        label: 'Termékek',
-        href: '/accessories'
-      },
-      {
-        label: 'Dolgozók',
-        href: '/workers'
+        label: 'Rendszer',
+        children: [
+          {
+            label: 'Adónem',
+            href: '/vat'
+          },
+          {
+            label: 'Pénznem',
+            href: '/currencies'
+          },
+          {
+            label: 'Egységek',
+            href: '/units'
+          },
+          {
+            label: 'Díjtípusok',
+            href: '/feetypes'
+          },
+          {
+            label: 'Gépek',
+            href: '/machines'
+          },
+          {
+            label: 'Dolgozók',
+            href: '/workers'
+          },
+          {
+            label: 'Gyártók',
+            href: '/brands'
+          }
+        ]
       }
     ]
   },
