@@ -14,7 +14,6 @@ import InputAdornment from '@mui/material/InputAdornment'
 import Checkbox from '@mui/material/Checkbox'
 import Button from '@mui/material/Button'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import Divider from '@mui/material/Divider'
 
 // Third-party Imports
 import classnames from 'classnames'
@@ -175,8 +174,8 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
         </Link>
         <div className='flex flex-col gap-5 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
           <div>
-            <Typography variant='h4'>{`Welcome to ${themeConfig.templateName}! 👋🏻`}</Typography>
-            <Typography className='mbs-1'>Please sign-in to your account and start the adventure</Typography>
+            <Typography variant='h4'>{`Üdvözöljük a ${themeConfig.templateName} rendszerben! 👋🏻`}</Typography>
+            <Typography className='mbs-1'>Kérjük, jelentkezzen be a fiókjába</Typography>
           </div>
           <form
             noValidate
@@ -187,7 +186,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             <TextField 
               autoFocus 
               fullWidth 
-              label='Email' 
+              label='Email cím' 
               type='email'
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -195,7 +194,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             />
             <TextField
               fullWidth
-              label='Password'
+              label='Jelszó'
               type={isPasswordShown ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -218,9 +217,9 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               }}
             />
             <div className='flex justify-between items-center flex-wrap gap-x-3 gap-y-1'>
-              <FormControlLabel control={<Checkbox />} label='Remember me' />
+              <FormControlLabel control={<Checkbox />} label='Emlékezz rám' />
               <Typography className='text-end' color='primary.main' component={Link}>
-                Forgot password?
+                Elfelejtett jelszó?
               </Typography>
             </div>
             <Button 
@@ -229,29 +228,8 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               type='submit'
               disabled={isLoading}
             >
-              {isLoading ? 'Signing in...' : 'Log In'}
+              {isLoading ? 'Bejelentkezés...' : 'Bejelentkezés'}
             </Button>
-            <div className='flex justify-center items-center flex-wrap gap-2'>
-              <Typography>New on our platform?</Typography>
-              <Typography component={Link} color='primary.main'>
-                Create an account
-              </Typography>
-            </div>
-            <Divider className='gap-3 text-textPrimary'>or</Divider>
-            <div className='flex justify-center items-center gap-2'>
-              <IconButton size='small' className='text-facebook'>
-                <i className='ri-facebook-fill' />
-              </IconButton>
-              <IconButton size='small' className='text-twitter'>
-                <i className='ri-twitter-fill' />
-              </IconButton>
-              <IconButton size='small' className='text-textPrimary'>
-                <i className='ri-github-fill' />
-              </IconButton>
-              <IconButton size='small' className='text-googlePlus'>
-                <i className='ri-google-fill' />
-              </IconButton>
-            </div>
           </form>
         </div>
       </div>
