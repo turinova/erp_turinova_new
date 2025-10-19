@@ -333,96 +333,225 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
         onClose={() => setPermissionsDialogOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1.5,
+            maxHeight: '85vh'
+          }
+        }}
       >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <SecurityIcon color="primary" />
-            <Box>
-              <Typography variant="h6">
-                Jogosultságok kezelése
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {selectedUser?.email}
-              </Typography>
+        <DialogTitle sx={{ py: 1.5, px: 2.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ 
+                p: 1, 
+                bgcolor: 'primary.50', 
+                borderRadius: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <SecurityIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+              </Box>
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+                  Jogosultságok kezelése
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {selectedUser?.email}
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', gap: 0.5 }}>
+              <Button
+                size="small"
+                variant="text"
+                color="success"
+                onClick={() => {
+                  const allPermissions: {[key: string]: boolean} = {}
+                  pages.forEach(page => {
+                    allPermissions[page.path] = true
+                  })
+                  setUserPermissions(allPermissions)
+                }}
+                sx={{ fontSize: '0.75rem', px: 1 }}
+              >
+                Összes
+              </Button>
+              <Button
+                size="small"
+                variant="text"
+                color="error"
+                onClick={() => {
+                  const allPermissions: {[key: string]: boolean} = {}
+                  pages.forEach(page => {
+                    allPermissions[page.path] = false
+                  })
+                  setUserPermissions(allPermissions)
+                }}
+                sx={{ fontSize: '0.75rem', px: 1 }}
+              >
+                Egyik sem
+              </Button>
             </Box>
           </Box>
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                Válassza ki, hogy mely oldalakhoz férhet hozzá:
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    const allPermissions: {[key: string]: boolean} = {}
-                    pages.forEach(page => {
-                      allPermissions[page.path] = true
-                    })
-                    setUserPermissions(allPermissions)
-                  }}
-                >
-                  Összes engedélyezése
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => {
-                    const allPermissions: {[key: string]: boolean} = {}
-                    pages.forEach(page => {
-                      allPermissions[page.path] = false
-                    })
-                    setUserPermissions(allPermissions)
-                  }}
-                >
-                  Összes tiltása
-                </Button>
-              </Box>
-            </Box>
 
-            {Object.entries(pagesByCategory).map(([category, categoryPages]) => (
-              <Box key={category} sx={{ mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, textTransform: 'capitalize' }}>
-                  {category}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {categoryPages.map((page) => (
-                    <FormControlLabel
-                      key={page.path}
-                      control={
-                        <Switch
-                          checked={userPermissions[page.path] ?? true}
-                          onChange={() => togglePermission(page.path)}
-                          color="primary"
-                        />
-                      }
-                      label={
-                        <Box>
-                          <Typography variant="body2">{page.name}</Typography>
-                          <Typography variant="caption" color="text.secondary">{page.path}</Typography>
+        <DialogContent sx={{ pt: 2, pb: 1.5, px: 2.5 }}>
+          {/* Summary Stats */}
+          <Box sx={{ 
+            display: 'flex', 
+            gap: 1.5, 
+            mb: 2, 
+            p: 1.5, 
+            bgcolor: 'grey.50',
+            borderRadius: 1,
+            border: 1,
+            borderColor: 'grey.200'
+          }}>
+            <Box sx={{ flex: 1, textAlign: 'center' }}>
+              <Typography variant="h6" color="success.main" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                {Object.values(userPermissions).filter(p => p).length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Engedélyezett
+              </Typography>
+            </Box>
+            <Box sx={{ flex: 1, textAlign: 'center' }}>
+              <Typography variant="h6" color="error.main" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                {Object.values(userPermissions).filter(p => !p).length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Letiltva
+              </Typography>
+            </Box>
+            <Box sx={{ flex: 1, textAlign: 'center' }}>
+              <Typography variant="h6" color="primary.main" sx={{ fontWeight: 700, lineHeight: 1 }}>
+                {pages.length}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Összesen
+              </Typography>
+            </Box>
+          </Box>
+
+          {/* Permission Categories */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {Object.entries(pagesByCategory).map(([category, categoryPages]) => {
+              const enabledCount = categoryPages.filter(p => userPermissions[p.path]).length
+              const totalCount = categoryPages.length
+              
+              return (
+                <Paper 
+                  elevation={0} 
+                  key={category}
+                  sx={{ 
+                    p: 1.5, 
+                    border: 1, 
+                    borderColor: 'divider',
+                    borderRadius: 1
+                  }}
+                >
+                  <Box sx={{ mb: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                      {category} <Typography component="span" variant="caption" color="text.secondary">({enabledCount}/{totalCount})</Typography>
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5 }}>
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="success"
+                        onClick={() => {
+                          const newPermissions = {...userPermissions}
+                          categoryPages.forEach(page => {
+                            newPermissions[page.path] = true
+                          })
+                          setUserPermissions(newPermissions)
+                        }}
+                        sx={{ minWidth: 'auto', px: 1, fontSize: '0.7rem' }}
+                      >
+                        ✓
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="text"
+                        color="error"
+                        onClick={() => {
+                          const newPermissions = {...userPermissions}
+                          categoryPages.forEach(page => {
+                            newPermissions[page.path] = false
+                          })
+                          setUserPermissions(newPermissions)
+                        }}
+                        sx={{ minWidth: 'auto', px: 1, fontSize: '0.7rem' }}
+                      >
+                        ✗
+                      </Button>
+                    </Box>
+                  </Box>
+                  
+                  <Grid container spacing={1}>
+                    {categoryPages.map((page) => (
+                      <Grid item xs={12} sm={6} key={page.path}>
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center',
+                          p: 1,
+                          borderRadius: 1,
+                          bgcolor: userPermissions[page.path] ? 'success.50' : 'grey.50',
+                          border: 1,
+                          borderColor: userPermissions[page.path] ? 'success.200' : 'grey.200',
+                          transition: 'all 0.15s',
+                          cursor: 'pointer',
+                          '&:hover': {
+                            bgcolor: userPermissions[page.path] ? 'success.100' : 'grey.100'
+                          }
+                        }}
+                        onClick={() => togglePermission(page.path)}
+                        >
+                          <Switch
+                            checked={userPermissions[page.path] ?? true}
+                            onChange={() => togglePermission(page.path)}
+                            color="success"
+                            size="small"
+                            sx={{ mr: 0.5 }}
+                          />
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.8rem', lineHeight: 1.2 }}>
+                              {page.name}
+                            </Typography>
+                            <Typography variant="caption" sx={{ 
+                              color: 'text.secondary',
+                              fontFamily: 'monospace',
+                              fontSize: '0.65rem'
+                            }}>
+                              {page.path}
+                            </Typography>
+                          </Box>
                         </Box>
-                      }
-                    />
-                  ))}
-                </Box>
-              </Box>
-            ))}
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              )
+            })}
           </Box>
         </DialogContent>
-        <DialogActions sx={{ p: 3, pt: 1 }}>
+
+        <DialogActions sx={{ py: 1.5, px: 2.5, borderTop: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
           <Button 
             onClick={() => setPermissionsDialogOpen(false)}
             variant="outlined"
+            size="medium"
+            sx={{ minWidth: 100 }}
           >
             Mégse
           </Button>
           <Button 
             onClick={saveUserPermissions} 
             variant="contained"
-            startIcon={savingPermissions ? <CircularProgress size={20} /> : <SecurityIcon />}
+            size="medium"
+            startIcon={savingPermissions ? <CircularProgress size={18} color="inherit" /> : <SecurityIcon sx={{ fontSize: 18 }} />}
             disabled={savingPermissions}
             sx={{ minWidth: 120 }}
           >
