@@ -46,14 +46,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
       const user = session.user
 
-      // Get user permissions directly from Supabase instead of API route
-      console.log('Fetching permissions directly from Supabase for user:', user.id)
-      
-      const { data, error } = await supabase.rpc('get_user_permissions', {
-        user_uuid: user.id
-      })
-
-      console.log('Supabase RPC response:', { data, error })
+             // Get user permissions directly from Supabase instead of API route
+             const { data, error } = await supabase.rpc('get_user_permissions', {
+               user_uuid: user.id
+             })
 
       if (error) {
         console.error('Error fetching user permissions:', error)
@@ -77,13 +73,10 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         return
       }
 
-      const userPermissions: UserPermission[] = data.map(p => ({
-        page_path: p.page_path,
-        can_access: p.can_access
-      }))
-      
-      // Debug: Log the permissions received
-      console.log('Loaded user permissions:', userPermissions)
+             const userPermissions: UserPermission[] = data.map(p => ({
+               page_path: p.page_path,
+               can_access: p.can_access
+             }))
       
       // Create new cache
       const newCache = createPermissionCache(userPermissions)
@@ -102,11 +95,9 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
     }
   }
 
-  const hasPermission = (pagePath: string): boolean => {
-    const result = hasPagePermission(pagePath, permissions)
-    console.log(`Permission check for ${pagePath}:`, result, 'Available permissions:', permissions.map(p => `${p.page_path}:${p.can_access}`))
-    return result
-  }
+         const hasPermission = (pagePath: string): boolean => {
+           return hasPagePermission(pagePath, permissions)
+         }
 
   const canAccess = (pagePath: string): boolean => {
     return hasPagePermission(pagePath, permissions)
