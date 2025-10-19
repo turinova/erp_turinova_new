@@ -37,7 +37,7 @@ import {
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import QuoteFeesSection from './QuoteFeesSection'
 import QuoteAccessoriesSection from './QuoteAccessoriesSection'
 import QuoteCuttingListSection from './QuoteCuttingListSection'

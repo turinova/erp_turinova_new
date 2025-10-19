@@ -8,7 +8,7 @@ import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
 interface VatRate {

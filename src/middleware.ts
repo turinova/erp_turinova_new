@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 import { createServerClient } from '@supabase/ssr'
-
-// Permission checks are now handled client-side by the PermissionProvider
+import { hasPagePermission } from '@/lib/permissions-server'
 
 export async function middleware(req: NextRequest) {
   // Skip middleware for API routes
@@ -105,6 +104,24 @@ export async function middleware(req: NextRequest) {
   if (session && req.nextUrl.pathname === '/login') {
     console.log('Middleware - Redirecting to home (user signed in)')
     return NextResponse.redirect(new URL('/home', req.url))
+  }
+
+  // Check page permissions for authenticated users
+  if (session && session.user) {
+    try {
+      const hasPermission = await hasPagePermission(session.user.id, req.nextUrl.pathname)
+      
+      if (!hasPermission) {
+        console.log('Middleware - Access denied for:', req.nextUrl.pathname, 'User:', session.user.email)
+        return NextResponse.redirect(new URL('/home', req.url))
+      }
+      
+      console.log('Middleware - Access granted for:', req.nextUrl.pathname, 'User:', session.user.email)
+    } catch (error) {
+      console.error('Middleware - Permission check error:', error)
+      // Fail-closed: redirect to home on permission check error
+      return NextResponse.redirect(new URL('/home', req.url))
+    }
   }
 
   return response

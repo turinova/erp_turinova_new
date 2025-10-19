@@ -8,7 +8,7 @@ import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead
 import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, FilterList as FilterIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { formatPriceWithCurrency, calculateGrossPrice } from '@/utils/priceFormatters'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 

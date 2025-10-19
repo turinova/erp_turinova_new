@@ -8,7 +8,7 @@ import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextF
 import { Home as HomeIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { useEdgeMaterials, useDeleteEdgeMaterial } from '@/hooks/useEdgeMaterials'
 
 export default function OptimizedEdgeMaterialsPage() {

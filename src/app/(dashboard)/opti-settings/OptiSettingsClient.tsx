@@ -6,7 +6,7 @@ import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextF
 import { Home as HomeIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { useRouter } from 'next/navigation'
 
 interface Currency {

@@ -9,7 +9,7 @@ import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as Delet
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface Accessory {
   id: string

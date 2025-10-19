@@ -54,7 +54,7 @@ import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 
 // Components
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 // Pricing
 import { calculateQuote, formatPrice, type QuoteResult } from '@/lib/pricing/quoteCalculations'

@@ -70,12 +70,17 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
   // Check if user is already logged in
   useEffect(() => {
     const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
 
-      if (user) {
-        setUser(user)
-        // Let middleware handle the redirect to avoid conflicts
-        // router.push('/home')
+        if (session?.user) {
+          setUser(session.user)
+          // Let middleware handle the redirect to avoid conflicts
+          // router.push('/home')
+        }
+      } catch (error) {
+        console.error('Error checking session:', error)
+        // Don't set user if there's an error
       }
     }
 

@@ -7,7 +7,7 @@ import { Home as HomeIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 import { invalidateApiCache } from '@/hooks/useApiCache'
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import { useRouter } from 'next/navigation'
 
 interface TenantCompany {

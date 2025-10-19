@@ -1,13 +1,13 @@
 'use client'
 
 import { useMemo, useEffect, useState } from 'react'
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import verticalMenuData from '@/data/navigation/verticalMenuData'
 import type { VerticalMenuDataType } from '@/types/menuTypes'
 
 // Navigation filtering using the new permission system
 export function useNavigation() {
-  const { canAccess, loading, allowedPaths } = usePermissions()
+  const { hasPermission, loading } = usePermissions()
   const [isHydrated, setIsHydrated] = useState(false)
 
   // Track hydration to prevent SSR/client mismatch
@@ -21,8 +21,8 @@ export function useNavigation() {
       return []
     }
 
-    // During loading OR if permissions haven't been loaded yet, only show home page
-    if (loading || allowedPaths.length === 0) {
+    // During loading, only show home page
+    if (loading) {
       return [{
         label: 'Home',
         href: '/home',
@@ -46,13 +46,8 @@ export function useNavigation() {
             return true
           }
           
-          // Bypass permission check for pages that don't use it (same as page-level bypass)
-          if (item.href === '/materials' || item.href === '/media' || item.href === '/feetypes' || item.href === '/machines' || item.href === '/accessories' || item.href === '/quotes' || item.href === '/orders' || item.href === '/scanner' || item.href === '/search' || item.href === '/workers' || item.href === '/shoporder' || item.href === '/customer-orders' || item.href === '/supplier-orders') {
-            return true // Temporarily bypass until permission system is fully activated
-          }
-          
-          // Use cached permissions with local check - no API calls
-          return canAccess(item.href)
+          // Use new permission system
+          return hasPermission(item.href)
         }
         
         return true // Show items without href
@@ -69,7 +64,7 @@ export function useNavigation() {
     }
 
     return filterMenuItems(verticalMenuData())
-  }, [canAccess, loading, isHydrated, allowedPaths])
+  }, [hasPermission, loading, isHydrated])
 
   return filteredMenu
 }

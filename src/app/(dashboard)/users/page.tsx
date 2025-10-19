@@ -1,209 +1,82 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
-
-import { useRouter } from 'next/navigation'
-
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Select, MenuItem, FormControl, InputLabel, Chip, Tabs, Tab, Switch, FormControlLabel } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, Edit as EditIcon, Security as SecurityIcon } from '@mui/icons-material'
+import React, { useState, useEffect } from 'react'
+import { Box, Typography, Breadcrumbs, Link, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Switch, FormControlLabel, Chip } from '@mui/material'
+import { Home as HomeIcon, Search as SearchIcon, Security as SecurityIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import NextLink from 'next/link'
 
-import type { User, CreateUserRequest, UpdateUserRequest, UserFilters } from '@/types/user'
-import type { Page, PermissionMatrix, UpdateUserPermissionsRequest } from '@/types/permission'
-import { usePagePermission } from '@/hooks/usePagePermission'
+interface User {
+  id: string
+  email: string
+  created_at: string
+  last_sign_in_at?: string
+}
+
+interface Page {
+  id: string
+  path: string
+  name: string
+  category: string
+}
+
+interface UserPermission {
+  page_path: string
+  can_access: boolean
+}
 
 export default function UsersPage() {
-  const router = useRouter()
-  
   const [users, setUsers] = useState<User[]>([])
+  const [pages, setPages] = useState<Page[]>([])
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [isLoading, setIsLoading] = useState(true)
-  const [openDialog, setOpenDialog] = useState(false)
-  const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-
-  const [formData, setFormData] = useState<CreateUserRequest>({
-    email: '',
-    password: '',
-    full_name: ''
-  })
-  
-  // Permission management state
   const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
-  const [selectedUserForPermissions, setSelectedUserForPermissions] = useState<User | null>(null)
-  const [savingPermissions, setSavingPermissions] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [userPermissions, setUserPermissions] = useState<{[key: string]: boolean}>({})
-  
-  // Use optimized permission hook
-  const { hasAccess, loading: permissionsLoading } = usePagePermission('/users')
+  const [savingPermissions, setSavingPermissions] = useState(false)
 
-  // Handle redirect if no access - moved to useEffect to avoid setState during render
-  useEffect(() => {
-    // Only redirect if permissions are loaded and user doesn't have access
-    // Add a small delay to prevent redirects during page refresh
-    if (!permissionsLoading && !hasAccess) {
-      const timer = setTimeout(() => {
-        router.push('/403')
-      }, 100) // Small delay to prevent redirects during page refresh
-      
-      return () => clearTimeout(timer)
-    }
-  }, [hasAccess, permissionsLoading, router])
-
-  // Fetch users
-  const fetchUsers = async () => {
+  // Fetch users and pages
+  const fetchData = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/users')
+      const response = await fetch('/api/permissions/admin')
       const data = await response.json()
 
       if (response.ok) {
-        setUsers(data.users)
+        setUsers(data.users || [])
+        setPages(data.pages || [])
       } else {
-        toast.error(data.error || 'Failed to fetch users')
+        // If unauthorized, show a message
+        if (response.status === 401) {
+          toast.error('Be kell jelentkeznie a jogosultságok kezeléséhez')
+        } else {
+          toast.error(data.error || 'Failed to fetch data')
+        }
       }
     } catch (error) {
-      toast.error('Error fetching users')
+      toast.error('Error fetching data')
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchUsers()
+    fetchData()
   }, [])
 
-  // Available pages for permission management - matches the actual navigation structure
-  const availablePages = [
-    { path: '/home', name: 'Főoldal', category: 'Főoldal' },
-    { path: '/opti', name: 'Opti', category: 'Optimalizáló' },
-    { path: '/customers', name: 'Ügyfelek', category: 'Törzsadatok' },
-    { path: '/brands', name: 'Gyártók', category: 'Törzsadatok' },
-    { path: '/vat', name: 'Adónem', category: 'Törzsadatok' },
-    { path: '/currencies', name: 'Pénznem', category: 'Törzsadatok' },
-    { path: '/units', name: 'Egységek', category: 'Törzsadatok' },
-    { path: '/materials', name: 'Táblás anyagok', category: 'Törzsadatok' },
-    { path: '/linear-materials', name: 'Szálas anyagok', category: 'Törzsadatok' },
-    { path: '/edge', name: 'Élzárók', category: 'Törzsadatok' },
-    { path: '/company', name: 'Cégadatok', category: 'Beállítások' },
-    { path: '/users', name: 'Felhasználók', category: 'Beállítások' },
-    { path: '/opti-settings', name: 'Opti beállítások', category: 'Beállítások' }
-  ]
-
-  // Permission save function - now actually saves to database
-  const saveUserPermissions = async () => {
-    if (!selectedUserForPermissions) return
-
-    try {
-      setSavingPermissions(true)
-      
-      // Prepare permissions data
-      const permissionsData = availablePages.map(page => ({
-        path: page.path,
-        can_view: userPermissions[page.path] || false,
-        can_edit: userPermissions[page.path] || false,
-        can_delete: false // For now, only allow view permissions
-      }))
-
-      const response = await fetch(`/api/permissions/user/${selectedUserForPermissions.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          permissions: permissionsData
-        })
-      })
-
-      const result = await response.json()
-
-      if (response.ok) {
-        toast.success(`Jogosultságok sikeresen mentve! (${result.updatedPermissions} oldal)`)
-        setPermissionsDialogOpen(false)
-        setSelectedUserForPermissions(null)
-      } else {
-        toast.error(result.error || 'Hiba a jogosultságok mentése során')
-      }
-    } catch (error) {
-      console.error('Error saving permissions:', error)
-      toast.error('Hiba a jogosultságok mentése során')
-    } finally {
-      setSavingPermissions(false)
-    }
-  }
-
-  // Toggle permission for a page
-  const togglePermission = (pagePath: string) => {
-    setUserPermissions(prev => ({
-      ...prev,
-      [pagePath]: !prev[pagePath]
-    }))
-  }
-
-
-  // Open permissions dialog - now fetches actual permissions
-  const handleOpenPermissions = async (user: User) => {
-    setSelectedUserForPermissions(user)
-    setPermissionsDialogOpen(true)
-    
-    try {
-      // Fetch current permissions for this user
-      const response = await fetch(`/api/permissions/user/${user.id}`)
-      const result = await response.json()
-      
-      if (response.ok) {
-        // Initialize permissions based on current user permissions
-        const initialPermissions: {[key: string]: boolean} = {}
-        availablePages.forEach(page => {
-          // Check if user has access to this page
-          initialPermissions[page.path] = result.paths?.includes(page.path) || false
-        })
-        setUserPermissions(initialPermissions)
-      } else {
-        // If error, initialize all to false
-        const initialPermissions: {[key: string]: boolean} = {}
-        availablePages.forEach(page => {
-          initialPermissions[page.path] = false
-        })
-        setUserPermissions(initialPermissions)
-        toast.error('Hiba a jogosultságok betöltése során')
-      }
-    } catch (error) {
-      console.error('Error fetching permissions:', error)
-      // Initialize all to false on error
-      const initialPermissions: {[key: string]: boolean} = {}
-      availablePages.forEach(page => {
-        initialPermissions[page.path] = false
-      })
-      setUserPermissions(initialPermissions)
-      toast.error('Hiba a jogosultságok betöltése során')
-    }
-  }
-
   // Filter users based on search term
-  const filteredUsers = useMemo(() => {
-    let filtered = users
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-
-      filtered = filtered.filter(user => 
-        user.email.toLowerCase().includes(term) ||
-        (user.full_name && user.full_name.toLowerCase().includes(term))
-      )
-    }
-
-    return filtered
-  }, [users, searchTerm])
+  const filteredUsers = users.filter(user =>
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   // Selection handlers
-  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      setSelectedUsers(filteredUsers.map(user => user.id))
-    } else {
+  const handleSelectAll = () => {
+    const filteredIds = filteredUsers.map(user => user.id)
+    if (selectedUsers.length === filteredIds.length && filteredIds.length > 0) {
       setSelectedUsers([])
+    } else {
+      setSelectedUsers(filteredIds)
     }
   }
 
@@ -218,171 +91,104 @@ export default function UsersPage() {
   const isAllSelected = selectedUsers.length === filteredUsers.length && filteredUsers.length > 0
   const isIndeterminate = selectedUsers.length > 0 && selectedUsers.length < filteredUsers.length
 
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  // Open permissions dialog
+  const handleOpenPermissions = async (user: User) => {
+    setSelectedUser(user)
+    setPermissionsDialogOpen(true)
+    
     try {
-      const url = editingUser ? `/api/users/${editingUser.id}` : '/api/users'
-      const method = editingUser ? 'PUT' : 'POST'
+      // Fetch current permissions for this user
+      const response = await fetch(`/api/permissions/user/${user.id}`)
+      const permissions: UserPermission[] = await response.json()
       
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      })
-
-      const data = await response.json()
-
       if (response.ok) {
-        toast.success(editingUser ? 'Felhasználó sikeresen frissítve!' : 'Felhasználó sikeresen létrehozva!')
-        setOpenDialog(false)
-        setEditingUser(null)
-        setFormData({
-          email: '',
-          password: '',
-          full_name: ''
+        // Initialize permissions based on current user permissions
+        const initialPermissions: {[key: string]: boolean} = {}
+        pages.forEach(page => {
+          const permission = permissions.find(p => p.page_path === page.path)
+          initialPermissions[page.path] = permission?.can_access ?? true // Default to true for new users
         })
-        fetchUsers()
+        setUserPermissions(initialPermissions)
       } else {
-        toast.error(data.error || 'Hiba a felhasználó mentése során')
+        // If error, initialize all to true (default access)
+        const initialPermissions: {[key: string]: boolean} = {}
+        pages.forEach(page => {
+          initialPermissions[page.path] = true
+        })
+        setUserPermissions(initialPermissions)
+        toast.error('Error loading permissions')
       }
     } catch (error) {
-      toast.error('Hiba a felhasználó mentése során')
-    }
-  }
-
-  // Handle edit user
-  const handleEdit = (user: User) => {
-    setEditingUser(user)
-    setFormData({
-      email: user.email,
-      password: '', // Don't pre-fill password
-      full_name: user.full_name || ''
-    })
-    setOpenDialog(true)
-  }
-
-  // Handle delete click
-  const handleDeleteClick = () => {
-    if (selectedUsers.length === 0) {
-      toast.warning('Válasszon ki legalább egy felhasználót a törléshez!', {
-        position: "top-right",
-        autoClose: 3000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
+      console.error('Error fetching permissions:', error)
+      // Initialize all to true on error
+      const initialPermissions: {[key: string]: boolean} = {}
+      pages.forEach(page => {
+        initialPermissions[page.path] = true
       })
-      
-return
+      setUserPermissions(initialPermissions)
+      toast.error('Error loading permissions')
     }
-
-    setDeleteModalOpen(true)
   }
 
-  // Handle delete confirmation
-  const handleDeleteConfirm = async () => {
-    if (selectedUsers.length === 0) return
-    
-    setIsDeleting(true)
-    
+  // Toggle permission for a page
+  const togglePermission = (pagePath: string) => {
+    setUserPermissions(prev => ({
+      ...prev,
+      [pagePath]: !prev[pagePath]
+    }))
+  }
+
+  // Save user permissions
+  const saveUserPermissions = async () => {
+    if (!selectedUser) return
+
     try {
-      // Delete users one by one
-      const deletePromises = selectedUsers.map(userId => 
-        fetch(`/api/users/${userId}`, {
-          method: 'DELETE',
+      setSavingPermissions(true)
+      
+      // Update each permission
+      const updatePromises = Object.entries(userPermissions).map(([pagePath, canAccess]) =>
+        fetch('/api/permissions/update', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: selectedUser.id,
+            pagePath,
+            canAccess
+          })
         })
       )
-      
-      const results = await Promise.allSettled(deletePromises)
-      
-      // Check if all deletions were successful
-      const failedDeletions = results.filter(result => 
+
+      const results = await Promise.allSettled(updatePromises)
+      const failedUpdates = results.filter(result => 
         result.status === 'rejected' || 
         (result.status === 'fulfilled' && !result.value.ok)
       )
-      
-      if (failedDeletions.length === 0) {
-        // All deletions successful
-        toast.success(`${selectedUsers.length} felhasználó sikeresen törölve!`, {
-          position: "top-right",
-          autoClose: 3000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
-        
-        // Remove deleted users from local state
-        setUsers(prev => prev.filter(user => !selectedUsers.includes(user.id)))
-        setSelectedUsers([])
+
+      if (failedUpdates.length === 0) {
+        toast.success('Permissions updated successfully!')
+        setPermissionsDialogOpen(false)
+        setSelectedUser(null)
       } else {
-        // Some deletions failed
-        toast.error(`${failedDeletions.length} felhasználó törlése sikertelen!`, {
-          position: "top-right",
-          autoClose: 5000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
+        toast.error(`${failedUpdates.length} permissions failed to update`)
       }
     } catch (error) {
-      console.error('Delete error:', error)
-      toast.error('Hiba történt a törlés során!', {
-        position: "top-right",
-        autoClose: 5000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-      })
+      console.error('Error saving permissions:', error)
+      toast.error('Error saving permissions')
     } finally {
-      setIsDeleting(false)
-      setDeleteModalOpen(false)
+      setSavingPermissions(false)
     }
   }
 
-  const handleDeleteCancel = () => {
-    setDeleteModalOpen(false)
-  }
-
-  // Handle dialog close
-  const handleDialogClose = () => {
-    setOpenDialog(false)
-    setEditingUser(null)
-    setFormData({
-      email: '',
-      password: '',
-      full_name: ''
-    })
-  }
-
-  // Show loading while permissions are being checked
-  if (permissionsLoading) {
-    return (
-      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Box sx={{ textAlign: 'center' }}>
-          <CircularProgress sx={{ mb: 2 }} />
-          <Typography variant="h6">
-            Loading permissions...
-          </Typography>
-        </Box>
-      </Box>
-    )
-  }
-
-  // Show loading or no access message while checking permissions
-  if (!hasAccess) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" color="error">
-          Access Denied - Redirecting...
-        </Typography>
-      </Box>
-    )
-  }
+  // Group pages by category
+  const pagesByCategory = pages.reduce((acc, page) => {
+    if (!acc[page.category]) {
+      acc[page.category] = []
+    }
+    acc[page.category].push(page)
+    return acc
+  }, {} as Record<string, Page[]>)
 
   if (isLoading) {
     return (
@@ -393,57 +199,66 @@ return
     )
   }
 
-  return (
+  if (users.length === 0) {
+    return (
       <Box sx={{ p: 3 }}>
+        <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
+          <Link
+            component={NextLink}
+            href="/home"
+            sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+          >
+            <HomeIcon fontSize="small" />
+            Főoldal
+          </Link>
+          <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            Felhasználók és jogosultságok
+          </Typography>
+        </Breadcrumbs>
+
+        <Typography variant="h4" sx={{ mb: 3 }}>
+          Felhasználók és jogosultságok kezelése
+        </Typography>
+
+        <Box sx={{ p: 4, textAlign: 'center', bgcolor: 'grey.50', borderRadius: 2 }}>
+          <SecurityIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
+          <Typography variant="h6" sx={{ mb: 1 }}>
+            Nincs elérhető felhasználó
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Jelenleg csak a saját jogosultságait kezelheti. További felhasználók hozzáadásához vegye fel a kapcsolatot a rendszergazdával.
+          </Typography>
+        </Box>
+      </Box>
+    )
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
         <Link
-          underline="hover"
-          color="inherit"
-          href="/"
+          component={NextLink}
+          href="/home"
           sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
         >
           <HomeIcon fontSize="small" />
           Főoldal
         </Link>
-        <Link
-          underline="hover"
-          color="inherit"
-          href="#"
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-        >
-          Rendszer
-        </Link>
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          Felhasználók
+          Felhasználók és jogosultságok
         </Typography>
       </Breadcrumbs>
-      
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<DeleteIcon />}
-          color="error"
-          onClick={handleDeleteClick}
-          disabled={selectedUsers.length === 0}
-        >
-          Törlés ({selectedUsers.length})
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          color="primary"
-          onClick={() => setOpenDialog(true)}
-        >
-          Új felhasználó hozzáadása
-        </Button>
-      </Box>
-      
+
+      <Typography variant="h4" sx={{ mb: 3 }}>
+        Felhasználók és jogosultságok kezelése
+      </Typography>
+
       <TextField
         fullWidth
-        placeholder="Keresés email vagy név szerint..."
+        placeholder="Keresés email szerint..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        sx={{ mt: 2, mb: 2 }}
+        sx={{ mb: 3 }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
@@ -453,20 +268,18 @@ return
         }}
       />
 
-      
-      <TableContainer component={Paper} sx={{ mt: 2 }}>
-        <Table size="small" stickyHeader>
+      <TableContainer component={Paper}>
+        <Table>
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox">
                 <Checkbox
-                  indeterminate={isIndeterminate}
                   checked={isAllSelected}
+                  indeterminate={isIndeterminate}
                   onChange={handleSelectAll}
                 />
               </TableCell>
               <TableCell>Email</TableCell>
-              <TableCell>Név</TableCell>
               <TableCell>Létrehozva</TableCell>
               <TableCell>Utolsó bejelentkezés</TableCell>
               <TableCell>Műveletek</TableCell>
@@ -474,47 +287,32 @@ return
           </TableHead>
           <TableBody>
             {filteredUsers.map((user) => (
-              <TableRow 
-                key={user.id} 
-                hover 
-                sx={{ cursor: 'pointer' }}
-              >
-                <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+              <TableRow key={user.id} hover>
+                <TableCell padding="checkbox">
                   <Checkbox
                     checked={selectedUsers.includes(user.id)}
                     onChange={() => handleSelectUser(user.id)}
                   />
                 </TableCell>
                 <TableCell>{user.email}</TableCell>
-                <TableCell>{user.full_name || '-'}</TableCell>
                 <TableCell>
                   {new Date(user.created_at).toLocaleDateString('hu-HU')}
                 </TableCell>
                 <TableCell>
                   {user.last_sign_in_at 
-                    ? new Date(user.last_sign_in_at).toLocaleDateString('hu-HU') + ' ' + new Date(user.last_sign_in_at).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })
+                    ? new Date(user.last_sign_in_at).toLocaleDateString('hu-HU')
                     : 'Soha'
                   }
                 </TableCell>
-                <TableCell onClick={(e) => e.stopPropagation()}>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      size="small"
-                      startIcon={<EditIcon />}
-                      onClick={() => handleEdit(user)}
-                      color="primary"
-                    >
-                      Szerkesztés
-                    </Button>
-                    <Button
-                      size="small"
-                      startIcon={<SecurityIcon />}
-                      onClick={() => handleOpenPermissions(user)}
-                      color="secondary"
-                    >
-                      Jogosultságok
-                    </Button>
-                  </Box>
+                <TableCell>
+                  <Button
+                    size="small"
+                    startIcon={<SecurityIcon />}
+                    onClick={() => handleOpenPermissions(user)}
+                    color="primary"
+                  >
+                    Jogosultságok
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -522,201 +320,106 @@ return
         </Table>
       </TableContainer>
 
-      {/* Add/Edit User Dialog */}
-      <Dialog open={openDialog} onClose={handleDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {editingUser ? 'Felhasználó szerkesztése' : 'Új felhasználó'}
-        </DialogTitle>
-        <DialogContent>
-          <form onSubmit={handleSubmit} style={{ marginTop: '16px' }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <TextField
-                label="Email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                required
-                fullWidth
-              />
-              <TextField
-                label="Jelszó"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                required={!editingUser}
-                fullWidth
-                helperText={editingUser ? "Hagyd üresen, ha nem szeretnéd megváltoztatni" : ""}
-              />
-              <TextField
-                label="Teljes név"
-                value={formData.full_name}
-                onChange={(e) => setFormData(prev => ({ ...prev, full_name: e.target.value }))}
-                fullWidth
-              />
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, pt: 2 }}>
-                <Button onClick={handleDialogClose}>
-                  Mégse
-                </Button>
-                <Button type="submit" variant="contained">
-                  {editingUser ? 'Frissítés' : 'Létrehozás'}
-                </Button>
-              </Box>
-            </Box>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Modal */}
-      <Dialog
-        open={deleteModalOpen}
-        onClose={handleDeleteCancel}
-        aria-labelledby="delete-dialog-title"
-        aria-describedby="delete-dialog-description"
-      >
-        <DialogTitle id="delete-dialog-title">
-          Felhasználók törlése
-        </DialogTitle>
-        <DialogContent>
-          <DialogContentText id="delete-dialog-description">
-            Biztosan törölni szeretné a kiválasztott {selectedUsers.length} felhasználót? 
-            Ez a művelet nem vonható vissza.
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={handleDeleteCancel} 
-            disabled={isDeleting}
-          >
-            Mégse
-          </Button>
-          <Button 
-            onClick={handleDeleteConfirm} 
-            color="error" 
-            variant="contained"
-            disabled={isDeleting}
-            startIcon={isDeleting ? <CircularProgress size={20} /> : <DeleteIcon />}
-          >
-            {isDeleting ? 'Törlés...' : 'Törlés'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Enhanced Permissions Management Dialog */}
+      {/* Permissions Management Dialog */}
       <Dialog
         open={permissionsDialogOpen}
         onClose={() => setPermissionsDialogOpen(false)}
-        maxWidth="lg"
+        maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ pb: 1 }}>
+        <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <SecurityIcon color="primary" />
             <Box>
-              <Typography variant="h6" component="div">
+              <Typography variant="h6">
                 Jogosultságok kezelése
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {selectedUserForPermissions?.email} ({selectedUserForPermissions?.role}) - Oldal hozzáférés beállítása
+                {selectedUser?.email}
               </Typography>
             </Box>
           </Box>
         </DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          <Box sx={{ mb: 3 }}>
-            {selectedUserForPermissions?.role === 'admin' ? (
-              <Box sx={{ p: 2, bgcolor: 'warning.50', borderRadius: 1, mb: 2 }}>
-                <Typography variant="body2" color="warning.dark" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <SecurityIcon fontSize="small" />
-                  <strong>Admin felhasználó:</strong> Ez a felhasználó automatikusan hozzáfér minden oldalhoz.
-                </Typography>
+        <DialogContent>
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Válassza ki, hogy mely oldalakhoz férhet hozzá:
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    const allPermissions: {[key: string]: boolean} = {}
+                    pages.forEach(page => {
+                      allPermissions[page.path] = true
+                    })
+                    setUserPermissions(allPermissions)
+                  }}
+                >
+                  Minden engedélyezése
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    const noPermissions: {[key: string]: boolean} = {}
+                    pages.forEach(page => {
+                      noPermissions[page.path] = false
+                    })
+                    setUserPermissions(noPermissions)
+                  }}
+                >
+                  Minden megtagadása
+                </Button>
               </Box>
-            ) : (
-              <>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Válassza ki, hogy mely oldalakhoz férhet hozzá ez a felhasználó:
+            </Box>
+            
+            {/* Grouped List of Pages */}
+            <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
+              {Object.entries(pagesByCategory).map(([category, categoryPages]) => (
+                <Box key={category} sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'primary.main' }}>
+                    {category}
                   </Typography>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        const allPermissions: {[key: string]: boolean} = {}
-                        availablePages.forEach(page => {
-                          allPermissions[page.path] = true
-                        })
-                        setUserPermissions(allPermissions)
+                  {categoryPages.map((page) => (
+                    <Box 
+                      key={page.path} 
+                      sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        py: 1.5,
+                        px: 2,
+                        ml: 1,
+                        borderBottom: 1,
+                        borderColor: 'grey.200',
+                        '&:hover': {
+                          bgcolor: 'grey.50'
+                        }
                       }}
                     >
-                      Minden engedélyezése
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        const noPermissions: {[key: string]: boolean} = {}
-                        availablePages.forEach(page => {
-                          noPermissions[page.path] = false
-                        })
-                        setUserPermissions(noPermissions)
-                      }}
-                    >
-                      Minden megtagadása
-                    </Button>
-                  </Box>
-                </Box>
-                
-                {/* Grouped List of Pages */}
-                <Box sx={{ maxHeight: 400, overflowY: 'auto' }}>
-                  {['Főoldal', 'Optimalizáló', 'Törzsadatok', 'Beállítások'].map((category) => {
-                    const categoryPages = availablePages.filter(page => page.category === category)
-                    if (categoryPages.length === 0) return null
-                    
-                    return (
-                      <Box key={category} sx={{ mb: 3 }}>
-                        <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1, color: 'primary.main' }}>
-                          {category}
+                      <Box>
+                        <Typography variant="body1" fontWeight="medium">
+                          {page.name}
                         </Typography>
-                        {categoryPages.map((page) => (
-                          <Box 
-                            key={page.path} 
-                            sx={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'space-between',
-                              py: 1.5,
-                              px: 2,
-                              ml: 1,
-                              borderBottom: 1,
-                              borderColor: 'grey.200',
-                              '&:hover': {
-                                bgcolor: 'grey.50'
-                              }
-                            }}
-                          >
-                            <Box>
-                              <Typography variant="body1" fontWeight="medium">
-                                {page.name}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary">
-                                {page.path}
-                              </Typography>
-                            </Box>
-                            <Switch
-                              checked={userPermissions[page.path] || false}
-                              onChange={() => togglePermission(page.path)}
-                              color="primary"
-                            />
-                          </Box>
-                        ))}
+                        <Typography variant="caption" color="text.secondary">
+                          {page.path}
+                        </Typography>
                       </Box>
-                    )
-                  })}
+                      <Switch
+                        checked={userPermissions[page.path] || false}
+                        onChange={() => togglePermission(page.path)}
+                        color="primary"
+                      />
+                    </Box>
+                  ))}
                 </Box>
-              </>
-            )}
+              ))}
+            </Box>
 
-            {/* Summary Section */}
+            {/* Summary */}
             <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Typography variant="subtitle2" fontWeight="medium" sx={{ mb: 1 }}>
                 Összefoglaló
@@ -729,33 +432,12 @@ return
                   size="small"
                 />
                 <Chip
-                  label={`${availablePages.length - Object.values(userPermissions).filter(Boolean).length} letiltott oldal`}
+                  label={`${pages.length - Object.values(userPermissions).filter(Boolean).length} letiltott oldal`}
                   color="default"
                   variant="outlined"
                   size="small"
                 />
               </Box>
-              
-              {Object.values(userPermissions).filter(Boolean).length > 0 && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="body2" fontWeight="medium" sx={{ mb: 1 }}>
-                    Aktív oldalak:
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {availablePages
-                      .filter(page => userPermissions[page.path])
-                      .map((page) => (
-                        <Chip
-                          key={page.path}
-                          label={page.name}
-                          size="small"
-                          color="primary"
-                          variant="filled"
-                        />
-                      ))}
-                  </Box>
-                </Box>
-              )}
             </Box>
           </Box>
         </DialogContent>
@@ -777,6 +459,7 @@ return
           </Button>
         </DialogActions>
       </Dialog>
-      </Box>
+    </Box>
   )
 }
+

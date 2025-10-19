@@ -9,7 +9,7 @@ import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface Currency {
   id: string

@@ -6,7 +6,7 @@ import { Box, Typography, Breadcrumbs, Link, Grid, Button, TextField, FormContro
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 interface EdgeMaterial {
   id: string

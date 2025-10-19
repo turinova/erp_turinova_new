@@ -37,7 +37,7 @@ import { Home as HomeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-materia
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 import ImageUpload from '@/components/ImageUpload'
 import MediaLibraryModal from '@/components/MediaLibraryModal'
 import { formatPriceWithCurrency, calculateFullBoardCost, calculateSquareMeters, calculateGrossPrice } from '@/utils/priceFormatters'

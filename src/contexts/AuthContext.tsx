@@ -5,31 +5,19 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
-import type { PermissionMatrix } from '@/types/permission'
-
 interface AuthContextType {
   user: User | null
+  session: any | null
   loading: boolean
-  permissions: PermissionMatrix[]
-  permissionsLoading: boolean
   signOut: () => Promise<void>
-  hasPermission: (pagePath: string, permissionType: 'view' | 'edit' | 'delete') => boolean
-  refreshPermissions: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [session, setSession] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
-  const [permissions, setPermissions] = useState<PermissionMatrix[]>([])
-  const [permissionsLoading, setPermissionsLoading] = useState(false)
-  // Using the shared supabase instance
-
-  // Simplified - no complex permission fetching
-  const refreshPermissions = async () => {
-    // No-op for simple permission system
-  }
 
   useEffect(() => {
     let mounted = true
@@ -41,14 +29,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (mounted) {
           setUser(session?.user ?? null)
+          setSession(session)
           setLoading(false)
         }
-        
-        // Don't fetch permissions on initial load for performance
-        // They will be fetched when needed
       } catch (error) {
         console.error('Error getting initial session:', error)
         if (mounted) {
+          setUser(null)
+          setSession(null)
           setLoading(false)
         }
       }
@@ -59,18 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!mounted) return
-        
-        console.log('Auth state change:', event, session?.user?.email)
-        
-        setUser(session?.user ?? null)
-        setLoading(false)
-        
-        if (session?.user) {
-          // Simple permission system - no database calls needed
-          setPermissions([])
-        } else {
-          setPermissions([])
+        if (mounted) {
+          setUser(session?.user ?? null)
+          setSession(session)
+          setLoading(false)
         }
       }
     )
@@ -83,86 +63,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      // Clear local state immediately
-      setUser(null)
-      setPermissions([])
+      await supabase.auth.signOut()
       
-      // Clear any cached data immediately
+      // Clear local state
+      setUser(null)
+      setSession(null)
+      
+      // Clear any cached data
       if (typeof window !== 'undefined') {
         localStorage.clear()
         sessionStorage.clear()
-        
-        // Clear all cookies
-        document.cookie.split(";").forEach(function(c) { 
-          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-        });
       }
       
-      // Then sign out from Supabase with scope: 'global' to clear all sessions
-      await supabase.auth.signOut({ scope: 'global' })
-      
-      // Force redirect to login page
+      // Redirect to login page
       if (typeof window !== 'undefined') {
         window.location.href = '/login'
       }
     } catch (error) {
-      console.error('Error during sign out:', error)
-
-      // Still clear local state even if Supabase signOut fails
-      setUser(null)
-      setPermissions([])
+      console.error('Error signing out:', error)
       
-      // Force redirect to login even on error
+      // Still clear local state and redirect even on error
+      setUser(null)
+      setSession(null)
+      
       if (typeof window !== 'undefined') {
         window.location.href = '/login'
       }
-    }
-  }
-
-  const hasPermission = (pagePath: string, permissionType: 'view' | 'edit' | 'delete'): boolean => {
-    if (!user) return false
-    
-    // If permissions are still loading or failed to load, allow access (fallback)
-    if (permissionsLoading || permissions.length === 0) {
-      return true
-    }
-    
-    const permission = permissions.find(p => p.page_path === pagePath)
-
-    if (!permission) return false
-
-    switch (permissionType) {
-      case 'view':
-        return permission.can_view
-      case 'edit':
-        return permission.can_edit
-      case 'delete':
-        return permission.can_delete
-      default:
-        return false
     }
   }
 
   const value = {
     user,
+    session,
     loading,
-    permissions,
-    permissionsLoading,
-    signOut,
-    hasPermission,
-    refreshPermissions,
+    signOut
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext)
-
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
-
-  
-return context
+  return context
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { usePermissions } from '@/permissions/PermissionProvider'
+import { usePermissions } from '@/contexts/PermissionContext'
 
 /**
  * Optimized hook for checking page permissions
