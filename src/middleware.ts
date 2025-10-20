@@ -100,8 +100,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // If user is signed in and the current path is /login, redirect to /home
-  if (session && req.nextUrl.pathname === '/login') {
+  // If user is signed in and the current path is /login or /, redirect to /home
+  if (session && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/')) {
     console.log('Middleware - Redirecting to home (user signed in)')
     return NextResponse.redirect(new URL('/home', req.url))
   }

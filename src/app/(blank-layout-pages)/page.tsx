@@ -1,8 +1,8 @@
-import UnderMaintenance from '@/views/UnderMaintenance'
+import LandingPage from '@/views/LandingPage'
 import { getMode } from '@core/utils/serverHelpers'
 
 export default async function RootPage() {
   const mode = await getMode()
   
-  return <UnderMaintenance mode={mode} />
+  return <LandingPage mode={mode} />
 }
