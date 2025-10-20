@@ -269,73 +269,83 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
             </TableRow>
           </TableHead>
           <TableBody>
-            {paginatedOrders.map((order) => (
-              <TableRow 
-                key={order.id} 
-                hover
-                onClick={() => router.push(`/customer-orders/${order.id}`)}
-                sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f5f5f5' } }}
-              >
-                <TableCell padding="checkbox">
-                  <Checkbox
-                    checked={selectedOrders.includes(order.id)}
-                    onChange={(e) => {
-                      e.stopPropagation()
-                      handleSelectOrder(order.id)
-                    }}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2" fontWeight="bold">
-                    {order.order_number}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Box>
-                    <Typography variant="body2" fontWeight="bold">
-                      {order.customer_name}
-                    </Typography>
-                    {order.customer_email && (
-                      <Typography variant="caption" color="text.secondary">
-                        {order.customer_email}
-                      </Typography>
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {order.worker_name}
-                    {order.worker_nickname && (
-                      <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                        ({order.worker_nickname})
-                      </Typography>
-                    )}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={getStatusText(order.status)}
-                    color={getStatusColor(order.status) as any}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {order.items_count} termék
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  <Typography variant="body2" fontWeight="bold">
-                    {Math.round(calculateOrderTotal(order)).toLocaleString('hu-HU')} Ft
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <Typography variant="body2">
-                    {new Date(order.created_at).toLocaleDateString('hu-HU')}
+            {paginatedOrders.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
+                  <Typography variant="h6" color="text.secondary">
+                    Nincs találat
                   </Typography>
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              paginatedOrders.map((order) => (
+                <TableRow 
+                  key={order.id} 
+                  hover
+                  onClick={() => router.push(`/customer-orders/${order.id}`)}
+                  sx={{ cursor: 'pointer', '&:hover': { backgroundColor: '#f5f5f5' } }}
+                >
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedOrders.includes(order.id)}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        handleSelectOrder(order.id)
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight="bold">
+                      {order.order_number}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">
+                        {order.customer_name}
+                      </Typography>
+                      {order.customer_email && (
+                        <Typography variant="caption" color="text.secondary">
+                          {order.customer_email}
+                        </Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {order.worker_name}
+                      {order.worker_nickname && (
+                        <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          ({order.worker_nickname})
+                        </Typography>
+                      )}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      label={getStatusText(order.status)}
+                      color={getStatusColor(order.status) as any}
+                      size="small"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {order.items_count} termék
+                    </Typography>
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" fontWeight="bold">
+                      {Math.round(calculateOrderTotal(order)).toLocaleString('hu-HU')} Ft
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {new Date(order.created_at).toLocaleDateString('hu-HU')}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </TableContainer>
