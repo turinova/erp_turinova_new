@@ -339,7 +339,7 @@ export default function PartnerEditClient({ initialPartner, allVatRates, allCurr
             <TextField
               fullWidth
               label="Kapcsolattartó neve"
-              value={partner.contact_person}
+              value={partner.contact_person || ''}
               onChange={(e) => handleInputChange('contact_person', e.target.value)}
               placeholder="Kapcsolattartó neve"
             />
@@ -376,7 +376,7 @@ export default function PartnerEditClient({ initialPartner, allVatRates, allCurr
             <FormControl fullWidth required error={!!errors.status}>
               <InputLabel>Státusz</InputLabel>
               <Select
-                value={partner.status}
+                value={partner.status || 'active'}
                 onChange={(e) => handleInputChange('status', e.target.value)}
                 label="Státusz"
               >

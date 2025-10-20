@@ -4,8 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -46,6 +46,18 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
   const [searchTerm, setSearchTerm] = useState('')
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  
+  // Import states
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importPreview, setImportPreview] = useState<any>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Check permission and redirect if no access - only redirect if permissions are loaded and user doesn't have access
   useEffect(() => {
@@ -187,6 +199,128 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
     setDeleteModalOpen(false)
   }
 
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      const response = await fetch('/api/customers/export')
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'customers.xlsx'
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        
+        toast.success('Export sikeres!', {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        })
+      } else {
+        throw new Error('Export failed')
+      }
+    } catch (error) {
+      console.error('Export error:', error)
+      toast.error('Export sikertelen!', {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleImportFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+      toast.error('Csak Excel fájlokat lehet importálni!')
+      return
+    }
+
+    setImportFile(file)
+    setIsImporting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/customers/import/preview', {
+        method: 'POST',
+        body: formData
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.preview) {
+        const errorMsg = result.details?.join('\n') || 'Hiba az előnézet betöltésekor'
+        toast.error(errorMsg, { autoClose: 10000 })
+        setImportFile(null)
+        return
+      }
+
+      setImportPreview(result.preview)
+      setImportDialogOpen(true)
+    } catch (error) {
+      console.error('Import preview error:', error)
+      toast.error('Hiba az előnézet betöltésekor!')
+      setImportFile(null)
+    } finally {
+      setIsImporting(false)
+      event.target.value = ''
+    }
+  }
+
+  const handleImportConfirm = async () => {
+    if (!importFile) return
+    setIsImporting(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+
+      const response = await fetch('/api/customers/import', {
+        method: 'POST',
+        body: formData
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        toast.error(result.details?.join('\n') || 'Import sikertelen!', { autoClose: 10000 })
+      } else {
+        toast.success(`Import sikeres! ${result.successCount} ügyfél feldolgozva.`)
+        
+        invalidateApiCache('/api/customers')
+        const customersRes = await fetch('/api/customers')
+        if (customersRes.ok) {
+          const data = await customersRes.json()
+          setCustomers(data)
+        }
+        
+        setImportDialogOpen(false)
+        setImportFile(null)
+        setImportPreview(null)
+      }
+    } catch (error) {
+      console.error('Import error:', error)
+      toast.error('Hiba történt az importálás során!')
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   // Show loading state while permissions are being checked
   if (permissionsLoading) {
     return (
@@ -231,25 +365,43 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
         </Typography>
       </Breadcrumbs>
       
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2, gap: 2 }}>
-        <Button
-          variant="outlined"
-          startIcon={<DeleteIcon />}
-          color="error"
-          onClick={handleDeleteClick}
-          disabled={selectedCustomers.length === 0}
-        >
-          Törlés ({selectedCustomers.length})
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          color="primary"
-          onClick={handleAddNewCustomer}
-        >
-          Új ügyfél hozzáadása
-        </Button>
-      </Box>
+      {mounted && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button variant="outlined" startIcon={<ExportIcon />} onClick={handleExport} disabled={isExporting}>
+              {isExporting ? <CircularProgress size={20} /> : 'Export'}
+            </Button>
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={isImporting ? <CircularProgress size={20} /> : <ImportIcon />}
+              disabled={isImporting}
+            >
+              Import
+              <input type="file" hidden accept=".xlsx,.xls" onChange={handleImportFileSelect} />
+            </Button>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<DeleteIcon />}
+              color="error"
+              onClick={handleDeleteClick}
+              disabled={selectedCustomers.length === 0}
+            >
+              Törlés ({selectedCustomers.length})
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              color="primary"
+              onClick={handleAddNewCustomer}
+            >
+              Új ügyfél hozzáadása
+            </Button>
+          </Box>
+        </Box>
+      )}
       
       <TextField
         fullWidth
@@ -338,6 +490,58 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
             startIcon={isDeleting ? <CircularProgress size={20} /> : <DeleteIcon />}
           >
             {isDeleting ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Import előnézet</DialogTitle>
+        <DialogContent>
+          {importPreview && importPreview.length > 0 && (
+            <>
+              <Box sx={{ mb: 2, mt: 2 }}>
+                <Typography variant="body1" gutterBottom>
+                  <strong>Összesen:</strong> {importPreview.length} ügyfél
+                </Typography>
+                <Typography variant="body2" color="success.main">
+                  Új: {importPreview.filter((p: any) => p.action === 'Új').length}
+                </Typography>
+                <Typography variant="body2" color="info.main">
+                  Frissítés: {importPreview.filter((p: any) => p.action === 'Frissítés').length}
+                </Typography>
+              </Box>
+              <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Művelet</strong></TableCell>
+                      <TableCell><strong>Név</strong></TableCell>
+                      <TableCell><strong>E-mail</strong></TableCell>
+                      <TableCell><strong>Telefon</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {importPreview.map((row: any, idx: number) => (
+                      <TableRow key={idx}>
+                        <TableCell>
+                          <Chip label={row.action === 'Új' ? 'Hozzáadás' : 'Frissítés'} color={row.action === 'Új' ? 'success' : 'info'} size="small" />
+                        </TableCell>
+                        <TableCell>{row.name}</TableCell>
+                        <TableCell>{row.email}</TableCell>
+                        <TableCell>{row.mobile}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => { setImportDialogOpen(false); setImportFile(null); setImportPreview(null); }}>Mégse</Button>
+          <Button onClick={handleImportConfirm} variant="contained" disabled={!importPreview || isImporting}>
+            {isImporting ? 'Import...' : 'Import megerősítése'}
           </Button>
         </DialogActions>
       </Dialog>
