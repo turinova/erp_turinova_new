@@ -1,8 +1,5 @@
-import UnderMaintenance from '@/views/UnderMaintenance'
-import { getMode } from '@core/utils/serverHelpers'
+import HomeClient from './HomeClient'
 
 export default async function Page() {
-  const mode = await getMode()
-  
-  return <UnderMaintenance mode={mode} />
+  return <HomeClient />
 }
