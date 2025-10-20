@@ -17,6 +17,7 @@ interface Customer {
   email: string
   mobile: string
   discount_percent: number
+  sms_notification: boolean
   billing_name: string
   billing_country: string
   billing_city: string
@@ -433,6 +434,7 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
               <TableCell>E-mail</TableCell>
               <TableCell>Telefonszám</TableCell>
               <TableCell>Kedvezmény</TableCell>
+              <TableCell>SMS</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -453,6 +455,7 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
                 <TableCell>{customer.email}</TableCell>
                 <TableCell>{customer.mobile}</TableCell>
                 <TableCell>{customer.discount_percent}%</TableCell>
+                <TableCell>{customer.sms_notification ? 'Igen' : 'Nem'}</TableCell>
               </TableRow>
             ))}
           </TableBody>

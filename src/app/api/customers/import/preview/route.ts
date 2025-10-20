@@ -41,6 +41,10 @@ export async function POST(request: NextRequest) {
       const email = row['E-mail']?.toString().trim().toLowerCase()
       const action = emailMap.has(email) ? 'Frissítés' : 'Új'
 
+      // Parse SMS notification value
+      const smsValue = row['SMS']?.toString().trim().toLowerCase()
+      const smsNotification = smsValue === 'igen' || smsValue === 'yes' || smsValue === 'true' || smsValue === '1'
+
       preview.push({
         row: rowNum,
         action,
@@ -48,6 +52,7 @@ export async function POST(request: NextRequest) {
         email: row['E-mail']?.toString().trim(),
         mobile: row['Telefon']?.toString().trim() || '',
         discountPercent: parseFloat(row['Kedvezmény (%)']) || 0,
+        smsNotification,
         billingName: row['Számlázási név']?.toString().trim() || '',
         billingCountry: row['Ország']?.toString().trim() || 'Magyarország',
         billingCity: row['Város']?.toString().trim() || '',

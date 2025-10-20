@@ -1,13 +1,10 @@
 {
-  "/api/permissions/admin/route": "app/api/permissions/admin/route.js",
-  "/api/permissions/user/[userId]/route": "app/api/permissions/user/[userId]/route.js",
   "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/permissions/update/route": "app/api/permissions/update/route.js",
-  "/(dashboard)/orders/[order_id]/page": "app/(dashboard)/orders/[order_id]/page.js",
-  "/(dashboard)/users/page": "app/(dashboard)/users/page.js",
-  "/(dashboard)/home/page": "app/(dashboard)/home/page.js",
-  "/(dashboard)/orders/page": "app/(dashboard)/orders/page.js",
-  "/(dashboard)/opti/page": "app/(dashboard)/opti/page.js",
   "/(dashboard)/customers/page": "app/(dashboard)/customers/page.js",
-  "/(dashboard)/customers/new/page": "app/(dashboard)/customers/new/page.js"
+  "/(dashboard)/customers/[id]/page": "app/(dashboard)/customers/[id]/page.js",
+  "/(dashboard)/orders/page": "app/(dashboard)/orders/page.js",
+  "/(dashboard)/customer-orders/[id]/page": "app/(dashboard)/customer-orders/[id]/page.js",
+  "/(dashboard)/customer-orders/page": "app/(dashboard)/customer-orders/page.js",
+  "/(dashboard)/orders/[order_id]/page": "app/(dashboard)/orders/[order_id]/page.js",
+  "/(dashboard)/quotes/page": "app/(dashboard)/quotes/page.js"
 }

@@ -17,6 +17,7 @@ interface Customer {
   billing_tax_number: string
   billing_company_reg_number: string
   discount_percent: number
+  sms_notification: boolean
   created_at: string
   updated_at: string
 }

@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField } from '@mui/material'
+import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, FormControlLabel, Switch } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
@@ -25,6 +25,7 @@ interface Customer {
   billing_tax_number: string
   billing_company_reg_number: string
   discount_percent: number
+  sms_notification: boolean
   created_at: string
   updated_at: string
 }
@@ -126,7 +127,7 @@ export default function CustomersEditClient({ initialCustomer }: CustomersEditCl
     return regex.test(value)
   }
 
-  const handleInputChange = (field: keyof Customer, value: string | number) => {
+  const handleInputChange = (field: keyof Customer, value: string | number | boolean) => {
     let processedValue = value
     
     // Format phone number if it's the mobile field
@@ -428,6 +429,27 @@ export default function CustomersEditClient({ initialCustomer }: CustomersEditCl
               onChange={(e) => handleInputChange('billing_company_reg_number', e.target.value)}
               error={!!errors.billing_company_reg_number}
               helperText={errors.billing_company_reg_number}
+            />
+          </Grid>
+
+          {/* Notifications */}
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
+              Értesítések
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={customerData?.sms_notification || false}
+                  onChange={(e) => handleInputChange('sms_notification', e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="SMS értesítések küldése"
             />
           </Grid>
 

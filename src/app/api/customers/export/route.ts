@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
         'E-mail': customer.email,
         'Telefon': customer.mobile || '',
         'Kedvezmény (%)': customer.discount_percent || 0,
+        'SMS': customer.sms_notification ? 'igen' : 'nem',
         'Számlázási név': customer.billing_name || '',
         'Ország': customer.billing_country || '',
         'Város': customer.billing_city || '',
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
       { wch: 30 }, // E-mail
       { wch: 15 }, // Telefon
       { wch: 12 }, // Kedvezmény (%)
+      { wch: 8 },  // SMS
       { wch: 30 }, // Számlázási név
       { wch: 15 }, // Ország
       { wch: 20 }, // Város

@@ -29,11 +29,16 @@ export async function POST(request: NextRequest) {
       const rowNum = i + 2
 
       try {
+        // Parse SMS notification value
+        const smsValue = row['SMS']?.toString().trim().toLowerCase()
+        const smsNotification = smsValue === 'igen' || smsValue === 'yes' || smsValue === 'true' || smsValue === '1'
+
         const customerData = {
           name: row['Név']?.toString().trim(),
           email: row['E-mail']?.toString().trim(),
           mobile: row['Telefon']?.toString().trim() || null,
           discount_percent: parseFloat(row['Kedvezmény (%)']) || 0,
+          sms_notification: smsNotification,
           billing_name: row['Számlázási név']?.toString().trim() || null,
           billing_country: row['Ország']?.toString().trim() || 'Magyarország',
           billing_city: row['Város']?.toString().trim() || null,

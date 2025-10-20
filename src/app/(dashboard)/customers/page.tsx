@@ -8,6 +8,7 @@ interface Customer {
   email: string
   mobile: string
   discount_percent: number
+  sms_notification: boolean
   billing_name: string
   billing_country: string
   billing_city: string
