@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { sendOrderReadySMS } from '@/lib/twilio'
 
 /**
  * PATCH /api/orders/bulk-status
- * Update multiple orders' status at once (with optional payment creation)
+ * Update multiple orders' status at once (with optional payment creation and SMS notifications)
  */
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { order_ids, new_status, create_payments = false } = body
+    const { order_ids, new_status, create_payments = false, sms_order_ids = [] } = body
 
     // Validation
     if (!order_ids || !Array.isArray(order_ids) || order_ids.length === 0) {
@@ -46,6 +47,37 @@ export async function PATCH(request: NextRequest) {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Fetch orders with customer data for SMS (BEFORE status update)
+    // Only fetch orders that are in the sms_order_ids list (user confirmed in modal)
+    let ordersForSMS: any[] = []
+    if (new_status === 'ready' && sms_order_ids.length > 0) {
+      const { data: orders, error: ordersError } = await supabase
+        .from('quotes')
+        .select(`
+          id,
+          quote_number,
+          order_number,
+          status,
+          customer_id,
+          customers!inner (
+            id,
+            name,
+            mobile,
+            sms_notification
+          )
+        `)
+        .in('id', sms_order_ids)  // Only fetch user-confirmed orders
+        .eq('status', 'in_production')  // Only get orders currently in production
+
+      if (!ordersError && orders) {
+        ordersForSMS = orders.filter(order => 
+          order.customers?.sms_notification === true && 
+          order.customers?.mobile
+        )
+        console.log(`[SMS] Found ${ordersForSMS.length} orders to send SMS (${sms_order_ids.length} selected by user)`)
+      }
     }
 
     let paymentsCreated = 0
@@ -175,11 +207,41 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    // Send SMS notifications AFTER successful status update
+    const smsResults = {
+      sent: 0,
+      failed: 0,
+      errors: [] as string[]
+    }
+
+    if (new_status === 'ready' && ordersForSMS.length > 0) {
+      console.log(`[SMS] Sending ${ordersForSMS.length} SMS notifications...`)
+      
+      for (const order of ordersForSMS) {
+        const result = await sendOrderReadySMS(
+          order.customers.name,
+          order.customers.mobile,
+          order.order_number || order.quote_number,
+          'Turinova'
+        )
+
+        if (result.success) {
+          smsResults.sent++
+          console.log(`[SMS] ✓ Sent to ${order.customers.name} (${order.customers.mobile})`)
+        } else {
+          smsResults.failed++
+          smsResults.errors.push(`${order.customers.name}: ${result.error}`)
+          console.error(`[SMS] ✗ Failed for ${order.customers.name}:`, result.error)
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       updated_count: data?.length || 0,
       payments_created: paymentsCreated,
-      new_status
+      new_status,
+      sms_notifications: smsResults
     })
 
   } catch (error) {

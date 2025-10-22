@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import PaymentConfirmationModal from './PaymentConfirmationModal'
+import SmsConfirmationModal from './SmsConfirmationModal'
 
 interface ScannedOrder {
   id: string
@@ -43,6 +44,13 @@ interface ScannedOrder {
   remaining_balance: number
 }
 
+interface SmsEligibleOrder {
+  id: string
+  order_number: string
+  customer_name: string
+  customer_mobile: string
+}
+
 export default function ScannerClient() {
   const [barcodeInput, setBarcodeInput] = useState('')
   const [scannedOrders, setScannedOrders] = useState<ScannedOrder[]>([])
@@ -50,6 +58,8 @@ export default function ScannerClient() {
   const [isLoading, setIsLoading] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [smsModalOpen, setSmsModalOpen] = useState(false)
+  const [smsEligibleOrders, setSmsEligibleOrders] = useState<SmsEligibleOrder[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -258,8 +268,54 @@ export default function ScannerClient() {
     await handleBulkStatusUpdate('finished', createPayments)
   }
 
-  // Bulk update status (with optional payment creation)
-  const handleBulkStatusUpdate = async (newStatus: 'ready' | 'finished', createPayments: boolean = false) => {
+  // Handle "Gyártás kész" button click - check for SMS-eligible orders first
+  const handleReadyClick = async () => {
+    if (selectedOrders.length === 0) {
+      toast.warning('Válassz legalább egy megrendelést')
+      return
+    }
+
+    try {
+      // Fetch full order details to check for SMS eligibility
+      const response = await fetch('/api/orders/sms-eligible', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: selectedOrders })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch SMS-eligible orders')
+      }
+
+      const { sms_eligible_orders } = await response.json()
+
+      // If there are SMS-eligible orders, show confirmation modal
+      if (sms_eligible_orders && sms_eligible_orders.length > 0) {
+        setSmsEligibleOrders(sms_eligible_orders)
+        setSmsModalOpen(true)
+      } else {
+        // No SMS-eligible orders, just update status directly
+        await handleBulkStatusUpdate('ready', false, [])
+      }
+    } catch (error) {
+      console.error('Error checking SMS eligibility:', error)
+      // On error, proceed without SMS
+      await handleBulkStatusUpdate('ready', false, [])
+    }
+  }
+
+  // Handle SMS confirmation response
+  const handleSmsConfirmation = async (selectedSmsOrderIds: string[]) => {
+    setSmsModalOpen(false)
+    await handleBulkStatusUpdate('ready', false, selectedSmsOrderIds)
+  }
+
+  // Bulk update status (with optional payment creation and SMS sending)
+  const handleBulkStatusUpdate = async (
+    newStatus: 'ready' | 'finished',
+    createPayments: boolean = false,
+    smsOrderIds: string[] = []
+  ) => {
     if (selectedOrders.length === 0) {
       toast.warning('Válassz legalább egy megrendelést')
       return
@@ -274,7 +330,8 @@ export default function ScannerClient() {
         body: JSON.stringify({
           order_ids: selectedOrders,
           new_status: newStatus,
-          create_payments: createPayments
+          create_payments: createPayments,
+          sms_order_ids: smsOrderIds  // Send only selected order IDs for SMS
         })
       })
 
@@ -294,6 +351,22 @@ export default function ScannerClient() {
         )
       } else {
         toast.success(`${result.updated_count} megrendelés frissítve: ${statusLabel}`)
+      }
+
+      // Show SMS notification results
+      if (result.sms_notifications) {
+        const { sent, failed, errors } = result.sms_notifications
+        
+        if (sent > 0) {
+          toast.success(`📱 ${sent} SMS értesítés elküldve`, { autoClose: 5000 })
+        }
+        
+        if (failed > 0) {
+          toast.warning(
+            `⚠️ ${failed} SMS küldése sikertelen${errors.length > 0 ? `: ${errors[0]}` : ''}`,
+            { autoClose: 7000 }
+          )
+        }
       }
 
       // Clear list after successful update
@@ -503,7 +576,7 @@ export default function ScannerClient() {
                 variant="contained"
                 color="info"
                 startIcon={<CheckIcon />}
-                onClick={() => handleBulkStatusUpdate('ready')}
+                onClick={handleReadyClick}
                 disabled={selectedOrders.length === 0 || isUpdating}
                 size="large"
               >
@@ -553,6 +626,15 @@ export default function ScannerClient() {
           }))}
         onConfirm={handlePaymentConfirmation}
         onClose={() => setPaymentModalOpen(false)}
+      />
+
+      {/* SMS Confirmation Modal */}
+      <SmsConfirmationModal
+        open={smsModalOpen}
+        orders={smsEligibleOrders}
+        onConfirm={handleSmsConfirmation}
+        onClose={() => setSmsModalOpen(false)}
+        isProcessing={isUpdating}
       />
     </Box>
   )
