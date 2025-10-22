@@ -1,10 +1,12 @@
 {
   "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/(dashboard)/customers/page": "app/(dashboard)/customers/page.js",
-  "/(dashboard)/customers/[id]/page": "app/(dashboard)/customers/[id]/page.js",
-  "/(dashboard)/orders/page": "app/(dashboard)/orders/page.js",
-  "/(dashboard)/customer-orders/[id]/page": "app/(dashboard)/customer-orders/[id]/page.js",
-  "/(dashboard)/customer-orders/page": "app/(dashboard)/customer-orders/page.js",
-  "/(dashboard)/orders/[order_id]/page": "app/(dashboard)/orders/[order_id]/page.js",
-  "/(dashboard)/quotes/page": "app/(dashboard)/quotes/page.js"
+  "/api/dashboard/weekly-cutting/route": "app/api/dashboard/weekly-cutting/route.js",
+  "/api/dashboard/monthly-supplier-orders/route": "app/api/dashboard/monthly-supplier-orders/route.js",
+  "/api/dashboard/monthly-quotes/route": "app/api/dashboard/monthly-quotes/route.js",
+  "/(dashboard)/home/page": "app/(dashboard)/home/page.js",
+  "/(dashboard)/opti/page": "app/(dashboard)/opti/page.js",
+  "/(blank-layout-pages)/page": "app/(blank-layout-pages)/page.js",
+  "/(blank-layout-pages)/register/page": "app/(blank-layout-pages)/register/page.js",
+  "/(blank-layout-pages)/login/page": "app/(blank-layout-pages)/login/page.js",
+  "/(blank-layout-pages)/customer/login/page": "app/(blank-layout-pages)/customer/login/page.js"
 }

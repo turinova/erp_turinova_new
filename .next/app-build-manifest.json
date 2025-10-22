@@ -12,15 +12,36 @@
       "static/css/app/(blank-layout-pages)/layout.css",
       "static/chunks/app/(blank-layout-pages)/layout.js"
     ],
+    "/(blank-layout-pages)/login/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(blank-layout-pages)/login/page.js"
+    ],
     "/(blank-layout-pages)/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(blank-layout-pages)/page.js"
     ],
-    "/(blank-layout-pages)/login/page": [
+    "/(blank-layout-pages)/customer/login/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(blank-layout-pages)/login/page.js"
+      "static/chunks/app/(blank-layout-pages)/customer/login/page.js"
+    ],
+    "/(blank-layout-pages)/register/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(blank-layout-pages)/register/page.js"
+    ],
+    "/api/customer-portal/companies/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/customer-portal/companies/route.js"
+    ],
+    "/[...not-found]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/css/app/[...not-found]/page.css",
+      "static/chunks/app/[...not-found]/page.js"
     ],
     "/(dashboard)/layout": [
       "static/chunks/webpack.js",
@@ -33,127 +54,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/(dashboard)/home/page.js"
     ],
-    "/(dashboard)/users/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/users/page.js"
-    ],
-    "/api/users/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/users/route.js"
-    ],
-    "/api/permissions/admin/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/permissions/admin/route.js"
-    ],
-    "/api/permissions/user/[userId]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/permissions/user/[userId]/route.js"
-    ],
-    "/api/permissions/update/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/permissions/update/route.js"
-    ],
-    "/(dashboard)/opti-settings/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/opti-settings/page.js"
-    ],
-    "/(dashboard)/company/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/company/page.js"
-    ],
-    "/[...not-found]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/[...not-found]/page.css",
-      "static/chunks/app/[...not-found]/page.js"
-    ],
-    "/(dashboard)/customer-orders/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/customer-orders/page.js"
-    ],
-    "/(dashboard)/customers/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/customers/page.js"
-    ],
-    "/(dashboard)/partners/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/partners/page.js"
-    ],
-    "/(dashboard)/vat/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/vat/page.js"
-    ],
-    "/(dashboard)/materials/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/materials/page.js"
-    ],
-    "/api/materials/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/materials/[id]/route.js"
-    ],
-    "/(dashboard)/orders/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/orders/page.js"
-    ],
-    "/(dashboard)/orders/[order_id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/orders/[order_id]/page.js"
-    ],
     "/api/dashboard/weekly-cutting/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/dashboard/weekly-cutting/route.js"
-    ],
-    "/api/quotes/[id]/production/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/quotes/[id]/production/route.js"
-    ],
-    "/(dashboard)/machines/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/machines/page.js"
-    ],
-    "/(dashboard)/machines/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/machines/[id]/page.js"
-    ],
-    "/api/machines/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/machines/[id]/route.js"
-    ],
-    "/(dashboard)/opti/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/css/app/(dashboard)/opti/page.css",
-      "static/chunks/app/(dashboard)/opti/page.js"
-    ],
-    "/api/optimize/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/optimize/route.js"
-    ],
-    "/(dashboard)/supplier-orders/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/supplier-orders/page.js"
     ],
     "/api/dashboard/monthly-quotes/route": [
       "static/chunks/webpack.js",
@@ -165,120 +69,21 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/dashboard/monthly-supplier-orders/route.js"
     ],
-    "/(dashboard)/search/page": [
+    "/api/customer-portal/register/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/search/page.js"
+      "static/chunks/app/api/customer-portal/register/route.js"
     ],
-    "/api/supplier-orders/bulk-status/route": [
+    "/(blank-layout-pages)/customer/home/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/supplier-orders/bulk-status/route.js"
+      "static/chunks/app/(blank-layout-pages)/customer/home/page.js"
     ],
-    "/(dashboard)/customer-orders/[id]/page": [
+    "/(dashboard)/opti/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/customer-orders/[id]/page.js"
-    ],
-    "/(dashboard)/customers/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/customers/[id]/page.js"
-    ],
-    "/(dashboard)/linear-materials/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/linear-materials/page.js"
-    ],
-    "/(dashboard)/accessories/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/accessories/page.js"
-    ],
-    "/api/customers/export/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/customers/export/route.js"
-    ],
-    "/api/customers/import/preview/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/customers/import/preview/route.js"
-    ],
-    "/api/customers/import/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/customers/import/route.js"
-    ],
-    "/api/customers/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/customers/route.js"
-    ],
-    "/(dashboard)/partners/[id]/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/partners/[id]/page.js"
-    ],
-    "/api/partners/export/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/partners/export/route.js"
-    ],
-    "/api/partners/import/preview/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/partners/import/preview/route.js"
-    ],
-    "/api/partners/import/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/partners/import/route.js"
-    ],
-    "/api/partners/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/partners/route.js"
-    ],
-    "/api/partners/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/partners/[id]/route.js"
-    ],
-    "/api/customers/[id]/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/customers/[id]/route.js"
-    ],
-    "/api/quotes/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/quotes/route.js"
-    ],
-    "/(dashboard)/shoporder/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/shoporder/page.js"
-    ],
-    "/api/shoporder/search/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/shoporder/search/route.js"
-    ],
-    "/api/shoporder/save/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/shoporder/save/route.js"
-    ],
-    "/(dashboard)/customers/new/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/customers/new/page.js"
-    ],
-    "/(dashboard)/quotes/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/(dashboard)/quotes/page.js"
+      "static/css/app/(dashboard)/opti/page.css",
+      "static/chunks/app/(dashboard)/opti/page.js"
     ]
   }
 }
