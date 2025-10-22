@@ -1,6 +1,7 @@
 import React from 'react'
-import { getQuoteById, getAllFeeTypes, getAllAccessories, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners, getAllProductionMachines } from '@/lib/supabase-server'
-import OrderDetailClient from './OrderDetailClient'
+import { getPortalQuoteById } from '@/lib/supabase-server'
+import { getCompanyInfo } from '@/lib/company-data-server'
+import PortalQuoteDetailClient from '../../saved/[quote_id]/PortalQuoteDetailClient'
 
 interface PageProps {
   params: Promise<{ order_id: string }>
@@ -8,21 +9,12 @@ interface PageProps {
 
 export default async function OrderDetailPage({ params }: PageProps) {
   const resolvedParams = await params
-  const orderId = resolvedParams.order_id
-  
-  // Fetch all data in parallel for SSR (same as quote page)
-  const [orderData, feeTypes, accessories, vatRates, currencies, units, partners, machines] = await Promise.all([
-    getQuoteById(orderId), // Orders ARE quotes, just use same function
-    getAllFeeTypes(),
-    getAllAccessories(),
-    getAllVatRates(),
-    getAllCurrencies(),
-    getAllUnits(),
-    getAllPartners(),
-    getAllProductionMachines()
-  ])
-  
-  if (!orderData) {
+  const quoteId = resolvedParams.order_id
+
+  // Fetch the portal quote
+  const portalQuote = await getPortalQuoteById(quoteId)
+
+  if (!portalQuote) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
@@ -32,18 +24,25 @@ export default async function OrderDetailPage({ params }: PageProps) {
       </div>
     )
   }
-  
+
+  // Fetch company information
+  let companyInfo = null
+  if (portalQuote.target_company_id) {
+    try {
+      const credentials = {
+        supabaseUrl: process.env.NEXT_PUBLIC_COMPANY_SUPABASE_URL || '',
+        supabaseKey: process.env.NEXT_PUBLIC_COMPANY_SUPABASE_ANON_KEY || ''
+      }
+      companyInfo = await getCompanyInfo(credentials)
+    } catch (error) {
+      console.error('[Order Detail] Failed to fetch company info:', error)
+    }
+  }
+
   return (
-    <OrderDetailClient 
-      initialQuoteData={orderData}
-      feeTypes={feeTypes}
-      accessories={accessories}
-      vatRates={vatRates}
-      currencies={currencies}
-      units={units}
-      partners={partners}
-      machines={machines}
+    <PortalQuoteDetailClient 
+      portalQuote={portalQuote}
+      companyInfo={companyInfo}
     />
   )
 }
-
