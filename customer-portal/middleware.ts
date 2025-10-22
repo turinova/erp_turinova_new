@@ -76,41 +76,45 @@ export async function middleware(req: NextRequest) {
 
   // Try to get session with better error handling
   let session = null
+  let hasValidSession = false
+  
   try {
-    // First try to get session from cookies
+    // Get session from cookies
     const { data: { session: sessionData }, error } = await supabase.auth.getSession()
+    
     if (error) {
       console.log('Middleware - Session error:', error.message)
-    } else {
-      session = sessionData
-    }
-    
-    // If no session found, try to get user directly
-    if (!session) {
+      session = null
+    } else if (sessionData) {
+      // Verify the session is actually valid by checking the user
       const { data: { user }, error: userError } = await supabase.auth.getUser()
-      if (userError) {
-        console.log('Middleware - User error:', userError.message)
-      } else if (user) {
-        console.log('Middleware - Found user without session:', user.email)
-        // Create a minimal session object
-        session = { user }
+      
+      if (userError || !user) {
+        console.log('Middleware - Invalid session, user not found')
+        session = null
+        hasValidSession = false
+      } else {
+        session = sessionData
+        hasValidSession = true
       }
     }
   } catch (error) {
     console.log('Middleware - Session exception:', error)
+    session = null
+    hasValidSession = false
   }
 
-  console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
+  console.log('Middleware - Path:', req.nextUrl.pathname, 'Valid Session:', hasValidSession, 'User:', session?.user?.email)
   console.log('Middleware - Cookies:', req.cookies.getAll().map(c => c.name).join(', '))
 
   // If user is not signed in and the current path is not /login or /register, redirect to /login
-  if (!session && req.nextUrl.pathname !== '/login' && req.nextUrl.pathname !== '/register') {
-    console.log('Middleware - Redirecting to login (no session)')
+  if (!hasValidSession && req.nextUrl.pathname !== '/login' && req.nextUrl.pathname !== '/register') {
+    console.log('Middleware - Redirecting to login (no valid session)')
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
   // If user is signed in and the current path is /login or /register, redirect to /home
-  if (session && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/register')) {
+  if (hasValidSession && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/register')) {
     console.log('Middleware - Redirecting to home (user signed in)')
     return NextResponse.redirect(new URL('/home', req.url))
   }
