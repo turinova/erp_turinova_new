@@ -71,6 +71,9 @@ export async function POST(request: NextRequest) {
         }
 
     // Start transaction - create order first
+    // Set shop_orders.status based on itemStatus parameter
+    const orderStatus = body.itemStatus === 'ordered' ? 'ordered' : 'open'
+    
     const { data: orderData, error: orderError } = await supabaseServer
       .from('shop_orders')
       .insert({
@@ -87,7 +90,8 @@ export async function POST(request: NextRequest) {
         billing_street: body.billing_street || null,
         billing_house_number: body.billing_house_number || null,
         billing_tax_number: body.billing_tax_number || null,
-        billing_company_reg_number: body.billing_company_reg_number || null
+        billing_company_reg_number: body.billing_company_reg_number || null,
+        status: orderStatus // Set order status based on item status
       })
       .select('id')
       .single()

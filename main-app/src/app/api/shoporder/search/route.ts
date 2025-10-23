@@ -75,32 +75,74 @@ export async function GET(request: NextRequest) {
       .ilike('name', `%${search}%`)
       .limit(20)
 
-    // Search accessories
-    const { data: accessoriesData, error: accessoriesError } = await supabaseServer
-      .from('accessories')
-      .select(`
-        id,
-        name,
-        sku,
-        base_price,
-        multiplier,
-        net_price,
-        partners_id,
-        units_id,
-        currency_id,
-        vat_id,
-        partners:partners_id(name),
-        units:units_id(name, shortform),
-        currencies:currency_id(name),
-        vat:vat_id(name, kulcs)
-      `)
-      .is('deleted_at', null)
-      .or(`name.ilike.%${search}%,sku.ilike.%${search}%`)
-      .limit(20)
+    if (linearMaterialsError) {
+      console.error('Error searching linear materials:', linearMaterialsError)
+      return NextResponse.json({ error: 'Failed to search linear materials' }, { status: 500 })
+    }
+
+    // Search accessories - split into two queries to avoid .or() syntax issues with special characters
+    const [accessoriesByName, accessoriesBySku] = await Promise.all([
+      supabaseServer
+        .from('accessories')
+        .select(`
+          id,
+          name,
+          sku,
+          base_price,
+          multiplier,
+          net_price,
+          partners_id,
+          units_id,
+          currency_id,
+          vat_id,
+          partners:partners_id(name),
+          units:units_id(name, shortform),
+          currencies:currency_id(name),
+          vat:vat_id(name, kulcs)
+        `)
+        .is('deleted_at', null)
+        .ilike('name', `%${search}%`)
+        .limit(10),
+      
+      supabaseServer
+        .from('accessories')
+        .select(`
+          id,
+          name,
+          sku,
+          base_price,
+          multiplier,
+          net_price,
+          partners_id,
+          units_id,
+          currency_id,
+          vat_id,
+          partners:partners_id(name),
+          units:units_id(name, shortform),
+          currencies:currency_id(name),
+          vat:vat_id(name, kulcs)
+        `)
+        .is('deleted_at', null)
+        .ilike('sku', `%${search}%`)
+        .limit(10)
+    ])
+
+    const accessoriesError = accessoriesByName.error || accessoriesBySku.error
+    
+    // Merge and deduplicate results by ID
+    const accessoriesMap = new Map()
+    accessoriesByName.data?.forEach(acc => accessoriesMap.set(acc.id, acc))
+    accessoriesBySku.data?.forEach(acc => accessoriesMap.set(acc.id, acc))
+    const accessoriesData = Array.from(accessoriesMap.values()).slice(0, 20)
 
     if (accessoriesError) {
       console.error('Error searching accessories:', accessoriesError)
-      return NextResponse.json({ error: 'Failed to search accessories' }, { status: 500 })
+      console.error('Accessories error details:', JSON.stringify(accessoriesError, null, 2))
+      return NextResponse.json({ 
+        error: 'Failed to search accessories',
+        details: accessoriesError.message,
+        code: accessoriesError.code
+      }, { status: 500 })
     }
 
     // Get machine codes for materials
