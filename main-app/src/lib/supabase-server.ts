@@ -568,6 +568,52 @@ export async function getAllPaymentMethods() {
   return data || []
 }
 
+// Customer Portal Draft Quotes SSR function (for dashboard)
+export async function getCustomerPortalDraftQuotes() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('quotes')
+    .select(`
+      id,
+      final_total_after_discount,
+      created_at,
+      payment_method_id,
+      customers(
+        id,
+        name
+      ),
+      payment_methods(
+        id,
+        name
+      )
+    `)
+    .eq('source', 'customer_portal')
+    .eq('status', 'draft')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  const queryTime = performance.now()
+  logTiming('Customer Portal Quotes DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching customer portal draft quotes:', error)
+    return []
+  }
+
+  // Transform data
+  const transformedQuotes = data?.map(quote => ({
+    id: quote.id,
+    customer_name: quote.customers?.name || 'Unknown',
+    final_total_after_discount: quote.final_total_after_discount,
+    payment_method_name: quote.payment_methods?.name || null,
+    created_at: quote.created_at
+  })) || []
+
+  logTiming('Customer Portal Quotes Total', startTime, `returned ${transformedQuotes.length} records`)
+  return transformedQuotes
+}
+
 export async function getPaymentMethodById(id: string) {
   const startTime = performance.now()
   

@@ -1,34 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { supabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     // Get weekOffset from query params (0 = current week, -1 = previous, +1 = next)
     const { searchParams } = new URL(request.url)
     const weekOffset = parseInt(searchParams.get('weekOffset') || '0', 10)
@@ -54,7 +28,7 @@ export async function GET(request: NextRequest) {
     // Fetch quotes with production_date in current week and status = 'in_production'
     // Join with quote_materials_pricing to get cutting_length_m
     // Group by production_date and production_machine_id
-    const { data: weeklyData, error } = await supabase
+    const { data: weeklyData, error } = await supabaseServer
       .from('quotes')
       .select(`
         id,
@@ -77,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     // Get machine names and usage limits
     const machineIds = [...new Set(weeklyData.map(q => q.production_machine_id).filter(Boolean))]
-    const { data: machines } = await supabase
+    const { data: machines } = await supabaseServer
       .from('production_machines')
       .select('id, machine_name, usage_limit_per_day')
       .in('id', machineIds)

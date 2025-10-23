@@ -1,34 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { supabaseServer } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
-    // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
     // Get monthOffset from query params (0 = current month, -1 = previous, +1 = next)
     const { searchParams } = new URL(request.url)
     const monthOffset = parseInt(searchParams.get('monthOffset') || '0', 10)
@@ -44,7 +18,7 @@ export async function GET(request: NextRequest) {
     const lastDay = new Date(year, month + 1, 0, 23, 59, 59, 999)
 
     // Fetch shop_order_items for the target month (filter by created_at)
-    const { data: items, error } = await supabase
+    const { data: items, error } = await supabaseServer
       .from('shop_order_items')
       .select('id, status')
       .gte('created_at', firstDay.toISOString())
