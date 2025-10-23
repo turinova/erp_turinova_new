@@ -114,11 +114,33 @@ export default function WeeklyCuttingChart() {
     )
   }
 
-  // Ensure all series have valid data arrays
-  const validSeries = chartData.series.map(s => ({
-    name: s.name || 'Unknown',
-    data: Array.isArray(s.data) ? s.data : [0, 0, 0, 0, 0, 0]
-  }))
+  // Simple approach: bars turn red when over limit
+  const validSeries = chartData.series.map((s, machineIndex) => {
+    const machineLimit = chartData.machineLimits?.[machineIndex]?.limit || Infinity
+    const seriesData = Array.isArray(s.data) ? s.data : [0, 0, 0, 0, 0, 0]
+    
+    return {
+      name: s.name || 'Unknown',
+      data: seriesData.map((value: number) => {
+        const isOverLimit = value > machineLimit
+        
+        return {
+          x: '', // Empty x value
+          y: value,
+          fillColor: isOverLimit ? '#F44336' : undefined, // Red if over limit
+          goals: isOverLimit ? [{
+            name: 'Limit',
+            value: machineLimit,
+            strokeHeight: 4,
+            strokeWidth: 10,
+            strokeColor: '#FFFFFF',
+            strokeDashArray: 0,
+            strokeLineCap: 'butt'
+          }] : undefined
+        }
+      })
+    }
+  })
 
   // Ensure categories is valid (Monday to Saturday only)
   const baseCategories = Array.isArray(chartData.categories) && chartData.categories.length > 0 
@@ -135,6 +157,7 @@ export default function WeeklyCuttingChart() {
     chart: {
       type: 'bar',
       height: 400,
+      stacked: false, // Turn off stacking - use gradient instead
       toolbar: {
         show: false
       },
@@ -146,6 +169,7 @@ export default function WeeklyCuttingChart() {
         columnWidth: '60%',
         borderRadius: 8,
         borderRadiusApplication: 'end',
+        distributed: false, // Keep machines grouped by day
         dataLabels: {
           position: 'top'
         }
@@ -226,50 +250,7 @@ export default function WeeklyCuttingChart() {
       '#FF5722', // Bright Deep Orange
     ],
     annotations: {
-      yaxis: chartData.machineLimits?.map((machine, index) => ({
-        y: machine.limit,
-        borderColor: [
-          '#2196F3',
-          '#4CAF50',
-          '#FF9800',
-          '#E91E63',
-          '#9C27B0',
-          '#00BCD4',
-          '#FFEB3B',
-          '#FF5722',
-        ][index] || '#999',
-        strokeDashArray: 5,
-        label: {
-          borderColor: [
-            '#2196F3',
-            '#4CAF50',
-            '#FF9800',
-            '#E91E63',
-            '#9C27B0',
-            '#00BCD4',
-            '#FFEB3B',
-            '#FF5722',
-          ][index] || '#999',
-          style: {
-            color: '#fff',
-            background: [
-              '#2196F3',
-              '#4CAF50',
-              '#FF9800',
-              '#E91E63',
-              '#9C27B0',
-              '#00BCD4',
-              '#FFEB3B',
-              '#FF5722',
-            ][index] || '#999',
-            fontSize: '11px',
-            fontWeight: 600,
-          },
-          text: `${machine.machineName} limit: ${machine.limit}m`,
-          position: 'left',
-          offsetX: 0
-        }
-      })) || []
+      yaxis: [] // No annotations needed
     },
     grid: {
       strokeDashArray: 3,
