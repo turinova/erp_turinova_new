@@ -750,6 +750,113 @@ export default function ShopOrderClient({
     }
   }
 
+  // Handle order action (same as save but with status 'ordered')
+  const handleOrder = async () => {
+    // Validate required fields
+    if (!selectedWorker) {
+      toast.error('Kérjük válasszon dolgozót!')
+      return
+    }
+    
+    if (!customerData.name || !customerData.name.trim()) {
+      toast.error('Kérjük adja meg a megrendelő nevét!')
+      return
+    }
+    
+    if (productsTable.length === 0) {
+      toast.error('Kérjük adjon hozzá legalább egy terméket!')
+      return
+    }
+
+    setIsSaving(true)
+    
+    try {
+      const response = await fetch('/api/shoporder/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          worker_id: selectedWorker.id,
+          customer_name: customerData.name,
+          customer_email: customerData.email || null,
+          customer_mobile: customerData.mobile || null,
+          customer_discount: customerData.discount || 0,
+          billing_name: customerData.billing_name || null,
+          billing_country: customerData.billing_country || null,
+          billing_city: customerData.billing_city || null,
+          billing_postal_code: customerData.billing_postal_code || null,
+          billing_street: customerData.billing_street || null,
+          billing_house_number: customerData.billing_house_number || null,
+          billing_tax_number: customerData.billing_tax_number || null,
+          billing_company_reg_number: customerData.billing_company_reg_number || null,
+          products: productsTable,
+          itemStatus: 'ordered' // Set items to ordered status
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        toast.success(`Rendelés sikeresen leadva! Rendelésszám: ${result.order_number}`)
+        setSavedOrderNumber(result.order_number)
+        
+        // Clear form data
+        setSelectedWorker(null)
+        setSelectedCustomer(null)
+        setCustomerData({
+          name: '',
+          email: '',
+          mobile: '',
+          billing_name: '',
+          billing_country: '',
+          billing_city: '',
+          billing_postal_code: '',
+          billing_street: '',
+          billing_house_number: '',
+          billing_tax_number: '',
+          billing_company_reg_number: '',
+          discount: '0'
+        })
+        setProductsTable([])
+        setAccessoryData({
+          name: '',
+          sku: '',
+          type: '',
+          base_price: '',
+          multiplier: 1.38,
+          net_price: 0,
+          gross_price: 0,
+          vat_id: '',
+          currency_id: '',
+          units_id: '',
+          partners_id: '',
+          quantity: 1 as number | '',
+          megjegyzes: '',
+          brand_name: '',
+          dimensions: ''
+        })
+        setSelectedAccessory(null)
+        setSearchTerm('')
+        setEditingProductId(null)
+        
+        // Clear all session storage related to shop orders
+        sessionStorage.removeItem('shopOrderData')
+        sessionStorage.removeItem(`shopOrderEditData-${shopOrderId}`)
+        
+        // Redirect to customer order detail page
+        router.push(`/customer-orders/${result.order_id}`)
+      } else {
+        toast.error(result.error || 'Hiba a rendelés leadása során')
+      }
+    } catch (error) {
+      console.error('Order error:', error)
+      toast.error('Hálózati hiba a rendelés leadása során')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   // Clear customer data
   const handleClearCustomer = () => {
     setSelectedCustomer(null)
@@ -1540,13 +1647,15 @@ export default function ShopOrderClient({
         <Button
           variant="outlined"
           size="large"
+          onClick={handleOrder}
+          disabled={isSaving}
           sx={{ 
             minWidth: 150,
             fontSize: '1rem',
             fontWeight: 'bold'
           }}
         >
-          Megrendelés
+          {isSaving ? 'Rendelés...' : 'Megrendelés'}
         </Button>
         <Button
           variant="contained"

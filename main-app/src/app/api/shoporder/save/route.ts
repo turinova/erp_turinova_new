@@ -171,7 +171,8 @@ export async function POST(request: NextRequest) {
             partner_id: product.partners_id || null,
             vat_id: product.vat_id,
             currency_id: product.currency_id,
-            megjegyzes: product.megjegyzes || null
+            megjegyzes: product.megjegyzes || null,
+            status: body.itemStatus || 'open' // Use provided status or default to 'open'
           })
         }
 
