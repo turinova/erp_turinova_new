@@ -2537,3 +2537,33 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
     return { items: [], totalCount: 0, totalPages: 0 }
   }
 }
+
+/**
+ * Get SMS settings (message template)
+ */
+export async function getSmsSettings() {
+  if (!checkSupabaseConfig()) return null
+
+  const startTime = performance.now()
+
+  try {
+    const { data, error } = await supabaseServer!
+      .from('sms_settings')
+      .select('*')
+      .limit(1)
+      .single()
+
+    if (error) {
+      console.error('[SSR] Error fetching SMS settings:', error)
+      logTiming('SMS Settings Fetch Error', startTime)
+      return null
+    }
+
+    logTiming('SMS Settings Fetch', startTime)
+    return data
+  } catch (error) {
+    console.error('[SSR] Exception fetching SMS settings:', error)
+    logTiming('SMS Settings Fetch Error', startTime)
+    return null
+  }
+}

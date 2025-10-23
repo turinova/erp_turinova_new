@@ -151,6 +151,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Opti beállítások',
         href: '/opti-settings'
+      },
+      {
+        label: 'Értesítések',
+        href: '/notifications'
       }
     ]
   }

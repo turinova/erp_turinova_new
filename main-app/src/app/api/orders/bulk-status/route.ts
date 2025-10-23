@@ -217,12 +217,30 @@ export async function PATCH(request: NextRequest) {
     if (new_status === 'ready' && ordersForSMS.length > 0) {
       console.log(`[SMS] Sending ${ordersForSMS.length} SMS notifications...`)
       
+      // Fetch company name from tenant_company table (once for all SMS)
+      let companyName = 'Turinova'  // Default fallback
+      try {
+        const { data: companyData } = await supabase
+          .from('tenant_company')
+          .select('name')
+          .limit(1)
+          .single()
+        
+        if (companyData?.name) {
+          companyName = companyData.name
+          console.log(`[SMS] Using company name: ${companyName}`)
+        }
+      } catch (error) {
+        console.error('[SMS] Error fetching company name, using default:', error)
+      }
+      
       for (const order of ordersForSMS) {
         const result = await sendOrderReadySMS(
           order.customers.name,
           order.customers.mobile,
           order.order_number || order.quote_number,
-          'Turinova'
+          companyName,  // Now uses actual company name from database
+          order.id  // Pass quote ID to fetch materials
         )
 
         if (result.success) {

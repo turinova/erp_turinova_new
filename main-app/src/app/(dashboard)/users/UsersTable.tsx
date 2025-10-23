@@ -507,11 +507,20 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
                             bgcolor: userPermissions[page.path] ? 'success.100' : 'grey.100'
                           }
                         }}
-                        onClick={() => togglePermission(page.path)}
+                        onClick={(e) => {
+                          // Only toggle if not clicking the switch directly
+                          if ((e.target as HTMLElement).tagName !== 'INPUT') {
+                            togglePermission(page.path)
+                          }
+                        }}
                         >
                           <Switch
                             checked={userPermissions[page.path] ?? true}
-                            onChange={() => togglePermission(page.path)}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              togglePermission(page.path)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
                             color="success"
                             size="small"
                             sx={{ mr: 0.5 }}

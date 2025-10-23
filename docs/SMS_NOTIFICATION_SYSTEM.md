@@ -1,287 +1,311 @@
-# 📱 SMS Notification System - Complete Documentation
+# SMS Notification System - Értesítések
 
-**Last Updated**: October 22, 2025  
-**Feature**: Automatic SMS notifications when orders are ready for pickup  
-**Integration**: Twilio SMS API
+## Overview
 
----
-
-## 📋 Table of Contents
-
-1. [Overview](#overview)
-2. [System Architecture](#system-architecture)
-3. [Database Setup](#database-setup)
-4. [Configuration](#configuration)
-5. [User Flow](#user-flow)
-6. [Technical Implementation](#technical-implementation)
-7. [Testing Guide](#testing-guide)
-8. [Deployment](#deployment)
-9. [Troubleshooting](#troubleshooting)
+The SMS notification system automatically sends SMS messages to customers when their orders are marked as "ready" (Gyártás kész) in the production scanner. The system is fully configurable through the `/notifications` page in the main application.
 
 ---
 
-## 🎯 Overview
+## Table of Contents
 
-The SMS notification system automatically sends text messages to customers when their orders are ready for pickup. This feature:
-
-- ✅ Sends SMS when order status changes from `in_production` to `ready`
-- ✅ Only sends to customers who have opted in (`sms_notification = true`)
-- ✅ Validates phone numbers before sending
-- ✅ Allows admin to selectively choose which customers receive SMS
-- ✅ Shows confirmation modal before sending
-- ✅ Provides detailed feedback on success/failure
-- ✅ Handles Hungarian characters properly in SMS messages
-
----
-
-## 🏗️ System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     SCANNER PAGE (/scanner)                  │
-│                                                              │
-│  1. Admin scans orders                                       │
-│  2. Selects orders                                           │
-│  3. Clicks "Gyártás kész"                                    │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│          API: /api/orders/sms-eligible (POST)               │
-│                                                              │
-│  - Checks selected orders for SMS eligibility               │
-│  - Filters: sms_notification = true AND has mobile          │
-│  - Returns list of eligible customers                       │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│              SMS CONFIRMATION MODAL                          │
-│                                                              │
-│  - Shows table with customer names & phone numbers          │
-│  - All checkboxes checked by default                        │
-│  - Admin can uncheck specific customers                     │
-│  - Admin confirms by clicking "Gyártás kész"                │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│         API: /api/orders/bulk-status (PATCH)                │
-│                                                              │
-│  1. Updates all selected orders to "ready" status           │
-│  2. Sends SMS to user-confirmed customers only              │
-│  3. Returns success/failure counts                          │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  TWILIO SMS SERVICE                          │
-│                                                              │
-│  - Normalizes phone numbers (removes spaces)                │
-│  - Validates E.164 format                                   │
-│  - Sends SMS via Twilio API                                 │
-│  - Returns success/error for each SMS                       │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  CUSTOMER RECEIVES SMS                       │
-│                                                              │
-│  "Kedves [Name]! Az On [Order#] szamu rendelese             │
-│   elkeszult es atvehetο. Udvozlettel, Turinova"             │
-└─────────────────────────────────────────────────────────────┘
-```
+1. [Features](#features)
+2. [Architecture](#architecture)
+3. [Database Schema](#database-schema)
+4. [SMS Message Template](#sms-message-template)
+5. [User Interface](#user-interface)
+6. [API Endpoints](#api-endpoints)
+7. [SMS Sending Flow](#sms-sending-flow)
+8. [Configuration](#configuration)
+9. [Character Encoding & Limitations](#character-encoding--limitations)
+10. [Error Handling](#error-handling)
+11. [Testing](#testing)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
-## 🗄️ Database Setup
+## Features
 
-### **Customer Table Schema**
+### Core Functionality
+- ✅ **Automatic SMS notifications** when orders are marked as ready
+- ✅ **Customizable message templates** with dynamic variables
+- ✅ **User confirmation modal** before sending SMS
+- ✅ **Selective SMS sending** (choose which customers receive SMS)
+- ✅ **Customer opt-in/opt-out** (`sms_notification` flag in customers table)
+- ✅ **Real-time preview** of SMS message with sample data
+- ✅ **Character counter** with warnings for long messages
+- ✅ **Dynamic company name** from database
+- ✅ **Material list** automatically fetched from quote
+- ✅ **Toast notifications** for success/failure feedback
 
-The `customers` table must have the following fields:
-
-```sql
-CREATE TABLE public.customers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name varchar NOT NULL,
-  email varchar NOT NULL UNIQUE,
-  mobile varchar,  -- Phone number in format: "+36 30 999 2800"
-  sms_notification boolean NOT NULL DEFAULT false,  -- SMS opt-in flag
-  -- ... other fields ...
-)
-```
-
-### **SMS Eligibility Criteria**
-
-A customer is eligible for SMS notifications if:
-
-1. ✅ `sms_notification = true`
-2. ✅ `mobile` field is not null
-3. ✅ `mobile` field is not empty string
-4. ✅ `mobile` field starts with `+` (international format)
-
-### **Phone Number Format**
-
-**Database Storage Format** (flexible):
-- `+36 30 999 2800` ✅ (spaces allowed)
-- `+36309992800` ✅ (no spaces)
-- `+1 276 530 1843` ✅ (US format with spaces)
-
-**Twilio E.164 Format** (automatic normalization):
-- System automatically removes spaces before sending
-- `+36 30 999 2800` → `+36309992800`
-- `+1 276 530 1843` → `+12765301843`
+### Access Control
+- ✅ **All authenticated users** can access `/notifications` page
+- ✅ **Permission-based access** (can be revoked per user in `/users` page)
+- ✅ **Only accessible from Scanner page** (`/scanner`) for sending
 
 ---
 
-## ⚙️ Configuration
+## Architecture
 
-### **Environment Variables**
+### Technology Stack
+- **SMS Provider**: Twilio
+- **Backend**: Next.js API Routes
+- **Database**: Supabase (PostgreSQL)
+- **Frontend**: React + Material-UI
+- **Server-Side Rendering**: Next.js SSR
 
-**File**: `main-app/.env.local` (local) or Vercel Environment Variables (production)
-
-```env
-# Twilio SMS Configuration
-TWILIO_ACCOUNT_SID=your_twilio_account_sid_here
-TWILIO_AUTH_TOKEN=your_twilio_auth_token_here
-TWILIO_PHONE_NUMBER=+1234567890
-```
-
-### **Important Notes**
-
-1. **Security**: NEVER commit `.env.local` to Git (already in `.gitignore`)
-2. **Twilio Phone Number**: Must be verified in Twilio dashboard
-3. **Trial Account**: Messages include "Sent from your Twilio trial account" prefix
-4. **Production**: Upgrade to paid Twilio account to remove trial prefix
-
-### **Vercel Deployment**
-
-Add these environment variables in Vercel dashboard:
-
-1. Go to: **Project Settings** → **Environment Variables**
-2. Add each variable for **Production**, **Preview**, and **Development**
-3. Redeploy after adding variables
-
----
-
-## 👤 User Flow
-
-### **For Admin (Scanner Page)**
-
-1. Navigate to `/scanner`
-2. Scan order barcodes using physical scanner
-3. Orders appear in the list
-4. Select orders (checkbox) that are ready
-5. Click **"Gyártás kész"** button
-
-**If SMS-eligible customers exist:**
-6. SMS Confirmation Modal appears
-7. Modal shows table with:
-   - Customer names
-   - Phone numbers
-   - Checkboxes (all checked by default)
-8. Admin can:
-   - Uncheck specific customers to skip SMS
-   - Click "Uncheck all" then selectively check
-   - Click on row to toggle checkbox
-9. Click **"Gyártás kész"** in modal to confirm
-
-**Processing:**
-10. Orders updated to "ready" status
-11. SMS sent to checked customers only
-12. Toast notifications show results:
-    - ✅ "X megrendelés frissítve: Gyártás kész"
-    - ✅ "📱 X SMS értesítés elküldve"
-    - ⚠️ "X SMS küldése sikertelen" (if any failed)
-
-### **For Customer**
-
-Customer receives SMS message:
-
-```
-Sent from your Twilio trial account - 
-Kedves Mező Dávid! Az On ORD-2025-10-22-001 szamu 
-rendelese elkeszult es atvehetο. Udvozlettel, Turinova
-```
-
-**Note**: Trial account prefix removed in production Twilio account.
-
----
-
-## 💻 Technical Implementation
-
-### **File Structure**
+### File Structure
 
 ```
 main-app/
 ├── src/
-│   ├── lib/
-│   │   └── twilio.ts                          # Twilio SMS utility
 │   ├── app/
-│   │   ├── api/
-│   │   │   └── orders/
-│   │   │       ├── sms-eligible/
-│   │   │       │   └── route.ts               # Check SMS eligibility
-│   │   │       └── bulk-status/
-│   │   │           └── route.ts               # Update status + send SMS
-│   │   └── (dashboard)/
-│   │       └── scanner/
-│   │           ├── ScannerClient.tsx          # Main scanner UI
-│   │           ├── SmsConfirmationModal.tsx   # SMS confirmation modal
-│   │           └── PaymentConfirmationModal.tsx
-└── .env.local                                  # Twilio credentials (NOT in Git)
+│   │   ├── (dashboard)/
+│   │   │   ├── notifications/
+│   │   │   │   ├── page.tsx                    # SSR page (fetches settings)
+│   │   │   │   └── NotificationsClient.tsx     # Client component (form)
+│   │   │   └── scanner/
+│   │   │       ├── ScannerClient.tsx           # Scanner page with SMS logic
+│   │   │       └── SmsConfirmationModal.tsx    # SMS confirmation modal
+│   │   └── api/
+│   │       ├── orders/
+│   │       │   ├── bulk-status/route.ts        # Main order update endpoint
+│   │       │   └── sms-eligible/route.ts       # Fetch SMS-eligible orders
+│   │       └── sms-settings/
+│   │           └── route.ts                    # GET/PATCH SMS settings
+│   ├── lib/
+│   │   ├── twilio.ts                           # Twilio SMS sending logic
+│   │   └── supabase-server.ts                  # SSR data fetching
+│   └── data/navigation/
+│       └── verticalMenuData.tsx                # Navigation menu
+└── .env.local                                  # Environment variables
+
+supabase/
+└── migrations/
+    └── 20251023_create_sms_settings_table.sql  # Database migration
 ```
 
 ---
 
-### **1. Twilio Utility (`lib/twilio.ts`)**
+## Database Schema
 
-**Purpose**: Send SMS messages via Twilio API
+### `sms_settings` Table
 
-**Key Features**:
-- Phone number normalization (removes spaces)
-- E.164 format validation
-- Error handling and logging
-- Returns success/error status
-
-**Function Signature**:
-```typescript
-async function sendOrderReadySMS(
-  customerName: string,
-  customerMobile: string,
-  orderNumber: string,
-  companyName: string = 'Turinova'
-): Promise<SMSResult>
+```sql
+CREATE TABLE IF NOT EXISTS public.sms_settings (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  message_template text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT sms_settings_pkey PRIMARY KEY (id)
+);
 ```
 
-**Phone Number Normalization**:
-```typescript
-// Input: "+36 30 999 2800"
-const normalizedMobile = customerMobile.replace(/\s+/g, '').trim()
-// Output: "+36309992800"
+**Purpose**: Stores the SMS message template globally for the company.
+
+**Key Points**:
+- ✅ Single row for company-wide settings
+- ✅ `message_template` stores the customizable SMS text
+- ✅ Auto-updated timestamp trigger on changes
+
+### `customers` Table (Relevant Fields)
+
+```sql
+customers (
+  ...
+  mobile character varying null,              -- Customer phone number
+  sms_notification boolean NOT NULL DEFAULT false,  -- Opt-in flag
+  ...
+)
 ```
 
-**E.164 Validation**:
-```typescript
-// Validates: + followed by 1-15 digits
-const e164Regex = /^\+[1-9]\d{1,14}$/
+**Purpose**: Customer contact information and SMS preferences.
+
+**Key Points**:
+- ✅ `mobile`: Must be in E.164 format (e.g., `+36301234567`)
+- ✅ `sms_notification`: Must be `true` for SMS to be sent
+- ✅ Both fields required for SMS eligibility
+
+### `pages` Table (New Entry)
+
+```sql
+INSERT INTO public.pages (path, name, description, category, is_active) VALUES (
+  '/notifications',
+  'Értesítések',
+  'SMS értesítési üzenetek szerkesztése',
+  'Beállítások',
+  true
+);
 ```
 
-**Message Template**:
-```typescript
-const message = `Kedves ${customerName}! Az On ${orderNumber} szamu rendelese elkeszult es atvehetο. Udvozlettel, ${companyName}`
-```
-
-**Character Handling**:
-- Hungarian special characters (ő, á, ü) replaced with ASCII (o, a, u)
-- Prevents SMS corruption
-- Readable on all devices
+**Purpose**: Registers the `/notifications` page in the permission system.
 
 ---
 
-### **2. SMS Eligibility API (`/api/orders/sms-eligible`)**
+## SMS Message Template
 
-**Method**: `POST`
+### Available Variables
+
+| Variable | Description | Example Value |
+|----------|-------------|---------------|
+| `{customer_name}` | Customer's full name | `Mezo David` |
+| `{order_number}` | Order number (or quote number if no order number) | `ORD-2025-10-22-001` |
+| `{company_name}` | Company name from `tenant_company` table | `Turinova Kft.` |
+| `{material_name}` | Comma-separated list of unique material names | `EGGER U999 ST9, KRONOSPAN K001` |
+
+### Default Template
+
+```
+Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}
+```
+
+**Translated**: "Dear {customer_name}! Your order {order_number} is ready and can be picked up. Best regards, {company_name}"
+
+### Template Replacement Logic
+
+```typescript
+const message = messageTemplate
+  .replace(/{customer_name}/g, customerName)
+  .replace(/{order_number}/g, orderNumber)
+  .replace(/{company_name}/g, companyName)
+  .replace(/{material_name}/g, materialNames)
+```
+
+**Important**: Uses global regex (`/g`) to replace all occurrences.
+
+---
+
+## User Interface
+
+### `/notifications` Page
+
+**Location**: Main App → Beállítások → Értesítések  
+**URL**: `http://localhost:3000/notifications` (or `https://app.turinova.hu/notifications`)  
+**Access**: All authenticated users (can be restricted per user)
+
+#### Features
+
+1. **Message Template Editor**
+   - Large textarea for editing SMS template
+   - Placeholder shows default template
+   - Real-time character counter (160 character limit)
+   - Warning when exceeding SMS limit
+
+2. **Available Variables Info Box**
+   - Lists all available variables with descriptions
+   - Shows example values
+   - Warns about ASCII character requirements
+
+3. **Live Preview Panel**
+   - Shows SMS as customer will receive it
+   - Uses sample data for preview
+   - Updates in real-time as template is edited
+   - Uses actual company name from database
+
+4. **Action Buttons**
+   - **Mentés** (Save): Saves template to database
+   - **Alapértelmezett visszaállítása** (Reset to Default): Restores default template
+
+5. **Character Counter**
+   - Shows current character count vs. 160 limit
+   - Color-coded warnings:
+     - Green: 0-140 characters (safe)
+     - Orange: 141-160 characters (warning)
+     - Red: 161+ characters (will send multiple SMS)
+
+#### UI Components
+
+```typescript
+<TextField
+  fullWidth
+  multiline
+  rows={4}
+  label="Üzenet szövege"
+  value={messageTemplate}
+  onChange={(e) => setMessageTemplate(e.target.value)}
+/>
+
+<Alert severity="info">
+  <Typography variant="subtitle2">Elérhető változók:</Typography>
+  <List>
+    <ListItem>{customer_name} - Ügyfél neve</ListItem>
+    <ListItem>{order_number} - Megrendelés száma</ListItem>
+    <ListItem>{company_name} - Cég neve</ListItem>
+    <ListItem>{material_name} - Anyagok listája</ListItem>
+  </List>
+  <Typography variant="caption">
+    ⚠️ Használj ASCII karaktereket! (ő→o, á→a, ü→u, stb.)
+  </Typography>
+</Alert>
+
+<Paper variant="outlined">
+  <Typography variant="subtitle2">SMS előnézet:</Typography>
+  <Typography variant="body2">{previewMessage}</Typography>
+</Paper>
+```
+
+---
+
+## API Endpoints
+
+### 1. GET `/api/sms-settings`
+
+**Purpose**: Fetch current SMS message template
+
+**Request**: None
+
+**Response**:
+```json
+{
+  "id": "uuid",
+  "message_template": "Kedves {customer_name}! ...",
+  "created_at": "2025-01-23T10:00:00Z",
+  "updated_at": "2025-01-23T10:00:00Z"
+}
+```
+
+**Error Responses**:
+- `401 Unauthorized`: User not authenticated
+- `500 Internal Server Error`: Database error
+
+---
+
+### 2. PATCH `/api/sms-settings`
+
+**Purpose**: Update SMS message template
+
+**Request Body**:
+```json
+{
+  "message_template": "Kedves {customer_name}! Az On {order_number} szamu..."
+}
+```
+
+**Response**:
+```json
+{
+  "success": true
+}
+```
+
+**Validation**:
+- ✅ `message_template` must be a string
+- ✅ User must be authenticated
+
+**Side Effects**:
+- Updates `updated_at` timestamp
+- Revalidates `/notifications` page cache
+- Creates new row if none exists (upsert logic)
+
+**Error Responses**:
+- `400 Bad Request`: Invalid request body
+- `401 Unauthorized`: User not authenticated
+- `500 Internal Server Error`: Database error
+
+---
+
+### 3. POST `/api/orders/sms-eligible`
+
+**Purpose**: Fetch orders eligible for SMS notification
 
 **Request Body**:
 ```json
@@ -296,42 +320,37 @@ const message = `Kedves ${customerName}! Az On ${orderNumber} szamu rendelese el
   "sms_eligible_orders": [
     {
       "id": "uuid1",
-      "order_number": "ORD-2025-10-22-001",
-      "customer_name": "Mező Dávid",
-      "customer_mobile": "+36 30 999 2800"
+      "order_number": "ORD-2025-001",
+      "customer_name": "Mezo David",
+      "customer_mobile": "+36301234567"
     }
   ]
 }
 ```
 
-**Logic**:
-```typescript
-const smsEligibleOrders = orders
-  ?.filter(order => 
-    order.customers?.sms_notification === true && 
-    order.customers?.mobile && 
-    order.customers.mobile.trim().length > 0
-  )
-```
+**Eligibility Criteria**:
+- ✅ Order status is `in_production`
+- ✅ Customer has `sms_notification = true`
+- ✅ Customer has a valid `mobile` number
 
-**Security**:
-- Requires authentication
-- Only fetches orders from authenticated user's company
-- Validates all input
+**Error Responses**:
+- `400 Bad Request`: Missing or invalid `order_ids`
+- `401 Unauthorized`: User not authenticated
+- `500 Internal Server Error`: Database error
 
 ---
 
-### **3. Bulk Status Update API (`/api/orders/bulk-status`)**
+### 4. PATCH `/api/orders/bulk-status`
 
-**Method**: `PATCH`
+**Purpose**: Update order status and send SMS notifications
 
 **Request Body**:
 ```json
 {
-  "order_ids": ["uuid1", "uuid2", "uuid3"],
+  "order_ids": ["uuid1", "uuid2"],
   "new_status": "ready",
   "create_payments": false,
-  "sms_order_ids": ["uuid1", "uuid3"]  // Only these get SMS
+  "sms_order_ids": ["uuid1"]  // User-selected orders for SMS
 }
 ```
 
@@ -339,112 +358,99 @@ const smsEligibleOrders = orders
 ```json
 {
   "success": true,
-  "updated_count": 3,
+  "updated_count": 2,
   "payments_created": 0,
   "new_status": "ready",
   "sms_notifications": {
-    "sent": 2,
+    "sent": 1,
     "failed": 0,
     "errors": []
   }
 }
 ```
 
-**Key Changes**:
-- Added `sms_order_ids` parameter
-- Only sends SMS to orders in this array
-- Returns detailed SMS results
+**SMS Sending Logic**:
+1. Fetch orders matching `sms_order_ids` (user-confirmed list)
+2. Filter for orders with `sms_notification = true` and valid `mobile`
+3. Update order status to `ready`
+4. Fetch company name from `tenant_company` table
+5. Send SMS to each eligible customer
+6. Return summary with sent/failed counts
 
-**Logic Flow**:
-1. Fetch orders with customer data (only for `sms_order_ids`)
-2. Filter for `sms_notification = true` AND `status = in_production`
-3. Update all `order_ids` to new status
-4. Send SMS to filtered orders
-5. Return results with counts
-
----
-
-### **4. SMS Confirmation Modal (`SmsConfirmationModal.tsx`)**
-
-**Props**:
-```typescript
-interface SmsConfirmationModalProps {
-  open: boolean
-  onClose: () => void
-  onConfirm: (selectedOrderIds: string[]) => void
-  orders: SmsEligibleOrder[]
-  isProcessing?: boolean
-}
-```
-
-**State Management**:
-```typescript
-// All checkboxes checked by default
-const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>(() => 
-  orders.map(o => o.id)
-)
-```
-
-**Features**:
-- ✅ Material-UI Dialog component
-- ✅ Table with customer name, phone number, checkbox
-- ✅ Select all / unselect all checkbox in header
-- ✅ Row click toggles checkbox
-- ✅ Event propagation handling (prevents double-toggle)
-- ✅ Visual feedback (shows count of SMS to be sent)
-- ✅ Warning if no customers selected
-- ✅ Disabled state while processing
-
-**Event Handling Fix**:
-```typescript
-// Prevents checkbox from triggering twice (checkbox + row click)
-<Checkbox
-  onChange={(e) => {
-    e.stopPropagation()  // Critical for proper checkbox behavior
-    handleToggle(order.id)
-  }}
-  onClick={(e) => e.stopPropagation()}
-/>
-```
+**Error Responses**:
+- `400 Bad Request`: Missing required fields
+- `401 Unauthorized`: User not authenticated
+- `500 Internal Server Error`: Database or SMS sending error
 
 ---
 
-### **5. Scanner Client Updates (`ScannerClient.tsx`)**
+## SMS Sending Flow
 
-**New State**:
-```typescript
-const [smsModalOpen, setSmsModalOpen] = useState(false)
-const [smsEligibleOrders, setSmsEligibleOrders] = useState<SmsEligibleOrder[]>([])
-```
+### Step-by-Step Process
 
-**New Handler - Button Click**:
+#### 1. **User Scans Orders** (`/scanner` page)
+- User scans barcode or manually adds orders
+- Orders appear in the scanned list
+- User selects orders to mark as ready
+
+#### 2. **User Clicks "Gyártás kész"**
 ```typescript
 const handleReadyClick = async () => {
-  if (selectedOrders.length === 0) {
-    toast.warning('Válassz legalább egy megrendelést')
-    return
-  }
-
-  // Check for SMS eligibility
+  // Fetch SMS-eligible orders from selected orders
   const response = await fetch('/api/orders/sms-eligible', {
     method: 'POST',
     body: JSON.stringify({ order_ids: selectedOrders })
   })
-
+  
   const { sms_eligible_orders } = await response.json()
-
-  // Show modal if eligible orders exist
-  if (sms_eligible_orders?.length > 0) {
+  
+  // Show SMS confirmation modal if eligible orders found
+  if (sms_eligible_orders.length > 0) {
     setSmsEligibleOrders(sms_eligible_orders)
     setSmsModalOpen(true)
   } else {
-    // No eligible orders, proceed directly
+    // No SMS-eligible orders, proceed without SMS
     await handleBulkStatusUpdate('ready', false, [])
   }
 }
 ```
 
-**New Handler - SMS Confirmation**:
+#### 3. **SMS Confirmation Modal Appears**
+- Lists all customers eligible for SMS
+- Shows customer name and mobile number
+- All customers selected by default
+- User can uncheck individual customers
+- "Select All" checkbox for convenience
+
+```typescript
+<Dialog open={smsModalOpen}>
+  <DialogTitle>SMS értesítések küldése</DialogTitle>
+  <DialogContent>
+    <Table>
+      <TableBody>
+        {orders.map(order => (
+          <TableRow key={order.id}>
+            <TableCell>
+              <Checkbox
+                checked={selectedOrderIds.includes(order.id)}
+                onChange={() => handleToggle(order.id)}
+              />
+            </TableCell>
+            <TableCell>{order.customer_name}</TableCell>
+            <TableCell>{order.customer_mobile}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  </DialogContent>
+  <DialogActions>
+    <Button onClick={onClose}>Mégse</Button>
+    <Button onClick={handleConfirm}>Gyártás kész</Button>
+  </DialogActions>
+</Dialog>
+```
+
+#### 4. **User Confirms SMS Sending**
 ```typescript
 const handleSmsConfirmation = async (selectedSmsOrderIds: string[]) => {
   setSmsModalOpen(false)
@@ -452,590 +458,595 @@ const handleSmsConfirmation = async (selectedSmsOrderIds: string[]) => {
 }
 ```
 
-**Updated Handler - Bulk Status Update**:
+#### 5. **Backend Processes Orders**
 ```typescript
-const handleBulkStatusUpdate = async (
-  newStatus: 'ready' | 'finished',
-  createPayments: boolean = false,
-  smsOrderIds: string[] = []  // NEW: SMS order IDs
-) => {
-  // ... send smsOrderIds to API
-}
-```
-
-**Button Update**:
-```typescript
-// OLD
-<Button onClick={() => handleBulkStatusUpdate('ready')}>
-  Gyártás kész
-</Button>
-
-// NEW
-<Button onClick={handleReadyClick}>
-  Gyártás kész
-</Button>
-```
-
-**Modal Integration**:
-```tsx
-<SmsConfirmationModal
-  open={smsModalOpen}
-  orders={smsEligibleOrders}
-  onConfirm={handleSmsConfirmation}
-  onClose={() => setSmsModalOpen(false)}
-  isProcessing={isUpdating}
-/>
-```
-
----
-
-## 🧪 Testing Guide
-
-### **Local Testing Prerequisites**
-
-1. **Twilio Account**: Create free trial account at https://www.twilio.com
-2. **Environment Variables**: Add to `main-app/.env.local`:
-   ```env
-   TWILIO_ACCOUNT_SID=your_twilio_account_sid
-   TWILIO_AUTH_TOKEN=your_twilio_auth_token
-   TWILIO_PHONE_NUMBER=+1234567890
-   ```
-3. **Test Customer**: Create customer in database with:
-   - `sms_notification = true`
-   - `mobile = "+36 30 999 2800"` (or your test number)
-
-### **Test Scenarios**
-
-#### **Scenario 1: SMS-Enabled Customer**
-
-1. Create test order for customer with SMS enabled
-2. Set order status to `in_production`
-3. Go to `/scanner`
-4. Scan order barcode
-5. Select order
-6. Click "Gyártás kész"
-
-**Expected**:
-- ✅ SMS Confirmation Modal opens
-- ✅ Customer shown in table with phone number
-- ✅ Checkbox is checked by default
-- ✅ Clicking "Gyártás kész" updates status and sends SMS
-- ✅ Toast: "1 megrendelés frissítve: Gyártás kész"
-- ✅ Toast: "📱 1 SMS értesítés elküldve"
-- ✅ Customer receives SMS
-
-#### **Scenario 2: SMS-Disabled Customer**
-
-1. Create test order for customer with `sms_notification = false`
-2. Set order status to `in_production`
-3. Go to `/scanner`
-4. Scan order barcode
-5. Select order
-6. Click "Gyártás kész"
-
-**Expected**:
-- ✅ NO modal appears
-- ✅ Status updated directly to "ready"
-- ✅ Toast: "1 megrendelés frissítve: Gyártás kész"
-- ✅ NO SMS sent
-
-#### **Scenario 3: Mixed Customers**
-
-1. Create 3 orders:
-   - Order A: SMS enabled, has mobile ✅
-   - Order B: SMS disabled ❌
-   - Order C: SMS enabled, has mobile ✅
-2. Go to `/scanner`, scan all 3
-3. Select all, click "Gyártás kész"
-
-**Expected**:
-- ✅ Modal shows only Order A and Order C (2 customers)
-- ✅ Order B not shown in modal
-- ✅ Both checkboxes checked by default
-- ✅ Admin can uncheck Order C
-- ✅ Confirm sends SMS only to Order A
-- ✅ All 3 orders updated to "ready"
-
-#### **Scenario 4: Selective SMS Sending**
-
-1. Create 3 orders with SMS enabled
-2. Go to `/scanner`, scan all 3
-3. Select all, click "Gyártás kész"
-4. Modal shows all 3 customers
-5. **Uncheck** one customer
-6. Click "Gyártás kész"
-
-**Expected**:
-- ✅ All 3 orders updated to "ready"
-- ✅ SMS sent to only 2 customers (checked ones)
-- ✅ Toast: "3 megrendelés frissítve"
-- ✅ Toast: "📱 2 SMS értesítés elküldve"
-
-#### **Scenario 5: Invalid Phone Number**
-
-1. Create order with customer:
-   - `sms_notification = true`
-   - `mobile = "invalid"` (no + prefix)
-2. Scan and select order
-3. Click "Gyártás kész"
-
-**Expected**:
-- ✅ Modal does NOT show this customer (filtered out)
-- ✅ If no other eligible customers: status updated directly, no SMS
-- ✅ System logs error but continues processing
-
-#### **Scenario 6: Twilio API Failure**
-
-1. Use invalid Twilio credentials or phone number
-2. Scan order with SMS-enabled customer
-3. Click "Gyártás kész" and confirm
-
-**Expected**:
-- ✅ Order status still updated to "ready" (SMS failure doesn't block)
-- ✅ Toast: "3 megrendelés frissítve"
-- ✅ Toast: "⚠️ 1 SMS küldése sikertelen: [error message]"
-- ✅ System logs detailed error
-
----
-
-## 🚀 Deployment
-
-### **Local Development**
-
-1. **Add environment variables** to `main-app/.env.local`:
-   ```env
-   TWILIO_ACCOUNT_SID=your_account_sid_here
-   TWILIO_AUTH_TOKEN=your_auth_token_here
-   TWILIO_PHONE_NUMBER=+1234567890
-   ```
-
-2. **Start server**:
-   ```bash
-   cd /Volumes/T7/erp_turinova_new/main-app
-   npm run dev
-   ```
-
-3. **Test immediately** - no restart needed (hot reload)
-
-### **Production (Vercel)**
-
-1. **Add environment variables** in Vercel dashboard:
-   - `TWILIO_ACCOUNT_SID`
-   - `TWILIO_AUTH_TOKEN`
-   - `TWILIO_PHONE_NUMBER`
-
-2. **Deploy**:
-   ```bash
-   # From repo root
-   git add .
-   git commit -m "feat: Add SMS notification system with confirmation modal"
-   git push origin main
-   ```
-
-3. **Verify deployment**:
-   - Vercel auto-deploys from main branch
-   - Check environment variables are set
-   - Test on production URL
-
-### **Twilio Setup for Production**
-
-1. **Upgrade to paid account** (removes "trial" prefix from messages)
-2. **Verify phone number** in Twilio dashboard
-3. **Set up billing** to enable SMS sending
-4. **Configure sender ID** (if required by country)
-5. **Test with real phone number**
-
----
-
-## 🔧 Troubleshooting
-
-### **Issue 1: SMS Not Sending**
-
-**Symptoms**: Modal appears, confirmation works, but no SMS received
-
-**Checks**:
-1. ✅ Environment variables set correctly?
-   ```bash
-   # In main-app directory
-   cat .env.local | grep TWILIO
-   ```
-
-2. ✅ Twilio phone number verified?
-   - Check Twilio dashboard
-   - Format: `+12765301843` (no spaces, no extra digits)
-
-3. ✅ Customer phone number valid?
-   - Must start with `+`
-   - Must be in E.164 format
-   - Check database: `SELECT name, mobile FROM customers WHERE sms_notification = true`
-
-4. ✅ Twilio account active?
-   - Trial accounts have limits
-   - Check Twilio dashboard for errors
-
-**Console Logs**:
-```
-[SMS] Found 2 orders to send SMS (2 selected by user)
-[SMS] Sending to +36309992800 (original: +36 30 999 2800): Kedves...
-[SMS] Sent successfully. SID: SM7e35eae569559693e9dabe6e770fd661
-[SMS] ✓ Sent to Mező Dávid (+36 30 999 2800)
-```
-
----
-
-### **Issue 2: Corrupted Characters in SMS**
-
-**Symptoms**: SMS shows "Mezö Dàvid" instead of "Mező Dávid"
-
-**Solution**: Hungarian special characters already replaced with ASCII in code.
-
-**If still occurring**:
-- Check `lib/twilio.ts` line 60
-- Ensure message uses: `On`, `szamu`, `elkeszult`, `atvehetο`, `Udvozlettel`
-- DO NOT use: `Ön`, `számú`, `elkészült`, `átvehető`, `Üdvözlettel`
-
----
-
-### **Issue 3: Modal Checkboxes Not Working**
-
-**Symptoms**: Clicking checkbox doesn't toggle, or toggles randomly
-
-**Solution**: Already fixed with `e.stopPropagation()` in checkbox handlers
-
-**Code**:
-```typescript
-<Checkbox
-  onChange={(e) => {
-    e.stopPropagation()  // Prevents row click from also firing
-    handleToggle(order.id)
-  }}
-  onClick={(e) => e.stopPropagation()}
-/>
-```
-
----
-
-### **Issue 4: Wrong Phone Number Format**
-
-**Error**: `'From' +127653018434 is not a Twilio phone number`
-
-**Cause**: Extra digit in Twilio phone number
-
-**Solution**: 
-- Check `.env.local`
-- Format: `+12765301843` (13 characters total for US)
-- NOT: `+127653018434` (14 characters)
-
----
-
-### **Issue 5: Toast Not Showing**
-
-**Symptoms**: SMS sent successfully but no toast notification
-
-**Check**:
-1. ✅ `react-toastify` installed?
-2. ✅ `ToastContainer` in layout?
-3. ✅ Response from API includes `sms_notifications` object?
-
-**API Response Check**:
-```typescript
-const result = await response.json()
-console.log('SMS Results:', result.sms_notifications)
-```
-
----
-
-## 📊 Message Template Customization
-
-### **Location**
-
-**File**: `/main-app/src/lib/twilio.ts`  
-**Line**: 60
-
-### **Current Template**
-
-```typescript
-const message = `Kedves ${customerName}! Az On ${orderNumber} szamu rendelese elkeszult es atvehetο. Udvozlettel, ${companyName}`
-```
-
-### **Available Variables**
-
-- `${customerName}` - Customer's full name
-- `${orderNumber}` - Order number (e.g., "ORD-2025-10-22-001")
-- `${companyName}` - Company name (default: "Turinova")
-
-### **Alternative Templates**
-
-**Short & Simple**:
-```typescript
-const message = `${customerName}, a ${orderNumber} rendeles kesz! Atvehetο. - ${companyName}`
-// Length: ~60 characters
-```
-
-**Professional**:
-```typescript
-const message = `Tisztelt ${customerName}! A ${orderNumber} szamu rendeles kesz. Kerunk, vegye at muhely! ${companyName}`
-// Length: ~100 characters
-```
-
-**Very Short**:
-```typescript
-const message = `${orderNumber} kesz! Atvehetο. ${companyName}`
-// Length: ~40 characters
-```
-
-**Friendly**:
-```typescript
-const message = `Szia ${customerName}! Orömmel ertesitunk: ${orderNumber} elkeszult! Atvehetο. Koszonjuk, ${companyName}`
-// Length: ~110 characters
-```
-
-### **SMS Length Guidelines**
-
-- **Single SMS**: Up to 160 characters
-- **Current message**: ~95 characters ✅
-- **Cost**: Longer messages split into multiple SMS (higher cost)
-- **Best practice**: Keep under 160 characters
-
-### **Character Restrictions**
-
-**NEVER use these Hungarian characters** (they get corrupted):
-- ❌ ő, Ő → Use: o, O
-- ❌ ű, Ű → Use: u, U
-- ❌ á, Á → Use: a, A
-- ❌ é, É → Use: e, E
-- ❌ í, Í → Use: i, I
-- ❌ ó, Ó → Use: o, O
-- ❌ ö, Ö → Use: o, O
-- ❌ ü, Ü → Use: u, U
-
-**Reason**: SMS encoding doesn't support UTF-8 by default, use GSM 03.38 character set.
-
----
-
-## 🔐 Security Considerations
-
-### **Environment Variables**
-
-1. **NEVER commit** `.env.local` to Git
-2. **Always use** Vercel environment variables for production
-3. **Rotate credentials** if exposed
-4. **Use separate** Twilio accounts for dev/staging/production
-
-### **Phone Number Validation**
-
-1. ✅ E.164 format validation (regex)
-2. ✅ Normalization (remove spaces)
-3. ✅ Length validation (1-15 digits after +)
-4. ✅ Country code validation (must start with 1-9)
-
-### **Rate Limiting**
-
-**Twilio Limits**:
-- Trial account: Limited messages per day
-- Paid account: Based on plan
-
-**System Limits**:
-- No artificial rate limiting (handled by Twilio)
-- Batch SMS sent sequentially (not parallel)
-- Each SMS logged individually
-
-### **Error Handling**
-
-1. ✅ Failed SMS doesn't block order status update
-2. ✅ Detailed error logging in console
-3. ✅ User-friendly error messages in toast
-4. ✅ Graceful degradation (continues on errors)
-
----
-
-## 📈 Performance
-
-### **API Call Sequence**
-
-1. **User clicks "Gyártás kész"** (0ms)
-2. **Fetch SMS eligibility** (~200-500ms)
-   - Single database query
-   - Filters in application layer
-3. **Modal appears** (instant)
-4. **User confirms** (user interaction time)
-5. **Update status + Send SMS** (~2000-3000ms)
-   - Database update: ~200ms
-   - SMS sending: ~500ms per message
-   - Total: 200ms + (500ms × number of SMS)
-
-### **Optimization Notes**
-
-- ✅ SMS sent sequentially (not parallel) to avoid rate limits
-- ✅ Database queries optimized with proper indexes
-- ✅ Frontend shows loading state during processing
-- ✅ Error handling prevents blocking
-
-### **Scaling Considerations**
-
-- For **10 orders**: ~5 seconds total processing
-- For **50 orders**: ~25 seconds total processing
-- For **100+ orders**: Consider background job queue (future enhancement)
-
----
-
-## 🎯 Best Practices
-
-### **For Developers**
-
-1. ✅ Always test with trial account before production
-2. ✅ Use environment variables for all credentials
-3. ✅ Log all SMS sending attempts (success + failure)
-4. ✅ Provide clear user feedback (toasts)
-5. ✅ Never block critical operations (status update) on SMS failures
-
-### **For Admins**
-
-1. ✅ Review SMS list before confirming
-2. ✅ Uncheck customers who don't need SMS (e.g., already contacted)
-3. ✅ Check customer phone numbers in database periodically
-4. ✅ Monitor Twilio dashboard for failed messages
-5. ✅ Update message template if needed
-
-### **For Database Management**
-
-1. ✅ Keep phone numbers in international format (`+36...`)
-2. ✅ Spaces in phone numbers are OK (system normalizes)
-3. ✅ Set `sms_notification = false` by default for new customers
-4. ✅ Add index on `sms_notification` for performance:
-   ```sql
-   CREATE INDEX idx_customers_sms_notification 
-   ON customers(sms_notification) 
-   WHERE deleted_at IS NULL;
-   ```
-
----
-
-## 📝 Code Examples
-
-### **Get SMS-Eligible Customers**
-
-```typescript
-const { data: customers } = await supabase
-  .from('customers')
-  .select('id, name, mobile, sms_notification')
-  .eq('sms_notification', true)
-  .not('mobile', 'is', null)
-```
-
-### **Send Single SMS**
-
-```typescript
-import { sendOrderReadySMS } from '@/lib/twilio'
-
-const result = await sendOrderReadySMS(
-  'Mező Dávid',
-  '+36 30 999 2800',
-  'ORD-2025-10-22-001',
-  'Turinova'
+// 1. Fetch orders with customer data (BEFORE status update)
+const { data: orders } = await supabase
+  .from('quotes')
+  .select(`
+    id, quote_number, order_number, status, customer_id,
+    customers!inner (id, name, mobile, sms_notification)
+  `)
+  .in('id', sms_order_ids)
+  .eq('status', 'in_production')
+
+// 2. Filter SMS-eligible orders
+const ordersForSMS = orders.filter(order => 
+  order.customers?.sms_notification === true && 
+  order.customers?.mobile
 )
 
-if (result.success) {
-  console.log('SMS sent:', result.messageSid)
-} else {
-  console.error('SMS failed:', result.error)
+// 3. Update order status to 'ready'
+await supabase
+  .from('quotes')
+  .update({ status: 'ready', updated_at: new Date().toISOString() })
+  .in('id', order_ids)
+
+// 4. Fetch company name
+const { data: companyData } = await supabase
+  .from('tenant_company')
+  .select('name')
+  .limit(1)
+  .single()
+
+const companyName = companyData?.name || 'Turinova'
+
+// 5. Send SMS to each customer
+for (const order of ordersForSMS) {
+  const result = await sendOrderReadySMS(
+    order.customers.name,
+    order.customers.mobile,
+    order.order_number || order.quote_number,
+    companyName,
+    order.id  // For fetching materials
+  )
+  
+  if (result.success) {
+    smsResults.sent++
+  } else {
+    smsResults.failed++
+    smsResults.errors.push(`${order.customers.name}: ${result.error}`)
+  }
 }
 ```
 
-### **Update Customer SMS Preference**
-
+#### 6. **SMS Sending Function** (`lib/twilio.ts`)
 ```typescript
-// Enable SMS for customer
-await supabase
-  .from('customers')
-  .update({ 
-    sms_notification: true,
-    mobile: '+36 30 999 2800'
-  })
-  .eq('id', customerId)
+export async function sendOrderReadySMS(
+  customerName: string,
+  customerMobile: string,
+  orderNumber: string,
+  companyName: string,
+  quoteId?: string
+): Promise<SMSResult> {
+  // 1. Validate Twilio credentials
+  const accountSid = process.env.TWILIO_ACCOUNT_SID
+  const authToken = process.env.TWILIO_AUTH_TOKEN
+  const twilioNumber = process.env.TWILIO_PHONE_NUMBER
+  
+  if (!accountSid || !authToken || !twilioNumber) {
+    return { success: false, error: 'Missing Twilio credentials' }
+  }
+  
+  // 2. Normalize phone number (remove spaces)
+  const normalizedMobile = customerMobile.replace(/\s+/g, '')
+  
+  // 3. Fetch SMS template from database
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  
+  const { data: settings } = await supabase
+    .from('sms_settings')
+    .select('message_template')
+    .limit(1)
+    .single()
+  
+  let messageTemplate = settings?.message_template || DEFAULT_TEMPLATE
+  
+  // 4. Fetch unique material names (if quoteId provided)
+  let materialNames = ''
+  if (quoteId) {
+    const { data: materials } = await supabase
+      .from('quote_materials_pricing')
+      .select('material_name')
+      .eq('quote_id', quoteId)
+    
+    if (materials && materials.length > 0) {
+      const uniqueMaterials = [...new Set(materials.map(m => m.material_name))]
+      materialNames = uniqueMaterials.join(', ')
+    }
+  }
+  
+  // 5. Replace template variables
+  const message = messageTemplate
+    .replace(/{customer_name}/g, customerName)
+    .replace(/{order_number}/g, orderNumber)
+    .replace(/{company_name}/g, companyName)
+    .replace(/{material_name}/g, materialNames)
+  
+  // 6. Send SMS via Twilio
+  const client = twilio(accountSid, authToken)
+  
+  try {
+    const twilioMessage = await client.messages.create({
+      body: message,
+      from: twilioNumber,
+      to: normalizedMobile
+    })
+    
+    return {
+      success: true,
+      messageSid: twilioMessage.sid
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }
+  }
+}
+```
+
+#### 7. **User Receives Feedback**
+```typescript
+// Success toast
+if (smsResults.sent > 0) {
+  toast.success(`📱 ${smsResults.sent} SMS értesítés elküldve`, { autoClose: 5000 })
+}
+
+// Warning toast for failures
+if (smsResults.failed > 0) {
+  toast.warning(
+    `⚠️ ${smsResults.failed} SMS küldése sikertelen${
+      smsResults.errors.length > 0 ? `: ${smsResults.errors[0]}` : ''
+    }`,
+    { autoClose: 7000 }
+  )
+}
 ```
 
 ---
 
-## 📞 Twilio Configuration
+## Configuration
 
-### **Trial Account Limitations**
+### Environment Variables
 
-- ✅ Can only send to verified phone numbers
-- ✅ Messages include "Sent from your Twilio trial account" prefix
-- ✅ Limited messages per day
-- ✅ Cannot customize sender ID
+**Required in `.env.local` (local development):**
+```bash
+# Twilio Configuration
+TWILIO_ACCOUNT_SID=your_account_sid_here
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_PHONE_NUMBER=+1234567890
 
-### **Paid Account Benefits**
+# Supabase Configuration (already present)
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
 
-- ✅ Send to any phone number
-- ✅ No trial prefix in messages
-- ✅ Unlimited messages (pay per SMS)
-- ✅ Custom sender ID
-- ✅ Delivery reports
-- ✅ Message history
+**Required in Vercel (production):**
+1. Go to Vercel Dashboard → Project → Settings → Environment Variables
+2. Add the same variables as above
+3. Select "Production", "Preview", and "Development" environments
+4. Save and redeploy
 
-### **Cost Estimate**
+### Twilio Setup
 
-- **Hungary SMS**: ~$0.05 per message
-- **US SMS**: ~$0.0075 per message
-- **1000 SMS/month**: ~$50 (Hungary) or ~$7.50 (US)
+1. **Create Twilio Account**
+   - Go to [https://www.twilio.com/](https://www.twilio.com/)
+   - Sign up for a free trial or paid account
+
+2. **Get Credentials**
+   - Navigate to Console Dashboard
+   - Copy "Account SID" and "Auth Token"
+
+3. **Purchase Phone Number**
+   - Go to Phone Numbers → Buy a Number
+   - Select a number with SMS capability
+   - Copy the phone number (format: `+1234567890`)
+
+4. **Configure Messaging Service (Optional)**
+   - For production use, consider setting up a Messaging Service
+   - Enables better deliverability and tracking
+
+### Customer Configuration
+
+**Enable SMS for a customer:**
+1. Go to main app → Ügyfelek (Customers)
+2. Edit customer details
+3. Check "SMS értesítés" checkbox
+4. Ensure mobile number is in E.164 format (`+36301234567`)
+5. Save
 
 ---
 
-## 🎓 Key Learnings
+## Character Encoding & Limitations
 
-### **Technical Challenges Solved**
+### SMS Character Limits
 
-1. ✅ **Phone number normalization**: Remove spaces before sending
-2. ✅ **E.164 validation**: Ensure format is correct
-3. ✅ **Hungarian characters**: Replace with ASCII to prevent corruption
-4. ✅ **Event propagation**: Stop propagation in checkbox to prevent double-toggle
-5. ✅ **Modal state management**: Reset state when modal opens
-6. ✅ **Error handling**: Continue on SMS failure, don't block order processing
+| Encoding | Single SMS | Multi-part SMS (per segment) |
+|----------|-----------|------------------------------|
+| **GSM 7-bit** | 160 characters | 153 characters |
+| **UCS-2 (Unicode)** | 70 characters | 67 characters |
 
-### **Future Enhancements**
+### ASCII vs. Unicode
 
-1. 🔜 Background job queue for bulk SMS (100+ orders)
-2. 🔜 SMS delivery status tracking
-3. 🔜 SMS history in database
-4. 🔜 Customizable message templates per company
-5. 🔜 SMS scheduling (send at specific time)
-6. 🔜 Multiple language support
-7. 🔜 WhatsApp integration (future)
+**GSM 7-bit (Recommended)**:
+- ✅ 160 characters per SMS
+- ✅ Lower cost
+- ❌ No Hungarian special characters (á, é, í, ó, ö, ő, ú, ü, ű)
+
+**UCS-2 Unicode**:
+- ✅ Supports all Hungarian characters
+- ❌ Only 70 characters per SMS
+- ❌ Higher cost (2-3x more expensive)
+
+### Best Practices
+
+1. **Use ASCII equivalents** for Hungarian characters:
+   ```
+   á → a    é → e    í → i    ó → o    ö → o    ő → o
+   ú → u    ü → u    ű → u
+   ```
+
+2. **Default template uses ASCII**:
+   ```
+   Kedves {customer_name}! Az On {order_number} szamu rendelese 
+   elkeszult es atvehetο. Udvozlettel, {company_name}
+   ```
+   (Note: "ő" → "o", "á" → "a", etc.)
+
+3. **Keep messages under 160 characters** to avoid multi-part SMS
+
+4. **Test before deploying** to ensure character count is accurate
+
+### Character Counter Logic
+
+```typescript
+const charCount = useMemo(() => {
+  let tempMessage = messageTemplate
+    .replace(/{customer_name}/g, 'Mezo David')        // ~10 chars
+    .replace(/{order_number}/g, 'ORD-2025-10-22-001') // ~18 chars
+    .replace(/{company_name}/g, companyName)          // Dynamic
+    .replace(/{material_name}/g, 'EGGER U999 ST9, KRONOSPAN K001') // ~30 chars
+  return tempMessage.length
+}, [messageTemplate, companyName])
+
+const isOverLimit = charCount > 160
+```
 
 ---
 
-## 📚 Related Documentation
+## Error Handling
 
-- [Server Startup Guide](../SERVER_STARTUP_GUIDE.md)
-- [Deployment Guide](../DEPLOYMENT_GUIDE.md)
+### Common Errors & Solutions
+
+#### 1. **Missing Twilio Credentials**
+**Error**: `Missing Twilio credentials`  
+**Cause**: Environment variables not set  
+**Solution**:
+- Check `.env.local` for local development
+- Check Vercel environment variables for production
+- Ensure all 3 variables are set: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+
+#### 2. **Invalid Phone Number Format**
+**Error**: `'To' phone number is not a valid E.164 number`  
+**Cause**: Customer mobile number not in correct format  
+**Solution**:
+- Update customer mobile to E.164 format: `+36301234567`
+- Remove spaces: `+36 30 123 4567` → `+36301234567`
+- Ensure country code is present (`+36` for Hungary)
+
+#### 3. **Country Mismatch**
+**Error**: `'From' +1234567890 is not a Twilio phone number or Short Code country mismatch`  
+**Cause**: Twilio number's country doesn't match recipient's country  
+**Solution**:
+- Use a Twilio number from the same country (e.g., Hungarian number for Hungarian customers)
+- Or enable international SMS in Twilio settings
+
+#### 4. **SMS Not Sent (Customer Not Eligible)**
+**Error**: None (customer silently skipped)  
+**Cause**: Customer doesn't meet eligibility criteria  
+**Solution**:
+- Ensure `sms_notification = true` in customers table
+- Ensure customer has a valid `mobile` number
+- Check order status is `in_production` before marking as `ready`
+
+#### 5. **Template Not Loading**
+**Error**: Default template used instead of custom  
+**Cause**: Database fetch failed or no custom template exists  
+**Solution**:
+- Check `/notifications` page to ensure template is saved
+- Verify `sms_settings` table has a row
+- Check database connection
+
+#### 6. **Permission Denied**
+**Error**: `403 Forbidden` or page not accessible  
+**Cause**: User doesn't have permission to access `/notifications`  
+**Solution**:
+- Go to `/users` → Select user → "Jogosultságok"
+- Enable `/notifications` page access
+- Save permissions
+
+### Error Logging
+
+**Console logs for debugging:**
+```typescript
+console.log(`[SMS] Found ${ordersForSMS.length} orders to send SMS`)
+console.log(`[SMS] Sending to ${customerMobile} (normalized: ${normalizedMobile})`)
+console.log(`[SMS] ✓ Sent successfully. SID: ${twilioMessage.sid}`)
+console.error(`[SMS] ✗ Failed for ${customerName}:`, error)
+```
+
+**Check browser console** for client-side errors  
+**Check server logs** (Vercel or local terminal) for API errors
+
+---
+
+## Testing
+
+### Test Checklist
+
+#### 1. **Test SMS Template Editing**
+- [ ] Go to `/notifications`
+- [ ] Edit message template
+- [ ] Add custom text and variables
+- [ ] Check character counter updates
+- [ ] View live preview
+- [ ] Click "Mentés" (Save)
+- [ ] Refresh page to confirm template persisted
+
+#### 2. **Test SMS Sending (Development)**
+- [ ] Add test customer with your own mobile number
+- [ ] Enable `sms_notification` for test customer
+- [ ] Create test order for this customer
+- [ ] Move order to `in_production` status
+- [ ] Go to `/scanner` page
+- [ ] Scan/add test order
+- [ ] Click "Gyártás kész"
+- [ ] Verify SMS confirmation modal appears
+- [ ] Confirm SMS sending
+- [ ] Check your phone for SMS
+
+#### 3. **Test Eligibility Filtering**
+- [ ] Create customer without mobile number → should not appear in SMS modal
+- [ ] Create customer with `sms_notification = false` → should not appear
+- [ ] Create order not in `in_production` status → should not appear
+- [ ] Verify only eligible customers appear in modal
+
+#### 4. **Test Permission System**
+- [ ] Create non-admin user
+- [ ] Try accessing `/notifications` (should work by default)
+- [ ] Go to `/users` → Revoke `/notifications` permission
+- [ ] Try accessing `/notifications` again (should redirect or show error)
+- [ ] Re-enable permission
+
+#### 5. **Test Error Handling**
+- [ ] Temporarily remove Twilio credentials from `.env.local`
+- [ ] Try sending SMS → should show error toast
+- [ ] Restore credentials
+- [ ] Try with invalid phone number format → should show error
+
+#### 6. **Test Character Limits**
+- [ ] Create template with exactly 160 characters → should show green
+- [ ] Add 1 more character (161) → should show red warning
+- [ ] Create template with 200+ characters → verify multiple SMS warning
+
+### Test Data Examples
+
+**Test Customer:**
+```sql
+INSERT INTO customers (name, email, mobile, sms_notification)
+VALUES ('Test Customer', 'test@example.com', '+36301234567', true);
+```
+
+**Test SMS Template:**
+```
+Kedves {customer_name}! A {order_number} rendelesed kesz. Tel: +36301234567
+```
+(Exactly 79 characters with sample data)
+
+---
+
+## Troubleshooting
+
+### Issue: SMS Not Appearing in Modal
+
+**Possible Causes:**
+1. Customer doesn't have `sms_notification = true`
+2. Customer doesn't have a mobile number
+3. Order status is not `in_production`
+4. API endpoint `/api/orders/sms-eligible` is failing
+
+**Debugging Steps:**
+```sql
+-- Check customer eligibility
+SELECT 
+  c.name, 
+  c.mobile, 
+  c.sms_notification,
+  q.status,
+  q.order_number
+FROM quotes q
+JOIN customers c ON q.customer_id = c.id
+WHERE q.id = 'YOUR_ORDER_ID';
+```
+
+### Issue: SMS Sent But Not Received
+
+**Possible Causes:**
+1. Phone number format is incorrect
+2. Phone number is blocked by carrier
+3. Twilio account has insufficient credits
+4. Country restrictions
+
+**Debugging Steps:**
+1. Check Twilio Dashboard → Logs → SMS Logs
+2. Look for the message SID from console logs
+3. Check delivery status
+4. Verify phone number is active and can receive SMS
+
+### Issue: Multiple SMS Received
+
+**Possible Causes:**
+1. Message exceeds 160 characters
+2. Unicode characters are being used (reduces limit to 70)
+
+**Solution:**
+- Keep template under 160 characters
+- Use ASCII equivalents for special characters
+- Check character counter on `/notifications` page
+
+### Issue: Wrong Company Name in SMS
+
+**Possible Causes:**
+1. `tenant_company` table has incorrect data
+2. Database query is failing
+
+**Debugging Steps:**
+```sql
+-- Check company name
+SELECT name FROM tenant_company LIMIT 1;
+```
+
+**Solution:**
+- Update company name in `tenant_company` table
+- Ensure company name is set correctly
+
+### Issue: Template Changes Not Applied
+
+**Possible Causes:**
+1. Template not saved properly
+2. Cache not cleared
+3. Using old deployment
+
+**Solution:**
+- Re-save template on `/notifications` page
+- Clear browser cache
+- Restart Next.js server (local) or redeploy (production)
+- Check server logs for save errors
+
+---
+
+## Security Considerations
+
+### 1. **Twilio Credentials**
+- ✅ Never commit credentials to Git
+- ✅ Store in `.env.local` (local) and Vercel (production)
+- ✅ Rotate credentials periodically
+- ✅ Use Twilio's IP whitelisting if available
+
+### 2. **Phone Number Privacy**
+- ✅ Phone numbers only visible to authenticated users
+- ✅ SMS only sent from server-side (API routes)
+- ✅ No phone numbers exposed in client-side code
+
+### 3. **Rate Limiting**
+- ⚠️ Currently no rate limiting on SMS sending
+- 📝 Consider implementing in future:
+  - Limit SMS per customer per day
+  - Limit total SMS per hour
+  - Cooldown period between SMS
+
+### 4. **User Permissions**
+- ✅ `/notifications` page requires authentication
+- ✅ Can be restricted per user via permissions system
+- ✅ SMS sending only from `/scanner` page (implicit admin access)
+
+---
+
+## Future Enhancements
+
+### Planned Features
+- [ ] **SMS Templates Library**: Multiple templates for different scenarios
+- [ ] **SMS History**: Log all sent SMS with timestamps and status
+- [ ] **Bulk SMS**: Send promotional SMS to all customers
+- [ ] **SMS Scheduling**: Schedule SMS for specific times
+- [ ] **Delivery Reports**: Track SMS delivery status in UI
+- [ ] **Customer Reply Handling**: Webhook for incoming SMS
+- [ ] **Multi-language SMS**: Templates in different languages
+- [ ] **SMS Analytics**: Dashboard showing sent/delivered/failed counts
+- [ ] **Cost Tracking**: Monitor SMS costs per customer/month
+
+### Known Limitations
+- ⚠️ No SMS history/logging in database
+- ⚠️ No retry mechanism for failed SMS
+- ⚠️ No delivery confirmation tracking
+- ⚠️ Only supports single SMS template
+- ⚠️ No character encoding auto-detection
+
+---
+
+## Deployment Checklist
+
+### Before Production Deployment
+
+- [ ] Set Twilio environment variables in Vercel
+- [ ] Test SMS sending in development
+- [ ] Verify all customers have correct phone number format
+- [ ] Set default SMS template
+- [ ] Test permission system
+- [ ] Review character limits and costs
+- [ ] Ensure Twilio account has sufficient credits
+- [ ] Configure Twilio number with SMS capability
+- [ ] Test error handling scenarios
+- [ ] Review SMS logs in Twilio Dashboard
+
+### After Production Deployment
+
+- [ ] Monitor SMS sending success rate
+- [ ] Check for failed SMS and investigate
+- [ ] Review Twilio costs weekly
+- [ ] Collect user feedback on SMS content
+- [ ] Adjust template based on feedback
+- [ ] Monitor character counts (are messages being split?)
+
+---
+
+## Support & Maintenance
+
+### Monitoring
+- **Twilio Dashboard**: Monitor sent/delivered/failed SMS
+- **Server Logs**: Check for SMS sending errors
+- **Toast Notifications**: User-facing feedback on success/failure
+
+### Maintenance Tasks
+- **Weekly**: Review failed SMS and investigate causes
+- **Monthly**: Check Twilio costs and usage
+- **Quarterly**: Review and update SMS template based on feedback
+- **Yearly**: Rotate Twilio credentials
+
+### Contact
+For issues or questions, contact the development team or refer to:
 - [Twilio Documentation](https://www.twilio.com/docs/sms)
-- [E.164 Phone Number Format](https://en.wikipedia.org/wiki/E.164)
+- [Next.js API Routes](https://nextjs.org/docs/app/building-your-application/routing/route-handlers)
+- Internal project documentation
 
 ---
 
-## ✅ Checklist for New Implementation
+## Conclusion
 
-- [ ] Twilio account created
-- [ ] Environment variables added (local)
-- [ ] Environment variables added (Vercel)
-- [ ] Test customer created with SMS enabled
-- [ ] Test order in `in_production` status
-- [ ] Scanner page tested
-- [ ] SMS confirmation modal tested
-- [ ] SMS received on test phone
-- [ ] Message content reviewed
-- [ ] Error handling tested (invalid credentials)
-- [ ] Code committed to Git
-- [ ] Deployed to production
-- [ ] Production SMS tested
+The SMS notification system provides a seamless way to automatically notify customers when their orders are ready. With full customization through the `/notifications` page and robust error handling, it ensures reliable communication while maintaining security and user control.
+
+**Key Takeaways:**
+- ✅ Fully automated SMS on order completion
+- ✅ Customizable templates with dynamic variables
+- ✅ User confirmation before sending
+- ✅ Comprehensive error handling
+- ✅ Permission-based access control
+- ✅ Real-time preview and validation
+
+**Next Steps:**
+1. Configure Twilio credentials
+2. Set custom SMS template
+3. Enable SMS for customers
+4. Test thoroughly in development
+5. Deploy to production
 
 ---
 
-**Implementation Date**: October 22, 2025  
-**Status**: ✅ Complete and Production-Ready  
-**Tested**: ✅ Local development verified  
-**Next Steps**: Deploy to production and monitor Twilio dashboard
-
-
+**Document Version**: 1.0  
+**Last Updated**: 2025-10-23  
+**Author**: Development Team

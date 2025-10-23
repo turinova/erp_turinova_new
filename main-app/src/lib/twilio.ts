@@ -1,4 +1,5 @@
 import twilio from 'twilio'
+import { createClient } from '@supabase/supabase-js'
 
 interface SMSResult {
   success: boolean
@@ -13,7 +14,8 @@ export async function sendOrderReadySMS(
   customerName: string,
   customerMobile: string,
   orderNumber: string,
-  companyName: string = 'Turinova'
+  companyName: string = 'Turinova',
+  quoteId?: string
 ): Promise<SMSResult> {
   try {
     // Validate environment variables
@@ -55,9 +57,62 @@ export async function sendOrderReadySMS(
     // Initialize Twilio client
     const client = twilio(accountSid, authToken)
 
-    // Create SMS message (Hungarian)
-    // You can customize this message here:
-    const message = `Kedves ${customerName}! Az On ${orderNumber} szamu rendelese elkeszult es atvehetο. Udvozlettel, ${companyName}`
+    // Fetch SMS template from database
+    let messageTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
+    
+    try {
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+      
+      const { data: settings } = await supabase
+        .from('sms_settings')
+        .select('message_template')
+        .limit(1)
+        .single()
+      
+      if (settings?.message_template) {
+        messageTemplate = settings.message_template
+        console.log('[SMS] Using custom template from database')
+      } else {
+        console.log('[SMS] Using default template (no custom template found)')
+      }
+    } catch (error) {
+      console.error('[SMS] Error fetching template, using default:', error)
+    }
+
+    // Fetch unique material names if quoteId is provided
+    let materialNames = ''
+    if (quoteId) {
+      try {
+        const supabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+        
+        const { data: materials } = await supabase
+          .from('quote_materials_pricing')
+          .select('material_name')
+          .eq('quote_id', quoteId)
+        
+        if (materials && materials.length > 0) {
+          // Get unique material names
+          const uniqueMaterials = [...new Set(materials.map(m => m.material_name))]
+          materialNames = uniqueMaterials.join(', ')
+          console.log(`[SMS] Found materials: ${materialNames}`)
+        }
+      } catch (error) {
+        console.error('[SMS] Error fetching materials:', error)
+      }
+    }
+
+    // Replace placeholders in template
+    const message = messageTemplate
+      .replace(/{customer_name}/g, customerName)
+      .replace(/{order_number}/g, orderNumber)
+      .replace(/{company_name}/g, companyName)
+      .replace(/{material_name}/g, materialNames)
 
     console.log(`[SMS] Sending to ${normalizedMobile} (original: ${customerMobile}): ${message}`)
 
