@@ -38,11 +38,13 @@ import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSha
 import Filter2Icon from '@mui/icons-material/Filter2'
 import ContentCutIcon from '@mui/icons-material/ContentCut'
 import { toast } from 'react-toastify'
+import CommentModal from './CommentModal'
 
 interface PortalQuoteData {
   id: string
   quote_number: string
   status: string
+  comment?: string | null
   discount_percent: number
   total_net: number
   total_vat: number
@@ -173,6 +175,7 @@ export default function PortalQuoteDetailClient({
   const [quoteData, setQuoteData] = useState<PortalQuoteData>(initialQuoteData)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false)
+  const [commentModalOpen, setCommentModalOpen] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -200,6 +203,47 @@ export default function PortalQuoteDetailClient({
   // Handle edit optimization
   const handleEditOptimization = () => {
     router.push(`/opti?quote_id=${quoteData.id}`)
+  }
+
+  // Handle comment edit
+  const handleEditComment = () => {
+    setCommentModalOpen(true)
+  }
+
+  const handleSaveComment = async (comment: string) => {
+    try {
+      console.log('[PORTAL CLIENT] Saving comment for quote:', quoteData.id)
+      console.log('[PORTAL CLIENT] Comment value:', comment)
+      
+      const response = await fetch(`/api/portal-quotes/${quoteData.id}/comment`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ comment: comment || null }),
+      })
+
+      console.log('[PORTAL CLIENT] Response status:', response.status)
+      console.log('[PORTAL CLIENT] Response ok:', response.ok)
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('[PORTAL CLIENT] API error response:', error)
+        throw new Error(error.error || 'Failed to save comment')
+      }
+
+      const result = await response.json()
+      console.log('[PORTAL CLIENT] API success response:', result)
+
+      toast.success('Megjegyzés sikeresen mentve')
+      
+      // Refresh quote data
+      window.location.reload()
+    } catch (error) {
+      console.error('[PORTAL CLIENT] Error saving comment:', error)
+      toast.error(error instanceof Error ? error.message : 'Hiba történt a megjegyzés mentésekor')
+      throw error
+    }
   }
 
   // Handle print
@@ -729,6 +773,30 @@ export default function PortalQuoteDetailClient({
 
             </Paper>
 
+            {/* Comment Card - Only shown if comment exists */}
+            {quoteData.comment && (
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Megjegyzés
+                  </Typography>
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 2, 
+                      bgcolor: 'grey.50',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {quoteData.comment}
+                    </Typography>
+                  </Paper>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Cutting List Section (EXACT main app structure - separate Card) */}
             <Card sx={{ mb: 3 }}>
               <CardContent>
@@ -854,6 +922,26 @@ export default function PortalQuoteDetailClient({
                 </span>
               </Tooltip>
 
+              {/* Megjegyzés Button */}
+              <Tooltip 
+                title={quoteData.status !== 'draft' ? 'A megjegyzés csak piszkozat státuszban szerkeszthető' : ''}
+                arrow
+              >
+                <span>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<EditIcon />}
+                    onClick={handleEditComment}
+                    disabled={quoteData.status !== 'draft'}
+                    fullWidth
+                    sx={{ mb: 1 }}
+                  >
+                    Megjegyzés {quoteData.status === 'submitted' && '🔒'}
+                  </Button>
+                </span>
+              </Tooltip>
+
               <Divider sx={{ my: 2 }} />
 
               {/* Print Button */}
@@ -931,6 +1019,15 @@ export default function PortalQuoteDetailClient({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Comment Modal */}
+      <CommentModal
+        open={commentModalOpen}
+        onClose={() => setCommentModalOpen(false)}
+        onSave={handleSaveComment}
+        initialComment={quoteData.comment || null}
+        quoteNumber={quoteData.quote_number}
+      />
     </>
   )
 }

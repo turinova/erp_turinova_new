@@ -196,13 +196,14 @@ export async function POST(request: NextRequest) {
     // Use fixed system user ID for customer portal submissions
     const CUSTOMER_PORTAL_SYSTEM_USER_ID = 'c0000000-0000-0000-0000-000000000001'
     
-    const { data: companyQuote, error: companyQuoteError } = await companySupabase
+    const { data: companyQuote, error: companyQuoteError} = await companySupabase
       .from('quotes')
       .insert([{
         customer_id: companyCustomerId,
         quote_number: companyQuoteNumber,
         status: 'draft',
         source: 'customer_portal', // Mark as customer portal submission
+        comment: portalQuote.comment || null, // Copy comment from portal quote
         total_net: portalQuote.total_net,
         total_vat: portalQuote.total_vat,
         total_gross: portalQuote.total_gross,

@@ -44,6 +44,7 @@ import QuoteCuttingListSection from './QuoteCuttingListSection'
 import AddFeeModal from './AddFeeModal'
 import AddAccessoryModal from './AddAccessoryModal'
 import EditDiscountModal from './EditDiscountModal'
+import CommentModal from './CommentModal'
 import CreateOrderModal from './CreateOrderModal'
 import AddPaymentModal from '../../orders/[order_id]/AddPaymentModal'
 import AssignProductionModal from '../../orders/[order_id]/AssignProductionModal'
@@ -62,6 +63,7 @@ interface QuoteData {
   status: string
   customer_id: string
   discount_percent: number
+  comment?: string | null
   payment_status?: string
   production_machine_id?: string | null
   production_date?: string | null
@@ -316,6 +318,7 @@ export default function QuoteDetailClient({
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false)
   const [addAccessoryModalOpen, setAddAccessoryModalOpen] = useState(false)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
+  const [commentModalOpen, setCommentModalOpen] = useState(false)
   const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
   const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false)
   const [assignProductionModalOpen, setAssignProductionModalOpen] = useState(false)
@@ -485,6 +488,45 @@ export default function QuoteDetailClient({
 
   const handleDiscountUpdated = () => {
     refreshQuoteData()
+  }
+
+  const handleEditComment = () => {
+    setCommentModalOpen(true)
+  }
+
+  const handleSaveComment = async (comment: string) => {
+    try {
+      console.log('[CLIENT] Saving comment for quote:', quoteData.id)
+      console.log('[CLIENT] Comment value:', comment)
+      console.log('[CLIENT] API URL:', `/api/quotes/${quoteData.id}/comment`)
+      
+      const response = await fetch(`/api/quotes/${quoteData.id}/comment`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ comment: comment || null }),
+      })
+
+      console.log('[CLIENT] Response status:', response.status)
+      console.log('[CLIENT] Response ok:', response.ok)
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('[CLIENT] API error response:', error)
+        throw new Error(error.error || 'Failed to save comment')
+      }
+
+      const result = await response.json()
+      console.log('[CLIENT] API success response:', result)
+
+      toast.success('Megjegyzés sikeresen mentve')
+      refreshQuoteData()
+    } catch (error) {
+      console.error('[CLIENT] Error saving comment:', error)
+      toast.error(error instanceof Error ? error.message : 'Hiba történt a megjegyzés mentésekor')
+      throw error
+    }
   }
 
   if (!hasAccess) {
@@ -1096,6 +1138,30 @@ export default function QuoteDetailClient({
               onAddAccessoryClick={handleAddAccessory}
             />
 
+            {/* Comment Card - Only shown if comment exists */}
+            {quoteData.comment && (
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Megjegyzés
+                  </Typography>
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 2, 
+                      bgcolor: 'grey.50',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    <Typography variant="body2">
+                      {quoteData.comment}
+                    </Typography>
+                  </Paper>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Fourth Card: Cutting List Section */}
             <QuoteCuttingListSection
               panels={quoteData.panels}
@@ -1133,6 +1199,18 @@ export default function QuoteDetailClient({
                   disabled={isOrderView && ['ready', 'finished'].includes(quoteData.status)}
                 >
                   Kedvezmény ({quoteData.discount_percent}%) {isOrderView && ['ready', 'finished'].includes(quoteData.status) && '🔒'}
+                </Button>
+
+                {/* Megjegyzés - disabled only for ready/finished */}
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  startIcon={<EditIcon />}
+                  onClick={handleEditComment}
+                  fullWidth
+                  disabled={isOrderView && ['ready', 'finished'].includes(quoteData.status)}
+                >
+                  Megjegyzés {isOrderView && ['ready', 'finished'].includes(quoteData.status) && '🔒'}
                 </Button>
 
                 <Divider />
@@ -1355,6 +1433,15 @@ export default function QuoteDetailClient({
         quoteId={quoteData.id}
         currentDiscountPercent={quoteData.discount_percent}
         onSuccess={handleDiscountUpdated}
+      />
+
+      {/* Comment Modal */}
+      <CommentModal
+        open={commentModalOpen}
+        onClose={() => setCommentModalOpen(false)}
+        onSave={handleSaveComment}
+        initialComment={quoteData.comment || null}
+        quoteNumber={quoteData.quote_number}
       />
 
       {/* Create Order Modal */}

@@ -76,6 +76,7 @@ export async function getPortalQuoteById(quoteId: string) {
         target_company_id,
         quote_number,
         status,
+        comment,
         total_net,
         total_vat,
         total_gross,
