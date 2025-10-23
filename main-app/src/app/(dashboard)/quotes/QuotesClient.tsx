@@ -43,6 +43,8 @@ interface Quote {
   status: string
   source: string
   customer_name: string
+  payment_method_id: string | null
+  payment_method_name: string | null
   final_total_after_discount: number
   updated_at: string
 }
@@ -302,6 +304,7 @@ export default function QuotesClient({
               <TableCell>Árajánlat szám</TableCell>
               <TableCell>Ügyfél</TableCell>
               <TableCell>Forrás</TableCell>
+              <TableCell>Fizetési mód</TableCell>
               <TableCell align="right">Végösszeg</TableCell>
               <TableCell>Frissítve</TableCell>
             </TableRow>
@@ -332,6 +335,11 @@ export default function QuotesClient({
                     color={quote.source === 'customer_portal' ? 'info' : 'default'}
                     size="small"
                   />
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    {quote.payment_method_name || '-'}
+                  </Typography>
                 </TableCell>
                 <TableCell align="right">
                   <Typography variant="body2" fontWeight="medium">

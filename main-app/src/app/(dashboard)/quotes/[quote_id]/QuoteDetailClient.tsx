@@ -1310,6 +1310,11 @@ export default function QuoteDetailClient({
                     size="small"
                   />
                 </Box>
+                {(quoteData as any).payment_methods?.name && (
+                  <Typography variant="body2">
+                    <strong>Fizetési mód:</strong> {(quoteData as any).payment_methods.name}
+                  </Typography>
+                )}
                 {isOrderView && quoteData.payment_status && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Typography variant="body2">

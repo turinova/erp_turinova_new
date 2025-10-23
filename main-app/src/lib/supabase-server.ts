@@ -1249,6 +1249,7 @@ export async function getQuoteById(quoteId: string) {
           order_number,
           status,
           payment_status,
+          payment_method_id,
           source,
           customer_id,
           discount_percent,
@@ -1286,6 +1287,10 @@ export async function getQuoteById(quoteId: string) {
           production_machines(
             id,
             machine_name
+          ),
+          payment_methods(
+            id,
+            name
           )
         `)
         .eq('id', quoteId)
@@ -1538,9 +1543,14 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
         quote_number,
         status,
         source,
+        payment_method_id,
         final_total_after_discount,
         updated_at,
         customers!inner(
+          id,
+          name
+        ),
+        payment_methods(
           id,
           name
         )
@@ -1563,13 +1573,15 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
       return { quotes: [], totalCount: 0, totalPages: 0 }
     }
 
-    // Transform the data to flatten customer name
+    // Transform the data to flatten customer name and payment method
     const transformedQuotes = quotes?.map(quote => ({
       id: quote.id,
       quote_number: quote.quote_number,
       status: quote.status,
       source: quote.source || 'internal',
       customer_name: quote.customers?.name || 'Unknown Customer',
+      payment_method_id: quote.payment_method_id,
+      payment_method_name: quote.payment_methods?.name || null,
       final_total_after_discount: quote.final_total_after_discount,
       updated_at: quote.updated_at
     })) || []

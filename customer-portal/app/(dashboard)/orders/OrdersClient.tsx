@@ -32,6 +32,8 @@ interface PortalOrder {
   submitted_to_company_quote_id: string
   company_quote_number: string
   company_quote_status: string
+  company_payment_status: string | null
+  company_payment_method: string | null
   final_total_after_discount: number
   submitted_at: string
   companies: {
@@ -89,15 +91,28 @@ export default function OrdersClient({
   // Get status label and color
   const getStatusDisplay = (status: string) => {
     const statusMap: Record<string, { label: string; color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' }> = {
-      draft: { label: 'Piszkozat', color: 'warning' },
+      draft: { label: 'Beküldve', color: 'warning' },
       ordered: { label: 'Megrendelve', color: 'success' },
       in_production: { label: 'Gyártásban', color: 'info' },
-      ready: { label: 'Kész', color: 'primary' },
+      ready: { label: 'Gyártás kész', color: 'primary' },
       finished: { label: 'Átadva', color: 'success' },
       cancelled: { label: 'Törölve', color: 'error' }
     }
     
     return statusMap[status] || { label: status, color: 'default' }
+  }
+
+  // Get payment status label and color
+  const getPaymentStatusDisplay = (paymentStatus: string | null) => {
+    if (!paymentStatus) return { label: '-', color: 'default' as const }
+    
+    const statusMap: Record<string, { label: string; color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' }> = {
+      not_paid: { label: 'Nincs fizetve', color: 'error' },
+      partial: { label: 'Részben fizetve', color: 'warning' },
+      paid: { label: 'Kifizetve', color: 'success' }
+    }
+    
+    return statusMap[paymentStatus] || { label: paymentStatus, color: 'default' }
   }
 
   // Handle search
@@ -181,6 +196,8 @@ export default function OrdersClient({
                   <TableCell>Portál árajánlat</TableCell>
                   <TableCell>Céges árajánlat</TableCell>
                   <TableCell align="right">Végösszeg</TableCell>
+                  <TableCell>Fizetési mód</TableCell>
+                  <TableCell>Fizetési állapot</TableCell>
                   <TableCell>Státusz</TableCell>
                   <TableCell>Elküldve</TableCell>
                 </TableRow>
@@ -210,6 +227,20 @@ export default function OrdersClient({
                         <Typography variant="body2" fontWeight="medium">
                           {formatCurrency(order.final_total_after_discount)}
                         </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {order.company_payment_method || '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {mounted && (
+                          <Chip 
+                            label={getPaymentStatusDisplay(order.company_payment_status).label}
+                            color={getPaymentStatusDisplay(order.company_payment_status).color}
+                            size="small"
+                          />
+                        )}
                       </TableCell>
                       <TableCell>
                         {mounted && (

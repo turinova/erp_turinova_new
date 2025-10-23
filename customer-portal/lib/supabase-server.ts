@@ -238,10 +238,19 @@ export async function getPortalOrdersWithPagination(page: number = 1, limit: num
             order.companies.supabase_anon_key
           )
 
-          // Fetch company quote info
+          // Fetch company quote info with payment details
           const { data: companyQuote, error: companyError } = await companySupabase
             .from('quotes')
-            .select('quote_number, status')
+            .select(`
+              quote_number, 
+              status,
+              payment_status,
+              payment_method_id,
+              payment_methods(
+                id,
+                name
+              )
+            `)
             .eq('id', order.submitted_to_company_quote_id)
             .single()
 
@@ -252,14 +261,18 @@ export async function getPortalOrdersWithPagination(page: number = 1, limit: num
           return {
             ...order,
             company_quote_number: companyQuote?.quote_number || 'N/A',
-            company_quote_status: companyQuote?.status || 'unknown'
+            company_quote_status: companyQuote?.status || 'unknown',
+            company_payment_status: companyQuote?.payment_status || null,
+            company_payment_method: companyQuote?.payment_methods?.name || null
           }
         } catch (error) {
           console.error('[Customer Portal SSR] Error enriching order:', error)
           return {
             ...order,
             company_quote_number: 'Error',
-            company_quote_status: 'unknown'
+            company_quote_status: 'unknown',
+            company_payment_status: null,
+            company_payment_method: null
           }
         }
       })
