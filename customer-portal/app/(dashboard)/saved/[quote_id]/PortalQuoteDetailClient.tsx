@@ -26,7 +26,11 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  CircularProgress
+  CircularProgress,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
+  Alert
 } from '@mui/material'
 import { 
   ArrowBack as ArrowBackIcon,
@@ -162,20 +166,30 @@ interface CompanyInfo {
   vat_id: string
 }
 
+interface CompanyPaymentMethod {
+  id: string
+  name: string
+  comment: string | null
+  active: boolean
+}
+
 interface PortalQuoteDetailClientProps {
   initialQuoteData: PortalQuoteData
   companyInfo: CompanyInfo | null
+  companyPaymentMethods: CompanyPaymentMethod[]
 }
 
 export default function PortalQuoteDetailClient({ 
   initialQuoteData,
-  companyInfo
+  companyInfo,
+  companyPaymentMethods
 }: PortalQuoteDetailClientProps) {
   const router = useRouter()
   const [quoteData, setQuoteData] = useState<PortalQuoteData>(initialQuoteData)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false)
   const [commentModalOpen, setCommentModalOpen] = useState(false)
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('')
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -258,6 +272,12 @@ export default function PortalQuoteDetailClient({
 
   // Handle submit confirmation
   const handleSubmitConfirm = async () => {
+    // Validate payment method selection
+    if (!selectedPaymentMethodId) {
+      toast.error('Kérjük, válasszon fizetési módot!')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -267,7 +287,8 @@ export default function PortalQuoteDetailClient({
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          quoteId: quoteData.id
+          quoteId: quoteData.id,
+          paymentMethodId: selectedPaymentMethodId
         })
       })
 
@@ -991,6 +1012,8 @@ export default function PortalQuoteDetailClient({
       <Dialog
         open={submitDialogOpen}
         onClose={() => !isSubmitting && handleSubmitCancel()}
+        maxWidth="sm"
+        fullWidth
       >
         <DialogTitle>Árajánlat elküldése</DialogTitle>
         <DialogContent>
@@ -1003,6 +1026,57 @@ export default function PortalQuoteDetailClient({
             <br /><br />
             Az elküldés után az árajánlat nem szerkeszthető, és a cég munkatársai feldolgozzák.
           </DialogContentText>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Payment Method Selection */}
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+              Fizetési mód kiválasztása *
+            </Typography>
+            
+            {companyPaymentMethods.length === 0 ? (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                A cég nem rendelkezik aktív fizetési móddal. Kérjük, vegye fel a kapcsolatot a céggel!
+              </Alert>
+            ) : (
+              <>
+                <RadioGroup
+                  value={selectedPaymentMethodId}
+                  onChange={(e) => setSelectedPaymentMethodId(e.target.value)}
+                >
+                  {companyPaymentMethods.map((pm) => (
+                    <Box key={pm.id}>
+                      <FormControlLabel
+                        value={pm.id}
+                        control={<Radio />}
+                        label={pm.name}
+                        sx={{ mb: 0.5 }}
+                      />
+                      {pm.comment && selectedPaymentMethodId === pm.id && (
+                        <Alert 
+                          severity="warning" 
+                          sx={{ 
+                            ml: 4, 
+                            mb: 1,
+                            fontSize: '0.875rem'
+                          }}
+                        >
+                          {pm.comment}
+                        </Alert>
+                      )}
+                    </Box>
+                  ))}
+                </RadioGroup>
+                
+                {!selectedPaymentMethodId && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+                    Kérjük, válasszon fizetési módot a folytatáshoz!
+                  </Typography>
+                )}
+              </>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleSubmitCancel} disabled={isSubmitting}>
@@ -1012,7 +1086,7 @@ export default function PortalQuoteDetailClient({
             onClick={handleSubmitConfirm} 
             color="primary" 
             variant="contained"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !selectedPaymentMethodId || companyPaymentMethods.length === 0}
             startIcon={isSubmitting ? <CircularProgress size={20} /> : null}
           >
             {isSubmitting ? 'Küldés...' : 'Elküldöm'}

@@ -282,6 +282,47 @@ export async function getCompanyInfo(companyCredentials: CompanyCredentials) {
 }
 
 /**
+ * Get active payment methods from the company's database
+ * Only returns active payment methods for customer selection
+ */
+export async function getCompanyPaymentMethods(companyCredentials: CompanyCredentials) {
+  const startTime = performance.now()
+  const { supabase_url, supabase_anon_key } = companyCredentials
+  
+  const companySupabase = createSupabaseClient(supabase_url, supabase_anon_key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'customer-portal-ssr',
+      },
+    },
+  })
+  
+  console.log('[Company Data] Fetching active payment methods...')
+  
+  const { data, error } = await companySupabase
+    .from('payment_methods')
+    .select('id, name, comment, active')
+    .eq('active', true)  // Only active payment methods
+    .is('deleted_at', null)  // Not soft-deleted
+    .order('name', { ascending: true })
+  
+  if (error) {
+    console.error('[Company Data] Payment methods fetch error:', error)
+    return []  // Return empty array on error
+  }
+  
+  const queryTime = performance.now()
+  console.log(`[Company Data] Fetched ${data?.length || 0} active payment methods in ${(queryTime - startTime).toFixed(2)}ms`)
+  
+  return data || []
+}
+
+/**
  * Fetch all company data in parallel
  * EXACT main app pattern
  */

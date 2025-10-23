@@ -701,7 +701,7 @@ export default function OrdersListClient({
               <TableCell align="right"><strong>Végösszeg</strong></TableCell>
               <TableCell><strong>Fizetési állapot</strong></TableCell>
               <TableCell><strong>Rendelés állapot</strong></TableCell>
-              <TableCell><strong>Módosítva</strong></TableCell>
+              <TableCell><strong>Tárolás</strong></TableCell>
               <TableCell><strong>Vonalkód</strong></TableCell>
               <TableCell><strong>Gép</strong></TableCell>
               <TableCell><strong>Gyártás dátuma</strong></TableCell>
@@ -789,8 +789,31 @@ export default function OrdersListClient({
                         size="small"
                       />
                     </TableCell>
+                    
+                    {/* Storage Days - Only for 'ready' status */}
                     <TableCell onClick={() => handleRowClick(order.id)}>
-                      {formatDate(order.updated_at)}
+                      {order.status === 'ready' ? (() => {
+                        // Use production_date if available, otherwise fall back to updated_at
+                        const referenceDate = order.production_date || order.updated_at
+                        const today = new Date()
+                        const readyDate = new Date(referenceDate)
+                        const diffTime = today.getTime() - readyDate.getTime()
+                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+                        
+                        // Color coding based on storage days
+                        const color = diffDays <= 3 ? 'success' : 
+                                      diffDays <= 7 ? 'warning' : 'error'
+                        
+                        return (
+                          <Chip 
+                            label={`${diffDays} nap`}
+                            color={color}
+                            size="small"
+                          />
+                        )
+                      })() : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )}
                     </TableCell>
                     
                     {/* Barcode - Editable */}

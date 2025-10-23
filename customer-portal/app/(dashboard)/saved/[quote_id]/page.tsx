@@ -1,6 +1,6 @@
 import React from 'react'
 import { getPortalQuoteById } from '@/lib/supabase-server'
-import { getCompanyInfo } from '@/lib/company-data-server'
+import { getCompanyInfo, getCompanyPaymentMethods } from '@/lib/company-data-server'
 import PortalQuoteDetailClient from './PortalQuoteDetailClient'
 
 interface PageProps {
@@ -32,16 +32,29 @@ export default async function PortalQuoteDetailPage({ params }: PageProps) {
     )
   }
   
-  // Fetch company information from the target company's database
+  // Fetch company information and payment methods from the target company's database
   let companyInfo = null
+  let companyPaymentMethods: any[] = []
+  
   if (quoteData.companies) {
     try {
-      companyInfo = await getCompanyInfo({
-        supabase_url: quoteData.companies.supabase_url,
-        supabase_anon_key: quoteData.companies.supabase_anon_key
-      })
+      const [info, paymentMethods] = await Promise.all([
+        getCompanyInfo({
+          supabase_url: quoteData.companies.supabase_url,
+          supabase_anon_key: quoteData.companies.supabase_anon_key
+        }),
+        getCompanyPaymentMethods({
+          supabase_url: quoteData.companies.supabase_url,
+          supabase_anon_key: quoteData.companies.supabase_anon_key
+        })
+      ])
+      
+      companyInfo = info
+      companyPaymentMethods = paymentMethods
+      
+      console.log(`[Customer Portal] Fetched ${companyPaymentMethods.length} active payment methods for company`)
     } catch (error) {
-      console.error('[Customer Portal] Error fetching company info:', error)
+      console.error('[Customer Portal] Error fetching company data:', error)
     }
   }
   
@@ -51,6 +64,7 @@ export default async function PortalQuoteDetailPage({ params }: PageProps) {
     <PortalQuoteDetailClient 
       initialQuoteData={quoteData}
       companyInfo={companyInfo}
+      companyPaymentMethods={companyPaymentMethods}
     />
   )
 }

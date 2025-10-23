@@ -112,6 +112,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
             href: '/currencies'
           },
           {
+            label: 'Fizetési módok',
+            href: '/payment-methods'
+          },
+          {
             label: 'Egységek',
             href: '/units'
           },
