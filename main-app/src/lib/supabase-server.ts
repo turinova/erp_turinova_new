@@ -546,6 +546,50 @@ export async function getAllVatRates() {
   return data || []
 }
 
+// Payment Methods SSR functions
+export async function getAllPaymentMethods() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('payment_methods')
+    .select('id, name, comment, active, created_at, updated_at')
+    .is('deleted_at', null) // Exclude soft-deleted records
+    .order('name', { ascending: true })
+
+  const queryTime = performance.now()
+  logTiming('Payment Methods DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching payment methods:', error)
+    return []
+  }
+
+  logTiming('Payment Methods Total', startTime, `returned ${data?.length || 0} records`)
+  return data || []
+}
+
+export async function getPaymentMethodById(id: string) {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('payment_methods')
+    .select('id, name, comment, active, created_at, updated_at')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  const queryTime = performance.now()
+  logTiming('Payment Method By ID Query', startTime, `fetched 1 record`)
+
+  if (error) {
+    console.error('Error fetching payment method by ID:', error)
+    return null
+  }
+
+  logTiming('Payment Method By ID Total', startTime, `returned payment method`)
+  return data
+}
+
 // Cutting Fees SSR functions
 export async function getCuttingFee() {
   const startTime = performance.now()
@@ -1483,6 +1527,8 @@ export async function getQuoteById(quoteId: string) {
       order_number: quote.order_number || null,
       status: quote.status,
       payment_status: quote.payment_status || 'not_paid',
+      payment_method_id: quote.payment_method_id || null,
+      payment_methods: quote.payment_methods || null,
       source: quote.source || 'internal',
       customer_id: quote.customer_id,
       discount_percent: quote.discount_percent,

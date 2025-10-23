@@ -22,11 +22,17 @@ export async function POST(request: NextRequest) {
     console.log('[Portal Quote Submit] Starting submission...')
     
     const body = await request.json()
-    const { quoteId } = body
+    const { quoteId, paymentMethodId } = body
 
     if (!quoteId) {
       return NextResponse.json({ 
         error: 'Quote ID is required' 
+      }, { status: 400 })
+    }
+
+    if (!paymentMethodId) {
+      return NextResponse.json({ 
+        error: 'Payment method ID is required' 
       }, { status: 400 })
     }
 
@@ -60,7 +66,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    console.log('[Portal Quote Submit] Customer:', user.id, 'Quote:', quoteId)
+    console.log('[Portal Quote Submit] Customer:', user.id, 'Quote:', quoteId, 'Payment Method:', paymentMethodId)
 
     // Step 1: Fetch complete portal quote data
     const { data: portalQuote, error: quoteError } = await portalSupabase
@@ -203,6 +209,7 @@ export async function POST(request: NextRequest) {
         quote_number: companyQuoteNumber,
         status: 'draft',
         source: 'customer_portal', // Mark as customer portal submission
+        payment_method_id: paymentMethodId, // Set payment method from customer selection
         comment: portalQuote.comment || null, // Copy comment from portal quote
         total_net: portalQuote.total_net,
         total_vat: portalQuote.total_vat,

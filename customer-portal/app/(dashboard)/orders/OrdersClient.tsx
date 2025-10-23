@@ -229,9 +229,15 @@ export default function OrdersClient({
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2">
-                          {order.company_payment_method || '-'}
-                        </Typography>
+                        {order.company_payment_method ? (
+                          <Chip 
+                            label={order.company_payment_method}
+                            color="error"
+                            size="small"
+                          />
+                        ) : (
+                          <Typography variant="body2">-</Typography>
+                        )}
                       </TableCell>
                       <TableCell>
                         {mounted && (

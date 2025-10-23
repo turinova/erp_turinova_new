@@ -337,9 +337,15 @@ export default function QuotesClient({
                   />
                 </TableCell>
                 <TableCell>
-                  <Typography variant="body2">
-                    {quote.payment_method_name || '-'}
-                  </Typography>
+                  {quote.payment_method_name ? (
+                    <Chip 
+                      label={quote.payment_method_name}
+                      color="error"
+                      size="small"
+                    />
+                  ) : (
+                    <Typography variant="body2">-</Typography>
+                  )}
                 </TableCell>
                 <TableCell align="right">
                   <Typography variant="body2" fontWeight="medium">
