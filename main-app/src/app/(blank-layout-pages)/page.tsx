@@ -1,8 +1,6 @@
-import LandingPage from '@/views/LandingPage'
-import { getMode } from '@core/utils/serverHelpers'
+import { redirect } from 'next/navigation'
 
 export default async function RootPage() {
-  const mode = await getMode()
-  
-  return <LandingPage mode={mode} />
+  // Redirect root page directly to login
+  redirect('/login')
 }
