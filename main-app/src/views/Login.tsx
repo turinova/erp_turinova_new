@@ -257,7 +257,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               type='submit'
               disabled={isLoading}
             >
-              {isLoading ? 'Bejelentkezés...' : 'Bejelentkezés'}
+              {isLoading ? 'Bejelentkezés...' : 'Bejelentkezés vállalkozásoknak'}
             </Button>
           </form>
         </div>
