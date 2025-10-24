@@ -26,8 +26,7 @@ import type { Mode } from '@core/types'
 // Component Imports
 import Link from '@components/Link'
 import Logo from '@components/layout/shared/Logo'
-import LiquidEther from '@/components/LiquidEther'
-import CountUp from '@/components/CountUp'
+import Squares from '@/components/Squares'
 
 // Config Imports
 import themeConfig from '@configs/themeConfig'
@@ -158,34 +157,46 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
         )}
         style={{ padding: 0, overflow: 'hidden' }}
       >
-        <LiquidEther
-          colors={['#000000', '#333333', '#666666', '#999999']}
-          mouseForce={9}
-          cursorSize={45}
-          isViscous={false}
-          viscous={30}
-          iterationsViscous={32}
-          iterationsPoisson={32}
-          resolution={0.5}
-          isBounce={false}
-          autoDemo={true}
-          autoSpeed={0.5}
-          autoIntensity={2.2}
-          takeoverDuration={0.25}
-          autoResumeDelay={3000}
-          autoRampDuration={0.6}
+        <Squares
+          squareSize={40}
+          borderColor='#666'
+          hoverFillColor='#333'
         />
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <h1 className="text-5xl font-bold text-gray-900 text-center px-8 leading-tight">
-            Magyarország <CountUp from={100} to={1} direction="down" duration={1} className="inline-block" /> számú ERP rendszere<br />
-            asztalos vállalkozások számára
-          </h1>
-        </div>
+        {/* Full-section overlay with vignette */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.65)',
+            backdropFilter: 'blur(15px)',
+            WebkitBackdropFilter: 'blur(15px)',
+            WebkitMaskImage: 'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            maskImage: 'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            pointerEvents: 'none',
+            zIndex: 5
+          }}
+        />
+            {/* Logo centered on top */}
+            <div 
+              className="absolute"
+              style={{
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+                pointerEvents: 'none'
+              }}
+            >
+              <img 
+                src='/images/turinova-logo.png' 
+                alt='Turinova Logo' 
+                style={{ height: '112px', width: 'auto', objectFit: 'contain' }}
+              />
+            </div>
       </div>
       <div className='flex justify-center items-center bs-full bg-backgroundPaper !min-is-full p-6 md:!min-is-[unset] md:p-12 md:is-[480px]'>
-        <Link className='absolute block-start-5 sm:block-start-[38px] inline-start-6 sm:inline-start-[38px]'>
-          <Logo />
-        </Link>
         <div className='flex flex-col gap-5 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
           <div>
             <Typography variant='h4'>{`Üdvözöljük a ${themeConfig.templateName} rendszerben! 👋🏻`}</Typography>

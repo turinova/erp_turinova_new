@@ -6,7 +6,7 @@ import { getAllCompanyData } from '@/lib/company-data-server'
 import { getPortalQuoteById } from '@/lib/supabase-server'
 
 export const metadata = {
-  title: 'Opti - Turinova Ügyfélportál',
+  title: 'Ajánlat készítés - Turinova Ügyfélportál',
   description: 'Anyag optimalizálás'
 }
 

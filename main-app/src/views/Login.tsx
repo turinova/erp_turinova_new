@@ -185,7 +185,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
           style={{
             top: '50%',
             left: '50%',
-            transform: 'translate(-50%, -50%) scale(3.5)',
+            transform: 'translate(-50%, -50%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -193,7 +193,11 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             pointerEvents: 'none'
           }}
         >
-          <Logo />
+          <img 
+            src='/images/turinova-logo.png' 
+            alt='Turinova Logo' 
+            style={{ height: '112px', width: 'auto', objectFit: 'contain' }}
+          />
         </div>
       </div>
       <div className='flex justify-center items-center bs-full bg-backgroundPaper !min-is-full p-6 md:!min-is-[unset] md:p-12 md:is-[480px]'>
