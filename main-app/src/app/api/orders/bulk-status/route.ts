@@ -10,7 +10,7 @@ import { sendOrderReadySMS } from '@/lib/twilio'
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { order_ids, new_status, create_payments = false, sms_order_ids = [] } = body
+    const { order_ids, new_status, create_payments = false, sms_order_ids = [], require_in_production = false } = body
 
     // Validation
     if (!order_ids || !Array.isArray(order_ids) || order_ids.length === 0) {
@@ -53,7 +53,11 @@ export async function PATCH(request: NextRequest) {
     // Only fetch orders that are in the sms_order_ids list (user confirmed in modal)
     let ordersForSMS: any[] = []
     if (new_status === 'ready' && sms_order_ids.length > 0) {
-      const { data: orders, error: ordersError } = await supabase
+      console.log(`[SMS] Fetching ${sms_order_ids.length} orders for SMS:`, sms_order_ids)
+      console.log(`[SMS] Require in_production filter: ${require_in_production}`)
+      
+      // Build query
+      let query = supabase
         .from('quotes')
         .select(`
           id,
@@ -69,14 +73,27 @@ export async function PATCH(request: NextRequest) {
           )
         `)
         .in('id', sms_order_ids)  // Only fetch user-confirmed orders
-        .eq('status', 'in_production')  // Only get orders currently in production
+      
+      // Apply status filter only for scanner page (require_in_production = true)
+      if (require_in_production) {
+        console.log('[SMS] Applying in_production status filter for scanner page')
+        query = query.eq('status', 'in_production')
+      }
 
-      if (!ordersError && orders) {
+      const { data: orders, error: ordersError } = await query
+
+      if (ordersError) {
+        console.error('[SMS] Error fetching orders:', ordersError)
+      } else if (orders) {
+        console.log(`[SMS] Fetched ${orders.length} orders from database`)
         ordersForSMS = orders.filter(order => 
           order.customers?.sms_notification === true && 
           order.customers?.mobile
         )
-        console.log(`[SMS] Found ${ordersForSMS.length} orders to send SMS (${sms_order_ids.length} selected by user)`)
+        console.log(`[SMS] Found ${ordersForSMS.length} orders eligible for SMS (${sms_order_ids.length} selected by user)`)
+        if (ordersForSMS.length < orders.length) {
+          console.log('[SMS] Some orders filtered out - missing sms_notification or mobile')
+        }
       }
     }
 

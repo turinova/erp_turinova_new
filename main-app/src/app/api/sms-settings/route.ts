@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 
 /**
  * GET /api/sms-settings
- * Fetch current SMS settings
+ * Fetch all SMS templates
  */
 export async function GET(request: NextRequest) {
   try {
@@ -33,15 +33,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch SMS settings
-    const { data, error } = await supabase.from('sms_settings').select('*').limit(1).single()
+    // Fetch all SMS templates
+    const { data, error } = await supabase
+      .from('sms_settings')
+      .select('*')
+      .order('template_name', { ascending: true })
 
     if (error) {
       console.error('Error fetching SMS settings:', error)
       return NextResponse.json({ error: 'Failed to fetch SMS settings', details: error.message }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json(data || [])
   } catch (error) {
     console.error('Error in GET /api/sms-settings:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -50,14 +53,18 @@ export async function GET(request: NextRequest) {
 
 /**
  * PATCH /api/sms-settings
- * Update SMS message template
+ * Update SMS message template for a specific template ID
  */
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message_template } = body
+    const { id, message_template } = body
 
     // Validation
+    if (!id || typeof id !== 'string') {
+      return NextResponse.json({ error: 'Template ID is required' }, { status: 400 })
+    }
+
     if (!message_template || typeof message_template !== 'string' || !message_template.trim()) {
       return NextResponse.json({ error: 'Message template is required' }, { status: 400 })
     }
@@ -87,29 +94,14 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get existing settings to find the ID
-    const { data: existingSettings, error: fetchError } = await supabase
-      .from('sms_settings')
-      .select('id')
-      .limit(1)
-      .single()
-
-    if (fetchError) {
-      console.error('Error fetching existing SMS settings:', fetchError)
-      return NextResponse.json(
-        { error: 'Failed to fetch existing settings', details: fetchError.message },
-        { status: 500 }
-      )
-    }
-
-    // Update SMS settings
+    // Update SMS settings for specific template
     const { data, error } = await supabase
       .from('sms_settings')
       .update({
         message_template: message_template.trim(),
         updated_at: new Date().toISOString()
       })
-      .eq('id', existingSettings.id)
+      .eq('id', id)
       .select()
       .single()
 

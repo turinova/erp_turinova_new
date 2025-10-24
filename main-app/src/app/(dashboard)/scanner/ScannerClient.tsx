@@ -331,7 +331,8 @@ export default function ScannerClient() {
           order_ids: selectedOrders,
           new_status: newStatus,
           create_payments: createPayments,
-          sms_order_ids: smsOrderIds  // Send only selected order IDs for SMS
+          sms_order_ids: smsOrderIds,  // Send only selected order IDs for SMS
+          require_in_production: true  // Scanner page requires in_production status
         })
       })
 

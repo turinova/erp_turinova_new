@@ -12,7 +12,11 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  Stack
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material'
 import { Home as HomeIcon, Save as SaveIcon, Info as InfoIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
@@ -20,31 +24,51 @@ import { useRouter } from 'next/navigation'
 
 interface SmsSettings {
   id: string
+  template_name: string
   message_template: string
   created_at: string
   updated_at: string
 }
 
 interface NotificationsClientProps {
-  initialSettings: SmsSettings | null
+  initialTemplates: SmsSettings[]
   companyName: string
 }
 
-export default function NotificationsClient({ initialSettings, companyName }: NotificationsClientProps) {
+export default function NotificationsClient({ initialTemplates, companyName }: NotificationsClientProps) {
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
-  const [messageTemplate, setMessageTemplate] = useState(initialSettings?.message_template || '')
+  const [selectedTemplate, setSelectedTemplate] = useState<SmsSettings | null>(
+    initialTemplates.length > 0 ? initialTemplates[0] : null
+  )
+  const [messageTemplate, setMessageTemplate] = useState(
+    initialTemplates.length > 0 ? initialTemplates[0].message_template : ''
+  )
 
-  // Update form data when initial settings change
+  // Update form data when selected template changes
   useEffect(() => {
-    if (initialSettings) {
-      setMessageTemplate(initialSettings.message_template)
+    if (selectedTemplate) {
+      setMessageTemplate(selectedTemplate.message_template)
     }
-  }, [initialSettings])
+  }, [selectedTemplate])
+
+  // Handle template selection change
+  const handleTemplateChange = (event: any) => {
+    const templateName = event.target.value
+    const template = initialTemplates.find(t => t.template_name === templateName)
+    if (template) {
+      setSelectedTemplate(template)
+    }
+  }
 
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!selectedTemplate) {
+      toast.error('Nincs kiválasztva sablon')
+      return
+    }
 
     if (!messageTemplate.trim()) {
       toast.error('Az üzenet sablon nem lehet üres')
@@ -60,6 +84,7 @@ export default function NotificationsClient({ initialSettings, companyName }: No
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+          id: selectedTemplate.id,
           message_template: messageTemplate
         })
       })
@@ -81,9 +106,18 @@ export default function NotificationsClient({ initialSettings, companyName }: No
     }
   }
 
-  // Handle reset to default
+  // Handle reset to default based on template type
   const handleReset = () => {
-    const defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
+    if (!selectedTemplate) return
+
+    let defaultTemplate = ''
+    
+    if (selectedTemplate.template_name === 'Készre jelentés') {
+      defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
+    } else if (selectedTemplate.template_name === 'Tárolás figyelmeztetés') {
+      defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es athvehetο. Kerem, vegye fel velunk a kapcsolatot! Udvozlettel, {company_name}'
+    }
+    
     setMessageTemplate(defaultTemplate)
   }
 
@@ -125,6 +159,24 @@ export default function NotificationsClient({ initialSettings, companyName }: No
             SMS Üzenet Sablon
           </Typography>
 
+          {/* Template Selector */}
+          <FormControl fullWidth sx={{ mb: 3 }}>
+            <InputLabel id="template-select-label">Sablon típusa</InputLabel>
+            <Select
+              labelId="template-select-label"
+              id="template-select"
+              value={selectedTemplate?.template_name || ''}
+              label="Sablon típusa"
+              onChange={handleTemplateChange}
+            >
+              {initialTemplates.map((template) => (
+                <MenuItem key={template.id} value={template.template_name}>
+                  {template.template_name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <TextField
             fullWidth
             multiline
@@ -150,7 +202,7 @@ export default function NotificationsClient({ initialSettings, companyName }: No
             </Typography>
           </Box>
 
-          {/* Available Variables */}
+          {/* Available Variables - Dynamic based on template */}
           <Alert severity="info" icon={<InfoIcon />} sx={{ mb: 2 }}>
             <Typography variant="subtitle2" gutterBottom>
               <strong>Elérhető változók:</strong>
@@ -159,7 +211,12 @@ export default function NotificationsClient({ initialSettings, companyName }: No
               <Chip label="{customer_name}" size="small" color="primary" variant="outlined" />
               <Chip label="{order_number}" size="small" color="primary" variant="outlined" />
               <Chip label="{company_name}" size="small" color="primary" variant="outlined" />
-              <Chip label="{material_name}" size="small" color="primary" variant="outlined" />
+              {selectedTemplate?.template_name === 'Készre jelentés' && (
+                <Chip label="{material_name}" size="small" color="primary" variant="outlined" />
+              )}
+              {selectedTemplate?.template_name === 'Tárolás figyelmeztetés' && (
+                <Chip label="{days}" size="small" color="primary" variant="outlined" />
+              )}
             </Stack>
             <Typography variant="caption" display="block" sx={{ mt: 1 }}>
               • <strong>{'{customer_name}'}</strong> - Ügyfél neve (pl.: Mező Dávid)
@@ -168,7 +225,18 @@ export default function NotificationsClient({ initialSettings, companyName }: No
               <br />
               • <strong>{'{company_name}'}</strong> - Cég neve (pl.: Turinova)
               <br />
-              • <strong>{'{material_name}'}</strong> - Felhasznált anyagok egyedi listája (pl.: EGGER U999 ST9, KRONOSPAN K001)
+              {selectedTemplate?.template_name === 'Készre jelentés' && (
+                <>
+                  • <strong>{'{material_name}'}</strong> - Felhasznált anyagok egyedi listája (pl.: EGGER U999 ST9, KRONOSPAN K001)
+                  <br />
+                </>
+              )}
+              {selectedTemplate?.template_name === 'Tárolás figyelmeztetés' && (
+                <>
+                  • <strong>{'{days}'}</strong> - Hány napja van kész állapotban a rendelés (pl.: 5)
+                  <br />
+                </>
+              )}
             </Typography>
           </Alert>
 

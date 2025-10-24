@@ -12,7 +12,6 @@ import TextField from '@mui/material/TextField'
 import IconButton from '@mui/material/IconButton'
 import InputAdornment from '@mui/material/InputAdornment'
 import Button from '@mui/material/Button'
-import Box from '@mui/material/Box'
 import Stepper from '@mui/material/Stepper'
 import Step from '@mui/material/Step'
 import StepLabel from '@mui/material/StepLabel'
@@ -32,7 +31,7 @@ import { toast } from 'react-toastify'
 import type { Mode } from '@core/types'
 
 // Component Imports
-import Logo from '@components/layout/shared/Logo'
+import Squares from '@/components/Squares'
 
 // Hook Imports
 import { useImageVariant } from '@core/hooks/useImageVariant'
@@ -71,7 +70,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
   
   // Step 3: Company & Preferences
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
-  const [smsNotification, setSmsNotification] = useState(false)
+  const [smsNotification, setSmsNotification] = useState(true)
 
   // Vars
   const darkImg = '/images/pages/auth-v2-mask-1-dark.png'
@@ -86,6 +85,73 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
   const characterIllustration = useImageVariant(mode, lightIllustration, darkIllustration)
 
   const handleClickShowPassword = () => setIsPasswordShown(show => !show)
+
+  // Phone number formatting helper
+  const formatPhoneNumber = (value: string) => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '')
+    
+    // If it starts with 36, keep it as is, otherwise add 36
+    let formatted = digits
+
+    if (!digits.startsWith('36') && digits.length > 0) {
+      formatted = '36' + digits
+    }
+    
+    // Format: +36 30 999 2800
+    if (formatted.length >= 2) {
+      const countryCode = formatted.substring(0, 2)
+      const areaCode = formatted.substring(2, 4)
+      const firstPart = formatted.substring(4, 7)
+      const secondPart = formatted.substring(7, 11)
+      
+      let result = `+${countryCode}`
+
+      if (areaCode) result += ` ${areaCode}`
+      if (firstPart) result += ` ${firstPart}`
+      if (secondPart) result += ` ${secondPart}`
+      
+      return result
+    }
+    
+    return value
+  }
+
+  // Hungarian tax number (adószám) formatting helper
+  const formatTaxNumber = (value: string) => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '')
+    
+    // Format: xxxxxxxx-y-zz (8 digits, 1 digit, 2 digits)
+    if (digits.length <= 8) {
+      return digits
+    } else if (digits.length <= 9) {
+      return `${digits.substring(0, 8)}-${digits.substring(8)}`
+    } else if (digits.length <= 11) {
+      return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9)}`
+    } else {
+      // Limit to 11 digits total
+      return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9, 11)}`
+    }
+  }
+
+  // Hungarian company registration number (cégjegyzékszám) formatting helper
+  const formatCompanyRegNumber = (value: string) => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '')
+    
+    // Format: xx-yy-zzzzzz (2 digits, 2 digits, 6 digits)
+    if (digits.length <= 2) {
+      return digits
+    } else if (digits.length <= 4) {
+      return `${digits.substring(0, 2)}-${digits.substring(2)}`
+    } else if (digits.length <= 10) {
+      return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4)}`
+    } else {
+      // Limit to 10 digits total
+      return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4, 10)}`
+    }
+  }
 
   // Fetch companies
   useEffect(() => {
@@ -266,7 +332,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
                 label='Telefonszám' 
                 placeholder='+36 30 999 2800'
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                onChange={(e) => setMobile(formatPhoneNumber(e.target.value))}
                 required
               />
               <TextField
@@ -347,14 +413,16 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
               <TextField 
                 fullWidth 
                 label='Adószám' 
+                placeholder='12345678-1-02'
                 value={billingTaxNumber}
-                onChange={(e) => setBillingTaxNumber(e.target.value)}
+                onChange={(e) => setBillingTaxNumber(formatTaxNumber(e.target.value))}
               />
               <TextField 
                 fullWidth 
                 label='Cégjegyzékszám' 
+                placeholder='01-09-123456'
                 value={billingCompanyRegNumber}
-                onChange={(e) => setBillingCompanyRegNumber(e.target.value)}
+                onChange={(e) => setBillingCompanyRegNumber(formatCompanyRegNumber(e.target.value))}
               />
             </div>
           </>
@@ -403,25 +471,53 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
     <div className='flex bs-full justify-center'>
       <div
         className={classnames(
-          'flex bs-full items-center justify-center flex-1 min-bs-[100dvh] relative p-6 max-md:hidden',
+          'flex bs-full items-center justify-center flex-1 min-bs-[100dvh] relative max-md:hidden',
           {
             'border-ie': settings.skin === 'bordered'
           }
         )}
+        style={{ padding: 0, overflow: 'hidden' }}
       >
-        <div className='pli-6 max-lg:mbs-40 lg:mbe-24'>
-          <img
-            src={characterIllustration}
-            alt='character-illustration'
-            className='max-bs-[673px] max-is-full bs-auto'
+        <Squares 
+          squareSize={40}
+          borderColor='#666'
+          hoverFillColor='#333'
+        />
+        {/* Full-section overlay with vignette */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.65)',
+            backdropFilter: 'blur(15px)',
+            WebkitBackdropFilter: 'blur(15px)',
+            WebkitMaskImage: 'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            maskImage: 'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            pointerEvents: 'none',
+            zIndex: 5
+          }}
+        />
+        {/* Logo centered on top */}
+        <div 
+          className="absolute"
+          style={{
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            pointerEvents: 'none'
+          }}
+        >
+          <img 
+            src='/images/turinova-logo.png' 
+            alt='Turinova Logo' 
+            style={{ height: '112px', width: 'auto', objectFit: 'contain' }}
           />
         </div>
-        <img src={authBackground} className='absolute bottom-[4%] z-[-1] is-full max-md:hidden' />
       </div>
       <div className='flex justify-center items-center bs-full bg-backgroundPaper !min-is-full p-6 md:!min-is-[unset] md:p-12 md:is-[480px]'>
-        <Box sx={{ position: 'absolute', top: { xs: 20, sm: 38 }, left: { xs: 24, sm: 38 } }}>
-          <Logo />
-        </Box>
         <div className='flex flex-col gap-6 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
           <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
             {steps.map((label, index) => (

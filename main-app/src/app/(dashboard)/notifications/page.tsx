@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getSmsSettings, getTenantCompany } from '@/lib/supabase-server'
+import { getAllSmsSettings, getTenantCompany } from '@/lib/supabase-server'
 import NotificationsClient from './NotificationsClient'
 
 export const metadata: Metadata = {
@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 
 interface SmsSettings {
   id: string
+  template_name: string
   message_template: string
   created_at: string
   updated_at: string
@@ -34,9 +35,9 @@ function NotificationsSkeleton() {
 export default async function NotificationsPage() {
   const startTime = performance.now()
 
-  // Fetch SMS settings and company data on the server
-  const [smsSettings, companyData] = await Promise.all([
-    getSmsSettings(),
+  // Fetch all SMS templates and company data on the server
+  const [smsTemplates, companyData] = await Promise.all([
+    getAllSmsSettings(),
     getTenantCompany()
   ])
 
@@ -49,7 +50,7 @@ export default async function NotificationsPage() {
   return (
     <Suspense fallback={<NotificationsSkeleton />}>
       <NotificationsClient 
-        initialSettings={smsSettings} 
+        initialTemplates={smsTemplates} 
         companyName={companyData?.name || 'Turinova'} 
       />
     </Suspense>

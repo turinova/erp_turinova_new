@@ -956,28 +956,33 @@ export default function OptiClient({
 
   // Hungarian phone number formatting helper
   const formatPhoneNumber = (value: string) => {
-    // If user already typed +36, don't modify
-    if (value.startsWith('+36')) {
-      return value
-    }
-    
-    // Extract only digits
+    // Remove all non-digit characters
     const digits = value.replace(/\D/g, '')
     
-    // If no digits, return empty
-    if (!digits) {
-      return ''
+    // If it starts with 36, keep it as is, otherwise add 36
+    let formatted = digits
+
+    if (!digits.startsWith('36') && digits.length > 0) {
+      formatted = '36' + digits
     }
     
-    // If user is typing Hungarian number (starts with 06 or 30/70/20/90), add +36
-    if (digits.startsWith('06') || digits.startsWith('30') || digits.startsWith('70') || digits.startsWith('20') || digits.startsWith('90')) {
-      // Remove leading 0 if present
-      const cleanDigits = digits.startsWith('06') ? digits.substring(1) : digits
-      return `+36 ${cleanDigits}`
+    // Format: +36 30 999 2800
+    if (formatted.length >= 2) {
+      const countryCode = formatted.substring(0, 2)
+      const areaCode = formatted.substring(2, 4)
+      const firstPart = formatted.substring(4, 7)
+      const secondPart = formatted.substring(7, 11)
+      
+      let result = `+${countryCode}`
+
+      if (areaCode) result += ` ${areaCode}`
+      if (firstPart) result += ` ${firstPart}`
+      if (secondPart) result += ` ${secondPart}`
+      
+      return result
     }
     
-    // For other cases, just return the digits as-is
-    return digits
+    return value
   }
 
   // Hungarian tax number (adószám) formatting helper
@@ -1990,6 +1995,7 @@ export default function OptiClient({
                    fullWidth
                    size="small"
                    label="Telefon"
+                   placeholder="+36 30 999 2800"
                    value={customerData.phone}
                    onChange={(e) => handleCustomerDataChange('phone', e.target.value)}
                  />

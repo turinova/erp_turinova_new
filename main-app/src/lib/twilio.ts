@@ -57,7 +57,7 @@ export async function sendOrderReadySMS(
     // Initialize Twilio client
     const client = twilio(accountSid, authToken)
 
-    // Fetch SMS template from database
+    // Fetch SMS template from database - use "Készre jelentés" template
     let messageTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
     
     try {
@@ -69,14 +69,14 @@ export async function sendOrderReadySMS(
       const { data: settings } = await supabase
         .from('sms_settings')
         .select('message_template')
-        .limit(1)
+        .eq('template_name', 'Készre jelentés')
         .single()
       
       if (settings?.message_template) {
         messageTemplate = settings.message_template
-        console.log('[SMS] Using custom template from database')
+        console.log('[SMS] Using "Készre jelentés" template from database')
       } else {
-        console.log('[SMS] Using default template (no custom template found)')
+        console.log('[SMS] Using default template (no "Készre jelentés" template found)')
       }
     } catch (error) {
       console.error('[SMS] Error fetching template, using default:', error)

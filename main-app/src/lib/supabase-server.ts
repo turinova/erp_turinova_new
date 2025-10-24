@@ -2645,10 +2645,10 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
 }
 
 /**
- * Get SMS settings (message template)
+ * Get all SMS settings (message templates)
  */
-export async function getSmsSettings() {
-  if (!checkSupabaseConfig()) return null
+export async function getAllSmsSettings() {
+  if (!checkSupabaseConfig()) return []
 
   const startTime = performance.now()
 
@@ -2656,20 +2656,28 @@ export async function getSmsSettings() {
     const { data, error } = await supabaseServer!
       .from('sms_settings')
       .select('*')
-      .limit(1)
-      .single()
+      .order('template_name', { ascending: true })
 
     if (error) {
       console.error('[SSR] Error fetching SMS settings:', error)
       logTiming('SMS Settings Fetch Error', startTime)
-      return null
+      return []
     }
 
     logTiming('SMS Settings Fetch', startTime)
-    return data
+    return data || []
   } catch (error) {
     console.error('[SSR] Exception fetching SMS settings:', error)
     logTiming('SMS Settings Fetch Error', startTime)
-    return null
+    return []
   }
+}
+
+/**
+ * Get SMS settings (message template) - DEPRECATED, use getAllSmsSettings
+ * Kept for backward compatibility
+ */
+export async function getSmsSettings() {
+  const templates = await getAllSmsSettings()
+  return templates.length > 0 ? templates[0] : null
 }

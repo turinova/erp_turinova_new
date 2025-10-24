@@ -157,28 +157,77 @@ interface ShopOrderClientProps {
   partners: Partner[]
 }
 
-// Phone number formatting helper (from OptiClient)
-const formatPhoneNumber = (phone: string | null) => {
-  if (!phone) return ''
+// Phone number formatting helper
+const formatPhoneNumber = (value: string) => {
+  if (!value) return ''
+  
+  // Remove all non-digit characters
+  const digits = value.replace(/\D/g, '')
+  
+  // If it starts with 36, keep it as is, otherwise add 36
+  let formatted = digits
 
-  // Remove all non-digit characters first
-  const digitsOnly = phone.replace(/\D/g, '')
-
-  // Hungarian numbers starting with 06, 30, 70, 20, 90
-  const hungarianPrefixes = ['06', '30', '70', '20', '90']
-  const isHungarian = hungarianPrefixes.some(prefix => digitsOnly.startsWith(prefix))
-
-  if (isHungarian && !phone.startsWith('+36')) {
-    let formatted = digitsOnly
-    if (formatted.startsWith('06')) {
-      formatted = formatted.substring(2) // Remove leading 06
-    } else if (formatted.startsWith('0')) {
-      formatted = formatted.substring(1) // Remove leading 0 if not 06
-    }
-    return `+36 ${formatted}`
+  if (!digits.startsWith('36') && digits.length > 0) {
+    formatted = '36' + digits
   }
+  
+  // Format: +36 30 999 2800
+  if (formatted.length >= 2) {
+    const countryCode = formatted.substring(0, 2)
+    const areaCode = formatted.substring(2, 4)
+    const firstPart = formatted.substring(4, 7)
+    const secondPart = formatted.substring(7, 11)
+    
+    let result = `+${countryCode}`
 
-  return phone
+    if (areaCode) result += ` ${areaCode}`
+    if (firstPart) result += ` ${firstPart}`
+    if (secondPart) result += ` ${secondPart}`
+    
+    return result
+  }
+  
+  return value
+}
+
+// Hungarian tax number (adószám) formatting helper
+const formatTaxNumber = (value: string) => {
+  if (!value) return ''
+  
+  // Remove all non-digit characters
+  const digits = value.replace(/\D/g, '')
+  
+  // Format: xxxxxxxx-y-zz (8 digits, 1 digit, 2 digits)
+  if (digits.length <= 8) {
+    return digits
+  } else if (digits.length <= 9) {
+    return `${digits.substring(0, 8)}-${digits.substring(8)}`
+  } else if (digits.length <= 11) {
+    return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9)}`
+  } else {
+    // Limit to 11 digits total
+    return `${digits.substring(0, 8)}-${digits.substring(8, 9)}-${digits.substring(9, 11)}`
+  }
+}
+
+// Hungarian company registration number (cégjegyzékszám) formatting helper
+const formatCompanyRegNumber = (value: string) => {
+  if (!value) return ''
+  
+  // Remove all non-digit characters
+  const digits = value.replace(/\D/g, '')
+  
+  // Format: xx-yy-zzzzzz (2 digits, 2 digits, 6 digits)
+  if (digits.length <= 2) {
+    return digits
+  } else if (digits.length <= 4) {
+    return `${digits.substring(0, 2)}-${digits.substring(2)}`
+  } else if (digits.length <= 10) {
+    return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4)}`
+  } else {
+    // Limit to 10 digits total
+    return `${digits.substring(0, 2)}-${digits.substring(2, 4)}-${digits.substring(4, 10)}`
+  }
 }
 
 export default function ShopOrderClient({
@@ -614,7 +663,18 @@ export default function ShopOrderClient({
   const handleInputChange = (field: string, value: any) => {
     if (field.startsWith('customer_')) {
       const customerField = field.replace('customer_', '')
-      setCustomerData(prev => ({ ...prev, [customerField]: value }))
+      
+      // Apply formatting based on field type
+      let formattedValue = value
+      if (customerField === 'mobile') {
+        formattedValue = formatPhoneNumber(value)
+      } else if (customerField === 'billing_tax_number') {
+        formattedValue = formatTaxNumber(value)
+      } else if (customerField === 'billing_company_reg_number') {
+        formattedValue = formatCompanyRegNumber(value)
+      }
+      
+      setCustomerData(prev => ({ ...prev, [customerField]: formattedValue }))
     } else if (field.startsWith('accessory_')) {
       const accessoryField = field.replace('accessory_', '')
       setAccessoryData(prev => ({ ...prev, [accessoryField]: value }))
@@ -1128,7 +1188,8 @@ export default function ShopOrderClient({
                     fullWidth
                     size="small"
                     label="Telefon"
-                    value={formatPhoneNumber(customerData.mobile)}
+                    placeholder="+36 30 999 2800"
+                    value={customerData.mobile || ''}
                     onChange={(e) => handleInputChange('customer_mobile', e.target.value)}
                   />
                 </Grid>
@@ -1204,6 +1265,7 @@ export default function ShopOrderClient({
                             fullWidth
                             size="small"
                             label="Adószám"
+                            placeholder="12345678-1-02"
                             value={customerData.billing_tax_number || ''}
                             onChange={(e) => handleInputChange('customer_billing_tax_number', e.target.value)}
                           />
@@ -1213,6 +1275,7 @@ export default function ShopOrderClient({
                             fullWidth
                             size="small"
                             label="Cégjegyzékszám"
+                            placeholder="01-09-123456"
                             value={customerData.billing_company_reg_number || ''}
                             onChange={(e) => handleInputChange('customer_billing_company_reg_number', e.target.value)}
                           />

@@ -32,7 +32,8 @@ import {
   Home as HomeIcon,
   Check as CheckIcon,
   DoneAll as DoneAllIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Notifications as NotificationsIcon
 } from '@mui/icons-material'
 import { LocalizationProvider, DatePicker } from '@mui/x-date-pickers'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
@@ -40,6 +41,8 @@ import { hu } from 'date-fns/locale'
 import { toast } from 'react-toastify'
 import PaymentConfirmationModal from '../scanner/PaymentConfirmationModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
+import SmsConfirmationModal from '../scanner/SmsConfirmationModal'
+import StorageReminderModal from './StorageReminderModal'
 
 interface Machine {
   id: string
@@ -94,7 +97,12 @@ export default function OrdersListClient({
   const [statusFilter, setStatusFilter] = useState<string>('ordered')
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [smsModalOpen, setSmsModalOpen] = useState(false)
+  const [smsEligibleOrders, setSmsEligibleOrders] = useState<any[]>([])
+  const [reminderModalOpen, setReminderModalOpen] = useState(false)
+  const [reminderEligibleOrders, setReminderEligibleOrders] = useState<any[]>([])
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isSendingReminder, setIsSendingReminder] = useState(false)
   
   // Ensure client-side only rendering and calculate default date
   useEffect(() => {
@@ -505,8 +513,147 @@ export default function OrdersListClient({
     await handleBulkStatusUpdate('cancelled', false)
   }
 
-  // Bulk update status (with optional payment creation)
-  const handleBulkStatusUpdate = async (newStatus: 'ready' | 'finished' | 'cancelled', createPayments: boolean = false) => {
+  // Check SMS eligibility when marking as ready
+  const handleMarkAsReady = async () => {
+    console.log('[Orders SMS] handleMarkAsReady called with selected orders:', selectedOrders)
+    if (selectedOrders.length === 0) {
+      toast.warning('Válassz legalább egy megrendelést')
+      return
+    }
+
+    try {
+      // Check which orders are SMS-eligible
+      console.log('[Orders SMS] Checking eligibility for orders:', selectedOrders)
+      const response = await fetch('/api/orders/sms-eligible', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: selectedOrders })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to check SMS eligibility')
+      }
+
+      const result = await response.json()
+      const eligibleOrders = result.sms_eligible_orders || []
+      console.log('[Orders SMS] Eligible orders:', eligibleOrders)
+
+      if (eligibleOrders.length > 0) {
+        // Show SMS confirmation modal
+        console.log('[Orders SMS] Opening SMS modal with', eligibleOrders.length, 'eligible orders')
+        setSmsEligibleOrders(eligibleOrders)
+        setSmsModalOpen(true)
+      } else {
+        // No SMS-eligible orders, proceed directly
+        console.log('[Orders SMS] No eligible orders, proceeding without SMS')
+        await handleBulkStatusUpdate('ready', false, [])
+      }
+    } catch (error) {
+      console.error('[Orders SMS] Error checking SMS eligibility:', error)
+      toast.error('Hiba történt az SMS jogosultság ellenőrzésekor')
+    }
+  }
+
+  // Handle SMS confirmation
+  const handleSmsConfirmation = async (selectedSmsOrderIds: string[]) => {
+    console.log('[Orders SMS] Confirmation received, selected IDs:', selectedSmsOrderIds)
+    setSmsModalOpen(false)
+    await handleBulkStatusUpdate('ready', false, selectedSmsOrderIds)
+  }
+
+  // Handle storage reminder button click
+  const handleSendReminder = async () => {
+    console.log('[Storage Reminder] Button clicked with selected orders:', selectedOrders)
+    if (selectedOrders.length === 0) {
+      toast.warning('Válassz legalább egy megrendelést')
+      return
+    }
+
+    // Filter to only "ready" (Kész) orders with mobile numbers
+    const readyOrders = orders.filter(order => 
+      selectedOrders.includes(order.id) && 
+      order.status === 'ready'
+    )
+
+    console.log('[Storage Reminder] Found', readyOrders.length, 'ready orders')
+
+    if (readyOrders.length === 0) {
+      toast.warning('Nincs "Kész" státuszú megrendelés a kiválasztottak között')
+      return
+    }
+
+    // Get orders with mobile numbers (we'll let the API filter, but show in modal)
+    const eligibleOrders = readyOrders
+      .filter(order => order.customer_mobile)
+      .map(order => ({
+        id: order.id,
+        order_number: order.order_number,
+        customer_name: order.customer_name,
+        customer_mobile: order.customer_mobile
+      }))
+
+    console.log('[Storage Reminder] Found', eligibleOrders.length, 'orders with mobile numbers')
+
+    if (eligibleOrders.length > 0) {
+      setReminderEligibleOrders(eligibleOrders)
+      setReminderModalOpen(true)
+    } else {
+      toast.warning('A kiválasztott "Kész" megrendelések egyikéhez sincs telefonszám')
+    }
+  }
+
+  // Handle reminder confirmation
+  const handleReminderConfirmation = async (selectedReminderOrderIds: string[]) => {
+    console.log('[Storage Reminder] Confirmation received, selected IDs:', selectedReminderOrderIds)
+    setReminderModalOpen(false)
+    setIsSendingReminder(true)
+
+    try {
+      const response = await fetch('/api/orders/send-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_ids: selectedReminderOrderIds
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to send reminder SMS')
+      }
+
+      const result = await response.json()
+      console.log('[Storage Reminder] Response:', result)
+
+      if (result.sms_sent > 0) {
+        toast.success(`📱 ${result.sms_sent} emlékeztető SMS elküldve`, { autoClose: 5000 })
+      }
+
+      if (result.sms_failed > 0) {
+        toast.warning(
+          `⚠️ ${result.sms_failed} SMS küldése sikertelen${result.errors?.length > 0 ? `: ${result.errors[0]}` : ''}`,
+          { autoClose: 7000 }
+        )
+      }
+
+      if (result.sms_sent === 0 && result.sms_failed === 0) {
+        toast.info(result.message || 'Nincs SMS küldve')
+      }
+
+    } catch (error) {
+      console.error('[Storage Reminder] Error:', error)
+      toast.error(error instanceof Error ? error.message : 'Hiba történt az SMS küldése során')
+    } finally {
+      setIsSendingReminder(false)
+    }
+  }
+
+  // Bulk update status (with optional payment creation and SMS sending)
+  const handleBulkStatusUpdate = async (
+    newStatus: 'ready' | 'finished' | 'cancelled', 
+    createPayments: boolean = false,
+    smsOrderIds: string[] = []
+  ) => {
     if (selectedOrders.length === 0) {
       toast.warning('Válassz legalább egy megrendelést')
       return
@@ -515,13 +662,21 @@ export default function OrdersListClient({
     setIsUpdating(true)
 
     try {
+      console.log('[Orders Bulk Update] Sending request:', {
+        order_ids: selectedOrders,
+        new_status: newStatus,
+        create_payments: createPayments,
+        sms_order_ids: smsOrderIds
+      })
+
       const response = await fetch('/api/orders/bulk-status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           order_ids: selectedOrders,
           new_status: newStatus,
-          create_payments: createPayments
+          create_payments: createPayments,
+          sms_order_ids: smsOrderIds  // Send SMS-eligible order IDs
         })
       })
 
@@ -531,6 +686,7 @@ export default function OrdersListClient({
       }
 
       const result = await response.json()
+      console.log('[Orders Bulk Update] Response:', result)
       
       const statusLabel = newStatus === 'ready' ? 'Gyártás kész' : 
                           newStatus === 'finished' ? 'Megrendelőnek átadva' : 
@@ -543,6 +699,28 @@ export default function OrdersListClient({
         )
       } else {
         toast.success(`${result.updated_count} megrendelés frissítve: ${statusLabel}`)
+      }
+
+      // Show SMS notification results
+      console.log('[Orders SMS] Checking result.sms_notifications:', result.sms_notifications)
+      if (result.sms_notifications) {
+        const { sent, failed, errors } = result.sms_notifications
+        console.log('[Orders SMS] SMS Results - Sent:', sent, 'Failed:', failed, 'Errors:', errors)
+        
+        if (sent > 0) {
+          console.log('[Orders SMS] Showing success toast for', sent, 'SMS')
+          toast.success(`📱 ${sent} SMS értesítés elküldve`, { autoClose: 5000 })
+        }
+        
+        if (failed > 0) {
+          console.log('[Orders SMS] Showing warning toast for', failed, 'failed SMS')
+          toast.warning(
+            `⚠️ ${failed} SMS küldése sikertelen${errors.length > 0 ? `: ${errors[0]}` : ''}`,
+            { autoClose: 7000 }
+          )
+        }
+      } else {
+        console.log('[Orders SMS] No sms_notifications in response')
       }
 
       // Reload the page to get fresh data
@@ -641,7 +819,7 @@ export default function OrdersListClient({
             variant="contained"
             color="info"
             startIcon={<CheckIcon />}
-            onClick={() => handleBulkStatusUpdate('ready')}
+            onClick={handleMarkAsReady}
             disabled={isUpdating}
             size="small"
           >
@@ -666,6 +844,16 @@ export default function OrdersListClient({
             size="small"
           >
             Törlés
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            startIcon={<NotificationsIcon />}
+            onClick={handleSendReminder}
+            disabled={isSendingReminder}
+            size="small"
+          >
+            SMS emlékeztető
           </Button>
         </Box>
       )}
@@ -934,6 +1122,24 @@ export default function OrdersListClient({
         orderCount={selectedOrders.length}
         onConfirm={handleDeleteConfirmation}
         onClose={() => setDeleteModalOpen(false)}
+      />
+
+      {/* SMS Confirmation Modal */}
+      <SmsConfirmationModal
+        open={smsModalOpen}
+        onClose={() => setSmsModalOpen(false)}
+        onConfirm={handleSmsConfirmation}
+        orders={smsEligibleOrders}
+        isProcessing={isUpdating}
+      />
+
+      {/* Storage Reminder Modal */}
+      <StorageReminderModal
+        open={reminderModalOpen}
+        onClose={() => setReminderModalOpen(false)}
+        onConfirm={handleReminderConfirmation}
+        orders={reminderEligibleOrders}
+        isProcessing={isSendingReminder}
       />
     </Box>
   )
