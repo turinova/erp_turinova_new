@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllCompanies } from '@/lib/supabase-server'
 import CompanyClient from './CompanyClient'
+
+export const metadata: Metadata = {
+  title: 'Cégadatok'
+}
 
 interface TenantCompany {
   id: string

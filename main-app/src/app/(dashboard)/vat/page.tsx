@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllVatRates } from '@/lib/supabase-server'
 import VATListClient from './VATListClient'
+
+export const metadata: Metadata = {
+  title: 'Adónem'
+}
 
 interface VatRate {
   id: string

@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getBrandById } from '@/lib/supabase-server'
 import BrandDetailClient from './BrandDetailClient'
@@ -13,6 +14,15 @@ interface Brand {
 
 interface BrandDetailPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: BrandDetailPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const brand = await getBrandById(resolvedParams.id)
+  
+  return {
+    title: brand ? `Gyártó - ${brand.name}` : 'Gyártó'
+  }
 }
 
 // Server-side rendered brand detail page

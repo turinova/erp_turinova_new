@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getWorkerById } from '@/lib/supabase-server'
 import WorkerEditClient from './WorkerEditClient'
@@ -15,6 +16,15 @@ interface Worker {
 
 interface WorkerEditPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: WorkerEditPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const worker = await getWorkerById(resolvedParams.id)
+  
+  return {
+    title: worker ? `Dolgozó - ${worker.name}` : 'Dolgozó'
+  }
 }
 
 // Server-side rendered worker edit page

@@ -24,7 +24,7 @@ export function useNavigation() {
     // During loading, only show home page
     if (loading) {
       return [{
-        label: 'Home',
+        label: 'Kezdőlap',
         href: '/home',
         icon: 'ri-home-smile-line',
         iconColor: '#0B6E99'

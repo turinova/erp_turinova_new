@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { 
   getQuoteById, 
   getAllFeeTypes, 
@@ -13,6 +14,15 @@ import QuoteDetailClient from './QuoteDetailClient'
 
 interface PageProps {
   params: Promise<{ quote_id: string }>
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const quoteData = await getQuoteById(resolvedParams.quote_id)
+  
+  return {
+    title: quoteData ? `Ajánlat - ${quoteData.quote_number}` : 'Ajánlat'
+  }
 }
 
 export default async function QuoteDetailPage({ params }: PageProps) {

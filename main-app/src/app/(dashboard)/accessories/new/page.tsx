@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners } from '@/lib/supabase-server'
 import AccessoryFormClient from '../AccessoryFormClient'
+
+export const metadata: Metadata = {
+  title: 'Új termék'
+}
 
 // Loading skeleton component
 function AccessoryFormSkeleton() {

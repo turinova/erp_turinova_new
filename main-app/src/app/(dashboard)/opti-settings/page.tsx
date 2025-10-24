@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getCuttingFee, getAllCurrencies, getAllVatRates } from '@/lib/supabase-server'
 import OptiSettingsClient from './OptiSettingsClient'
+
+export const metadata: Metadata = {
+  title: 'Opti beállítások'
+}
 
 interface Currency {
   id: string

@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getFeeTypeById } from '@/lib/supabase-server'
 import FeeTypeFormClient from '../FeeTypeFormClient'
 
@@ -36,6 +37,19 @@ function FeeTypeFormSkeleton() {
       </div>
     </div>
   )
+}
+
+export async function generateMetadata({ params }: FeeTypeFormPageProps): Promise<Metadata> {
+  const { id } = await params
+  
+  if (id === 'new') {
+    return { title: 'Új díjtípus' }
+  }
+  
+  const feeType = await getFeeTypeById(id)
+  return {
+    title: feeType ? `Díjtípus - ${feeType.name}` : 'Díjtípus szerkesztése'
+  }
 }
 
 // Server-side rendered fee type form page

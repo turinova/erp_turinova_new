@@ -20,8 +20,11 @@ import '@assets/iconify-icons/generated-icons.css'
 // PerformanceMonitor removed - was causing React hook errors
 
 export const metadata = {
-  title: 'Materialize - Material Next.js Admin Template',
-  description: 'Materialize - Material Next.js Admin Template'
+  title: {
+    template: '%s | Turinova ERP',
+    default: 'Turinova ERP'
+  },
+  description: 'Turinova ERP - Modern gyártásirányítási rendszer'
 }
 
 const RootLayout = async (props: ChildrenType) => {

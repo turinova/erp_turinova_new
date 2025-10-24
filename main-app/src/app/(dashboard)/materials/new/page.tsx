@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { 
   getAllBrandsForMaterials,
   getAllCurrencies,
@@ -7,6 +8,10 @@ import {
   getAllUnits
 } from '@/lib/supabase-server'
 import NewMaterialClient from './NewMaterialClient'
+
+export const metadata: Metadata = {
+  title: 'Új táblás anyag'
+}
 
 // Server-side rendered new material page
 export default async function NewMaterialPage() {

@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAccessoriesWithPagination } from '@/lib/supabase-server'
 import AccessoriesListClient from './AccessoriesListClient'
+
+export const metadata: Metadata = {
+  title: 'Termékek'
+}
 
 interface Accessory {
   id: string

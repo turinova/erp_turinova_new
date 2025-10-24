@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllShopOrders } from '@/lib/supabase-server'
 import CustomerOrdersClient from './CustomerOrdersClient'
+
+export const metadata: Metadata = {
+  title: 'Ügyfél rendelések'
+}
 
 // Server-side rendered customer orders page
 export default async function CustomerOrdersPage() {

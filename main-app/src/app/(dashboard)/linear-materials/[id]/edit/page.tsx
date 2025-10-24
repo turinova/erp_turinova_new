@@ -1,8 +1,18 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getLinearMaterialById, getAllBrandsForLinearMaterials, getAllVatRatesForLinearMaterials, getAllCurrenciesForLinearMaterials, getAllPartners, getAllUnits } from '@/lib/supabase-server'
 import { supabaseServer } from '@/lib/supabase-server'
 import LinearMaterialEditClient from './LinearMaterialEditClient'
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const linearMaterial = await getLinearMaterialById(id)
+  
+  return {
+    title: linearMaterial ? `Szálas anyag - ${linearMaterial.name}` : 'Szálas anyag szerkesztése'
+  }
+}
 
 export default async function LinearMaterialEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params

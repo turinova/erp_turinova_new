@@ -1,9 +1,19 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getShopOrderById } from '@/lib/supabase-server'
 import ShopOrderEditClient from './ShopOrderEditClient'
 
 interface PageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const orderData = await getShopOrderById(resolvedParams.id)
+  
+  return {
+    title: orderData ? `Beszerzés - ${orderData.customer_name}` : 'Beszerzés szerkesztése'
+  }
 }
 
 export default async function ShopOrderEditPage({ params }: PageProps) {

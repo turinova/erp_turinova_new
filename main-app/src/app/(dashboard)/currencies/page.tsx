@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllCurrencies } from '@/lib/supabase-server'
 import CurrenciesListClient from './CurrenciesListClient'
+
+export const metadata: Metadata = {
+  title: 'Pénznem'
+}
 
 interface Currency {
   id: string

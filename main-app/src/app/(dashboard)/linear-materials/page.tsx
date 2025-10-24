@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllLinearMaterials } from '@/lib/supabase-server'
 import LinearMaterialsListClient from './LinearMaterialsListClient'
+
+export const metadata: Metadata = {
+  title: 'Szálas anyagok'
+}
 
 export default async function LinearMaterialsPage() {
   const startTime = performance.now()

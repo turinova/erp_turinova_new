@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAccessoryById, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners } from '@/lib/supabase-server'
 import AccessoryFormClient from '../AccessoryFormClient'
 
@@ -31,6 +32,15 @@ function AccessoryFormSkeleton() {
       </div>
     </div>
   )
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const accessory = await getAccessoryById(id)
+  
+  return {
+    title: accessory ? `Termék - ${accessory.name}` : 'Termék szerkesztése'
+  }
 }
 
 // Server-side rendered edit accessory page

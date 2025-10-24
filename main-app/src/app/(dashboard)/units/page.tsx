@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllUnits } from '@/lib/supabase-server'
 import UnitsListClient from './UnitsListClient'
+
+export const metadata: Metadata = {
+  title: 'Egységek'
+}
 
 interface Unit {
   id: string

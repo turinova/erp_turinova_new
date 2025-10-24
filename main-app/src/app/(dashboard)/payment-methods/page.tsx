@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllPaymentMethods } from '@/lib/supabase-server'
 import PaymentMethodsListClient from './PaymentMethodsListClient'
+
+export const metadata: Metadata = {
+  title: 'Fizetési módok'
+}
 
 interface PaymentMethod {
   id: string

@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getCustomerById } from '@/lib/supabase-server'
 import CustomersEditClient from './CustomersEditClient'
@@ -24,6 +25,15 @@ interface Customer {
 
 interface CustomersEditPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: CustomersEditPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const customer = await getCustomerById(resolvedParams.id)
+  
+  return {
+    title: customer ? `Ügyfél - ${customer.name}` : 'Ügyfél'
+  }
 }
 
 // Server-side rendered customers edit page

@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllEdgeMaterials } from '@/lib/supabase-server'
 import EdgeMaterialsListClient from './EdgeMaterialsListClient'
+
+export const metadata: Metadata = {
+  title: 'Élzárók'
+}
 
 interface EdgeMaterial {
   id: string

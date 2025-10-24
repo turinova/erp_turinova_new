@@ -1,5 +1,10 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import MachineFormClient from '../MachineFormClient'
+
+export const metadata: Metadata = {
+  title: 'Új gép'
+}
 
 // Loading skeleton component
 function MachineFormSkeleton() {

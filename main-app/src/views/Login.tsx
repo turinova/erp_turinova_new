@@ -26,6 +26,7 @@ import type { Mode } from '@core/types'
 // Component Imports
 import Link from '@components/Link'
 import Logo from '@components/layout/shared/Logo'
+import Squares from '@/components/Squares'
 
 // Config Imports
 import themeConfig from '@configs/themeConfig'
@@ -153,25 +154,49 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
     <div className='flex bs-full justify-center'>
       <div
         className={classnames(
-          'flex bs-full items-center justify-center flex-1 min-bs-[100dvh] relative p-6 max-md:hidden',
+          'flex bs-full items-center justify-center flex-1 min-bs-[100dvh] relative max-md:hidden',
           {
             'border-ie': settings.skin === 'bordered'
           }
         )}
+        style={{ padding: 0, overflow: 'hidden' }}
       >
-        <div className='pli-6 max-lg:mbs-40 lg:mbe-24'>
-          <img
-            src={characterIllustration}
-            alt='character-illustration'
-            className='max-bs-[673px] max-is-full bs-auto'
-          />
+        <Squares 
+          squareSize={40}
+          borderColor='#666'
+          hoverFillColor='#333'
+        />
+        {/* Full-section overlay with vignette */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.65)',
+            backdropFilter: 'blur(15px)',
+            WebkitBackdropFilter: 'blur(15px)',
+            WebkitMaskImage: 'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            maskImage: 'radial-gradient(ellipse 60% 70% at center, black 20%, transparent 75%)',
+            pointerEvents: 'none',
+            zIndex: 5
+          }}
+        />
+        {/* Logo centered on top */}
+        <div 
+          className="absolute"
+          style={{
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%) scale(3.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+            pointerEvents: 'none'
+          }}
+        >
+          <Logo />
         </div>
-        <img src={authBackground} className='absolute bottom-[4%] z-[-1] is-full max-md:hidden' />
       </div>
       <div className='flex justify-center items-center bs-full bg-backgroundPaper !min-is-full p-6 md:!min-is-[unset] md:p-12 md:is-[480px]'>
-        <Link className='absolute block-start-5 sm:block-start-[38px] inline-start-6 sm:inline-start-[38px]'>
-          <Logo />
-        </Link>
         <div className='flex flex-col gap-5 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
           <div>
             <Typography variant='h4'>{`Üdvözöljük a ${themeConfig.templateName} rendszerben! 👋🏻`}</Typography>

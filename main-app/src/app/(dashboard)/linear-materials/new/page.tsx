@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllBrandsForLinearMaterials, getAllVatRatesForLinearMaterials, getAllCurrenciesForLinearMaterials, getAllPartners, getAllUnits } from '@/lib/supabase-server'
 import NewLinearMaterialClient from './NewLinearMaterialClient'
+
+export const metadata: Metadata = {
+  title: 'Új szálas anyag'
+}
 
 export default async function NewLinearMaterialPage() {
   const brands = await getAllBrandsForLinearMaterials()

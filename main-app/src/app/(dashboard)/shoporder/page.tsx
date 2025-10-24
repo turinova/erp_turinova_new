@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllWorkers, getAllCustomers, getAllAccessories, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners } from '@/lib/supabase-server'
 import ShopOrderClient from './ShopOrderClient'
+
+export const metadata: Metadata = {
+  title: 'Rendelést felvétel'
+}
 
 // Server-side rendered shop order page
 export default async function ShopOrderPage() {

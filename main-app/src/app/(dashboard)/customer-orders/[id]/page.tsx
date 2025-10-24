@@ -1,9 +1,19 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getShopOrderById } from '@/lib/supabase-server'
 import CustomerOrderDetailClient from './CustomerOrderDetailClient'
 
 interface PageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const orderData = await getShopOrderById(resolvedParams.id)
+  
+  return {
+    title: orderData ? `Ügyfél rendelés - ${orderData.customer_name}` : 'Ügyfél rendelés'
+  }
 }
 
 export default async function CustomerOrderDetailPage({ params }: PageProps) {

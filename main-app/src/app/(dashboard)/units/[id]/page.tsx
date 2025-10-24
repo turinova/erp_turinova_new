@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getUnitById } from '@/lib/supabase-server'
 import UnitsEditClient from './UnitsEditClient'
@@ -13,6 +14,15 @@ interface Unit {
 
 interface UnitsEditPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: UnitsEditPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const unit = await getUnitById(resolvedParams.id)
+  
+  return {
+    title: unit ? `Egység - ${unit.name}` : 'Egység'
+  }
 }
 
 // Server-side rendered units edit page

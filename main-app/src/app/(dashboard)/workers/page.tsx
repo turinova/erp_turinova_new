@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllWorkers } from '@/lib/supabase-server'
 import WorkersList from './WorkersList'
+
+export const metadata: Metadata = {
+  title: 'Dolgozók'
+}
 
 interface Worker {
   id: string

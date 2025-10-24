@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllVatRatesForPartners, getAllCurrenciesForPartners } from '@/lib/supabase-server'
 import PartnerNewClient from './PartnerNewClient'
+
+export const metadata: Metadata = {
+  title: 'Új beszállító'
+}
 
 interface VatRate {
   id: string

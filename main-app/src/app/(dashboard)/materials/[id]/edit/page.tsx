@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { 
   getMaterialById, 
@@ -54,6 +55,15 @@ interface Brand {
 
 interface MaterialsEditPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: MaterialsEditPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const material = await getMaterialById(resolvedParams.id)
+  
+  return {
+    title: material ? `Anyag - ${material.name}` : 'Anyag szerkesztése'
+  }
 }
 
 // Server-side rendered materials edit page

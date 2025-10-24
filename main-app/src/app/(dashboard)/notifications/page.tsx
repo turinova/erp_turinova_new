@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getSmsSettings, getTenantCompany } from '@/lib/supabase-server'
 import NotificationsClient from './NotificationsClient'
+
+export const metadata: Metadata = {
+  title: 'Értesítések'
+}
 
 interface SmsSettings {
   id: string

@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getEdgeMaterialById, getAllBrandsForEdgeMaterials, getAllVatRatesForEdgeMaterials } from '@/lib/supabase-server'
 import EdgeMaterialEditClient from './EdgeMaterialEditClient'
@@ -45,6 +46,15 @@ interface VatRate {
 
 interface EdgeMaterialEditPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: EdgeMaterialEditPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const edgeMaterial = await getEdgeMaterialById(resolvedParams.id)
+  
+  return {
+    title: edgeMaterial ? `Élzáró - ${edgeMaterial.decor}` : 'Élzáró szerkesztése'
+  }
 }
 
 // Server-side rendered edge material edit page

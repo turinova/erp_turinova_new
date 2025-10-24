@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllMaterials, getAllCustomers, getAllEdgeMaterials, getCuttingFee, getQuoteById } from '@/lib/supabase-server'
 import OptiClient from './OptiClient'
+
+export const metadata: Metadata = {
+  title: 'Ajánlat készítés'
+}
 
 interface PageProps {
   searchParams: Promise<{ quote_id?: string }>

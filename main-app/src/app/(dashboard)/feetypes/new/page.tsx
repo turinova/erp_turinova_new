@@ -1,5 +1,10 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import FeeTypeFormClient from '../FeeTypeFormClient'
+
+export const metadata: Metadata = {
+  title: 'Új díjtípus'
+}
 
 // Loading skeleton component
 function FeeTypeFormSkeleton() {

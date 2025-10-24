@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllBrands } from '@/lib/supabase-server'
 import BrandsListClient from './BrandsListClient'
+
+export const metadata: Metadata = {
+  title: 'Gyártók'
+}
 
 interface Brand {
   id: string

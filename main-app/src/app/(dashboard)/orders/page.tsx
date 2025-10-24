@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getOrdersWithPagination, getAllProductionMachines } from '@/lib/supabase-server'
 import OrdersListClient from './OrdersListClient'
+
+export const metadata: Metadata = {
+  title: 'Megrendelések'
+}
 
 interface PageProps {
   searchParams: Promise<{

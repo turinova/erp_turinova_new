@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllProductionMachines } from '@/lib/supabase-server'
 import MachinesListClient from './MachinesListClient'
+
+export const metadata: Metadata = {
+  title: 'Gépek'
+}
 
 interface ProductionMachine {
   id: string

@@ -1,4 +1,5 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getPartnerById, getAllVatRatesForPartners, getAllCurrenciesForPartners } from '@/lib/supabase-server'
 import PartnerEditClient from './PartnerEditClient'
@@ -51,6 +52,15 @@ interface Currency {
 
 interface PartnerEditPageProps {
   params: Promise<{ id: string }>
+}
+
+export async function generateMetadata({ params }: PartnerEditPageProps): Promise<Metadata> {
+  const resolvedParams = await params
+  const partner = await getPartnerById(resolvedParams.id)
+  
+  return {
+    title: partner ? `Beszállító - ${partner.name}` : 'Beszállító szerkesztése'
+  }
 }
 
 // Server-side rendered partner edit page

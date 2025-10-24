@@ -5,7 +5,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
   // Force re-evaluation on every call
   return [
   {
-    label: 'Home',
+    label: 'Kezdőlap',
     href: '/home',
     icon: 'ri-home-smile-line',
 
@@ -21,7 +21,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
   {
     label: 'Opti',
     href: '/opti',
-    icon: 'ri-settings-3-line',
+    icon: 'ri-dashboard-line',
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {

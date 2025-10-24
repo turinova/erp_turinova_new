@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getAllBrandsForEdgeMaterials, getAllVatRatesForEdgeMaterials } from '@/lib/supabase-server'
 import NewEdgeMaterialClient from './NewEdgeMaterialClient'
+
+export const metadata: Metadata = {
+  title: 'Új élzáró'
+}
 
 interface Brand {
   id: string

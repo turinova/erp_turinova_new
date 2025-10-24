@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllFeeTypes } from '@/lib/supabase-server'
 import FeeTypesListClient from './FeeTypesListClient'
+
+export const metadata: Metadata = {
+  title: 'Díjtípusok'
+}
 
 interface FeeType {
   id: string

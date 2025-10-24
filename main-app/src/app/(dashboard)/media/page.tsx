@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import MediaClient from './MediaClient'
 import { getAllMediaFiles } from '@/lib/supabase-server'
+
+export const metadata: Metadata = {
+  title: 'Média'
+}
 
 // Server-side rendered Media page
 export default async function MediaPage() {

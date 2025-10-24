@@ -1,6 +1,11 @@
 import React from 'react'
+import type { Metadata } from 'next'
 import { getQuotesWithPagination } from '@/lib/supabase-server'
 import QuotesClient from './QuotesClient'
+
+export const metadata: Metadata = {
+  title: 'Ajánlatok'
+}
 
 interface PageProps {
   searchParams: Promise<{ 

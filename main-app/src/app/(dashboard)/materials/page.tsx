@@ -1,6 +1,11 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getAllMaterials } from '@/lib/supabase-server'
 import MaterialsListClient from './MaterialsListClient'
+
+export const metadata: Metadata = {
+  title: 'Táblás anyagok'
+}
 
 interface Material {
   id: string

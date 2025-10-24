@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react'
+import type { Metadata } from 'next'
 import { getProductionMachineById } from '@/lib/supabase-server'
 import MachineFormClient from '../MachineFormClient'
 
@@ -30,6 +31,19 @@ function MachineFormSkeleton() {
       </div>
     </div>
   )
+}
+
+export async function generateMetadata({ params }: MachineFormPageProps): Promise<Metadata> {
+  const { id } = await params
+  
+  if (id === 'new') {
+    return { title: 'Új gép' }
+  }
+  
+  const machine = await getProductionMachineById(id)
+  return {
+    title: machine ? `Gép - ${machine.machine_name}` : 'Gép szerkesztése'
+  }
 }
 
 // Server-side rendered machine form page
