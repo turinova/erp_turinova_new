@@ -36,8 +36,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signOut = async () => {
+    console.log('[AuthContext] Signing out...')
     await supabase.auth.signOut()
-    router.push('/login')
+    console.log('[AuthContext] Sign out complete, redirecting to /login')
+    // Use window.location instead of router.push for more reliable redirect
+    window.location.href = '/login'
   }
 
   return (
