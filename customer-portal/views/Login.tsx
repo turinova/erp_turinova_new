@@ -243,7 +243,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             />
             <div className='flex justify-between items-center flex-wrap gap-x-3 gap-y-1'>
               <FormControlLabel control={<Checkbox />} label='Emlékezz rám' />
-              <Typography className='text-end' color='primary.main' component={Link}>
+              <Typography className='text-end' color='primary.main' component={Link} href='/forgot-password'>
                 Elfelejtett jelszó?
               </Typography>
             </div>

@@ -38,7 +38,7 @@ export async function middleware(req: NextRequest) {
   }
   
   // Define public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/register']
+  const publicRoutes = ['/', '/login', '/register', '/forgot-password', '/reset-password']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
   
   // Skip authentication for public routes - return immediately
