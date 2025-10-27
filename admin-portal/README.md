@@ -4,7 +4,8 @@ SaaS administration portal for managing companies, users, and database templates
 
 ## 🚀 Deployment
 
-**Domain:** `saas.turinova.hu`
+**Domain:** `saas.turinova.hu`  
+**Status:** Active
 
 ### Vercel Setup
 

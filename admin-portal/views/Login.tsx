@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react'
 
 // Next Imports
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 // MUI Imports
 import Typography from '@mui/material/Typography'
@@ -67,6 +68,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
 
   // Check if user is already logged in
   useEffect(() => {
+    console.log('🔍 Login component mounted')
     const checkUser = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -156,11 +158,13 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
         )}
         style={{ padding: 0, overflow: 'hidden' }}
       >
-        <Squares
-          squareSize={40}
-          borderColor='#666'
-          hoverFillColor='#333'
-        />
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
+          <Squares 
+            squareSize={40}
+            borderColor='#666'
+            hoverFillColor='#333'
+          />
+        </div>
         {/* Full-section overlay with vignette */}
         <div 
           className="absolute inset-0"
@@ -174,26 +178,6 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             zIndex: 5
           }}
         />
-        {/* Logo centered on top */}
-        <div 
-          className="absolute"
-          style={{
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-            pointerEvents: 'none'
-          }}
-        >
-          <img 
-            src='/images/turinova-logo.png' 
-            alt='Turinova Logo' 
-            style={{ height: '112px', width: 'auto', objectFit: 'contain' }}
-          />
-        </div>
       </div>
       <div className='flex justify-center items-center bs-full bg-backgroundPaper !min-is-full p-6 md:!min-is-[unset] md:p-12 md:is-[480px]'>
         <div className='flex flex-col gap-5 is-full sm:is-auto md:is-full sm:max-is-[400px] md:max-is-[unset] mbs-11 sm:mbs-14 md:mbs-0'>
