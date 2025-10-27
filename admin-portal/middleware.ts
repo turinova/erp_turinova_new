@@ -77,6 +77,8 @@ export async function middleware(req: NextRequest) {
 
   // Verify user is in admin_users table
   console.log(`[${timestamp}] [Middleware] Checking admin_users table...`)
+  console.log(`[${timestamp}] [Middleware] Looking for email:`, session.user.email)
+  
   const { data: adminUser, error: adminError } = await supabase
     .from('admin_users')
     .select('id, email, is_active')
@@ -88,16 +90,21 @@ export async function middleware(req: NextRequest) {
     found: !!adminUser,
     email: adminUser?.email,
     isActive: adminUser?.is_active,
+    hasError: !!adminError,
     error: adminError ? {
       message: adminError.message,
       code: adminError.code,
-      details: adminError.details
+      details: adminError.details,
+      hint: adminError.hint
     } : null
   })
 
   // If not an admin or not active, sign out and redirect
   if (!adminUser) {
-    console.log(`[${timestamp}] [Middleware] ❌ Not an admin, signing out and redirecting to /login`)
+    console.error(`[${timestamp}] [Middleware] ❌❌❌ NOT AN ADMIN USER!`)
+    console.error(`[${timestamp}] [Middleware] User email:`, session.user.email)
+    console.error(`[${timestamp}] [Middleware] Error details:`, adminError)
+    console.error(`[${timestamp}] [Middleware] This user will be signed out and redirected to /login`)
     await supabase.auth.signOut()
     return NextResponse.redirect(new URL('/login', req.url))
   }
