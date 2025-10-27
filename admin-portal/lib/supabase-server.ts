@@ -100,7 +100,6 @@ export async function getAllCompanies() {
  * Get company by ID
  */
 export async function getCompanyById(id: string) {
-  console.log('[getCompanyById] Fetching company:', id, 'ENV:', process.env.VERCEL_ENV || 'local')
   const supabase = createAdminClient()
 
   const { data, error } = await supabase
@@ -114,7 +113,6 @@ export async function getCompanyById(id: string) {
     return null
   }
 
-  console.log('[getCompanyById] Success:', data?.name || 'null')
   return data
 }
 
