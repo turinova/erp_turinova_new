@@ -7,16 +7,19 @@ import CompanyEditClient from './CompanyEditClient'
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const resolvedParams = await params
   
+  console.log('[generateMetadata] Called for company ID:', resolvedParams.id)
+  
   try {
     const company = await getCompanyById(resolvedParams.id)
+    console.log('[generateMetadata] Company result:', company ? company.name : 'NULL')
     
     return {
-      title: company ? `Cég - ${company.name}` : 'Cég'
+      title: company ? `Cég - ${company.name}` : 'Cég - Admin Portal'
     }
   } catch (error) {
-    console.error('[generateMetadata] Error fetching company:', error)
+    console.error('[generateMetadata] ❌ Error:', error)
     return {
-      title: 'Cég'
+      title: 'Cég - Admin Portal'
     }
   }
 }
