@@ -1,15 +1,16 @@
-# Deployment Guide - Turinova ERP & Customer Portal
+# Deployment Guide - Turinova ERP, Customer Portal & Admin Portal
 
 ## 🎯 Deployment Architecture
 
 **Customer Portal:** `turinova.hu` (root domain - public-facing)
 **Main App (ERP):** `app.turinova.hu` (subdomain - staff only)
+**Admin Portal (SaaS):** `saas.turinova.hu` (subdomain - SaaS admin)
 
 ---
 
 ## 📋 Current State
 
-- ✅ Git repository with both apps (`/main-app` and `/customer-portal`)
+- ✅ Git repository with three apps (`/main-app`, `/customer-portal`, `/admin-portal`)
 - ✅ Existing Vercel project deployed at `turinova.hu`
 - ✅ DNS configured with registrar
 
@@ -70,13 +71,51 @@
 
 ---
 
-### Step 3: Configure DNS in Registrar
+### Step 3: Create New Vercel Project (Admin Portal → saas.turinova.hu)
 
-Add the subdomain for the main app:
+**In Vercel Dashboard:**
 
+1. Click **Add New...** → **Project**
+2. **Import Git Repository** (same repo as main app)
+3. **Configure Project:**
+   - **Project Name:** `turinova-admin-portal`
+   - **Root Directory:** `admin-portal` ⚠️ CRITICAL
+   - **Framework Preset:** Next.js (auto-detected)
+   - **Build Command:** `npm run build` (auto-filled)
+   - **Output Directory:** `.next` (auto-filled)
+   - **Install Command:** `npm install` (auto-filled)
+
+4. **Environment Variables:**
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://oatbbtbkerxogzvwicxx.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-portal-anon-key>
+   SUPABASE_SERVICE_ROLE_KEY=<your-portal-service-key>
+   ```
+
+5. Click **Deploy**
+
+6. After first deployment, go to **Settings** → **Domains**
+   - **Add Domain:** `saas.turinova.hu`
+   - Vercel will provide DNS instructions
+
+---
+
+### Step 4: Configure DNS in Registrar
+
+Add the subdomains:
+
+**Main App:**
 ```dns
 Type: CNAME
 Name: app
+Value: cname.vercel-dns.com
+TTL: 3600 (or auto)
+```
+
+**Admin Portal:**
+```dns
+Type: CNAME
+Name: saas
 Value: cname.vercel-dns.com
 TTL: 3600 (or auto)
 ```
@@ -85,7 +124,7 @@ The root domain (`@` or `turinova.hu`) should already point to Vercel from your 
 
 ---
 
-### Step 4: Wait for SSL & Propagation
+### Step 5: Wait for SSL & Propagation
 
 - **SSL Certificates:** Vercel auto-provisions (5-10 minutes)
 - **DNS Propagation:** Can take 5 minutes to 48 hours
