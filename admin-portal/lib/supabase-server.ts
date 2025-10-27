@@ -104,20 +104,47 @@ export async function getAllCompanies() {
  * Get company by ID
  */
 export async function getCompanyById(id: string) {
-  const supabase = createAdminClient()
+  console.log('[getCompanyById] Starting fetch for company ID:', id)
+  
+  try {
+    const supabase = createAdminClient()
+    console.log('[getCompanyById] Admin client created successfully')
 
-  const { data, error } = await supabase
-    .from('companies')
-    .select('*')
-    .eq('id', id)
-    .single()
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('id', id)
+      .single()
 
-  if (error) {
-    console.error('[Admin] Error fetching company:', error)
-    throw error
+    console.log('[getCompanyById] Query result:', { 
+      hasData: !!data, 
+      error: error ? { 
+        message: error.message, 
+        code: error.code, 
+        details: error.details,
+        hint: error.hint 
+      } : null 
+    })
+
+    if (error) {
+      console.error('[getCompanyById] Database error:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        companyId: id
+      })
+      // Don't throw, return null to handle gracefully
+      return null
+    }
+
+    console.log('[getCompanyById] Successfully fetched company:', data?.name)
+    return data
+  } catch (err) {
+    console.error('[getCompanyById] Unexpected error:', err)
+    // Don't throw, return null to handle gracefully
+    return null
   }
-
-  return data
 }
 
 /**
