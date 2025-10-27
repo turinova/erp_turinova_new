@@ -29,7 +29,6 @@ export default async function OrdersPage({ searchParams }: PageProps) {
     <OrdersListClient 
       initialOrders={ordersData.orders}
       totalCount={ordersData.totalCount}
-      totalPages={ordersData.totalPages}
       currentPage={ordersData.currentPage}
       initialSearchTerm={searchTerm}
       machines={machines}

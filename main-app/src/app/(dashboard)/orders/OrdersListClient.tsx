@@ -72,7 +72,6 @@ interface Order {
 interface OrdersListClientProps {
   initialOrders: Order[]
   totalCount: number
-  totalPages: number
   currentPage: number
   initialSearchTerm: string
   machines: Machine[]
@@ -81,7 +80,6 @@ interface OrdersListClientProps {
 export default function OrdersListClient({ 
   initialOrders, 
   totalCount, 
-  totalPages, 
   currentPage, 
   initialSearchTerm,
   machines
@@ -95,6 +93,8 @@ export default function OrdersListClient({
   const [savingOrders, setSavingOrders] = useState<Set<string>>(new Set())
   const [defaultBusinessDay, setDefaultBusinessDay] = useState<Date | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('ordered')
+  const [pageSize, setPageSize] = useState(20)
+  const [clientPage, setClientPage] = useState(1)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [smsModalOpen, setSmsModalOpen] = useState(false)
@@ -131,12 +131,14 @@ export default function OrdersListClient({
     setOrders(initialOrders)
   }, [initialOrders])
 
-  // Filter orders by status (client-side)
-  // Note: Search is now handled server-side for both customer names and material names
+  // Reset page when status filter changes (like customer-orders)
+  useEffect(() => {
+    setClientPage(1)
+  }, [statusFilter])
+
+  // Filter orders by status (client-side, like customer-orders)
   const filteredOrders = orders.filter(order => {
-    // Filter by status
     const matchesStatus = statusFilter === 'all' || order.status === statusFilter
-    
     return matchesStatus
   })
 
@@ -149,6 +151,11 @@ export default function OrdersListClient({
     finished: orders.filter(o => o.status === 'finished').length,
     cancelled: orders.filter(o => o.status === 'cancelled').length
   }
+
+  // Client-side pagination (like customer-orders)
+  const totalPages = Math.ceil(filteredOrders.length / pageSize)
+  const startIndex = (clientPage - 1) * pageSize
+  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + pageSize)
 
   // Calculate next business day (skip weekends)
   const getNextBusinessDay = () => {
@@ -243,14 +250,15 @@ export default function OrdersListClient({
 
   // Search is now client-side, no need for navigation
 
-  // Handle page change
+  // Handle page change (client-side only, like customer-orders)
   const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
-    const params = new URLSearchParams()
-    params.set('page', value.toString())
-    if (searchTerm) {
-      params.set('search', searchTerm)
-    }
-    router.push(`/orders?${params.toString()}`)
+    setClientPage(value)
+  }
+
+  // Handle page size change (like customer-orders)
+  const handleLimitChange = (event: any) => {
+    setPageSize(event.target.value)
+    setClientPage(1)
   }
 
   // Handle row click (navigate to detail page)
@@ -260,11 +268,11 @@ export default function OrdersListClient({
 
   // Handle select all (only filtered orders)
   const handleSelectAll = () => {
-    const filteredIds = filteredOrders.map(order => order.id)
-    if (selectedOrders.length === filteredIds.length && filteredIds.length > 0) {
+    const paginatedIds = paginatedOrders.map(order => order.id)
+    if (selectedOrders.length === paginatedIds.length && paginatedIds.length > 0) {
       setSelectedOrders([])
     } else {
-      setSelectedOrders(filteredIds)
+      setSelectedOrders(paginatedIds)
     }
   }
 
@@ -759,6 +767,31 @@ export default function OrdersListClient({
           Megrendelések
         </Typography>
       </Breadcrumbs>
+
+      {/* Title and Page Size Selector */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          Megrendelések
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={pageSize}
+              onChange={handleLimitChange}
+              displayEmpty
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            Oldal mérete
+          </Typography>
+        </Box>
+      </Box>
       
       {/* Status Filter Buttons */}
       <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -879,8 +912,8 @@ export default function OrdersListClient({
             <TableRow>
               <TableCell padding="checkbox">
                 <Checkbox
-                  checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
-                  indeterminate={selectedOrders.length > 0 && selectedOrders.length < filteredOrders.length}
+                  checked={selectedOrders.length === paginatedOrders.length && paginatedOrders.length > 0}
+                  indeterminate={selectedOrders.length > 0 && selectedOrders.length < paginatedOrders.length}
                   onChange={handleSelectAll}
                 />
               </TableCell>
@@ -896,7 +929,7 @@ export default function OrdersListClient({
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredOrders.length === 0 ? (
+            {paginatedOrders.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
@@ -905,7 +938,7 @@ export default function OrdersListClient({
                 </TableCell>
               </TableRow>
             ) : (
-              filteredOrders.map((order) => {
+              paginatedOrders.map((order) => {
                 const isSelected = selectedOrders.includes(order.id)
                 const statusInfo = getStatusInfo(order.status)
                 const paymentInfo = getPaymentStatusInfo(order.payment_status)
@@ -1087,18 +1120,41 @@ export default function OrdersListClient({
       </TableContainer>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-          <Pagination
-            count={totalPages}
-            page={currentPage}
-            onChange={handlePageChange}
-            color="primary"
-            showFirstButton
-            showLastButton
-          />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          {searchTerm || statusFilter !== 'ordered' 
+            ? `Keresési eredmény: ${filteredOrders.length} megrendelés` 
+            : `Összesen ${orders.length} megrendelés`
+          }
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={pageSize}
+              onChange={handleLimitChange}
+              displayEmpty
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            Oldal mérete
+          </Typography>
         </Box>
-      )}
+        
+        <Pagination
+          count={totalPages}
+          page={clientPage}
+          onChange={handlePageChange}
+          color="primary"
+          showFirstButton
+          showLastButton
+        />
+      </Box>
 
       {/* Payment Confirmation Modal */}
       <PaymentConfirmationModal

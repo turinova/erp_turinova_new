@@ -1802,7 +1802,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
         .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
         .is('deleted_at', null)
         .ilike('customers.name', `%${trimmedSearch}%`)
-        .order('updated_at', { ascending: false })
+        .order('updated_at', { ascending: false})
         .range(offset, offset + limit - 1)
 
       // Query 2: Material matches (if any)
@@ -1940,7 +1940,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
           machine_name
         )
       `, { count: 'exact' })
-      .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled']) // Show all order statuses including cancelled
+      .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
       .is('deleted_at', null)
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -1985,8 +1985,9 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
     })) || []
 
     const totalCount = count || 0
-    const totalPages = Math.ceil(totalCount / limit)
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / limit) : 0
 
+    console.log(`[SSR] Pagination calculation: totalCount=${totalCount}, limit=${limit}, totalPages=${totalPages}`)
     logTiming('Orders Fetch Total', startTime, `returned ${transformedOrders.length} orders (page ${page}/${totalPages})`)
     console.log(`[SSR] Orders fetched successfully: ${transformedOrders.length} orders, total: ${totalCount}`)
     
