@@ -5,6 +5,7 @@ import React, { useState, useEffect } from 'react'
 
 // Next Imports
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 // MUI Imports
 import Typography from '@mui/material/Typography'
@@ -21,6 +22,7 @@ import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import Switch from '@mui/material/Switch'
+import Checkbox from '@mui/material/Checkbox'
 
 // Third-party Imports
 import classnames from 'classnames'
@@ -71,6 +73,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
   // Step 3: Company & Preferences
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [smsNotification, setSmsNotification] = useState(true)
+  const [acceptedTerms, setAcceptedTerms] = useState(false)
 
   // Vars
   const darkImg = '/images/pages/auth-v2-mask-1-dark.png'
@@ -220,6 +223,12 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
   }
 
   const handleRegister = async () => {
+    // Validate terms acceptance
+    if (!acceptedTerms) {
+      toast.error('Kérjük, fogadja el az Általános Szerződési Feltételeket és az Adatkezelési tájékoztatót')
+      return
+    }
+
     setIsLoading(true)
 
     try {
@@ -458,6 +467,38 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
                   />
                 }
                 label='SMS értesítések küldése'
+              />
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    color='primary'
+                    required
+                  />
+                }
+                label={
+                  <Typography variant='body2'>
+                    Elfogadom az{' '}
+                    <Link 
+                      href='/terms-and-conditions' 
+                      target='_blank' 
+                      rel='noopener noreferrer'
+                      style={{ color: 'var(--mui-palette-primary-main)', textDecoration: 'underline' }}
+                    >
+                      Általános Szerződési Feltételeket
+                    </Link>
+                    {' '}és az{' '}
+                    <Link 
+                      href='/privacy-policy' 
+                      target='_blank' 
+                      rel='noopener noreferrer'
+                      style={{ color: 'var(--mui-palette-primary-main)', textDecoration: 'underline' }}
+                    >
+                      Adatkezelési tájékoztatót
+                    </Link>
+                  </Typography>
+                }
               />
             </div>
           </>

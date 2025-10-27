@@ -27,6 +27,24 @@ const FooterContent = () => {
         <span className='text-primary capitalize'>
           Turinova
         </span>
+        <span className='text-textSecondary'>{` | `}</span>
+        <Link 
+          href='/terms-and-conditions' 
+          target='_blank' 
+          rel='noopener noreferrer'
+          className='text-primary hover:underline'
+        >
+          ÁSZF
+        </Link>
+        <span className='text-textSecondary'>{` | `}</span>
+        <Link 
+          href='/privacy-policy' 
+          target='_blank' 
+          rel='noopener noreferrer'
+          className='text-primary hover:underline'
+        >
+          Adatkezelési tájékoztató
+        </Link>
       </p>
     </div>
   )
