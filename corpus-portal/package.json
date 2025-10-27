@@ -19,6 +19,8 @@
     "@mui/material-nextjs": "6.2.1",
     "@mui/system": "6.2.1",
     "@mui/x-date-pickers": "^8.14.0",
+    "@react-three/drei": "^10.7.6",
+    "@react-three/fiber": "^9.4.0",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.57.2",
     "classnames": "2.5.1",
@@ -30,7 +32,8 @@
     "react-toastify": "^11.0.5",
     "react-use": "^17.5.1",
     "recharts": "^2.15.0",
-    "server-only": "0.0.1"
+    "server-only": "0.0.1",
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@iconify/json": "2.2.286",
@@ -40,6 +43,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/three": "^0.180.0",
     "autoprefixer": "10.4.20",
     "eslint": "8.57.1",
     "eslint-config-next": "15.1.2",
@@ -50,4 +54,3 @@
     "typescript": "5.5.4"
   }
 }
-
