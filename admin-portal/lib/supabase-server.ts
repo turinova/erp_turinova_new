@@ -32,10 +32,6 @@ export const createClient = async () => {
 
 // Create an admin client with service role (for companies CRUD)
 export const createAdminClient = () => {
-  console.log('[Admin Client] Creating admin client')
-  console.log('[Admin Client] Supabase URL:', supabaseUrl ? '✅ Set' : '❌ Missing')
-  console.log('[Admin Client] Service Role Key:', supabaseServiceRoleKey ? '✅ Set' : '❌ Missing')
-  
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error('Missing Supabase credentials for admin client')
   }
@@ -104,47 +100,20 @@ export async function getAllCompanies() {
  * Get company by ID
  */
 export async function getCompanyById(id: string) {
-  console.log('[getCompanyById] Starting fetch for company ID:', id)
-  
-  try {
-    const supabase = createAdminClient()
-    console.log('[getCompanyById] Admin client created successfully')
+  const supabase = createAdminClient()
 
-    const { data, error } = await supabase
-      .from('companies')
-      .select('*')
-      .eq('id', id)
-      .single()
+  const { data, error } = await supabase
+    .from('companies')
+    .select('*')
+    .eq('id', id)
+    .single()
 
-    console.log('[getCompanyById] Query result:', { 
-      hasData: !!data, 
-      error: error ? { 
-        message: error.message, 
-        code: error.code, 
-        details: error.details,
-        hint: error.hint 
-      } : null 
-    })
-
-    if (error) {
-      console.error('[getCompanyById] Database error:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
-        companyId: id
-      })
-      // Don't throw, return null to handle gracefully
-      return null
-    }
-
-    console.log('[getCompanyById] Successfully fetched company:', data?.name)
-    return data
-  } catch (err) {
-    console.error('[getCompanyById] Unexpected error:', err)
-    // Don't throw, return null to handle gracefully
+  if (error) {
+    console.error('[Admin] Error fetching company:', error)
     return null
   }
+
+  return data
 }
 
 /**
@@ -179,7 +148,6 @@ export async function createCompany(companyData: any) {
  * Update company
  */
 export async function updateCompany(id: string, companyData: any) {
-  console.log('[updateCompany] Starting update for company:', id)
   const supabase = createAdminClient()
 
   const updateData: any = {
@@ -194,16 +162,12 @@ export async function updateCompany(id: string, companyData: any) {
   if (companyData.logo_url !== undefined) updateData.logo_url = companyData.logo_url
   if (companyData.settings !== undefined) updateData.settings = companyData.settings
 
-  console.log('[updateCompany] Update data:', updateData)
-
   const { data, error } = await supabase
     .from('companies')
     .update(updateData)
     .eq('id', id)
     .select()
     .single()
-  
-  console.log('[updateCompany] Result:', { data, error })
 
   if (error) {
     console.error('[Admin] Error updating company:', error)

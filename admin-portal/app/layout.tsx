@@ -50,56 +50,6 @@ const RootLayout = async (props: ChildrenType) => {
       <head>
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            // Global debug script - runs IMMEDIATELY on page load
-            (function() {
-              const timestamp = new Date().toISOString();
-              console.warn('🔵 [ROOT LAYOUT] LOADED AT:', timestamp);
-              console.warn('🔵 [ROOT LAYOUT] Current URL:', window.location.href);
-              console.warn('🔵 [ROOT LAYOUT] Pathname:', window.location.pathname);
-              
-              // Store initial URL
-              window.__INITIAL_URL__ = window.location.href;
-              window.__INITIAL_PATHNAME__ = window.location.pathname;
-              
-              // Intercept navigation
-              const originalPushState = history.pushState;
-              const originalReplaceState = history.replaceState;
-              
-              history.pushState = function(...args) {
-                console.error('🔴 [NAVIGATION] pushState called:', args[2]);
-                console.error('🔴 [NAVIGATION] From:', window.location.pathname, 'To:', args[2]);
-                console.trace('🔴 [NAVIGATION] Stack trace:');
-                return originalPushState.apply(this, args);
-              };
-              
-              history.replaceState = function(...args) {
-                console.error('🔴 [NAVIGATION] replaceState called:', args[2]);
-                console.error('🔴 [NAVIGATION] From:', window.location.pathname, 'To:', args[2]);
-                console.trace('🔴 [NAVIGATION] Stack trace:');
-                return originalReplaceState.apply(this, args);
-              };
-              
-              // Track popstate (back/forward)
-              window.addEventListener('popstate', function(e) {
-                console.error('🔴 [NAVIGATION] popstate event:', window.location.pathname);
-              });
-              
-              // Log when DOM is ready
-              if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                  console.warn('🔵 [ROOT LAYOUT] DOM Ready. Final URL:', window.location.href);
-                  if (window.location.pathname !== window.__INITIAL_PATHNAME__) {
-                    console.error('🔴🔴🔴 [REDIRECT DETECTED] Initial:', window.__INITIAL_PATHNAME__, '→ Current:', window.location.pathname);
-                  }
-                });
-              } else {
-                console.warn('🔵 [ROOT LAYOUT] DOM already ready. URL:', window.location.href);
-              }
-            })();
-          `
-        }} />
       </head>
       <body className='flex is-full min-bs-full flex-auto flex-col'>
         <InitColorSchemeScript attribute='data' defaultMode={systemMode} />
