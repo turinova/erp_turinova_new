@@ -45,6 +45,15 @@ const FooterContent = () => {
         >
           Adatkezelési tájékoztató
         </Link>
+        <span className='text-textSecondary'>{` | `}</span>
+        <Link 
+          href='/cookie-policy' 
+          target='_blank' 
+          rel='noopener noreferrer'
+          className='text-primary hover:underline'
+        >
+          Süti szabályzat
+        </Link>
       </p>
     </div>
   )
