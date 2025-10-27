@@ -255,6 +255,17 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             >
               {isLoading ? 'Bejelentkezés...' : 'Bejelentkezés megrendelőknek'}
             </Button>
+            <div className='flex justify-center items-center flex-wrap gap-2'>
+              <Typography>Még nincs fiókom, regisztrálok!</Typography>
+            </div>
+            <Button 
+              fullWidth 
+              variant='outlined' 
+              component={Link} 
+              href='/register'
+            >
+              Regisztráció
+            </Button>
           </form>
         </div>
       </div>

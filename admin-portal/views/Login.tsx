@@ -184,7 +184,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 999,
+            zIndex: 10,
             pointerEvents: 'none'
           }}
         >
