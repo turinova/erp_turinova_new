@@ -57,7 +57,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Verify user is in admin_users table
-  const { data: adminUser } = await supabase
+  const { data: adminUser, error: adminError } = await supabase
     .from('admin_users')
     .select('id, email, is_active')
     .eq('email', session.user.email)
@@ -66,10 +66,17 @@ export async function middleware(req: NextRequest) {
 
   // If not an admin or not active, sign out and redirect
   if (!adminUser) {
+    console.error('[Middleware] Admin check failed!', {
+      email: session.user.email,
+      path: req.nextUrl.pathname,
+      error: adminError?.message,
+      env: process.env.VERCEL_ENV || 'local'
+    })
     await supabase.auth.signOut()
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
+  console.log('[Middleware] Admin verified for path:', req.nextUrl.pathname)
   return response
 }
 
