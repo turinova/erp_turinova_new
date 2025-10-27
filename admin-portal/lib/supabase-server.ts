@@ -32,6 +32,14 @@ export const createClient = async () => {
 
 // Create an admin client with service role (for companies CRUD)
 export const createAdminClient = () => {
+  console.log('[Admin Client] Creating admin client')
+  console.log('[Admin Client] Supabase URL:', supabaseUrl ? '✅ Set' : '❌ Missing')
+  console.log('[Admin Client] Service Role Key:', supabaseServiceRoleKey ? '✅ Set' : '❌ Missing')
+  
+  if (!supabaseUrl || !supabaseServiceRoleKey) {
+    throw new Error('Missing Supabase credentials for admin client')
+  }
+  
   return createSupabaseClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
       autoRefreshToken: false,
@@ -144,6 +152,7 @@ export async function createCompany(companyData: any) {
  * Update company
  */
 export async function updateCompany(id: string, companyData: any) {
+  console.log('[updateCompany] Starting update for company:', id)
   const supabase = createAdminClient()
 
   const updateData: any = {
@@ -158,12 +167,16 @@ export async function updateCompany(id: string, companyData: any) {
   if (companyData.logo_url !== undefined) updateData.logo_url = companyData.logo_url
   if (companyData.settings !== undefined) updateData.settings = companyData.settings
 
+  console.log('[updateCompany] Update data:', updateData)
+
   const { data, error } = await supabase
     .from('companies')
     .update(updateData)
     .eq('id', id)
     .select()
     .single()
+  
+  console.log('[updateCompany] Result:', { data, error })
 
   if (error) {
     console.error('[Admin] Error updating company:', error)
