@@ -220,7 +220,8 @@ export async function getAllMaterials() {
         trim_bottom_mm,
         trim_left_mm,
         rotatable,
-        waste_multi
+        waste_multi,
+        usage_limit
       )
     `)
     .is('deleted_at', null)
@@ -265,6 +266,7 @@ export async function getAllMaterials() {
       trim_left_mm: settings?.trim_left_mm || 10,
       rotatable: settings?.rotatable ?? true,
       waste_multi: settings?.waste_multi || 1,
+      usage_limit: settings?.usage_limit !== undefined && settings?.usage_limit !== null ? settings.usage_limit : 0.65,
       base_price: material.base_price || 0,
       multiplier: material.multiplier || 1.38,
       price_per_sqm: material.price_per_sqm || 0, // Keep for backward compatibility
