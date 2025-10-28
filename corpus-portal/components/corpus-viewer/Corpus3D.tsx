@@ -2,7 +2,6 @@
 
 import { OrbitControls, Grid } from '@react-three/drei'
 import Panel from './Panel'
-import ConnectionLines from './ConnectionLines'
 import DimensionLines from './DimensionLines'
 import { mm } from '@/lib/units'
 
@@ -16,6 +15,8 @@ interface PanelData {
   depth: number
   thickness: number
   yPosition?: number
+  xPosition?: number
+  zPosition?: number
 }
 
 interface Corpus3DProps {
@@ -40,12 +41,16 @@ export default function Corpus3D({
   panels = [] 
 }: Corpus3DProps) {
 
+  // Calculate corpus center for camera target
+  const corpusCenter: [number, number, number] = [0, mm(heightMM) / 2, 0]
+
   // If no panels provided, don't render anything
   if (panels.length === 0) {
     return (
       <>
         {/* Camera Controls - Rotation enabled, pan disabled */}
         <OrbitControls
+          target={corpusCenter}
           enablePan={false}
           enableZoom={true}
           enableRotate={true}
@@ -81,6 +86,9 @@ export default function Corpus3D({
 
   // Calculate positions for each panel type
   // Using the panel's own dimensions, not the corpus dimensions
+  
+  // Get reference depth from side panels (for front-alignment logic)
+  const referenceDepthM = leftPanel ? mm(leftPanel.depth) : (rightPanel ? mm(rightPanel.depth) : mm(depthMM))
 
   const renderedPanels: Array<{ size: [number, number, number]; position: [number, number, number] }> = []
 
@@ -90,9 +98,12 @@ export default function Corpus3D({
     const h = mm(leftPanel.height)
     const d = mm(leftPanel.depth)
     
+    // Offset left panel to the left by 0.5mm for edge visibility
+    const edgeOffset = mm(0.5)
+    
     renderedPanels.push({
       size: [w, h, d],
-      position: [-(mm(widthMM) / 2 - w / 2), h / 2, 0]
+      position: [-(mm(widthMM) / 2 - w / 2) - edgeOffset, h / 2, 0]
     })
   }
 
@@ -102,9 +113,12 @@ export default function Corpus3D({
     const h = mm(rightPanel.height)
     const d = mm(rightPanel.depth)
     
+    // Offset right panel to the right by 0.5mm for edge visibility
+    const edgeOffset = mm(0.5)
+    
     renderedPanels.push({
       size: [w, h, d],
-      position: [+(mm(widthMM) / 2 - w / 2), h / 2, 0]
+      position: [+(mm(widthMM) / 2 - w / 2) + edgeOffset, h / 2, 0]
     })
   }
 
@@ -115,9 +129,20 @@ export default function Corpus3D({
     const t = mm(topPanel.thickness)  // thickness is the vertical dimension
     const d = mm(topPanel.depth)
     
+    // Get side panel height for reference
+    const sideHeight = leftPanel ? mm(leftPanel.height) : (rightPanel ? mm(rightPanel.height) : mm(heightMM))
+    
+    // Use custom positions if provided, otherwise calculate defaults
+    const x = topPanel.xPosition !== undefined ? mm(topPanel.xPosition) : 0
+    const y = topPanel.yPosition !== undefined ? mm(topPanel.yPosition) : sideHeight - t / 2 // Top edge at side panel height
+    const z = topPanel.zPosition !== undefined ? mm(topPanel.zPosition) : (
+      // Default Z: front-align if smaller depth
+      d < referenceDepthM ? referenceDepthM / 2 - d / 2 : 0
+    )
+    
     renderedPanels.push({
       size: [w, t, d],  // width, thickness (vertical), depth
-      position: [0, mm(heightMM) - t / 2, 0]  // top edge at heightMM
+      position: [x, y, z]  // use custom X, Y, Z positions
     })
   }
 
@@ -127,22 +152,40 @@ export default function Corpus3D({
     const t = mm(bottomPanel.thickness)  // thickness is the vertical dimension
     const d = mm(bottomPanel.depth)
     
+    // Use custom positions if provided, otherwise calculate defaults
+    const x = bottomPanel.xPosition !== undefined ? mm(bottomPanel.xPosition) : 0
+    const y = bottomPanel.yPosition !== undefined ? mm(bottomPanel.yPosition) : t / 2 // Bottom edge at y=0, center at t/2
+    const z = bottomPanel.zPosition !== undefined ? mm(bottomPanel.zPosition) : (
+      // Default Z: front-align if smaller depth
+      d < referenceDepthM ? referenceDepthM / 2 - d / 2 : 0
+    )
+    
     renderedPanels.push({
       size: [w, t, d],  // width, thickness (vertical), depth
-      position: [0, t / 2, 0]  // bottom edge at Y=0
+      position: [x, y, z]  // use custom X, Y, Z positions
     })
   }
 
-  // SHELVES: horizontal panels at custom Y positions
+  // SHELVES: horizontal panels at custom X, Y, Z positions
   shelves.forEach(shelf => {
     const w = mm(shelf.width)
     const t = mm(shelf.thickness)  // thickness is the vertical dimension
     const d = mm(shelf.depth)
-    const y = shelf.yPosition ? mm(shelf.yPosition) : mm(heightMM) / 2  // center if no yPosition
+    
+    // Get side panel height for reference
+    const sideHeight = leftPanel ? mm(leftPanel.height) : (rightPanel ? mm(rightPanel.height) : mm(heightMM))
+    
+    // Use custom positions if provided, otherwise calculate defaults
+    const x = shelf.xPosition !== undefined ? mm(shelf.xPosition) : 0
+    const y = shelf.yPosition !== undefined ? mm(shelf.yPosition) : sideHeight / 2
+    const z = shelf.zPosition !== undefined ? mm(shelf.zPosition) : (
+      // Default Z: front-align if smaller depth
+      d < referenceDepthM ? referenceDepthM / 2 - d / 2 : 0
+    )
     
     renderedPanels.push({
       size: [w, t, d],  // width, thickness (vertical), depth
-      position: [0, y, 0]  // at custom Y position
+      position: [x, y, z]  // use custom X, Y, Z positions
     })
   })
 
@@ -150,6 +193,7 @@ export default function Corpus3D({
     <>
       {/* Camera Controls - Rotation enabled, pan disabled */}
       <OrbitControls
+        target={corpusCenter}
         enablePan={false}
         enableZoom={true}
         enableRotate={true}
@@ -177,18 +221,6 @@ export default function Corpus3D({
       {renderedPanels.map((panel, index) => (
         <Panel key={index} size={panel.size} position={panel.position} />
       ))}
-
-      {/* Connection lines where panels meet */}
-      {leftPanel && rightPanel && topPanel && bottomPanel && (
-        <ConnectionLines
-          widthM={mm(widthMM)}
-          heightM={mm(heightMM)}
-          depthM={mm(depthMM)}
-          thicknessM={mm(thicknessMM)}
-          topOffsetM={mm(topOffsetMM)}
-          bottomOffsetM={mm(bottomOffsetMM)}
-        />
-      )}
 
       {/* Dimension lines (toggleable) */}
       {showDimensions && (

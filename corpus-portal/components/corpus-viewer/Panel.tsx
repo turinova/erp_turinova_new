@@ -12,7 +12,7 @@ export default function Panel({ size, position }: PanelProps) {
     <mesh position={position}>
       <boxGeometry args={size} />
       <meshBasicMaterial color="white" />
-      <Edges color="black" linewidth={1} />
+      <Edges color="black" linewidth={2} threshold={15} />
     </mesh>
   )
 }

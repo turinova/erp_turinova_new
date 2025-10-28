@@ -51,6 +51,8 @@ interface Panel {
   depth: number
   thickness: number
   yPosition?: number // Y position in mm (for horizontal panels: top, bottom, shelf)
+  xPosition?: number // X position in mm (for manual positioning)
+  zPosition?: number // Z position in mm (for manual positioning)
 }
 
 interface NewPanelForm {
@@ -142,11 +144,11 @@ export default function CorpusViewer() {
 
     return updatedPanels.map(panel => {
       if (panel.type === 'top') {
-        // Top panel: positioned at corpus height
-        return { ...panel, yPosition: corpusHeight }
+        // Top panel: Y position is center, top edge at corpus height
+        return { ...panel, yPosition: corpusHeight - panel.thickness / 2 }
       } else if (panel.type === 'bottom') {
-        // Bottom panel: positioned at 0
-        return { ...panel, yPosition: 0 }
+        // Bottom panel: Y position is center, bottom edge at 0
+        return { ...panel, yPosition: panel.thickness / 2 }
       } else if (panel.type === 'shelf') {
         // If forceRedistribute is true, always recalculate
         // Otherwise, keep existing yPosition if it exists (user manually set)
@@ -250,20 +252,21 @@ export default function CorpusViewer() {
     return false
   }
 
-  const handleYPositionChange = (panelId: string, newYPosition: number) => {
-    const updated = panels.map(p =>
-      p.id === panelId ? { ...p, yPosition: Math.round(newYPosition) } : p
-    )
+  const handlePositionChange = (panelId: string, axis: 'x' | 'y' | 'z', value: number) => {
+    const updated = panels.map(p => {
+      if (p.id === panelId) {
+        if (axis === 'x') {
+          return { ...p, xPosition: Math.round(value) }
+        } else if (axis === 'y') {
+          return { ...p, yPosition: Math.round(value) }
+        } else {
+          return { ...p, zPosition: Math.round(value) }
+        }
+      }
+      return p
+    })
 
-    // Just update, don't validate on every keystroke
     setPanels(updated)
-  }
-
-  const handleYPositionBlur = (panelId: string, currentValue: number) => {
-    // Validate on blur (when user finishes editing)
-    if (checkOverlap(panels)) {
-      alert('Figyelem: A panelek átfedik egymást!')
-    }
   }
 
   // Calculate corpus dimensions and positions for rendering
@@ -486,7 +489,9 @@ export default function CorpusViewer() {
                     <TableCell align='right'><strong>Magasság (mm)</strong></TableCell>
                     <TableCell align='right'><strong>Mélység (mm)</strong></TableCell>
                     <TableCell align='right'><strong>Vastagság (mm)</strong></TableCell>
-                    <TableCell align='right'><strong>Y Pozíció (mm)</strong></TableCell>
+                    <TableCell align='right'><strong>X (mm)</strong></TableCell>
+                    <TableCell align='right'><strong>Y (mm)</strong></TableCell>
+                    <TableCell align='right'><strong>Z (mm)</strong></TableCell>
                     <TableCell align='center'><strong>Műveletek</strong></TableCell>
                   </TableRow>
                 </TableHead>
@@ -508,15 +513,54 @@ export default function CorpusViewer() {
                       <TableCell align='right' className='font-mono'>{panel.height}</TableCell>
                       <TableCell align='right' className='font-mono'>{panel.depth}</TableCell>
                       <TableCell align='right' className='font-mono'>{panel.thickness}</TableCell>
+                      
+                      {/* X Position */}
+                      <TableCell align='right'>
+                        {(panel.type === 'top' || panel.type === 'bottom' || panel.type === 'shelf') ? (
+                          <TextField
+                            type='number'
+                            value={panel.xPosition || 0}
+                            onChange={(e) => handlePositionChange(panel.id, 'x', parseFloat(e.target.value))}
+                            size='small'
+                            sx={{ width: 80 }}
+                            inputProps={{ 
+                              style: { textAlign: 'right', fontFamily: 'monospace' },
+                              step: 1
+                            }}
+                          />
+                        ) : (
+                          <span className='text-gray-400'>-</span>
+                        )}
+                      </TableCell>
+                      
+                      {/* Y Position */}
                       <TableCell align='right'>
                         {(panel.type === 'top' || panel.type === 'bottom' || panel.type === 'shelf') ? (
                           <TextField
                             type='number'
                             value={panel.yPosition || 0}
-                            onChange={(e) => handleYPositionChange(panel.id, parseFloat(e.target.value))}
-                            onBlur={(e) => handleYPositionBlur(panel.id, parseFloat(e.target.value))}
+                            onChange={(e) => handlePositionChange(panel.id, 'y', parseFloat(e.target.value))}
                             size='small'
-                            sx={{ width: 100 }}
+                            sx={{ width: 80 }}
+                            inputProps={{ 
+                              style: { textAlign: 'right', fontFamily: 'monospace' },
+                              step: 1
+                            }}
+                          />
+                        ) : (
+                          <span className='text-gray-400'>-</span>
+                        )}
+                      </TableCell>
+                      
+                      {/* Z Position */}
+                      <TableCell align='right'>
+                        {(panel.type === 'top' || panel.type === 'bottom' || panel.type === 'shelf') ? (
+                          <TextField
+                            type='number'
+                            value={panel.zPosition || 0}
+                            onChange={(e) => handlePositionChange(panel.id, 'z', parseFloat(e.target.value))}
+                            size='small'
+                            sx={{ width: 80 }}
                             inputProps={{ 
                               style: { textAlign: 'right', fontFamily: 'monospace' },
                               step: 1
