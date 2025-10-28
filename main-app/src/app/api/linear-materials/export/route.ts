@@ -34,17 +34,48 @@ export async function GET(request: NextRequest) {
     )
 
     // Fetch media filenames for image URLs
-    const { data: mediaFiles } = await supabaseServer
+    console.log('=== LINEAR MATERIALS EXPORT DEBUG: Fetching media files ===')
+    const { data: mediaFiles, error: mediaError } = await supabaseServer
       .from('media_files')
       .select('full_url, original_filename')
 
-    const urlToFilenameMap = new Map(
+    if (mediaError) {
+      console.error('Error fetching media files:', mediaError)
+    }
+
+    // Create map: full_url -> original_filename
+    const mediaUrlMap = new Map(
       mediaFiles?.map(mf => [mf.full_url, mf.original_filename]) || []
     )
 
+    console.log(`Loaded ${mediaUrlMap.size} media files for URL -> filename mapping`)
+
+    // Function to get original filename from image URL (same as materials)
+    const getOriginalFilename = (imageUrl: string | null): string => {
+      if (!imageUrl) return ''
+      
+      // First try: Direct lookup in media_files table by full_url
+      const originalName = mediaUrlMap.get(imageUrl)
+      if (originalName) {
+        return originalName
+      }
+      
+      // Fallback: Extract filename from URL for files not in media_files table
+      // URL format: https://.../linear-materials/linear-materials/timestamp-filename.ext
+      const match = imageUrl.match(/linear-materials\/linear-materials\/\d+-(.+\.(webp|png|jpeg|jpg|gif))$/)
+      if (match) {
+        return match[1] // Return the original filename part
+      }
+      
+      // Last resort: extract any filename from the URL
+      const urlParts = imageUrl.split('/')
+      const filename = urlParts[urlParts.length - 1]
+      return filename || ''
+    }
+
     // Transform for Excel
     const excelData = linearMaterials?.map((lm: any) => {
-      const imageFilename = lm.image_url ? urlToFilenameMap.get(lm.image_url) || '' : ''
+      const imageFilename = getOriginalFilename(lm.image_url)
       
       return {
         'Gépkód': machineCodeMap.get(lm.id) || '',

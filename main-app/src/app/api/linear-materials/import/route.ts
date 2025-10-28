@@ -29,12 +29,36 @@ export async function POST(request: NextRequest) {
     const { data: units } = await supabaseServer.from('units').select('id, name, shortform').is('deleted_at', null)
     const { data: mediaFiles } = await supabaseServer.from('media_files').select('original_filename, full_url')
 
+    // Also get existing linear materials to find URLs that match the filename pattern
+    const { data: existingLinearMaterials } = await supabaseServer
+      .from('linear_materials')
+      .select('image_url')
+      .not('image_url', 'is', null)
+
     const brandMap = new Map(brands?.map(b => [b.name, b.id]) || [])
     const currencyMap = new Map(currencies?.map(c => [c.name, c.id]) || [])
     const vatMap = new Map(vatRates?.map(v => [`${v.name} (${v.kulcs}%)`, v.id]) || [])
     const partnerMap = new Map(partners?.map(p => [p.name, p.id]) || [])
     const unitMap = new Map(units?.map(u => [u.name, u.id]) || [])
-    const filenameToUrlMap = new Map(mediaFiles?.map(mf => [mf.original_filename, mf.full_url]) || [])
+    
+    // Create map: original_filename -> full_url
+    const mediaFilesByOriginalName = new Map(mediaFiles?.map(mf => [mf.original_filename, mf.full_url]) || [])
+    
+    // Create a reverse lookup: extract filename from existing linear material URLs
+    const linearMaterialUrlsByFilename = new Map()
+    existingLinearMaterials?.forEach(lm => {
+      if (lm.image_url) {
+        // Extract filename from URL pattern: timestamp-filename.ext
+        const match = lm.image_url.match(/linear-materials\/linear-materials\/\d+-(.+\.(webp|png|jpeg|jpg|gif))$/)
+        if (match) {
+          const filename = match[1]
+          linearMaterialUrlsByFilename.set(filename, lm.image_url)
+        }
+      }
+    })
+
+    console.log(`Linear Materials Import: Created media map - ${mediaFilesByOriginalName.size} files by original filename`)
+    console.log(`Linear Materials Import: Created linear material URL map - ${linearMaterialUrlsByFilename.size} files from existing linear materials`)
     
     // Get current user for price history
     const cookieStore = await cookies()
@@ -88,9 +112,24 @@ export async function POST(request: NextRequest) {
         const unitName = row['Mértékegység']?.toString().trim()
         const unitId = unitName ? unitMap.get(unitName) : null
         
-        // Handle image - map filename to URL
-        const imageFilename = row['Kép']?.toString().trim()
-        const imageUrl = imageFilename ? filenameToUrlMap.get(imageFilename) || null : null
+        // Get image URL from media library if filename provided
+        const imageFilename = String(row['Kép'] || '').trim()
+        let imageUrl = null
+        if (imageFilename) {
+          // Try 1: Direct lookup by original filename in media_files
+          imageUrl = mediaFilesByOriginalName.get(imageFilename)
+          
+          if (!imageUrl) {
+            // Try 2: Lookup in existing linear material URLs
+            imageUrl = linearMaterialUrlsByFilename.get(imageFilename)
+          }
+          
+          if (imageUrl) {
+            console.log(`Linear Materials Import: Found image "${imageFilename}" -> ${imageUrl}`)
+          } else {
+            console.log(`Linear Materials Import: Image "${imageFilename}" not found anywhere - skipping image`)
+          }
+        }
 
         const linearMaterialData = {
           brand_id: brandId,
