@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip } from '@mui/material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip, Pagination, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
@@ -32,9 +32,19 @@ interface Customer {
 
 interface CustomersListClientProps {
   initialCustomers: Customer[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  pageSize: number
 }
 
-export default function CustomersListClient({ initialCustomers }: CustomersListClientProps) {
+export default function CustomersListClient({ 
+  initialCustomers, 
+  totalCount, 
+  totalPages, 
+  currentPage, 
+  pageSize 
+}: CustomersListClientProps) {
   const router = useRouter()
   
   // Check permission for this page - temporarily bypassed to fix hook errors
@@ -55,6 +65,11 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<any>(null)
+
+  // Pagination state
+  const [page, setPage] = useState(currentPage)
+  const [currentPageSize, setCurrentPageSize] = useState(pageSize)
+  const [isLoading, setIsLoading] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -86,6 +101,35 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
       customer.mobile.toLowerCase().includes(term)
     )
   }, [customers, searchTerm])
+
+  // Pagination functions - client-side pagination of filtered results
+  const handlePageChange = (event: React.ChangeEvent<unknown>, newPage: number) => {
+    setPage(newPage)
+  }
+
+  const handlePageSizeChange = (event: any) => {
+    const newPageSize = parseInt(event.target.value, 10)
+    setCurrentPageSize(newPageSize)
+    setPage(1) // Reset to first page when changing page size
+  }
+
+  // Paginated filtered customers
+  const paginatedCustomers = useMemo(() => {
+    const startIndex = (page - 1) * currentPageSize
+    const endIndex = startIndex + currentPageSize
+    return filteredCustomers.slice(startIndex, endIndex)
+  }, [filteredCustomers, page, currentPageSize])
+
+  // Calculate pagination info for filtered results
+  const filteredTotalCount = filteredCustomers.length
+  const filteredTotalPages = Math.ceil(filteredTotalCount / currentPageSize)
+
+  // Reset to page 1 when filters change and current page is out of bounds
+  useEffect(() => {
+    if (page > filteredTotalPages && filteredTotalPages > 0) {
+      setPage(1)
+    }
+  }, [filteredTotalPages, page])
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -438,7 +482,7 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredCustomers.map((customer) => (
+            {paginatedCustomers.map((customer) => (
               <TableRow 
                 key={customer.id} 
                 hover 
@@ -461,6 +505,40 @@ export default function CustomersListClient({ initialCustomers }: CustomersListC
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Pagination */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, px: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Összesen: {filteredTotalCount} ügyfél
+          </Typography>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Oldalméret</InputLabel>
+            <Select
+              value={currentPageSize}
+              onChange={handlePageSizeChange}
+              label="Oldalméret"
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        
+        {filteredTotalPages > 1 && (
+          <Pagination
+            count={filteredTotalPages}
+            page={page}
+            onChange={handlePageChange}
+            color="primary"
+            showFirstButton
+            showLastButton
+            disabled={isLoading}
+          />
+        )}
+      </Box>
 
       {/* Delete Confirmation Modal */}
       <Dialog

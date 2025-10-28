@@ -58,7 +58,13 @@ export default async function CustomersPage() {
   // Pass pre-loaded data to client component with Suspense boundary
   return (
     <Suspense fallback={<CustomersSkeleton />}>
-      <CustomersListClient initialCustomers={customers} />
+      <CustomersListClient 
+        initialCustomers={customers}
+        totalCount={customers.length}
+        totalPages={Math.ceil(customers.length / 50)}
+        currentPage={1}
+        pageSize={50}
+      />
     </Suspense>
   )
 }
