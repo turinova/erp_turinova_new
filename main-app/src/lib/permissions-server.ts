@@ -147,10 +147,11 @@ export async function getAllUsersWithPermissions(): Promise<any[]> {
     }
   )
 
-  // Get all users from the public users table
+  // Get all users from the public users table (excluding deleted users)
   const { data: users, error: usersError } = await supabase
     .from('users')
     .select('id, email, full_name, created_at, last_sign_in_at')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (usersError) {
