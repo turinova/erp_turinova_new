@@ -32,6 +32,8 @@ interface Material {
   rotatable: boolean
   waste_multi: number
   machine_code: string
+  base_price: number
+  multiplier: number
   price_per_sqm: number
   vat_percent: number
   created_at: string
@@ -687,8 +689,8 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
                 <TableCell>{material.thickness_mm}</TableCell>
                 <TableCell align="right">
                   <Typography variant="body2" fontWeight="medium">
-                    {material.price_per_sqm > 0 
-                      ? formatPriceWithCurrency(calculateGrossPrice(material.price_per_sqm, material.vat_percent))
+                    {material.base_price > 0 && material.multiplier > 0 && material.vat_percent !== undefined
+                      ? formatPriceWithCurrency(calculateGrossPrice(material.base_price * material.multiplier, material.vat_percent))
                       : '-'
                     }
                   </Typography>

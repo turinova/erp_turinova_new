@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         vat:vat_id(kulcs),
         partners:partners_id(name),
         units:units_id(name, shortform),
-        material_settings(
+        material_settings!left(
           kerf_mm,
           trim_top_mm,
           trim_right_mm,
@@ -91,57 +91,102 @@ export async function GET(request: NextRequest) {
       console.log('Sample of active values:', filteredMaterials.slice(0, 3).map(m => ({ name: m.name, active: m.active })))
     }
     
-    // Fetch all media files to map stored_filename -> original_filename
-    const { data: mediaFiles } = await supabaseServer
+    // Fetch all media files to map full_url -> original_filename
+    console.log('=== EXPORT DEBUG: Fetching media files ===')
+    const { data: mediaFiles, error: mediaError } = await supabaseServer
       .from('media_files')
-      .select('stored_filename, original_filename')
+      .select('full_url, original_filename')
     
-    const mediaMap = new Map(
-      mediaFiles?.map(mf => [mf.stored_filename, mf.original_filename]) || []
+    if (mediaError) {
+      console.error('Error fetching media files:', mediaError)
+    }
+    
+    // Create map: full_url -> original_filename
+    const mediaUrlMap = new Map(
+      mediaFiles?.map(mf => [mf.full_url, mf.original_filename]) || []
     )
     
-    console.log(`Loaded ${mediaMap.size} media files for filename mapping`)
+    console.log(`Loaded ${mediaUrlMap.size} media files for URL -> filename mapping`)
+    console.log('Media files sample (url -> original):', Array.from(mediaUrlMap.entries()).slice(0, 3))
     
-    // Helper function to extract filename from image URL and get original name
+    // Debug: Show all unique image URLs from materials to compare
+    const materialImageUrls = filteredMaterials
+      .filter(m => m.image_url)
+      .map(m => m.image_url)
+      .slice(0, 5)
+    console.log('Sample material image URLs:', materialImageUrls)
+    
+    // Check if any material URLs exist in media_files
+    const matchingUrls = materialImageUrls.filter(url => mediaUrlMap.has(url))
+    console.log('Matching URLs found:', matchingUrls.length, 'out of', materialImageUrls.length)
+    
+    // Function to get original filename from image URL
     const getOriginalFilename = (imageUrl: string | null): string => {
       if (!imageUrl) return ''
       
-      // Extract stored filename from URL
-      // URL format: https://.../materials/materials/filename.webp
-      const match = imageUrl.match(/materials\/materials\/(.+\.webp)/)
-      if (!match) return ''
+      // First try: Direct lookup in media_files table by full_url
+      const originalName = mediaUrlMap.get(imageUrl)
+      if (originalName) {
+        return originalName
+      }
       
-      const storedFilename = match[1]
-      return mediaMap.get(storedFilename) || storedFilename  // Return original or fallback to stored
+      // Fallback: Extract filename from URL for files not in media_files table
+      // URL format: https://.../materials/materials/timestamp-filename.ext
+      const match = imageUrl.match(/materials\/materials\/\d+-(.+\.(webp|png|jpeg|jpg|gif))$/)
+      if (match) {
+        return match[1] // Return the original filename part (e.g., "1003HG-18.png")
+      }
+      
+      // Last resort: extract any filename from the URL
+      const urlParts = imageUrl.split('/')
+      const filename = urlParts[urlParts.length - 1]
+      return filename || ''
     }
 
     // Transform data for Excel export
-    const excelData = filteredMaterials.map(m => ({
-      'Gépkód': m.machine_material_map?.[0]?.machine_code || '',
-      'Anyag neve': m.name,
-      'Márka': m.brands?.name || '',
-      'Kép fájlnév': getOriginalFilename(m.image_url),
-      'Hossz (mm)': m.length_mm,
-      'Szélesség (mm)': m.width_mm,
-      'Vastagság (mm)': m.thickness_mm,
-      'Beszerzési ár': m.base_price,
-      'Árrés szorzó': m.multiplier,
-      'Partner': m.partners?.name || '',
-      'Mértékegység': m.units?.name || '',
-      'Pénznem': m.currencies?.name || '',
-      'ÁFA (%)': m.vat?.kulcs || '',
-      'Raktáron': m.on_stock ? 'Igen' : 'Nem',
-      'Aktív': m.active ? 'Igen' : 'Nem',
-      'Szálirány': m.grain_direction ? 'Igen' : 'Nem',
-      'Forgatható': m.material_settings?.[0]?.rotatable ? 'Igen' : 'Nem',
-      'Fűrészlap vastagság (mm)': m.material_settings?.[0]?.kerf_mm || 3,
-      'Szegélyezés felül (mm)': m.material_settings?.[0]?.trim_top_mm || 10,
-      'Szegélyezés jobbra (mm)': m.material_settings?.[0]?.trim_right_mm || 10,
-      'Szegélyezés alul (mm)': m.material_settings?.[0]?.trim_bottom_mm || 10,
-      'Szegélyezés balra (mm)': m.material_settings?.[0]?.trim_left_mm || 10,
-      'Hulladék szorzó': m.material_settings?.[0]?.waste_multi || 1.0,
-      'Kihasználtság küszöb': m.material_settings?.[0]?.usage_limit || 0.65
-    }))
+    const excelData = filteredMaterials.map((m, index) => {
+      // material_settings is now a single object, not an array
+      const settings = m.material_settings
+      
+      // Debug first few materials
+      if (index < 3) {
+        console.log(`Material ${m.name}:`)
+        console.log('  - image_url:', m.image_url)
+        
+        if (m.image_url) {
+          const filenameResult = getOriginalFilename(m.image_url)
+          console.log('  - original filename found:', filenameResult)
+          console.log('  - URL exists in media_files:', mediaUrlMap.has(m.image_url))
+        }
+      }
+      
+      return {
+        'Gépkód': m.machine_material_map?.[0]?.machine_code || '',
+        'Anyag neve': m.name,
+        'Márka': m.brands?.name || '',
+        'Kép fájlnév': getOriginalFilename(m.image_url),
+        'Hossz (mm)': m.length_mm,
+        'Szélesség (mm)': m.width_mm,
+        'Vastagság (mm)': m.thickness_mm,
+        'Beszerzési ár': m.base_price,
+        'Árrés szorzó': m.multiplier,
+        'Partner': m.partners?.name || '',
+        'Mértékegység': m.units?.name || '',
+        'Pénznem': m.currencies?.name || '',
+        'ÁFA (%)': m.vat?.kulcs || '',
+        'Raktáron': m.on_stock ? 'Igen' : 'Nem',
+        'Aktív': m.active ? 'Igen' : 'Nem',
+        'Szálirány': m.grain_direction ? 'Igen' : 'Nem',
+        'Forgatható': settings?.rotatable ? 'Igen' : 'Nem',
+        'Fűrészlap vastagság (mm)': settings?.kerf_mm ?? 3,
+        'Szegélyezés felül (mm)': settings?.trim_top_mm ?? 10,
+        'Szegélyezés jobbra (mm)': settings?.trim_right_mm ?? 10,
+        'Szegélyezés alul (mm)': settings?.trim_bottom_mm ?? 10,
+        'Szegélyezés balra (mm)': settings?.trim_left_mm ?? 10,
+        'Hulladék szorzó': settings?.waste_multi ?? 1.0,
+        'Kihasználtság küszöb': settings?.usage_limit ?? 0.65
+      }
+    })
 
     console.log(`Prepared ${excelData.length} materials for export`)
 

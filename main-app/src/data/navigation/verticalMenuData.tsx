@@ -134,6 +134,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
           {
             label: 'Gyártók',
             href: '/brands'
+          },
+          {
+            label: 'Média',
+            href: '/media'
           }
         ]
       }

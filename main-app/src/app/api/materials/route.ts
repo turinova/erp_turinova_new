@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         vat:vat_id(kulcs),
         partners:partners_id(name),
         units:units_id(name, shortform),
-        material_settings(
+        material_settings!left(
           kerf_mm,
           trim_top_mm,
           trim_right_mm,
@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
 
     // Transform the data to match the expected format
     const transformedMaterials = data?.map(material => {
+      // material_settings is now a single object, not an array
       const settings = material.material_settings
       const brandName = material.brands?.name || 'Unknown'
       const vatPercent = material.vat?.kulcs || 0

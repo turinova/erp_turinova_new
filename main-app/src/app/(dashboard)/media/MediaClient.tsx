@@ -304,7 +304,7 @@ export default function MediaClient({ initialMediaFiles }: MediaClientProps) {
                 type="file"
                 hidden
                 multiple
-                accept=".webp,image/webp"
+                accept=".webp,.png,image/webp,image/png"
                 onChange={handleUpload}
                 disabled={isUploading}
               />

@@ -191,30 +191,42 @@ export async function getMaterialById(id: string) {
 export async function getAllMaterials() {
   const startTime = performance.now()
   
-  const { data, error } = await supabaseServer
-    .from('materials_with_settings')
+  // Use the same query structure as the API for consistency
+  let query = supabaseServer
+    .from('materials')
     .select(`
-      id, 
-      material_name, 
-      length_mm, 
-      width_mm, 
-      thickness_mm, 
-      grain_direction, 
+      id,
+      name,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      grain_direction,
       on_stock,
-      image_url, 
-      brand_name,
-      kerf_mm, 
-      trim_top_mm, 
-      trim_right_mm, 
-      trim_bottom_mm, 
-      trim_left_mm, 
-      rotatable, 
-      waste_multi, 
-      usage_limit,
-      created_at, 
-      updated_at
+      active,
+      image_url,
+      base_price,
+      multiplier,
+      price_per_sqm,
+      created_at,
+      updated_at,
+      brands:brand_id(name),
+      vat:vat_id(kulcs),
+      partners:partners_id(name),
+      units:units_id(name, shortform),
+      material_settings!left(
+        kerf_mm,
+        trim_top_mm,
+        trim_right_mm,
+        trim_bottom_mm,
+        trim_left_mm,
+        rotatable,
+        waste_multi
+      )
     `)
-    .order('material_name', { ascending: true })
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+
+  const { data, error } = await query
 
   const queryTime = performance.now()
   logTiming('Materials DB Query', startTime, `fetched ${data?.length || 0} records`)
@@ -224,60 +236,42 @@ export async function getAllMaterials() {
     return []
   }
 
-  // Fetch pricing data from materials table
-  const materialIds = (data || []).map(m => m.id)
-  const { data: pricingData } = await supabaseServer
-    .from('materials')
-    .select(`
-      id,
-      price_per_sqm,
-      active,
-      vat(kulcs),
-      currencies(name)
-    `)
-    .in('id', materialIds)
-
-  // Create pricing map for quick lookup
-  const pricingMap = new Map(
-    (pricingData || []).map(p => [
-      p.id, 
-      { 
-        price_per_sqm: p.price_per_sqm || 0, 
-        vat_percent: p.vat?.kulcs || 0,
-        currency: p.currencies?.name || 'HUF',
-        active: p.active !== undefined ? p.active : true
-      }
-    ])
-  )
-
-  // Transform the data to match the expected format
+  // Transform the data to match the expected format (same as API)
   const transformedData = (data || []).map(material => {
-    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0, currency: 'HUF', active: true }
+    // material_settings is now a single object, not an array
+    const settings = material.material_settings
+    const brandName = material.brands?.name || 'Unknown'
+    const vatPercent = material.vat?.kulcs || 0
+    const partnerName = material.partners?.name || null
+    const unitName = material.units?.name || null
+    const unitShortform = material.units?.shortform || null
     
     return {
       id: material.id,
-      name: material.material_name || `Material ${material.id}`,
-      length_mm: material.length_mm || 2800,
-      width_mm: material.width_mm || 2070,
-      thickness_mm: material.thickness_mm || 18,
-      grain_direction: Boolean(material.grain_direction),
-      on_stock: material.on_stock !== undefined ? Boolean(material.on_stock) : true,
-      active: pricing.active !== undefined ? Boolean(pricing.active) : true,
-      image_url: material.image_url || null,
-      brand_id: '', // For list view, we don't need brand_id
-      brand_name: material.brand_name || 'Unknown',
-      kerf_mm: material.kerf_mm || 3,
-      trim_top_mm: material.trim_top_mm || 0,
-      trim_right_mm: material.trim_right_mm || 0,
-      trim_bottom_mm: material.trim_bottom_mm || 0,
-      trim_left_mm: material.trim_left_mm || 0,
-      rotatable: material.rotatable !== false,
-      waste_multi: material.waste_multi || 1.0,
-      usage_limit: material.usage_limit !== undefined && material.usage_limit !== null ? material.usage_limit : 0.65,
-      machine_code: '', // For list view, we don't need machine_code
-      price_per_sqm: pricing.price_per_sqm,
-      vat_percent: pricing.vat_percent,
-      currency: pricing.currency,
+      name: material.name,
+      brand_name: brandName,
+      material_name: material.name,
+      length_mm: material.length_mm,
+      width_mm: material.width_mm,
+      thickness_mm: material.thickness_mm,
+      grain_direction: material.grain_direction,
+      on_stock: material.on_stock,
+      active: material.active !== undefined ? material.active : true,
+      image_url: material.image_url,
+      kerf_mm: settings?.kerf_mm || 3,
+      trim_top_mm: settings?.trim_top_mm || 10,
+      trim_right_mm: settings?.trim_right_mm || 10,
+      trim_bottom_mm: settings?.trim_bottom_mm || 10,
+      trim_left_mm: settings?.trim_left_mm || 10,
+      rotatable: settings?.rotatable ?? true,
+      waste_multi: settings?.waste_multi || 1,
+      base_price: material.base_price || 0,
+      multiplier: material.multiplier || 1.38,
+      price_per_sqm: material.price_per_sqm || 0, // Keep for backward compatibility
+      partner_name: partnerName,
+      unit_name: unitName,
+      unit_shortform: unitShortform,
+      vat_percent: vatPercent,
       created_at: material.created_at,
       updated_at: material.updated_at
     }

@@ -25,11 +25,19 @@ export async function POST(request: NextRequest) {
 
     for (const file of files) {
       try {
-        // Validate file type
-        if (!file.type.includes('webp') && !file.name.toLowerCase().endsWith('.webp')) {
+        console.log(`Processing file: ${file.name}, type: ${file.type}, size: ${file.size}`)
+        
+        // Validate file type - allow webp and png
+        const isWebp = file.type.includes('webp') || file.name.toLowerCase().endsWith('.webp')
+        const isPng = file.type.includes('png') || file.name.toLowerCase().endsWith('.png')
+        
+        console.log(`File validation - isWebp: ${isWebp}, isPng: ${isPng}`)
+        
+        if (!isWebp && !isPng) {
+          console.log(`File rejected: ${file.name} - type: ${file.type}`)
           results.failed.push({
             filename: file.name,
-            error: 'Csak .webp fájlok engedélyezettek'
+            error: 'Csak .webp és .png fájlok engedélyezettek'
           })
           continue
         }

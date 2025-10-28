@@ -45,7 +45,30 @@ export async function POST(request: NextRequest) {
     const partnersByName = new Map(partnersRes.data?.map(p => [p.name.toLowerCase(), p]) || [])
     const unitsByName = new Map(unitsRes.data?.map(u => [u.name.toLowerCase(), u]) || [])
     const materialsByCode = new Map(existingMaterialsRes.data?.map(m => [m.machine_code?.trim(), m.material_id]) || [])
+    // Create map: original_filename -> full_url
     const mediaFilesByOriginalName = new Map(mediaFilesRes.data?.map(mf => [mf.original_filename, mf.full_url]) || [])
+    
+    // Also get existing materials to find URLs that match the filename pattern
+    const { data: existingMaterials } = await supabaseServer
+      .from('materials')
+      .select('image_url')
+      .not('image_url', 'is', null)
+    
+    // Create a reverse lookup: extract filename from existing material URLs
+    const materialUrlsByFilename = new Map()
+    existingMaterials?.forEach(material => {
+      if (material.image_url) {
+        // Extract filename from URL pattern: timestamp-filename.ext
+        const match = material.image_url.match(/materials\/materials\/\d+-(.+\.(webp|png|jpeg|jpg|gif))$/)
+        if (match) {
+          const filename = match[1]
+          materialUrlsByFilename.set(filename, material.image_url)
+        }
+      }
+    })
+    
+    console.log(`Import: Created media map - ${mediaFilesByOriginalName.size} files by original filename`)
+    console.log(`Import: Created material URL map - ${materialUrlsByFilename.size} files from existing materials`)
 
     const results = {
       created: 0,
@@ -113,7 +136,22 @@ export async function POST(request: NextRequest) {
         // Prepare material data
         // Get image URL from media library if filename provided
         const imageFilename = String(row['Kép fájlnév'] || '').trim()
-        const imageUrl = imageFilename ? mediaFilesByOriginalName.get(imageFilename) || null : null
+        let imageUrl = null
+        if (imageFilename) {
+          // Try 1: Direct lookup by original filename in media_files
+          imageUrl = mediaFilesByOriginalName.get(imageFilename)
+          
+          if (!imageUrl) {
+            // Try 2: Lookup in existing material URLs
+            imageUrl = materialUrlsByFilename.get(imageFilename)
+          }
+          
+          if (imageUrl) {
+            console.log(`Import: Found image "${imageFilename}" -> ${imageUrl}`)
+          } else {
+            console.log(`Import: Image "${imageFilename}" not found anywhere - skipping image`)
+          }
+        }
         
         const materialData = {
           name: String(row['Anyag neve'] || ''),
