@@ -14,5 +14,13 @@ export default async function LinearMaterialsPage() {
   
   console.log(`[PERF] Linear Materials Page SSR: ${totalTime.toFixed(2)}ms`)
 
-  return <LinearMaterialsListClient initialLinearMaterials={linearMaterials} />
+  return (
+    <LinearMaterialsListClient 
+      initialLinearMaterials={linearMaterials}
+      totalCount={linearMaterials.length}
+      totalPages={Math.ceil(linearMaterials.length / 50)}
+      currentPage={1}
+      pageSize={50}
+    />
+  )
 }

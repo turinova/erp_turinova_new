@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, CircularProgress, Select, MenuItem, FormControl, InputLabel, Grid } from '@mui/material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Chip, Button, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, CircularProgress, Select, MenuItem, FormControl, InputLabel, Grid, Pagination } from '@mui/material'
 import { Search as SearchIcon, Home as HomeIcon, Image as ImageIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, FilterList as FilterIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
@@ -42,9 +42,19 @@ interface Material {
 
 interface MaterialsListClientProps {
   initialMaterials: Material[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  pageSize: number
 }
 
-export default function MaterialsListClient({ initialMaterials }: MaterialsListClientProps) {
+export default function MaterialsListClient({ 
+  initialMaterials, 
+  totalCount, 
+  totalPages, 
+  currentPage, 
+  pageSize 
+}: MaterialsListClientProps) {
   const router = useRouter()
   
   // Check permission for this page - temporarily bypassed to fix hook errors
@@ -58,6 +68,11 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [mounted, setMounted] = useState(false)
+  
+  // Pagination state
+  const [page, setPage] = useState(currentPage)
+  const [currentPageSize, setCurrentPageSize] = useState(pageSize)
+  const [isLoading, setIsLoading] = useState(false)
   
   // Filter states
   const [filterBrand, setFilterBrand] = useState<string>('')
@@ -76,6 +91,17 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Pagination functions - client-side pagination of filtered results
+  const handlePageChange = (event: React.ChangeEvent<unknown>, newPage: number) => {
+    setPage(newPage)
+  }
+
+  const handlePageSizeChange = (event: any) => {
+    const newPageSize = parseInt(event.target.value, 10)
+    setCurrentPageSize(newPageSize)
+    setPage(1) // Reset to first page when changing page size
+  }
 
   // Get unique values for filter dropdowns
   const uniqueBrands = useMemo(() => {
@@ -145,6 +171,24 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
     
     return filtered
   }, [materials, searchTerm, filterBrand, filterLength, filterWidth, filterThickness, filterActive])
+
+  // Paginated filtered materials
+  const paginatedMaterials = useMemo(() => {
+    const startIndex = (page - 1) * currentPageSize
+    const endIndex = startIndex + currentPageSize
+    return filteredMaterials.slice(startIndex, endIndex)
+  }, [filteredMaterials, page, currentPageSize])
+
+  // Calculate pagination info for filtered results
+  const filteredTotalCount = filteredMaterials.length
+  const filteredTotalPages = Math.ceil(filteredTotalCount / currentPageSize)
+
+  // Reset to page 1 when filters change and current page is out of bounds
+  useEffect(() => {
+    if (page > filteredTotalPages && filteredTotalPages > 0) {
+      setPage(1)
+    }
+  }, [filteredTotalPages, page])
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -640,7 +684,7 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredMaterials.map((material) => (
+            {paginatedMaterials.map((material) => (
               <TableRow 
                 key={material.id} 
                 hover 
@@ -726,6 +770,40 @@ export default function MaterialsListClient({ initialMaterials }: MaterialsListC
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Pagination */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2, px: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            Összesen: {filteredTotalCount} anyag
+          </Typography>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Oldalméret</InputLabel>
+            <Select
+              value={currentPageSize}
+              onChange={handlePageSizeChange}
+              label="Oldalméret"
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        
+        {filteredTotalPages > 1 && (
+          <Pagination
+            count={filteredTotalPages}
+            page={page}
+            onChange={handlePageChange}
+            color="primary"
+            showFirstButton
+            showLastButton
+            disabled={isLoading}
+          />
+        )}
+      </Box>
 
       {/* Delete Confirmation Dialog */}
       <Dialog

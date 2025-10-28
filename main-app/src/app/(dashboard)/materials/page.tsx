@@ -53,18 +53,24 @@ function MaterialsSkeleton() {
 export default async function MaterialsPage() {
   const startTime = performance.now()
   
-  // Fetch materials data on the server
+  // Fetch all materials data for client-side filtering and pagination
   const materials = await getAllMaterials()
   
   const totalTime = performance.now()
   if (process.env.NODE_ENV !== 'production') {
     console.log(`[PERF] Materials Page SSR: ${(totalTime - startTime).toFixed(2)}ms`)
   }
-  
+
   // Pass pre-loaded data to client component with Suspense boundary
   return (
     <Suspense fallback={<MaterialsSkeleton />}>
-      <MaterialsListClient initialMaterials={materials} />
+      <MaterialsListClient 
+        initialMaterials={materials}
+        totalCount={materials.length}
+        totalPages={Math.ceil(materials.length / 50)}
+        currentPage={1}
+        pageSize={50}
+      />
     </Suspense>
   )
 }

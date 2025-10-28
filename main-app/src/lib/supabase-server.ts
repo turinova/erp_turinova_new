@@ -283,6 +283,118 @@ export async function getAllMaterials() {
   return transformedData
 }
 
+// Get materials with pagination
+export async function getMaterialsWithPagination(page: number = 1, limit: number = 50) {
+  const startTime = performance.now()
+  
+  const offset = (page - 1) * limit
+  
+  // Get total count
+  const { count } = await supabaseServer
+    .from('materials')
+    .select('*', { count: 'exact', head: true })
+    .is('deleted_at', null)
+
+  // Get paginated data using the same query structure as getAllMaterials
+  const { data, error } = await supabaseServer
+    .from('materials')
+    .select(`
+      id,
+      name,
+      length_mm,
+      width_mm,
+      thickness_mm,
+      grain_direction,
+      on_stock,
+      active,
+      image_url,
+      base_price,
+      multiplier,
+      price_per_sqm,
+      created_at,
+      updated_at,
+      brands:brand_id(name),
+      vat:vat_id(kulcs),
+      partners:partners_id(name),
+      units:units_id(name, shortform),
+      material_settings!left(
+        kerf_mm,
+        trim_top_mm,
+        trim_right_mm,
+        trim_bottom_mm,
+        trim_left_mm,
+        rotatable,
+        waste_multi,
+        usage_limit
+      )
+    `)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  const queryTime = performance.now()
+  logTiming('Materials Paginated DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching materials:', error)
+    return { materials: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+
+  // Transform the data to match the expected format (same as getAllMaterials)
+  const transformedData = (data || []).map(material => {
+    // material_settings is now a single object, not an array
+    const settings = material.material_settings
+    const brandName = material.brands?.name || 'Unknown'
+    const vatPercent = material.vat?.kulcs || 0
+    const partnerName = material.partners?.name || null
+    const unitName = material.units?.name || null
+    const unitShortform = material.units?.shortform || null
+    
+    return {
+      id: material.id,
+      name: material.name,
+      brand_name: brandName,
+      material_name: material.name,
+      length_mm: material.length_mm,
+      width_mm: material.width_mm,
+      thickness_mm: material.thickness_mm,
+      grain_direction: material.grain_direction,
+      on_stock: material.on_stock,
+      active: material.active !== undefined ? material.active : true,
+      image_url: material.image_url,
+      kerf_mm: settings?.kerf_mm || 3,
+      trim_top_mm: settings?.trim_top_mm || 10,
+      trim_right_mm: settings?.trim_right_mm || 10,
+      trim_bottom_mm: settings?.trim_bottom_mm || 10,
+      trim_left_mm: settings?.trim_left_mm || 10,
+      rotatable: settings?.rotatable ?? true,
+      waste_multi: settings?.waste_multi || 1,
+      usage_limit: settings?.usage_limit !== undefined && settings?.usage_limit !== null ? settings.usage_limit : 0.65,
+      base_price: material.base_price || 0,
+      multiplier: material.multiplier || 1.38,
+      price_per_sqm: material.price_per_sqm || 0, // Keep for backward compatibility
+      partner_name: partnerName,
+      unit_name: unitName,
+      unit_shortform: unitShortform,
+      vat_percent: vatPercent,
+      created_at: material.created_at,
+      updated_at: material.updated_at
+    }
+  })
+
+  const totalCount = count || 0
+  const totalPages = Math.ceil(totalCount / limit)
+
+  logTiming('Materials Paginated Total', startTime, `returned ${transformedData.length} records, page ${page}/${totalPages}`)
+  
+  return {
+    materials: transformedData,
+    totalCount,
+    totalPages,
+    currentPage: page
+  }
+}
+
 export async function getAllBrandsForMaterials() {
   const { data, error } = await supabaseServer
     .from('brands')
