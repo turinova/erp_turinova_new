@@ -12,13 +12,14 @@ export async function POST(request: NextRequest) {
     const workbook = XLSX.read(Buffer.from(bytes), { type: 'buffer' })
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]])
 
-    // Fetch existing customers by email
+    // Fetch existing customers by email and name
     const { data: existingCustomers } = await supabaseServer
       .from('customers')
-      .select('id, email')
+      .select('id, email, name')
       .is('deleted_at', null)
 
-    const emailMap = new Map(existingCustomers?.map(c => [c.email.toLowerCase(), c.id]) || [])
+    const emailMap = new Map(existingCustomers?.filter(c => c.email).map(c => [c.email.toLowerCase(), c.id]) || [])
+    const nameMap = new Map(existingCustomers?.map(c => [c.name.toLowerCase(), c.id]) || [])
 
     const preview = []
     const errors = []
@@ -27,9 +28,9 @@ export async function POST(request: NextRequest) {
       const row: any = data[i]
       const rowNum = i + 2
 
+      // Only name is required now
       const requiredFields = {
-        'Név': row['Név'],
-        'E-mail': row['E-mail']
+        'Név': row['Név']
       }
 
       const missing = Object.entries(requiredFields).filter(([_, v]) => !v).map(([k, _]) => k)
@@ -38,8 +39,18 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const email = row['E-mail']?.toString().trim().toLowerCase()
-      const action = emailMap.has(email) ? 'Frissítés' : 'Új'
+      // Handle email field - allow null/empty emails
+      const emailValue = row['E-mail']?.toString().trim()
+      const customerEmail = emailValue && emailValue.length > 0 ? emailValue : null
+      const customerName = row['Név']?.toString().trim()
+      
+      // Determine action: check by email first, then by name if no email
+      let action = 'Új'
+      if (customerEmail && emailMap.has(customerEmail.toLowerCase())) {
+        action = 'Frissítés'
+      } else if (!customerEmail && customerName && nameMap.has(customerName.toLowerCase())) {
+        action = 'Frissítés'
+      }
 
       // Parse SMS notification value
       const smsValue = row['SMS']?.toString().trim().toLowerCase()
@@ -48,8 +59,8 @@ export async function POST(request: NextRequest) {
       preview.push({
         row: rowNum,
         action,
-        name: row['Név']?.toString().trim(),
-        email: row['E-mail']?.toString().trim(),
+        name: customerName,
+        email: customerEmail || '', // Show empty string in preview if no email
         mobile: row['Telefon']?.toString().trim() || '',
         discountPercent: parseFloat(row['Kedvezmény (%)']) || 0,
         smsNotification,

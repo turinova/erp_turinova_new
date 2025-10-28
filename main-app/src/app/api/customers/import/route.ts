@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('=== CUSTOMER IMPORT STARTED ===')
     const formData = await request.formData()
     const file = formData.get('file') as File
     if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
@@ -11,14 +12,17 @@ export async function POST(request: NextRequest) {
     const bytes = await file.arrayBuffer()
     const workbook = XLSX.read(Buffer.from(bytes), { type: 'buffer' })
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]])
+    
+    console.log(`Processing ${data.length} rows from Excel file`)
 
-    // Fetch existing customers by email
+    // Fetch existing customers by email and name
     const { data: existingCustomers } = await supabaseServer
       .from('customers')
-      .select('id, email')
+      .select('id, email, name')
       .is('deleted_at', null)
 
-    const emailMap = new Map(existingCustomers?.map(c => [c.email.toLowerCase(), c.id]) || [])
+    const emailMap = new Map(existingCustomers?.filter(c => c.email).map(c => [c.email.toLowerCase(), c.id]) || [])
+    const nameMap = new Map(existingCustomers?.map(c => [c.name.toLowerCase(), c.id]) || [])
 
     let successCount = 0
     let errorCount = 0
@@ -33,9 +37,13 @@ export async function POST(request: NextRequest) {
         const smsValue = row['SMS']?.toString().trim().toLowerCase()
         const smsNotification = smsValue === 'igen' || smsValue === 'yes' || smsValue === 'true' || smsValue === '1'
 
+        // Handle email field - allow null/empty emails
+        const emailValue = row['E-mail']?.toString().trim()
+        const customerEmail = emailValue && emailValue.length > 0 ? emailValue : null
+
         const customerData = {
           name: row['Név']?.toString().trim(),
-          email: row['E-mail']?.toString().trim(),
+          email: customerEmail,
           mobile: row['Telefon']?.toString().trim() || null,
           discount_percent: parseFloat(row['Kedvezmény (%)']) || 0,
           sms_notification: smsNotification,
@@ -49,21 +57,47 @@ export async function POST(request: NextRequest) {
           billing_company_reg_number: row['Cégjegyzékszám']?.toString().trim() || null
         }
 
-        // Validate required fields
-        if (!customerData.name || !customerData.email) {
-          errors.push(`Sor ${rowNum}: Hiányzó kötelező mezők (Név, E-mail)`)
+        // Validate required fields - only name is required now
+        if (!customerData.name) {
+          errors.push(`Sor ${rowNum}: Hiányzó kötelező mező (Név)`)
           errorCount++
           continue
         }
 
-        const existingId = emailMap.get(customerData.email.toLowerCase())
+        // Check for existing customer by email first, then by name if no email
+        let existingId = null
+        if (customerData.email) {
+          existingId = emailMap.get(customerData.email.toLowerCase())
+        } else {
+          // If no email, check by name to avoid duplicates
+          existingId = nameMap.get(customerData.name.toLowerCase())
+        }
 
         if (existingId) {
           // Update existing customer
-          await supabaseServer.from('customers').update(customerData).eq('id', existingId)
+          console.log(`Updating existing customer: ${customerData.name}`)
+          const { error: updateError } = await supabaseServer
+            .from('customers')
+            .update(customerData)
+            .eq('id', existingId)
+          
+          if (updateError) {
+            console.error(`Update error for ${customerData.name}:`, updateError)
+            throw new Error(`Update failed: ${updateError.message}`)
+          }
+          console.log(`Successfully updated customer: ${customerData.name}`)
         } else {
           // Create new customer
-          await supabaseServer.from('customers').insert(customerData)
+          console.log(`Creating new customer: ${customerData.name}, email: ${customerData.email || 'NULL'}`)
+          const { error: insertError } = await supabaseServer
+            .from('customers')
+            .insert(customerData)
+          
+          if (insertError) {
+            console.error(`Insert error for ${customerData.name}:`, insertError)
+            throw new Error(`Insert failed: ${insertError.message}`)
+          }
+          console.log(`Successfully created customer: ${customerData.name}`)
         }
 
         successCount++
@@ -74,7 +108,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log(`=== IMPORT COMPLETED: ${successCount} success, ${errorCount} errors ===`)
+    
     if (errors.length > 0) {
+      console.log('Import errors:', errors)
       return NextResponse.json({ 
         error: 'Import completed with errors', 
         details: errors,
@@ -83,6 +120,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    console.log('Import successful!')
     return NextResponse.json({ 
       message: 'Import successful', 
       successCount,

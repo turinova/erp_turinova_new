@@ -14,16 +14,16 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .from('customers')
       .update({
         name: body.name,
-        email: body.email,
-        mobile: body.mobile,
-        billing_name: body.billing_name,
-        billing_country: body.billing_country,
-        billing_city: body.billing_city,
-        billing_postal_code: body.billing_postal_code,
-        billing_street: body.billing_street,
-        billing_house_number: body.billing_house_number,
-        billing_tax_number: body.billing_tax_number,
-        billing_company_reg_number: body.billing_company_reg_number,
+        email: body.email && body.email.trim() ? body.email.trim() : null, // Allow null emails
+        mobile: body.mobile || null,
+        billing_name: body.billing_name || null,
+        billing_country: body.billing_country || 'Magyarország',
+        billing_city: body.billing_city || null,
+        billing_postal_code: body.billing_postal_code || null,
+        billing_street: body.billing_street || null,
+        billing_house_number: body.billing_house_number || null,
+        billing_tax_number: body.billing_tax_number || null,
+        billing_company_reg_number: body.billing_company_reg_number || null,
         discount_percent: parseFloat(body.discount_percent) || 0,
         sms_notification: body.sms_notification || false,
         updated_at: new Date().toISOString()

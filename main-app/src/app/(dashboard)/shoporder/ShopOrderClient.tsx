@@ -1096,20 +1096,33 @@ export default function ShopOrderClient({
               <Typography variant="h6" gutterBottom>
                 1. Dolgozó kiválasztása
               </Typography>
-              <FormControl fullWidth size="small" required>
-                <InputLabel>Dolgozó</InputLabel>
-                <Select
-                  value={selectedWorker?.id || ''}
-                  onChange={(e) => handleWorkerChange(e.target.value)}
-                  label="Dolgozó"
-                >
-                  {workers.map((worker) => (
-                    <MenuItem key={worker.id} value={worker.id}>
-                      {worker.nickname || worker.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Autocomplete
+                size="small"
+                options={workers}
+                getOptionLabel={(option) => option.nickname || option.name}
+                value={selectedWorker}
+                onChange={(event, newValue) => {
+                  if (newValue) {
+                    handleWorkerChange(newValue.id)
+                  } else {
+                    setSelectedWorker(null)
+                  }
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Dolgozó"
+                    required
+                    placeholder="Keresés dolgozó között..."
+                  />
+                )}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                ListboxProps={{
+                  style: {
+                    maxHeight: 300,
+                  }
+                }}
+              />
             </Grid>
 
             {/* Section 2: Customer Information */}
@@ -1376,20 +1389,28 @@ export default function ShopOrderClient({
               />
             </Grid>
             <Grid item xs={12} sm={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Partner</InputLabel>
-                <Select
-                  value={accessoryData.partners_id || ''}
-                  onChange={(e) => handleInputChange('accessory_partners_id', e.target.value)}
-                  label="Partner"
-                >
-                  {partners.map((partner) => (
-                    <MenuItem key={partner.id} value={partner.id}>
-                      {partner.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Autocomplete
+                size="small"
+                options={partners}
+                getOptionLabel={(option) => option.name}
+                value={partners.find(p => p.id === accessoryData.partners_id) || null}
+                onChange={(event, newValue) => {
+                  handleInputChange('accessory_partners_id', newValue?.id || '')
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Partner"
+                    placeholder="Keresés partnerek között..."
+                  />
+                )}
+                isOptionEqualToValue={(option, value) => option.id === value.id}
+                ListboxProps={{
+                  style: {
+                    maxHeight: 300,
+                  }
+                }}
+              />
             </Grid>
 
             {/* Row 2: Beszerzési ár, Árrés szorzó, Mennyiség, Mértékegység, ÁFA, Pénznem */}
