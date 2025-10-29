@@ -41,12 +41,7 @@ export function useNavigation() {
         
         // Check permission for this page (only for menu items with href)
         if ('href' in item && item.href) {
-          // Always allow home
-          if (item.href === '/home') {
-            return true
-          }
-          
-          // Use new permission system
+          // Use new permission system for all pages including /home
           return hasPermission(item.href)
         }
         
