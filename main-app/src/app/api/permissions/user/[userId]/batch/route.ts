@@ -6,10 +6,10 @@ import { revalidatePath } from 'next/cache'
 // PATCH - Batch update all permissions for a user
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const { id: userId } = await params
+    const { userId } = await params
     const body = await request.json()
     const { permissions } = body // Object with { pagePath: canAccess, ... }
 
