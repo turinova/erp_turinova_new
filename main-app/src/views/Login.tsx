@@ -117,8 +117,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
         toast.success('Sikeres bejelentkezés!')
         setUser(data.user)
         
-        // Redirect to home after successful login
-        // Verify session exists before redirecting to ensure middleware compatibility
+        // Redirect to first permitted page after successful login
         const verifyAndRedirect = async () => {
           try {
             // Wait a moment for session to be established
@@ -127,16 +126,27 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
             // Verify session exists
             const { data: { session } } = await supabase.auth.getSession()
             if (session) {
-              // Session confirmed, redirect with fast client-side navigation
-              router.push('/home')
+              // Fetch user permissions to find first accessible page
+              const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
+              if (permissionsResponse.ok) {
+                const permissions = await permissionsResponse.json()
+                const firstAllowed = permissions.find((p: any) => p.can_access === true)
+                const redirectPath = firstAllowed?.page_path || '/login'
+                
+                console.log('Redirecting to first permitted page:', redirectPath)
+                router.push(redirectPath)
+              } else {
+                // Fallback: force page reload to let middleware handle redirect
+                window.location.href = '/'
+              }
             } else {
               // Fallback: force page reload if session not found
-              window.location.href = '/home'
+              window.location.href = '/'
             }
           } catch (error) {
             console.error('Session verification error:', error)
-            // Fallback: force page reload on error
-            window.location.href = '/home'
+            // Fallback: let middleware handle redirect
+            window.location.href = '/'
           }
         }
         

@@ -3,6 +3,7 @@ import type { NextRequest } from 'next/server'
 
 import { createServerClient } from '@supabase/ssr'
 import { hasPagePermission } from '@/lib/permissions-server'
+import { getFirstPermittedPage } from '@/lib/auth-redirect'
 
 export async function middleware(req: NextRequest) {
   // Skip middleware for API routes
@@ -37,7 +38,7 @@ export async function middleware(req: NextRequest) {
   }
   
   // Define public routes that don't require authentication
-  const publicRoutes = ['/', '/home', '/login']
+  const publicRoutes = ['/', '/login']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
   
   // Skip authentication for public routes
@@ -100,10 +101,12 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // If user is signed in and the current path is /login or /, redirect to /home
+  // If user is signed in and the current path is /login or /, redirect to first permitted page
   if (session && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/')) {
-    console.log('Middleware - Redirecting to home (user signed in)')
-    return NextResponse.redirect(new URL('/home', req.url))
+    console.log('Middleware - User signed in, finding first permitted page')
+    const firstPage = await getFirstPermittedPage(session.user.id)
+    console.log('Middleware - Redirecting to:', firstPage)
+    return NextResponse.redirect(new URL(firstPage, req.url))
   }
 
   // Check page permissions for authenticated users
@@ -113,14 +116,17 @@ export async function middleware(req: NextRequest) {
       
       if (!hasPermission) {
         console.log('Middleware - Access denied for:', req.nextUrl.pathname, 'User:', session.user.email)
-        return NextResponse.redirect(new URL('/home', req.url))
+        const firstPage = await getFirstPermittedPage(session.user.id)
+        console.log('Middleware - Redirecting to first permitted page:', firstPage)
+        return NextResponse.redirect(new URL(firstPage, req.url))
       }
       
       console.log('Middleware - Access granted for:', req.nextUrl.pathname, 'User:', session.user.email)
     } catch (error) {
       console.error('Middleware - Permission check error:', error)
-      // Fail-closed: redirect to home on permission check error
-      return NextResponse.redirect(new URL('/home', req.url))
+      // Fail-closed: redirect to first permitted page on permission check error
+      const firstPage = await getFirstPermittedPage(session.user.id)
+      return NextResponse.redirect(new URL(firstPage, req.url))
     }
   }
 

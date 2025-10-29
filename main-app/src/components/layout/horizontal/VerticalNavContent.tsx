@@ -1,9 +1,6 @@
 // React Imports
 import { useRef } from 'react'
 
-// Next Imports
-import Link from 'next/link'
-
 // MUI Imports
 import { styled } from '@mui/material/styles'
 
@@ -15,7 +12,7 @@ import type { ChildrenType } from '@core/types'
 
 // Component Imports
 import NavHeader from '@menu/components/vertical-menu/NavHeader'
-import Logo from '@components/layout/shared/Logo'
+import SmartLogoLink from '@components/layout/shared/SmartLogoLink'
 import NavCollapseIcons from '@menu/components/vertical-menu/NavCollapseIcons'
 
 // Hook Imports
@@ -70,9 +67,7 @@ const VerticalNavContent = ({ children }: ChildrenType) => {
   return (
     <>
       <NavHeader>
-        <Link href='/'>
-          <Logo />
-        </Link>
+        <SmartLogoLink />
         <NavCollapseIcons />
       </NavHeader>
       <StyledBoxForShadow ref={shadowRef} />

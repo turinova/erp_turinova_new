@@ -3,9 +3,6 @@
 // React Imports
 import { useEffect, useRef } from 'react'
 
-// Next Imports
-import Link from 'next/link'
-
 // MUI Imports
 import { styled, useColorScheme, useTheme } from '@mui/material/styles'
 
@@ -15,7 +12,7 @@ import type { Mode } from '@core/types'
 // Component Imports
 import VerticalNav, { NavHeader, NavCollapseIcons } from '@menu/vertical-menu'
 import VerticalMenu from './VerticalMenu'
-import Logo from '@components/layout/shared/Logo'
+import SmartLogoLink from '@components/layout/shared/SmartLogoLink'
 
 // Hook Imports
 import useVerticalNav from '@menu/hooks/useVerticalNav'
@@ -120,9 +117,7 @@ const Navigation = () => {
     >
       {/* Nav Header including Logo & nav toggle icons  */}
       <NavHeader>
-        <Link href='/'>
-          <Logo />
-        </Link>
+        <SmartLogoLink />
         {!(isCollapsed && !isHovered) && (
           <NavCollapseIcons
             lockedIcon={MenuToggleSvg}
