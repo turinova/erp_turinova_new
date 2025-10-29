@@ -93,16 +93,20 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
       const permissions: UserPermission[] = await response.json()
       
       if (response.ok) {
+        // Use Map for O(1) lookups instead of O(n) .find() operations
+        const permissionsMap = new Map(
+          permissions.map(p => [p.page_path, p.can_access])
+        )
+        
         const initialPermissions: {[key: string]: boolean} = {}
         pages.forEach(page => {
-          const permission = permissions.find(p => p.page_path === page.path)
-          initialPermissions[page.path] = permission?.can_access ?? true
+          initialPermissions[page.path] = permissionsMap.get(page.path) ?? false
         })
         setUserPermissions(initialPermissions)
       } else {
         const initialPermissions: {[key: string]: boolean} = {}
         pages.forEach(page => {
-          initialPermissions[page.path] = true
+          initialPermissions[page.path] = false
         })
         setUserPermissions(initialPermissions)
         toast.error('Hiba a jogosultságok betöltésekor')
@@ -111,7 +115,7 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
       console.error('Error fetching permissions:', error)
       const initialPermissions: {[key: string]: boolean} = {}
       pages.forEach(page => {
-        initialPermissions[page.path] = true
+        initialPermissions[page.path] = false
       })
       setUserPermissions(initialPermissions)
       toast.error('Hiba a jogosultságok betöltésekor')
