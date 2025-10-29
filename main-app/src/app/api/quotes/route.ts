@@ -65,17 +65,17 @@ export async function POST(request: NextRequest) {
           .from('customers')
           .insert([{
             name: customerData.name,
-            email: customerData.email || defaultEmail,
-            mobile: customerData.mobile || '',
+            email: customerData.email || null,
+            mobile: customerData.mobile || null,
             discount_percent: parseFloat(customerData.discount_percent) || 0,
-            billing_name: customerData.billing_name || '',
+            billing_name: customerData.billing_name || null,
             billing_country: customerData.billing_country || 'Magyarország',
-            billing_city: customerData.billing_city || '',
-            billing_postal_code: customerData.billing_postal_code || '',
-            billing_street: customerData.billing_street || '',
-            billing_house_number: customerData.billing_house_number || '',
-            billing_tax_number: customerData.billing_tax_number || '',
-            billing_company_reg_number: customerData.billing_company_reg_number || ''
+            billing_city: customerData.billing_city || null,
+            billing_postal_code: customerData.billing_postal_code || null,
+            billing_street: customerData.billing_street || null,
+            billing_house_number: customerData.billing_house_number || null,
+            billing_tax_number: customerData.billing_tax_number || null,
+            billing_company_reg_number: customerData.billing_company_reg_number || null
           }])
           .select('id')
           .single()
@@ -118,17 +118,17 @@ export async function POST(request: NextRequest) {
         const { error: updateError } = await supabaseServer
           .from('customers')
           .update({
-            email: customerData.email || '',
-            mobile: customerData.mobile || '',
+            email: customerData.email || null,
+            mobile: customerData.mobile || null,
             discount_percent: parseFloat(customerData.discount_percent) || 0,
-            billing_name: customerData.billing_name || '',
+            billing_name: customerData.billing_name || null,
             billing_country: customerData.billing_country || 'Magyarország',
-            billing_city: customerData.billing_city || '',
-            billing_postal_code: customerData.billing_postal_code || '',
-            billing_street: customerData.billing_street || '',
-            billing_house_number: customerData.billing_house_number || '',
-            billing_tax_number: customerData.billing_tax_number || '',
-            billing_company_reg_number: customerData.billing_company_reg_number || '',
+            billing_city: customerData.billing_city || null,
+            billing_postal_code: customerData.billing_postal_code || null,
+            billing_street: customerData.billing_street || null,
+            billing_house_number: customerData.billing_house_number || null,
+            billing_tax_number: customerData.billing_tax_number || null,
+            billing_company_reg_number: customerData.billing_company_reg_number || null,
             updated_at: new Date().toISOString()
           })
           .eq('id', customerId)
