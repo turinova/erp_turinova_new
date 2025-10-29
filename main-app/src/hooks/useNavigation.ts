@@ -21,14 +21,9 @@ export function useNavigation() {
       return []
     }
 
-    // During loading, only show home page
+    // During loading, show empty menu
     if (loading) {
-      return [{
-        label: 'Kezdőlap',
-        href: '/home',
-        icon: 'ri-home-smile-line',
-        iconColor: '#0B6E99'
-      }]
+      return []
     }
 
     const filterMenuItems = (items: VerticalMenuDataType[]): VerticalMenuDataType[] => {
