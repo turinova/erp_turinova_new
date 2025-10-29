@@ -131,12 +131,13 @@ export default function SupplierOrdersClient({
 
   // Filter items by search term and status (client-side) - like customer orders page
   const filteredItems = items.filter(item => {
-    // Filter by search term
+    // Filter by search term - using optional chaining for null-safety
+    const searchLower = searchTerm.toLowerCase()
     const matchesSearch = 
-      item.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.partner_name.toLowerCase().includes(searchTerm.toLowerCase())
+      item.product_name?.toLowerCase().includes(searchLower) ||
+      item.sku?.toLowerCase().includes(searchLower) ||
+      item.customer_name?.toLowerCase().includes(searchLower) ||
+      item.partner_name?.toLowerCase().includes(searchLower)
     
     // Filter by status
     const matchesStatus = statusFilter === '' || item.status === statusFilter
