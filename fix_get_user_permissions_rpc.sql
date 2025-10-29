@@ -1,6 +1,10 @@
 -- Fix the get_user_permissions RPC function to return can_access instead of can_view/can_edit/can_delete
 -- This aligns with the actual user_permissions table schema
 
+-- Drop the existing function first (required when changing return type)
+DROP FUNCTION IF EXISTS get_user_permissions(uuid);
+
+-- Create the function with correct return type
 CREATE OR REPLACE FUNCTION get_user_permissions(user_uuid UUID)
 RETURNS TABLE (
   page_path VARCHAR(255),
