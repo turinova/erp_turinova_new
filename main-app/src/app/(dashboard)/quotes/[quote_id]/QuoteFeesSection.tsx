@@ -197,8 +197,8 @@ export default function QuoteFeesSection({
                       <TableCell>Díj neve</TableCell>
                       <TableCell>Megjegyzés</TableCell>
                       <TableCell align="right">Mennyiség</TableCell>
-                      <TableCell align="right">Egységár</TableCell>
-                      <TableCell align="right">Összeg</TableCell>
+                      <TableCell align="right">Egységár (Nettó)</TableCell>
+                      <TableCell align="right">Összeg (Bruttó)</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
