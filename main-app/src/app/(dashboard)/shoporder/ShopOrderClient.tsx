@@ -145,6 +145,7 @@ interface ProductItem {
   megjegyzes: string
   brand_name?: string
   dimensions?: string
+  source?: string
 }
 
 interface ShopOrderClientProps {
@@ -985,7 +986,8 @@ export default function ShopOrderClient({
       partners_id: accessoryData.partners_id,
       megjegyzes: accessoryData.megjegyzes,
       brand_name: accessoryData.brand_name,
-      dimensions: accessoryData.dimensions
+      dimensions: accessoryData.dimensions,
+      source: selectedAccessory?.source || 'accessories'
     }
 
     if (editingProductId) {

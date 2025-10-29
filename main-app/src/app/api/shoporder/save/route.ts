@@ -101,68 +101,79 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hiba a rendelés létrehozásakor' }, { status: 500 })
     }
 
-        // Process products and create accessories if needed
+        // Process products - only create accessories for actual accessories, not materials
         const orderItems = []
         for (const product of body.products) {
-          let accessoryId = null
           
-          // Check if this is a new accessory (no SKU, empty SKU, or SKU doesn't exist in database)
-          let shouldCreateNewAccessory = false
+          // Check if this is from materials or linear_materials
+          const isFromMaterials = product.source === 'materials'
+          const isFromLinearMaterials = product.source === 'linear_materials'
           
-          if (!product.sku || product.sku.trim() === '') {
-            shouldCreateNewAccessory = true
-          } else {
-            // Check if SKU exists in database
-            const { data: existingAccessory } = await supabaseServer
-              .from('accessories')
-              .select('id')
-              .eq('sku', product.sku.trim())
-              .single()
+          // Only create accessory if it's NOT from materials/linear_materials
+          if (!isFromMaterials && !isFromLinearMaterials) {
+            // Check if this is a new accessory (no SKU, empty SKU, or SKU doesn't exist in database)
+            let shouldCreateNewAccessory = false
             
-            if (!existingAccessory) {
+            if (!product.sku || product.sku.trim() === '') {
               shouldCreateNewAccessory = true
-            }
-          }
-          
-          if (shouldCreateNewAccessory) {
-            // Create new accessory - SKU is required in database
-            const generatedSku = product.sku && product.sku.trim() !== '' 
-              ? product.sku.trim() 
-              : `NEW-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`
-            
-            // Get a default partner ID if none provided
-            let partnerId = product.partners_id
-            if (!partnerId) {
-              const { data: defaultPartner } = await supabaseServer
-                .from('partners')
+            } else {
+              // Check if SKU exists in database
+              const { data: existingAccessory } = await supabaseServer
+                .from('accessories')
                 .select('id')
-                .limit(1)
+                .eq('sku', product.sku.trim())
                 .single()
-              partnerId = defaultPartner?.id
+              
+              if (!existingAccessory) {
+                shouldCreateNewAccessory = true
+              }
             }
             
-            const { data: newAccessory, error: accessoryError } = await supabaseServer
-              .from('accessories')
-              .insert({
-                name: product.name,
-                sku: generatedSku,
-                base_price: product.base_price,
-                multiplier: product.multiplier,
-                vat_id: product.vat_id,
-                currency_id: product.currency_id,
-                units_id: product.units_id,
-                partners_id: partnerId
-              })
-              .select('id')
-              .single()
+            if (shouldCreateNewAccessory) {
+              // Create new accessory - SKU is required in database
+              const generatedSku = product.sku && product.sku.trim() !== '' 
+                ? product.sku.trim() 
+                : `NEW-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`
+              
+              // Get a default partner ID if none provided
+              let partnerId = product.partners_id
+              if (!partnerId) {
+                const { data: defaultPartner } = await supabaseServer
+                  .from('partners')
+                  .select('id')
+                  .limit(1)
+                  .single()
+                partnerId = defaultPartner?.id
+              }
+              
+              const { data: newAccessory, error: accessoryError } = await supabaseServer
+                .from('accessories')
+                .insert({
+                  name: product.name,
+                  sku: generatedSku,
+                  base_price: product.base_price,
+                  multiplier: product.multiplier,
+                  vat_id: product.vat_id,
+                  currency_id: product.currency_id,
+                  units_id: product.units_id,
+                  partners_id: partnerId
+                })
+                .select('id')
+                .single()
 
-            if (accessoryError) {
-              console.error('Error creating accessory:', accessoryError)
-              return NextResponse.json({ error: 'Hiba a termék létrehozásakor' }, { status: 500 })
+              if (accessoryError) {
+                console.error('Error creating accessory:', accessoryError)
+                return NextResponse.json({ error: 'Hiba a termék létrehozásakor' }, { status: 500 })
+              }
+              
+              console.log(`[SHOP ORDER] Created new accessory: ${newAccessory.id}`)
             }
-            accessoryId = newAccessory.id
+          } else {
+            // This is from materials or linear_materials - skip accessory creation
+            console.log(`[SHOP ORDER] Skipping accessory creation for ${product.source}: ${product.name} (${product.sku})`)
           }
 
+          // Add to order items (regardless of source)
           orderItems.push({
             order_id: orderData.id,
             product_name: product.name,
