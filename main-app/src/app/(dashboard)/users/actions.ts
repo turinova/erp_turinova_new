@@ -172,7 +172,7 @@ export async function updatePermissionAction(
       return { success: false, error: 'Failed to update permission' }
     }
 
-    revalidatePath('/users')
+    // Note: revalidatePath removed for performance - batch API handles this
     return { success: true }
   } catch (error) {
     console.error('Error updating permission:', error)

@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Switch, FormControlLabel, Grid } from '@mui/material'
 import { Search as SearchIcon, Security as SecurityIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
-import { createUserAction, deleteUsersAction, updatePermissionAction } from './actions'
+import { createUserAction, deleteUsersAction } from './actions'
 
 interface User {
   id: string
@@ -32,6 +33,7 @@ interface UsersTableProps {
 }
 
 export default function UsersTable({ initialUsers, initialPages }: UsersTableProps) {
+  const router = useRouter()
   const [users] = useState<User[]>(initialUsers)
   const [pages] = useState<Page[]>(initialPages)
   const [selectedUsers, setSelectedUsers] = useState<string[]>([])
@@ -124,32 +126,37 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
     }))
   }
 
-  // Save user permissions
+  // Save user permissions using batch API
   const saveUserPermissions = async () => {
     if (!selectedUser) return
 
     try {
       setSavingPermissions(true)
       
-      const updatePromises = Object.entries(userPermissions).map(([pagePath, canAccess]) =>
-        updatePermissionAction(selectedUser.id, pagePath, canAccess)
-      )
+      console.log(`Saving ${Object.keys(userPermissions).length} permissions for user ${selectedUser.email}`)
+      
+      // Use batch API for single, fast update
+      const response = await fetch(`/api/permissions/user/${selectedUser.id}/batch`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          permissions: userPermissions
+        })
+      })
 
-      const results = await Promise.allSettled(updatePromises)
-      const failedUpdates = results.filter(result => 
-        result.status === 'rejected' || 
-        (result.status === 'fulfilled' && !result.value.success)
-      )
+      const result = await response.json()
 
-      if (failedUpdates.length === 0) {
-        toast.success('Jogosultságok sikeresen frissítve!')
+      if (response.ok && result.success) {
+        toast.success(`Jogosultságok sikeresen frissítve! (${result.updated} módosítva)`)
         setPermissionsDialogOpen(false)
         setSelectedUser(null)
-        startTransition(() => {
-          window.location.reload()
-        })
+        
+        // Use router.refresh instead of window.location.reload for better performance
+        router.refresh()
       } else {
-        toast.error(`${failedUpdates.length} jogosultság frissítése sikertelen`)
+        toast.error(result.error || 'Hiba a jogosultságok mentésekor')
       }
     } catch (error) {
       console.error('Error saving permissions:', error)
