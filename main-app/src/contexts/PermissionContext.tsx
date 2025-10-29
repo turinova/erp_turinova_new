@@ -35,10 +35,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       
       if (sessionError || !session?.user) {
         // This is normal when user is not logged in - don't log as error
-        // Only allow home page when not authenticated
-        const defaultPermissions: UserPermission[] = [
-          { page_path: '/home', can_access: true },
-        ]
+        // No permissions when not authenticated
+        const defaultPermissions: UserPermission[] = []
         setPermissions(defaultPermissions)
         setLoading(false)
         return
@@ -53,10 +51,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
       if (error) {
         console.error('Error fetching user permissions:', error)
-        // Only allow home page on error (fail-closed)
-        const defaultPermissions: UserPermission[] = [
-          { page_path: '/home', can_access: true },
-        ]
+        // No permissions on error (fail-closed)
+        const defaultPermissions: UserPermission[] = []
         setPermissions(defaultPermissions)
         setLoading(false)
         return
@@ -64,10 +60,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
       if (!data || data.length === 0) {
         console.log('No permissions data returned from RPC')
-        // Only allow home page when no permissions found
-        const defaultPermissions: UserPermission[] = [
-          { page_path: '/home', can_access: true },
-        ]
+        // No permissions when no data found
+        const defaultPermissions: UserPermission[] = []
         setPermissions(defaultPermissions)
         setLoading(false)
         return
@@ -85,10 +79,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       
     } catch (error) {
       console.error('Error loading permissions:', error)
-      // Only allow home page on error (fail-closed)
-      const defaultPermissions: UserPermission[] = [
-        { page_path: '/home', can_access: true },
-      ]
+      // No permissions on error (fail-closed)
+      const defaultPermissions: UserPermission[] = []
       setPermissions(defaultPermissions)
     } finally {
       setLoading(false)
@@ -116,10 +108,8 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
       if (event === 'SIGNED_IN' && session) {
         loadPermissions()
       } else if (event === 'SIGNED_OUT') {
-        // Only allow home page when signed out
-        const defaultPermissions: UserPermission[] = [
-          { page_path: '/home', can_access: true },
-        ]
+        // No permissions when signed out
+        const defaultPermissions: UserPermission[] = []
         setPermissions(defaultPermissions)
         setPermissionCache(null)
       }
