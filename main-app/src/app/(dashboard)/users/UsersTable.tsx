@@ -89,8 +89,15 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
     setPermissionsDialogOpen(true)
     
     try {
+      console.log('[PERMISSIONS] Fetching permissions for user:', user.email)
+      const startTime = performance.now()
+      
       const response = await fetch(`/api/permissions/user/${user.id}`)
       const permissions: UserPermission[] = await response.json()
+      
+      const fetchTime = performance.now() - startTime
+      console.log(`[PERMISSIONS] Fetch completed in ${fetchTime.toFixed(2)}ms`)
+      console.log('[PERMISSIONS] Raw permissions data:', permissions.slice(0, 3)) // Show first 3 for debugging
       
       if (response.ok) {
         // Use Map for O(1) lookups instead of O(n) .find() operations
@@ -98,12 +105,22 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
           permissions.map(p => [p.page_path, p.can_access])
         )
         
+        console.log('[PERMISSIONS] Permissions map size:', permissionsMap.size)
+        console.log('[PERMISSIONS] /home permission:', permissionsMap.get('/home'))
+        console.log('[PERMISSIONS] /search permission:', permissionsMap.get('/search'))
+        console.log('[PERMISSIONS] /opti permission:', permissionsMap.get('/opti'))
+        
         const initialPermissions: {[key: string]: boolean} = {}
         pages.forEach(page => {
-          initialPermissions[page.path] = permissionsMap.get(page.path) ?? false
+          const hasAccess = permissionsMap.get(page.path) ?? false
+          initialPermissions[page.path] = hasAccess
+          if (page.path === '/home' || page.path === '/search' || page.path === '/opti') {
+            console.log(`[PERMISSIONS] Setting ${page.path} = ${hasAccess}`)
+          }
         })
         setUserPermissions(initialPermissions)
       } else {
+        console.error('[PERMISSIONS] API error response')
         const initialPermissions: {[key: string]: boolean} = {}
         pages.forEach(page => {
           initialPermissions[page.path] = false
@@ -112,7 +129,7 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
         toast.error('Hiba a jogosultságok betöltésekor')
       }
     } catch (error) {
-      console.error('Error fetching permissions:', error)
+      console.error('[PERMISSIONS] Error fetching permissions:', error)
       const initialPermissions: {[key: string]: boolean} = {}
       pages.forEach(page => {
         initialPermissions[page.path] = false
