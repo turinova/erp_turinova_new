@@ -193,10 +193,14 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
               fullWidth
               label="Egységár (Bruttó) *"
               type="number"
-              value={unitPrice}
-              onChange={(e) => setUnitPrice(parseFloat(e.target.value) || 0)}
+              value={Math.round(unitPrice)}
+              onChange={(e) => setUnitPrice(Math.round(parseFloat(e.target.value)) || 0)}
               required
               helperText="Módosítható érték"
+              inputProps={{ 
+                step: 1,
+                min: 0
+              }}
             />
           </Grid>
 
