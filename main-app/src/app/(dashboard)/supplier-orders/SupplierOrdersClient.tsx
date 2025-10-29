@@ -119,6 +119,39 @@ export default function SupplierOrdersClient({
     setMounted(true)
   }, [])
 
+  // Color palette for partner rows - vibrant but not too bright
+  const partnerColors = [
+    '#E3F2FD', // Light Blue
+    '#F3E5F5', // Light Purple
+    '#E8F5E9', // Light Green
+    '#FFF3E0', // Light Orange
+    '#FCE4EC', // Light Pink
+    '#F1F8E9', // Light Lime
+    '#E0F2F1', // Light Teal
+    '#FFF9C4', // Light Yellow
+    '#FFEBEE', // Light Red
+    '#E8EAF6', // Light Indigo
+    '#F9FBE7', // Light Lime Green
+    '#FBE9E7', // Light Deep Orange
+    '#E1F5FE', // Light Cyan
+    '#F3E5F5', // Light Purple
+    '#FFFDE7', // Light Amber
+  ]
+
+  // Generate consistent color for each partner
+  const getPartnerColor = (partnerName: string | undefined): string => {
+    if (!partnerName) return 'transparent'
+    
+    // Generate a hash from partner name for consistent color assignment
+    let hash = 0
+    for (let i = 0; i < partnerName.length; i++) {
+      hash = partnerName.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    
+    const colorIndex = Math.abs(hash) % partnerColors.length
+    return partnerColors[colorIndex]
+  }
+
   // Reset page when search or status filter changes
   useEffect(() => {
     setCurrentPage(1)
@@ -533,6 +566,7 @@ export default function SupplierOrdersClient({
               paginatedItems.map((item) => {
                 const isSelected = selectedItems.includes(item.id)
                 const statusInfo = getStatusInfo(item.status)
+                const partnerColor = getPartnerColor(item.partner_name)
                 
                 return (
                   <TableRow
@@ -540,7 +574,14 @@ export default function SupplierOrdersClient({
                     hover
                     selected={isSelected}
                     sx={{ 
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      backgroundColor: partnerColor,
+                      '&:hover': {
+                        backgroundColor: partnerColor ? `${partnerColor}dd` : undefined, // Slightly darker on hover
+                      },
+                      '&.Mui-selected': {
+                        backgroundColor: partnerColor ? `${partnerColor}bb` : undefined, // Even darker when selected
+                      }
                     }}
                   >
                     <TableCell padding="checkbox">
