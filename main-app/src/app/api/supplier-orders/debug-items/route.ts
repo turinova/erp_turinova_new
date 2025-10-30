@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase-server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 
 /**
  * Debug endpoint to check item and order details
@@ -8,7 +9,21 @@ export async function POST(request: NextRequest) {
   try {
     const { item_ids } = await request.json()
 
-    const supabase = createClient()
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => cookieStore.getAll(),
+          setAll: (cookies) => {
+            cookies.forEach(({ name, value, ...options }) => {
+              cookieStore.set(name, value, options)
+            })
+          }
+        }
+      }
+    )
 
     // Fetch items with full details
     const { data: items, error } = await supabase

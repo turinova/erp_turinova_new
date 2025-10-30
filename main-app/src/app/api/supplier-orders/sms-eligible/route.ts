@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase-server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 
 /**
  * Check which shop_orders are eligible for Beszerzés SMS
@@ -21,7 +22,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = createClient()
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => cookieStore.getAll(),
+          setAll: (cookies) => {
+            cookies.forEach(({ name, value, ...options }) => {
+              cookieStore.set(name, value, options)
+            })
+          }
+        }
+      }
+    )
 
     // Fetch selected items with their order information
     const { data: selectedItems, error: itemsError } = await supabase
