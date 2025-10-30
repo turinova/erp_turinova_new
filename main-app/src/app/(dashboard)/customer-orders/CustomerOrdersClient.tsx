@@ -316,9 +316,9 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
                       <Typography variant="body2" fontWeight="bold">
                         {order.customer_name}
                       </Typography>
-                      {order.customer_email && (
+                      {order.customer_mobile && (
                         <Typography variant="caption" color="text.secondary">
-                          {order.customer_email}
+                          {order.customer_mobile}
                         </Typography>
                       )}
                     </Box>
