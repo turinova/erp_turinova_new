@@ -671,8 +671,8 @@ export default function QuoteDetailClient({
           {isOrderView ? `Megrendelés: ${quoteData.order_number || quoteData.quote_number}` : `Árajánlat: ${quoteData.quote_number}`}
         </Typography>
         <Chip 
-          label={quoteData.status === 'draft' ? 'Piszkozat' : quoteData.status === 'ordered' ? 'Megrendelve' : quoteData.status === 'in_production' ? 'Gyártásban' : quoteData.status === 'ready' ? 'Leadva' : quoteData.status === 'finished' ? 'Átadva' : quoteData.status} 
-          color={quoteData.status === 'draft' ? 'error' : quoteData.status === 'ordered' ? 'success' : quoteData.status === 'in_production' ? 'warning' : quoteData.status === 'finished' ? 'success' : 'info'}
+          label={quoteData.status === 'draft' ? 'Piszkozat' : quoteData.status === 'ordered' ? 'Megrendelve' : quoteData.status === 'in_production' ? 'Gyártásban' : quoteData.status === 'ready' ? 'Leadva' : quoteData.status === 'finished' ? 'Átadva' : quoteData.status === 'cancelled' ? 'Törölve' : quoteData.status} 
+          color={quoteData.status === 'draft' ? 'error' : quoteData.status === 'ordered' ? 'success' : quoteData.status === 'in_production' ? 'warning' : quoteData.status === 'finished' ? 'success' : quoteData.status === 'cancelled' ? 'error' : 'info'}
           sx={{ ml: 2 }}
         />
       </Box>
