@@ -170,54 +170,66 @@ export async function GET(request: NextRequest) {
     )
 
     // Transform materials data
-    const materials = materialsData?.map(material => ({
-      id: material.id,
-      name: material.name,
-      sku: materialMachineCodeMap.get(material.id) || '',
-      type: 'Bútorlap',
-      base_price: material.base_price || 0,
-      multiplier: material.multiplier || 1.38,
-      net_price: material.price_per_sqm || 0,
-      gross_price: Math.round((material.price_per_sqm || 0) * (1 + (material.vat?.kulcs || 0) / 100)),
-      partners_id: material.partners_id,
-      units_id: material.units_id,
-      currency_id: material.currency_id,
-      vat_id: material.vat_id,
-      partner_name: material.partners?.name || '',
-      unit_name: material.units?.name || '',
-      unit_shortform: material.units?.shortform || '',
-      currency_name: material.currencies?.name || '',
-      vat_percent: material.vat?.kulcs || 0,
-      vat_amount: Math.round((material.price_per_sqm || 0) * (material.vat?.kulcs || 0) / 100),
-      brand_name: material.brands?.name || '',
-      dimensions: `${material.length_mm}x${material.width_mm}x${material.thickness_mm}mm`,
-      source: 'materials'
-    })) || []
+    const materials = materialsData?.map(material => {
+      // Calculate whole board price (base_price is per m²)
+      const boardAreaM2 = (material.length_mm * material.width_mm) / 1_000_000
+      const wholeBoardPrice = Math.round((material.base_price || 0) * boardAreaM2)
+      
+      return {
+        id: material.id,
+        name: material.name,
+        sku: materialMachineCodeMap.get(material.id) || '',
+        type: 'Bútorlap',
+        base_price: wholeBoardPrice, // Whole board price, not per m²
+        multiplier: material.multiplier || 1.38,
+        net_price: material.price_per_sqm || 0,
+        gross_price: Math.round((material.price_per_sqm || 0) * (1 + (material.vat?.kulcs || 0) / 100)),
+        partners_id: material.partners_id,
+        units_id: material.units_id,
+        currency_id: material.currency_id,
+        vat_id: material.vat_id,
+        partner_name: material.partners?.name || '',
+        unit_name: material.units?.name || '',
+        unit_shortform: material.units?.shortform || '',
+        currency_name: material.currencies?.name || '',
+        vat_percent: material.vat?.kulcs || 0,
+        vat_amount: Math.round((material.price_per_sqm || 0) * (material.vat?.kulcs || 0) / 100),
+        brand_name: material.brands?.name || '',
+        dimensions: `${material.length_mm}x${material.width_mm}x${material.thickness_mm}mm`,
+        source: 'materials'
+      }
+    }) || []
 
     // Transform linear materials data
-    const linearMaterials = linearMaterialsData?.map(linearMaterial => ({
-      id: linearMaterial.id,
-      name: linearMaterial.name,
-      sku: linearMaterialMachineCodeMap.get(linearMaterial.id) || '',
-      type: linearMaterial.type || 'Lineáris anyag',
-      base_price: linearMaterial.base_price || 0,
-      multiplier: linearMaterial.multiplier || 1.38,
-      net_price: linearMaterial.price_per_m || 0,
-      gross_price: Math.round((linearMaterial.price_per_m || 0) * (1 + (linearMaterial.vat?.kulcs || 0) / 100)),
-      partners_id: linearMaterial.partners_id,
-      units_id: linearMaterial.units_id,
-      currency_id: linearMaterial.currency_id,
-      vat_id: linearMaterial.vat_id,
-      partner_name: linearMaterial.partners?.name || '',
-      unit_name: linearMaterial.units?.name || '',
-      unit_shortform: linearMaterial.units?.shortform || '',
-      currency_name: linearMaterial.currencies?.name || '',
-      vat_percent: linearMaterial.vat?.kulcs || 0,
-      vat_amount: Math.round((linearMaterial.price_per_m || 0) * (linearMaterial.vat?.kulcs || 0) / 100),
-      brand_name: linearMaterial.brands?.name || '',
-      dimensions: `${linearMaterial.width}x${linearMaterial.length}x${linearMaterial.thickness}mm`,
-      source: 'linear_materials'
-    })) || []
+    const linearMaterials = linearMaterialsData?.map(linearMaterial => {
+      // Calculate whole piece price (base_price is per meter, length is in mm)
+      const lengthInMeters = linearMaterial.length / 1000
+      const wholePiecePrice = Math.round((linearMaterial.base_price || 0) * lengthInMeters)
+      
+      return {
+        id: linearMaterial.id,
+        name: linearMaterial.name,
+        sku: linearMaterialMachineCodeMap.get(linearMaterial.id) || '',
+        type: linearMaterial.type || 'Lineáris anyag',
+        base_price: wholePiecePrice, // Whole piece price, not per meter
+        multiplier: linearMaterial.multiplier || 1.38,
+        net_price: linearMaterial.price_per_m || 0,
+        gross_price: Math.round((linearMaterial.price_per_m || 0) * (1 + (linearMaterial.vat?.kulcs || 0) / 100)),
+        partners_id: linearMaterial.partners_id,
+        units_id: linearMaterial.units_id,
+        currency_id: linearMaterial.currency_id,
+        vat_id: linearMaterial.vat_id,
+        partner_name: linearMaterial.partners?.name || '',
+        unit_name: linearMaterial.units?.name || '',
+        unit_shortform: linearMaterial.units?.shortform || '',
+        currency_name: linearMaterial.currencies?.name || '',
+        vat_percent: linearMaterial.vat?.kulcs || 0,
+        vat_amount: Math.round((linearMaterial.price_per_m || 0) * (linearMaterial.vat?.kulcs || 0) / 100),
+        brand_name: linearMaterial.brands?.name || '',
+        dimensions: `${linearMaterial.width}x${linearMaterial.length}x${linearMaterial.thickness}mm`,
+        source: 'linear_materials'
+      }
+    }) || []
 
     // Transform accessories data
     const accessories = accessoriesData?.map(accessory => ({
