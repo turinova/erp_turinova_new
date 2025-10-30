@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
         order_number,
         status,
         production_date,
+        ready_at,
         updated_at,
         customer_id,
         customers!inner (
@@ -88,10 +89,14 @@ export async function POST(request: NextRequest) {
 
     // Calculate storage days for each order (matches UI calculation)
     const ordersWithDays = ordersForSMS.map(order => {
-      // Use production_date if available, otherwise fall back to updated_at
-      const referenceDate = order.production_date || order.updated_at
+      // Use ready_at if available (most accurate), otherwise fall back to production_date or updated_at
+      const referenceDate = order.ready_at || order.production_date || order.updated_at
       const today = new Date()
+      today.setHours(0, 0, 0, 0) // Start of today
       const readyDate = new Date(referenceDate)
+      readyDate.setHours(0, 0, 0, 0) // Start of ready day
+      
+      // Calculate full days difference (0 = same day, 1 = next day)
       const diffTime = today.getTime() - readyDate.getTime()
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
       
