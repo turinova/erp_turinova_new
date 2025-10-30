@@ -62,8 +62,8 @@ interface ShopOrderItem {
   updated_at: string
   order_id: string
   customer_name: string
+  customer_mobile: string | null
   order_number: string
-  sms_sent_at: string | null
   unit_name: string
   unit_shortform: string
   partner_name: string
@@ -671,13 +671,12 @@ export default function SupplierOrdersClient({
               <TableCell><strong>Megjegyzés</strong></TableCell>
               <TableCell align="right"><strong>Bruttó egységár</strong></TableCell>
               <TableCell><strong>Státusz</strong></TableCell>
-              <TableCell align="center"><strong>Értesítés</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center">
+                <TableCell colSpan={9} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
                     {searchTerm || statusFilter || partnerFilter ? 'Nincs találat' : 'Még nincs termék'}
                   </Typography>
@@ -715,7 +714,16 @@ export default function SupplierOrdersClient({
                       {item.partner_name}
                     </TableCell>
                     <TableCell onClick={() => handleRowClick(item.order_id)}>
-                      {item.customer_name}
+                      <Box>
+                        <Typography variant="body2">
+                          {item.customer_name}
+                        </Typography>
+                        {item.customer_mobile && (
+                          <Typography variant="caption" color="text.secondary">
+                            {item.customer_mobile}
+                          </Typography>
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell onClick={() => handleRowClick(item.order_id)}>
                       {item.product_name}
@@ -744,20 +752,6 @@ export default function SupplierOrdersClient({
                         color={statusInfo.color}
                         size="small"
                       />
-                    </TableCell>
-                    <TableCell align="center" onClick={() => handleRowClick(item.order_id)}>
-                      {item.sms_sent_at ? (
-                        <Tooltip 
-                          title={`SMS elküldve: ${new Date(item.sms_sent_at).toLocaleString('hu-HU')}`}
-                          arrow
-                        >
-                          <CheckIcon color="success" fontSize="small" />
-                        </Tooltip>
-                      ) : (
-                        <Typography variant="body2" color="text.disabled">
-                          -
-                        </Typography>
-                      )}
                     </TableCell>
                   </TableRow>
                 )
