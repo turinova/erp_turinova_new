@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import { sendOrderReadySMS } from '@/lib/twilio'
+import { processKivételezés } from '@/lib/inventory'
 
 /**
  * PATCH /api/orders/bulk-status
@@ -282,12 +283,40 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    // Phase 3: Process inventory consumption (kivételezés) for ready orders
+    let inventoryResult = null
+    if (new_status === 'ready' && order_ids && order_ids.length > 0) {
+      const inventoryStartTime = performance.now()
+      console.log(`[Inventory] Triggering kivételezés for ${order_ids.length} orders`)
+      
+      try {
+        inventoryResult = await processKivételezés(order_ids)
+        const inventoryDuration = performance.now() - inventoryStartTime
+        
+        console.log(`[PERF] Inventory Consumption: ${inventoryDuration.toFixed(2)}ms`)
+        console.log(`[Inventory] Results: ${inventoryResult.processed} materials consumed, ${inventoryResult.skipped} skipped, ${inventoryResult.errors.length} errors`)
+        
+        // Log errors but don't fail the API
+        if (inventoryResult.errors.length > 0) {
+          console.warn('[Inventory] Errors during consumption:', inventoryResult.errors)
+        }
+      } catch (error) {
+        console.error('[Inventory] Exception during consumption:', error)
+        // Don't fail the status update if inventory fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       updated_count: data?.length || 0,
       payments_created: paymentsCreated,
       new_status,
-      sms_notifications: smsResults
+      sms_notifications: smsResults,
+      inventory: inventoryResult ? {
+        materials_consumed: inventoryResult.processed,
+        skipped: inventoryResult.skipped,
+        errors: inventoryResult.errors
+      } : null
     })
 
   } catch (error) {

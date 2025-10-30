@@ -376,13 +376,162 @@ export async function processFoglalás(
   return results
 }
 
+// ============================================
+// Phase 3: Kivételezés (Consumption)
+// ============================================
+
 /**
- * Process kivételezés (consumption) - Phase 3
+ * Process kivételezés (consumption) for quotes
  * Called when quote status changes to 'ready'
- * TODO: Implement in Phase 3
+ * 
+ * Workflow:
+ * 1. Fetch quote with quote_materials_pricing
+ * 2. For each material pricing with boards_used > 0:
+ *    a. Release reservation (delete 'reserved' transaction)
+ *    b. Create 'out' transaction with average cost
+ * 3. Reduces on_hand stock
+ * 
+ * @param quoteIds Array of quote UUIDs
+ * @returns Processing results with counts and errors
  */
-export async function processKivételezés(quoteIds: string[]): Promise<InventoryProcessingResult> {
-  console.log('[Inventory] Kivételezés not yet implemented (Phase 3)')
-  return { processed: 0, skipped: quoteIds.length, errors: [] }
+export async function processKivételezés(
+  quoteIds: string[]
+): Promise<InventoryProcessingResult> {
+  const startTime = performance.now()
+  const results: InventoryProcessingResult = {
+    processed: 0,
+    skipped: 0,
+    errors: []
+  }
+
+  console.log(`[Inventory] Processing kivételezés for ${quoteIds.length} quotes`)
+
+  for (const quoteId of quoteIds) {
+    try {
+      // Fetch quote with materials pricing
+      const { data: quote, error: quoteError } = await supabaseServer
+        .from('quotes')
+        .select(`
+          id,
+          quote_number,
+          order_number,
+          status
+        `)
+        .eq('id', quoteId)
+        .single()
+
+      if (quoteError || !quote) {
+        results.errors.push(`Quote ${quoteId}: Failed to fetch`)
+        console.error(`[Inventory] Failed to fetch quote ${quoteId}:`, quoteError)
+        continue
+      }
+
+      // Fetch materials pricing for this quote
+      const { data: pricingData, error: pricingError } = await supabaseServer
+        .from('quote_materials_pricing')
+        .select(`
+          id,
+          material_id,
+          material_name,
+          boards_used
+        `)
+        .eq('quote_id', quoteId)
+
+      if (pricingError) {
+        results.errors.push(`Quote ${quoteId}: Failed to fetch pricing`)
+        console.error(`[Inventory] Failed to fetch pricing for quote ${quoteId}:`, pricingError)
+        continue
+      }
+
+      if (!pricingData || pricingData.length === 0) {
+        console.log(`[Inventory] Skipping quote ${quoteId}: No materials pricing`)
+        results.skipped++
+        continue
+      }
+
+      // Process each material
+      for (const pricing of pricingData) {
+        try {
+          // Skip if no boards used
+          if (!pricing.boards_used || pricing.boards_used <= 0) {
+            console.log(`[Inventory] Skipping pricing ${pricing.id}: No boards used (${pricing.boards_used})`)
+            continue
+          }
+
+          // Get SKU from machine_material_map
+          const { data: machineData, error: machineError } = await supabaseServer
+            .from('machine_material_map')
+            .select('machine_code')
+            .eq('material_id', pricing.material_id)
+            .eq('machine_type', 'Korpus')
+            .single()
+
+          if (machineError || !machineData) {
+            console.warn(`[Inventory] Skipping material ${pricing.material_id}: No machine_code found`)
+            continue
+          }
+
+          const sku = machineData.machine_code
+
+          // Step 1: Release reservation (delete 'reserved' transaction)
+          console.log(`[Inventory] Releasing reservation for ${sku}...`)
+          const { error: deleteError } = await supabaseServer
+            .from('material_inventory_transactions')
+            .delete()
+            .eq('reference_type', 'quote')
+            .eq('reference_id', quoteId)
+            .eq('transaction_type', 'reserved')
+            .eq('material_id', pricing.material_id)
+
+          if (deleteError) {
+            console.error(`[Inventory] Error releasing reservation for ${sku}:`, deleteError)
+            // Continue anyway to create 'out' transaction
+          } else {
+            console.log(`[Inventory] ✓ Released reservation for ${sku}`)
+          }
+
+          // Step 2: Get average cost for this material
+          const avgCost = await getAverageCost(pricing.material_id)
+          if (!avgCost || avgCost <= 0) {
+            console.warn(`[Inventory] No average cost for ${sku}, using 0`)
+          }
+
+          // Step 3: Create consumption transaction (deduct from stock)
+          const transactionResult = await createInventoryTransaction({
+            material_id: pricing.material_id,
+            sku: sku,
+            transaction_type: 'out',
+            quantity: -pricing.boards_used, // negative!
+            unit_price: avgCost || 0, // Use average cost
+            reference_type: 'quote',
+            reference_id: quoteId,
+            comment: `Kivételezés: ${quote.order_number || quote.quote_number} - ${pricing.material_name}`
+          })
+
+          if (transactionResult.success) {
+            results.processed++
+            const cogs = pricing.boards_used * (avgCost || 0)
+            console.log(`[Inventory] ✓ Consumed ${pricing.boards_used} boards of ${sku} @ ${avgCost} Ft (COGS: ${cogs} Ft) for ${quote.order_number || quote.quote_number}`)
+          } else {
+            results.errors.push(`Material ${pricing.material_id}: ${transactionResult.error}`)
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          console.error(`[Inventory] Error processing material ${pricing.material_id}:`, error)
+          // Don't fail the whole quote, continue with next material
+        }
+      }
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      results.errors.push(`Quote ${quoteId}: ${errorMsg}`)
+      console.error(`[Inventory] Error processing quote ${quoteId}:`, error)
+    }
+  }
+
+  const duration = performance.now() - startTime
+  console.log(`[Inventory] Kivételezés complete in ${duration.toFixed(2)}ms: ${results.processed} materials consumed, ${results.skipped} skipped, ${results.errors.length} errors`)
+  
+  return results
 }
 
