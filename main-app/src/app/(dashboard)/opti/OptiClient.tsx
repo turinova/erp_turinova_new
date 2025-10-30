@@ -2182,6 +2182,27 @@ export default function OptiClient({
                      }}
                    />
                  )}
+                 renderGroup={(params) => (
+                   <Box key={params.key}>
+                     <Box
+                       sx={{
+                         position: 'sticky',
+                         top: 0,
+                         padding: '8px 16px',
+                         backgroundColor: 'primary.main',
+                         color: 'white',
+                         fontWeight: 'bold',
+                         fontSize: '0.875rem',
+                         zIndex: 10,
+                         textTransform: 'uppercase',
+                         letterSpacing: '0.5px'
+                       }}
+                     >
+                       {params.group}
+                     </Box>
+                     {params.children}
+                   </Box>
+                 )}
                  renderOption={(props, option) => {
                    const { key, ...otherProps } = props;
                    return (
