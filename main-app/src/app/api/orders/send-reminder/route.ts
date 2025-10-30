@@ -140,6 +140,17 @@ export async function POST(request: NextRequest) {
       if (result.success) {
         smsResults.sent++
         console.log(`[Storage Reminder] ✓ Sent to ${order.customers.name} (${order.customers.mobile}) - ${order.storage_days} days`)
+        
+        // Update last_storage_reminder_sent_at timestamp
+        const { error: timestampError } = await supabase
+          .from('quotes')
+          .update({ last_storage_reminder_sent_at: new Date().toISOString() })
+          .eq('id', order.id)
+        
+        if (timestampError) {
+          console.error(`[Storage Reminder] Error updating last_storage_reminder_sent_at for order ${order.id}:`, timestampError)
+          // Don't fail the operation, just log the error
+        }
       } else {
         smsResults.failed++
         smsResults.errors.push(`${order.customers.name}: ${result.error}`)

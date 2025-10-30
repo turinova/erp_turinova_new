@@ -263,6 +263,17 @@ export async function PATCH(request: NextRequest) {
         if (result.success) {
           smsResults.sent++
           console.log(`[SMS] ✓ Sent to ${order.customers.name} (${order.customers.mobile})`)
+          
+          // Update ready_notification_sent_at timestamp
+          const { error: timestampError } = await supabase
+            .from('quotes')
+            .update({ ready_notification_sent_at: new Date().toISOString() })
+            .eq('id', order.id)
+          
+          if (timestampError) {
+            console.error(`[SMS] Error updating ready_notification_sent_at for order ${order.id}:`, timestampError)
+            // Don't fail the operation, just log the error
+          }
         } else {
           smsResults.failed++
           smsResults.errors.push(`${order.customers.name}: ${result.error}`)
