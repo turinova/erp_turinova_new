@@ -32,8 +32,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  TextareaAutosize,
-  Tooltip
+  TextareaAutosize
 } from '@mui/material'
 import { 
   Search as SearchIcon, 
