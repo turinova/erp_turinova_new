@@ -46,6 +46,7 @@ import {
   ContentCopy as CopyIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import BeszerzésSmsModal from './BeszerzésSmsModal'
 
 interface ShopOrderItem {
   id: string
@@ -113,6 +114,9 @@ export default function SupplierOrdersClient({
   const [isUpdating, setIsUpdating] = useState(false)
   const [textGenerationModalOpen, setTextGenerationModalOpen] = useState(false)
   const [generatedText, setGeneratedText] = useState('')
+  const [beszerzésSmsModalOpen, setBeszerzésSmsModalOpen] = useState(false)
+  const [beszerzésSmsEligibleOrders, setBeszerzésSmsEligibleOrders] = useState<any[]>([])
+  const [isSendingSms, setIsSendingSms] = useState(false)
   
   // Ensure client-side only rendering
   useEffect(() => {
@@ -276,9 +280,15 @@ export default function SupplierOrdersClient({
   }
 
   // Handle bulk status update
-  const handleBulkStatusUpdate = (newStatus: string) => {
+  const handleBulkStatusUpdate = async (newStatus: string) => {
     if (selectedItems.length === 0) {
       toast.warning('Válassz legalább egy terméket')
+      return
+    }
+
+    // Special handling for 'arrived' status - check SMS eligibility
+    if (newStatus === 'arrived') {
+      await handleCheckBeszerzésSms()
       return
     }
 
@@ -330,6 +340,68 @@ export default function SupplierOrdersClient({
   const cancelBulkStatusUpdate = () => {
     setConfirmationModalOpen(false)
     setPendingStatusUpdate(null)
+  }
+
+  // Check Beszerzés SMS eligibility
+  const handleCheckBeszerzésSms = async () => {
+    try {
+      const response = await fetch('/api/supplier-orders/sms-eligible', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_ids: selectedItems })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to check SMS eligibility')
+      }
+
+      const result = await response.json()
+      const eligibleOrders = result.sms_eligible_orders || []
+
+      if (eligibleOrders.length > 0) {
+        // Show SMS modal
+        setBeszerzésSmsEligibleOrders(eligibleOrders)
+        setBeszerzésSmsModalOpen(true)
+      } else {
+        // No SMS-eligible orders, show regular confirmation
+        setPendingStatusUpdate('arrived')
+        setConfirmationModalOpen(true)
+      }
+    } catch (error) {
+      console.error('Error checking SMS eligibility:', error)
+      toast.error('Hiba történt az SMS jogosultság ellenőrzésekor')
+    }
+  }
+
+  // Handle Beszerzés SMS confirmation
+  const handleBeszerzésSmsConfirmation = async (selectedOrderIds: string[]) => {
+    setIsSendingSms(true)
+    try {
+      const response = await fetch('/api/supplier-orders/send-sms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_ids: selectedOrderIds,
+          item_ids: selectedItems
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to send SMS')
+      }
+
+      const result = await response.json()
+      toast.success(`${result.sms_sent_count} SMS elküldve, ${result.items_updated_count} termék frissítve`)
+      
+      router.refresh()
+      setSelectedItems([])
+      setBeszerzésSmsModalOpen(false)
+    } catch (error) {
+      console.error('Error sending SMS:', error)
+      toast.error('Hiba történt az SMS küldése során')
+    } finally {
+      setIsSendingSms(false)
+    }
   }
 
   // Handle text generation
@@ -748,6 +820,15 @@ export default function SupplierOrdersClient({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Beszerzés SMS Modal */}
+      <BeszerzésSmsModal
+        open={beszerzésSmsModalOpen}
+        onClose={() => !isSendingSms && setBeszerzésSmsModalOpen(false)}
+        onConfirm={handleBeszerzésSmsConfirmation}
+        orders={beszerzésSmsEligibleOrders}
+        isProcessing={isSendingSms}
+      />
     </Box>
   )
 }
