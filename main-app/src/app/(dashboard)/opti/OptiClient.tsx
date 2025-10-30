@@ -2153,6 +2153,7 @@ export default function OptiClient({
                  fullWidth
                  size="small"
                  options={activeMaterials}
+                 groupBy={(option) => option.brand_name || 'Ismeretlen'}
                  getOptionLabel={(option) => option.name}
                  value={activeMaterials.find(m => m.id === selectedTáblásAnyag) || null}
                  onChange={(event, newValue) => {
@@ -2184,10 +2185,24 @@ export default function OptiClient({
                  renderOption={(props, option) => {
                    const { key, ...otherProps } = props;
                    return (
-                     <Box component="li" key={key} {...otherProps}>
-                     {option.name}
-                   </Box>
+                     <Box 
+                       component="li" 
+                       key={key} 
+                       {...otherProps}
+                       sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
+                     >
+                       <span>{option.name}</span>
+                       <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+                         {option.thickness_mm} mm
+                       </Typography>
+                     </Box>
                    );
+                 }}
+                 ListboxProps={{
+                   style: {
+                     maxHeight: '320px',
+                     overflow: 'auto'
+                   }
                  }}
                />
         </Grid>
