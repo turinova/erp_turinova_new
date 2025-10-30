@@ -1,8 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Box, Typography, Breadcrumbs, Link, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Pagination, TextField, InputAdornment, Checkbox, FormControl, Select, MenuItem } from '@mui/material'
-import { Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
+import { Box, Typography, Breadcrumbs, Link, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip, Pagination, TextField, InputAdornment, Checkbox, FormControl, Select, MenuItem, Tooltip } from '@mui/material'
+import { Home as HomeIcon, Search as SearchIcon, Check as CheckIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -44,6 +44,7 @@ interface ShopOrder {
   status: string
   created_at: string
   updated_at: string
+  sms_sent_at: string | null
   items_count: number
   items: ShopOrderItem[]
 }
@@ -276,12 +277,13 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
               <TableCell>Termékek</TableCell>
               <TableCell align="right">Összesen</TableCell>
               <TableCell>Létrehozva</TableCell>
+              <TableCell align="center">Értesítés</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {paginatedOrders.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 8 }}>
                   <Typography variant="h6" color="text.secondary">
                     Nincs találat
                   </Typography>
@@ -352,6 +354,20 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
                     <Typography variant="body2">
                       {new Date(order.created_at).toLocaleDateString('hu-HU')}
                     </Typography>
+                  </TableCell>
+                  <TableCell align="center">
+                    {order.sms_sent_at ? (
+                      <Tooltip 
+                        title={`SMS elküldve: ${new Date(order.sms_sent_at).toLocaleString('hu-HU')}`}
+                        arrow
+                      >
+                        <CheckIcon color="success" fontSize="small" />
+                      </Tooltip>
+                    ) : (
+                      <Typography variant="body2" color="text.disabled">
+                        -
+                      </Typography>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

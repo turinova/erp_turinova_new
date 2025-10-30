@@ -2390,6 +2390,7 @@ export async function getAllShopOrders() {
       status,
       created_at,
       updated_at,
+      sms_sent_at,
       workers(name, nickname),
       shop_order_items(
         id,
@@ -2439,6 +2440,7 @@ export async function getAllShopOrders() {
     status: order.status,
     created_at: order.created_at,
     updated_at: order.updated_at,
+    sms_sent_at: order.sms_sent_at,
     items_count: order.shop_order_items?.length || 0,
     items: order.shop_order_items?.map(item => ({
       id: item.id,
