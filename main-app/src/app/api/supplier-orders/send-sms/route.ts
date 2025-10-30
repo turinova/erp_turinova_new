@@ -143,6 +143,19 @@ export async function POST(request: NextRequest) {
         smsSentCount++
         console.log(`SMS sent successfully to ${orderData.customer_name} (${orderData.customer_mobile})`)
 
+        // Update shop_orders.sms_sent_at timestamp
+        const { error: updateSmsTimestampError } = await supabase
+          .from('shop_orders')
+          .update({ 
+            sms_sent_at: new Date().toISOString()
+          })
+          .eq('id', orderId)
+
+        if (updateSmsTimestampError) {
+          console.error(`Error updating sms_sent_at for order ${orderId}:`, updateSmsTimestampError)
+          // Don't fail the whole operation, just log the error
+        }
+
       } catch (error) {
         console.error(`Error sending SMS for order ${orderId}:`, error)
         errors.push(`Failed to send SMS for order ${orderId}`)
