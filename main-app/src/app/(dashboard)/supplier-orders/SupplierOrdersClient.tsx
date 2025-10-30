@@ -40,6 +40,7 @@ import {
   Info as InfoIcon,
   ShoppingCart as OrderedIcon,
   CheckCircle as ArrivedIcon,
+  LocalShipping as HandedOverIcon,
   Warning as OpenIcon,
   Delete as DeleteIcon,
   Description as TextIcon,
@@ -188,6 +189,7 @@ export default function SupplierOrdersClient({
     open: items.filter(i => i.status === 'open').length,
     ordered: items.filter(i => i.status === 'ordered').length,
     arrived: items.filter(i => i.status === 'arrived').length,
+    handed_over: items.filter(i => i.status === 'handed_over').length,
     deleted: items.filter(i => i.status === 'deleted').length
   }
 
@@ -235,6 +237,8 @@ export default function SupplierOrdersClient({
         return { label: 'Rendelve', color: 'info' as const }
       case 'arrived':
         return { label: 'Megérkezett', color: 'success' as const }
+      case 'handed_over':
+        return { label: 'Átadva', color: 'primary' as const }
       case 'deleted':
         return { label: 'Törölve', color: 'error' as const }
       default:
@@ -523,6 +527,13 @@ export default function SupplierOrdersClient({
           sx={{ cursor: 'pointer' }}
         />
         <Chip
+          label={`Átadva (${statusCounts.handed_over})`}
+          onClick={() => setStatusFilter('handed_over')}
+          color={statusFilter === 'handed_over' ? 'primary' : 'default'}
+          variant={statusFilter === 'handed_over' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
           label={`Törölve (${statusCounts.deleted})`}
           onClick={() => setStatusFilter('deleted')}
           color={statusFilter === 'deleted' ? 'error' : 'default'}
@@ -575,13 +586,23 @@ export default function SupplierOrdersClient({
           </Typography>
           <Button
             variant="contained"
+            color="warning"
+            startIcon={<OpenIcon />}
+            onClick={() => handleBulkStatusUpdate('open')}
+            disabled={isUpdating}
+            size="small"
+          >
+            Nyitott
+          </Button>
+          <Button
+            variant="contained"
             color="success"
             startIcon={<OrderedIcon />}
             onClick={() => handleBulkStatusUpdate('ordered')}
             disabled={isUpdating}
             size="small"
           >
-            Megrendel
+            Megrendelve
           </Button>
           <Button
             variant="contained"
@@ -595,13 +616,13 @@ export default function SupplierOrdersClient({
           </Button>
           <Button
             variant="contained"
-            color="warning"
-            startIcon={<OpenIcon />}
-            onClick={() => handleBulkStatusUpdate('open')}
+            color="primary"
+            startIcon={<HandedOverIcon />}
+            onClick={() => handleBulkStatusUpdate('handed_over')}
             disabled={isUpdating}
             size="small"
           >
-            Nyitott
+            Átadva
           </Button>
           <Button
             variant="contained"
