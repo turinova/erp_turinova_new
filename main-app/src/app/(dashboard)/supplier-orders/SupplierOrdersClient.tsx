@@ -319,10 +319,12 @@ export default function SupplierOrdersClient({
 
       if (!response.ok) {
         const error = await response.json()
+        console.error('[Client] API Error Response:', error)
         throw new Error(error.error || 'Failed to update items')
       }
 
       const result = await response.json()
+      console.log('[Client] API Success Response:', result)
       
       const statusLabel = getStatusInfo(pendingStatusUpdate).label
       toast.success(`${result.updated_count} termék frissítve: ${statusLabel}`)
