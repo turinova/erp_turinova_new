@@ -116,6 +116,8 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
       defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese elkeszult es atvehetο. Udvozlettel, {company_name}'
     } else if (selectedTemplate.template_name === 'Tárolás figyelmeztetés') {
       defaultTemplate = 'Kedves {customer_name}! Az On {order_number} szamu rendelese mar {days} napja kesz es athvehetο. Kerem, vegye fel velunk a kapcsolatot! Udvozlettel, {company_name}'
+    } else if (selectedTemplate.template_name === 'Beszerzés') {
+      defaultTemplate = 'Kedves {customer_name}! A beserzese ({order_date}) elkeszult, vegosszeg: {total_price}. Udvozlettel, {company_name}'
     }
     
     setMessageTemplate(defaultTemplate)
@@ -209,20 +211,32 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
             </Typography>
             <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
               <Chip label="{customer_name}" size="small" color="primary" variant="outlined" />
-              <Chip label="{order_number}" size="small" color="primary" variant="outlined" />
               <Chip label="{company_name}" size="small" color="primary" variant="outlined" />
+              {selectedTemplate?.template_name !== 'Beszerzés' && (
+                <Chip label="{order_number}" size="small" color="primary" variant="outlined" />
+              )}
               {selectedTemplate?.template_name === 'Készre jelentés' && (
                 <Chip label="{material_name}" size="small" color="primary" variant="outlined" />
               )}
               {selectedTemplate?.template_name === 'Tárolás figyelmeztetés' && (
                 <Chip label="{days}" size="small" color="primary" variant="outlined" />
               )}
+              {selectedTemplate?.template_name === 'Beszerzés' && (
+                <>
+                  <Chip label="{order_date}" size="small" color="primary" variant="outlined" />
+                  <Chip label="{total_price}" size="small" color="primary" variant="outlined" />
+                </>
+              )}
             </Stack>
             <Typography variant="caption" display="block" sx={{ mt: 1 }}>
               • <strong>{'{customer_name}'}</strong> - Ügyfél neve (pl.: Mező Dávid)
               <br />
-              • <strong>{'{order_number}'}</strong> - Megrendelés száma (pl.: ORD-2025-10-22-001)
-              <br />
+              {selectedTemplate?.template_name !== 'Beszerzés' && (
+                <>
+                  • <strong>{'{order_number}'}</strong> - Megrendelés száma (pl.: ORD-2025-10-22-001)
+                  <br />
+                </>
+              )}
               • <strong>{'{company_name}'}</strong> - Cég neve (pl.: Turinova)
               <br />
               {selectedTemplate?.template_name === 'Készre jelentés' && (
@@ -234,6 +248,14 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
               {selectedTemplate?.template_name === 'Tárolás figyelmeztetés' && (
                 <>
                   • <strong>{'{days}'}</strong> - Hány napja van kész állapotban a rendelés (pl.: 5)
+                  <br />
+                </>
+              )}
+              {selectedTemplate?.template_name === 'Beszerzés' && (
+                <>
+                  • <strong>{'{order_date}'}</strong> - Beszerzés dátuma (pl.: 2025-10-30)
+                  <br />
+                  • <strong>{'{total_price}'}</strong> - Végösszeg kedvezménnyel (pl.: 125,000 Ft)
                   <br />
                 </>
               )}
@@ -307,7 +329,10 @@ export default function NotificationsClient({ initialTemplates, companyName }: N
             .replace(/{customer_name}/g, 'Mezo David')
             .replace(/{order_number}/g, 'ORD-2025-10-22-001')
             .replace(/{company_name}/g, companyName)
-            .replace(/{material_name}/g, 'EGGER U999 ST9, KRONOSPAN K001')}
+            .replace(/{material_name}/g, 'EGGER U999 ST9, KRONOSPAN K001')
+            .replace(/{order_date}/g, '2025-10-30')
+            .replace(/{total_price}/g, '125,000 Ft')
+            .replace(/{days}/g, '5')}
         </Box>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
           Ez egy előnézet valós adatokkal. Az ügyfelek ezt az üzenetet fogják látni.
