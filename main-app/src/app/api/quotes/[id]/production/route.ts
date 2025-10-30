@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
+import { processFoglalás } from '@/lib/inventory'
 
 /**
  * PATCH /api/quotes/[id]/production
@@ -89,10 +90,36 @@ export async function PATCH(
       )
     }
 
+    // Phase 2: Process inventory reservation (foglalás)
+    let inventoryResult = null
+    const inventoryStartTime = performance.now()
+    console.log(`[Inventory] Triggering foglalás for quote ${quoteId}`)
+    
+    try {
+      inventoryResult = await processFoglalás([quoteId])
+      const inventoryDuration = performance.now() - inventoryStartTime
+      
+      console.log(`[PERF] Inventory Reservation: ${inventoryDuration.toFixed(2)}ms`)
+      console.log(`[Inventory] Results: ${inventoryResult.processed} materials reserved, ${inventoryResult.skipped} skipped, ${inventoryResult.errors.length} errors`)
+      
+      // Log errors but don't fail the production assignment
+      if (inventoryResult.errors.length > 0) {
+        console.warn('[Inventory] Errors during reservation:', inventoryResult.errors)
+      }
+    } catch (error) {
+      console.error('[Inventory] Exception during reservation:', error)
+      // Don't fail the production assignment if inventory fails
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Megrendelés sikeresen gyártásba adva',
-      status: updatedQuote.status
+      status: updatedQuote.status,
+      inventory: inventoryResult ? {
+        materials_reserved: inventoryResult.processed,
+        skipped: inventoryResult.skipped,
+        errors: inventoryResult.errors
+      } : null
     })
 
   } catch (error) {
@@ -161,6 +188,29 @@ export async function DELETE(
         { error: 'Hiba a gyártás törlése során', details: updateError.message },
         { status: 500 }
       )
+    }
+
+    // Phase 2: Release inventory reservations when cancelling production
+    console.log(`[Inventory] Releasing reservations for quote ${quoteId}`)
+    
+    try {
+      // Find and delete all 'reserved' transactions for this quote
+      const { error: deleteError } = await supabase
+        .from('material_inventory_transactions')
+        .delete()
+        .eq('reference_type', 'quote')
+        .eq('reference_id', quoteId)
+        .eq('transaction_type', 'reserved')
+
+      if (deleteError) {
+        console.error('[Inventory] Error releasing reservations:', deleteError)
+        // Don't fail the operation, just log
+      } else {
+        console.log('[Inventory] ✓ Reservations released successfully')
+      }
+    } catch (error) {
+      console.error('[Inventory] Exception releasing reservations:', error)
+      // Don't fail the production deletion if inventory fails
     }
 
     return NextResponse.json({

@@ -243,17 +243,137 @@ export async function processBevételezés(
 }
 
 // ============================================
-// Future Phases (Phase 2 & 3)
+// Phase 2: Foglalás (Reservation)
 // ============================================
 
 /**
- * Process foglalás (reservation) - Phase 2
+ * Process foglalás (reservation) for quotes
  * Called when quote status changes to 'in_production'
- * TODO: Implement in Phase 2
+ * 
+ * Workflow:
+ * 1. Fetch quote with quote_materials_pricing
+ * 2. For each material pricing with boards_used > 0
+ * 3. Get material SKU from machine_material_map
+ * 4. Create 'reserved' transaction (no price)
+ * 
+ * @param quoteIds Array of quote UUIDs
+ * @returns Processing results with counts and errors
  */
-export async function processFoglalás(quoteIds: string[]): Promise<InventoryProcessingResult> {
-  console.log('[Inventory] Foglalás not yet implemented (Phase 2)')
-  return { processed: 0, skipped: quoteIds.length, errors: [] }
+export async function processFoglalás(
+  quoteIds: string[]
+): Promise<InventoryProcessingResult> {
+  const startTime = performance.now()
+  const results: InventoryProcessingResult = {
+    processed: 0,
+    skipped: 0,
+    errors: []
+  }
+
+  console.log(`[Inventory] Processing foglalás for ${quoteIds.length} quotes`)
+
+  for (const quoteId of quoteIds) {
+    try {
+      // Fetch quote with materials pricing
+      const { data: quote, error: quoteError } = await supabaseServer
+        .from('quotes')
+        .select(`
+          id,
+          quote_number,
+          order_number,
+          status
+        `)
+        .eq('id', quoteId)
+        .single()
+
+      if (quoteError || !quote) {
+        results.errors.push(`Quote ${quoteId}: Failed to fetch`)
+        console.error(`[Inventory] Failed to fetch quote ${quoteId}:`, quoteError)
+        continue
+      }
+
+      // Fetch materials pricing for this quote
+      const { data: pricingData, error: pricingError } = await supabaseServer
+        .from('quote_materials_pricing')
+        .select(`
+          id,
+          material_id,
+          material_name,
+          boards_used
+        `)
+        .eq('quote_id', quoteId)
+
+      if (pricingError) {
+        results.errors.push(`Quote ${quoteId}: Failed to fetch pricing`)
+        console.error(`[Inventory] Failed to fetch pricing for quote ${quoteId}:`, pricingError)
+        continue
+      }
+
+      if (!pricingData || pricingData.length === 0) {
+        console.log(`[Inventory] Skipping quote ${quoteId}: No materials pricing`)
+        results.skipped++
+        continue
+      }
+
+      // Process each material
+      for (const pricing of pricingData) {
+        try {
+          // Skip if no boards used
+          if (!pricing.boards_used || pricing.boards_used <= 0) {
+            console.log(`[Inventory] Skipping pricing ${pricing.id}: No boards used (${pricing.boards_used})`)
+            continue
+          }
+
+          // Get SKU from machine_material_map
+          const { data: machineData, error: machineError } = await supabaseServer
+            .from('machine_material_map')
+            .select('machine_code')
+            .eq('material_id', pricing.material_id)
+            .eq('machine_type', 'Korpus')
+            .single()
+
+          if (machineError || !machineData) {
+            console.warn(`[Inventory] Skipping material ${pricing.material_id}: No machine_code found`)
+            continue
+          }
+
+          const sku = machineData.machine_code
+
+          // Create reservation transaction
+          const transactionResult = await createInventoryTransaction({
+            material_id: pricing.material_id,
+            sku: sku,
+            transaction_type: 'reserved',
+            quantity: pricing.boards_used, // positive (absolute value)
+            unit_price: null, // No price for reservations
+            reference_type: 'quote',
+            reference_id: quoteId,
+            comment: `Foglalva: ${quote.order_number || quote.quote_number} - ${pricing.material_name}`
+          })
+
+          if (transactionResult.success) {
+            results.processed++
+            console.log(`[Inventory] ✓ Reserved ${pricing.boards_used} boards of ${sku} for quote ${quote.order_number || quote.quote_number}`)
+          } else {
+            results.errors.push(`Material ${pricing.material_id}: ${transactionResult.error}`)
+          }
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+          console.error(`[Inventory] Error processing material ${pricing.material_id}:`, error)
+          // Don't fail the whole quote, continue with next material
+        }
+      }
+
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      results.errors.push(`Quote ${quoteId}: ${errorMsg}`)
+      console.error(`[Inventory] Error processing quote ${quoteId}:`, error)
+    }
+  }
+
+  const duration = performance.now() - startTime
+  console.log(`[Inventory] Foglalás complete in ${duration.toFixed(2)}ms: ${results.processed} processed, ${results.skipped} skipped, ${results.errors.length} errors`)
+  
+  return results
 }
 
 /**
