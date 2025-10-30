@@ -318,18 +318,13 @@ export async function processFoglalás(
       // Process each material
       for (const pricing of pricingData) {
         try {
-          // Calculate actual boards needed for inventory
-          // Logic: boards_used (full boards) + 1 if charged_sqm > 0 (panel area exists)
-          const fullBoards = pricing.boards_used || 0
-          const chargedSqm = pricing.charged_sqm || 0
-          const hasPartialBoard = chargedSqm > 0
-          const actualBoardsNeeded = fullBoards + (hasPartialBoard ? 1 : 0)
-          
-          console.log(`[Inventory] Foglalás board calculation for ${pricing.material_name}: full_boards=${fullBoards}, charged_sqm=${chargedSqm}, total=${actualBoardsNeeded}`)
+          // Calculate total boards needed for reservation
+          // If charged_sqm > 0, we need an extra board for partial usage
+          const totalBoardsNeeded = pricing.boards_used + (pricing.charged_sqm && pricing.charged_sqm > 0 ? 1 : 0)
           
           // Skip if no boards needed
-          if (actualBoardsNeeded <= 0) {
-            console.log(`[Inventory] Skipping pricing ${pricing.id}: No boards needed`)
+          if (!totalBoardsNeeded || totalBoardsNeeded <= 0) {
+            console.log(`[Inventory] Skipping pricing ${pricing.id}: No boards needed (boards_used: ${pricing.boards_used}, charged_sqm: ${pricing.charged_sqm})`)
             continue
           }
 
@@ -353,7 +348,7 @@ export async function processFoglalás(
             material_id: pricing.material_id,
             sku: sku,
             transaction_type: 'reserved',
-            quantity: actualBoardsNeeded, // Use calculated total
+            quantity: totalBoardsNeeded, // Full boards + partial board
             unit_price: null, // No price for reservations
             reference_type: 'quote',
             reference_id: quoteId,
@@ -362,7 +357,7 @@ export async function processFoglalás(
 
           if (transactionResult.success) {
             results.processed++
-            console.log(`[Inventory] ✓ Reserved ${actualBoardsNeeded} boards of ${sku} for quote ${quote.order_number || quote.quote_number}`)
+            console.log(`[Inventory] ✓ Reserved ${totalBoardsNeeded} boards of ${sku} for ${quote.order_number || quote.quote_number} (${pricing.boards_used} full + ${pricing.charged_sqm > 0 ? 1 : 0} partial)`)
           } else {
             results.errors.push(`Material ${pricing.material_id}: ${transactionResult.error}`)
           }
@@ -463,18 +458,13 @@ export async function processKivételezés(
       // Process each material
       for (const pricing of pricingData) {
         try {
-          // Calculate actual boards needed for inventory
-          // Logic: boards_used (full boards) + 1 if charged_sqm > 0 (panel area exists)
-          const fullBoards = pricing.boards_used || 0
-          const chargedSqm = pricing.charged_sqm || 0
-          const hasPartialBoard = chargedSqm > 0
-          const actualBoardsNeeded = fullBoards + (hasPartialBoard ? 1 : 0)
-          
-          console.log(`[Inventory] Kivételezés board calculation for ${pricing.material_name}: full_boards=${fullBoards}, charged_sqm=${chargedSqm}, total=${actualBoardsNeeded}`)
+          // Calculate total boards needed for consumption
+          // If charged_sqm > 0, we consumed an extra board for partial usage
+          const totalBoardsNeeded = pricing.boards_used + (pricing.charged_sqm && pricing.charged_sqm > 0 ? 1 : 0)
           
           // Skip if no boards needed
-          if (actualBoardsNeeded <= 0) {
-            console.log(`[Inventory] Skipping pricing ${pricing.id}: No boards needed`)
+          if (!totalBoardsNeeded || totalBoardsNeeded <= 0) {
+            console.log(`[Inventory] Skipping pricing ${pricing.id}: No boards needed (boards_used: ${pricing.boards_used}, charged_sqm: ${pricing.charged_sqm})`)
             continue
           }
 
@@ -521,7 +511,7 @@ export async function processKivételezés(
             material_id: pricing.material_id,
             sku: sku,
             transaction_type: 'out',
-            quantity: -actualBoardsNeeded, // negative! Use calculated total
+            quantity: -totalBoardsNeeded, // negative! Full + partial boards
             unit_price: avgCost || 0, // Use average cost
             reference_type: 'quote',
             reference_id: quoteId,
@@ -530,8 +520,8 @@ export async function processKivételezés(
 
           if (transactionResult.success) {
             results.processed++
-            const cogs = actualBoardsNeeded * (avgCost || 0)
-            console.log(`[Inventory] ✓ Consumed ${actualBoardsNeeded} boards of ${sku} @ ${avgCost} Ft (COGS: ${cogs} Ft) for ${quote.order_number || quote.quote_number}`)
+            const cogs = totalBoardsNeeded * (avgCost || 0)
+            console.log(`[Inventory] ✓ Consumed ${totalBoardsNeeded} boards of ${sku} @ ${avgCost} Ft (COGS: ${cogs} Ft) for ${quote.order_number || quote.quote_number} (${pricing.boards_used} full + ${pricing.charged_sqm > 0 ? 1 : 0} partial)`)
           } else {
             results.errors.push(`Material ${pricing.material_id}: ${transactionResult.error}`)
           }
