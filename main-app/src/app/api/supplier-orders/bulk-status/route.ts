@@ -15,7 +15,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Validate status
-    const validStatuses = ['open', 'ordered', 'arrived', 'deleted']
+    const validStatuses = ['open', 'ordered', 'arrived', 'handed_over', 'deleted']
     if (!validStatuses.includes(new_status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
     }
