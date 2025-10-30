@@ -45,10 +45,17 @@ export async function POST(request: NextRequest) {
 
     if (itemsError) {
       console.error('Error fetching selected items:', itemsError)
-      return NextResponse.json(
-        { error: 'Failed to fetch items' },
-        { status: 500 }
-      )
+      // Return empty array instead of error - gracefully handle missing data
+      return NextResponse.json({
+        sms_eligible_orders: []
+      })
+    }
+
+    if (!selectedItems || selectedItems.length === 0) {
+      // No items found, return empty array
+      return NextResponse.json({
+        sms_eligible_orders: []
+      })
     }
 
     // Group items by order_id
@@ -79,7 +86,7 @@ export async function POST(request: NextRequest) {
         .eq('order_id', orderId)
         .is('deleted_at', null)
 
-      if (allItemsError || !allOrderItems) {
+      if (allItemsError || !allOrderItems || allOrderItems.length === 0) {
         console.error('Error fetching all order items:', allItemsError)
         continue
       }
@@ -144,10 +151,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error checking SMS eligibility:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    // Return empty array instead of error to gracefully handle any issues
+    return NextResponse.json({
+      sms_eligible_orders: []
+    })
   }
 }
 
