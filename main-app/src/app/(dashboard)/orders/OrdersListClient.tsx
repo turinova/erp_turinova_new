@@ -66,6 +66,7 @@ interface Order {
   production_machine_id: string | null
   production_machine_name: string | null
   production_date: string | null
+  ready_at: string | null
   barcode: string
 }
 
@@ -1014,10 +1015,14 @@ export default function OrdersListClient({
                     {/* Storage Days - Only for 'ready' status */}
                     <TableCell onClick={() => handleRowClick(order.id)}>
                       {order.status === 'ready' ? (() => {
-                        // Use production_date if available, otherwise fall back to updated_at
-                        const referenceDate = order.production_date || order.updated_at
+                        // Use ready_at if available (most accurate), otherwise fall back to production_date or updated_at
+                        const referenceDate = order.ready_at || order.production_date || order.updated_at
                         const today = new Date()
+                        today.setHours(0, 0, 0, 0) // Start of today
                         const readyDate = new Date(referenceDate)
+                        readyDate.setHours(0, 0, 0, 0) // Start of ready day
+                        
+                        // Calculate full days difference (0 = same day, 1 = next day)
                         const diffTime = today.getTime() - readyDate.getTime()
                         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
                         

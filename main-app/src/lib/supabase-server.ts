@@ -1895,6 +1895,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
           updated_at,
           production_machine_id,
           production_date,
+          ready_at,
           barcode,
           customers!inner(
             id,
@@ -2036,6 +2037,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
         updated_at,
         production_machine_id,
         production_date,
+        ready_at,
         barcode,
         customers!inner(
           id,
@@ -2089,6 +2091,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
       production_machine_id: order.production_machine_id || null,
       production_machine_name: order.production_machines?.machine_name || null,
       production_date: order.production_date || null,
+      ready_at: order.ready_at || null,
       barcode: order.barcode || ''
     })) || []
 
