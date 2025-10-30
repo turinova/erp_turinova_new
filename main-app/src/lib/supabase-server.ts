@@ -2662,7 +2662,8 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
         shop_orders!inner (
           id,
           customer_name,
-          order_number
+          order_number,
+          sms_sent_at
         ),
         units (
           id,
@@ -2724,6 +2725,7 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
         order_id: item.order_id,
         customer_name: item.shop_orders?.customer_name,
         order_number: item.shop_orders?.order_number,
+        sms_sent_at: item.shop_orders?.sms_sent_at,
         unit_name: item.units?.name,
         unit_shortform: item.units?.shortform,
         partner_name: item.partners?.name,

@@ -32,7 +32,8 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
-  TextareaAutosize
+  TextareaAutosize,
+  Tooltip
 } from '@mui/material'
 import { 
   Search as SearchIcon, 
@@ -44,7 +45,8 @@ import {
   Warning as OpenIcon,
   Delete as DeleteIcon,
   Description as TextIcon,
-  ContentCopy as CopyIcon
+  ContentCopy as CopyIcon,
+  Check as CheckIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import BeszerzésSmsModal from './BeszerzésSmsModal'
@@ -61,6 +63,7 @@ interface ShopOrderItem {
   order_id: string
   customer_name: string
   order_number: string
+  sms_sent_at: string | null
   unit_name: string
   unit_shortform: string
   partner_name: string
@@ -668,12 +671,13 @@ export default function SupplierOrdersClient({
               <TableCell><strong>Megjegyzés</strong></TableCell>
               <TableCell align="right"><strong>Bruttó egységár</strong></TableCell>
               <TableCell><strong>Státusz</strong></TableCell>
+              <TableCell align="center"><strong>Értesítés</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
                     {searchTerm || statusFilter || partnerFilter ? 'Nincs találat' : 'Még nincs termék'}
                   </Typography>
@@ -740,6 +744,20 @@ export default function SupplierOrdersClient({
                         color={statusInfo.color}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell align="center" onClick={() => handleRowClick(item.order_id)}>
+                      {item.sms_sent_at ? (
+                        <Tooltip 
+                          title={`SMS elküldve: ${new Date(item.sms_sent_at).toLocaleString('hu-HU')}`}
+                          arrow
+                        >
+                          <CheckIcon color="success" fontSize="small" />
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled">
+                          -
+                        </Typography>
+                      )}
                     </TableCell>
                   </TableRow>
                 )
