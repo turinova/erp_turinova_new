@@ -172,14 +172,14 @@ export async function POST(request: NextRequest) {
         }
 
         const settingsData = {
-          kerf_mm: Number(row['Fűrészlap vastagság (mm)'] || 3),
-          trim_top_mm: Number(row['Szegélyezés felül (mm)'] || 10),
-          trim_right_mm: Number(row['Szegélyezés jobbra (mm)'] || 10),
-          trim_bottom_mm: Number(row['Szegélyezés alul (mm)'] || 10),
-          trim_left_mm: Number(row['Szegélyezés balra (mm)'] || 10),
+          kerf_mm: row['Fűrészlap vastagság (mm)'] != null ? Number(row['Fűrészlap vastagság (mm)']) : 3,
+          trim_top_mm: row['Szegélyezés felül (mm)'] != null ? Number(row['Szegélyezés felül (mm)']) : 10,
+          trim_right_mm: row['Szegélyezés jobbra (mm)'] != null ? Number(row['Szegélyezés jobbra (mm)']) : 10,
+          trim_bottom_mm: row['Szegélyezés alul (mm)'] != null ? Number(row['Szegélyezés alul (mm)']) : 10,
+          trim_left_mm: row['Szegélyezés balra (mm)'] != null ? Number(row['Szegélyezés balra (mm)']) : 10,
           rotatable: parseBoolean(row['Forgatható']),
-          waste_multi: Number(row['Hulladék szorzó'] || 1.0),
-          usage_limit: Number(row['Kihasználtság küszöb'] || 0.65)
+          waste_multi: row['Hulladék szorzó'] != null ? Number(row['Hulladék szorzó']) : 1.0,
+          usage_limit: row['Kihasználtság küszöb'] != null ? Number(row['Kihasználtság küszöb']) : 0.65
         }
 
         // Check if material exists by gépkód
