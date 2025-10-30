@@ -209,9 +209,16 @@ export async function POST(request: NextRequest) {
             .upsert({
               material_id: existingMaterialId,
               ...settingsData
+            }, {
+              onConflict: 'material_id'  // Use unique constraint to update existing row
             })
 
-          if (settingsError) throw settingsError
+          if (settingsError) {
+            console.error(`Failed to update settings for material ${existingMaterialId}:`, settingsError)
+            throw settingsError
+          }
+          
+          console.log(`Settings updated for material ${existingMaterialId}:`, settingsData)
 
           results.updated++
         } else {
