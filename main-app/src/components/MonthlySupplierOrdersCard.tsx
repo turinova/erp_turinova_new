@@ -131,9 +131,9 @@ export default function MonthlySupplierOrdersCard() {
         </Box>
 
         {/* Status items with circular progress - Grid layout */}
-        <Grid container spacing={3} sx={{ justifyContent: 'center' }}>
+        <Grid container spacing={2} sx={{ justifyContent: 'center' }}>
           {data.statusData.map((item) => (
-            <Grid item xs={6} sm={4} md={3} key={item.status}>
+            <Grid item xs={6} sm={4} md={2.4} key={item.status}>
               <Box sx={{ 
                 display: 'flex', 
                 flexDirection: 'column',
