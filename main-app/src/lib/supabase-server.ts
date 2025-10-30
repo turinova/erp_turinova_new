@@ -1713,7 +1713,9 @@ export async function getQuoteById(quoteId: string) {
         accessories_total_gross: quote.accessories_total_gross || 0
       },
       created_at: quote.created_at,
-      updated_at: quote.updated_at
+      updated_at: quote.updated_at,
+      ready_notification_sent_at: quote.ready_notification_sent_at,
+      last_storage_reminder_sent_at: quote.last_storage_reminder_sent_at
     }
 
     logTiming('Quote Fetch Total', startTime, `returned quote ${quote.quote_number} with ${panels?.length || 0} panels`)
