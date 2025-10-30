@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -24,8 +25,24 @@ export async function PATCH(request: NextRequest) {
 
     const startTime = performance.now()
 
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => cookieStore.getAll(),
+          setAll: (cookies) => {
+            cookies.forEach(({ name, value, ...options }) => {
+              cookieStore.set(name, value, options)
+            })
+          }
+        }
+      }
+    )
+
     // Update all selected items
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('shop_order_items')
       .update({ 
         status: new_status,
