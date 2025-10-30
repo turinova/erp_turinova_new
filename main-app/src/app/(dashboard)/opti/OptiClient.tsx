@@ -2188,14 +2188,14 @@ export default function OptiClient({
                        sx={{
                          position: 'sticky',
                          top: 0,
-                         padding: '8px 16px',
-                         backgroundColor: 'primary.main',
-                         color: 'white',
-                         fontWeight: 'bold',
-                         fontSize: '0.875rem',
+                         padding: '6px 16px',
+                         backgroundColor: 'grey.100',
+                         color: 'text.primary',
+                         fontWeight: 600,
+                         fontSize: '0.813rem',
                          zIndex: 10,
-                         textTransform: 'uppercase',
-                         letterSpacing: '0.5px'
+                         borderBottom: '1px solid',
+                         borderColor: 'divider'
                        }}
                      >
                        {params.group}
