@@ -106,6 +106,7 @@ interface ShopOrderData {
   }
   created_at: string
   updated_at: string
+  sms_sent_at: string | null
 }
 
 interface CustomerOrderDetailClientProps {
@@ -499,6 +500,27 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
                       hour: '2-digit',
                       minute: '2-digit'
                     })}
+                  </Typography>
+                </Box>
+                
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    SMS értesítés
+                  </Typography>
+                  <Typography variant="body1" fontWeight="medium">
+                    {orderData.sms_sent_at ? (
+                      new Date(orderData.sms_sent_at).toLocaleString('hu-HU', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    ) : (
+                      <Typography component="span" color="text.disabled">
+                        Nem lett elküldve
+                      </Typography>
+                    )}
                   </Typography>
                 </Box>
               </Box>

@@ -2496,6 +2496,7 @@ export async function getShopOrderById(orderId: string) {
           status,
           created_at,
           updated_at,
+          sms_sent_at,
           workers(
             id,
             name,
@@ -2616,7 +2617,8 @@ export async function getShopOrderById(orderId: string) {
       tenant_company: tenantCompany,
       totals: totals,
       created_at: order.created_at,
-      updated_at: order.updated_at
+      updated_at: order.updated_at,
+      sms_sent_at: order.sms_sent_at
     }
 
     logTiming('Shop Order Fetch Total', startTime, `returned order ${order.order_number} with ${items.length} items`)
