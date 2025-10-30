@@ -11,9 +11,10 @@ export async function POST(request: NextRequest) {
   try {
     const { order_ids, item_ids } = await request.json()
 
-    if (!order_ids || !Array.isArray(order_ids) || order_ids.length === 0) {
+    // Allow empty order_ids (user deselected all SMS recipients)
+    if (!order_ids || !Array.isArray(order_ids)) {
       return NextResponse.json(
-        { error: 'No order IDs provided' },
+        { error: 'Invalid order IDs' },
         { status: 400 }
       )
     }
@@ -24,6 +25,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // If no orders selected for SMS, skip SMS sending but still update items
+    const shouldSendSms = order_ids.length > 0
 
     const cookieStore = await cookies()
     const supabase = createServerClient(
@@ -41,41 +45,45 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    // Fetch Beszerzés SMS template
-    const { data: smsTemplate, error: templateError } = await supabase
-      .from('sms_settings')
-      .select('message_template')
-      .eq('template_name', 'Beszerzés')
-      .single()
-
-    if (templateError || !smsTemplate) {
-      console.error('Error fetching SMS template:', templateError)
-      return NextResponse.json(
-        { error: 'SMS template not found' },
-        { status: 500 }
-      )
-    }
-
-    // Fetch company name
-    const { data: companyData, error: companyError } = await supabase
-      .from('tenant_company')
-      .select('name')
-      .single()
-
-    const companyName = companyData?.name || 'Turinova'
-
-    // Initialize Twilio client
-    const twilioClient = twilio(
-      process.env.TWILIO_ACCOUNT_SID,
-      process.env.TWILIO_AUTH_TOKEN
-    )
-    const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER
-
     let smsSentCount = 0
     const errors: string[] = []
 
-    // Send SMS for each selected order
-    for (const orderId of order_ids) {
+    // Only send SMS if orders are selected
+    if (shouldSendSms) {
+      console.log(`[SMS] Sending Beszerzés SMS to ${order_ids.length} orders`)
+
+      // Fetch Beszerzés SMS template
+      const { data: smsTemplate, error: templateError } = await supabase
+        .from('sms_settings')
+        .select('message_template')
+        .eq('template_name', 'Beszerzés')
+        .single()
+
+      if (templateError || !smsTemplate) {
+        console.error('Error fetching SMS template:', templateError)
+        return NextResponse.json(
+          { error: 'SMS template not found' },
+          { status: 500 }
+        )
+      }
+
+      // Fetch company name
+      const { data: companyData, error: companyError } = await supabase
+        .from('tenant_company')
+        .select('name')
+        .single()
+
+      const companyName = companyData?.name || 'Turinova'
+
+      // Initialize Twilio client
+      const twilioClient = twilio(
+        process.env.TWILIO_ACCOUNT_SID,
+        process.env.TWILIO_AUTH_TOKEN
+      )
+      const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER
+
+      // Send SMS for each selected order
+      for (const orderId of order_ids) {
       try {
         // Fetch order details
         const { data: orderData, error: orderError } = await supabase
@@ -161,6 +169,9 @@ export async function POST(request: NextRequest) {
         console.error(`Error sending SMS for order ${orderId}:`, error)
         errors.push(`Failed to send SMS for order ${orderId}`)
       }
+      }
+    } else {
+      console.log('[SMS] No orders selected for SMS, skipping SMS sending')
     }
 
     // Update ALL selected items to 'arrived' status (regardless of SMS sent or not)
