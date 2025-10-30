@@ -53,8 +53,13 @@ export default function BeszerzésSmsModal({
     setSelectedOrderIds(orders.map(o => o.order_id))
   }, [orders])
 
-  const handleToggleOrder = (orderId: string) => {
+  const handleToggleOrder = (orderId: string, event?: React.MouseEvent) => {
     if (isProcessing) return
+    
+    // Stop event propagation to prevent row click from triggering
+    if (event) {
+      event.stopPropagation()
+    }
     
     setSelectedOrderIds(prev =>
       prev.includes(orderId)
@@ -64,9 +69,7 @@ export default function BeszerzésSmsModal({
   }
 
   const handleConfirm = async () => {
-    if (selectedOrderIds.length === 0) {
-      return
-    }
+    // Allow confirmation even with 0 selected (will skip SMS, just update status)
     await onConfirm(selectedOrderIds)
   }
 
@@ -130,8 +133,9 @@ export default function BeszerzésSmsModal({
                   <TableCell padding="checkbox">
                     <Checkbox
                       checked={selectedOrderIds.includes(order.order_id)}
-                      onChange={() => handleToggleOrder(order.order_id)}
+                      onChange={(e) => handleToggleOrder(order.order_id, e as any)}
                       disabled={isProcessing}
+                      onClick={(e) => e.stopPropagation()}
                     />
                   </TableCell>
                   <TableCell>
@@ -177,14 +181,16 @@ export default function BeszerzésSmsModal({
         </Button>
         <Button
           onClick={handleConfirm}
-          disabled={isProcessing || selectedOrderIds.length === 0}
+          disabled={isProcessing}
           variant="contained"
           color="primary"
           startIcon={<SmsIcon />}
         >
           {isProcessing
-            ? 'SMS küldése...'
-            : `SMS küldés (${selectedOrderIds.length} kiválasztva)`}
+            ? 'Feldolgozás...'
+            : selectedOrderIds.length === 0
+              ? 'Folytatás SMS nélkül'
+              : `SMS küldés (${selectedOrderIds.length} kiválasztva)`}
         </Button>
       </DialogActions>
     </Dialog>
