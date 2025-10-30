@@ -96,9 +96,9 @@ export default function CustomersListClient({
     
     const term = searchTerm.toLowerCase()
     return customers.filter(customer => 
-      customer.name.toLowerCase().includes(term) ||
-      customer.email.toLowerCase().includes(term) ||
-      customer.mobile.toLowerCase().includes(term)
+      customer.name?.toLowerCase().includes(term) ||
+      customer.email?.toLowerCase().includes(term) ||
+      customer.mobile?.toLowerCase().includes(term)
     )
   }, [customers, searchTerm])
 
