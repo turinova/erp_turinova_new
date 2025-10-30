@@ -136,6 +136,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'warning'
       case 'ordered': return 'info'
       case 'finished': return 'success'
+      case 'handed_over': return 'primary'
       case 'deleted': return 'error'
       default: return 'default'
     }
@@ -146,6 +147,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
       case 'finished': return 'Megérkezett'
+      case 'handed_over': return 'Átadva'
       case 'deleted': return 'Törölve'
       default: return status
     }
@@ -156,6 +158,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'warning'
       case 'ordered': return 'info'
       case 'arrived': return 'success'
+      case 'handed_over': return 'primary'
       case 'deleted': return 'error'
       default: return 'default'
     }
@@ -166,6 +169,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
       case 'arrived': return 'Megérkezett'
+      case 'handed_over': return 'Átadva'
       case 'deleted': return 'Törölve'
       default: return status
     }

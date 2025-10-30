@@ -99,6 +99,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
     open: orders.filter(o => o.status === 'open').length,
     ordered: orders.filter(o => o.status === 'ordered').length,
     finished: orders.filter(o => o.status === 'finished').length,
+    handed_over: orders.filter(o => o.status === 'handed_over').length,
     deleted: orders.filter(o => o.status === 'deleted').length
   }
 
@@ -113,6 +114,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
       case 'open': return 'warning'
       case 'ordered': return 'info'
       case 'finished': return 'success'
+      case 'handed_over': return 'primary'
       case 'deleted': return 'error'
       default: return 'default'
     }
@@ -124,6 +126,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
       case 'finished': return 'Megérkezett'
+      case 'handed_over': return 'Átadva'
       case 'deleted': return 'Törölve'
       default: return status
     }
@@ -218,6 +221,13 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
           onClick={() => setStatusFilter('finished')}
           color={statusFilter === 'finished' ? 'primary' : 'default'}
           variant={statusFilter === 'finished' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label={`Átadva (${statusCounts.handed_over})`}
+          onClick={() => setStatusFilter('handed_over')}
+          color={statusFilter === 'handed_over' ? 'primary' : 'default'}
+          variant={statusFilter === 'handed_over' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
