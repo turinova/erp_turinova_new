@@ -344,6 +344,7 @@ export default function SupplierOrdersClient({
 
   // Check Beszerzés SMS eligibility
   const handleCheckBeszerzésSms = async () => {
+    console.log('[Client] Checking SMS eligibility for items:', selectedItems)
     try {
       const response = await fetch('/api/supplier-orders/sms-eligible', {
         method: 'POST',
@@ -351,24 +352,31 @@ export default function SupplierOrdersClient({
         body: JSON.stringify({ item_ids: selectedItems })
       })
 
+      console.log('[Client] SMS eligibility response status:', response.status)
+
       if (!response.ok) {
         throw new Error('Failed to check SMS eligibility')
       }
 
       const result = await response.json()
+      console.log('[Client] SMS eligibility result:', result)
       const eligibleOrders = result.sms_eligible_orders || []
 
+      console.log('[Client] Eligible orders count:', eligibleOrders.length)
+
       if (eligibleOrders.length > 0) {
+        console.log('[Client] Opening SMS modal with eligible orders')
         // Show SMS modal
         setBeszerzésSmsEligibleOrders(eligibleOrders)
         setBeszerzésSmsModalOpen(true)
       } else {
+        console.log('[Client] No eligible orders, showing regular confirmation')
         // No SMS-eligible orders, show regular confirmation
         setPendingStatusUpdate('arrived')
         setConfirmationModalOpen(true)
       }
     } catch (error) {
-      console.error('Error checking SMS eligibility:', error)
+      console.error('[Client] Error checking SMS eligibility:', error)
       toast.error('Hiba történt az SMS jogosultság ellenőrzésekor')
     }
   }
