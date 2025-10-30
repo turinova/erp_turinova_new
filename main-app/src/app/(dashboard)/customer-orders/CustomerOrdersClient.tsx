@@ -214,7 +214,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
           sx={{ cursor: 'pointer' }}
         />
         <Chip
-          label={`Befejezve (${statusCounts.finished})`}
+          label={`Megérkezett (${statusCounts.finished})`}
           onClick={() => setStatusFilter('finished')}
           color={statusFilter === 'finished' ? 'primary' : 'default'}
           variant={statusFilter === 'finished' ? 'filled' : 'outlined'}

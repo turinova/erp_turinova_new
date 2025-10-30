@@ -145,7 +145,7 @@ export default function CustomerOrderDetailClient({ initialOrderData }: Customer
     switch (status) {
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
-      case 'finished': return 'Befejezve'
+      case 'finished': return 'Megérkezett'
       case 'deleted': return 'Törölve'
       default: return status
     }
