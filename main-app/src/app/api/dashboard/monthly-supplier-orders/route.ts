@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
       open: 0,
       ordered: 0,
       arrived: 0,
+      handed_over: 0,
       deleted: 0
     }
 
@@ -69,6 +70,13 @@ export async function GET(request: NextRequest) {
         count: statusCounts.arrived,
         percentage: total > 0 ? (statusCounts.arrived / total) * 100 : 0,
         color: '#4CAF50' // Green
+      },
+      {
+        status: 'handed_over',
+        label: 'Átadva',
+        count: statusCounts.handed_over,
+        percentage: total > 0 ? (statusCounts.handed_over / total) * 100 : 0,
+        color: '#673AB7' // Purple/Indigo
       },
       {
         status: 'deleted',
