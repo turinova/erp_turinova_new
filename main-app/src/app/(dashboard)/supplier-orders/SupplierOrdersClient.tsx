@@ -345,6 +345,20 @@ export default function SupplierOrdersClient({
   // Check Beszerzés SMS eligibility
   const handleCheckBeszerzésSms = async () => {
     console.log('[Client] Checking SMS eligibility for items:', selectedItems)
+    
+    // DEBUG: Call debug endpoint first
+    try {
+      const debugResponse = await fetch('/api/supplier-orders/debug-items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_ids: selectedItems })
+      })
+      const debugData = await debugResponse.json()
+      console.log('[Client] DEBUG - Item and Order Details:', debugData)
+    } catch (debugError) {
+      console.error('[Client] Debug endpoint failed:', debugError)
+    }
+    
     try {
       const response = await fetch('/api/supplier-orders/sms-eligible', {
         method: 'POST',
