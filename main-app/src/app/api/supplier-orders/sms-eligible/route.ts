@@ -11,7 +11,10 @@ export async function POST(request: NextRequest) {
   try {
     const { item_ids } = await request.json()
 
+    console.log('[SMS Eligibility] Checking eligibility for item IDs:', item_ids)
+
     if (!item_ids || !Array.isArray(item_ids) || item_ids.length === 0) {
+      console.log('[SMS Eligibility] No item IDs provided')
       return NextResponse.json(
         { error: 'No item IDs provided' },
         { status: 400 }
@@ -44,7 +47,7 @@ export async function POST(request: NextRequest) {
       .is('deleted_at', null)
 
     if (itemsError) {
-      console.error('Error fetching selected items:', itemsError)
+      console.error('[SMS Eligibility] Error fetching selected items:', itemsError)
       // Return empty array instead of error - gracefully handle missing data
       return NextResponse.json({
         sms_eligible_orders: []
@@ -52,11 +55,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (!selectedItems || selectedItems.length === 0) {
+      console.log('[SMS Eligibility] No items found for provided IDs')
       // No items found, return empty array
       return NextResponse.json({
         sms_eligible_orders: []
       })
     }
+
+    console.log('[SMS Eligibility] Found', selectedItems.length, 'items')
 
     // Group items by order_id
     const orderGroups = new Map<string, any[]>()
@@ -70,14 +76,21 @@ export async function POST(request: NextRequest) {
 
     const eligibleOrders: any[] = []
 
+    console.log('[SMS Eligibility] Processing', orderGroups.size, 'unique orders')
+
     // For each unique shop_order, check if it would become 'finished'
     for (const [orderId, itemsInOrder] of orderGroups.entries()) {
       const orderInfo = itemsInOrder[0].shop_orders
 
+      console.log('[SMS Eligibility] Checking order:', orderId, 'Customer:', orderInfo.customer_name)
+
       // Skip if no mobile number
       if (!orderInfo.customer_mobile || orderInfo.customer_mobile.trim() === '') {
+        console.log('[SMS Eligibility] - Skipped: No mobile number')
         continue
       }
+
+      console.log('[SMS Eligibility] - Has mobile:', orderInfo.customer_mobile)
 
       // Check if customer has SMS notification enabled
       const { data: customerData, error: customerError } = await supabase
@@ -89,10 +102,12 @@ export async function POST(request: NextRequest) {
 
       // Skip if customer not found or SMS notification is disabled
       if (customerError || !customerData || customerData.sms_notification !== true) {
-        console.log(`Customer ${orderInfo.customer_name} not eligible for SMS:`, 
-          customerError ? 'not found' : customerData?.sms_notification === false ? 'SMS disabled' : 'unknown')
+        console.log('[SMS Eligibility] - Skipped:', customerError ? 'Customer not found' : 
+          customerData?.sms_notification === false ? 'SMS notification disabled' : 'Unknown reason')
         continue
       }
+
+      console.log('[SMS Eligibility] - Customer has SMS enabled')
 
       // Fetch ALL items for this order (to check if it would become finished)
       const { data: allOrderItems, error: allItemsError } = await supabase
@@ -121,9 +136,14 @@ export async function POST(request: NextRequest) {
 
       const wouldBeFinished = nonDeletedCount > 0 && arrivedCount === nonDeletedCount
 
+      console.log('[SMS Eligibility] - Status check: non-deleted:', nonDeletedCount, 'arrived:', arrivedCount, 'would be finished:', wouldBeFinished)
+
       if (!wouldBeFinished) {
+        console.log('[SMS Eligibility] - Skipped: Would NOT become finished')
         continue
       }
+
+      console.log('[SMS Eligibility] - ✅ ELIGIBLE! Adding to list')
 
       // Calculate total price (excluding deleted items)
       let totalPrice = 0
@@ -160,12 +180,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    console.log('[SMS Eligibility] Final result:', eligibleOrders.length, 'eligible orders')
+
     return NextResponse.json({
       sms_eligible_orders: eligibleOrders
     })
 
   } catch (error) {
-    console.error('Error checking SMS eligibility:', error)
+    console.error('[SMS Eligibility] ERROR:', error)
     // Return empty array instead of error to gracefully handle any issues
     return NextResponse.json({
       sms_eligible_orders: []
