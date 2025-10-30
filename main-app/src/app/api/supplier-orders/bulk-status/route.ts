@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import { processBevételezés } from '@/lib/inventory'
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -64,10 +65,38 @@ export async function PATCH(request: NextRequest) {
 
     console.log(`[PERF] Bulk Status Update: ${queryTime.toFixed(2)}ms (Updated ${data?.length || 0} items)`)
 
+    // Phase 1: Process inventory for arrived items (bevételezés)
+    let inventoryResult = null
+    if (new_status === 'arrived' && data && data.length > 0) {
+      const inventoryStartTime = performance.now()
+      console.log(`[Inventory] Triggering bevételezés for ${data.length} items`)
+      
+      try {
+        inventoryResult = await processBevételezés(item_ids)
+        const inventoryDuration = performance.now() - inventoryStartTime
+        
+        console.log(`[PERF] Inventory Processing: ${inventoryDuration.toFixed(2)}ms`)
+        console.log(`[Inventory] Results: ${inventoryResult.processed} processed, ${inventoryResult.skipped} skipped, ${inventoryResult.errors.length} errors`)
+        
+        // Log errors but don't fail the API
+        if (inventoryResult.errors.length > 0) {
+          console.warn('[Inventory] Errors during processing:', inventoryResult.errors)
+        }
+      } catch (error) {
+        console.error('[Inventory] Exception during processing:', error)
+        // Don't fail the status update if inventory fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       updated_count: data?.length || 0,
-      new_status
+      new_status,
+      inventory: inventoryResult ? {
+        processed: inventoryResult.processed,
+        skipped: inventoryResult.skipped,
+        errors: inventoryResult.errors
+      } : null
     })
 
   } catch (error) {
