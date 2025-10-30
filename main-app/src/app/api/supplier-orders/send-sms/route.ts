@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 import twilio from 'twilio'
+import { processBevételezés } from '@/lib/inventory'
 
 /**
  * Send Beszerzés SMS notifications and update items to 'arrived' status
@@ -179,11 +180,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Phase 1: Process inventory for arrived items (bevételezés)
+    let inventoryResult = null
+    if (item_ids && item_ids.length > 0) {
+      const inventoryStartTime = performance.now()
+      console.log(`[Inventory] Triggering bevételezés for ${item_ids.length} items (via SMS flow)`)
+      
+      try {
+        inventoryResult = await processBevételezés(item_ids)
+        const inventoryDuration = performance.now() - inventoryStartTime
+        
+        console.log(`[PERF] Inventory Processing: ${inventoryDuration.toFixed(2)}ms`)
+        console.log(`[Inventory] Results: ${inventoryResult.processed} processed, ${inventoryResult.skipped} skipped, ${inventoryResult.errors.length} errors`)
+        
+        // Log errors but don't fail the API
+        if (inventoryResult.errors.length > 0) {
+          console.warn('[Inventory] Errors during processing:', inventoryResult.errors)
+        }
+      } catch (error) {
+        console.error('[Inventory] Exception during processing:', error)
+        // Don't fail the SMS/status update if inventory fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       sms_sent_count: smsSentCount,
       items_updated_count: item_ids.length,
-      errors: errors.length > 0 ? errors : undefined
+      errors: errors.length > 0 ? errors : undefined,
+      inventory: inventoryResult ? {
+        processed: inventoryResult.processed,
+        skipped: inventoryResult.skipped,
+        errors: inventoryResult.errors
+      } : null
     })
 
   } catch (error) {
