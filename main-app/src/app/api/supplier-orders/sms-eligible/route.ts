@@ -79,6 +79,21 @@ export async function POST(request: NextRequest) {
         continue
       }
 
+      // Check if customer has SMS notification enabled
+      const { data: customerData, error: customerError } = await supabase
+        .from('customers')
+        .select('sms_notification')
+        .eq('name', orderInfo.customer_name)
+        .is('deleted_at', null)
+        .single()
+
+      // Skip if customer not found or SMS notification is disabled
+      if (customerError || !customerData || customerData.sms_notification !== true) {
+        console.log(`Customer ${orderInfo.customer_name} not eligible for SMS:`, 
+          customerError ? 'not found' : customerData?.sms_notification === false ? 'SMS disabled' : 'unknown')
+        continue
+      }
+
       // Fetch ALL items for this order (to check if it would become finished)
       const { data: allOrderItems, error: allItemsError } = await supabase
         .from('shop_order_items')
