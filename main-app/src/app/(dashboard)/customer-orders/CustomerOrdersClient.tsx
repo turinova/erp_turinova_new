@@ -123,7 +123,7 @@ export default function CustomerOrdersClient({ orders }: CustomerOrdersClientPro
     switch (status) {
       case 'open': return 'Nyitott'
       case 'ordered': return 'Rendelve'
-      case 'finished': return 'Befejezve'
+      case 'finished': return 'Megérkezett'
       case 'deleted': return 'Törölve'
       default: return status
     }
