@@ -54,8 +54,12 @@ export async function PATCH(request: NextRequest) {
     const queryTime = performance.now() - startTime
 
     if (error) {
-      console.error('Error updating shop order items:', error)
-      return NextResponse.json({ error: 'Failed to update items' }, { status: 500 })
+      console.error('[BULK STATUS] Error updating shop order items:', error)
+      console.error('[BULK STATUS] Error details:', JSON.stringify(error, null, 2))
+      return NextResponse.json({ 
+        error: 'Failed to update items',
+        details: error.message || String(error)
+      }, { status: 500 })
     }
 
     console.log(`[PERF] Bulk Status Update: ${queryTime.toFixed(2)}ms (Updated ${data?.length || 0} items)`)
@@ -67,7 +71,11 @@ export async function PATCH(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in bulk status update API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('[BULK STATUS] Exception in bulk status update API:', error)
+    console.error('[BULK STATUS] Stack:', error instanceof Error ? error.stack : 'No stack')
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 })
   }
 }
