@@ -501,36 +501,20 @@ export async function processKivételezés(
             console.log(`[Inventory] ✓ Released reservation for ${sku}`)
           }
 
-          // Step 2: Get average cost per m² for this material
-          const avgCostPerM2 = await getAverageCost(pricing.material_id)
-          if (!avgCostPerM2 || avgCostPerM2 <= 0) {
+          // Step 2: Get average cost per board for this material
+          // Note: This returns whole board average cost (view aggregates whole board prices)
+          const avgCostPerBoard = await getAverageCost(pricing.material_id)
+          if (!avgCostPerBoard || avgCostPerBoard <= 0) {
             console.warn(`[Inventory] No average cost for ${sku}, using 0`)
           }
 
-          // Step 3: Fetch material dimensions to calculate whole board price
-          const { data: materialData, error: materialError } = await supabaseServer
-            .from('materials')
-            .select('length_mm, width_mm')
-            .eq('id', pricing.material_id)
-            .single()
-
-          if (materialError || !materialData) {
-            console.error(`[Inventory] Error fetching material dimensions for ${sku}:`, materialError)
-            results.errors.push(`Material ${pricing.material_id}: Failed to fetch dimensions`)
-            continue
-          }
-
-          // Calculate whole board price
-          const boardAreaM2 = (materialData.length_mm * materialData.width_mm) / 1_000_000
-          const wholeBoardAvgCost = Math.round((avgCostPerM2 || 0) * boardAreaM2)
-
-          // Step 4: Create consumption transaction (deduct from stock)
+          // Step 3: Create consumption transaction (deduct from stock)
           const transactionResult = await createInventoryTransaction({
             material_id: pricing.material_id,
             sku: sku,
             transaction_type: 'out',
             quantity: -totalBoardsNeeded, // negative! Full + partial boards
-            unit_price: wholeBoardAvgCost, // Whole board price
+            unit_price: avgCostPerBoard || 0, // Whole board average cost
             reference_type: 'quote',
             reference_id: quoteId,
             comment: `Kivételezés: ${quote.order_number || quote.quote_number} - ${pricing.material_name}`
@@ -538,8 +522,8 @@ export async function processKivételezés(
 
           if (transactionResult.success) {
             results.processed++
-            const cogs = totalBoardsNeeded * wholeBoardAvgCost
-            console.log(`[Inventory] ✓ Consumed ${totalBoardsNeeded} boards of ${sku} @ ${wholeBoardAvgCost} Ft/board (${avgCostPerM2} Ft/m² × ${boardAreaM2.toFixed(3)} m²) - COGS: ${cogs} Ft for ${quote.order_number || quote.quote_number} (${pricing.boards_used} full + ${pricing.charged_sqm > 0 ? 1 : 0} partial)`)
+            const cogs = totalBoardsNeeded * (avgCostPerBoard || 0)
+            console.log(`[Inventory] ✓ Consumed ${totalBoardsNeeded} boards of ${sku} @ ${avgCostPerBoard} Ft/board - COGS: ${cogs} Ft for ${quote.order_number || quote.quote_number} (${pricing.boards_used} full + ${pricing.charged_sqm > 0 ? 1 : 0} partial)`)
           } else {
             results.errors.push(`Material ${pricing.material_id}: ${transactionResult.error}`)
           }
