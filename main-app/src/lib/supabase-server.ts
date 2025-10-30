@@ -1467,6 +1467,8 @@ export async function getQuoteById(quoteId: string) {
           accessories_total_gross,
           created_at,
           updated_at,
+          ready_notification_sent_at,
+          last_storage_reminder_sent_at,
           customers(
             id,
             name,

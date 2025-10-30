@@ -235,6 +235,8 @@ interface QuoteData {
   }
   created_at: string
   updated_at: string
+  ready_notification_sent_at?: string | null
+  last_storage_reminder_sent_at?: string | null
 }
 
 interface FeeType {
@@ -1335,6 +1337,16 @@ export default function QuoteDetailClient({
                       size="small"
                     />
                   </Box>
+                )}
+                {isOrderView && quoteData.ready_notification_sent_at && (
+                  <Typography variant="body2">
+                    <strong>Készre jelentés SMS:</strong> {formatDate(quoteData.ready_notification_sent_at)}
+                  </Typography>
+                )}
+                {isOrderView && quoteData.last_storage_reminder_sent_at && (
+                  <Typography variant="body2">
+                    <strong>Tárolás emlékeztető SMS:</strong> {formatDate(quoteData.last_storage_reminder_sent_at)}
+                  </Typography>
                 )}
               </Box>
             </CardContent>
