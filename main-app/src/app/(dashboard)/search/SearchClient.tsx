@@ -31,6 +31,7 @@ interface Material {
   vat_id: string
   brands: { name: string } | null
   vat: { kulcs: number }
+  quantity_available: number | null
 }
 
 interface LinearMaterial {
@@ -170,6 +171,7 @@ export default function SearchClient() {
                 <TableCell><strong>Hosszúság</strong></TableCell>
                 <TableCell><strong>Szélesség</strong></TableCell>
                 <TableCell><strong>Vastagság</strong></TableCell>
+                <TableCell><strong>Soft készlet</strong></TableCell>
                 <TableCell sx={{ backgroundColor: '#E3F2FD', color: '#1976D2' }}>
                   <strong>Fm ár</strong>
                 </TableCell>
@@ -207,6 +209,22 @@ export default function SearchClient() {
                     </TableCell>
                     <TableCell>
                       {item.isLinear ? `${item.thickness} mm` : `${item.thickness_mm} mm`}
+                    </TableCell>
+                    <TableCell>
+                      {!item.isLinear && item.quantity_available !== null && item.quantity_available !== undefined ? (
+                        <Chip 
+                          label={`${item.quantity_available} db`}
+                          size="small"
+                          color={
+                            item.quantity_available < 5 ? 'error' : 
+                            item.quantity_available <= 20 ? 'warning' : 
+                            'success'
+                          }
+                          sx={{ fontWeight: 'bold' }}
+                        />
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell sx={{ 
                       backgroundColor: item.isLinear ? '#E3F2FD' : 'transparent',

@@ -32,6 +32,27 @@ export async function GET(request: NextRequest) {
       .ilike('name', `%${searchTerm}%`)
       .limit(50)
     
+    // Fetch inventory data for materials
+    const { data: inventoryData, error: inventoryError } = await supabaseServer
+      .from('material_inventory_summary')
+      .select('material_id, quantity_available')
+    
+    if (inventoryError) {
+      console.error('Inventory fetch error:', inventoryError)
+      // Continue without inventory data
+    }
+    
+    // Create inventory map for fast lookup
+    const inventoryMap = new Map(
+      inventoryData?.map(inv => [inv.material_id, inv.quantity_available]) || []
+    )
+    
+    // Enrich materials with inventory data
+    const materialsWithInventory = materials?.map(material => ({
+      ...material,
+      quantity_available: inventoryMap.get(material.id) ?? null
+    })) || []
+    
     if (materialsError) {
       console.error('Materials search error:', materialsError)
       return NextResponse.json({ error: 'Failed to search materials' }, { status: 500 })
@@ -62,11 +83,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to search linear materials' }, { status: 500 })
     }
     
-    console.log(`Found ${materials?.length || 0} materials and ${linearMaterials?.length || 0} linear materials`)
+    console.log(`Found ${materialsWithInventory?.length || 0} materials and ${linearMaterials?.length || 0} linear materials`)
     
     // Add cache control headers for dynamic search results
-    const response = NextResponse.json({ 
-      materials: materials || [], 
+    const response = NextResponse.json({
+      materials: materialsWithInventory || [], 
       linearMaterials: linearMaterials || [] 
     })
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
