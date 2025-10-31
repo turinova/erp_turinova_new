@@ -25,7 +25,30 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 })
     }
 
-    return NextResponse.json(data || [])
+    // Enrich transactions with order_number for Bevételezés (shop_order_item references)
+    const enrichedData = await Promise.all((data || []).map(async (transaction: any) => {
+      if (transaction.reference_type === 'shop_order_item') {
+        // Fetch shop_order_item to get order_id
+        const { data: itemData } = await supabaseServer
+          .from('shop_order_items')
+          .select('order_id, shop_orders!inner(order_number)')
+          .eq('id', transaction.reference_id)
+          .single()
+
+        if (itemData) {
+          return {
+            ...transaction,
+            order_number: (itemData.shop_orders as any)?.order_number || null
+          }
+        }
+      }
+      return {
+        ...transaction,
+        order_number: null
+      }
+    }))
+
+    return NextResponse.json(enrichedData)
   } catch (error) {
     console.error('Inventory transactions API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

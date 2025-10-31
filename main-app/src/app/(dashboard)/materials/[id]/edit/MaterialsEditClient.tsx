@@ -150,6 +150,7 @@ interface InventoryTransaction {
   reference_id: string
   created_at: string
   comment: string | null
+  order_number?: string | null // Order number for Bevételezés
 }
 
 interface MaterialsEditClientProps {
@@ -1069,7 +1070,7 @@ export default function MaterialsEditClient({
                       </Grid>
                       <Grid item xs={12} sm={6} md={3}>
                         <Box>
-                          <Typography variant="caption" color="text.secondary">Átlag ár / tábla</Typography>
+                          <Typography variant="caption" color="text.secondary">Átlag ár / tábla (Nettó)</Typography>
                           <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
                             {Math.round(inventorySummary.average_cost_per_board).toLocaleString('hu-HU')} Ft
                           </Typography>
@@ -1171,7 +1172,9 @@ export default function MaterialsEditClient({
                               </TableCell>
                               <TableCell>
                                 <Typography variant="caption">
-                                  {transaction.comment || '-'}
+                                  {transaction.order_number && transaction.reference_type === 'shop_order_item' 
+                                    ? `${transaction.comment || 'Bevételezés'} - ${transaction.order_number}` 
+                                    : transaction.comment || '-'}
                                 </Typography>
                               </TableCell>
                             </TableRow>

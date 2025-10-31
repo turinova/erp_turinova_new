@@ -89,7 +89,7 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
         .single()
       return data
     })(),
-    // Fetch inventory transactions
+    // Fetch inventory transactions with order_number
     (async () => {
       const { supabaseServer } = await import('@/lib/supabase-server')
       const { data } = await supabaseServer
@@ -98,7 +98,30 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
         .eq('material_id', resolvedParams.id)
         .order('created_at', { ascending: false })
         .limit(100)
-      return data || []
+      
+      // Enrich with order_number for shop_order_item references
+      const enrichedData = await Promise.all((data || []).map(async (transaction: any) => {
+        if (transaction.reference_type === 'shop_order_item') {
+          const { data: itemData } = await supabaseServer
+            .from('shop_order_items')
+            .select('order_id, shop_orders!inner(order_number)')
+            .eq('id', transaction.reference_id)
+            .single()
+
+          if (itemData) {
+            return {
+              ...transaction,
+              order_number: (itemData.shop_orders as any)?.order_number || null
+            }
+          }
+        }
+        return {
+          ...transaction,
+          order_number: null
+        }
+      }))
+      
+      return enrichedData
     })()
   ])
   

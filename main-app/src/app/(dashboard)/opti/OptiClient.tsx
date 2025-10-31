@@ -1443,7 +1443,7 @@ export default function OptiClient({
             thickness_mm: material?.thickness_mm || 0,
             grain_direction: material?.grain_direction || false,
             on_stock: materialPricing.on_stock,
-            boards_used: boardsSold,  // REVERTED: Use boardsSold (full_board count only)
+            boards_used: boardsSold,
             usage_percentage: averageUsage,
             pricing_method: pricingMethod,
             charged_sqm: chargedSqm,

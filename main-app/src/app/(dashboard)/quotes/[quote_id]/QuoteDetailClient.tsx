@@ -842,12 +842,10 @@ export default function QuoteDetailClient({
                           <TableCell align="right">
                             {(() => {
                               const chargedSqm = pricing.charged_sqm || 0
-                              const fullBoards = pricing.boards_used || 0
+                              const boardsSold = pricing.boards_used || 0
                               
-                              // Calculate actual physical boards: full boards + 1 if charged_sqm exists
-                              const actualBoards = fullBoards + (chargedSqm > 0 ? 1 : 0)
-                              
-                              return `${chargedSqm.toFixed(2)} m² / ${actualBoards} db`
+                              // Simple logic: display the stored values
+                              return `${chargedSqm.toFixed(2)} m² / ${boardsSold} db`
                             })()}
                           </TableCell>
                           <TableCell align="right">{formatCurrency(pricing.material_net)}</TableCell>
