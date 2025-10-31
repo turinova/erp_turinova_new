@@ -1973,6 +1973,7 @@ export default function OptiClient({
                  fullWidth
                  size="small"
                  options={activeMaterials}
+                 groupBy={(option) => option.brand_name || 'Ismeretlen'}
                  getOptionLabel={(option) => option.name}
                  value={activeMaterials.find(m => m.id === selectedTáblásAnyag) || null}
                  onChange={(event, newValue) => {
@@ -2001,8 +2002,29 @@ export default function OptiClient({
                      }}
                    />
                  )}
+                 renderGroup={(params) => (
+                   <Box key={params.key}>
+                     <Box
+                       sx={{
+                         position: 'sticky',
+                         top: 0,
+                         padding: '6px 16px',
+                         backgroundColor: 'grey.100',
+                         color: 'text.primary',
+                         fontWeight: 600,
+                         fontSize: '0.813rem',
+                         zIndex: 10,
+                         borderBottom: '1px solid',
+                         borderColor: 'divider'
+                       }}
+                     >
+                       {params.group}
+                     </Box>
+                     {params.children}
+                   </Box>
+                 )}
                  renderOption={(props, option) => {
-                   const { key, ...otherProps } = props;
+                   const { key, ...otherProps} = props;
                    return (
                      <Box component="li" key={key} {...otherProps}>
                      {option.name}
