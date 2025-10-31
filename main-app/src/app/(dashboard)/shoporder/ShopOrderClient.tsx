@@ -292,6 +292,7 @@ export default function ShopOrderClient({
   const defaultVat = vatRates.find(v => v.kulcs === 27) || vatRates[0]
   const defaultCurrency = currencies.find(c => c.name === 'HUF') || currencies[0]
   const defaultUnit = units.find(u => u.shortform === 'db') || units[0]
+  const szalUnit = units.find(u => u.name === 'Szál') || defaultUnit
 
   // Initialize accessory data with defaults
   React.useEffect(() => {
@@ -621,6 +622,11 @@ export default function ShopOrderClient({
         itemType = 'Termék'
       }
       
+      // Determine default unit based on source
+      const defaultUnitsId = newValue.source === 'linear_materials' 
+        ? szalUnit.id  // Linear materials default to "Szál"
+        : newValue.units_id  // Others use their original unit
+      
       setAccessoryData(prev => ({
         ...prev,
         name: newValue.name,
@@ -631,7 +637,7 @@ export default function ShopOrderClient({
         quantity: 1,
         vat_id: newValue.vat_id,
         currency_id: newValue.currency_id,
-        units_id: newValue.units_id,
+        units_id: defaultUnitsId,
         partners_id: newValue.partners_id,
         megjegyzes: '',
         brand_name: (newValue as Material | LinearMaterial).brand_name || '',
