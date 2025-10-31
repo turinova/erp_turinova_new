@@ -43,9 +43,14 @@ export async function getCompanyMaterials(companyCredentials: CompanyCredentials
       on_stock,
       active,
       image_url,
+      base_price,
+      multiplier,
+      price_per_sqm,
       created_at,
       updated_at,
       brands:brand_id(name),
+      vat:vat_id(kulcs),
+      currencies:currency_id(name),
       material_settings!left(
         kerf_mm,
         trim_top_mm,
@@ -65,37 +70,12 @@ export async function getCompanyMaterials(companyCredentials: CompanyCredentials
     throw new Error(`Failed to fetch materials: ${error.message}`)
   }
   
-  // Step 2: Fetch pricing data from materials table
-  const materialIds = (data || []).map(m => m.id)
-  const { data: pricingData } = await companySupabase
-    .from('materials')
-    .select(`
-      id,
-      price_per_sqm,
-      active,
-      vat(kulcs),
-      currencies(name)
-    `)
-    .in('id', materialIds)
-  
-  // Step 3: Create pricing map
-  const pricingMap = new Map(
-    (pricingData || []).map(p => [
-      p.id, 
-      { 
-        price_per_sqm: p.price_per_sqm || 0, 
-        vat_percent: p.vat?.kulcs || 0,
-        currency: p.currencies?.name || 'HUF',
-        active: p.active !== undefined ? p.active : true
-      }
-    ])
-  )
-  
-  // Step 4: Transform data (EXACT main app pattern)
+  // Step 2: Transform data (EXACT main app pattern)
   const transformedData = (data || []).map(material => {
-    const pricing = pricingMap.get(material.id) || { price_per_sqm: 0, vat_percent: 0, currency: 'HUF', active: true }
     const settings = material.material_settings
     const brandName = material.brands?.name || 'Unknown'
+    const vatPercent = material.vat?.kulcs || 0
+    const currencyName = material.currencies?.name || 'HUF'
     
     return {
       id: material.id,
@@ -117,9 +97,11 @@ export async function getCompanyMaterials(companyCredentials: CompanyCredentials
       rotatable: settings?.rotatable ?? true,
       waste_multi: settings?.waste_multi || 1,
       usage_limit: settings?.usage_limit !== undefined && settings?.usage_limit !== null ? settings.usage_limit : 0.65,
-      price_per_sqm: pricing.price_per_sqm,
-      vat_percent: pricing.vat_percent,
-      currency: pricing.currency,
+      base_price: material.base_price || 0,
+      multiplier: material.multiplier || 1.38,
+      price_per_sqm: material.price_per_sqm || 0,
+      vat_percent: vatPercent,
+      currency: currencyName,
       created_at: material.created_at,
       updated_at: material.updated_at
     }
