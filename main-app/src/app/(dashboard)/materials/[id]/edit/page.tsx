@@ -71,14 +71,35 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
   const resolvedParams = await params
   
   // Fetch all data on the server for SSR (prevents hydration issues)
-  const [material, brands, currencies, vatRates, priceHistory, partners, units] = await Promise.all([
+  const [material, brands, currencies, vatRates, priceHistory, partners, units, inventorySummary, inventoryTransactions] = await Promise.all([
     getMaterialById(resolvedParams.id),
     getAllBrandsForMaterials(),
     getAllCurrencies(),
     getAllVatRates(),
     getMaterialPriceHistory(resolvedParams.id),
     getAllPartners(),
-    getAllUnits()
+    getAllUnits(),
+    // Fetch inventory summary
+    (async () => {
+      const { supabaseServer } = await import('@/lib/supabase-server')
+      const { data } = await supabaseServer
+        .from('material_inventory_summary')
+        .select('*')
+        .eq('material_id', resolvedParams.id)
+        .single()
+      return data
+    })(),
+    // Fetch inventory transactions
+    (async () => {
+      const { supabaseServer } = await import('@/lib/supabase-server')
+      const { data } = await supabaseServer
+        .from('material_inventory_transactions')
+        .select('*')
+        .eq('material_id', resolvedParams.id)
+        .order('created_at', { ascending: false })
+        .limit(100)
+      return data || []
+    })()
   ])
   
   if (!material) {
@@ -95,6 +116,8 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
       initialPriceHistory={priceHistory}
       initialPartners={partners}
       initialUnits={units}
+      initialInventorySummary={inventorySummary}
+      initialInventoryTransactions={inventoryTransactions}
     />
   )
 }

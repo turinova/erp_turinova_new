@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import type { SyntheticEvent } from 'react'
 
 import { useRouter } from 'next/navigation'
 
@@ -31,9 +32,16 @@ import {
   TableHead,
   TableRow,
   Divider,
-  CircularProgress
+  CircularProgress,
+  Tab,
+  Chip,
+  IconButton,
+  Tooltip
 } from '@mui/material'
-import { Home as HomeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material'
+import TabPanel from '@mui/lab/TabPanel'
+import TabContext from '@mui/lab/TabContext'
+import CustomTabList from '@core/components/mui/TabList'
+import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Refresh as RefreshIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -115,6 +123,35 @@ interface Unit {
   shortform: string
 }
 
+interface InventorySummary {
+  material_id: string
+  material_name: string
+  sku: string
+  brand_name: string | null
+  length_mm: number
+  width_mm: number
+  thickness_mm: number
+  quantity_on_hand: number
+  quantity_reserved: number
+  quantity_available: number
+  average_cost_per_board: number
+  total_inventory_value: number
+  last_movement_at: string | null
+}
+
+interface InventoryTransaction {
+  id: string
+  material_id: string
+  sku: string
+  transaction_type: 'in' | 'out' | 'reserved' | 'released'
+  quantity: number
+  unit_price: number | null
+  reference_type: 'shop_order_item' | 'quote' | 'manual'
+  reference_id: string
+  created_at: string
+  comment: string | null
+}
+
 interface MaterialsEditClientProps {
   initialMaterial: Material
   initialBrands: Brand[]
@@ -123,6 +160,8 @@ interface MaterialsEditClientProps {
   initialPriceHistory: PriceHistory[]
   initialPartners: Partner[]
   initialUnits: Unit[]
+  initialInventorySummary: InventorySummary | null
+  initialInventoryTransactions: InventoryTransaction[]
 }
 
 export default function MaterialsEditClient({ 
@@ -132,7 +171,9 @@ export default function MaterialsEditClient({
   initialVatRates,
   initialPriceHistory,
   initialPartners,
-  initialUnits
+  initialUnits,
+  initialInventorySummary,
+  initialInventoryTransactions
 }: MaterialsEditClientProps) {
   const router = useRouter()
   
@@ -149,11 +190,14 @@ export default function MaterialsEditClient({
   const [isSaving, setIsSaving] = useState(false)
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [activeTab, setActiveTab] = useState<string>('1')
   
   // All data from SSR - no client-side fetching needed!
   const [currencies] = useState<Currency[]>(initialCurrencies)
   const [vatRates] = useState<VAT[]>(initialVatRates)
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>(initialPriceHistory)
+  const [inventorySummary, setInventorySummary] = useState<InventorySummary | null>(initialInventorySummary)
+  const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>(initialInventoryTransactions)
   const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
   
   // Ensure client-side only rendering for media library button
@@ -331,6 +375,69 @@ export default function MaterialsEditClient({
     router.push('/materials')
   }
 
+  // Handle tab change
+  const handleTabChange = (event: SyntheticEvent, newValue: string) => {
+    setActiveTab(newValue)
+  }
+
+  // Refresh inventory data
+  const handleRefreshInventory = async () => {
+    try {
+      const [summaryRes, transactionsRes] = await Promise.all([
+        fetch(`/api/materials/${initialMaterial.id}/inventory-summary`),
+        fetch(`/api/materials/${initialMaterial.id}/inventory-transactions`)
+      ])
+
+      if (summaryRes.ok) {
+        const summaryData = await summaryRes.json()
+        setInventorySummary(summaryData)
+      }
+
+      if (transactionsRes.ok) {
+        const transactionsData = await transactionsRes.json()
+        setInventoryTransactions(transactionsData)
+      }
+
+      toast.success('Készlet adatok frissítve!')
+    } catch (error) {
+      console.error('Error refreshing inventory:', error)
+      toast.error('Hiba történt a készlet frissítése során')
+    }
+  }
+
+  // Format date for display
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString('hu-HU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Get transaction type label
+  const getTransactionTypeLabel = (type: string) => {
+    switch (type) {
+      case 'in': return 'Bevételezés'
+      case 'out': return 'Kivételezés'
+      case 'reserved': return 'Foglalás'
+      case 'released': return 'Feloldás'
+      default: return type
+    }
+  }
+
+  // Get transaction type color
+  const getTransactionTypeColor = (type: string) => {
+    switch (type) {
+      case 'in': return 'success'
+      case 'out': return 'error'
+      case 'reserved': return 'warning'
+      case 'released': return 'info'
+      default: return 'default'
+    }
+  }
+
   if (!hasAccess) {
     return (
       <Box sx={{ p: 3 }}>
@@ -399,7 +506,16 @@ export default function MaterialsEditClient({
         )}
       </Box>
 
-      <Grid container spacing={3}>
+      {/* Tabs */}
+      <TabContext value={activeTab}>
+        <CustomTabList pill='true' onChange={handleTabChange} aria-label='material tabs'>
+          <Tab value='1' label='Alap adatok' />
+          <Tab value='2' label='Készlet' />
+        </CustomTabList>
+
+        {/* Tab 1: Alap adatok */}
+        <TabPanel value='1' sx={{ p: 0, pt: 3 }}>
+          <Grid container spacing={3}>
         {/* Basic Information */}
         <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%' }}>
@@ -908,6 +1024,172 @@ export default function MaterialsEditClient({
           </Card>
         </Grid>
       </Grid>
+        </TabPanel>
+
+        {/* Tab 2: Készlet */}
+        <TabPanel value='2' sx={{ p: 0, pt: 3 }}>
+          <Grid container spacing={3}>
+            {/* Inventory Summary Card */}
+            <Grid item xs={12}>
+              <Card>
+                <CardHeader 
+                  title="Készlet összesítő"
+                  action={
+                    <IconButton onClick={handleRefreshInventory} size="small">
+                      <RefreshIcon />
+                    </IconButton>
+                  }
+                />
+                <CardContent>
+                  {inventorySummary ? (
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Készleten</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                            {inventorySummary.quantity_on_hand} db
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Foglalva</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'warning.main' }}>
+                            {inventorySummary.quantity_reserved} db
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Elérhető</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: inventorySummary.quantity_available < 5 ? 'error.main' : 'success.main' }}>
+                            {inventorySummary.quantity_available} db
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Átlag ár / tábla</Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                            {Math.round(inventorySummary.average_cost_per_board).toLocaleString('hu-HU')} Ft
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Készlet értéke</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                            {Math.round(inventorySummary.total_inventory_value).toLocaleString('hu-HU')} Ft
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      {inventorySummary.last_movement_at && (
+                        <Grid item xs={12} sm={6}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">Utolsó mozgás</Typography>
+                            <Typography variant="body2">
+                              {formatDateTime(inventorySummary.last_movement_at)}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Nincs készlet adat. Az anyag még nem érkezett be a raktárba.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Inventory Transactions History */}
+            <Grid item xs={12}>
+              <Card>
+                <CardHeader title="Készlet mozgások" />
+                <CardContent>
+                  {inventoryTransactions.length > 0 ? (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell><strong>Dátum</strong></TableCell>
+                            <TableCell><strong>Típus</strong></TableCell>
+                            <TableCell align="right"><strong>Mennyiség</strong></TableCell>
+                            <TableCell align="right"><strong>Egységár</strong></TableCell>
+                            <TableCell align="right"><strong>Összesen</strong></TableCell>
+                            <TableCell><strong>Hivatkozás</strong></TableCell>
+                            <TableCell><strong>Megjegyzés</strong></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {inventoryTransactions.map((transaction) => (
+                            <TableRow key={transaction.id}>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {formatDateTime(transaction.created_at)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={getTransactionTypeLabel(transaction.transaction_type)}
+                                  size="small"
+                                  color={getTransactionTypeColor(transaction.transaction_type) as any}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography 
+                                  variant="body2" 
+                                  sx={{ 
+                                    fontWeight: 'bold',
+                                    color: transaction.quantity > 0 ? 'success.main' : 'error.main'
+                                  }}
+                                >
+                                  {transaction.quantity > 0 ? '+' : ''}{transaction.quantity} db
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                {transaction.unit_price ? 
+                                  `${transaction.unit_price.toLocaleString('hu-HU')} Ft` : 
+                                  '-'
+                                }
+                              </TableCell>
+                              <TableCell align="right">
+                                {transaction.unit_price ? 
+                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                    {(Math.abs(transaction.quantity) * transaction.unit_price).toLocaleString('hu-HU')} Ft
+                                  </Typography> : 
+                                  '-'
+                                }
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption" color="text.secondary">
+                                  {transaction.reference_type === 'shop_order_item' ? 'Beszerzés' : 
+                                   transaction.reference_type === 'quote' ? 'Árajánlat' : 
+                                   'Manuális'}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="caption">
+                                  {transaction.comment || '-'}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Még nincs készlet mozgás ennél az anyagnál.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
+      </TabContext>
       
       {/* Media Library Modal */}
       <MediaLibraryModal
