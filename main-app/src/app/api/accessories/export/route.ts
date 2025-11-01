@@ -91,9 +91,38 @@ export async function GET(request: NextRequest) {
     
     const fetchTime = Date.now() - startTime
     console.log(`[Export] Fetched ${accessories?.length || 0} accessories in ${fetchTime}ms`)
+    
+    // Debug: Check for records with missing data
+    const recordsWithMissingData = accessories.filter(a => 
+      !a.currencies?.name || !a.units?.name || !a.partners?.name
+    )
+    if (recordsWithMissingData.length > 0) {
+      console.warn(`[Export] ⚠️ Found ${recordsWithMissingData.length} accessories with missing currency/unit/partner:`)
+      recordsWithMissingData.forEach((acc, idx) => {
+        console.warn(`  ${idx + 1}. SKU: ${acc.sku}, Name: ${acc.name}, Missing: ${
+          [
+            !acc.currencies?.name && 'currency',
+            !acc.units?.name && 'unit',
+            !acc.partners?.name && 'partner'
+          ].filter(Boolean).join(', ')
+        }, deleted_at: ${acc.deleted_at}`)
+      })
+    }
+    
+    // Filter out records with missing required data to prevent import errors
+    const validAccessories = accessories.filter(a => 
+      a.name && a.sku && a.currencies?.name && a.units?.name && a.partners?.name
+    )
+    
+    if (validAccessories.length < accessories.length) {
+      const skippedCount = accessories.length - validAccessories.length
+      console.warn(`[Export] ⚠️ Skipping ${skippedCount} accessories with missing required data`)
+    }
+    
+    console.log(`[Export] Exporting ${validAccessories.length} valid accessories`)
 
     // Transform for Excel with base_price and multiplier
-    const excelData = accessories?.map(accessory => {
+    const excelData = validAccessories?.map(accessory => {
       return {
         'Név': accessory.name,
         'SKU': accessory.sku,
@@ -127,7 +156,7 @@ export async function GET(request: NextRequest) {
     const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
     
     const totalTime = Date.now() - startTime
-    console.log(`[Export] ✅ Complete! Generated Excel file with ${accessories?.length || 0} records in ${totalTime}ms`)
+    console.log(`[Export] ✅ Complete! Generated Excel file with ${validAccessories?.length || 0} records in ${totalTime}ms`)
 
     // Return file
     return new NextResponse(buffer, {
