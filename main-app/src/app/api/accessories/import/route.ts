@@ -36,6 +36,11 @@ export async function POST(request: NextRequest) {
     
     console.log(`[Import] Loaded ${allExistingAccessories.length} existing accessories for comparison`)
     const skuMap = new Map(allExistingAccessories.map(a => [a.sku, a.id]))
+    console.log(`[Import] SKU Map size: ${skuMap.size} unique SKUs`)
+    
+    // Debug: Check first few SKUs
+    const sampleSKUs = Array.from(skuMap.keys()).slice(0, 5)
+    console.log(`[Import] Sample SKUs in map:`, sampleSKUs)
 
     // Fetch reference data
     const { data: currencies } = await supabaseServer.from('currencies').select('id, name').is('deleted_at', null)
@@ -98,6 +103,11 @@ export async function POST(request: NextRequest) {
         }
 
         const existingId = skuMap.get(accessoryData.sku)
+        
+        // Debug: Log first 3 SKU lookups
+        if (i < 3) {
+          console.log(`[Import] Row ${rowNum} SKU: "${accessoryData.sku}" → ${existingId ? 'UPDATE (found)' : 'INSERT (new)'}`)
+        }
 
         if (existingId) {
           // Mark for update
