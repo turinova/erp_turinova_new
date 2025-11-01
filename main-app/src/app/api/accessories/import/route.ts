@@ -31,10 +31,16 @@ export async function POST(request: NextRequest) {
     const unitMap = new Map(units?.map(u => [u.name, u.id]) || [])
     const partnerMap = new Map(partners?.map(p => [p.name, p.id]) || [])
 
+    console.log(`[Import] Processing ${data.length} records from Excel file`)
+    const startTime = Date.now()
+    
     let successCount = 0
     let errorCount = 0
-    const errors = []
+    const errors: string[] = []
+    const recordsToUpsert: any[] = []
+    const recordsToUpdate: any[] = []
 
+    // Step 1: Parse and validate all rows (fast, in-memory)
     for (let i = 0; i < data.length; i++) {
       const row: any = data[i]
       const rowNum = i + 2
@@ -77,20 +83,70 @@ export async function POST(request: NextRequest) {
         const existingId = skuMap.get(accessoryData.sku)
 
         if (existingId) {
-          // Update existing
-          await supabaseServer.from('accessories').update(accessoryData).eq('id', existingId)
+          // Mark for update
+          recordsToUpdate.push({ ...accessoryData, id: existingId })
         } else {
-          // Create new
-          await supabaseServer.from('accessories').insert(accessoryData)
+          // Mark for insert
+          recordsToUpsert.push(accessoryData)
         }
-
-        successCount++
 
       } catch (error) {
         errors.push(`Sor ${rowNum}: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
         errorCount++
       }
     }
+    
+    const parseTime = Date.now() - startTime
+    console.log(`[Import] Parsed ${data.length} rows in ${parseTime}ms - ${recordsToUpsert.length} new, ${recordsToUpdate.length} updates, ${errorCount} errors`)
+    
+    // Step 2: Batch insert new records in chunks of 500
+    if (recordsToUpsert.length > 0) {
+      const chunkSize = 500
+      const insertChunks = Math.ceil(recordsToUpsert.length / chunkSize)
+      
+      for (let i = 0; i < insertChunks; i++) {
+        const chunk = recordsToUpsert.slice(i * chunkSize, (i + 1) * chunkSize)
+        const { error: insertError } = await supabaseServer
+          .from('accessories')
+          .insert(chunk)
+        
+        if (insertError) {
+          console.error(`[Import] Error inserting chunk ${i + 1}:`, insertError)
+          errorCount += chunk.length
+          errors.push(`Batch insert chunk ${i + 1} failed: ${insertError.message}`)
+        } else {
+          successCount += chunk.length
+          console.log(`[Import] Inserted chunk ${i + 1}/${insertChunks} (${chunk.length} records)`)
+        }
+      }
+    }
+    
+    // Step 3: Batch update existing records in chunks of 500
+    if (recordsToUpdate.length > 0) {
+      const chunkSize = 500
+      const updateChunks = Math.ceil(recordsToUpdate.length / chunkSize)
+      
+      for (let i = 0; i < updateChunks; i++) {
+        const chunk = recordsToUpdate.slice(i * chunkSize, (i + 1) * chunkSize)
+        
+        // Upsert with conflict resolution on id
+        const { error: updateError } = await supabaseServer
+          .from('accessories')
+          .upsert(chunk, { onConflict: 'id' })
+        
+        if (updateError) {
+          console.error(`[Import] Error updating chunk ${i + 1}:`, updateError)
+          errorCount += chunk.length
+          errors.push(`Batch update chunk ${i + 1} failed: ${updateError.message}`)
+        } else {
+          successCount += chunk.length
+          console.log(`[Import] Updated chunk ${i + 1}/${updateChunks} (${chunk.length} records)`)
+        }
+      }
+    }
+    
+    const totalTime = Date.now() - startTime
+    console.log(`[Import] ✅ Complete! Processed ${successCount} records in ${totalTime}ms (${errorCount} errors)`)
 
     if (errors.length > 0) {
       return NextResponse.json({ 

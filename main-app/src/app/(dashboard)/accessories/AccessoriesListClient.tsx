@@ -75,6 +75,11 @@ export default function AccessoriesListClient({
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importPreview, setImportPreview] = useState<any>(null)
+  const [importProgress, setImportProgress] = useState<{
+    total: number
+    processed: number
+    status: string
+  } | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -401,14 +406,46 @@ export default function AccessoriesListClient({
   const handleImportConfirm = async () => {
     if (!importFile) return
     setIsImporting(true)
+    
+    const totalRecords = importPreview?.length || 0
+    
+    // Show initial progress
+    setImportProgress({
+      total: totalRecords,
+      processed: 0,
+      status: 'parsing'
+    })
 
     try {
       const formData = new FormData()
       formData.append('file', importFile)
+      
+      // Simulate progress updates (since batch operations don't give real-time progress)
+      const estimatedTime = Math.ceil(totalRecords / 500) * 2.5 // ~2.5 sec per 500 records
+      const updateInterval = Math.max(500, estimatedTime * 1000 / 10) // 10 updates total
+      
+      let progressValue = 0
+      const progressTimer = setInterval(() => {
+        progressValue = Math.min(progressValue + 10, 90) // Max 90% until actually complete
+        setImportProgress({
+          total: totalRecords,
+          processed: Math.floor((progressValue / 100) * totalRecords),
+          status: progressValue < 30 ? 'parsing' : progressValue < 60 ? 'inserting' : 'updating'
+        })
+      }, updateInterval)
 
       const response = await fetch('/api/accessories/import', {
         method: 'POST',
         body: formData
+      })
+
+      clearInterval(progressTimer)
+      
+      // Show 100% complete
+      setImportProgress({
+        total: totalRecords,
+        processed: totalRecords,
+        status: 'complete'
       })
 
       const result = await response.json()
@@ -419,19 +456,19 @@ export default function AccessoriesListClient({
         toast.success(`Import sikeres! ${result.successCount} termék feldolgozva.`)
         
         invalidateApiCache('/api/accessories')
-        const accessoriesRes = await fetch('/api/accessories')
-        if (accessoriesRes.ok) {
-          const data = await accessoriesRes.json()
-          setAccessories(data)
-        }
+        
+        // Reload current page
+        router.refresh()
         
         setImportDialogOpen(false)
         setImportFile(null)
         setImportPreview(null)
+        setImportProgress(null)
       }
     } catch (error) {
       console.error('Import error:', error)
       toast.error('Hiba történt az importálás során!')
+      setImportProgress(null)
     } finally {
       setIsImporting(false)
     }
@@ -739,7 +776,13 @@ export default function AccessoriesListClient({
       </Dialog>
 
       {/* Import Dialog */}
-      <Dialog open={importDialogOpen} onClose={() => setImportDialogOpen(false)} maxWidth="md" fullWidth>
+      <Dialog 
+        open={importDialogOpen} 
+        onClose={() => !isImporting && setImportDialogOpen(false)} 
+        maxWidth="md" 
+        fullWidth
+        disableEscapeKeyDown={isImporting}
+      >
         <DialogTitle>Import előnézet</DialogTitle>
         <DialogContent>
           {importPreview && importPreview.length > 0 && (
@@ -754,6 +797,35 @@ export default function AccessoriesListClient({
                 <Typography variant="body2" color="info.main">
                   Frissítés: {importPreview.filter((p: any) => p.action === 'Frissítés').length}
                 </Typography>
+                {importPreview.length > 1000 && (
+                  <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 1 }}>
+                    ⚠️ Nagy mennyiség! Becsült idő: ~{Math.ceil(importPreview.length / 500) * 2}-{Math.ceil(importPreview.length / 500) * 3} másodperc
+                  </Typography>
+                )}
+                {isImporting && importProgress && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      {importProgress.status === 'parsing' && 'Adatok feldolgozása...'}
+                      {importProgress.status === 'inserting' && `Új rekordok mentése... ${importProgress.processed}/${importProgress.total}`}
+                      {importProgress.status === 'updating' && `Meglévő rekordok frissítése... ${importProgress.processed}/${importProgress.total}`}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Box sx={{ flexGrow: 1, backgroundColor: 'grey.200', borderRadius: 1, height: 8, overflow: 'hidden' }}>
+                        <Box 
+                          sx={{ 
+                            width: `${(importProgress.processed / importProgress.total) * 100}%`,
+                            height: '100%',
+                            backgroundColor: 'primary.main',
+                            transition: 'width 0.3s ease'
+                          }}
+                        />
+                      </Box>
+                      <Typography variant="caption" sx={{ minWidth: 50, textAlign: 'right' }}>
+                        {Math.round((importProgress.processed / importProgress.total) * 100)}%
+                      </Typography>
+                    </Box>
+                  </Box>
+                )}
               </Box>
               <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
                 <Table size="small" stickyHeader>
@@ -785,9 +857,26 @@ export default function AccessoriesListClient({
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setImportDialogOpen(false); setImportFile(null); setImportPreview(null); }}>Mégse</Button>
+          <Button 
+            onClick={() => { 
+              setImportDialogOpen(false); 
+              setImportFile(null); 
+              setImportPreview(null); 
+              setImportProgress(null);
+            }}
+            disabled={isImporting}
+          >
+            Mégse
+          </Button>
           <Button onClick={handleImportConfirm} variant="contained" disabled={!importPreview || isImporting}>
-            {isImporting ? 'Import...' : 'Import megerősítése'}
+            {isImporting ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={20} color="inherit" />
+                Importálás...
+              </Box>
+            ) : (
+              'Import megerősítése'
+            )}
           </Button>
         </DialogActions>
       </Dialog>
