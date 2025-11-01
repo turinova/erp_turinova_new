@@ -4,8 +4,8 @@ import React, { useState, useMemo, useEffect } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip, Pagination, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip, Pagination, FormControl, InputLabel, Select, MenuItem, Menu, ListItemIcon, ListItemText } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -64,6 +64,7 @@ export default function AccessoriesListClient({
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null)
   
   // Pagination state
   const [page, setPage] = useState(currentPage)
@@ -287,22 +288,49 @@ export default function AccessoriesListClient({
     setDeleteModalOpen(false)
   }
 
-  const handleExport = async () => {
+  const handleExport = async (exportType: 'current' | 'all' | 'selected') => {
+    setExportMenuAnchor(null)
     setIsExporting(true)
+    
     try {
-      const response = await fetch('/api/accessories/export')
+      let recordCount = 0
+      let endpoint = '/api/accessories/export'
+      
+      // Determine which records to export
+      if (exportType === 'current') {
+        endpoint = `/api/accessories/export?page=${page}&limit=${currentPageSize}`
+        recordCount = filteredAccessories.length
+      } else if (exportType === 'selected') {
+        if (selectedAccessories.length === 0) {
+          toast.warning('Nincs kiválasztott termék!')
+          setIsExporting(false)
+          return
+        }
+        endpoint = `/api/accessories/export?ids=${selectedAccessories.join(',')}`
+        recordCount = selectedAccessories.length
+      } else {
+        // Export all
+        recordCount = totalCount
+        if (totalCount > 5000) {
+          toast.info(`${totalCount} rekord exportálása folyamatban, kérjük várjon...`, {
+            autoClose: 5000
+          })
+        }
+      }
+      
+      const response = await fetch(endpoint)
       if (response.ok) {
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = 'accessories.xlsx'
+        a.download = `accessories_${exportType}_${new Date().toISOString().split('T')[0]}.xlsx`
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
         document.body.removeChild(a)
         
-        toast.success('Export sikeres!', {
+        toast.success(`${recordCount} rekord sikeresen exportálva!`, {
           position: "top-right",
           autoClose: 3000,
           hideProgressBar: false,
@@ -477,9 +505,50 @@ export default function AccessoriesListClient({
       {mounted && (
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button variant="outlined" startIcon={<ExportIcon />} onClick={handleExport} disabled={isExporting}>
+            <Button 
+              variant="outlined" 
+              startIcon={<ExportIcon />} 
+              endIcon={<ArrowDropDownIcon />}
+              onClick={(e) => setExportMenuAnchor(e.currentTarget)} 
+              disabled={isExporting}
+            >
               {isExporting ? <CircularProgress size={20} /> : 'Export'}
             </Button>
+            <Menu
+              anchorEl={exportMenuAnchor}
+              open={Boolean(exportMenuAnchor)}
+              onClose={() => setExportMenuAnchor(null)}
+            >
+              <MenuItem onClick={() => handleExport('current')}>
+                <ListItemIcon>
+                  <ExportIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Aktuális oldal" 
+                  secondary={`${filteredAccessories.length} rekord`}
+                />
+              </MenuItem>
+              {selectedAccessories.length > 0 && (
+                <MenuItem onClick={() => handleExport('selected')}>
+                  <ListItemIcon>
+                    <ExportIcon fontSize="small" />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary="Kiválasztott" 
+                    secondary={`${selectedAccessories.length} rekord`}
+                  />
+                </MenuItem>
+              )}
+              <MenuItem onClick={() => handleExport('all')}>
+                <ListItemIcon>
+                  <ExportIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Összes termék" 
+                  secondary={`${totalCount} rekord ${totalCount > 5000 ? '⚠️ ~15-20 mp' : ''}`}
+                />
+              </MenuItem>
+            </Menu>
             <Button
               variant="outlined"
               component="label"
