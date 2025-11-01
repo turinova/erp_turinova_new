@@ -12,13 +12,30 @@ export async function POST(request: NextRequest) {
     const workbook = XLSX.read(Buffer.from(bytes), { type: 'buffer' })
     const data = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]])
 
-    // Fetch existing accessories by SKU
-    const { data: existingAccessories } = await supabaseServer
+    // Fetch ALL existing accessories by SKU (in chunks to bypass 1000 limit)
+    console.log('[Import] Fetching existing accessories for SKU lookup...')
+    const { count: totalExisting } = await supabaseServer
       .from('accessories')
-      .select('id, sku')
+      .select('*', { count: 'exact', head: true })
       .is('deleted_at', null)
-
-    const skuMap = new Map(existingAccessories?.map(a => [a.sku, a.id]) || [])
+    
+    let allExistingAccessories: any[] = []
+    const chunkSize = 1000
+    const chunks = Math.ceil((totalExisting || 0) / chunkSize)
+    
+    for (let i = 0; i < chunks; i++) {
+      const offset = i * chunkSize
+      const { data } = await supabaseServer
+        .from('accessories')
+        .select('id, sku')
+        .is('deleted_at', null)
+        .range(offset, offset + chunkSize - 1)
+      
+      allExistingAccessories = allExistingAccessories.concat(data || [])
+    }
+    
+    console.log(`[Import] Loaded ${allExistingAccessories.length} existing accessories for comparison`)
+    const skuMap = new Map(allExistingAccessories.map(a => [a.sku, a.id]))
 
     // Fetch reference data
     const { data: currencies } = await supabaseServer.from('currencies').select('id, name').is('deleted_at', null)
