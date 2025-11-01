@@ -23,12 +23,19 @@ export async function GET(request: NextRequest) {
       .is('deleted_at', null)
       .order('name', { ascending: true })
     
+    let accessories: any[] = []
+    
     // Apply filters based on export type
     if (idsParam) {
       // Export selected items
       const ids = idsParam.split(',')
       query = query.in('id', ids)
       console.log(`[Export] Exporting ${ids.length} selected accessories`)
+      
+      const { data, error } = await query
+      if (error) throw error
+      accessories = data || []
+      
     } else if (page && limit) {
       // Export current page
       const pageNum = parseInt(page, 10)
@@ -36,15 +43,50 @@ export async function GET(request: NextRequest) {
       const offset = (pageNum - 1) * limitNum
       query = query.range(offset, offset + limitNum - 1)
       console.log(`[Export] Exporting page ${pageNum} (${limitNum} records)`)
+      
+      const { data, error } = await query
+      if (error) throw error
+      accessories = data || []
+      
     } else {
-      // Export all
-      console.log(`[Export] Exporting ALL accessories (no limit)`)
-    }
-
-    const { data: accessories, error } = await query
-
-    if (error) {
-      return NextResponse.json({ error: 'Failed to fetch accessories', details: error.message }, { status: 500 })
+      // Export ALL - need to fetch in chunks to bypass 1000 record limit
+      console.log(`[Export] Exporting ALL accessories (fetching in chunks)`)
+      
+      // First get total count
+      const { count } = await supabaseServer
+        .from('accessories')
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null)
+      
+      const totalRecords = count || 0
+      console.log(`[Export] Total records to export: ${totalRecords}`)
+      
+      // Fetch in chunks of 1000 (Supabase default limit)
+      const chunkSize = 1000
+      const chunks = Math.ceil(totalRecords / chunkSize)
+      
+      for (let i = 0; i < chunks; i++) {
+        const offset = i * chunkSize
+        const { data, error } = await supabaseServer
+          .from('accessories')
+          .select(`
+            *,
+            vat (name, kulcs),
+            currencies (name),
+            units (name, shortform),
+            partners (name)
+          `)
+          .is('deleted_at', null)
+          .order('name', { ascending: true })
+          .range(offset, offset + chunkSize - 1)
+        
+        if (error) throw error
+        
+        accessories = accessories.concat(data || [])
+        console.log(`[Export] Fetched chunk ${i + 1}/${chunks} (${data?.length || 0} records)`)
+      }
+      
+      console.log(`[Export] ✅ Fetched all ${accessories.length} accessories in ${chunks} chunks`)
     }
     
     const fetchTime = Date.now() - startTime
