@@ -86,6 +86,9 @@ export default function AddAccessoryModal({
   partners
 }: AddAccessoryModalProps) {
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null)
+  const [searchResults, setSearchResults] = useState<Accessory[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
   const [accessoryData, setAccessoryData] = useState({
     name: '',
     sku: '',
@@ -121,6 +124,8 @@ export default function AddAccessoryModal({
   useEffect(() => {
     if (open) {
       setSelectedAccessory(null)
+      setSearchTerm('')
+      setSearchResults([])
       const defaults = getDefaultValues()
       
       setAccessoryData({
@@ -138,6 +143,35 @@ export default function AddAccessoryModal({
       })
     }
   }, [open, vatRates, currencies, units])
+
+  // Search functionality with debouncing
+  useEffect(() => {
+    if (searchTerm.length < 2) {
+      setSearchResults([])
+      return
+    }
+
+    const searchTimeout = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const response = await fetch(`/api/accessories/search?q=${encodeURIComponent(searchTerm)}`)
+        if (response.ok) {
+          const data = await response.json()
+          setSearchResults(data.accessories || [])
+        } else {
+          console.error('Accessory search failed:', response.statusText)
+          setSearchResults([])
+        }
+      } catch (error) {
+        console.error('Accessory search error:', error)
+        setSearchResults([])
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300) // 300ms debounce
+
+    return () => clearTimeout(searchTimeout)
+  }, [searchTerm])
 
   // Auto-calculate net_price when base_price or multiplier changes
   useEffect(() => {
@@ -341,8 +375,8 @@ export default function AddAccessoryModal({
             <Autocomplete
               fullWidth
               freeSolo
-              options={accessories}
-              getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
+              options={searchResults}
+              getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku})`}
               value={selectedAccessory}
               onChange={(event, newValue) => {
                 if (typeof newValue === 'string') {
@@ -352,7 +386,7 @@ export default function AddAccessoryModal({
                   setAccessoryData({
                     name: newValue,
                     sku: '',
-                    base_price: 0,
+                    base_price: '',
                     multiplier: 1.38,
                     net_price: 0,
                     gross_price: 0,
@@ -371,7 +405,7 @@ export default function AddAccessoryModal({
                     base_price: newValue.base_price,
                     multiplier: newValue.multiplier,
                     net_price: newValue.net_price,
-                    gross_price: newValue.gross_price, // API returns gross_price in transformed data
+                    gross_price: newValue.gross_price,
                     vat_id: newValue.vat_id,
                     currency_id: newValue.currency_id,
                     units_id: newValue.units_id,
@@ -385,7 +419,7 @@ export default function AddAccessoryModal({
                   setAccessoryData({
                     name: '',
                     sku: '',
-                    base_price: 0,
+                    base_price: '',
                     multiplier: 1.38,
                     net_price: 0,
                     gross_price: 0,
@@ -397,23 +431,52 @@ export default function AddAccessoryModal({
                   })
                 }
               }}
+              inputValue={searchTerm}
               onInputChange={(event, newInputValue) => {
-                if (event && newInputValue && !accessories.find(a => a.name === newInputValue)) {
-                  // User is typing a new accessory name
-                  setSelectedAccessory(null)
-                  setAccessoryData(prev => ({
-                    ...prev,
-                    name: newInputValue
-                  }))
-                }
+                setSearchTerm(newInputValue)
+                // Update the accessory name when user types
+                setAccessoryData(prev => ({
+                  ...prev,
+                  name: newInputValue
+                }))
+              }}
+              loading={isSearching}
+              filterOptions={(options) => {
+                // Don't filter here since we're using server-side search
+                return options
               }}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  label="Termék neve (válasszon vagy írjon be új nevet) *"
+                  label="Termék neve vagy SKU *"
                   required
+                  size="small"
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {isSearching ? <CircularProgress color="inherit" size={20} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
                 />
               )}
+              renderOption={(props, option) => {
+                const { key, ...otherProps } = props
+                return (
+                  <li key={key} {...otherProps}>
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">
+                        {option.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        SKU: {option.sku} | Partner: {option.partner_name}
+                      </Typography>
+                    </Box>
+                  </li>
+                )
+              }}
             />
           </Grid>
 
