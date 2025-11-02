@@ -263,7 +263,19 @@ export default function OptiClient({
 
   // Filter only active materials for optimization
   const activeMaterials = useMemo(() => {
-    return materials.filter(m => m.active !== false)
+    return materials
+      .filter(m => m.active !== false)
+      .sort((a, b) => {
+        // Sort by brand first, then by name
+        const brandA = (a.brand_name?.trim() || 'Ismeretlen')
+        const brandB = (b.brand_name?.trim() || 'Ismeretlen')
+        
+        if (brandA !== brandB) {
+          return brandA.localeCompare(brandB, 'hu')
+        }
+        
+        return a.name.localeCompare(b.name, 'hu')
+      })
   }, [materials])
 
   // Sort edge materials by favourite_priority (favourites first, then alphabetically)
@@ -1973,7 +1985,7 @@ export default function OptiClient({
                  fullWidth
                  size="small"
                  options={activeMaterials}
-                 groupBy={(option) => option.brand_name || 'Ismeretlen'}
+                 groupBy={(option) => (option.brand_name?.trim() || 'Ismeretlen')}
                  getOptionLabel={(option) => option.name}
                  value={activeMaterials.find(m => m.id === selectedTáblásAnyag) || null}
                  onChange={(event, newValue) => {
@@ -2024,12 +2036,26 @@ export default function OptiClient({
                    </Box>
                  )}
                  renderOption={(props, option) => {
-                   const { key, ...otherProps} = props;
+                   const { key, ...otherProps } = props;
                    return (
-                     <Box component="li" key={key} {...otherProps}>
-                     {option.name}
-                   </Box>
+                     <Box 
+                       component="li" 
+                       key={key} 
+                       {...otherProps}
+                       sx={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}
+                     >
+                       <span>{option.name}</span>
+                       <Typography variant="caption" color="text.secondary" sx={{ ml: 2 }}>
+                         {option.thickness_mm} mm
+                       </Typography>
+                     </Box>
                    );
+                 }}
+                 ListboxProps={{
+                   style: {
+                     maxHeight: '320px',
+                     overflow: 'auto'
+                   }
                  }}
                />
         </Grid>
