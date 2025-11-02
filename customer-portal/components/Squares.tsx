@@ -154,16 +154,55 @@ const Squares: React.FC<SquaresProps> = ({
         if (hoveredIndex === index) {
           // Generate color only once per tile
           if (!tileColorsRef.current.has(index)) {
-            const gray = Math.floor(30 + Math.random() * 90);
-            tileColorsRef.current.set(index, `rgb(${gray}, ${gray}, ${gray})`);
+            // Bright, happy color palette
+            const colorOptions = [
+              'rgb(77, 171, 154)',      // Bright Teal
+              'rgb(255, 163, 68)',      // Bright Orange
+              'rgb(82, 156, 202)',      // Bright Blue
+              'rgb(255, 115, 105)',     // Coral Red
+              'rgb(86, 202, 0)',        // Bright Green
+              'rgb(255, 180, 0)',       // Golden Yellow
+              'rgb(156, 39, 176)',      // Purple
+              'rgb(41, 182, 246)',      // Sky Blue
+              'rgb(255, 112, 67)',      // Bright Red-Orange
+              'rgb(102, 187, 106)',     // Light Green
+            ];
+            const randomColor = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            tileColorsRef.current.set(index, randomColor);
           }
           fillColor = tileColorsRef.current.get(index)!;
         } 
         // Check if this tile is animating
         else if (animatingTilesRef.current.has(index)) {
           const anim = animatingTilesRef.current.get(index)!;
-          const gray = Math.floor(255 - anim.brightness); // Brightness: 0=white, 255=black
-          fillColor = `rgb(${gray}, ${gray}, ${gray})`;
+          // Random color animation - same palette as hover
+          if (!tileColorsRef.current.has(index)) {
+            const colorOptions = [
+              [77, 171, 154],      // Bright Teal
+              [255, 163, 68],      // Bright Orange
+              [82, 156, 202],      // Bright Blue
+              [255, 115, 105],     // Coral Red
+              [86, 202, 0],        // Bright Green
+              [255, 180, 0],       // Golden Yellow
+              [156, 39, 176],      // Purple
+              [41, 182, 246],      // Sky Blue
+              [255, 112, 67],      // Bright Red-Orange
+              [102, 187, 106],     // Light Green
+            ];
+            const randomColorRGB = colorOptions[Math.floor(Math.random() * colorOptions.length)];
+            tileColorsRef.current.set(index, `rgb(${randomColorRGB[0]}, ${randomColorRGB[1]}, ${randomColorRGB[2]})`);
+          }
+          
+          const baseColor = tileColorsRef.current.get(index)!;
+          const matches = baseColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+          if (matches) {
+            const [_, r, g, b] = matches.map(Number);
+            const progress = 1 - (anim.brightness / anim.targetBrightness);
+            const newR = Math.floor(255 - (255 - r) * (1 - progress));
+            const newG = Math.floor(255 - (255 - g) * (1 - progress));
+            const newB = Math.floor(255 - (255 - b) * (1 - progress));
+            fillColor = `rgb(${newR}, ${newG}, ${newB})`;
+          }
         }
 
         ctx.fillStyle = fillColor;

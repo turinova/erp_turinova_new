@@ -18,6 +18,7 @@ import ClickAwayListener from '@mui/material/ClickAwayListener'
 import MenuList from '@mui/material/MenuList'
 import Typography from '@mui/material/Typography'
 import Divider from '@mui/material/Divider'
+import MenuItem from '@mui/material/MenuItem'
 import Button from '@mui/material/Button'
 
 // Hook Imports
@@ -119,7 +120,7 @@ const UserDropdown = () => {
                     <Avatar alt={user?.email || 'User'} src='/images/avatars/1.png' />
                     <div className='flex items-start flex-col'>
                       <Typography variant='body2' className='font-medium' color='text.primary'>
-                        {user?.user_metadata?.name || user?.email || 'User'}
+                        {user?.user_metadata?.full_name || user?.email || 'User'}
                       </Typography>
                       <Typography variant='caption'>{user?.email || 'No email'}</Typography>
                     </div>
