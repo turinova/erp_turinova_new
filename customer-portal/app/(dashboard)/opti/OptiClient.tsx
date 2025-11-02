@@ -2734,6 +2734,7 @@ export default function OptiClient({
                     }
                     setExpandedAccordions(newExpanded)
                   }}
+                  disabled
                 >
                   <AccordionSummary
                     expandIcon={expandIcon(materialResult.material_id, expandedAccordions)}
