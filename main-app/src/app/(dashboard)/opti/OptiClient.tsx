@@ -3600,7 +3600,7 @@ export default function OptiClient({
                                   {material.on_stock ? `Tábla ${board.board_id}` : `${board.board_id} tábla`}
                                   {board.pricing_method === 'panel_area' && material.on_stock && actualMaterial && (
                                     <Typography variant="caption" display="block" color="text.secondary">
-                                      {board.area_m2.toFixed(2)}m² × {actualMaterial.waste_multi.toFixed(1)} = {(board.area_m2 * actualMaterial.waste_multi).toFixed(2)}m² (panel × hulladékszorzó)
+                                      {board.area_m2.toFixed(2)}m² × {actualMaterial.waste_multi.toFixed(2)} = {(board.area_m2 * actualMaterial.waste_multi).toFixed(2)}m² (panel × hulladékszorzó)
                                     </Typography>
                                   )}
                                   {board.pricing_method === 'full_board' && (
