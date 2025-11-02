@@ -270,18 +270,16 @@ export default function OrdersClient({
           </TableContainer>
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
-              <Pagination 
-                count={totalPages} 
-                page={currentPage} 
-                onChange={handlePageChange}
-                color="primary"
-                showFirstButton
-                showLastButton
-              />
-            </Box>
-          )}
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+            <Pagination 
+              count={totalPages} 
+              page={currentPage} 
+              onChange={handlePageChange}
+              color="primary"
+              showFirstButton
+              showLastButton
+            />
+          </Box>
 
           {/* Results Summary */}
           <Typography variant="body2" color="text.secondary" sx={{ mt: 2, textAlign: 'center' }}>
