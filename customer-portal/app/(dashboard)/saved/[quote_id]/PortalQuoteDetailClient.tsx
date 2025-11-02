@@ -1055,7 +1055,7 @@ export default function PortalQuoteDetailClient({
                       />
                       {pm.comment && selectedPaymentMethodId === pm.id && (
                         <Alert 
-                          severity={pm.name.toLowerCase().includes('készpénz') ? 'warning' : 'error'}
+                          severity="error"
                           sx={{ 
                             ml: 4, 
                             mb: 1,
