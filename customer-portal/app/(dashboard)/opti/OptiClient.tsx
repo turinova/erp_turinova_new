@@ -3286,7 +3286,7 @@ export default function OptiClient({
           
           return (
           <Grid item xs={12} sx={{ mt: 3 }}>
-            <Accordion defaultExpanded>
+            <Accordion defaultExpanded={false}>
               <AccordionSummary 
                 expandIcon={<ExpandMoreIcon />}
                 sx={{ 
