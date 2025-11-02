@@ -250,15 +250,10 @@ export default function OrdersClient({
                       </TableCell>
                       <TableCell>
                         {mounted && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Chip 
-                              label={statusDisplay.label} 
-                              color={statusDisplay.color}
-                              size="small"
-                            />
-                            {order.company_quote_status === 'draft' && (
+                          <>
+                            {order.company_quote_status === 'draft' ? (
                               <Chip
-                                label="Előleg szükséges!"
+                                label="Előleg fizetés szükséges!"
                                 color="error"
                                 size="small"
                                 variant="filled"
@@ -276,8 +271,14 @@ export default function OrdersClient({
                                   },
                                 }}
                               />
+                            ) : (
+                              <Chip 
+                                label={statusDisplay.label} 
+                                color={statusDisplay.color}
+                                size="small"
+                              />
                             )}
-                          </Box>
+                          </>
                         )}
                       </TableCell>
                       <TableCell>
