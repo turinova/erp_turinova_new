@@ -250,11 +250,34 @@ export default function OrdersClient({
                       </TableCell>
                       <TableCell>
                         {mounted && (
-                          <Chip 
-                            label={statusDisplay.label} 
-                            color={statusDisplay.color}
-                            size="small"
-                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip 
+                              label={statusDisplay.label} 
+                              color={statusDisplay.color}
+                              size="small"
+                            />
+                            {order.company_quote_status === 'draft' && (
+                              <Chip
+                                label="Előleg szükséges!"
+                                color="error"
+                                size="small"
+                                variant="filled"
+                                icon={<i className='ri-notification-3-line' style={{ fontSize: '16px' }} />}
+                                sx={{
+                                  fontWeight: 'bold',
+                                  animation: 'pulse 2s ease-in-out infinite',
+                                  '@keyframes pulse': {
+                                    '0%, 100%': {
+                                      opacity: 1,
+                                    },
+                                    '50%': {
+                                      opacity: 0.7,
+                                    },
+                                  },
+                                }}
+                              />
+                            )}
+                          </Box>
                         )}
                       </TableCell>
                       <TableCell>
