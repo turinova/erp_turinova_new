@@ -24,10 +24,11 @@ export async function GET() {
       }
     )
 
-    // Fetch all companies
+    // Fetch only active companies
     const { data: companies, error } = await supabase
       .from('companies')
       .select('id, name, slug')
+      .eq('is_active', true)
       .order('name')
 
     if (error) {
