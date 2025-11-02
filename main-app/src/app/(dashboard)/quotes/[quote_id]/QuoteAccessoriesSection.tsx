@@ -193,45 +193,34 @@ export default function QuoteAccessoriesSection({
                       <TableCell>SKU</TableCell>
                       <TableCell align="right">Mennyiség</TableCell>
                       <TableCell>Egység</TableCell>
-                      <TableCell align="right">Nettó/egység</TableCell>
-                      <TableCell align="right">Nettó összesen</TableCell>
-                      <TableCell align="right">ÁFA</TableCell>
-                      <TableCell align="right">Bruttó</TableCell>
+                      <TableCell align="right">Egységár (Bruttó)</TableCell>
+                      <TableCell align="right">Összesen (Bruttó)</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {accessories.map((accessory) => (
-                      <TableRow key={accessory.id} hover>
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selectedAccessories.includes(accessory.id)}
-                            onChange={() => handleSelectAccessory(accessory.id)}
-                          />
-                        </TableCell>
-                        <TableCell>{accessory.accessory_name}</TableCell>
-                        <TableCell>{accessory.sku}</TableCell>
-                        <TableCell align="right">{accessory.quantity}</TableCell>
-                        <TableCell>{accessory.unit_name}</TableCell>
-                        <TableCell align="right">{formatCurrency(accessory.unit_price_net)}</TableCell>
-                        <TableCell align="right">{formatCurrency(accessory.total_net)}</TableCell>
-                        <TableCell align="right">{formatCurrency(accessory.total_vat)}</TableCell>
-                        <TableCell align="right">{formatCurrency(accessory.total_gross)}</TableCell>
-                      </TableRow>
-                    ))}
+                    {accessories.map((accessory) => {
+                      const unitPriceGross = accessory.quantity > 0 ? Math.round(accessory.total_gross / accessory.quantity) : 0
+                      return (
+                        <TableRow key={accessory.id} hover>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedAccessories.includes(accessory.id)}
+                              onChange={() => handleSelectAccessory(accessory.id)}
+                            />
+                          </TableCell>
+                          <TableCell>{accessory.accessory_name}</TableCell>
+                          <TableCell>{accessory.sku}</TableCell>
+                          <TableCell align="right">{accessory.quantity}</TableCell>
+                          <TableCell>{accessory.unit_name}</TableCell>
+                          <TableCell align="right">{formatCurrency(unitPriceGross)}</TableCell>
+                          <TableCell align="right">{formatCurrency(accessory.total_gross)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
                     <TableRow>
                       <TableCell colSpan={6}>
                         <Typography variant="subtitle2" fontWeight="bold">
-                          Összesen:
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {formatCurrency(totalNet)}
-                        </Typography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <Typography variant="subtitle2" fontWeight="bold">
-                          {formatCurrency(totalVat)}
+                          Összesen (Bruttó):
                         </Typography>
                       </TableCell>
                       <TableCell align="right">

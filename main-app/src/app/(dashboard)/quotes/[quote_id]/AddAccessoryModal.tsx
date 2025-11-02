@@ -519,7 +519,7 @@ export default function AddAccessoryModal({
           <Grid item xs={12} sm={4}>
             <TextField
               fullWidth
-              label="Beszerzési ár (Ft) *"
+              label="Beszerzési ár (Nettó) *"
               type="number"
               value={accessoryData.base_price}
               onChange={(e) => setAccessoryData(prev => ({ ...prev, base_price: e.target.value }))}
@@ -625,7 +625,7 @@ export default function AddAccessoryModal({
                 Ár előnézet:
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">Beszerzési ár:</Typography>
+                <Typography variant="body2">Beszerzési ár (Nettó):</Typography>
                 <Typography variant="body2" fontWeight="medium">
                   {formatCurrency(basePrice)}
                 </Typography>
