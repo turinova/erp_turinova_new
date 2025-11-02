@@ -14,6 +14,7 @@ import Drawer from '@mui/material/Drawer'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import type { Theme } from '@mui/material/styles'
 import IconButton from '@mui/material/IconButton'
+import Divider from '@mui/material/Divider'
 
 // Third-party Imports
 import classnames from 'classnames'
@@ -58,11 +59,34 @@ const Wrapper = (props: WrapperProps) => {
         sx={{ '& .MuiDrawer-paper': { width: ['100%', 300] } }}
         className={classnames('p-5', className)}
       >
-        <div className='p-4 flex flex-col gap-x-3'>
+        <div className='p-4 flex flex-col gap-4'>
           <IconButton onClick={() => setIsDrawerOpen(false)} className='absolute inline-end-4 block-start-2'>
             <i className='ri-close-line' />
           </IconButton>
           {children}
+          <Divider sx={{ my: 2 }} />
+          <div className='flex flex-col gap-3'>
+            <Button
+              component={Link}
+              href='/login'
+              variant='outlined'
+              color='primary'
+              fullWidth
+              onClick={() => setIsDrawerOpen(false)}
+            >
+              Bejelentkezés
+            </Button>
+            <Button
+              component={Link}
+              href='/register'
+              variant='contained'
+              color='primary'
+              fullWidth
+              onClick={() => setIsDrawerOpen(false)}
+            >
+              Regisztráció
+            </Button>
+          </div>
         </div>
       </Drawer>
     )

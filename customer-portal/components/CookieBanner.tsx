@@ -46,23 +46,22 @@ export default function CookieBanner() {
           mx: 'auto',
           p: { xs: 2, sm: 3 },
           display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'flex-start', sm: 'center' },
+          flexDirection: 'column',
           gap: 2,
           backgroundColor: 'background.paper',
           borderRadius: 2,
           pointerEvents: 'auto'
         }}
       >
-        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="h5" sx={{ fontSize: '1.5rem' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+          <Typography variant="h5" sx={{ fontSize: '1.5rem', flexShrink: 0 }}>
             🍪
           </Typography>
-          <Box>
-            <Typography variant="body2" sx={{ mb: 0.5 }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" sx={{ mb: 0.5, wordWrap: 'break-word' }}>
               <strong>Ez a weboldal sütiket használ</strong> a jobb felhasználói élmény érdekében.
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" sx={{ wordWrap: 'break-word' }}>
               A folytatással elfogadja a sütik használatát.{' '}
               <Link 
                 href="/cookie-policy" 
@@ -82,7 +81,8 @@ export default function CookieBanner() {
         
         <Box 
           sx={{ 
-            display: 'flex', 
+            display: 'flex',
+            width: '100%', 
             gap: 1.5,
             flexShrink: 0,
             width: { xs: '100%', sm: 'auto' }
