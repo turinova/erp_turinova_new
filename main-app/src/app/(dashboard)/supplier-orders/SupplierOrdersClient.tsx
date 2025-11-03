@@ -724,11 +724,85 @@ export default function SupplierOrdersClient({
                         )}
                       </Box>
                     </TableCell>
-                    <TableCell onClick={() => handleRowClick(item.order_id)}>
-                      {item.product_name}
+                    <TableCell>
+                      <Box 
+                        sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 0.5,
+                          '&:hover .copy-button': {
+                            opacity: 1
+                          }
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ userSelect: 'text', flex: 1 }}>
+                          {item.product_name}
+                        </Typography>
+                        <Tooltip title="Másolás">
+                          <Box
+                            className="copy-button"
+                            component="span"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigator.clipboard.writeText(item.product_name)
+                              toast.success('Termék név másolva!')
+                            }}
+                            sx={{
+                              opacity: 0,
+                              transition: 'opacity 0.2s',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: 'action.active',
+                              '&:hover': {
+                                color: 'primary.main'
+                              }
+                            }}
+                          >
+                            <CopyIcon fontSize="small" />
+                          </Box>
+                        </Tooltip>
+                      </Box>
                     </TableCell>
-                    <TableCell onClick={() => handleRowClick(item.order_id)}>
-                      {item.sku}
+                    <TableCell>
+                      <Box 
+                        sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 0.5,
+                          '&:hover .copy-button': {
+                            opacity: 1
+                          }
+                        }}
+                      >
+                        <Typography variant="body2" sx={{ userSelect: 'text', flex: 1 }}>
+                          {item.sku}
+                        </Typography>
+                        <Tooltip title="Másolás">
+                          <Box
+                            className="copy-button"
+                            component="span"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              navigator.clipboard.writeText(item.sku)
+                              toast.success('SKU másolva!')
+                            }}
+                            sx={{
+                              opacity: 0,
+                              transition: 'opacity 0.2s',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: 'action.active',
+                              '&:hover': {
+                                color: 'primary.main'
+                              }
+                            }}
+                          >
+                            <CopyIcon fontSize="small" />
+                          </Box>
+                        </Tooltip>
+                      </Box>
                     </TableCell>
                     <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>
                       {item.quantity} {item.unit_shortform}
