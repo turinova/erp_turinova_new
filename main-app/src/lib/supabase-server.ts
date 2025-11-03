@@ -2803,3 +2803,47 @@ export async function getSmsSettings() {
   const templates = await getAllSmsSettings()
   return templates.length > 0 ? templates[0] : null
 }
+
+/**
+ * Get edge materials breakdown for a quote
+ * Returns edge materials grouped by material + edge material with total length
+ */
+export async function getQuoteEdgeMaterialsBreakdown(quoteId: string) {
+  const startTime = Date.now()
+  
+  try {
+    const { data, error } = await supabaseServer
+      .from('quote_edge_materials_breakdown')
+      .select(`
+        id,
+        edge_material_name,
+        total_length_m,
+        quote_materials_pricing!inner (
+          material_name
+        )
+      `)
+      .eq('quote_materials_pricing.quote_id', quoteId)
+      .order('id', { ascending: true })
+
+    if (error) {
+      console.error('[SSR] Error fetching edge materials breakdown:', error)
+      logTiming('Edge Materials Breakdown Error', startTime)
+      return []
+    }
+
+    // Transform data
+    const breakdown = data?.map(item => ({
+      id: item.id,
+      material_name: item.quote_materials_pricing.material_name,
+      edge_material_name: item.edge_material_name,
+      total_length_m: item.total_length_m
+    })) || []
+
+    logTiming('Edge Materials Breakdown Fetch', startTime)
+    return breakdown
+  } catch (error) {
+    console.error('[SSR] Exception fetching edge materials breakdown:', error)
+    logTiming('Edge Materials Breakdown Error', startTime)
+    return []
+  }
+}

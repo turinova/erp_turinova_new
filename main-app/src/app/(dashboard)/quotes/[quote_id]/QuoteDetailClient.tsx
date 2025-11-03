@@ -41,6 +41,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import QuoteFeesSection from './QuoteFeesSection'
 import QuoteAccessoriesSection from './QuoteAccessoriesSection'
 import QuoteCuttingListSection from './QuoteCuttingListSection'
+import QuoteEdgeMaterialsBreakdownSection from './QuoteEdgeMaterialsBreakdownSection'
 import AddFeeModal from './AddFeeModal'
 import AddAccessoryModal from './AddAccessoryModal'
 import EditDiscountModal from './EditDiscountModal'
@@ -288,6 +289,13 @@ interface Partner {
   name: string
 }
 
+interface EdgeMaterialBreakdown {
+  id: string
+  material_name: string
+  edge_material_name: string
+  total_length_m: number
+}
+
 interface QuoteDetailClientProps {
   initialQuoteData: QuoteData
   feeTypes: FeeType[]
@@ -297,6 +305,7 @@ interface QuoteDetailClientProps {
   units: Unit[]
   partners: Partner[]
   machines: Machine[]
+  edgeMaterialsBreakdown: EdgeMaterialBreakdown[]
   isOrderView?: boolean // True when viewing from /orders page
 }
 
@@ -309,6 +318,7 @@ export default function QuoteDetailClient({
   units,
   partners,
   machines,
+  edgeMaterialsBreakdown,
   isOrderView = false
 }: QuoteDetailClientProps) {
   const router = useRouter()
@@ -1163,6 +1173,11 @@ export default function QuoteDetailClient({
                 </CardContent>
               </Card>
             )}
+
+            {/* Élzáró összesítő Card - Before Cutting List */}
+            <QuoteEdgeMaterialsBreakdownSection
+              edgeMaterials={edgeMaterialsBreakdown}
+            />
 
             {/* Fourth Card: Cutting List Section */}
             <QuoteCuttingListSection

@@ -8,7 +8,8 @@ import {
   getAllCurrencies,
   getAllUnits,
   getAllPartners,
-  getAllProductionMachines
+  getAllProductionMachines,
+  getQuoteEdgeMaterialsBreakdown
 } from '@/lib/supabase-server'
 import QuoteDetailClient from './QuoteDetailClient'
 
@@ -30,7 +31,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   const quoteId = resolvedParams.quote_id
   
   // Fetch all data in parallel for SSR
-  const [quoteData, feeTypes, accessories, vatRates, currencies, units, partners, machines] = await Promise.all([
+  const [quoteData, feeTypes, accessories, vatRates, currencies, units, partners, machines, edgeMaterialsBreakdown] = await Promise.all([
     getQuoteById(quoteId),
     getAllFeeTypes(),
     getAllAccessories(),
@@ -38,7 +39,8 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     getAllCurrencies(),
     getAllUnits(),
     getAllPartners(),
-    getAllProductionMachines()
+    getAllProductionMachines(),
+    getQuoteEdgeMaterialsBreakdown(quoteId)
   ])
   
   if (!quoteData) {
@@ -62,6 +64,7 @@ export default async function QuoteDetailPage({ params }: PageProps) {
       units={units}
       partners={partners}
       machines={machines}
+      edgeMaterialsBreakdown={edgeMaterialsBreakdown}
     />
   )
 }
