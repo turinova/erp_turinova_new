@@ -5,6 +5,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     
+    console.log('[API SHOP ORDER] Received shop_order_id:', body.shop_order_id)
+    console.log('[API SHOP ORDER] shop_order_id type:', typeof body.shop_order_id)
+    console.log('[API SHOP ORDER] shop_order_id truthiness:', !!body.shop_order_id)
+    
     // Validate required fields
     if (!body.worker_id) {
       return NextResponse.json({ error: 'Dolgozó kiválasztása kötelező!' }, { status: 400 })
@@ -19,6 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const isUpdate = !!body.shop_order_id
+    console.log('[API SHOP ORDER] isUpdate:', isUpdate)
     let orderNumber = null
     let orderId = body.shop_order_id
 

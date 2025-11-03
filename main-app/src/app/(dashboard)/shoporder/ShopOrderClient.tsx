@@ -463,24 +463,36 @@ export default function ShopOrderClient({
             })
             
             // Set products table
-            const products = orderData.items.map((item: any) => ({
-              id: item.id,
-              name: item.product_name,
-              sku: item.sku,
-              type: item.type,
-              base_price: item.base_price,
-              multiplier: item.multiplier,
-              quantity: item.quantity,
-              net_price: Math.round(item.base_price * item.multiplier),
-              gross_price: Math.round(item.base_price * item.multiplier * (1 + (item.vat?.kulcs || 0) / 100)),
-              vat_id: item.vat.id,
-              currency_id: item.currencies.id,
-              units_id: item.units.id,
-              partners_id: item.partners?.id || '',
-              megjegyzes: item.megjegyzes || '',
-              brand_name: '',
-              dimensions: ''
-            }))
+            const products = orderData.items.map((item: any) => {
+              // Determine source based on type
+              let source = 'accessories' // Default
+              if (item.type === 'Bútorlap') {
+                source = 'materials'
+              } else if (item.type && item.type !== 'Termék') {
+                // Linear materials have various types (Él, Hátsólap, etc.)
+                source = 'linear_materials'
+              }
+              
+              return {
+                id: item.id,
+                name: item.product_name,
+                sku: item.sku,
+                type: item.type,
+                base_price: item.base_price,
+                multiplier: item.multiplier,
+                quantity: item.quantity,
+                net_price: Math.round(item.base_price * item.multiplier),
+                gross_price: Math.round(item.base_price * item.multiplier * (1 + (item.vat?.kulcs || 0) / 100)),
+                vat_id: item.vat.id,
+                currency_id: item.currencies.id,
+                units_id: item.units.id,
+                partners_id: item.partners?.id || '',
+                megjegyzes: item.megjegyzes || '',
+                brand_name: '',
+                dimensions: '',
+                source: source
+              }
+            })
             setProductsTable(products)
             
             // Clear the product search form
@@ -732,6 +744,9 @@ export default function ShopOrderClient({
     setIsSaving(true)
     
     try {
+      console.log('[SHOP ORDER SAVE] shopOrderId from URL:', shopOrderId)
+      console.log('[SHOP ORDER SAVE] Is update?', !!shopOrderId)
+      
       const response = await fetch('/api/shoporder/save', {
         method: 'POST',
         headers: {
