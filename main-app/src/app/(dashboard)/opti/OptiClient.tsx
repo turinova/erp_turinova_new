@@ -486,6 +486,18 @@ export default function OptiClient({
         console.error('Error loading panels from session storage:', error)
       }
     }
+    
+    // Load customer data from session storage
+    const savedCustomerData = sessionStorage.getItem('opti-customer-data')
+    if (savedCustomerData) {
+      try {
+        const parsedData = JSON.parse(savedCustomerData)
+        setCustomerData(parsedData.customerData)
+        // Note: selectedCustomer is not restored - user must reselect from dropdown
+      } catch (error) {
+        console.error('Error loading customer data from session storage:', error)
+      }
+    }
   }, [])
 
   // Save panels to session storage whenever addedPanels changes
@@ -496,6 +508,16 @@ export default function OptiClient({
       sessionStorage.removeItem('opti-panels')
     }
   }, [addedPanels])
+
+  // Save customer data to session storage whenever it changes
+  useEffect(() => {
+    // Only save if customer has a name (not empty state)
+    if (customerData.name && customerData.name.trim()) {
+      sessionStorage.setItem('opti-customer-data', JSON.stringify({ customerData }))
+    } else {
+      sessionStorage.removeItem('opti-customer-data')
+    }
+  }, [customerData])
 
   // Load quote data for editing (if initialQuoteData is provided)
   useEffect(() => {
@@ -1551,6 +1573,7 @@ export default function OptiClient({
       
       // Clear cache after save
       sessionStorage.removeItem('opti-panels')
+      sessionStorage.removeItem('opti-customer-data')
       
       // Refresh the page to clear any cached data
       router.refresh()
