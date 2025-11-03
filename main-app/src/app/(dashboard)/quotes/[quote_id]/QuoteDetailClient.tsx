@@ -877,9 +877,12 @@ export default function QuoteDetailClient({
                             {(() => {
                               const chargedSqm = pricing.charged_sqm || 0
                               const boardsSold = pricing.boards_used || 0
+                              const wasteMulti = pricing.waste_multi || 1
                               
-                              // Simple logic: display the stored values
-                              return `${chargedSqm.toFixed(2)} m² / ${boardsSold} db`
+                              // Divide charged_sqm by waste_multi to show net material quantity
+                              const displaySqm = chargedSqm / wasteMulti
+                              
+                              return `${displaySqm.toFixed(2)} m² / ${boardsSold} db`
                             })()}
                           </TableCell>
                           <TableCell align="right">{formatCurrency(pricing.material_net)}</TableCell>
