@@ -963,8 +963,11 @@ export default function ShopOrderClient({
 
   // Handle adding product to table
   const handleAddProduct = () => {
-    if (!accessoryData.name || !accessoryData.name.trim() || !accessoryData.base_price || accessoryData.base_price === '' || !accessoryData.quantity || accessoryData.quantity === '') {
-      toast.error('Kérjük töltse ki az összes kötelező mezőt! (Termék neve, Beszerzési ár, Mennyiség)')
+    if (!accessoryData.name || !accessoryData.name.trim() || 
+        !accessoryData.sku || !accessoryData.sku.trim() || 
+        !accessoryData.base_price || accessoryData.base_price === '' || 
+        !accessoryData.quantity || accessoryData.quantity === '') {
+      toast.error('Kérjük töltse ki az összes kötelező mezőt! (Termék neve, SKU, Beszerzési ár, Mennyiség)')
       return
     }
 
@@ -1328,7 +1331,7 @@ export default function ShopOrderClient({
                 getOptionLabel={(option) => typeof option === 'string' ? option : `${option.name} (${option.sku})`}
                 value={selectedAccessory}
                 onChange={handleAccessoryChange}
-                inputValue={searchTerm}
+                inputValue={searchTerm || accessoryData.name}
                 onInputChange={(event, newInputValue) => {
                   setSearchTerm(newInputValue)
                   // Update the accessory name when user types, but don't clear SKU
@@ -1347,8 +1350,11 @@ export default function ShopOrderClient({
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Termék neve vagy SKU"
+                    label="Termék neve vagy SKU *"
                     size="small"
+                    required
+                    error={!accessoryData.name && editingProductId === null}
+                    helperText={!accessoryData.name && editingProductId === null ? "Kötelező mező" : ""}
                     InputProps={{
                       ...params.InputProps,
                       endAdornment: (
@@ -1391,9 +1397,12 @@ export default function ShopOrderClient({
               <TextField
                 fullWidth
                 size="small"
-                label="SKU"
+                label="SKU / Cikkszám *"
                 value={accessoryData.sku || ''}
                 onChange={(e) => handleInputChange('accessory_sku', e.target.value)}
+                required
+                error={!accessoryData.sku}
+                helperText={!accessoryData.sku ? "Kötelező mező" : ""}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
