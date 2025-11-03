@@ -1451,6 +1451,7 @@ export default function ShopOrderClient({
                 value={accessoryData.quantity || ''}
                 onChange={(e) => handleInputChange('accessory_quantity', e.target.value)}
                 type="number"
+                inputProps={{ step: 0.01, min: 0.01 }}
               />
             </Grid>
             <Grid item xs={12} sm={2}>
