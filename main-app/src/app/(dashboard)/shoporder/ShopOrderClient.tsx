@@ -759,54 +759,62 @@ export default function ShopOrderClient({
       const result = await response.json()
 
       if (response.ok) {
-        toast.success(`Rendelés sikeresen mentve! Rendelésszám: ${result.order_number}`)
-        setSavedOrderNumber(result.order_number)
-        
-        // Clear form data
-        setSelectedWorker(null)
-        setSelectedCustomer(null)
-        setCustomerData({
-          name: '',
-          email: '',
-          mobile: '',
-          billing_name: '',
-          billing_country: '',
-          billing_city: '',
-          billing_postal_code: '',
-          billing_street: '',
-          billing_house_number: '',
-          billing_tax_number: '',
-          billing_company_reg_number: '',
-          discount: '0'
-        })
-        setProductsTable([])
-        setAccessoryData({
-          name: '',
-          sku: '',
-          type: '',
-          base_price: '',
-          multiplier: 1.38,
-          net_price: 0,
-          gross_price: 0,
-          vat_id: '',
-          currency_id: '',
-          units_id: '',
-          partners_id: '',
-          quantity: 1 as number | '',
-          megjegyzes: '',
-          brand_name: '',
-          dimensions: ''
-        })
-        setSelectedAccessory(null)
-        setSearchTerm('')
-        setEditingProductId(null)
-        
-        // Clear all session storage related to shop orders
-        sessionStorage.removeItem('shopOrderData')
-        sessionStorage.removeItem(`shopOrderEditData-${shopOrderId}`)
-        
-        // Redirect to customer order detail page
-        router.push(`/customer-orders/${result.order_id}`)
+        if (shopOrderId) {
+          // Updating existing shop order - just show success message and stay on page
+          toast.success(`Rendelés sikeresen frissítve! Rendelésszám: ${result.order_number}`)
+          // Optionally refresh the page or reload the shop order data
+          router.push(`/shoporder?shop_order_id=${result.order_id}`)
+        } else {
+          // New shop order - redirect to customer orders
+          toast.success(`Rendelés sikeresen mentve! Rendelésszám: ${result.order_number}`)
+          setSavedOrderNumber(result.order_number)
+          
+          // Clear form data
+          setSelectedWorker(null)
+          setSelectedCustomer(null)
+          setCustomerData({
+            name: '',
+            email: '',
+            mobile: '',
+            billing_name: '',
+            billing_country: '',
+            billing_city: '',
+            billing_postal_code: '',
+            billing_street: '',
+            billing_house_number: '',
+            billing_tax_number: '',
+            billing_company_reg_number: '',
+            discount: '0'
+          })
+          setProductsTable([])
+          setAccessoryData({
+            name: '',
+            sku: '',
+            type: '',
+            base_price: '',
+            multiplier: 1.38,
+            net_price: 0,
+            gross_price: 0,
+            vat_id: '',
+            currency_id: '',
+            units_id: '',
+            partners_id: '',
+            quantity: 1 as number | '',
+            megjegyzes: '',
+            brand_name: '',
+            dimensions: ''
+          })
+          setSelectedAccessory(null)
+          setSearchTerm('')
+          setEditingProductId(null)
+          
+          // Clear all session storage related to shop orders
+          sessionStorage.removeItem('shopOrderData')
+          sessionStorage.removeItem(`shopOrderEditData-${shopOrderId}`)
+          
+          // Redirect to customer order detail page
+          router.push(`/customer-orders/${result.order_id}`)
+        }
       } else {
         toast.error(result.error || 'Hiba a mentés során')
       }
