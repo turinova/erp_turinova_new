@@ -1894,24 +1894,15 @@ export default function OptiClient({
                    options={customers}
                    getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
                    value={selectedCustomer}
+                   inputValue={customerData.name}
                    onChange={(event, newValue) => {
                      if (typeof newValue === 'string') {
-                       // User typed a new customer name
+                       // User typed a new customer name and pressed Enter
                        setSelectedCustomer(null)
-                       setCustomerData({
-                         name: newValue,
-                         email: '',
-                         phone: '',
-                         discount: '0',
-                         billing_name: '',
-                         billing_country: 'Magyarország',
-                         billing_city: '',
-                         billing_postal_code: '',
-                         billing_street: '',
-                         billing_house_number: '',
-                         billing_tax_number: '',
-                         billing_company_reg_number: ''
-                       })
+                       setCustomerData(prev => ({
+                         ...prev,
+                         name: newValue
+                       }))
                      } else if (newValue) {
                        // User selected an existing customer - set data directly
                        setSelectedCustomer(newValue)
@@ -1929,8 +1920,8 @@ export default function OptiClient({
                          billing_tax_number: newValue.billing_tax_number || '',
                          billing_company_reg_number: newValue.billing_company_reg_number || ''
                        })
-                     } else {
-                       // User cleared selection
+                     } else if (event) {
+                       // User explicitly cleared selection (clicked X button)
                        setSelectedCustomer(null)
                        setCustomerData({
                          name: '',
@@ -1949,23 +1940,15 @@ export default function OptiClient({
                      }
                    }}
                    onInputChange={(event, newInputValue) => {
-                     if (event && newInputValue && !customers.find(c => c.name === newInputValue)) {
-                       // User is typing a new customer name
+                     // Always update the name when user types
+                     setCustomerData(prev => ({
+                       ...prev,
+                       name: newInputValue
+                     }))
+                     
+                     // Clear selectedCustomer if typing a new name
+                     if (newInputValue && !customers.find(c => c.name === newInputValue)) {
                        setSelectedCustomer(null)
-                       setCustomerData({
-                         name: newInputValue,
-                         email: '',
-                         phone: '',
-                         discount: '0',
-                         billing_name: '',
-                         billing_country: 'Magyarország',
-                         billing_city: '',
-                         billing_postal_code: '',
-                         billing_street: '',
-                         billing_house_number: '',
-                         billing_tax_number: '',
-                         billing_company_reg_number: ''
-                       })
                      }
                    }}
                    freeSolo
