@@ -69,12 +69,10 @@ export async function POST(
     const totalPaid = payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0
     const remainingBalance = quote.final_total_after_discount - totalPaid
 
-    // Validate amount (positive amounts cannot exceed remaining balance)
+    // Validate amount (positive amounts cannot exceed remaining balance, allow 1 Ft tolerance for rounding)
     const paymentAmount = parseFloat(amount)
-    if (paymentAmount > 0 && paymentAmount > remainingBalance) {
-      console.log('[ADD PAYMENT] Amount exceeds remaining balance, auto-formatting to max')
-      // Note: This should already be handled by frontend, but double-check here
-      // Actually, let's return error since frontend should prevent this
+    if (paymentAmount > 0 && paymentAmount > remainingBalance + 1) {
+      console.log('[ADD PAYMENT] Amount exceeds remaining balance by more than 1 Ft tolerance')
       return NextResponse.json({ 
         error: `Az összeg nem lehet nagyobb, mint a hátralék (${remainingBalance} Ft)`,
         remaining_balance: remainingBalance

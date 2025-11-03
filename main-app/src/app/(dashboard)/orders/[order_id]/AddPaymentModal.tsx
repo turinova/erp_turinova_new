@@ -73,9 +73,12 @@ export default function AddPaymentModal({
     const paidAmount = parseFloat(amount) || 0
     const newTotal = totalPaid + paidAmount
     
+    // Add 1 Ft tolerance for rounding differences
+    const TOLERANCE = 1.0
+    
     if (newTotal === 0) {
       return { status: 'not_paid', label: 'Nincs fizetve', color: 'error' }
-    } else if (newTotal >= finalTotal) {
+    } else if (newTotal >= finalTotal - TOLERANCE) {
       return { status: 'paid', label: 'Kifizetve', color: 'success' }
     } else {
       return { status: 'partial', label: 'Részben fizetve', color: 'warning' }
@@ -94,8 +97,8 @@ export default function AddPaymentModal({
     }
 
     // Allow negative amounts (refunds)
-    // But positive amounts cannot exceed remaining balance
-    if (paidAmount > 0 && paidAmount > remainingBalance) {
+    // But positive amounts cannot exceed remaining balance (allow up to 1 Ft over due to rounding)
+    if (paidAmount > 0 && paidAmount > remainingBalance + 1) {
       setError(`Az összeg nem lehet nagyobb, mint a hátralék (${formatCurrency(remainingBalance)})!`)
       return
     }
