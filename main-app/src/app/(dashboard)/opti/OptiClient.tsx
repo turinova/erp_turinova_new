@@ -475,6 +475,9 @@ export default function OptiClient({
   
   // Separate panels table state
   const [addedPanels, setAddedPanels] = useState<Panel[]>([])
+  
+  // Track if we've loaded from session to prevent premature clearing
+  const [hasLoadedFromSession, setHasLoadedFromSession] = useState(false)
 
   // Load panels from session storage on component mount
   useEffect(() => {
@@ -498,6 +501,9 @@ export default function OptiClient({
         console.error('Error loading customer data from session storage:', error)
       }
     }
+    
+    // Mark that we've loaded from session
+    setHasLoadedFromSession(true)
   }, [])
 
   // Save panels to session storage whenever addedPanels changes
@@ -511,13 +517,16 @@ export default function OptiClient({
 
   // Save customer data to session storage whenever it changes
   useEffect(() => {
+    // Don't save during initial mount - wait for session load to complete
+    if (!hasLoadedFromSession) return
+    
     // Only save if customer has a name (not empty state)
     if (customerData.name && customerData.name.trim()) {
       sessionStorage.setItem('opti-customer-data', JSON.stringify({ customerData }))
     } else {
       sessionStorage.removeItem('opti-customer-data')
     }
-  }, [customerData])
+  }, [customerData, hasLoadedFromSession])
 
   // Load quote data for editing (if initialQuoteData is provided)
   useEffect(() => {
