@@ -57,7 +57,7 @@ export async function createInventoryTransaction(
         sku: params.sku,
         transaction_type: params.transaction_type,
         quantity: params.quantity,
-        unit_price: params.unit_price || null,
+        unit_price: params.unit_price !== undefined && params.unit_price !== null ? params.unit_price : null,
         reference_type: params.reference_type,
         reference_id: params.reference_id,
         comment: params.comment || null
@@ -504,8 +504,10 @@ export async function processKivételezés(
           // Step 2: Get average cost per board for this material
           // Note: This returns whole board average cost (view aggregates whole board prices)
           const avgCostPerBoard = await getAverageCost(pricing.material_id)
-          if (!avgCostPerBoard || avgCostPerBoard <= 0) {
-            console.warn(`[Inventory] No average cost for ${sku}, using 0`)
+          const unitPrice = (avgCostPerBoard && avgCostPerBoard > 0) ? avgCostPerBoard : 0
+          
+          if (unitPrice === 0) {
+            console.warn(`[Inventory] No average cost for ${sku}, using 0 (material has no purchase history)`)
           }
 
           // Step 3: Create consumption transaction (deduct from stock)
@@ -514,7 +516,7 @@ export async function processKivételezés(
             sku: sku,
             transaction_type: 'out',
             quantity: -totalBoardsNeeded, // negative! Full + partial boards
-            unit_price: avgCostPerBoard || 0, // Whole board average cost
+            unit_price: unitPrice, // Explicitly 0 when no cost, not null
             reference_type: 'quote',
             reference_id: quoteId,
             comment: `Kivételezés: ${quote.order_number || quote.quote_number} - ${pricing.material_name}`
@@ -522,8 +524,8 @@ export async function processKivételezés(
 
           if (transactionResult.success) {
             results.processed++
-            const cogs = totalBoardsNeeded * (avgCostPerBoard || 0)
-            console.log(`[Inventory] ✓ Consumed ${totalBoardsNeeded} boards of ${sku} @ ${avgCostPerBoard} Ft/board - COGS: ${cogs} Ft for ${quote.order_number || quote.quote_number} (${pricing.boards_used} full + ${pricing.charged_sqm > 0 ? 1 : 0} partial)`)
+            const cogs = totalBoardsNeeded * unitPrice
+            console.log(`[Inventory] ✓ Consumed ${totalBoardsNeeded} boards of ${sku} @ ${unitPrice} Ft/board - COGS: ${cogs} Ft for ${quote.order_number || quote.quote_number} (${pricing.boards_used} full + ${pricing.charged_sqm > 0 ? 1 : 0} partial)`)
           } else {
             results.errors.push(`Material ${pricing.material_id}: ${transactionResult.error}`)
           }
