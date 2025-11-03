@@ -18,16 +18,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Legalább egy termék hozzáadása kötelező!' }, { status: 400 })
     }
 
-    // Generate order number using database function
-    const { data: orderNumberData, error: orderNumberError } = await supabaseServer
-      .rpc('generate_shop_order_number')
-    
-    if (orderNumberError) {
-      console.error('Error generating order number:', orderNumberError)
-      return NextResponse.json({ error: 'Hiba a rendelésszám generálásakor' }, { status: 500 })
-    }
+    const isUpdate = !!body.shop_order_id
+    let orderNumber = null
+    let orderId = body.shop_order_id
 
-    const orderNumber = orderNumberData
+    if (isUpdate) {
+      // Updating existing shop order - get existing order number
+      const { data: existingOrder, error: fetchError } = await supabaseServer
+        .from('shop_orders')
+        .select('order_number')
+        .eq('id', body.shop_order_id)
+        .single()
+      
+      if (fetchError || !existingOrder) {
+        return NextResponse.json({ error: 'Rendelés nem található' }, { status: 404 })
+      }
+      
+      orderNumber = existingOrder.order_number
+      console.log(`[SHOP ORDER] Updating existing order: ${orderNumber}`)
+    } else {
+      // Generate order number for new order using database function
+      const { data: orderNumberData, error: orderNumberError } = await supabaseServer
+        .rpc('generate_shop_order_number')
+      
+      if (orderNumberError) {
+        console.error('Error generating order number:', orderNumberError)
+        return NextResponse.json({ error: 'Hiba a rendelésszám generálásakor' }, { status: 500 })
+      }
+
+      orderNumber = orderNumberData
+      console.log(`[SHOP ORDER] Creating new order: ${orderNumber}`)
+    }
 
         // Check if customer exists, if not create new customer
         let customerId = null
@@ -70,31 +91,74 @@ export async function POST(request: NextRequest) {
           }
         }
 
-    // Start transaction - create order first
     // Set shop_orders.status based on itemStatus parameter
     const orderStatus = body.itemStatus === 'ordered' ? 'ordered' : 'open'
     
-    const { data: orderData, error: orderError } = await supabaseServer
-      .from('shop_orders')
-      .insert({
-        order_number: orderNumber,
-        worker_id: body.worker_id,
-        customer_name: body.customer_name,
-        customer_email: body.customer_email || null,
-        customer_mobile: body.customer_mobile || null,
-        customer_discount: parseFloat(body.customer_discount) || 0,
-        billing_name: body.billing_name || null,
-        billing_country: body.billing_country || null,
-        billing_city: body.billing_city || null,
-        billing_postal_code: body.billing_postal_code || null,
-        billing_street: body.billing_street || null,
-        billing_house_number: body.billing_house_number || null,
-        billing_tax_number: body.billing_tax_number || null,
-        billing_company_reg_number: body.billing_company_reg_number || null,
-        status: orderStatus // Set order status based on item status
-      })
-      .select('id')
-      .single()
+    let orderData
+    let orderError
+
+    if (isUpdate) {
+      // Update existing shop order
+      const updateResult = await supabaseServer
+        .from('shop_orders')
+        .update({
+          worker_id: body.worker_id,
+          customer_name: body.customer_name,
+          customer_email: body.customer_email || null,
+          customer_mobile: body.customer_mobile || null,
+          customer_discount: parseFloat(body.customer_discount) || 0,
+          billing_name: body.billing_name || null,
+          billing_country: body.billing_country || null,
+          billing_city: body.billing_city || null,
+          billing_postal_code: body.billing_postal_code || null,
+          billing_street: body.billing_street || null,
+          billing_house_number: body.billing_house_number || null,
+          billing_tax_number: body.billing_tax_number || null,
+          billing_company_reg_number: body.billing_company_reg_number || null,
+          status: orderStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', body.shop_order_id)
+        .select('id')
+        .single()
+      
+      orderData = updateResult.data
+      orderError = updateResult.error
+
+      // Delete existing items for this order
+      if (!orderError) {
+        await supabaseServer
+          .from('shop_order_items')
+          .delete()
+          .eq('order_id', body.shop_order_id)
+      }
+    } else {
+      // Create new shop order
+      const insertResult = await supabaseServer
+        .from('shop_orders')
+        .insert({
+          order_number: orderNumber,
+          worker_id: body.worker_id,
+          customer_name: body.customer_name,
+          customer_email: body.customer_email || null,
+          customer_mobile: body.customer_mobile || null,
+          customer_discount: parseFloat(body.customer_discount) || 0,
+          billing_name: body.billing_name || null,
+          billing_country: body.billing_country || null,
+          billing_city: body.billing_city || null,
+          billing_postal_code: body.billing_postal_code || null,
+          billing_street: body.billing_street || null,
+          billing_house_number: body.billing_house_number || null,
+          billing_tax_number: body.billing_tax_number || null,
+          billing_company_reg_number: body.billing_company_reg_number || null,
+          status: orderStatus
+        })
+        .select('id')
+        .single()
+      
+      orderData = insertResult.data
+      orderError = insertResult.error
+    }
 
     if (orderError) {
       console.error('Error creating order:', orderError)

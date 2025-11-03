@@ -738,6 +738,7 @@ export default function ShopOrderClient({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          shop_order_id: shopOrderId || null,
           worker_id: selectedWorker.id,
           customer_name: customerData.name,
           customer_email: customerData.email || null,
@@ -844,6 +845,7 @@ export default function ShopOrderClient({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          shop_order_id: shopOrderId || null,
           worker_id: selectedWorker.id,
           customer_name: customerData.name,
           customer_email: customerData.email || null,
