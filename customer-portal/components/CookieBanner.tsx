@@ -82,19 +82,19 @@ export default function CookieBanner() {
         <Box 
           sx={{ 
             display: 'flex',
-            width: '100%', 
-            gap: 1.5,
-            flexShrink: 0,
-            width: { xs: '100%', sm: 'auto' }
+            flexDirection: { xs: 'column', sm: 'row' },
+            width: '100%',
+            gap: { xs: 1, sm: 1.5 },
+            flexShrink: 0
           }}
         >
           <Button
             variant="outlined"
             color="secondary"
             onClick={handleDecline}
+            fullWidth
             sx={{ 
-              minWidth: { xs: '100%', sm: '120px' },
-              flex: { xs: 1, sm: 'initial' }
+              flex: { xs: 'none', sm: 1 }
             }}
           >
             Elutasítom
@@ -103,9 +103,9 @@ export default function CookieBanner() {
             variant="contained"
             color="primary"
             onClick={handleAccept}
+            fullWidth
             sx={{ 
-              minWidth: { xs: '100%', sm: '120px' },
-              flex: { xs: 1, sm: 'initial' }
+              flex: { xs: 'none', sm: 1 }
             }}
           >
             Elfogadom

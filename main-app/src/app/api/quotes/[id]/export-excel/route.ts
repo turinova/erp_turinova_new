@@ -188,9 +188,9 @@ export async function GET(
       // Get machine code for this material
       const machineCode = materialCodeMap.get(panel.material_id) || ''
       
-      // Get grain direction (rotatable)
+      // Get grain direction (rotatable) - lowercase + switched logic
       const grainDirection = grainDirectionMap.get(panel.material_id)
-      const rotatable = grainDirection === true ? 'I' : 'N'
+      const rotatable = grainDirection === true ? 'n' : 'i'
 
       // Collect edges: A=top, B=left, C=bottom, D=right
       const edges = [
