@@ -80,6 +80,10 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
       return
     }
 
+    // Convert gross price to net price for API
+    const vatRate = selectedFeeType ? selectedFeeType.vat_percent / 100 : 0
+    const unitPriceNet = unitPrice / (1 + vatRate)
+
     setLoading(true)
     try {
       const response = await fetch(`/api/quotes/${quoteId}/fees`, {
@@ -90,7 +94,7 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
         body: JSON.stringify({
           feetype_id: selectedFeeTypeId,
           quantity: finalQuantity,
-          unit_price_gross: unitPrice,
+          unit_price_net: unitPriceNet,
           comment: comment.trim()
         }),
       })
