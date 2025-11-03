@@ -26,6 +26,7 @@ import {
 
 // Dynamic import for Barcode to avoid SSR issues
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
+
 import { 
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
@@ -307,6 +308,26 @@ interface QuoteDetailClientProps {
   machines: Machine[]
   edgeMaterialsBreakdown: EdgeMaterialBreakdown[]
   isOrderView?: boolean // True when viewing from /orders page
+}
+
+// Helper function to sanitize barcode for CODE128
+// Removes/replaces special characters (accented letters, non-ASCII)
+function sanitizeBarcodeForCODE128(barcode: string): string {
+  // Replace common Hungarian accented characters
+  const replacements: Record<string, string> = {
+    'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ö': 'o', 'ő': 'o', 'ú': 'u', 'ü': 'u', 'ű': 'u',
+    'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ö': 'O', 'Ő': 'O', 'Ú': 'U', 'Ü': 'U', 'Ű': 'U'
+  }
+  
+  let sanitized = barcode
+  Object.entries(replacements).forEach(([from, to]) => {
+    sanitized = sanitized.replace(new RegExp(from, 'g'), to)
+  })
+  
+  // Remove any remaining non-ASCII characters (keep only 0-127)
+  sanitized = sanitized.replace(/[^\x00-\x7F]/g, '')
+  
+  return sanitized
 }
 
 export default function QuoteDetailClient({ 
@@ -740,14 +761,17 @@ export default function QuoteDetailClient({
                       Vonalkód
                     </Typography>
                     <Barcode 
-                      value={quoteData.barcode} 
+                      value={sanitizeBarcodeForCODE128(quoteData.barcode)} 
                       format="CODE128"
                       width={2}
                       height={60}
-                      displayValue={true}
+                      displayValue={false}
                       fontSize={14}
                       margin={5}
                     />
+                    <Typography variant="body2" sx={{ mt: 1, fontFamily: 'monospace', letterSpacing: 2 }}>
+                      {quoteData.barcode}
+                    </Typography>
                   </Box>
                 </Grid>
               )}

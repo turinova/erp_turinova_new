@@ -15,6 +15,8 @@ interface OrderDetailClientProps {
   currencies: any[]
   units: any[]
   partners: any[]
+  machines: any[]
+  edgeMaterialsBreakdown: any[]
 }
 
 export default function OrderDetailClient(props: OrderDetailClientProps) {
