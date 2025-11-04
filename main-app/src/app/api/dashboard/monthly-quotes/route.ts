@@ -17,12 +17,14 @@ export async function GET(request: NextRequest) {
     const firstDay = new Date(year, month, 1)
     const lastDay = new Date(year, month + 1, 0, 23, 59, 59, 999)
 
-    // Fetch quotes for the target month (filter by created_at)
+    // Fetch orders for the target month (filter by created_at)
+    // Note: Orders are quotes with status other than 'draft'
     const { data: quotes, error } = await supabaseServer
       .from('quotes')
       .select('id, status')
       .gte('created_at', firstDay.toISOString())
       .lte('created_at', lastDay.toISOString())
+      .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
       .is('deleted_at', null) // Exclude soft-deleted quotes
 
     if (error) {
@@ -30,9 +32,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Count quotes by status
+    // Count orders by status
     const statusCounts = {
-      draft: 0,
       ordered: 0,
       in_production: 0,
       ready: 0,
@@ -51,13 +52,6 @@ export async function GET(request: NextRequest) {
 
     // Calculate percentages and prepare response
     const statusData = [
-      {
-        status: 'draft',
-        label: 'Ajánlat',
-        count: statusCounts.draft,
-        percentage: total > 0 ? (statusCounts.draft / total) * 100 : 0,
-        color: '#9E9E9E' // Grey
-      },
       {
         status: 'ordered',
         label: 'Megrendelve',
