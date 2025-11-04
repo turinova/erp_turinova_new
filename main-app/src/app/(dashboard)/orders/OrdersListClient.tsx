@@ -93,7 +93,7 @@ export default function OrdersListClient({
   const [mounted, setMounted] = useState(false)
   const [savingOrders, setSavingOrders] = useState<Set<string>>(new Set())
   const [defaultBusinessDay, setDefaultBusinessDay] = useState<Date | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string>('ordered')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
   const [pageSize, setPageSize] = useState(20)
   const [clientPage, setClientPage] = useState(1)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
