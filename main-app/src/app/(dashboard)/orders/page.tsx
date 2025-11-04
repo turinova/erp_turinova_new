@@ -20,8 +20,9 @@ export default async function OrdersPage({ searchParams }: PageProps) {
   const searchTerm = resolvedParams.search || ''
   
   // Fetch orders and machines in parallel
+  // Note: Using large limit (1000) because client-side status filtering needs all orders
   const [ordersData, machines] = await Promise.all([
-    getOrdersWithPagination(page, 20, searchTerm),
+    getOrdersWithPagination(page, 1000, searchTerm),
     getAllProductionMachines()
   ])
   
