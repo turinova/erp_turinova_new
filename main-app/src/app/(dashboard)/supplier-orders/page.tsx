@@ -28,7 +28,7 @@ export default async function SupplierOrdersPage({ searchParams }: PageProps) {
   console.log(`[SSR] Fetching supplier orders page ${page}, limit ${limit}, search: "${search}"`)
 
   const [itemsData, partners] = await Promise.all([
-    getAllShopOrderItems(page, limit, '', '', ''), // No filters - get all items
+    getAllShopOrderItems(1, 99999, '', '', ''), // Fetch all items for client-side filtering
     getAllPartners()
   ])
 
