@@ -15,27 +15,8 @@ export function guillotineCutting(
   const bins: BinClass[] = [];
   bins.push(new BinClass(binWidth, binHeight, kerf));
 
-  // IMPROVED SORTING - Multi-criteria for better beam saw packing
-  rectangles.sort((a, b) => {
-    // 1. Sort by longest dimension first (helps with beam saw horizontal cuts)
-    const maxEdgeA = Math.max(a.width, a.height);
-    const maxEdgeB = Math.max(b.width, b.height);
-    
-    if (Math.abs(maxEdgeB - maxEdgeA) > 10) { // 10mm tolerance
-      return maxEdgeB - maxEdgeA;
-    }
-    
-    // 2. If similar max edge, prefer panels closer to square (easier to pack)
-    const aspectA = Math.max(a.width, a.height) / Math.min(a.width, a.height);
-    const aspectB = Math.max(b.width, b.height) / Math.min(b.width, b.height);
-    
-    if (Math.abs(aspectB - aspectA) > 0.3) {
-      return aspectA - aspectB; // Lower aspect ratio (more square) first
-    }
-    
-    // 3. Finally by area (largest first)
-    return (b.width * b.height) - (a.width * a.height);
-  });
+  // Sort rectangles by area (largest first) - exactly like PHP
+  rectangles.sort((a, b) => (b.width * b.height) - (a.width * a.height));
 
   for (const rectangle of rectangles) {
     let placed = false;

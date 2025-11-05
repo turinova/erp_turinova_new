@@ -3,8 +3,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { guillotineCutting, processPanelsForMaterial, calculateUsableBoardDimensions } from '@/lib/optimization/algorithms';
+import { guillotineCuttingWithLookAhead, calculateMetrics } from '@/lib/optimization/lookahead';
 import { processBin } from '@/lib/optimization/cutCalculations';
 import type { OptimizationRequest, OptimizationResult, Placement, UnplacedPart } from '@/types/optimization';
+
+// Feature flag for new optimization algorithm
+// Set to 'false' to instantly rollback to original algorithm
+const USE_LOOKAHEAD_OPTIMIZATION = process.env.NEXT_PUBLIC_USE_LOOKAHEAD !== 'false'; // Default: enabled
 
 // CORS headers
 const corsHeaders = {
@@ -77,11 +82,19 @@ export async function POST(request: NextRequest) {
         trimBottom
       );
 
-      // Use the guillotine cutting algorithm
+      // Use the guillotine cutting algorithm with optional look-ahead
       console.time(`[API] Guillotine Algorithm: ${materialName}`)
-      const bins = guillotineCutting(panels, usableWidth, usableHeight, kerfSize);
+      const bins = USE_LOOKAHEAD_OPTIMIZATION
+        ? guillotineCuttingWithLookAhead(panels, usableWidth, usableHeight, kerfSize)
+        : guillotineCutting(panels, usableWidth, usableHeight, kerfSize);
       console.timeEnd(`[API] Guillotine Algorithm: ${materialName}`)
-      console.log(`[API] ${materialName}: Created ${bins.length} bins for ${panels.length} panels`)
+      console.log(`[API] ${materialName}: Created ${bins.length} bins for ${panels.length} panels (Look-ahead: ${USE_LOOKAHEAD_OPTIMIZATION})`)
+      
+      // Log optimization metrics
+      if (bins.length > 0) {
+        const metrics = calculateMetrics(bins, usableWidth, usableHeight);
+        console.log(`[API] ${materialName}: Efficiency: ${(metrics.efficiency * 100).toFixed(1)}%, Waste: ${metrics.wasteArea.toFixed(0)} mm²`);
+      }
 
       // Convert to response format - process ALL boards
       const placements: Placement[] = [];
