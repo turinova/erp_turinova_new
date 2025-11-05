@@ -989,10 +989,11 @@ export default function ShopOrderClient({
   // Handle adding product to table
   const handleAddProduct = () => {
     if (!accessoryData.name || !accessoryData.name.trim() || 
-        !accessoryData.sku || !accessoryData.sku.trim() || 
+        !accessoryData.sku || !accessoryData.sku.trim() ||
+        !accessoryData.partners_id ||
         !accessoryData.base_price || accessoryData.base_price === '' || 
         !accessoryData.quantity || accessoryData.quantity === '') {
-      toast.error('Kérjük töltse ki az összes kötelező mezőt! (Termék neve, SKU, Beszerzési ár, Mennyiség)')
+      toast.error('Kérjük töltse ki az összes kötelező mezőt! (Termék neve, SKU, Partner, Beszerzési ár, Mennyiség)')
       return
     }
 
@@ -1442,8 +1443,11 @@ export default function ShopOrderClient({
                 renderInput={(params) => (
                   <TextField
                     {...params}
-                    label="Partner"
+                    label="Partner *"
                     placeholder="Keresés partnerek között..."
+                    required
+                    error={!accessoryData.partners_id && editingProductId === null}
+                    helperText={!accessoryData.partners_id && editingProductId === null ? "Kötelező mező" : ""}
                   />
                 )}
                 isOptionEqualToValue={(option, value) => option.id === value.id}
