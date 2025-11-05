@@ -66,7 +66,7 @@ const HeroSection = ({ mode }: { mode: Mode }) => {
             }}
           >
             <Typography className='font-extrabold text-primary sm:text-[38px] text-3xl mbe-4 leading-[44px]'>
-              Vállalatirányítási szoftver kifejezetten asztalos cégekre optimalizálva
+              Vállalatirányítási szoftver kisvállalkozásokra optimalizálva
             </Typography>
             <Typography className='font-medium' color='text.primary'>
               Hatékony termelésirányítás, készletkezelés és árajánlatkészítés. Mindent egy helyen, amit egy modern asztalos üzemnek szüksége van.

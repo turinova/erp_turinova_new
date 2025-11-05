@@ -10,8 +10,8 @@ import { getServerMode } from '@core/utils/serverHelpers'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Turinova - ERP rendszer asztalos cégeknek',
-  description: 'Vállalatirányítási szoftver kifejezetten asztalos cégekre optimalizálva'
+  title: 'Turinova - ERP rendszer kisvállalkozásoknak',
+  description: 'Vállalatirányítási szoftver kisvállalkozásokra optimalizálva'
 }
 
 const LandingPage = async () => {
