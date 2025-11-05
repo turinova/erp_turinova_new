@@ -21,12 +21,7 @@ const FooterContent = () => {
       className={classnames(horizontalLayoutClasses.footerContent, 'flex items-center justify-between flex-wrap gap-4')}
     >
       <p>
-        <span className='text-textSecondary'>{`© ${new Date().getFullYear()}, Made with `}</span>
-        <span>{`❤️`}</span>
-        <span className='text-textSecondary'>{` by `}</span>
-        <span className='text-primary uppercase'>
-          Turinova
-        </span>
+        <span className='text-textSecondary'>{`© ${new Date().getFullYear()} Turinova`}</span>
         <span className='text-textSecondary'>{` | `}</span>
         <a 
           href='mailto:info@turinova.hu'
