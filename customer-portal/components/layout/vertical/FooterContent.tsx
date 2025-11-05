@@ -28,6 +28,13 @@ const FooterContent = () => {
           Turinova
         </span>
         <span className='text-textSecondary'>{` | `}</span>
+        <a 
+          href='mailto:info@turinova.hu'
+          className='text-primary hover:underline'
+        >
+          info@turinova.hu
+        </a>
+        <span className='text-textSecondary'>{` | `}</span>
         <Link 
           href='/terms-and-conditions' 
           target='_blank' 
