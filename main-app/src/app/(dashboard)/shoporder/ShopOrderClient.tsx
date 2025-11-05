@@ -1470,8 +1470,6 @@ export default function ShopOrderClient({
                 onChange={(e) => handleInputChange('accessory_base_price', e.target.value)}
                 type="number"
                 required
-                error={!accessoryData.base_price || parseFloat(accessoryData.base_price.toString()) <= 0}
-                helperText={!accessoryData.base_price || parseFloat(accessoryData.base_price.toString()) <= 0 ? "Ár > 0 kötelező" : ""}
                 inputProps={{ min: 1, step: 1 }}
               />
             </Grid>
