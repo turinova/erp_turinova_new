@@ -205,14 +205,18 @@ export async function POST(request: NextRequest) {
                 : `NEW-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`
               
               // Get a default partner ID if none provided
-              let partnerId = product.partners_id
+              // Ensure empty strings are converted to null
+              let partnerId = product.partners_id && product.partners_id.trim() !== '' 
+                ? product.partners_id 
+                : null
+              
               if (!partnerId) {
                 const { data: defaultPartner } = await supabaseServer
                   .from('partners')
                   .select('id')
                   .limit(1)
                   .single()
-                partnerId = defaultPartner?.id
+                partnerId = defaultPartner?.id || null
               }
               
               const { data: newAccessory, error: accessoryError } = await supabaseServer
@@ -225,7 +229,7 @@ export async function POST(request: NextRequest) {
                   vat_id: product.vat_id,
                   currency_id: product.currency_id,
                   units_id: product.units_id,
-                  partners_id: partnerId
+                  partners_id: partnerId || null
                 })
                 .select('id')
                 .single()
