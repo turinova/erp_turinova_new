@@ -69,7 +69,7 @@ const HeroSection = ({ mode }: { mode: Mode }) => {
               Vállalatirányítási szoftver kisvállalkozásokra optimalizálva
             </Typography>
             <Typography className='font-medium' color='text.primary'>
-              Hatékony termelésirányítás, készletkezelés és árajánlatkészítés. Mindent egy helyen, amit egy modern asztalos üzemnek szüksége van.
+              Hatékony termelésirányítás, készletkezelés és árajánlatkészítés. Mindent egy helyen, amit egy modern kisvállalkozásnak szüksége van.
             </Typography>
           </div>
         </div>
