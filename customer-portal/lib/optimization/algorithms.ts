@@ -15,7 +15,7 @@ export function guillotineCutting(
   const bins: BinClass[] = [];
   bins.push(new BinClass(binWidth, binHeight, kerf));
 
-  // IMPROVED SORTING - Multi-criteria for better packing efficiency
+  // IMPROVED SORTING - Multi-criteria for better beam saw packing
   rectangles.sort((a, b) => {
     // 1. Sort by longest dimension first (helps with beam saw horizontal cuts)
     const maxEdgeA = Math.max(a.width, a.height);

@@ -72,27 +72,26 @@ export class BinClass implements Bin {
         if (freeRect.width >= rectangle.height + (requiresHorizontalKerfRotated ? kerf : 0) && 
             freeRect.height >= rectangle.width + (requiresVerticalKerfRotated ? kerf : 0)) {
           
-          // SMART ROTATION PENALTIES - prevent bad rotation decisions
+          // SMART ROTATION PENALTIES - prevent bad rotation decisions for beam saw
           
           // Calculate remainders after rotation
           const rotatedHeightRemainder = freeRect.height - rectangle.width;
           const rotatedWidthRemainder = freeRect.width - rectangle.height;
           
           // 1. Height usage penalty - avoid rotations that use >90% of board height
+          //    (leaves too little space for stacking panels below)
           const heightUsageRatio = rectangle.width / freeRect.height;
           const heightPenalty = heightUsageRatio > 0.90 ? 10000000 : 0;
           
           // 2. Small remainder penalty - avoid creating unusably small spaces (<200mm)
+          //    (beam saw needs minimum space for practical cutting)
           const minUsableSize = 200;
           const smallSpacePenalty = (
             (rotatedHeightRemainder > 0 && rotatedHeightRemainder < minUsableSize ? 5000000 : 0) +
             (rotatedWidthRemainder > 0 && rotatedWidthRemainder < minUsableSize ? 5000000 : 0)
           );
           
-          // 3. Aspect ratio penalty - prefer keeping wider remainders (beam saw works horizontally)
-          const aspectRatioPenalty = rotatedWidthRemainder < rotatedHeightRemainder ? 100000 : 0;
-          
-          const wasteScore = rotatedWaste + heightPenalty + smallSpacePenalty + aspectRatioPenalty + 
+          const wasteScore = rotatedWaste + heightPenalty + smallSpacePenalty + 
                              (freeRect.y * 10000) + (freeRect.x * 1000);
           if (wasteScore < bestWaste) {
             bestFit = freeRect;
@@ -136,7 +135,7 @@ export class BinClass implements Bin {
     if (widthRemainder > kerf) {
       this.freeRectangles.push(new RectangleClass(
         widthRemainder - kerf, 
-        freeRect.height,  // FIX: Use full height of free space, not placed panel height
+        placedRect.height, 
         freeRect.x + placedRect.width + kerf, 
         freeRect.y
       ));
