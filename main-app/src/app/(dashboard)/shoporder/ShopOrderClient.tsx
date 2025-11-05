@@ -988,16 +988,17 @@ export default function ShopOrderClient({
 
   // Handle adding product to table
   const handleAddProduct = () => {
+    const basePrice = parseFloat(accessoryData.base_price?.toString() || '0')
+    
     if (!accessoryData.name || !accessoryData.name.trim() || 
         !accessoryData.sku || !accessoryData.sku.trim() ||
         !accessoryData.partners_id ||
-        !accessoryData.base_price || accessoryData.base_price === '' || 
+        basePrice <= 0 ||
         !accessoryData.quantity || accessoryData.quantity === '') {
-      toast.error('Kérjük töltse ki az összes kötelező mezőt! (Termék neve, SKU, Partner, Beszerzési ár, Mennyiség)')
+      toast.error('Kérjük töltse ki az összes kötelező mezőt! Beszerzési ár nagyobb kell legyen 0-nál.')
       return
     }
 
-    const basePrice = parseFloat(accessoryData.base_price) || 0
     const multiplier = parseFloat(accessoryData.multiplier.toString()) || 1.38
     const quantity = parseFloat(accessoryData.quantity.toString()) || 1
     const vatRate = vatRates.find(v => v.id === accessoryData.vat_id)?.kulcs || 27
@@ -1464,10 +1465,14 @@ export default function ShopOrderClient({
               <TextField
                 fullWidth
                 size="small"
-                label="Beszerzési ár"
+                label="Beszerzési ár *"
                 value={accessoryData.base_price || ''}
                 onChange={(e) => handleInputChange('accessory_base_price', e.target.value)}
                 type="number"
+                required
+                error={!accessoryData.base_price || parseFloat(accessoryData.base_price.toString()) <= 0}
+                helperText={!accessoryData.base_price || parseFloat(accessoryData.base_price.toString()) <= 0 ? "Ár > 0 kötelező" : ""}
+                inputProps={{ min: 1, step: 1 }}
               />
             </Grid>
             <Grid item xs={12} sm={2}>
