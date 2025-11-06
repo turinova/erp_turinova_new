@@ -1337,13 +1337,17 @@ export default function OptiClient({
       const request = { materials: materialsForOptimization }
       console.log(`[OPTI] Calling optimization API with ${materialsForOptimization.length} materials`)
         
-      console.time('[OPTI] API Call (Guillotine Algorithm)')
+      console.time('[OPTI] API Call (Multi-Panel Look-Ahead Algorithm)')
       const response = await fetch('/api/optimize', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(request)
+          body: JSON.stringify({ 
+            ...request, 
+            algorithm: 'multipanel',  // Use Multi-Panel Look-Ahead for best efficiency
+            sortStrategy: 'height'     // Hosszúság szerint (tallest first) - proven best for beam saws
+          })
         })
 
         
@@ -1353,7 +1357,7 @@ export default function OptiClient({
         }
 
       const results = await response.json()
-      console.timeEnd('[OPTI] API Call (Guillotine Algorithm)')
+      console.timeEnd('[OPTI] API Call (Multi-Panel Look-Ahead Algorithm)')
 
       console.time('[OPTI] Results Processing')
       // Calculate total metrics

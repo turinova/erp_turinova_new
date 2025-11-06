@@ -1,67 +1,84 @@
-// Look-Ahead Optimization for Beam Saw
-// Phase 2: Smart first-panel rotation decision
-
 import { RectangleClass, BinClass } from './classes';
 import { guillotineCutting } from './algorithms';
+import { sortPanelsByStrategy, type SortStrategy } from './sorting';
 
 /**
- * Guillotine cutting with look-ahead for first panel rotation
+ * Look-ahead optimization: Try both orientations for the first panel
+ * and choose the one that results in fewer boards overall
  * 
- * Strategy: For the first (largest) panel, try BOTH orientations
- * and pick the one that results in fewer total boards.
+ * This algorithm improves upon the standard guillotine cutting by:
+ * 1. Identifying the largest panel (first after sorting)
+ * 2. If it's rotatable, testing both orientations
+ * 3. Locking the chosen orientation to prevent the standard algorithm from changing it
+ * 4. Selecting the orientation that minimizes board usage
  * 
- * This solves the common problem where rotating the first panel
- * uses too much height and forces remaining panels to new boards.
- * 
- * @param rectangles - Panels to place
- * @param binWidth - Board width (after trim)
- * @param binHeight - Board height (after trim)
- * @param kerf - Saw blade width
- * @returns Array of bins with placed panels
+ * @param sortStrategy - Panel sorting strategy to use
  */
 export function guillotineCuttingWithLookAhead(
   rectangles: RectangleClass[], 
   binWidth: number, 
   binHeight: number, 
-  kerf: number = 0
+  kerf: number = 0,
+  sortStrategy: SortStrategy = 'area'
 ): BinClass[] {
-  // If no panels or first panel not rotatable, use standard algorithm
+  
   if (rectangles.length === 0) {
     return [];
   }
   
-  // Sort by area first (largest first) - same as original
-  rectangles.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  // Sort using the specified strategy
+  const sortedRectangles = sortPanelsByStrategy(rectangles, sortStrategy);
   
-  const firstPanel = rectangles[0];
+  const firstPanel = sortedRectangles[0];
   
+  // If first panel is not rotatable, use standard algorithm
   if (!firstPanel.rotatable) {
-    return guillotineCutting(rectangles, binWidth, binHeight, kerf);
+    return guillotineCutting(sortedRectangles, binWidth, binHeight, kerf, sortStrategy);
   }
   
-  // Clone rectangles for testing (avoid mutating original)
-  const rectsNormal = rectangles.map(r => new RectangleClass(r.width, r.height, 0, 0, r.rotatable));
-  const rectsRotated = rectangles.map(r => new RectangleClass(r.width, r.height, 0, 0, r.rotatable));
+  // Clone rectangles for testing (lock first panel's rotation during test)
+  const rectsNormal = sortedRectangles.map((r, i) => 
+    new RectangleClass(r.width, r.height, 0, 0, i === 0 ? false : r.rotatable)
+  );
+  const rectsRotated = sortedRectangles.map((r, i) => 
+    new RectangleClass(r.width, r.height, 0, 0, i === 0 ? false : r.rotatable)
+  );
+  
+  console.log(`[Look-Ahead] Testing ${sortedRectangles.length} panels (sort: ${sortStrategy}), first panel: ${firstPanel.width}×${firstPanel.height}`);
   
   // Try normal orientation
-  const normalResult = guillotineCutting(rectsNormal, binWidth, binHeight, kerf);
+  const normalResult = guillotineCutting(rectsNormal, binWidth, binHeight, kerf, sortStrategy);
+  console.log(`[Look-Ahead] Normal orientation: ${normalResult.length} boards`);
   
-  // Try rotated orientation for first panel
+  // Try rotated orientation (actually rotate the first panel)
   [rectsRotated[0].width, rectsRotated[0].height] = [rectsRotated[0].height, rectsRotated[0].width];
-  const rotatedResult = guillotineCutting(rectsRotated, binWidth, binHeight, kerf);
+  const rotatedResult = guillotineCutting(rectsRotated, binWidth, binHeight, kerf, sortStrategy);
+  console.log(`[Look-Ahead] Rotated orientation: ${rotatedResult.length} boards`);
   
-  // Pick the result with fewer boards
-  // If equal boards, pick the one with less waste
+  // Count placed panels in each result
+  const normalPlaced = normalResult.reduce((sum, bin) => sum + bin.usedRectangles.length, 0);
+  const rotatedPlaced = rotatedResult.reduce((sum, bin) => sum + bin.usedRectangles.length, 0);
+  
+  console.log(`[Look-Ahead] Normal placed: ${normalPlaced}/${rectangles.length}, Rotated placed: ${rotatedPlaced}/${rectangles.length}`);
+  
+  // PRIORITY 1: Choose the result that places ALL panels (if one does and the other doesn't)
+  if (normalPlaced === rectangles.length && rotatedPlaced < rectangles.length) {
+    console.log(`[Look-Ahead] ✅ Choosing NORMAL (all panels placed vs ${rectangles.length - rotatedPlaced} unplaced)`);
+    return normalResult;
+  } else if (rotatedPlaced === rectangles.length && normalPlaced < rectangles.length) {
+    console.log(`[Look-Ahead] ✅ Choosing ROTATED (all panels placed vs ${rectangles.length - normalPlaced} unplaced)`);
+    return rotatedResult;
+  }
+  
+  // PRIORITY 2: If both place all panels (or both have unplaced), choose by board count
   if (normalResult.length < rotatedResult.length) {
-    console.log('[Optimization] Look-ahead: Normal orientation is better (fewer boards)');
-    return guillotineCutting(rectangles, binWidth, binHeight, kerf);
+    console.log(`[Look-Ahead] ✅ Choosing NORMAL (fewer boards: ${normalResult.length} vs ${rotatedResult.length})`);
+    return normalResult;
   } else if (rotatedResult.length < normalResult.length) {
-    console.log('[Optimization] Look-ahead: Rotated orientation is better (fewer boards)');
-    // Apply rotation to original first panel
-    [rectangles[0].width, rectangles[0].height] = [rectangles[0].height, rectangles[0].width];
-    return guillotineCutting(rectangles, binWidth, binHeight, kerf);
+    console.log(`[Look-Ahead] ✅ Choosing ROTATED (fewer boards: ${rotatedResult.length} vs ${normalResult.length})`);
+    return rotatedResult;
   } else {
-    // Same number of boards - calculate total waste
+    // Same number of boards - compare waste percentage
     const normalWaste = normalResult.reduce((sum, bin) => {
       const usedArea = bin.usedRectangles.reduce((s, r) => s + (r.width * r.height), 0);
       return sum + ((binWidth * binHeight) - usedArea);
@@ -72,50 +89,12 @@ export function guillotineCuttingWithLookAhead(
       return sum + ((binWidth * binHeight) - usedArea);
     }, 0);
     
-    if (normalWaste <= rotatedWaste) {
-      console.log('[Optimization] Look-ahead: Normal orientation (equal boards, less waste)');
-      return guillotineCutting(rectangles, binWidth, binHeight, kerf);
-    } else {
-      console.log('[Optimization] Look-ahead: Rotated orientation (equal boards, less waste)');
-      [rectangles[0].width, rectangles[0].height] = [rectangles[0].height, rectangles[0].width];
-      return guillotineCutting(rectangles, binWidth, binHeight, kerf);
-    }
+    console.log(`[Look-Ahead] Same boards (${normalResult.length}), comparing waste: normal=${normalWaste}, rotated=${rotatedWaste}`);
+    
+    // Return the result with less waste directly
+    const chosen = normalWaste <= rotatedWaste ? normalResult : rotatedResult;
+    console.log(`[Look-Ahead] ✅ Choosing ${normalWaste <= rotatedWaste ? 'NORMAL' : 'ROTATED'} (less waste)`);
+    return chosen;
   }
-}
-
-/**
- * Calculate optimization metrics for a result
- */
-export function calculateMetrics(
-  bins: BinClass[],
-  binWidth: number,
-  binHeight: number
-): {
-  totalBoards: number;
-  totalPanelArea: number;
-  totalBoardArea: number;
-  wasteArea: number;
-  efficiency: number;
-} {
-  const totalBoards = bins.length;
-  const totalBoardArea = totalBoards * binWidth * binHeight;
-  
-  let totalPanelArea = 0;
-  for (const bin of bins) {
-    for (const rect of bin.usedRectangles) {
-      totalPanelArea += rect.width * rect.height;
-    }
-  }
-  
-  const wasteArea = totalBoardArea - totalPanelArea;
-  const efficiency = totalBoardArea > 0 ? totalPanelArea / totalBoardArea : 0;
-  
-  return {
-    totalBoards,
-    totalPanelArea,
-    totalBoardArea,
-    wasteArea,
-    efficiency
-  };
 }
 

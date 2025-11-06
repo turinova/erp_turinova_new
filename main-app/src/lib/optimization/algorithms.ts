@@ -1,24 +1,28 @@
 // Core Optimization Algorithms - TypeScript version of PHP functions
 import { RectangleClass, BinClass } from './classes';
+import { sortPanelsByStrategy, type SortStrategy } from './sorting';
 import type { Rectangle } from '@/types/optimization';
 
 /**
  * Guillotine cutting algorithm - main optimization function
  * Mirrors the PHP guillotineCutting function exactly
+ * 
+ * @param sortStrategy - Panel sorting strategy (default: area)
  */
 export function guillotineCutting(
   rectangles: RectangleClass[], 
   binWidth: number, 
   binHeight: number, 
-  kerf: number = 0
+  kerf: number = 0,
+  sortStrategy: SortStrategy = 'area'
 ): BinClass[] {
   const bins: BinClass[] = [];
   bins.push(new BinClass(binWidth, binHeight, kerf));
 
-  // Sort rectangles by area (largest first) - exactly like PHP
-  rectangles.sort((a, b) => (b.width * b.height) - (a.width * a.height));
+  // Sort rectangles using the specified strategy
+  const sortedRectangles = sortPanelsByStrategy(rectangles, sortStrategy);
 
-  for (const rectangle of rectangles) {
+  for (const rectangle of sortedRectangles) {
     let placed = false;
     for (const bin of bins) {
       if (bin.insert(rectangle, kerf)) {

@@ -3,13 +3,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { guillotineCutting, processPanelsForMaterial, calculateUsableBoardDimensions } from '@/lib/optimization/algorithms';
-import { guillotineCuttingWithLookAhead, calculateMetrics } from '@/lib/optimization/lookahead';
+import { guillotineCuttingWithLookAhead } from '@/lib/optimization/lookahead';
+import { guillotineCuttingWithMultiPanelLookAhead } from '@/lib/optimization/multiPanelLookAhead';
+import { BinClass } from '@/lib/optimization/classes';
 import { processBin } from '@/lib/optimization/cutCalculations';
+import type { SortStrategy } from '@/lib/optimization/sorting';
 import type { OptimizationRequest, OptimizationResult, Placement, UnplacedPart } from '@/types/optimization';
 
-// Feature flag for new optimization algorithm
-// Set to 'false' to instantly rollback to original algorithm
-const USE_LOOKAHEAD_OPTIMIZATION = process.env.NEXT_PUBLIC_USE_LOOKAHEAD !== 'false'; // Default: enabled
+// Algorithm type for A/B testing
+type OptimizationAlgorithm = 'original' | 'lookahead' | 'multipanel';
 
 // CORS headers
 const corsHeaders = {
@@ -37,7 +39,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] Processing optimization request with ${input.materials.length} materials`);
+    // Get algorithm parameter (default: original for backward compatibility)
+    const algorithm = (input.algorithm as OptimizationAlgorithm) || 'original';
+    const sortStrategy = (input.sortStrategy as SortStrategy) || 'area';
+    console.log(`[API] Processing optimization request with ${input.materials.length} materials (Algorithm: ${algorithm}, Sort: ${sortStrategy})`);
     console.time('[API] Total Optimization Time')
 
     // Process each material from the request
@@ -82,19 +87,25 @@ export async function POST(request: NextRequest) {
         trimBottom
       );
 
-      // Use the guillotine cutting algorithm with optional look-ahead
+      // Use the selected algorithm with sort strategy
       console.time(`[API] Guillotine Algorithm: ${materialName}`)
-      const bins = USE_LOOKAHEAD_OPTIMIZATION
-        ? guillotineCuttingWithLookAhead(panels, usableWidth, usableHeight, kerfSize)
-        : guillotineCutting(panels, usableWidth, usableHeight, kerfSize);
-      console.timeEnd(`[API] Guillotine Algorithm: ${materialName}`)
-      console.log(`[API] ${materialName}: Created ${bins.length} bins for ${panels.length} panels (Look-ahead: ${USE_LOOKAHEAD_OPTIMIZATION})`)
+      let bins: BinClass[];
       
-      // Log optimization metrics
-      if (bins.length > 0) {
-        const metrics = calculateMetrics(bins, usableWidth, usableHeight);
-        console.log(`[API] ${materialName}: Efficiency: ${(metrics.efficiency * 100).toFixed(1)}%, Waste: ${metrics.wasteArea.toFixed(0)} mm²`);
+      switch (algorithm) {
+        case 'multipanel':
+          bins = guillotineCuttingWithMultiPanelLookAhead(panels, usableWidth, usableHeight, kerfSize, sortStrategy);
+          break;
+        case 'lookahead':
+          bins = guillotineCuttingWithLookAhead(panels, usableWidth, usableHeight, kerfSize, sortStrategy);
+          break;
+        case 'original':
+        default:
+          bins = guillotineCutting(panels, usableWidth, usableHeight, kerfSize, sortStrategy);
+          break;
       }
+      
+      console.timeEnd(`[API] Guillotine Algorithm: ${materialName}`)
+      console.log(`[API] ${materialName}: Created ${bins.length} bins for ${panels.length} panels (Algorithm: ${algorithm}, Sort: ${sortStrategy})`)
 
       // Convert to response format - process ALL boards
       const placements: Placement[] = [];
