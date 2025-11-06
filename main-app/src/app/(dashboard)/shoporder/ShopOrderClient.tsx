@@ -988,7 +988,9 @@ export default function ShopOrderClient({
 
   // Handle adding product to table
   const handleAddProduct = () => {
-    const basePrice = parseFloat(accessoryData.base_price?.toString() || '0')
+    // Parse and ALWAYS round base_price to integer
+    const basePriceRaw = parseFloat(accessoryData.base_price?.toString() || '0')
+    const basePrice = Math.round(basePriceRaw) // Ensure integer
     
     if (!accessoryData.name || !accessoryData.name.trim() || 
         !accessoryData.sku || !accessoryData.sku.trim() ||
@@ -1011,7 +1013,7 @@ export default function ShopOrderClient({
       name: accessoryData.name,
       sku: accessoryData.sku || '',
       type: accessoryData.type || 'Termék',
-      base_price: basePrice,
+      base_price: basePrice, // Already rounded to integer
       multiplier: multiplier,
       quantity: quantity,
       net_price: netPrice,
@@ -1465,12 +1467,28 @@ export default function ShopOrderClient({
               <TextField
                 fullWidth
                 size="small"
-                label="Beszerzési ár *"
+                label="Beszerzési ár (Ft) *"
                 value={accessoryData.base_price || ''}
-                onChange={(e) => handleInputChange('accessory_base_price', e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value
+                  // Allow user to type, but we'll round when saving
+                  handleInputChange('accessory_base_price', value)
+                }}
+                onBlur={(e) => {
+                  // Round to nearest integer when user leaves the field
+                  const value = parseFloat(e.target.value)
+                  if (!isNaN(value) && value > 0) {
+                    const rounded = Math.round(value)
+                    if (rounded !== value) {
+                      handleInputChange('accessory_base_price', rounded.toString())
+                      toast.info(`Beszerzési ár kerekítve: ${rounded} Ft`)
+                    }
+                  }
+                }}
                 type="number"
                 required
                 inputProps={{ min: 1, step: 1 }}
+                helperText="Tizedesjegyek automatikusan kerekítve lesznek"
               />
             </Grid>
             <Grid item xs={12} sm={2}>
