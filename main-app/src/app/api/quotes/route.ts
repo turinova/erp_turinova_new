@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabaseServer, getTenantCompany } from '@/lib/supabase-server'
+import { supabaseServer } from '@/lib/supabase-server'
 import { supabase } from '@/lib/supabase'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -48,23 +48,43 @@ export async function POST(request: NextRequest) {
     console.log('Current user for quote saving:', user.id, user.email)
 
     // Start transaction
-    let customerId = customerData.id
+    let customerId = customerData.id || null
+    let shouldUpdateExistingCustomer = Boolean(customerId)
 
     // Handle customer creation or update
     if (customerData.name) {
-      if (!customerId) {
-        // Creating new customer
-        console.log('Creating new customer:', customerData.name)
-        
-        // Get tenant company email for default
-        const tenantCompany = await getTenantCompany()
-        const defaultEmail = tenantCompany?.email || 'info@company.com'
+      const trimmedName = customerData.name.trim()
+      customerData.name = trimmedName
 
-        // Create new customer with all provided data
+      // If no customerId provided, attempt to find existing active customer by name
+      if (!customerId && trimmedName) {
+        const { data: existingCustomer, error: existingLookupError } = await supabaseServer
+          .from('customers')
+          .select('id')
+          .eq('name', trimmedName)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+          .maybeSingle()
+
+        if (existingLookupError && existingLookupError.code !== 'PGRST116') {
+          console.warn('Error looking up existing customer by name:', existingLookupError)
+        }
+
+        if (existingCustomer) {
+          customerId = existingCustomer.id
+          shouldUpdateExistingCustomer = true
+          console.log('Using existing customer by name:', trimmedName, 'ID:', customerId)
+        }
+      }
+
+      if (!customerId) {
+        // Creating new customer (no existing customer found)
+        console.log('Creating new customer:', trimmedName)
+
         const { data: newCustomer, error: customerError } = await supabaseServer
           .from('customers')
           .insert([{
-            name: customerData.name,
+            name: trimmedName,
             email: customerData.email || null,
             mobile: customerData.mobile || null,
             discount_percent: parseFloat(customerData.discount_percent) || 0,
@@ -82,39 +102,42 @@ export async function POST(request: NextRequest) {
 
         if (customerError) {
           console.error('Error creating customer:', customerError)
-          
-          // Check if customer already exists by name
+
           if (customerError.code === '23505') {
-            // Try to find existing customer by name
             const { data: existingCustomer } = await supabaseServer
               .from('customers')
               .select('id')
-              .eq('name', customerData.name)
+              .eq('name', trimmedName)
+              .eq('is_active', true)
               .is('deleted_at', null)
-              .single()
-            
+              .maybeSingle()
+
             if (existingCustomer) {
               customerId = existingCustomer.id
+              shouldUpdateExistingCustomer = true
+              console.log('Duplicate customer detected. Using existing customer ID:', customerId)
             } else {
-              return NextResponse.json({ 
-                error: 'Customer already exists with this email',
+              return NextResponse.json({
+                error: 'Customer already exists with this name',
                 details: customerError.message
               }, { status: 409 })
             }
           } else {
-            return NextResponse.json({ 
+            return NextResponse.json({
               error: 'Failed to create customer',
               details: customerError.message
             }, { status: 500 })
           }
         } else {
           customerId = newCustomer.id
+          shouldUpdateExistingCustomer = false
           console.log('Customer created successfully:', customerId)
         }
-      } else {
-        // Updating existing customer
-        console.log('Updating existing customer:', customerData.name, 'ID:', customerId)
-        
+      }
+
+      if (customerId && shouldUpdateExistingCustomer) {
+        console.log('Updating existing customer details:', trimmedName, 'ID:', customerId)
+
         const { error: updateError } = await supabaseServer
           .from('customers')
           .update({
@@ -135,12 +158,12 @@ export async function POST(request: NextRequest) {
 
         if (updateError) {
           console.error('Error updating customer:', updateError)
-          return NextResponse.json({ 
+          return NextResponse.json({
             error: 'Failed to update customer',
             details: updateError.message
           }, { status: 500 })
         }
-        
+
         console.log('Customer updated successfully:', customerId)
       }
     }

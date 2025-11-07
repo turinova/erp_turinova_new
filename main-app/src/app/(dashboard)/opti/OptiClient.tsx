@@ -1594,7 +1594,13 @@ export default function OptiClient({
     } catch (err) {
       console.error('Error saving quote:', err)
       const errorMessage = isEditMode ? 'frissítése' : 'mentése'
-      toast.error(`Hiba az árajánlat ${errorMessage} során: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      let detailedMessage = err instanceof Error ? err.message : 'Ismeretlen hiba'
+
+      if (detailedMessage.includes('Customer already exists with this name')) {
+        detailedMessage = 'Ez a megrendelő név már létezik. Válassza ki a listából a meglévő ügyfelet.'
+      }
+
+      toast.error(`Hiba az árajánlat ${errorMessage} során: ${detailedMessage}`)
     } finally {
       setIsSavingQuote(false)
     }
