@@ -46,11 +46,18 @@ export async function POST(request: NextRequest) {
     if (authError) {
       console.error('Supabase Auth user creation error:', authError)
 
-      const message = authError.message?.toLowerCase().includes('already registered')
-        ? 'Ezzel az e-mail címmel már regisztráltak.'
-        : 'Nem sikerült létrehozni a felhasználót.'
+      const errorMessage = authError.message?.toLowerCase() || ''
+      let responseMessage = 'Nem sikerült létrehozni a felhasználót.'
 
-      return NextResponse.json({ error: message }, { status: 500 })
+      if (errorMessage.includes('email') && errorMessage.includes('registered')) {
+        responseMessage = 'Ezzel az e-mail címmel már regisztráltak.'
+      } else if (errorMessage.includes('phone') && errorMessage.includes('registered')) {
+        responseMessage = 'Ezzel a telefonszámmal már regisztráltak.'
+      } else if (authError?.status === 409 || authError?.code === '409') {
+        responseMessage = 'A megadott adatok már használatban vannak.'
+      }
+
+      return NextResponse.json({ error: responseMessage }, { status: 500 })
     }
 
     if (!authData.user) {

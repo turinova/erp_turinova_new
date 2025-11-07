@@ -55,7 +55,8 @@ const findOrCreatePortalCustomer = async ({
   companyName
 }: FindOrCreatePortalCustomerParams): Promise<FindOrCreatePortalCustomerResult> => {
   try {
-    const email = normalizeText(portalCustomer.email).toLowerCase()
+    const rawEmail = portalCustomer.email || ''
+    const email = normalizeText(rawEmail).toLowerCase()
     const baseName = normalizeText(portalCustomer.name)
     const searchBase = baseName || 'Online ügyfél'
 
@@ -83,6 +84,54 @@ const findOrCreatePortalCustomer = async ({
     }
 
     const MAX_SUFFIX_ATTEMPTS = 25
+
+    // Reuse customer by email (case-insensitive)
+    const { data: existingByEmailAnyCase, error: emailLookupError } = await supabase
+      .from('customers')
+      .select('id, email, deleted_at')
+      .ilike('email', email)
+      .limit(2)
+
+    if (emailLookupError) {
+      console.warn('[Portal Quote Submit] Email lookup error:', emailLookupError)
+    }
+
+    if (existingByEmailAnyCase && existingByEmailAnyCase.length > 0) {
+      const activeMatch = existingByEmailAnyCase.find(record => record.deleted_at === null)
+      if (activeMatch) {
+        console.log('[Portal Quote Submit] Reusing existing customer by email (case-insensitive match):', activeMatch.id)
+        return { success: true, customerId: activeMatch.id }
+      }
+
+      const deletedMatch = existingByEmailAnyCase.find(record => record.deleted_at !== null)
+      if (deletedMatch) {
+        console.log('[Portal Quote Submit] Reviving soft-deleted customer by email:', deletedMatch.id)
+
+        const { error: reviveError } = await supabase
+          .from('customers')
+          .update({
+            deleted_at: null,
+            name: baseName || portalCustomer.name || 'Online ügyfél',
+            mobile: portalCustomer.mobile || '',
+            billing_name: portalCustomer.billing_name || '',
+            billing_country: portalCustomer.billing_country || 'Magyarország',
+            billing_city: portalCustomer.billing_city || '',
+            billing_postal_code: portalCustomer.billing_postal_code || '',
+            billing_street: portalCustomer.billing_street || '',
+            billing_house_number: portalCustomer.billing_house_number || '',
+            billing_tax_number: portalCustomer.billing_tax_number || '',
+            billing_company_reg_number: portalCustomer.billing_company_reg_number || ''
+          })
+          .eq('id', deletedMatch.id)
+
+        if (reviveError) {
+          console.error('[Portal Quote Submit] Failed to revive soft-deleted customer:', reviveError)
+        } else {
+          console.log('[Portal Quote Submit] Soft-deleted customer revived successfully:', deletedMatch.id)
+          return { success: true, customerId: deletedMatch.id }
+        }
+      }
+    }
 
     // Reuse variant if the same email already exists
     for (let index = 0; index < MAX_SUFFIX_ATTEMPTS; index++) {
@@ -145,14 +194,17 @@ const findOrCreatePortalCustomer = async ({
       if (insertError?.status === 409 || insertError?.code === '409') {
         const { data: emailMatch, error: emailRefetchError } = await supabase
           .from('customers')
-          .select('id')
-          .eq('email', email)
-          .is('deleted_at', null)
+          .select('id', 'deleted_at')
+          .ilike('email', email)
           .maybeSingle()
 
         if (!emailRefetchError && emailMatch) {
-          console.log('[Portal Quote Submit] Reusing customer after email conflict:', emailMatch.id)
-          return { success: true, customerId: emailMatch.id }
+          if (!emailMatch.deleted_at) {
+            console.log('[Portal Quote Submit] Reusing customer after email conflict (case-insensitive):', emailMatch.id)
+            return { success: true, customerId: emailMatch.id }
+          } else {
+            console.warn('[Portal Quote Submit] Email conflict with deleted customer, cannot reuse without restore:', emailMatch.id)
+          }
         }
       }
 
