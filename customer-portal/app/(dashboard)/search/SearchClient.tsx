@@ -16,9 +16,18 @@ import {
   Paper, 
   Chip, 
   CircularProgress,
-  InputAdornment
+  InputAdornment,
+  Card,
+  CardContent,
+  Stack,
+  Divider
 } from '@mui/material'
-import { Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
+import { 
+  Home as HomeIcon, 
+  Search as SearchIcon,
+  InfoOutlined as InfoOutlinedIcon,
+  CheckCircleOutline as CheckCircleOutlineIcon
+} from '@mui/icons-material'
 
 interface Material {
   id: string
@@ -144,6 +153,56 @@ export default function SearchClient() {
         Kereső
       </Typography>
       
+      <Card
+        sx={{
+          mb: 3,
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'primary.light',
+          backgroundColor: 'rgba(17, 170, 136, 0.06)'
+        }}
+      >
+        <CardContent>
+          <Stack spacing={2}>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+              <InfoOutlinedIcon color="primary" sx={{ fontSize: 36, mt: 0.5 }} />
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  Ár tájékoztató
+                </Typography>
+                <Typography variant="body1" color="text.primary" sx={{ mt: 0.5 }}>
+                  Ebben a keresőben egyszerűen és gyorsan megtekintheti a kiválasztott vállalkozás <strong>bútorlap</strong>, munkalap, asztallap és hátfalpanel árait. Csak kezdje el beírni a termék kódját, és a rendszer automatikusan megjeleníti:
+                </Typography>
+              </Box>
+            </Box>
+
+            <Divider sx={{ borderStyle: 'dashed' }} />
+
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <CheckCircleOutlineIcon color="primary" fontSize="small" />
+                Fontos tudnivalók
+              </Typography>
+              <Box component="ul" sx={{ pl: 4, m: 0, color: 'text.secondary', display: 'grid', gap: 1 }}>
+                <Box component="li">
+                  Az árak bruttó árak és tájékoztató jellegűek.
+                </Box>
+                <Box component="li">
+                  Az árváltoztatás jogát fenntartjuk.
+                </Box>
+                <Box component="li">
+                  Az esetleges eltérésekért vagy hibás megjelenített adatokért nem vállalunk felelősséget.
+                </Box>
+              </Box>
+            </Box>
+
+            <Typography variant="body1" color="text.primary" sx={{ fontWeight: 500 }}>
+              Kezdje el gépelni a keresett termék kódját, és már láthatja is az aktuális árakat.
+            </Typography>
+          </Stack>
+        </CardContent>
+      </Card>
+
       <TextField
         fullWidth
         placeholder="Keresés anyagok között..."

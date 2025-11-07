@@ -10,16 +10,16 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#0B6E99' // Blue for home/dashboard
     },
     {
+      label: 'Kereső',
+      href: '/search',
+      icon: 'ri-search-line',
+      iconColor: '#E74C3C' // Red for search
+    },
+    {
       label: 'Opti',
       href: '/opti',
       icon: 'ri-dashboard-line',
       iconColor: '#27AE60' // Green for opti/optimization
-    },
-    {
-      label: 'Mentések',
-      href: '/saved',
-      icon: 'ri-save-line',
-      iconColor: '#F39C12' // Orange for saved quotes
     },
     {
       label: 'Megrendelések',
@@ -28,10 +28,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#3498DB' // Blue for orders
     },
     {
-      label: 'Kereső',
-      href: '/search',
-      icon: 'ri-search-line',
-      iconColor: '#E74C3C' // Red for search
+      label: 'Mentések',
+      href: '/saved',
+      icon: 'ri-save-line',
+      iconColor: '#F39C12' // Orange for saved quotes
     },
     {
       label: 'Beállítások',

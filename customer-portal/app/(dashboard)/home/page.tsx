@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase-server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import HomeClient from './HomeClient'
+import { getCompanyInfo } from '@/lib/company-data-server'
 
 export const metadata = {
   title: 'Kezdőlap - Turinova Ügyfélportál',
@@ -42,6 +43,18 @@ export default async function HomePage() {
     }
 
     const companyName = customer.companies?.name || 'Nincs kiválasztva'
+
+    let companyInfo = null
+    if (customer.companies?.supabase_url && customer.companies?.supabase_anon_key) {
+      try {
+        companyInfo = await getCompanyInfo({
+          supabase_url: customer.companies.supabase_url,
+          supabase_anon_key: customer.companies.supabase_anon_key
+        })
+      } catch (error) {
+        console.error('[Home SSR] Failed to fetch tenant company info:', error)
+      }
+    }
 
     // Fetch saved quotes count (draft status, not submitted)
     const { count: savedQuotesCount } = await supabase
@@ -106,6 +119,7 @@ export default async function HomePage() {
         totalOrdersCount={totalOrders}
         inProgressCount={inProgressCount}
         finishedCount={finishedCount}
+        companyInfo={companyInfo}
       />
     )
   } catch (error) {
