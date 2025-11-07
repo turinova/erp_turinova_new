@@ -246,6 +246,7 @@ export async function getPortalOrdersWithPagination(page: number = 1, limit: num
               status,
               payment_status,
               payment_method_id,
+              deleted_at,
               payment_methods(
                 id,
                 name
@@ -258,10 +259,13 @@ export async function getPortalOrdersWithPagination(page: number = 1, limit: num
             console.error(`[Customer Portal SSR] Error fetching company quote ${order.submitted_to_company_quote_id}:`, companyError)
           }
 
+          const isDeleted = Boolean(companyQuote?.deleted_at)
+          const effectiveStatus = isDeleted ? 'deleted' : (companyQuote?.status || 'unknown')
+
           return {
             ...order,
             company_quote_number: companyQuote?.quote_number || 'N/A',
-            company_quote_status: companyQuote?.status || 'unknown',
+            company_quote_status: effectiveStatus,
             company_payment_status: companyQuote?.payment_status || null,
             company_payment_method: companyQuote?.payment_methods?.name || null
           }

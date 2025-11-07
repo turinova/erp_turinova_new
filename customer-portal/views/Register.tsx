@@ -170,7 +170,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
         }
       } catch (error) {
         console.error('Error fetching companies:', error)
-        toast.error('Nem sikerült betölteni a cégeket.')
+        toast.error('Nem sikerült betölteni a vállalatokat.')
       }
     }
     fetchCompanies()
@@ -199,7 +199,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
         return
       }
       if (!email.includes('@')) {
-        toast.error('Érvénytelen email cím!')
+        toast.error('Érvénytelen e-mail cím!')
         return
       }
       if (password.length < 6) {
@@ -225,7 +225,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
   const handleRegister = async () => {
     // Validate terms acceptance
     if (!acceptedTerms) {
-      toast.error('Kérjük, fogadja el az Általános Szerződési Feltételeket és az Adatkezelési tájékoztatót')
+      toast.error('Kérjük, fogadja el az Általános Szerződési Feltételeket és az Adatkezelési Tájékoztatót!')
       return
     }
 
@@ -300,7 +300,7 @@ const RegisterV2 = ({ mode }: { mode: Mode }) => {
           verifyAndRedirect()
         }
       } else {
-        toast.error(data.error || 'Regisztráció sikertelen')
+        toast.error(data.error || 'A regisztráció sikertelen.')
       }
     } catch (error) {
       console.error('Registration exception:', error)

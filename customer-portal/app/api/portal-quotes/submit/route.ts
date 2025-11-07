@@ -1,8 +1,194 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+
+type CompanySupabaseClient = SupabaseClient<any, 'public', any>
+
+interface PortalCustomerRecord {
+  name: string | null
+  email: string
+  mobile: string | null
+  discount_percent: number | null
+  billing_name: string | null
+  billing_country: string | null
+  billing_city: string | null
+  billing_postal_code: string | null
+  billing_street: string | null
+  billing_house_number: string | null
+  billing_tax_number: string | null
+  billing_company_reg_number: string | null
+}
+
+interface FindOrCreatePortalCustomerParams {
+  supabase: CompanySupabaseClient
+  portalCustomer: PortalCustomerRecord
+  companyName?: string
+}
+
+interface FindOrCreatePortalCustomerResult {
+  success: boolean
+  customerId?: string
+  error?: string
+}
+
+const normalizeText = (value?: string | null) => (value ? value.normalize('NFC').trim() : '')
+
+const buildCandidateName = (baseName: string, suffixIndex: number) => {
+  const normalizedBase = normalizeText(baseName) || 'Online ügyfél'
+  return `${normalizedBase} - online${suffixIndex === 0 ? '' : ` (${suffixIndex + 1})`}`
+}
+
+const getNumberValue = (value: number | string | null | undefined, fallback = 0) => {
+  if (typeof value === 'number') return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return fallback
+}
+
+const findOrCreatePortalCustomer = async ({
+  supabase,
+  portalCustomer,
+  companyName
+}: FindOrCreatePortalCustomerParams): Promise<FindOrCreatePortalCustomerResult> => {
+  try {
+    const email = normalizeText(portalCustomer.email).toLowerCase()
+    const baseName = normalizeText(portalCustomer.name)
+    const searchBase = baseName || 'Online ügyfél'
+
+    console.log('[Portal Quote Submit] Searching variants for portal customer in company DB:', companyName || 'unknown company')
+
+    const existingVariants = new Map<string, { id: string; email: string | null }>()
+
+    const { data: existingByPattern, error: patternError } = await supabase
+      .from('customers')
+      .select('id, name, email')
+      .is('deleted_at', null)
+      .ilike('name', `${searchBase}%`)
+
+    if (patternError) {
+      console.warn('[Portal Quote Submit] Failed to preload existing customer variants:', patternError)
+    } else if (existingByPattern) {
+      existingByPattern.forEach(record => {
+        const key = normalizeText(record.name)
+        if (!key) return
+        existingVariants.set(key, {
+          id: record.id,
+          email: record.email ? record.email.trim().toLowerCase() : null
+        })
+      })
+    }
+
+    const MAX_SUFFIX_ATTEMPTS = 25
+
+    // Reuse variant if the same email already exists
+    for (let index = 0; index < MAX_SUFFIX_ATTEMPTS; index++) {
+      const candidateName = buildCandidateName(searchBase, index)
+      const candidateKey = normalizeText(candidateName)
+      const existing = existingVariants.get(candidateKey)
+
+      if (existing && existing.email && existing.email === email) {
+        console.log('[Portal Quote Submit] Reusing existing portal customer variant:', candidateName)
+        return { success: true, customerId: existing.id }
+      }
+    }
+
+    const discountPercent = getNumberValue(portalCustomer.discount_percent, 0)
+
+    const buildInsertPayload = (customerName: string) => ({
+      name: customerName,
+      email,
+      mobile: portalCustomer.mobile || '',
+      discount_percent: discountPercent,
+      billing_name: portalCustomer.billing_name || '',
+      billing_country: portalCustomer.billing_country || 'Magyarország',
+      billing_city: portalCustomer.billing_city || '',
+      billing_postal_code: portalCustomer.billing_postal_code || '',
+      billing_street: portalCustomer.billing_street || '',
+      billing_house_number: portalCustomer.billing_house_number || '',
+      billing_tax_number: portalCustomer.billing_tax_number || '',
+      billing_company_reg_number: portalCustomer.billing_company_reg_number || ''
+    })
+
+    for (let index = 0; index < MAX_SUFFIX_ATTEMPTS; index++) {
+      const candidateName = buildCandidateName(searchBase, index)
+      const candidateKey = normalizeText(candidateName)
+
+      const existing = existingVariants.get(candidateKey)
+      if (existing) {
+        // Variant already taken by another customer (different email)
+        continue
+      }
+
+      const insertPayload = buildInsertPayload(candidateName)
+
+      const { data: newCustomer, error: insertError } = await supabase
+        .from('customers')
+        .insert([insertPayload])
+        .select('id')
+        .single()
+
+      if (!insertError && newCustomer) {
+        console.log('[Portal Quote Submit] Created new portal customer variant:', candidateName)
+        return { success: true, customerId: newCustomer.id }
+      }
+
+      if (insertError?.code === '23505' || insertError?.status === 409 || insertError?.message?.toLowerCase().includes('duplicate key')) {
+        console.warn('[Portal Quote Submit] Customer name duplicate detected, trying next suffix:', candidateName)
+        existingVariants.set(candidateKey, { id: '', email: null })
+        continue
+      }
+
+      if (insertError?.status === 409 || insertError?.code === '409') {
+        const { data: emailMatch, error: emailRefetchError } = await supabase
+          .from('customers')
+          .select('id')
+          .eq('email', email)
+          .is('deleted_at', null)
+          .maybeSingle()
+
+        if (!emailRefetchError && emailMatch) {
+          console.log('[Portal Quote Submit] Reusing customer after email conflict:', emailMatch.id)
+          return { success: true, customerId: emailMatch.id }
+        }
+      }
+
+      console.error('[Portal Quote Submit] Unexpected error while creating portal customer variant:', insertError)
+      return {
+        success: false,
+        error: insertError?.message || 'Ismeretlen hiba történt az ügyfél létrehozásakor.'
+      }
+    }
+
+    // Fallback with timestamped suffix to guarantee uniqueness
+    const fallbackName = `${searchBase} - online ${Date.now()}`
+    const { data: fallbackCustomer, error: fallbackError } = await supabase
+      .from('customers')
+      .insert([buildInsertPayload(fallbackName)])
+      .select('id')
+      .single()
+
+    if (!fallbackError && fallbackCustomer) {
+      console.warn('[Portal Quote Submit] Fallback portal customer created with timestamped suffix:', fallbackName)
+      return { success: true, customerId: fallbackCustomer.id }
+    }
+
+    console.error('[Portal Quote Submit] Fallback customer creation failed:', fallbackError)
+    return {
+      success: false,
+      error: fallbackError?.message || 'Nem sikerült egyedi ügyfélnevet generálni.'
+    }
+  } catch (error) {
+    console.error('[Portal Quote Submit] Error during portal customer creation logic:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Ismeretlen hiba történt.'
+    }
+  }
+}
 
 /**
  * POST - Submit portal quote to company database
@@ -146,42 +332,30 @@ export async function POST(request: NextRequest) {
       .is('deleted_at', null)
       .maybeSingle()
 
+    if (findError) {
+      console.warn('[Portal Quote Submit] Error searching customer by email:', findError)
+    }
+
     if (existingCustomer) {
       companyCustomerId = existingCustomer.id
       console.log('[Portal Quote Submit] Found existing customer in company DB:', companyCustomerId)
     } else {
-      // Create new customer in company database
-      console.log('[Portal Quote Submit] Creating new customer in company DB')
-      
-      const { data: newCustomer, error: createError } = await companySupabase
-        .from('customers')
-        .insert([{
-          name: portalCustomer.name,
-          email: portalCustomer.email,
-          mobile: portalCustomer.mobile || '',
-          discount_percent: portalCustomer.discount_percent || 0,
-          billing_name: portalCustomer.billing_name || '',
-          billing_country: portalCustomer.billing_country || 'Magyarország',
-          billing_city: portalCustomer.billing_city || '',
-          billing_postal_code: portalCustomer.billing_postal_code || '',
-          billing_street: portalCustomer.billing_street || '',
-          billing_house_number: portalCustomer.billing_house_number || '',
-          billing_tax_number: portalCustomer.billing_tax_number || '',
-          billing_company_reg_number: portalCustomer.billing_company_reg_number || ''
-        }])
-        .select('id')
-        .single()
+      const companyCustomer = await findOrCreatePortalCustomer({
+        supabase: companySupabase,
+        portalCustomer,
+        companyName: portalQuote.companies.name
+      })
 
-      if (createError || !newCustomer) {
-        console.error('[Portal Quote Submit] Error creating customer:', createError)
-        return NextResponse.json({ 
+      if (!companyCustomer.success) {
+        console.error('[Portal Quote Submit] Failed to find or create customer:', companyCustomer.error)
+        return NextResponse.json({
           error: 'Failed to create customer in company database',
-          details: createError?.message
+          details: companyCustomer.error
         }, { status: 500 })
       }
 
-      companyCustomerId = newCustomer.id
-      console.log('[Portal Quote Submit] Created new customer:', companyCustomerId)
+      companyCustomerId = companyCustomer.customerId
+      console.log('[Portal Quote Submit] Using customer ID for submission:', companyCustomerId)
     }
 
     // Step 4: Generate company quote number

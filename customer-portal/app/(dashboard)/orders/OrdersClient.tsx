@@ -96,7 +96,8 @@ export default function OrdersClient({
       in_production: { label: 'Gyártásban', color: 'info' },
       ready: { label: 'Gyártás kész', color: 'primary' },
       finished: { label: 'Átadva', color: 'success' },
-      cancelled: { label: 'Törölve', color: 'error' }
+      cancelled: { label: 'Törölve', color: 'error' },
+      deleted: { label: 'Törölve', color: 'error' }
     }
     
     return statusMap[status] || { label: status, color: 'default' }

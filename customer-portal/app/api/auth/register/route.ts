@@ -45,7 +45,12 @@ export async function POST(request: NextRequest) {
 
     if (authError) {
       console.error('Supabase Auth user creation error:', authError)
-      return NextResponse.json({ error: authError.message }, { status: 500 })
+
+      const message = authError.message?.toLowerCase().includes('already registered')
+        ? 'Ezzel az e-mail címmel már regisztráltak.'
+        : 'Nem sikerült létrehozni a felhasználót.'
+
+      return NextResponse.json({ error: message }, { status: 500 })
     }
 
     if (!authData.user) {
@@ -80,17 +85,17 @@ export async function POST(request: NextRequest) {
       console.error('Portal customer creation error:', customerError)
       // Try to delete the auth user if portal_customers creation fails
       await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
-      return NextResponse.json({ error: 'Failed to create customer profile' }, { status: 500 })
+      return NextResponse.json({ error: 'Nem sikerült létrehozni az ügyfélprofilt.' }, { status: 500 })
     }
 
     console.log('Customer registered successfully:', customerData.email)
     return NextResponse.json({ 
-      message: 'Registration successful!', 
+      message: 'Sikeres regisztráció!', 
       user: customerData
     }, { status: 200 })
 
   } catch (error: any) {
     console.error('Unexpected registration error:', error)
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Váratlan hiba történt a regisztráció során.' }, { status: 500 })
   }
 }

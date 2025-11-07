@@ -98,21 +98,6 @@ export async function POST(request: NextRequest) {
 
     // Generate quote number if new quote
     let quoteNumber = body.quoteNumber
-    if (!quoteId) {
-      const { data: generatedNumber, error: genError } = await supabase
-        .rpc('generate_portal_quote_number')
-      
-      if (genError) {
-        console.error('[Portal Quotes API] Error generating quote number:', genError)
-        return NextResponse.json({ 
-          error: 'Failed to generate quote number',
-          details: genError.message
-        }, { status: 500 })
-      }
-      
-      quoteNumber = generatedNumber
-      console.log('[Portal Quotes API] Generated quote number:', quoteNumber)
-    }
 
     // Calculate totals
     const totalNet = quoteCalculations.total_net
@@ -121,10 +106,9 @@ export async function POST(request: NextRequest) {
     const finalTotal = totalGross * (1 - discountPercent / 100)
 
     // Create or update portal quote
-    const quoteData: any = {
+    const baseQuoteData: any = {
       portal_customer_id: portalCustomerId,
       target_company_id: targetCompanyId,
-      quote_number: quoteNumber,
       status: 'draft',
       total_net: totalNet,
       total_vat: totalVat,
@@ -146,10 +130,17 @@ export async function POST(request: NextRequest) {
     let finalQuoteNumber = quoteNumber
 
     if (quoteId) {
+      if (!quoteNumber) {
+        console.warn('[Portal Quotes API] Missing quote number on update, keeping existing value')
+      }
+      const updatePayload = {
+        ...baseQuoteData,
+        quote_number: quoteNumber
+      }
       // Update existing quote
       const { data: updatedQuote, error: quoteError } = await supabase
         .from('portal_quotes')
-        .update(quoteData)
+        .update(updatePayload)
         .eq('id', quoteId)
         .select('id, quote_number')
         .single()
@@ -165,24 +156,61 @@ export async function POST(request: NextRequest) {
       finalQuoteNumber = updatedQuote.quote_number
       console.log('[Portal Quotes API] Quote updated successfully:', updatedQuote.quote_number)
     } else {
-      // Create new quote
-      const { data: newQuote, error: quoteError } = await supabase
-        .from('portal_quotes')
-        .insert([quoteData])
-        .select('id, quote_number')
-        .single()
+      const maxAttempts = 3
+      let attempt = 0
+      let lastError: any = null
 
-      if (quoteError) {
-        console.error('[Portal Quotes API] Error creating quote:', quoteError)
-        return NextResponse.json({ 
-          error: 'Failed to create quote',
-          details: quoteError.message
-        }, { status: 500 })
+      while (attempt < maxAttempts) {
+        attempt += 1
+
+        const { data: generatedNumber, error: genError } = await supabase
+          .rpc('generate_portal_quote_number')
+
+        if (genError) {
+          console.error('[Portal Quotes API] Error generating quote number (attempt', attempt, '):', genError)
+          lastError = genError
+          break
+        }
+
+        quoteNumber = generatedNumber
+        console.log(`[Portal Quotes API] Generated quote number (attempt ${attempt}):`, quoteNumber)
+
+        const insertPayload = {
+          ...baseQuoteData,
+          quote_number: quoteNumber
+        }
+
+        const { data: newQuote, error: quoteError } = await supabase
+          .from('portal_quotes')
+          .insert([insertPayload])
+          .select('id, quote_number')
+          .single()
+
+        if (!quoteError) {
+          finalQuoteId = newQuote.id
+          finalQuoteNumber = newQuote.quote_number
+          console.log('[Portal Quotes API] Quote created successfully:', newQuote.quote_number)
+          break
+        }
+
+        console.error('[Portal Quotes API] Error creating quote (attempt', attempt, '):', quoteError)
+        lastError = quoteError
+
+        if (quoteError.code !== '23505') {
+          break
+        }
+
+        console.warn('[Portal Quotes API] Duplicate quote number detected, retrying...')
       }
 
-      finalQuoteId = newQuote.id
-      finalQuoteNumber = newQuote.quote_number
-      console.log('[Portal Quotes API] Quote created successfully:', newQuote.quote_number)
+      if (!finalQuoteId) {
+        const details = lastError?.message || 'Unknown error'
+        console.error('[Portal Quotes API] Failed to create quote after retries')
+        return NextResponse.json({
+          error: 'Failed to create quote',
+          details
+        }, { status: 500 })
+      }
     }
 
     // Insert panels (material_id and edge_material IDs are from company database)
