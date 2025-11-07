@@ -1471,23 +1471,30 @@ export default function ShopOrderClient({
                 value={accessoryData.base_price || ''}
                 onChange={(e) => {
                   const value = e.target.value
-                  // Allow user to type, but we'll round when saving
+                  // Allow decimals during typing
                   handleInputChange('accessory_base_price', value)
                 }}
                 onBlur={(e) => {
                   // Round to nearest integer when user leaves the field
-                  const value = parseFloat(e.target.value)
-                  if (!isNaN(value) && value > 0) {
-                    const rounded = Math.round(value)
-                    if (rounded !== value) {
-                      handleInputChange('accessory_base_price', rounded.toString())
-                      toast.info(`Beszerzési ár kerekítve: ${rounded} Ft`)
+                  const rawValue = e.target.value
+                  if (rawValue && rawValue.trim() !== '') {
+                    const parsed = parseFloat(rawValue)
+                    if (!isNaN(parsed) && parsed > 0) {
+                      const rounded = Math.round(parsed)
+                      // Check if rounding happened
+                      if (parsed !== rounded) {
+                        handleInputChange('accessory_base_price', rounded.toString())
+                        toast.info(`Beszerzési ár kerekítve: ${rounded} Ft`)
+                      } else if (rawValue.includes('.')) {
+                        // Even if value is like "405.00", clean it to "405"
+                        handleInputChange('accessory_base_price', rounded.toString())
+                      }
                     }
                   }
                 }}
                 type="number"
                 required
-                inputProps={{ min: 1, step: 1 }}
+                inputProps={{ min: 1, step: 'any' }}
                 helperText="Tizedesjegyek automatikusan kerekítve lesznek"
               />
             </Grid>
