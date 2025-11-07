@@ -1471,30 +1471,35 @@ export default function ShopOrderClient({
                 value={accessoryData.base_price || ''}
                 onChange={(e) => {
                   const value = e.target.value
-                  // Allow decimals during typing
                   handleInputChange('accessory_base_price', value)
                 }}
                 onBlur={(e) => {
-                  // Round to nearest integer when user leaves the field
-                  const rawValue = e.target.value
-                  if (rawValue && rawValue.trim() !== '') {
-                    const parsed = parseFloat(rawValue)
-                    if (!isNaN(parsed) && parsed > 0) {
-                      const rounded = Math.round(parsed)
-                      // Check if rounding happened
-                      if (parsed !== rounded) {
-                        handleInputChange('accessory_base_price', rounded.toString())
-                        toast.info(`Beszerzési ár kerekítve: ${rounded} Ft`)
-                      } else if (rawValue.includes('.')) {
-                        // Even if value is like "405.00", clean it to "405"
-                        handleInputChange('accessory_base_price', rounded.toString())
-                      }
-                    }
+                  const rawValue = e.target.value.trim()
+                  if (!rawValue) {
+                    return
                   }
+
+                  const normalized = rawValue.replace(',', '.')
+                  const parsed = Number.parseFloat(normalized)
+
+                  if (Number.isNaN(parsed) || parsed <= 0) {
+                    handleInputChange('accessory_base_price', '')
+                    toast.error('Kérjük, érvényes pozitív számot adjon meg!')
+                    return
+                  }
+
+                  const rounded = Math.round(parsed)
+
+                  if (rounded !== parsed) {
+                    toast.info(`Beszerzési ár kerekítve: ${rounded} Ft`)
+                  }
+
+                  handleInputChange('accessory_base_price', rounded.toString())
                 }}
-                type="number"
+                type="text"
+                inputMode="decimal"
                 required
-                inputProps={{ min: 1, step: 'any' }}
+                inputProps={{ min: 1 }}
                 helperText="Tizedesjegyek automatikusan kerekítve lesznek"
               />
             </Grid>
