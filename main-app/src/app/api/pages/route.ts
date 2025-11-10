@@ -33,8 +33,7 @@ export async function GET(request: NextRequest) {
     // Fetch all pages with their actual UUIDs
     const { data: pages, error } = await supabase
       .from('pages')
-      .select('id, path, name, description, category, is_active')
-      .eq('is_active', true)
+      .select('id, path, name, description, category')
       .order('path')
 
     if (error) {

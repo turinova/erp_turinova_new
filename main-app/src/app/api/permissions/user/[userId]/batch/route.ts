@@ -38,7 +38,6 @@ export async function PATCH(
       .from('pages')
       .select('id, path')
       .in('path', pagePaths)
-      .eq('is_active', true)
 
     if (pagesError) {
       console.error('Error fetching pages:', pagesError)

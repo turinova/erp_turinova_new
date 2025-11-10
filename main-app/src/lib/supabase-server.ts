@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Performance timing utilities
 const isDev = process.env.NODE_ENV !== 'production'
@@ -31,22 +32,32 @@ if (!isSupabaseConfigured) {
 }
 
 // Create a mock Supabase client for build time
-const createMockSupabaseClient = () => ({
-  from: () => ({
-    select: () => ({
-      eq: () => ({
-        is: () => ({
-          single: () => ({ data: null, error: null })
-        })
-      }),
-      is: () => ({
-        order: () => ({ data: [], error: null })
-      })
-    })
-  })
+const createMockQueryBuilder = () => ({
+  select: () => createMockQueryBuilder(),
+  insert: () => createMockQueryBuilder(),
+  update: () => createMockQueryBuilder(),
+  delete: () => createMockQueryBuilder(),
+  eq: () => createMockQueryBuilder(),
+  ilike: () => createMockQueryBuilder(),
+  in: () => createMockQueryBuilder(),
+  is: () => createMockQueryBuilder(),
+  order: () => createMockQueryBuilder(),
+  single: () => ({ data: null, error: null }),
+  maybeSingle: () => ({ data: null, error: null }),
+  limit: () => createMockQueryBuilder(),
+  range: () => createMockQueryBuilder(),
+  rpc: () => ({ data: null, error: null })
 })
 
-export const supabaseServer = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseServiceKey!, {
+const createMockSupabaseClient = (): SupabaseClient<any, 'public', any> => ({
+  from: () => createMockQueryBuilder(),
+  rpc: () => ({ data: null, error: null }),
+  auth: {
+    getUser: async () => ({ data: { user: null }, error: null })
+  }
+})
+
+export const supabaseServer: SupabaseClient<any, 'public', any> = isSupabaseConfigured ? createClient(supabaseUrl!, supabaseServiceKey!, {
   auth: {
     persistSession: false, // Don't persist session on server
     autoRefreshToken: false, // No token refresh needed on server

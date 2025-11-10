@@ -103,7 +103,6 @@ export async function updateUserPermission(
     .from('pages')
     .select('id')
     .eq('path', pagePath)
-    .eq('is_active', true)
     .single()
 
   if (pageError || !page) {
@@ -182,7 +181,6 @@ export async function getAllPages(): Promise<any[]> {
   const { data: pages, error } = await supabase
     .from('pages')
     .select('*')
-    .eq('is_active', true)
     .order('category', { ascending: true })
     .order('name', { ascending: true })
 

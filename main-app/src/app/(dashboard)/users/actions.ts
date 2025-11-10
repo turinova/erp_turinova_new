@@ -150,7 +150,6 @@ export async function updatePermissionAction(
       .from('pages')
       .select('id')
       .eq('path', pagePath)
-      .eq('is_active', true)
       .single()
 
     if (pageError || !page) {

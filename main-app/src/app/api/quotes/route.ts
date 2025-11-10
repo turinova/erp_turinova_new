@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
           .from('customers')
           .select('id')
           .eq('name', trimmedName)
-          .eq('is_active', true)
           .is('deleted_at', null)
           .maybeSingle()
 
@@ -108,7 +107,6 @@ export async function POST(request: NextRequest) {
               .from('customers')
               .select('id')
               .eq('name', trimmedName)
-              .eq('is_active', true)
               .is('deleted_at', null)
               .maybeSingle()
 
