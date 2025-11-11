@@ -408,6 +408,26 @@ export default function HomeClient({
         </CardContent>
       </Card>
 
+      {/* Optimization Disclaimer */}
+      <Card
+        sx={{
+          borderLeft: theme => `6px solid ${theme.palette.error.main}`,
+          bgcolor: theme => `${theme.palette.error.light}20`
+        }}
+      >
+        <CardContent>
+          <Typography variant='h6' sx={{ fontWeight: 700, color: 'error.main', mb: 1 }}>
+            Fontos: a táblakiosztás csak tájékoztató jellegű
+          </Typography>
+          <Typography variant='body1' color='error.dark' component='div' sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <span>Az optimalizálásban megjelenő táblakiosztás nem a tényleges gyártási kiosztást mutatja, csak egy szemléltető elrendezés.</span>
+            <span>Minden lapszabász cég más típusú és más márkájú táblafelosztó gépet használ, valamint eltérő optimalizáló szoftvert, különböző beállításokkal és megkötésekkel.</span>
+            <span>Ezért a végleges panelkiosztás a gyártás során eltérhet a rendszerben láthatótól.</span>
+            <span>Rendelésnél mindig a kiválasztott cég saját optimalizálása az érvényes.</span>
+          </Typography>
+        </CardContent>
+      </Card>
+
       {/* FAQ Section */}
       <Card>
         <CardContent>
