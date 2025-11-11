@@ -1,14 +1,16 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { 
-  Card, 
-  CardContent, 
-  Typography, 
-  Box, 
-  CircularProgress, 
+import {
+  Card,
+  CardContent,
+  Typography,
+  Box,
+  CircularProgress,
   IconButton,
-  Grid
+  Grid,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -22,28 +24,35 @@ interface StatusData {
   color: string
 }
 
-interface MonthlySupplierOrdersData {
+type TimeRange = 'month' | 'week' | 'day'
+
+interface SupplierOrdersSummaryData {
   statusData: StatusData[]
   total: number
-  month: string
-  year: number
-  monthOffset: number
+  range: TimeRange
+  offset: number
+  label: string
+  startDate?: string
+  endDate?: string
 }
 
 export default function MonthlySupplierOrdersCard() {
-  const [data, setData] = useState<MonthlySupplierOrdersData | null>(null)
+  const [data, setData] = useState<SupplierOrdersSummaryData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [monthOffset, setMonthOffset] = useState(0) // 0 = current month, -1 = previous, +1 = next
+  const [range, setRange] = useState<TimeRange>('month')
+  const [offset, setOffset] = useState(0)
 
   useEffect(() => {
-    fetchData(monthOffset)
-  }, [monthOffset])
+    fetchData(range, offset)
+  }, [range, offset])
 
-  const fetchData = async (offset: number) => {
+  const fetchData = async (selectedRange: TimeRange, selectedOffset: number) => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/dashboard/monthly-supplier-orders?monthOffset=${offset}`)
+      const response = await fetch(
+        `/api/dashboard/monthly-supplier-orders?range=${selectedRange}&offset=${selectedOffset}`
+      )
       if (!response.ok) {
         throw new Error('Failed to fetch data')
       }
@@ -57,16 +66,23 @@ export default function MonthlySupplierOrdersCard() {
     }
   }
 
-  const handlePreviousMonth = () => {
-    setMonthOffset(prev => prev - 1)
+  const handlePrevious = () => {
+    setOffset(prev => prev - 1)
   }
 
-  const handleNextMonth = () => {
-    setMonthOffset(prev => prev + 1)
+  const handleNext = () => {
+    setOffset(prev => prev + 1)
   }
 
-  const handleCurrentMonth = () => {
-    setMonthOffset(0)
+  const handleCurrent = () => {
+    setOffset(0)
+  }
+
+  const handleRangeChange = (_event: React.SyntheticEvent, value: TimeRange | null) => {
+    if (value) {
+      setRange(value)
+      setOffset(0)
+    }
   }
 
   if (loading) {
@@ -98,39 +114,47 @@ export default function MonthlySupplierOrdersCard() {
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '2px solid', borderColor: 'warning.main' }}>
       <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {/* Header with month navigation */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
           <Typography variant="h5" sx={{ fontWeight: 600 }}>
             Beszállítói megrendelések
           </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <IconButton 
-              onClick={handlePreviousMonth}
-              size="small"
-            >
-              <ChevronLeftIcon />
-            </IconButton>
-            <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 100, textAlign: 'center' }}>
-              {data.year}. {data.month}
-            </Typography>
-            <IconButton 
-              onClick={handleNextMonth}
-              size="small"
-            >
-              <ChevronRightIcon />
-            </IconButton>
-            <IconButton 
-              onClick={handleCurrentMonth}
-              size="small"
-              disabled={monthOffset === 0}
-              color="primary"
-            >
-              <TodayIcon />
-            </IconButton>
-          </Box>
+          <ToggleButtonGroup
+            value={range}
+            exclusive
+            size="small"
+            onChange={handleRangeChange}
+          >
+            <ToggleButton value="day">Napi</ToggleButton>
+            <ToggleButton value="week">Heti</ToggleButton>
+            <ToggleButton value="month">Havi</ToggleButton>
+          </ToggleButtonGroup>
         </Box>
 
-        {/* Status items with circular progress - Grid layout */}
+        {/* Navigation */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 0.5, mb: 3 }}>
+          <IconButton onClick={handlePrevious} size="small">
+            <ChevronLeftIcon />
+          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, minWidth: 140, textAlign: 'center' }}>
+              {data.label}
+            </Typography>
+          </Box>
+          <IconButton onClick={handleNext} size="small">
+            <ChevronRightIcon />
+          </IconButton>
+          <IconButton
+            onClick={handleCurrent}
+            size="small"
+            disabled={offset === 0}
+            color="primary"
+          >
+            <TodayIcon />
+          </IconButton>
+        </Box>
+
+        {/* Status items */}
         <Grid container spacing={2} sx={{ justifyContent: 'center' }}>
           {data.statusData.map((item) => (
             <Grid item xs={6} sm={4} md={2.4} key={item.status}>

@@ -1,11 +1,11 @@
 'use client'
 
 import React from 'react'
-import { Container, Grid, Box } from '@mui/material'
+import { Container, Grid } from '@mui/material'
+import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
-import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
 
 interface CustomerQuote {
   id: string

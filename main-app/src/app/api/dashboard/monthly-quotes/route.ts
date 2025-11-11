@@ -1,110 +1,169 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
+const monthNames = [
+  'január', 'február', 'március', 'április', 'május', 'június',
+  'július', 'augusztus', 'szeptember', 'október', 'november', 'december'
+]
+
+const formatDateLabel = (date: Date) => {
+  return `${date.getFullYear()}. ${monthNames[date.getMonth()]} ${date.getDate()}.`
+}
+
+const startOfToday = () => {
+  const now = new Date()
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+}
+
+const getRange = (range: string, offset: number) => {
+  const today = startOfToday()
+
+  if (range === 'day') {
+    const start = new Date(today)
+    start.setDate(start.getDate() + offset)
+    const end = new Date(start)
+    end.setHours(23, 59, 59, 999)
+
+    return {
+      start,
+      end,
+      label: formatDateLabel(start)
+    }
+  }
+
+  if (range === 'week') {
+    const start = new Date(today)
+    const currentDay = start.getDay() === 0 ? 6 : start.getDay() - 1
+    start.setDate(start.getDate() - currentDay + offset * 7)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 6)
+    end.setHours(23, 59, 59, 999)
+
+    return {
+      start,
+      end,
+      label: `${formatDateLabel(start)} – ${formatDateLabel(end)}`
+    }
+  }
+
+  const monthStart = new Date(today.getFullYear(), today.getMonth() + offset, 1)
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0)
+  monthEnd.setHours(23, 59, 59, 999)
+
+  return {
+    start: monthStart,
+    end: monthEnd,
+    label: `${monthStart.getFullYear()}. ${monthNames[monthStart.getMonth()]}`
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    // Get monthOffset from query params (0 = current month, -1 = previous, +1 = next)
     const { searchParams } = new URL(request.url)
-    const monthOffset = parseInt(searchParams.get('monthOffset') || '0', 10)
+    const rangeParam = searchParams.get('range') as 'day' | 'week' | 'month' | null
+    const range = rangeParam ?? 'month'
+    const offsetParam = searchParams.get('offset')
+    const legacyMonthOffset = searchParams.get('monthOffset')
+    const offset = parseInt(
+      (offsetParam !== null
+        ? offsetParam
+        : range === 'month'
+          ? legacyMonthOffset ?? '0'
+          : '0'),
+      10
+    )
 
-    // Calculate target month
-    const now = new Date()
-    const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
-    const year = targetDate.getFullYear()
-    const month = targetDate.getMonth()
+    const { start, end, label } = getRange(range, isNaN(offset) ? 0 : offset)
 
-    // Get first and last day of target month
-    const firstDay = new Date(year, month, 1)
-    const lastDay = new Date(year, month + 1, 0, 23, 59, 59, 999)
-
-    // Fetch orders for the target month (filter by created_at)
-    // Note: Orders are quotes with status other than 'draft'
-    const { data: quotes, error } = await supabaseServer
-      .from('quotes')
-      .select('id, status')
-      .gte('created_at', firstDay.toISOString())
-      .lte('created_at', lastDay.toISOString())
-      .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
-      .is('deleted_at', null) // Exclude soft-deleted quotes
-
-    if (error) {
-      console.error('Error fetching monthly quotes:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    // Count orders by status
-    const statusCounts = {
-      ordered: 0,
-      in_production: 0,
-      ready: 0,
-      finished: 0,
-      cancelled: 0
-    }
-
-    quotes?.forEach(quote => {
-      const status = quote.status as keyof typeof statusCounts
-      if (status in statusCounts) {
-        statusCounts[status]++
+    const statusTimestampMap: Record<
+      'ordered' | 'in_production' | 'ready' | 'finished' | 'cancelled',
+      { column: string; label: string; color: string }
+    > = {
+      ordered: {
+        column: 'ordered_at',
+        label: 'Megrendelve',
+        color: '#2196F3'
+      },
+      in_production: {
+        column: 'in_production_at',
+        label: 'Gyártásban',
+        color: '#FF9800'
+      },
+      ready: {
+        column: 'ready_at',
+        label: 'Kész',
+        color: '#4CAF50'
+      },
+      finished: {
+        column: 'finished_at',
+        label: 'Átadva',
+        color: '#00BCD4'
+      },
+      cancelled: {
+        column: 'cancelled_at',
+        label: 'Törölve',
+        color: '#F44336'
       }
+    }
+
+    const statusResults = await Promise.all(
+      (Object.entries(statusTimestampMap) as Array<
+        [keyof typeof statusTimestampMap, { column: string; label: string; color: string }]
+      >).map(async ([statusKey, { column }]) => {
+        const { data, error } = await supabaseServer
+          .from('quotes')
+          .select('id')
+          .gte(column, start.toISOString())
+          .lte(column, end.toISOString())
+          .is('deleted_at', null)
+
+        if (error) {
+          throw new Error(`Error fetching ${statusKey} quotes: ${error.message}`)
+        }
+
+        const quoteIds = data?.map(record => record.id as string) ?? []
+
+        return {
+          status: statusKey,
+          count: quoteIds.length,
+          ids: quoteIds
+        }
+      })
+    )
+
+    const uniqueQuoteIds = new Set<string>()
+    statusResults.forEach(result => {
+      result.ids.forEach(id => uniqueQuoteIds.add(id))
     })
 
-    const total = quotes?.length || 0
+    const total = uniqueQuoteIds.size
 
-    // Calculate percentages and prepare response
-    const statusData = [
-      {
-        status: 'ordered',
-        label: 'Megrendelve',
-        count: statusCounts.ordered,
-        percentage: total > 0 ? (statusCounts.ordered / total) * 100 : 0,
-        color: '#2196F3' // Blue
-      },
-      {
-        status: 'in_production',
-        label: 'Gyártásban',
-        count: statusCounts.in_production,
-        percentage: total > 0 ? (statusCounts.in_production / total) * 100 : 0,
-        color: '#FF9800' // Orange
-      },
-      {
-        status: 'ready',
-        label: 'Kész',
-        count: statusCounts.ready,
-        percentage: total > 0 ? (statusCounts.ready / total) * 100 : 0,
-        color: '#4CAF50' // Green
-      },
-      {
-        status: 'finished',
-        label: 'Átadva',
-        count: statusCounts.finished,
-        percentage: total > 0 ? (statusCounts.finished / total) * 100 : 0,
-        color: '#00BCD4' // Cyan
-      },
-      {
-        status: 'cancelled',
-        label: 'Törölve',
-        count: statusCounts.cancelled,
-        percentage: total > 0 ? (statusCounts.cancelled / total) * 100 : 0,
-        color: '#F44336' // Red
+    const statusData = statusResults.map(result => {
+      const { label, color } = statusTimestampMap[result.status]
+      return {
+        status: result.status,
+        label,
+        count: result.count,
+        percentage: total > 0 ? (result.count / total) * 100 : 0,
+        color
       }
-    ]
-
-    // Get month name in Hungarian
-    const monthNames = [
-      'január', 'február', 'március', 'április', 'május', 'június',
-      'július', 'augusztus', 'szeptember', 'október', 'november', 'december'
-    ]
+    })
 
     return NextResponse.json({
       statusData,
       total,
-      month: monthNames[month],
-      year,
-      monthOffset
+      range,
+      offset: isNaN(offset) ? 0 : offset,
+      label,
+      startDate: start.toISOString(),
+      endDate: end.toISOString(),
+      month: monthNames[start.getMonth()],
+      year: start.getFullYear(),
+      monthOffset: range === 'month' ? (isNaN(offset) ? 0 : offset) : 0
     })
     
   } catch (error) {
-    console.error('Error in monthly quotes API:', error)
+    console.error('Error in quotes summary API:', error)
     return NextResponse.json(
       { error: 'Internal server error' }, 
       { status: 500 }
