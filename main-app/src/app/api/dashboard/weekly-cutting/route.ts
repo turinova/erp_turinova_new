@@ -38,7 +38,6 @@ export async function GET(request: NextRequest) {
           cutting_length_m
         )
       `)
-      .eq('status', 'in_production')
       .gte('production_date', monday.toISOString().split('T')[0])
       .lte('production_date', saturday.toISOString().split('T')[0])
       .not('production_machine_id', 'is', null)
