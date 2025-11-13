@@ -37,6 +37,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#3498DB' // Blue for scanner
   },
   {
+    label: 'Riportok',
+    href: '/reports',
+    icon: 'ri-bar-chart-line',
+    iconColor: '#16A085' // Teal for reports
+  },
+  {
     label: 'Lapszabászat',
     icon: 'ri-scissors-line',
     iconColor: '#E74C3C', // Red for cutting/manufacturing
