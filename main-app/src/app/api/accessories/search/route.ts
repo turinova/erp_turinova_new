@@ -4,7 +4,8 @@ import { supabaseServer } from '@/lib/supabase-server'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const search = searchParams.get('q')
+    const rawSearch = searchParams.get('q') || ''
+    const search = rawSearch.trim()
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '100', 10)
     
@@ -13,13 +14,15 @@ export async function GET(request: NextRequest) {
     }
 
     const offset = (page - 1) * limit
+    const sanitizedSearch = search.replace(/"/g, '\\"')
+    const orFilter = `name.ilike."%${sanitizedSearch}%",sku.ilike."%${sanitizedSearch}%"`
 
     // Get total count for search
     const { count } = await supabaseServer
       .from('accessories')
       .select('*', { count: 'exact', head: true })
       .is('deleted_at', null)
-      .or(`name.ilike.%${search}%,sku.ilike.%${search}%`)
+      .or(orFilter)
 
     // Get paginated search results
     const { data, error } = await supabaseServer
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
         )
       `)
       .is('deleted_at', null)
-      .or(`name.ilike.%${search}%,sku.ilike.%${search}%`)
+      .or(orFilter)
       .order('name', { ascending: true })
       .range(offset, offset + limit - 1)
 
