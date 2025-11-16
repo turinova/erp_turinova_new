@@ -265,39 +265,41 @@ export default function AddAccessoryModal({
           throw new Error('Failed to update accessory')
         }
       } else if (!selectedAccessory) {
-        // Convert gross price to net price for API
-        const selectedVat = vatRates.find(v => v.id === accessoryData.vat_id)
-        const vatRate = selectedVat ? selectedVat.kulcs / 100 : 0
-        const netPrice = accessoryData.gross_price / (1 + vatRate)
-
-        // Create new accessory in accessories table
-        const createResponse = await fetch('/api/accessories', {
+        // Free-typed: add snapshot line + create product suggestion via quote accessories API
+        const response = await fetch(`/api/quotes/${quoteId}/accessories`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            name: accessoryData.name,
+            source_type: 'order',
+            product_name: accessoryData.name,
             sku: accessoryData.sku,
             base_price: basePrice,
             multiplier: accessoryData.multiplier,
+            quantity: finalQuantity,
             vat_id: accessoryData.vat_id,
             currency_id: accessoryData.currency_id,
-            units_id: accessoryData.units_id,
-            partners_id: accessoryData.partners_id
+            unit_id: accessoryData.units_id,
+            partner_id: accessoryData.partners_id
           }),
         })
 
-        if (!createResponse.ok) {
-          const errorData = await createResponse.json()
-          throw new Error(errorData.error || 'Failed to create accessory')
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Hiba történt a javaslat és a pillanatkép hozzáadásakor')
         }
 
-        const createdAccessory = await createResponse.json()
-        accessoryId = createdAccessory.id
+        toast.success('Szabadon begépelt tétel hozzáadva (pillanatkép) és javaslat rögzítve!', {
+          position: "top-right",
+          autoClose: 3000,
+        })
+        onSuccess()
+        onClose()
+        return
       }
 
-      // Add accessory to quote
+      // Add accessory to quote (catalog-picked)
       const response = await fetch(`/api/quotes/${quoteId}/accessories`, {
         method: 'POST',
         headers: {
