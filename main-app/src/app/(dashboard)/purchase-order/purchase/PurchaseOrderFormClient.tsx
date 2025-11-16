@@ -2,8 +2,9 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  Box, Breadcrumbs, Button, Card, CardContent, CircularProgress, FormControl, Grid, InputLabel, Link, MenuItem, Paper, Select, Stack, TextField, Typography
+  Box, Breadcrumbs, Button, Card, CardContent, CircularProgress, FormControl, Grid, InputLabel, Link, MenuItem, Paper, Select, Stack, TextField, Typography, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, IconButton, Tooltip
 } from '@mui/material'
+import { Delete as DeleteIcon, Info as InfoIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { Home as HomeIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
@@ -28,12 +29,17 @@ interface ItemDraft {
   linear_material_id?: string | null
   description: string
   quantity: number
+  // optional pricing fields preserved for editing and summary calculations
+  base_price?: number
+  multiplier?: number
   net_price: number
   vat_id: string
   currency_id: string
   units_id: string
   sku?: string
   megjegyzes?: string
+  // Internal: store multiplier used at selection time to allow edits
+  __multiplier?: number
 }
 
 interface ProductPickerProps {
@@ -41,13 +47,23 @@ interface ProductPickerProps {
   currencies: CurrencyRow[]
   units: UnitRow[]
   onAdd: (item: ItemDraft) => void
+  onUpdate: (index: number, item: ItemDraft) => void
+  editingIndex: number | null
+  editingItem: (ItemDraft & {
+    pending_source?: string
+    pending_accessory_id?: string
+    pending_material_id?: string
+    pending_linear_material_id?: string
+    base_price_hint?: number
+  }) | null
 }
 
-function ProductPicker({ vatRates, currencies, units, onAdd }: ProductPickerProps) {
+function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIndex, editingItem }: ProductPickerProps) {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedItem, setSelectedItem] = useState<any | null>(null)
+  const [mounted, setMounted] = useState(false)
   const [form, setForm] = useState({
     name: '',
     sku: '',
@@ -148,12 +164,13 @@ function ProductPicker({ vatRates, currencies, units, onAdd }: ProductPickerProp
     !!form.units_id
 
   const onSubmitAdd = () => {
-    if (!canAdd || !selectedItem) return
-    const netUnit = Math.round((Number(form.base_price) || 0) * (selectedItem.multiplier || 1))
+    if (!canAdd) return
+    const effectiveMultiplier = selectedItem?.multiplier || editingItem?.__multiplier || 1
+    const netUnit = Math.round((Number(form.base_price) || 0) * (effectiveMultiplier || 1))
     const product_type =
       form.pending_source === 'materials' ? 'material' :
       form.pending_source === 'linear_materials' ? 'linear_material' : 'accessory'
-    onAdd({
+    const newItem: ItemDraft = {
       product_type,
       accessory_id: form.pending_accessory_id || null,
       material_id: form.pending_material_id || null,
@@ -165,8 +182,11 @@ function ProductPicker({ vatRates, currencies, units, onAdd }: ProductPickerProp
       currency_id: form.currency_id,
       units_id: form.units_id,
       sku: form.sku,
-      megjegyzes: form.megjegyzes
-    })
+      megjegyzes: form.megjegyzes,
+      __multiplier: effectiveMultiplier
+    }
+    if (editingIndex !== null) onUpdate(editingIndex, newItem)
+    else onAdd(newItem)
     // reset selection
     setSelectedItem(null)
     setSearchTerm('')
@@ -184,148 +204,213 @@ function ProductPicker({ vatRates, currencies, units, onAdd }: ProductPickerProp
     }))
   }
 
+  // Load editing item into form when provided
+  useEffect(() => {
+    if (editingIndex !== null && editingItem) {
+      const pending_source = editingItem.pending_source ||
+        (editingItem.material_id ? 'materials' : editingItem.linear_material_id ? 'linear_materials' : 'accessories')
+      const base_price_val = editingItem.base_price_hint ??
+        (editingItem.__multiplier ? Math.round(editingItem.net_price / editingItem.__multiplier) : editingItem.net_price)
+      setForm(prev => ({
+        ...prev,
+        name: editingItem.description,
+        sku: editingItem.sku || '',
+        base_price: String(base_price_val || ''),
+        quantity: editingItem.quantity,
+        vat_id: editingItem.vat_id,
+        currency_id: editingItem.currency_id,
+        units_id: editingItem.units_id,
+        megjegyzes: editingItem.megjegyzes || '',
+        pending_source,
+        pending_accessory_id: editingItem.accessory_id || '',
+        pending_material_id: editingItem.material_id || '',
+        pending_linear_material_id: editingItem.linear_material_id || ''
+      }))
+      // Ensure the Autocomplete input shows the current name
+      setSearchTerm(editingItem.description || '')
+      setSelectedItem({
+        id: 'editing',
+        name: editingItem.description,
+        sku: editingItem.sku || ''
+      } as any)
+    }
+  }, [editingIndex, editingItem])
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return null
+  }
+
   return (
-    <Card>
-      <CardContent>
-        <Grid container spacing={2}>
-          {/* Row 1: Termék neve (autocomplete), SKU */}
-          <Grid item xs={12} md={6}>
-            <Autocomplete
-              fullWidth
-              options={searchResults}
-              getOptionLabel={(opt) => (typeof opt === 'string' ? opt : `${opt.name}${opt.sku ? ` (${opt.sku})` : ''}`)}
-              isOptionEqualToValue={(a, b) => (a && b) ? a.id === b.id && a.source === b.source : a === b}
-              value={selectedItem}
-              onChange={handleAccessoryChange}
-              inputValue={searchTerm}
-              onInputChange={(_, v) => setSearchTerm(v)}
-              filterOptions={(o) => o} // don't filter client-side
-              renderOption={(props, option) => {
-                const { key, ...other } = props as any
-                const isMaterial = option.source === 'materials'
-                const isLinear = option.source === 'linear_materials'
-                const rightNet = Math.round((option.base_price || 0) * (option.multiplier || 1))
-                return (
-                  <li key={key} {...other}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
-                      <Box>
-                        <Typography variant="body2" fontWeight="bold">
-                          {option.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {isMaterial || isLinear ? (
-                            <>
-                              {option.brand_name ? `Márka: ${option.brand_name} ` : ''}
-                              {option.dimensions ? `| Méret: ${option.dimensions} ` : ''}
-                              | 
-                            </>
-                          ) : null}
-                          {' '}SKU: {option.sku || '-'}
-                          {option.partner_name ? ` | Partner: ${option.partner_name}` : ''}
-                        </Typography>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                        {new Intl.NumberFormat('hu-HU').format(rightNet)} Ft
-                      </Typography>
-                    </Box>
-                  </li>
+    <Grid container spacing={2} sx={{ mx: -1 }}>
+      {/* Row 1: Termék neve, SKU, Beszerzési ár (fill full width: 6 + 4 + 2 = 12) */}
+      <Grid item xs={12} md={6}>
+        <Autocomplete
+          fullWidth
+          size="small"
+          options={searchResults}
+          getOptionLabel={(opt) => (typeof opt === 'string' ? opt : `${opt.name}${opt.sku ? ` (${opt.sku})` : ''}`)}
+          isOptionEqualToValue={(a, b) => (a && b) ? a.id === b.id && a.source === b.source : a === b}
+          value={selectedItem}
+          onChange={handleAccessoryChange}
+          inputValue={searchTerm}
+          onInputChange={(_, v) => setSearchTerm(v)}
+          filterOptions={(o) => o}
+          renderOption={(props, option) => {
+            const { key, ...other } = props as any
+            const isMaterial = option.source === 'materials'
+            const isLinear = option.source === 'linear_materials'
+            const rightNet = Math.round((option.base_price || 0) * (option.multiplier || 1))
+            return (
+              <li key={key} {...other}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 2 }}>
+                  <Box>
+                    <Typography variant="body2" fontWeight="bold">
+                      {option.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {isMaterial || isLinear ? (
+                        <>
+                          {option.brand_name ? `Márka: ${option.brand_name} ` : ''}
+                          {option.dimensions ? `| Méret: ${option.dimensions} ` : ''}
+                          | 
+                        </>
+                      ) : null}
+                      {' '}SKU: {option.sku || '-'}
+                      {option.partner_name ? ` | Partner: ${option.partner_name}` : ''}
+                    </Typography>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                    {new Intl.NumberFormat('hu-HU').format(rightNet)} Ft
+                  </Typography>
+                </Box>
+              </li>
+            )
+          }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Termék neve"
+              size="small"
+              InputProps={{
+                ...params.InputProps,
+                endAdornment: (
+                  <>
+                    {isSearching ? <CircularProgress size={18} /> : null}
+                    {params.InputProps.endAdornment}
+                  </>
                 )
               }}
-              renderInput={(params) => (
-                <TextField
-                  {...params}
-                  label="Termék neve"
-                  InputProps={{
-                    ...params.InputProps,
-                    endAdornment: (
-                      <>
-                        {isSearching ? <CircularProgress size={18} /> : null}
-                        {params.InputProps.endAdornment}
-                      </>
-                    )
-                  }}
-                />
-              )}
             />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="SKU"
-              value={form.sku}
-              onChange={(e) => setForm(prev => ({ ...prev, sku: e.target.value }))}
-              disabled
-            />
-          </Grid>
+          )}
+        />
+      </Grid>
+      <Grid item xs={12} md={4}>
+        <TextField
+          fullWidth
+          label="SKU"
+          size="small"
+          value={form.sku}
+          onChange={(e) => setForm(prev => ({ ...prev, sku: e.target.value }))}
+          disabled
+        />
+      </Grid>
+      <Grid item xs={12} md={2}>
+        <TextField
+          fullWidth
+          type="number"
+          label="Beszerzési ár"
+           size="small"
+          value={form.base_price}
+          onChange={(e) => setForm(prev => ({ ...prev, base_price: e.target.value }))}
+          inputProps={{ min: 0, step: 1 }}
+        />
+      </Grid>
+      {/* Force Row 2 */}
+      <Grid item xs={12} />
 
-          {/* Row 2: Beszerzési ár, Mennyiség, ÁFA, Pénznem, Megjegyzés */}
-          <Grid item xs={12} md={2.4}>
-            <TextField
-              fullWidth
-              type="number"
-              label="Beszerzési ár"
-              value={form.base_price}
-              onChange={(e) => setForm(prev => ({ ...prev, base_price: e.target.value }))}
-              inputProps={{ min: 0, step: 1 }}
-            />
-          </Grid>
-          <Grid item xs={12} md={2.4}>
-            <TextField
-              fullWidth
-              type="number"
-              label="Mennyiség"
-              value={form.quantity}
-              onChange={(e) => setForm(prev => ({ ...prev, quantity: Number(e.target.value) || 0 }))}
-              inputProps={{ min: 1, step: 1 }}
-            />
-          </Grid>
-          <Grid item xs={12} md={2.4}>
-            <FormControl fullWidth>
-              <InputLabel>ÁFA</InputLabel>
-              <Select
-                label="ÁFA"
-                value={form.vat_id}
-                onChange={(e) => setForm(prev => ({ ...prev, vat_id: e.target.value }))}
-              >
-                {vatRates.map(v => (
-                  <MenuItem key={v.id} value={v.id}>{v.kulcs}%</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2.4}>
-            <FormControl fullWidth>
-              <InputLabel>Pénznem</InputLabel>
-              <Select
-                label="Pénznem"
-                value={form.currency_id}
-                onChange={(e) => setForm(prev => ({ ...prev, currency_id: e.target.value }))}
-              >
-                {currencies.map(c => (
-                  <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2.4}>
-            <TextField
-              fullWidth
-              label="Megjegyzés"
-              value={form.megjegyzes}
-              onChange={(e) => setForm(prev => ({ ...prev, megjegyzes: e.target.value }))}
-            />
-          </Grid>
+      {/* Row 2: Mennyiség, Mértékegység, Pénznem, ÁFA (4 equal columns) */}
+      <Grid item xs={12} md={3}>
+        <TextField
+          fullWidth
+          type="number"
+          label="Mennyiség"
+          size="small"
+          value={form.quantity}
+          onChange={(e) => setForm(prev => ({ ...prev, quantity: Number(e.target.value) || 0 }))}
+          inputProps={{ min: 1, step: 1 }}
+        />
+      </Grid>
+      <Grid item xs={12} md={3}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Mértékegység</InputLabel>
+          <Select
+            label="Mértékegység"
+            value={form.units_id}
+            onChange={(e) => setForm(prev => ({ ...prev, units_id: e.target.value }))}
+          >
+            {units.map(u => (
+              <MenuItem key={u.id} value={u.id}>
+                {u.name}{u.shortform ? ` (${u.shortform})` : ''}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+      <Grid item xs={12} md={3}>
+        <FormControl fullWidth size="small">
+          <InputLabel>Pénznem</InputLabel>
+          <Select
+            label="Pénznem"
+            value={form.currency_id}
+            onChange={(e) => setForm(prev => ({ ...prev, currency_id: e.target.value }))}
+          >
+            {currencies.map(c => (
+              <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+      <Grid item xs={12} md={3}>
+        <FormControl fullWidth size="small">
+          <InputLabel>ÁFA</InputLabel>
+          <Select
+            label="ÁFA"
+            value={form.vat_id}
+            onChange={(e) => setForm(prev => ({ ...prev, vat_id: e.target.value }))}
+          >
+            {vatRates.map(v => (
+              <MenuItem key={v.id} value={v.id}>{v.kulcs}%</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Grid>
+      {/* End Row 2 */}
 
-          <Grid item xs={12}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Button variant="contained" onClick={onSubmitAdd} disabled={!canAdd}>
-                Hozzáadása
-              </Button>
-            </Box>
-          </Grid>
-        </Grid>
-      </CardContent>
-    </Card>
+      {/* Row 3: Megjegyzés + Hozzáadás */}
+      <Grid item xs={12} md={11}>
+        <TextField
+          fullWidth
+          label="Megjegyzés"
+          size="small"
+          value={form.megjegyzes}
+          onChange={(e) => setForm(prev => ({ ...prev, megjegyzes: e.target.value }))}
+        />
+      </Grid>
+      <Grid item xs={12} md={1}>
+        <Button
+          variant="contained"
+          fullWidth
+          disabled={!canAdd}
+          onClick={onSubmitAdd}
+        >
+          {editingIndex !== null ? 'Frissítés' : 'Hozzáadás'}
+        </Button>
+      </Grid>
+    </Grid>
   )
 }
 export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormClientProps) {
@@ -346,6 +431,8 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
   const [note, setNote] = useState<string>('')
 
   const [items, setItems] = useState<ItemDraft[]>([])
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editingItem, setEditingItem] = useState<(ItemDraft & { base_price_hint?: number }) | null>(null)
 
   const totals = useMemo(() => {
     let itemsCount = items.length
@@ -356,8 +443,8 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
     const vatMap = new Map(vatRates.map(v => [v.id, v.kulcs || 0]))
     for (const it of items) {
       totalQty += it.quantity || 0
-      const net = Math.round((it.base_price || 0) * (it.multiplier || 1))
-      const lineNet = net * (it.quantity || 0)
+      const netUnit = Math.round(Number(it.net_price) || 0)
+      const lineNet = netUnit * (it.quantity || 0)
       totalNet += lineNet
       const vatPercent = vatMap.get(it.vat_id) || 0
       const lineVat = Math.round(lineNet * (vatPercent / 100))
@@ -420,7 +507,8 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
           net_price: Number(it.net_price) || 0,
           vat_id: it.vat_id,
           currency_id: it.currency_id,
-          units_id: it.units_id
+          units_id: it.units_id,
+          sku: it.accessories?.sku || it.materials?.sku || it.linear_materials?.sku || ''
         })))
       } catch (e) {
         // noop
@@ -449,8 +537,26 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
   }
 
   const handleSave = async () => {
-    if (!partnerId || !warehouseId) {
-      toast.error('Partner és Raktár kötelező')
+    // Validate required header fields
+    if (!partnerId) {
+      toast.warning('Beszállító kötelező')
+      return
+    }
+    if (!warehouseId) {
+      toast.warning('Raktár kötelező')
+      return
+    }
+    if (!orderDate) {
+      toast.warning('Rendelés dátuma kötelező')
+      return
+    }
+    if (!expectedDate) {
+      toast.warning('Várható érkezés kötelező')
+      return
+    }
+    // Validate at least 1 item
+    if (!items || items.length === 0) {
+      toast.warning('Legalább egy terméket adjon hozzá')
       return
     }
     if (mode === 'create') {
@@ -478,7 +584,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
             material_id: it.material_id || null,
             linear_material_id: it.linear_material_id || null,
             quantity: it.quantity,
-            net_price: Math.round((it.base_price || 0) * (it.multiplier || 1)),
+            net_price: Math.round(Number(it.net_price) || 0),
             vat_id: it.vat_id,
             currency_id: it.currency_id,
             units_id: it.units_id,
@@ -564,7 +670,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
             <Typography variant="h6" gutterBottom>Alap adatok</Typography>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <FormControl fullWidth>
+                <FormControl fullWidth required>
                   <InputLabel>Beszállító</InputLabel>
                   <Select
                     value={partnerId}
@@ -585,7 +691,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={4}>
-                <FormControl fullWidth>
+                <FormControl fullWidth required>
                   <InputLabel>Raktár</InputLabel>
                   <Select value={warehouseId} label="Raktár" onChange={(e) => setWarehouseId(e.target.value)}>
                     {warehouses.map(w => <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>)}
@@ -595,6 +701,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
               <Grid item xs={12} md={2}>
                 <TextField
                   fullWidth
+                  required
                   label="Rendelés dátuma"
                   type="date"
                   value={orderDate}
@@ -605,6 +712,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
               <Grid item xs={12} md={2}>
                 <TextField
                   fullWidth
+                  required
                   label="Várható dátum"
                   type="date"
                   value={expectedDate}
@@ -625,60 +733,101 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                 vatRates={vatRates}
                 currencies={currencies}
                 units={units}
-                onAdd={(item) => {
-                  setItems(prev => [...prev, item])
+                editingIndex={editingIndex}
+                editingItem={editingItem}
+                onAdd={(item) => setItems(prev => [...prev, item])}
+                onUpdate={(index, item) => {
+                  setItems(prev => prev.map((x, i) => i === index ? item : x))
+                  setEditingIndex(null)
+                  setEditingItem(null)
                 }}
               />
               {items.length > 0 && (
-                <Paper variant="outlined" sx={{ p: 2 }}>
-                  <Typography variant="subtitle2" sx={{ mb: 2 }}>Tételek</Typography>
-                  <Grid container>
-                    <Grid item xs={12}>
-                      <Box sx={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                          <thead>
-                            <tr>
-                              <th style={{ textAlign: 'left', padding: '8px' }}>Termék neve</th>
-                              <th style={{ textAlign: 'left', padding: '8px' }}>SKU</th>
-                              <th style={{ textAlign: 'right', padding: '8px' }}>Mennyiség</th>
-                              <th style={{ textAlign: 'right', padding: '8px' }}>Nettó egységár</th>
-                              <th style={{ textAlign: 'right', padding: '8px' }}>ÁFA %</th>
-                              <th style={{ textAlign: 'right', padding: '8px' }}>Nettó összesen</th>
-                              <th style={{ textAlign: 'right', padding: '8px' }}>Bruttó összesen</th>
-                              <th style={{ textAlign: 'center', padding: '8px' }}>Művelet</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {items.map((it, idx) => {
-                              const vatPercent = vatRates.find(v => v.id === it.vat_id)?.kulcs || 0
-                              const qty = Number(it.quantity) || 0
-                              const netUnit = Number(it.net_price) || 0
-                              const lineNet = netUnit * qty
-                              const lineVat = Math.round(lineNet * (vatPercent / 100))
-                              const lineGross = lineNet + lineVat
-                              return (
-                                <tr key={idx} style={{ borderTop: '1px solid rgba(0,0,0,0.08)' }}>
-                                  <td style={{ padding: '8px' }}>{it.description}</td>
-                                  <td style={{ padding: '8px' }}>{it.sku || '-'}</td>
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>{qty}</td>
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>{new Intl.NumberFormat('hu-HU').format(netUnit)} Ft</td>
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>{vatPercent}%</td>
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>{new Intl.NumberFormat('hu-HU').format(lineNet)} Ft</td>
-                                  <td style={{ padding: '8px', textAlign: 'right' }}>{new Intl.NumberFormat('hu-HU').format(lineGross)} Ft</td>
-                                  <td style={{ padding: '8px', textAlign: 'center' }}>
-                                    <Button size="small" color="error" onClick={() => setItems(prev => prev.filter((_, i) => i !== idx))}>
-                                      Törlés
-                                    </Button>
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </Paper>
+                <>
+                  <Typography variant="h6" sx={{ mt: 1, mb: 1 }}>
+                    Hozzáadott termékek
+                  </Typography>
+                  <TableContainer component={Paper}>
+                    <Table size="small">
+                  <TableHead>
+                        <TableRow>
+                          <TableCell>Termék neve</TableCell>
+                          <TableCell>SKU</TableCell>
+                          <TableCell align="right">Mennyiség</TableCell>
+                          <TableCell align="center">Mértékegység</TableCell>
+                          <TableCell align="right">Nettó egységár</TableCell>
+                          <TableCell align="right">ÁFA %</TableCell>
+                          <TableCell align="right">Nettó összesen</TableCell>
+                          <TableCell align="right">Bruttó összesen</TableCell>
+                          <TableCell align="center">Megjegyzés</TableCell>
+                          <TableCell align="center">Művelet</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {items.map((it, idx) => {
+                          const vatPercent = vatRates.find(v => v.id === it.vat_id)?.kulcs || 0
+                          const qty = Number(it.quantity) || 0
+                          const netUnit = Number(it.net_price) || 0
+                          const lineNet = netUnit * qty
+                          const lineVat = Math.round(lineNet * (vatPercent / 100))
+                          const lineGross = lineNet + lineVat
+                          return (
+                            <TableRow
+                              key={idx}
+                              hover
+                              sx={{ cursor: 'pointer' }}
+                              onClick={() => {
+                                setEditingIndex(idx)
+                                setEditingItem({
+                                  ...it,
+                                  base_price_hint: it.__multiplier ? Math.round(it.net_price / it.__multiplier) : it.net_price
+                                })
+                                if (typeof window !== 'undefined') {
+                                  window.scrollTo({ top: 0, behavior: 'smooth' })
+                                }
+                              }}
+                            >
+                              <TableCell>{it.description}</TableCell>
+                              <TableCell>{it.sku || '-'}</TableCell>
+                              <TableCell align="right">{qty}</TableCell>
+                              <TableCell align="center">
+                                {(() => {
+                                  const unit = units.find(u => u.id === it.units_id)
+                                  return unit ? (unit.shortform || unit.name) : '-'
+                                })()}
+                              </TableCell>
+                              <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(netUnit)} Ft</TableCell>
+                              <TableCell align="right">{vatPercent}%</TableCell>
+                              <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(lineNet)} Ft</TableCell>
+                              <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(lineGross)} Ft</TableCell>
+                              <TableCell align="center">
+                                {it.megjegyzes ? (
+                                  <Tooltip title={it.megjegyzes} arrow placement="top">
+                                    <IconButton size="small" color="info">
+                                      <InfoIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">-</Typography>
+                                )}
+                              </TableCell>
+                              <TableCell align="center">
+                                <Tooltip title="Törlés">
+                                  <IconButton size="small" color="error" onClick={(e) => {
+                                    e.stopPropagation()
+                                    setItems(prev => prev.filter((_, i) => i !== idx))
+                                  }}>
+                                    <DeleteIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </>
               )}
             </Stack>
           </Paper>

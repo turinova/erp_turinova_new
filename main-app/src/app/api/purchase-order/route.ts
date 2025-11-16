@@ -44,14 +44,21 @@ export async function GET(request: NextRequest) {
     const result = (data || []).map((row: any) => {
       const itemsCount = row.items?.length ? row.items[0]?.count ?? 0 : 0
       const shipmentsCount = row.shipments?.length ? row.shipments[0]?.count ?? 0 : 0
-      // Supabase can't aggregate sum across rows here, we will fetch in detail or compute shallow
+      // Sum net_price * quantity across joined purchase_order_items rows
+      const netTotal = Array.isArray(row.net_total)
+        ? row.net_total.reduce((sum: number, it: any) => {
+            const unit = Number(it?.net_price) || 0
+            const qty = Number(it?.quantity) || 0
+            return sum + unit * qty
+          }, 0)
+        : 0
       return {
         id: row.id,
         po_number: row.po_number,
         status: row.status,
         partner_name: row.partners?.name || '',
         items_count: itemsCount,
-        net_total: null, // compute on detail
+        net_total: netTotal,
         created_at: row.created_at,
         expected_date: row.expected_date,
         shipments_count: shipmentsCount

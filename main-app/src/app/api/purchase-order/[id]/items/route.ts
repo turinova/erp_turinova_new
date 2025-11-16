@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
 // POST /api/purchase-order/[id]/items - add multiple items
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
     const items = Array.isArray(body?.items) ? body.items : []
     if (items.length === 0) {

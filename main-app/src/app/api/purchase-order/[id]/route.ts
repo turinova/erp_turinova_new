@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
 // GET /api/purchase-order/[id] - header + items
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params
+    const { id } = await params
     const { data: po, error } = await supabaseServer
       .from('purchase_orders')
       .select(`
@@ -12,15 +12,20 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
         warehouse_id, order_date, expected_date, note, created_at, updated_at,
         purchase_order_items (
           id, product_type, accessory_id, material_id, linear_material_id,
-          quantity, net_price, vat_id, currency_id, units_id, description
-        ),
-        shipments!shipments_purchase_order_id_fkey (id)
+          quantity, net_price, vat_id, currency_id, units_id, description,
+          accessories:accessory_id ( sku )
+        )
       `)
       .eq('id', id)
       .is('deleted_at', null)
-      .single()
+      .maybeSingle()
 
-    if (error || !po) {
+    if (error) {
+      console.error('GET /api/purchase-order/[id] select error:', error)
+      return NextResponse.json({ error: 'PO lekérdezési hiba' }, { status: 500 })
+    }
+
+    if (!po) {
       return NextResponse.json({ error: 'PO nem található' }, { status: 404 })
     }
 
@@ -76,9 +81,9 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 }
 
 // PATCH /api/purchase-order/[id] - update header (draft only)
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
 
     const { data: existing, error: getErr } = await supabaseServer

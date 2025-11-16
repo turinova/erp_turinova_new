@@ -6,8 +6,9 @@ export const metadata: Metadata = {
   title: 'Beszállítói rendelés'
 }
 
-export default function PurchaseOrderDetailPage({ params }: { params: { id: string } }) {
-  return <PurchaseOrderFormClient mode="edit" id={params.id} />
+export default async function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <PurchaseOrderFormClient mode="edit" id={id} />
 }
 
 
