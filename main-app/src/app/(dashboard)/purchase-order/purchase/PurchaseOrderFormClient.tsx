@@ -429,6 +429,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
   const [orderDate, setOrderDate] = useState<string>(new Date().toISOString().slice(0, 10))
   const [expectedDate, setExpectedDate] = useState<string>('')
   const [note, setNote] = useState<string>('')
+  const [poStatus, setPoStatus] = useState<string>('')
 
   const [items, setItems] = useState<ItemDraft[]>([])
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
@@ -495,6 +496,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
         setOrderDate(data.header.order_date || new Date().toISOString().slice(0, 10))
         setExpectedDate(data.header.expected_date || '')
         setNote(data.header.note || '')
+        setPoStatus(data.header.status || '')
         setItems((data.items || []).map((it: any) => ({
           product_type: it.product_type,
           accessory_id: it.accessory_id,
@@ -631,6 +633,26 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
       } finally {
         setSaving(false)
       }
+    }
+  }
+
+  const handleCreateShipment = async () => {
+    try {
+      if (mode !== 'edit' || !id) {
+        toast.error('Szállítmány csak mentett rendeléshez hozható létre')
+        return
+      }
+      const res = await fetch('/api/shipments/from-purchase-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purchase_order_id: id })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || 'Hiba a szállítmány létrehozásakor')
+      toast.success('Szállítmány létrehozva')
+      router.push(`/shipments/${data.id}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a szállítmány létrehozásakor')
     }
   }
 
@@ -868,7 +890,26 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
             </Grid>
           </Paper>
 
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+            <Tooltip
+              title={
+                poStatus === 'confirmed'
+                  ? ''
+                  : 'Szállítmányt csak jóváhagyott (confirmed) beszerzési rendelésből hozhatsz létre.'
+              }
+              placement="top"
+            >
+              <span>
+                <Button
+                  variant="outlined"
+                  onClick={handleCreateShipment}
+                  disabled={poStatus !== 'confirmed'}
+                >
+                  Szállítmány létrehozása
+                </Button>
+              </span>
+            </Tooltip>
+
             <Button
               variant="contained"
               startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />}
