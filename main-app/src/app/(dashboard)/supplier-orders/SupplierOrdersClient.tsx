@@ -493,7 +493,7 @@ export default function SupplierOrdersClient({
           Beszerzés
         </Link>
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          Beszállítói várólista
+          Beszállítói rendelések
         </Typography>
       </Breadcrumbs>
       
