@@ -4,7 +4,7 @@ import { getAllShopOrderItems, getAllPartners } from '@/lib/supabase-server'
 import SupplierOrdersClient from './SupplierOrdersClient'
 
 export const metadata: Metadata = {
-  title: 'Beszállítói rendelések'
+  title: 'Beszállítói várólista'
 }
 
 interface PageProps {
