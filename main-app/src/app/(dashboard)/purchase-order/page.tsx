@@ -1,17 +1,16 @@
 import React from 'react'
 import type { Metadata } from 'next'
-import { Box, Typography } from '@mui/material'
+import PurchaseOrderListClient from './PurchaseOrderListClient'
+import { Box } from '@mui/material'
 
 export const metadata: Metadata = {
   title: 'Beszállítói rendelése'
 }
 
-export default function PurchaseOrderPage() {
+export default async function PurchaseOrderPage() {
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" component="h1">
-        Beszállítói rendelése
-      </Typography>
+    <Box sx={{ p: 0 }}>
+      <PurchaseOrderListClient />
     </Box>
   )
 }
