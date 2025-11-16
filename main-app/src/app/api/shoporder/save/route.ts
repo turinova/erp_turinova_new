@@ -170,83 +170,38 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hiba a rendelés létrehozásakor' }, { status: 500 })
     }
 
-        // Process products - only create accessories for actual accessories, not materials
+        // Process products - derive product_type and foreign keys; no auto-create in accessories
         const orderItems = []
         for (const product of body.products) {
-          
-          // Check if this is from materials or linear_materials
-          const isFromMaterials = product.source === 'materials'
-          const isFromLinearMaterials = product.source === 'linear_materials'
-          
-          // Only create accessory if it's NOT from materials/linear_materials
-          if (!isFromMaterials && !isFromLinearMaterials) {
-            // Check if this is a new accessory (no SKU, empty SKU, or SKU doesn't exist in database)
-            let shouldCreateNewAccessory = false
-            
-            if (!product.sku || product.sku.trim() === '') {
-              shouldCreateNewAccessory = true
-            } else {
-              // Check if SKU exists in database
-              const { data: existingAccessory } = await supabaseServer
-                .from('accessories')
-                .select('id')
-                .eq('sku', product.sku.trim())
-                .single()
-              
-              if (!existingAccessory) {
-                shouldCreateNewAccessory = true
-              }
-            }
-            
-            if (shouldCreateNewAccessory) {
-              // Create new accessory - SKU is required in database
-              const generatedSku = product.sku && product.sku.trim() !== '' 
-                ? product.sku.trim() 
-                : `NEW-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`
-              
-              // Get a default partner ID if none provided
-              // Ensure empty strings are converted to null
-              let partnerId = product.partners_id && product.partners_id.trim() !== '' 
-                ? product.partners_id 
-                : null
-              
-              if (!partnerId) {
-                const { data: defaultPartner } = await supabaseServer
-                  .from('partners')
-                  .select('id')
-                  .limit(1)
-                  .single()
-                partnerId = defaultPartner?.id || null
-              }
-              
-              const { data: newAccessory, error: accessoryError } = await supabaseServer
-                .from('accessories')
-                .insert({
-                  name: product.name,
-                  sku: generatedSku,
-                  base_price: product.base_price,
-                  multiplier: product.multiplier,
-                  vat_id: product.vat_id,
-                  currency_id: product.currency_id,
-                  units_id: product.units_id,
-                  partners_id: partnerId || null
-                })
-                .select('id')
-                .single()
+          const source = (product.source || '').trim()
+          let productType: string | null = null
+          let accessoryId: string | null = null
+          let materialId: string | null = null
+          let linearMaterialId: string | null = null
 
-              if (accessoryError) {
-                console.error('Error creating accessory:', accessoryError)
-                return NextResponse.json({ error: 'Hiba a termék létrehozásakor' }, { status: 500 })
-              }
-              
-              console.log(`[SHOP ORDER] Created new accessory: ${newAccessory.id}`)
-            }
+          if (source === 'materials' && product.material_id) {
+            productType = 'material'
+            materialId = product.material_id
+          } else if (source === 'linear_materials' && product.linear_material_id) {
+            productType = 'linear_material'
+            linearMaterialId = product.linear_material_id
+          } else if (source === 'accessories' && product.accessory_id) {
+            productType = 'accessory'
+            accessoryId = product.accessory_id
           } else {
-            // This is from materials or linear_materials - skip accessory creation
-            console.log(`[SHOP ORDER] Skipping accessory creation for ${product.source}: ${product.name} (${product.sku})`)
+            // Free-typed or unknown source: default to accessory suggestion, no FK
+            productType = product.product_type || 'accessory'
           }
 
-          // Add to order items (regardless of source)
+          // Enforce mutual exclusivity: only one FK allowed
+          const fkCount =
+            (accessoryId ? 1 : 0) +
+            (materialId ? 1 : 0) +
+            (linearMaterialId ? 1 : 0)
+          if (fkCount > 1) {
+            return NextResponse.json({ error: 'Csak egy hivatkozás állhat be egyszerre (accessory/material/linear_material).' }, { status: 400 })
+          }
+
           orderItems.push({
             order_id: orderData.id,
             product_name: product.name,
@@ -255,22 +210,57 @@ export async function POST(request: NextRequest) {
             base_price: product.base_price,
             multiplier: product.multiplier,
             quantity: product.quantity,
-            units_id: product.units_id,
+            units_id: product.units_id || null,
             partner_id: product.partners_id || null,
-            vat_id: product.vat_id,
-            currency_id: product.currency_id,
+            vat_id: product.vat_id || null,
+            currency_id: product.currency_id || null,
             megjegyzes: product.megjegyzes || null,
-            status: body.itemStatus || 'open' // Use provided status or default to 'open'
+            status: body.itemStatus || 'open',
+            // new typing + FKs
+            product_type: productType,
+            accessory_id: accessoryId,
+            material_id: materialId,
+            linear_material_id: linearMaterialId
           })
         }
 
-    const { error: itemsError } = await supabaseServer
+    const { data: insertedItems, error: itemsError } = await supabaseServer
       .from('shop_order_items')
       .insert(orderItems)
+      .select('id, product_name, sku, base_price, multiplier, quantity, units_id, partner_id, vat_id, currency_id, product_type, accessory_id, material_id, linear_material_id')
 
     if (itemsError) {
       console.error('Error creating order items:', itemsError)
       return NextResponse.json({ error: 'Hiba a termékek mentésekor' }, { status: 500 })
+    }
+
+    // Create product suggestions for free-typed lines (no FK present)
+    const suggestionRows =
+      (insertedItems || [])
+        .filter(item => !item.accessory_id && !item.material_id && !item.linear_material_id)
+        .map(item => ({
+          shop_order_item_id: item.id,
+          raw_product_name: item.product_name,
+          raw_sku: item.sku || null,
+          raw_base_price: item.base_price ?? null,
+          raw_multiplier: item.multiplier ?? null,
+          raw_quantity: item.quantity ?? null,
+          raw_units_id: item.units_id ?? null,
+          raw_partner_id: item.partner_id ?? null,
+          raw_vat_id: item.vat_id ?? null,
+          raw_currency_id: item.currency_id ?? null,
+          // status defaults to 'pending' in DB
+        }))
+
+    if (suggestionRows.length > 0) {
+      const { error: suggestionError } = await supabaseServer
+        .from('product_suggestions')
+        .insert(suggestionRows)
+
+      if (suggestionError) {
+        // Do not fail the entire request; log and continue
+        console.error('Error creating product suggestions:', suggestionError)
+      }
     }
 
     return NextResponse.json({ 

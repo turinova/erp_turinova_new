@@ -146,6 +146,10 @@ interface ProductItem {
   brand_name?: string
   dimensions?: string
   source?: string
+  // Foreign keys for typed selections
+  accessory_id?: string
+  material_id?: string
+  linear_material_id?: string
 }
 
 interface ShopOrderClientProps {
@@ -281,7 +285,12 @@ export default function ShopOrderClient({
     quantity: 1 as number | '',
     megjegyzes: '',
     brand_name: '',
-    dimensions: ''
+    dimensions: '',
+    // preserve selection IDs even if user types
+    pending_source: '' as string | '',
+    pending_accessory_id: '' as string | '',
+    pending_material_id: '' as string | '',
+    pending_linear_material_id: '' as string | ''
   })
   const [productsTable, setProductsTable] = useState<ProductItem[]>([])
   const [editingProductId, setEditingProductId] = useState<string | null>(null)
@@ -613,6 +622,7 @@ export default function ShopOrderClient({
         megjegyzes: '',
         brand_name: '',
         dimensions: ''
+        // NOTE: keep pending_* ids as-is so FK is preserved unless user explicitly clears selection
       }))
     } else if (newValue) {
       // User selected an existing product (accessory, material, or linear material)
@@ -653,7 +663,11 @@ export default function ShopOrderClient({
         partners_id: newValue.partners_id,
         megjegyzes: '',
         brand_name: (newValue as Material | LinearMaterial).brand_name || '',
-        dimensions: (newValue as Material | LinearMaterial).dimensions || ''
+        dimensions: (newValue as Material | LinearMaterial).dimensions || '',
+        pending_source: (newValue as any).source || 'accessories',
+        pending_accessory_id: (newValue as any).source === 'accessories' ? (newValue as any).id : '',
+        pending_material_id: (newValue as any).source === 'materials' ? (newValue as any).id : '',
+        pending_linear_material_id: (newValue as any).source === 'linear_materials' ? (newValue as any).id : ''
       }))
     } else {
       // User cleared selection
@@ -673,7 +687,11 @@ export default function ShopOrderClient({
         partners_id: '',
         megjegyzes: '',
         brand_name: '',
-        dimensions: ''
+        dimensions: '',
+        pending_source: '',
+        pending_accessory_id: '',
+        pending_material_id: '',
+        pending_linear_material_id: ''
       }))
     }
   }
@@ -1008,6 +1026,30 @@ export default function ShopOrderClient({
     const netPrice = Math.round(basePrice * multiplier)
     const grossPrice = Math.round(netPrice * (1 + vatRate / 100))
 
+    // Determine foreign keys from selected item (if any)
+    let accessoryId: string | undefined
+    let materialId: string | undefined
+    let linearMaterialId: string | undefined
+
+    if (selectedAccessory && 'id' in selectedAccessory && 'source' in selectedAccessory) {
+      if (selectedAccessory.source === 'materials') {
+        materialId = (selectedAccessory as any).id
+      } else if (selectedAccessory.source === 'linear_materials') {
+        linearMaterialId = (selectedAccessory as any).id
+      } else if (selectedAccessory.source === 'accessories') {
+        accessoryId = (selectedAccessory as any).id
+      }
+    } else {
+      // fallback to pending IDs preserved in accessoryData
+      if (accessoryData.pending_source === 'materials' && accessoryData.pending_material_id) {
+        materialId = accessoryData.pending_material_id
+      } else if (accessoryData.pending_source === 'linear_materials' && accessoryData.pending_linear_material_id) {
+        linearMaterialId = accessoryData.pending_linear_material_id
+      } else if (accessoryData.pending_source === 'accessories' && accessoryData.pending_accessory_id) {
+        accessoryId = accessoryData.pending_accessory_id
+      }
+    }
+
     const newProduct: ProductItem = {
       id: editingProductId || Date.now().toString(),
       name: accessoryData.name,
@@ -1025,7 +1067,10 @@ export default function ShopOrderClient({
       megjegyzes: accessoryData.megjegyzes,
       brand_name: accessoryData.brand_name,
       dimensions: accessoryData.dimensions,
-      source: selectedAccessory?.source || 'accessories'
+      source: selectedAccessory?.source || 'accessories',
+      accessory_id: accessoryId,
+      material_id: materialId,
+      linear_material_id: linearMaterialId
     }
 
     if (editingProductId) {
@@ -1057,7 +1102,11 @@ export default function ShopOrderClient({
       quantity: 1,
       megjegyzes: '',
       brand_name: '',
-      dimensions: ''
+      dimensions: '',
+      pending_source: '',
+      pending_accessory_id: '',
+      pending_material_id: '',
+      pending_linear_material_id: ''
     })
   }
 
