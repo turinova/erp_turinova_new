@@ -1246,6 +1246,10 @@ export async function getPartnerById(id: string) {
 export async function getAllPartners() {
   const startTime = performance.now()
   
+  if (!checkSupabaseConfig()) {
+    return []
+  }
+
   const { data, error } = await supabaseServer
     .from('partners')
     .select(`
@@ -2855,6 +2859,466 @@ export async function getQuoteEdgeMaterialsBreakdown(quoteId: string) {
   } catch (error) {
     console.error('[SSR] Exception fetching edge materials breakdown:', error)
     logTiming('Edge Materials Breakdown Error', startTime)
+    return []
+  }
+}
+
+export async function getAllPurchaseOrders() {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return []
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from('purchase_orders')
+      .select(`
+        id,
+        po_number,
+        status,
+        partner_id,
+        partners:partner_id(name),
+        warehouse_id,
+        order_date,
+        expected_date,
+        created_at,
+        items:purchase_order_items(count),
+        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity)
+      `)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching purchase orders:', error)
+      return []
+    }
+
+    // Fetch all shipments for the purchase orders
+    const poIds = (data || []).map((row: any) => row.id)
+    const { data: allShipments } = poIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number, purchase_order_id')
+          .in('purchase_order_id', poIds)
+          .is('deleted_at', null)
+      : { data: [] }
+
+    // Group shipments by purchase_order_id
+    const shipmentsByPo = new Map<string, Array<{ id: string; number: string }>>()
+    if (allShipments) {
+      allShipments.forEach((shipment: any) => {
+        if (shipment.purchase_order_id && shipment.shipment_number) {
+          if (!shipmentsByPo.has(shipment.purchase_order_id)) {
+            shipmentsByPo.set(shipment.purchase_order_id, [])
+          }
+          shipmentsByPo.get(shipment.purchase_order_id)!.push({
+            id: shipment.id,
+            number: shipment.shipment_number
+          })
+        }
+      })
+    }
+
+    // Check for stock movements
+    const allShipmentIds = Array.from(new Set(Array.from(shipmentsByPo.values()).flat().map(s => s.id)))
+    const { data: stockMovements } = allShipmentIds.length > 0
+      ? await supabaseServer
+          .from('stock_movements')
+          .select('source_id')
+          .eq('source_type', 'purchase_receipt')
+          .in('source_id', allShipmentIds)
+      : { data: [] }
+
+    const shipmentIdsWithStockMovements = new Set(
+      (stockMovements || []).map((sm: any) => sm.source_id)
+    )
+
+    // Compute net totals and counts
+    const result = (data || []).map((row: any) => {
+      const itemsCount = row.items?.length ? row.items[0]?.count ?? 0 : 0
+      const shipmentNumbers = shipmentsByPo.get(row.id) || []
+      const poShipmentIds = shipmentNumbers.map((s: { id: string }) => s.id)
+      const hasStockMovements = poShipmentIds.some((sid: string) => 
+        shipmentIdsWithStockMovements.has(sid)
+      )
+      const netTotal = Array.isArray(row.net_total)
+        ? row.net_total.reduce((sum: number, it: any) => {
+            const unit = Number(it?.net_price) || 0
+            const qty = Number(it?.quantity) || 0
+            return sum + unit * qty
+          }, 0)
+        : 0
+      return {
+        id: row.id,
+        po_number: row.po_number,
+        status: row.status,
+        partner_name: row.partners?.name || '',
+        items_count: itemsCount,
+        net_total: netTotal,
+        created_at: row.created_at,
+        expected_date: row.expected_date,
+        shipments: shipmentNumbers,
+        has_stock_movements: hasStockMovements
+      }
+    })
+
+    logTiming('Purchase Orders Fetch', startTime, `returned ${result.length} records`)
+    return result
+  } catch (error) {
+    console.error('[SSR] Exception fetching purchase orders:', error)
+    logTiming('Purchase Orders Error', startTime)
+    return []
+  }
+}
+
+export async function getAllShipments() {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return []
+  }
+
+  try {
+    // Fetch ALL shipments (both deleted and non-deleted) for accurate counts
+    const { data, error } = await supabaseServer
+      .from('shipments')
+      .select(`
+        id,
+        shipment_number,
+        purchase_order_id,
+        status,
+        partner_id,
+        partners:partner_id(name),
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        shipment_date,
+        created_at,
+        deleted_at,
+        purchase_orders:purchase_order_id(po_number),
+        items:shipment_items(count)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching shipments:', error)
+      return []
+    }
+
+    // Fetch VAT rates
+    const { data: vatRows } = await supabaseServer.from('vat').select('id, kulcs')
+    const vatMap = new Map<string, number>((vatRows || []).map(r => [r.id, r.kulcs || 0]))
+
+    // Fetch shipment items
+    const shipmentIds = (data || []).map((s: any) => s.id)
+    const { data: allItems } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipment_items')
+          .select(`
+            shipment_id,
+            quantity_received,
+            purchase_order_items:purchase_order_item_id(net_price, vat_id)
+          `)
+          .in('shipment_id', shipmentIds)
+          .is('deleted_at', null)
+      : { data: [] }
+
+    // Group items by shipment_id
+    const itemsByShipment = new Map<string, any[]>()
+    if (allItems) {
+      allItems.forEach((item: any) => {
+        const sid = item.shipment_id
+        if (!itemsByShipment.has(sid)) {
+          itemsByShipment.set(sid, [])
+        }
+        itemsByShipment.get(sid)!.push(item)
+      })
+    }
+
+    // Check for stock movements
+    const { data: stockMovements } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('stock_movements')
+          .select('source_id')
+          .eq('source_type', 'purchase_receipt')
+          .in('source_id', shipmentIds)
+      : { data: [] }
+
+    const shipmentIdsWithStockMovements = new Set(
+      (stockMovements || []).map((sm: any) => sm.source_id)
+    )
+
+    // Calculate totals for each shipment
+    const shipments = (data || []).map((shipment: any) => {
+      const itemsCount = shipment.items?.[0]?.count || 0
+      const items = itemsByShipment.get(shipment.id) || []
+      
+      let netTotal = 0
+      let grossTotal = 0
+
+      items.forEach((item: any) => {
+        const poi = item.purchase_order_items
+        if (poi) {
+          const qty = Number(item.quantity_received) || 0
+          const netPrice = Number(poi.net_price) || 0
+          const lineNet = qty * netPrice
+          const vatPercent = vatMap.get(poi.vat_id) || 0
+          const lineVat = Math.round(lineNet * (vatPercent / 100))
+          const lineGross = lineNet + lineVat
+          netTotal += lineNet
+          grossTotal += lineGross
+        }
+      })
+
+      const hasStockMovements = shipmentIdsWithStockMovements.has(shipment.id)
+
+      return {
+        id: shipment.id,
+        shipment_number: shipment.shipment_number || '',
+        po_number: shipment.purchase_orders?.po_number || '',
+        purchase_order_id: shipment.purchase_order_id,
+        status: shipment.status,
+        partner_name: shipment.partners?.name || '',
+        warehouse_name: shipment.warehouses?.name || '',
+        items_count: itemsCount,
+        net_total: netTotal,
+        gross_total: grossTotal,
+        created_at: shipment.created_at,
+        shipment_date: shipment.shipment_date,
+        deleted_at: shipment.deleted_at,
+        has_stock_movements: hasStockMovements
+      }
+    })
+
+    logTiming('Shipments Fetch', startTime, `returned ${shipments.length} records`)
+    return shipments
+  } catch (error) {
+    console.error('[SSR] Exception fetching shipments:', error)
+    logTiming('Shipments Error', startTime)
+    return []
+  }
+}
+
+export async function getShipmentById(id: string) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return null
+  }
+
+  try {
+    const { data: shipment, error } = await supabaseServer
+      .from('shipments')
+      .select(`
+        id, purchase_order_id, warehouse_id, partner_id, shipment_date, status, note, created_at, updated_at,
+        purchase_orders:purchase_order_id (
+          id, po_number, created_at,
+          partners:partner_id (name),
+          warehouses:warehouse_id (name)
+        ),
+        warehouses:warehouse_id (name),
+        partners:partner_id (name)
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Error fetching shipment:', error)
+      return null
+    }
+
+    if (!shipment) {
+      return null
+    }
+
+    // Fetch shipment items with PO item details
+    const { data: shipmentItems, error: itemsError } = await supabaseServer
+      .from('shipment_items')
+      .select(`
+        id, purchase_order_item_id, quantity_received, note,
+        purchase_order_items:purchase_order_item_id (
+          id, description, quantity, net_price, vat_id, currency_id, units_id,
+          product_type, accessory_id, material_id, linear_material_id,
+          accessories:accessory_id (sku)
+        )
+      `)
+      .eq('shipment_id', id)
+      .is('deleted_at', null)
+
+    if (itemsError) {
+      console.error('Error fetching shipment items:', itemsError)
+      return null
+    }
+
+    // Fetch VAT rates for calculations
+    const { data: vatRows } = await supabaseServer.from('vat').select('id, kulcs')
+    const vatMap = new Map<string, number>((vatRows || []).map(r => [r.id, r.kulcs || 0]))
+
+    // Process items with calculations
+    const items = (shipmentItems || []).map((si: any) => {
+      const poi = si.purchase_order_items
+      const sku = poi?.accessories?.sku || ''
+      const targetQty = Number(poi?.quantity) || 0
+      const receivedQty = Number(si.quantity_received) || 0
+      const netPrice = Number(poi?.net_price) || 0
+      const vatPercent = vatMap.get(poi?.vat_id) || 0
+      const lineNet = receivedQty * netPrice
+      const lineVat = Math.round(lineNet * (vatPercent / 100))
+      const lineGross = lineNet + lineVat
+
+      return {
+        id: si.id,
+        purchase_order_item_id: si.purchase_order_item_id,
+        product_name: poi?.description || '',
+        sku,
+        quantity_received: receivedQty,
+        target_quantity: targetQty,
+        net_price: netPrice,
+        net_total: lineNet,
+        gross_total: lineGross,
+        vat_id: poi?.vat_id,
+        currency_id: poi?.currency_id,
+        units_id: poi?.units_id,
+        note: si.note
+      }
+    })
+
+    // Fetch stock movement numbers for this shipment
+    const { data: stockMovements } = await supabaseServer
+      .from('stock_movements')
+      .select('stock_movement_number')
+      .eq('source_id', id)
+      .eq('source_type', 'purchase_receipt')
+      .order('created_at', { ascending: true })
+
+    const stockMovementNumbers = (stockMovements || []).map((sm: any) => sm.stock_movement_number)
+
+    const header = {
+      id: shipment.id,
+      purchase_order_id: shipment.purchase_order_id,
+      po_number: (shipment.purchase_orders as any)?.po_number || '',
+      po_created_at: (shipment.purchase_orders as any)?.created_at || '',
+      partner_id: shipment.partner_id,
+      partner_name: (shipment.partners as any)?.name || '',
+      warehouse_id: shipment.warehouse_id,
+      warehouse_name: (shipment.warehouses as any)?.name || '',
+      shipment_date: shipment.shipment_date,
+      status: shipment.status,
+      note: shipment.note,
+      created_at: shipment.created_at,
+      stock_movement_numbers: stockMovementNumbers
+    }
+
+    logTiming('Shipment By ID Fetch', startTime)
+    return { header, items }
+  } catch (error) {
+    console.error('[SSR] Exception fetching shipment by ID:', error)
+    logTiming('Shipment By ID Error', startTime)
+    return null
+  }
+}
+
+export async function getPurchaseOrderById(id: string) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return null
+  }
+
+  try {
+    const { data: po, error } = await supabaseServer
+      .from('purchase_orders')
+      .select(`
+        id, po_number, status, partner_id, partners:partner_id(name),
+        warehouse_id, order_date, expected_date, note, created_at, updated_at,
+        purchase_order_items (
+          id, product_type, accessory_id, material_id, linear_material_id,
+          quantity, net_price, vat_id, currency_id, units_id, description,
+          accessories:accessory_id ( sku )
+        )
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Error fetching purchase order:', error)
+      return null
+    }
+
+    if (!po) {
+      return null
+    }
+
+    // Fetch VAT rates for calculations
+    const { data: vatRows } = await supabaseServer.from('vat').select('id, kulcs')
+    const vatMap = new Map<string, number>((vatRows || []).map(r => [r.id, r.kulcs || 0]))
+
+    let itemsCount = 0
+    let totalQty = 0
+    let totalNet = 0
+    let totalVat = 0
+    let totalGross = 0
+    for (const item of po.purchase_order_items || []) {
+      itemsCount += 1
+      const qty = Number(item.quantity) || 0
+      totalQty += qty
+      const lineNet = (Number(item.net_price) || 0) * qty
+      totalNet += lineNet
+      const vatPercent = vatMap.get(item.vat_id) || 0
+      const lineVat = Math.round(lineNet * (vatPercent / 100))
+      totalVat += lineVat
+      totalGross += lineNet + lineVat
+    }
+
+    const header = {
+      id: po.id,
+      po_number: po.po_number,
+      status: po.status,
+      partner_id: po.partner_id,
+      partner_name: po.partners?.name || '',
+      warehouse_id: po.warehouse_id,
+      order_date: po.order_date,
+      expected_date: po.expected_date,
+      note: po.note,
+      created_at: po.created_at,
+      updated_at: po.updated_at
+    }
+
+    logTiming('Purchase Order By ID Fetch', startTime)
+    return { header, items: po.purchase_order_items || [], summary: { itemsCount, totalQty, totalNet, totalVat, totalGross } }
+  } catch (error) {
+    console.error('[SSR] Exception fetching purchase order by ID:', error)
+    logTiming('Purchase Order By ID Error', startTime)
+    return null
+  }
+}
+
+export async function getAllWarehouses() {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return []
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from('warehouses')
+      .select('id, name, code, is_active')
+      .eq('is_active', true)
+      .order('name', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching warehouses:', error)
+      return []
+    }
+
+    logTiming('Warehouses Fetch', startTime, `returned ${data?.length || 0} records`)
+    return data || []
+  } catch (error) {
+    console.error('[SSR] Exception fetching warehouses:', error)
+    logTiming('Warehouses Error', startTime)
     return []
   }
 }

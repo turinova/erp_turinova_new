@@ -59,6 +59,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create shipment' }, { status: 500 })
     }
 
+    // Fetch all PO items
+    const { data: poItems, error: poItemsErr } = await supabaseServer
+      .from('purchase_order_items')
+      .select('id')
+      .eq('purchase_order_id', po.id)
+      .is('deleted_at', null)
+
+    if (poItemsErr) {
+      console.error('Error fetching PO items:', poItemsErr)
+      // Continue anyway - shipment is created, items can be added manually
+    } else if (poItems && poItems.length > 0) {
+      // Create shipment_items for all PO items with quantity_received = 0
+      const shipmentItems = poItems.map((poi: any) => ({
+        shipment_id: shipment.id,
+        purchase_order_item_id: poi.id,
+        quantity_received: 0
+      }))
+
+      const { error: itemsErr } = await supabaseServer
+        .from('shipment_items')
+        .insert(shipmentItems)
+
+      if (itemsErr) {
+        console.error('Error creating shipment items:', itemsErr)
+        // Continue anyway - shipment is created, items can be added manually
+      }
+    }
+
     return NextResponse.json(shipment, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

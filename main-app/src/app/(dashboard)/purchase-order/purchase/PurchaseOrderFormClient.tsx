@@ -14,6 +14,25 @@ import Autocomplete from '@mui/material/Autocomplete'
 interface PurchaseOrderFormClientProps {
   mode: 'create' | 'edit'
   id?: string
+  initialHeader?: {
+    id: string
+    po_number: string
+    status: string
+    partner_id: string
+    partner_name: string
+    warehouse_id: string
+    order_date: string
+    expected_date: string | null
+    note: string | null
+    created_at: string
+    updated_at: string
+  } | null
+  initialItems?: any[]
+  initialVatRates?: VatRow[]
+  initialCurrencies?: CurrencyRow[]
+  initialUnits?: UnitRow[]
+  initialPartners?: PartnerRow[]
+  initialWarehouses?: WarehouseRow[]
 }
 
 interface VatRow { id: string; kulcs: number }
@@ -23,6 +42,7 @@ interface PartnerRow { id: string; name: string }
 interface WarehouseRow { id: string; name: string }
 
 interface ItemDraft {
+  id?: string // Optional: present for existing items, absent for new items
   product_type: 'accessory' | 'material' | 'linear_material'
   accessory_id?: string | null
   material_id?: string | null
@@ -56,9 +76,10 @@ interface ProductPickerProps {
     pending_linear_material_id?: string
     base_price_hint?: number
   }) | null
+  disabled?: boolean // Disable when PO status is not 'draft'
 }
 
-function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIndex, editingItem }: ProductPickerProps) {
+function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIndex, editingItem, disabled = false }: ProductPickerProps) {
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -164,6 +185,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
     !!form.units_id
 
   const onSubmitAdd = () => {
+    if (disabled) return // Prevent any action if disabled
     if (!canAdd) return
     const effectiveMultiplier = selectedItem?.multiplier || editingItem?.__multiplier || 1
     const netUnit = Math.round((Number(form.base_price) || 0) * (effectiveMultiplier || 1))
@@ -171,10 +193,11 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
       form.pending_source === 'materials' ? 'material' :
       form.pending_source === 'linear_materials' ? 'linear_material' : 'accessory'
     const newItem: ItemDraft = {
+      id: editingItem?.id, // Preserve ID when updating
       product_type,
-      accessory_id: form.pending_accessory_id || null,
-      material_id: form.pending_material_id || null,
-      linear_material_id: form.pending_linear_material_id || null,
+      accessory_id: form.pending_accessory_id && form.pending_accessory_id.trim() ? form.pending_accessory_id : null,
+      material_id: form.pending_material_id && form.pending_material_id.trim() ? form.pending_material_id : null,
+      linear_material_id: form.pending_linear_material_id && form.pending_linear_material_id.trim() ? form.pending_linear_material_id : null,
       description: form.name,
       quantity: Number(form.quantity) || 1,
       net_price: netUnit,
@@ -185,6 +208,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
       megjegyzes: form.megjegyzes,
       __multiplier: effectiveMultiplier
     }
+    console.log('Adding new item:', newItem)
     if (editingIndex !== null) onUpdate(editingIndex, newItem)
     else onAdd(newItem)
     // reset selection
@@ -259,6 +283,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
           inputValue={searchTerm}
           onInputChange={(_, v) => setSearchTerm(v)}
           filterOptions={(o) => o}
+          disabled={disabled}
           renderOption={(props, option) => {
             const { key, ...other } = props as any
             const isMaterial = option.source === 'materials'
@@ -295,6 +320,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
               {...params}
               label="Termék neve"
               size="small"
+              disabled={disabled}
               InputProps={{
                 ...params.InputProps,
                 endAdornment: (
@@ -327,6 +353,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
           value={form.base_price}
           onChange={(e) => setForm(prev => ({ ...prev, base_price: e.target.value }))}
           inputProps={{ min: 0, step: 1 }}
+          disabled={disabled}
         />
       </Grid>
       {/* Force Row 2 */}
@@ -342,6 +369,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
           value={form.quantity}
           onChange={(e) => setForm(prev => ({ ...prev, quantity: Number(e.target.value) || 0 }))}
           inputProps={{ min: 1, step: 1 }}
+          disabled={disabled}
         />
       </Grid>
       <Grid item xs={12} md={3}>
@@ -351,6 +379,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
             label="Mértékegység"
             value={form.units_id}
             onChange={(e) => setForm(prev => ({ ...prev, units_id: e.target.value }))}
+            disabled={disabled}
           >
             {units.map(u => (
               <MenuItem key={u.id} value={u.id}>
@@ -367,6 +396,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
             label="Pénznem"
             value={form.currency_id}
             onChange={(e) => setForm(prev => ({ ...prev, currency_id: e.target.value }))}
+            disabled={disabled}
           >
             {currencies.map(c => (
               <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>
@@ -381,6 +411,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
             label="ÁFA"
             value={form.vat_id}
             onChange={(e) => setForm(prev => ({ ...prev, vat_id: e.target.value }))}
+            disabled={disabled}
           >
             {vatRates.map(v => (
               <MenuItem key={v.id} value={v.id}>{v.kulcs}%</MenuItem>
@@ -398,13 +429,14 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
           size="small"
           value={form.megjegyzes}
           onChange={(e) => setForm(prev => ({ ...prev, megjegyzes: e.target.value }))}
+          disabled={disabled}
         />
       </Grid>
       <Grid item xs={12} md={1}>
         <Button
           variant="contained"
           fullWidth
-          disabled={!canAdd}
+          disabled={disabled || !canAdd}
           onClick={onSubmitAdd}
         >
           {editingIndex !== null ? 'Frissítés' : 'Hozzáadás'}
@@ -413,25 +445,55 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
     </Grid>
   )
 }
-export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormClientProps) {
+export default function PurchaseOrderFormClient({ 
+  mode, 
+  id,
+  initialHeader = null,
+  initialItems = [],
+  initialVatRates = [],
+  initialCurrencies = [],
+  initialUnits = [],
+  initialPartners = [],
+  initialWarehouses = []
+}: PurchaseOrderFormClientProps) {
   const router = useRouter()
-  const [loading, setLoading] = useState(mode === 'edit')
+  const [loading, setLoading] = useState(mode === 'edit' && !initialHeader)
   const [saving, setSaving] = useState(false)
 
-  const [partners, setPartners] = useState<PartnerRow[]>([])
-  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([])
-  const [vatRates, setVatRates] = useState<VatRow[]>([])
-  const [currencies, setCurrencies] = useState<CurrencyRow[]>([])
-  const [units, setUnits] = useState<UnitRow[]>([])
+  const [partners, setPartners] = useState<PartnerRow[]>(initialPartners)
+  const [warehouses, setWarehouses] = useState<WarehouseRow[]>(initialWarehouses)
+  const [vatRates, setVatRates] = useState<VatRow[]>(initialVatRates)
+  const [currencies, setCurrencies] = useState<CurrencyRow[]>(initialCurrencies)
+  const [units, setUnits] = useState<UnitRow[]>(initialUnits)
 
-  const [partnerId, setPartnerId] = useState('')
-  const [warehouseId, setWarehouseId] = useState('')
-  const [orderDate, setOrderDate] = useState<string>(new Date().toISOString().slice(0, 10))
-  const [expectedDate, setExpectedDate] = useState<string>('')
-  const [note, setNote] = useState<string>('')
-  const [poStatus, setPoStatus] = useState<string>('')
+  const [partnerId, setPartnerId] = useState(initialHeader?.partner_id || '')
+  const [warehouseId, setWarehouseId] = useState(initialHeader?.warehouse_id || '')
+  const [orderDate, setOrderDate] = useState<string>(initialHeader?.order_date || new Date().toISOString().slice(0, 10))
+  const [expectedDate, setExpectedDate] = useState<string>(initialHeader?.expected_date || '')
+  const [note, setNote] = useState<string>(initialHeader?.note || '')
+  const [poStatus, setPoStatus] = useState<string>(initialHeader?.status || '')
 
-  const [items, setItems] = useState<ItemDraft[]>([])
+  // Transform initial items to ItemDraft format
+  const initialItemsTransformed: ItemDraft[] = initialItems.map((it: any) => ({
+    id: it.id,
+    product_type: it.product_type,
+    accessory_id: it.accessory_id,
+    material_id: it.material_id,
+    linear_material_id: it.linear_material_id,
+    description: it.description || '',
+    quantity: Number(it.quantity) || 0,
+    base_price: 0,
+    multiplier: 1,
+    net_price: Number(it.net_price) || 0,
+    vat_id: it.vat_id,
+    currency_id: it.currency_id,
+    units_id: it.units_id,
+    sku: it.accessories?.sku || '',
+    megjegyzes: ''
+  }))
+
+  const [items, setItems] = useState<ItemDraft[]>(initialItemsTransformed)
+  const [originalItemIds, setOriginalItemIds] = useState<Set<string>>(new Set(initialItemsTransformed.map(it => it.id).filter((id): id is string => Boolean(id)))) // Track original item IDs for deletion
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editingItem, setEditingItem] = useState<(ItemDraft & { base_price_hint?: number }) | null>(null)
 
@@ -455,71 +517,83 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
     return { itemsCount, totalQty, totalNet, totalVat, totalGross }
   }, [items, vatRates])
 
+  // Only fetch static data if not provided via props
   useEffect(() => {
-    const loadStatic = async () => {
-      try {
-        const [vatRes, curRes, unitRes, partnerRes, whRes] = await Promise.all([
-          fetch('/api/vat'), // assuming exists
-          fetch('/api/currencies'),
-          fetch('/api/units'),
-          fetch('/api/partners'),
-          fetch('/api/warehouses')
-        ])
-        const [vatData, curData, unitData, partnerData, whData] = await Promise.all([
-          vatRes.ok ? vatRes.json() : { vat: [] },
-          curRes.ok ? curRes.json() : { currencies: [] },
-          unitRes.ok ? unitRes.json() : { units: [] },
-          partnerRes.ok ? partnerRes.json() : { partners: [] },
-          whRes.ok ? whRes.json() : { warehouses: [] }
-        ])
-        setVatRates(vatData.vat || vatData || [])
-        setCurrencies(curData.currencies || curData || [])
-        setUnits(unitData.units || unitData || [])
-        setPartners(partnerData.partners || partnerData || [])
-        setWarehouses(whData.warehouses || whData || [])
-      } catch (e) {
-        // ignore
+    if (initialVatRates.length === 0 || initialCurrencies.length === 0 || initialUnits.length === 0 || initialPartners.length === 0 || initialWarehouses.length === 0) {
+      const loadStatic = async () => {
+        try {
+          const [vatRes, curRes, unitRes, partnerRes, whRes] = await Promise.all([
+            fetch('/api/vat'),
+            fetch('/api/currencies'),
+            fetch('/api/units'),
+            fetch('/api/partners'),
+            fetch('/api/warehouses')
+          ])
+          const [vatData, curData, unitData, partnerData, whData] = await Promise.all([
+            vatRes.ok ? vatRes.json() : { vat: [] },
+            curRes.ok ? curRes.json() : { currencies: [] },
+            unitRes.ok ? unitRes.json() : { units: [] },
+            partnerRes.ok ? partnerRes.json() : { partners: [] },
+            whRes.ok ? whRes.json() : { warehouses: [] }
+          ])
+          if (initialVatRates.length === 0) setVatRates(vatData.vat || vatData || [])
+          if (initialCurrencies.length === 0) setCurrencies(curData.currencies || curData || [])
+          if (initialUnits.length === 0) setUnits(unitData.units || unitData || [])
+          if (initialPartners.length === 0) setPartners(partnerData.partners || partnerData || [])
+          if (initialWarehouses.length === 0) setWarehouses(whData.warehouses || whData || [])
+        } catch (e) {
+          // ignore
+        }
       }
+      loadStatic()
     }
-    loadStatic()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Only fetch existing data if not provided via props
   useEffect(() => {
-    const loadExisting = async () => {
-      if (mode !== 'edit' || !id) return
-      try {
-        const res = await fetch(`/api/purchase-order/${id}`)
-        const data = await res.json()
-        if (!res.ok) throw new Error(data?.error || 'Hiba a PO betöltésekor')
-        setPartnerId(data.header.partner_id || '')
-        setWarehouseId(data.header.warehouse_id || '')
-        setOrderDate(data.header.order_date || new Date().toISOString().slice(0, 10))
-        setExpectedDate(data.header.expected_date || '')
-        setNote(data.header.note || '')
-        setPoStatus(data.header.status || '')
-        setItems((data.items || []).map((it: any) => ({
-          product_type: it.product_type,
-          accessory_id: it.accessory_id,
-          material_id: it.material_id,
-          linear_material_id: it.linear_material_id,
-          description: it.description || '',
-          quantity: Number(it.quantity) || 0,
-          base_price: 0,
-          multiplier: 1,
-          net_price: Number(it.net_price) || 0,
-          vat_id: it.vat_id,
-          currency_id: it.currency_id,
-          units_id: it.units_id,
-          sku: it.accessories?.sku || it.materials?.sku || it.linear_materials?.sku || ''
-        })))
-      } catch (e) {
-        // noop
-      } finally {
-        setLoading(false)
+    if (mode === 'edit' && id && !initialHeader) {
+      const loadExisting = async () => {
+        setLoading(true)
+        try {
+          const res = await fetch(`/api/purchase-order/${id}`)
+          const data = await res.json()
+          if (!res.ok) throw new Error(data?.error || 'Hiba a PO betöltésekor')
+          setPartnerId(data.header.partner_id || '')
+          setWarehouseId(data.header.warehouse_id || '')
+          setOrderDate(data.header.order_date || new Date().toISOString().slice(0, 10))
+          setExpectedDate(data.header.expected_date || '')
+          setNote(data.header.note || '')
+          setPoStatus(data.header.status || '')
+          const loadedItems = (data.items || []).map((it: any) => ({
+            id: it.id, // Store the item ID for tracking
+            product_type: it.product_type,
+            accessory_id: it.accessory_id,
+            material_id: it.material_id,
+            linear_material_id: it.linear_material_id,
+            description: it.description || '',
+            quantity: Number(it.quantity) || 0,
+            base_price: 0,
+            multiplier: 1,
+            net_price: Number(it.net_price) || 0,
+            vat_id: it.vat_id,
+            currency_id: it.currency_id,
+            units_id: it.units_id,
+            sku: it.accessories?.sku || it.materials?.sku || it.linear_materials?.sku || ''
+          }))
+          setItems(loadedItems)
+          // Store original item IDs for tracking deletions
+          setOriginalItemIds(new Set(loadedItems.filter((it: ItemDraft) => it.id).map((it: ItemDraft) => it.id!)))
+        } catch (e) {
+          // noop
+        } finally {
+          setLoading(false)
+        }
       }
+      loadExisting()
     }
-    loadExisting()
-  }, [mode, id])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, id, initialHeader])
 
   const addBlankItem = () => {
     const defaultVat = vatRates.find(v => v.kulcs === 27)
@@ -539,6 +613,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
   }
 
   const handleSave = async () => {
+    console.log('handleSave called', { mode, itemsCount: items.length, items })
     // Validate required header fields
     if (!partnerId) {
       toast.warning('Beszállító kötelező')
@@ -558,9 +633,11 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
     }
     // Validate at least 1 item
     if (!items || items.length === 0) {
+      console.log('Validation failed: no items')
       toast.warning('Legalább egy terméket adjon hozzá')
       return
     }
+    console.log('Validation passed, proceeding with save')
     if (mode === 'create') {
       setSaving(true)
       try {
@@ -609,9 +686,15 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
         setSaving(false)
       }
     } else {
-      // edit header only
+      // edit mode - save header AND items (smart update)
+      // Prevent saving if status is not 'draft'
+      if (poStatus !== 'draft') {
+        toast.warning('Csak vázlat státuszú beszerzési rendelés módosítható')
+        return
+      }
       setSaving(true)
       try {
+        // First, update the header
         const res = await fetch(`/api/purchase-order/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -625,6 +708,90 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
         })
         const data = await res.json()
         if (!res.ok) throw new Error(data?.error || 'Hiba a frissítéskor')
+
+        // Smart update items: separate into new, updated, and deleted
+        const currentItemIds = new Set(items.filter(it => it.id).map(it => it.id!))
+        const itemsToDelete = Array.from(originalItemIds).filter(id => !currentItemIds.has(id))
+        const itemsToUpdate = items.filter(it => it.id) // Items with IDs are existing (may be updated)
+        const itemsToInsert = items.filter(it => !it.id) // Items without IDs are new
+
+        console.log('Save items:', { 
+          total: items.length, 
+          toDelete: itemsToDelete.length, 
+          toUpdate: itemsToUpdate.length, 
+          toInsert: itemsToInsert.length,
+          itemsToInsert 
+        })
+
+        // Delete removed items
+        if (itemsToDelete.length > 0) {
+          const resDelete = await fetch(`/api/purchase-order/${id}/items`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_ids: itemsToDelete })
+          })
+          const deleteData = await resDelete.json()
+          if (!resDelete.ok) {
+            console.error('Delete error:', deleteData)
+            throw new Error(deleteData?.error || 'Hiba a tételek törlésekor')
+          }
+        }
+
+        // Update existing items
+        for (const item of itemsToUpdate) {
+          const resUpdate = await fetch(`/api/purchase-order/${id}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item_id: item.id,
+              product_type: item.product_type,
+              accessory_id: item.accessory_id || null,
+              material_id: item.material_id || null,
+              linear_material_id: item.linear_material_id || null,
+              quantity: item.quantity,
+              net_price: Math.round(Number(item.net_price) || 0),
+              vat_id: item.vat_id,
+              currency_id: item.currency_id,
+              units_id: item.units_id,
+              description: item.description || ''
+            })
+          })
+          const updateData = await resUpdate.json()
+          if (!resUpdate.ok) {
+            console.error('Update error:', updateData)
+            throw new Error(updateData?.error || 'Hiba a tétel frissítésekor')
+          }
+        }
+
+        // Insert new items
+        if (itemsToInsert.length > 0) {
+          const prepared = itemsToInsert.map(it => ({
+            product_type: it.product_type,
+            accessory_id: it.accessory_id || null,
+            material_id: it.material_id || null,
+            linear_material_id: it.linear_material_id || null,
+            quantity: it.quantity,
+            net_price: Math.round(Number(it.net_price) || 0),
+            vat_id: it.vat_id,
+            currency_id: it.currency_id,
+            units_id: it.units_id,
+            description: it.description || ''
+          }))
+          console.log('Inserting items:', prepared)
+          const resInsert = await fetch(`/api/purchase-order/${id}/items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: prepared })
+          })
+          const insertData = await resInsert.json()
+          if (!resInsert.ok) {
+            console.error('Insert error:', insertData)
+            throw new Error(insertData?.error || 'Hiba a tételek hozzáadásakor')
+          }
+        } else {
+          console.log('No new items to insert')
+        }
+
         toast.success('PO frissítve')
         router.refresh()
       } catch (e) {
@@ -636,25 +803,6 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
     }
   }
 
-  const handleCreateShipment = async () => {
-    try {
-      if (mode !== 'edit' || !id) {
-        toast.error('Szállítmány csak mentett rendeléshez hozható létre')
-        return
-      }
-      const res = await fetch('/api/shipments/from-purchase-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purchase_order_id: id })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Hiba a szállítmány létrehozásakor')
-      toast.success('Szállítmány létrehozva')
-      router.push(`/shipments/${data.id}`)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Hiba a szállítmány létrehozásakor')
-    }
-  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -675,7 +823,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
           color="inherit"
           href="/purchase-order"
         >
-          Beszállítói rendelése
+          Beszállítói rendelések
         </Link>
         <Typography color="text.primary">
           {mode === 'create' ? 'Új' : 'Szerkesztés'}
@@ -690,6 +838,13 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
         <Stack spacing={3}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>Alap adatok</Typography>
+            {mode === 'edit' && poStatus !== 'draft' && (
+              <Box sx={{ mb: 2, p: 2, bgcolor: 'info.lighter', borderRadius: 1 }}>
+                <Typography variant="body2" color="info.dark">
+                  Csak vázlat státuszú beszerzési rendelés módosítható.
+                </Typography>
+              </Box>
+            )}
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth required>
@@ -698,6 +853,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                     value={partnerId}
                     label="Beszállító"
                     onChange={(e) => setPartnerId(e.target.value)}
+                    disabled={mode === 'edit' && poStatus !== 'draft'}
                     MenuProps={{
                       PaperProps: {
                         style: { maxHeight: 320, width: 360 }
@@ -715,7 +871,12 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth required>
                   <InputLabel>Raktár</InputLabel>
-                  <Select value={warehouseId} label="Raktár" onChange={(e) => setWarehouseId(e.target.value)}>
+                  <Select 
+                    value={warehouseId} 
+                    label="Raktár" 
+                    onChange={(e) => setWarehouseId(e.target.value)}
+                    disabled={mode === 'edit' && poStatus !== 'draft'}
+                  >
                     {warehouses.map(w => <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>)}
                   </Select>
                 </FormControl>
@@ -729,6 +890,7 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                   value={orderDate}
                   onChange={(e) => setOrderDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  disabled={mode === 'edit' && poStatus !== 'draft'}
                 />
               </Grid>
               <Grid item xs={12} md={2}>
@@ -740,16 +902,32 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                   value={expectedDate}
                   onChange={(e) => setExpectedDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
+                  disabled={mode === 'edit' && poStatus !== 'draft'}
                 />
               </Grid>
               <Grid item xs={12}>
-                <TextField fullWidth label="Megjegyzés" value={note} onChange={(e) => setNote(e.target.value)} multiline minRows={2} />
+                <TextField 
+                  fullWidth 
+                  label="Megjegyzés" 
+                  value={note} 
+                  onChange={(e) => setNote(e.target.value)} 
+                  multiline 
+                  minRows={2}
+                  disabled={mode === 'edit' && poStatus !== 'draft'}
+                />
               </Grid>
             </Grid>
           </Paper>
 
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>Termék hozzáadása</Typography>
+            {mode === 'edit' && poStatus !== 'draft' && (
+              <Box sx={{ mb: 2, p: 2, bgcolor: 'warning.lighter', borderRadius: 1 }}>
+                <Typography variant="body2" color="warning.dark">
+                  Csak vázlat státuszú beszerzési rendeléshez lehet új tételeket hozzáadni.
+                </Typography>
+              </Box>
+            )}
             <Stack spacing={2}>
               <ProductPicker
                 vatRates={vatRates}
@@ -757,8 +935,17 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                 units={units}
                 editingIndex={editingIndex}
                 editingItem={editingItem}
-                onAdd={(item) => setItems(prev => [...prev, item])}
+                disabled={mode === 'edit' && poStatus !== 'draft'}
+                onAdd={(item) => {
+                  console.log('onAdd called with item:', item)
+                  setItems(prev => {
+                    const newItems = [...prev, item]
+                    console.log('Updated items array:', newItems)
+                    return newItems
+                  })
+                }}
                 onUpdate={(index, item) => {
+                  if (mode === 'edit' && poStatus !== 'draft') return // Prevent updates if not draft
                   setItems(prev => prev.map((x, i) => i === index ? item : x))
                   setEditingIndex(null)
                   setEditingItem(null)
@@ -797,8 +984,9 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                             <TableRow
                               key={idx}
                               hover
-                              sx={{ cursor: 'pointer' }}
+                              sx={{ cursor: mode === 'edit' && poStatus !== 'draft' ? 'default' : 'pointer' }}
                               onClick={() => {
+                                if (mode === 'edit' && poStatus !== 'draft') return
                                 setEditingIndex(idx)
                                 setEditingItem({
                                   ...it,
@@ -834,13 +1022,21 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
                                 )}
                               </TableCell>
                               <TableCell align="center">
-                                <Tooltip title="Törlés">
-                                  <IconButton size="small" color="error" onClick={(e) => {
-                                    e.stopPropagation()
-                                    setItems(prev => prev.filter((_, i) => i !== idx))
-                                  }}>
-                                    <DeleteIcon fontSize="small" />
-                                  </IconButton>
+                                <Tooltip title={mode === 'edit' && poStatus !== 'draft' ? 'Csak vázlat státuszú rendelésből lehet törölni' : 'Törlés'}>
+                                  <span>
+                                    <IconButton 
+                                      size="small" 
+                                      color="error" 
+                                      disabled={mode === 'edit' && poStatus !== 'draft'}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (mode === 'edit' && poStatus !== 'draft') return
+                                        setItems(prev => prev.filter((_, i) => i !== idx))
+                                      }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </span>
                                 </Tooltip>
                               </TableCell>
                             </TableRow>
@@ -891,30 +1087,18 @@ export default function PurchaseOrderFormClient({ mode, id }: PurchaseOrderFormC
           </Paper>
 
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-            <Tooltip
-              title={
-                poStatus === 'confirmed'
-                  ? ''
-                  : 'Szállítmányt csak jóváhagyott (confirmed) beszerzési rendelésből hozhatsz létre.'
-              }
-              placement="top"
-            >
-              <span>
-                <Button
-                  variant="outlined"
-                  onClick={handleCreateShipment}
-                  disabled={poStatus !== 'confirmed'}
-                >
-                  Szállítmány létrehozása
-                </Button>
-              </span>
-            </Tooltip>
-
+            {mode === 'edit' && poStatus !== 'draft' && (
+              <Box sx={{ p: 2, bgcolor: 'info.lighter', borderRadius: 1, flex: 1 }}>
+                <Typography variant="body2" color="info.dark">
+                  Ez a beszerzési rendelés már nem módosítható, mert státusza nem vázlat.
+                </Typography>
+              </Box>
+            )}
             <Button
               variant="contained"
               startIcon={saving ? <CircularProgress size={18} /> : <SaveIcon />}
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || (mode === 'edit' && poStatus !== 'draft')}
             >
               {mode === 'create' ? 'Mentés' : 'Frissítés'}
             </Button>

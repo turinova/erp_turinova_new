@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
 
-// PATCH /api/purchase-order/bulk-status { ids: string[], new_status: 'sent' }
+// PATCH /api/purchase-order/bulk-status { ids: string[], new_status: 'confirmed' }
 export async function PATCH(request: NextRequest) {
   try {
     const { ids, new_status } = await request.json()
     if (!Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json({ error: 'Nincs kiválasztott PO' }, { status: 400 })
     }
-    if (new_status !== 'sent') {
-      return NextResponse.json({ error: 'Csak draft -> sent engedélyezett ezen a végponton' }, { status: 400 })
+    if (new_status !== 'confirmed') {
+      return NextResponse.json({ error: 'Csak draft -> confirmed engedélyezett ezen a végponton' }, { status: 400 })
     }
 
-    // Only update draft
+    // Only update draft -> confirmed
     const { data, error } = await supabaseServer
       .from('purchase_orders')
-      .update({ status: 'sent' })
+      .update({ status: 'confirmed' })
       .in('id', ids)
       .eq('status', 'draft')
       .is('deleted_at', null)

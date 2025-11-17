@@ -20,7 +20,6 @@ export async function GET(request: NextRequest) {
         order_date,
         expected_date,
         created_at,
-        shipments:shipments(count),
         items:purchase_order_items(count),
         net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity)
       `)
@@ -40,10 +39,56 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch purchase orders' }, { status: 500 })
     }
 
+    // Fetch all shipments for the purchase orders
+    const poIds = (data || []).map((row: any) => row.id)
+    const { data: allShipments } = await supabaseServer
+      .from('shipments')
+      .select('id, shipment_number, purchase_order_id')
+      .in('purchase_order_id', poIds)
+      .is('deleted_at', null)
+
+    // Group shipments by purchase_order_id
+    const shipmentsByPo = new Map<string, Array<{ id: string; number: string }>>()
+    if (allShipments) {
+      allShipments.forEach((shipment: any) => {
+        if (shipment.purchase_order_id && shipment.shipment_number) {
+          if (!shipmentsByPo.has(shipment.purchase_order_id)) {
+            shipmentsByPo.set(shipment.purchase_order_id, [])
+          }
+          shipmentsByPo.get(shipment.purchase_order_id)!.push({
+            id: shipment.id,
+            number: shipment.shipment_number
+          })
+        }
+      })
+    }
+
+    // Check for stock movements
+    const allShipmentIds = Array.from(new Set(Array.from(shipmentsByPo.values()).flat().map(s => s.id)))
+    const { data: stockMovements } = allShipmentIds.length > 0
+      ? await supabaseServer
+          .from('stock_movements')
+          .select('source_id')
+          .eq('source_type', 'purchase_receipt')
+          .in('source_id', allShipmentIds)
+      : { data: [] }
+
+    const shipmentIdsWithStockMovements = new Set(
+      (stockMovements || []).map((sm: any) => sm.source_id)
+    )
+
     // Compute net totals and counts client-side from joined data
     const result = (data || []).map((row: any) => {
       const itemsCount = row.items?.length ? row.items[0]?.count ?? 0 : 0
-      const shipmentsCount = row.shipments?.length ? row.shipments[0]?.count ?? 0 : 0
+      // Get shipments for this PO
+      const shipmentNumbers = shipmentsByPo.get(row.id) || []
+      
+      // Check if any shipment has stock movements
+      const poShipmentIds = shipmentNumbers.map((s: { id: string }) => s.id)
+      const hasStockMovements = poShipmentIds.some((sid: string) => 
+        shipmentIdsWithStockMovements.has(sid)
+      )
+      
       // Sum net_price * quantity across joined purchase_order_items rows
       const netTotal = Array.isArray(row.net_total)
         ? row.net_total.reduce((sum: number, it: any) => {
@@ -61,7 +106,8 @@ export async function GET(request: NextRequest) {
         net_total: netTotal,
         created_at: row.created_at,
         expected_date: row.expected_date,
-        shipments_count: shipmentsCount
+        shipments: shipmentNumbers,
+        has_stock_movements: hasStockMovements
       }
     })
 
