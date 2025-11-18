@@ -36,8 +36,7 @@ import {
   RemoveCircle as RemoveCircleIcon,
   Close as CloseIcon,
   AttachMoney as CashIcon,
-  CreditCard as CardIcon,
-  AccountBalance as TransferIcon
+  CreditCard as CardIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { usePagePermission } from '@/hooks/usePagePermission'
@@ -1340,18 +1339,18 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       } else {
                         setSelectedWorker(null)
                       }
-                      // Refocus barcode input after worker selection
+                      // Clear editing flag and refocus barcode input after worker selection
+                      setIsEditingField(false)
                       setTimeout(() => {
                         refocusBarcodeInput()
-                      }, 100)
+                      }, 200)
                     }}
                     onBlur={() => {
-                      // Refocus barcode input when worker field loses focus
+                      // Clear editing flag and refocus barcode input when worker field loses focus
                       setTimeout(() => {
-                        if (!isEditingField) {
-                          refocusBarcodeInput()
-                        }
-                      }, 100)
+                        setIsEditingField(false)
+                        refocusBarcodeInput()
+                      }, 200)
                     }}
                     renderInput={(params) => (
                       <TextField
@@ -1362,12 +1361,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           // Set editing flag when worker field is focused
                           setIsEditingField(true)
                         }}
-                        onBlur={() => {
-                          // Clear editing flag after a delay
-                          setTimeout(() => {
-                            setIsEditingField(false)
-                            refocusBarcodeInput()
-                          }, 200)
+                        onBlur={(e) => {
+                          // Don't handle blur here, let the Autocomplete onBlur handle it
+                          // This prevents double handling
                         }}
                         sx={{
                           '& .MuiOutlinedInput-root': {
@@ -1417,28 +1413,22 @@ export default function PosClient({ customers, workers }: PosClientProps) {
           }
         }}
       >
-        <DialogContent sx={{ p: 3, display: 'flex', flexDirection: 'column', height: '80vh', overflow: 'hidden' }}>
+        <DialogContent sx={{ p: 4, display: 'flex', flexDirection: 'column', height: '80vh', overflow: 'hidden' }}>
           <Grid container spacing={3} sx={{ flex: 1, minHeight: 0, alignItems: 'stretch', height: '100%' }}>
             {/* Left Side - Order Summary */}
             <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-              {/* Fixed Table Header */}
-              <TableContainer sx={{ flexShrink: 0, borderBottom: '1px solid', borderColor: 'divider' }}>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 'bold' }}>Mennyiség</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>Ár</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>Részösszeg</TableCell>
-                    </TableRow>
-                  </TableHead>
-                </Table>
-              </TableContainer>
-
-              {/* Scrollable Table Body */}
+              {/* Scrollable Table with Sticky Header */}
               <Box sx={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                 <TableContainer>
-                  <Table size="small">
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Mennyiség</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Egységár</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 'bold' }}>Részösszeg</TableCell>
+                      </TableRow>
+                    </TableHead>
                     <TableBody>
                       {cartItems.map((item) => (
                         <TableRow key={item.id}>
@@ -1664,39 +1654,29 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 </Box>
               )}
 
-              {/* Payment Buttons - Always visible at bottom */}
-              <Box sx={{ display: 'flex', gap: 2, flexShrink: 0, mt: 'auto' }}>
-                <Button
-                  variant="contained"
-                  color="success"
-                  size="large"
-                  fullWidth
-                  startIcon={<CashIcon />}
-                  sx={{ py: 1.5 }}
-                >
-                  Készpénz
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  fullWidth
-                  startIcon={<CardIcon />}
-                  sx={{ py: 1.5 }}
-                >
-                  Bankkártya
-                </Button>
-                <Button
-                  variant="contained"
-                  color="info"
-                  size="large"
-                  fullWidth
-                  startIcon={<TransferIcon />}
-                  sx={{ py: 1.5 }}
-                >
-                  Utalás
-                </Button>
-              </Box>
+                {/* Payment Buttons - Always visible at bottom */}
+                <Box sx={{ display: 'flex', gap: 2, flexShrink: 0, mt: 'auto' }}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    size="large"
+                    fullWidth
+                    startIcon={<CashIcon />}
+                    sx={{ py: 2.5, fontSize: '1.1rem', fontWeight: 'bold' }}
+                  >
+                    Készpénz
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    fullWidth
+                    startIcon={<CardIcon />}
+                    sx={{ py: 2.5, fontSize: '1.1rem', fontWeight: 'bold' }}
+                  >
+                    Bankkártya
+                  </Button>
+                </Box>
             </Grid>
           </Grid>
         </DialogContent>
