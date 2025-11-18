@@ -2549,6 +2549,10 @@ export async function getShopOrderById(orderId: string) {
         megjegyzes,
         status,
         created_at,
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
         units(
           id,
           name,

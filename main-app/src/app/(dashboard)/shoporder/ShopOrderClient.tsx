@@ -473,13 +473,25 @@ export default function ShopOrderClient({
             
             // Set products table
             const products = orderData.items.map((item: any) => {
-              // Determine source based on type
+              // Determine source based on product_type (preferred) or type (fallback)
               let source = 'accessories' // Default
-              if (item.type === 'Bútorlap') {
-                source = 'materials'
-              } else if (item.type && item.type !== 'Termék') {
-                // Linear materials have various types (Él, Hátsólap, etc.)
-                source = 'linear_materials'
+              if (item.product_type) {
+                // Use product_type if available (most reliable)
+                if (item.product_type === 'material') {
+                  source = 'materials'
+                } else if (item.product_type === 'linear_material') {
+                  source = 'linear_materials'
+                } else if (item.product_type === 'accessory') {
+                  source = 'accessories'
+                }
+              } else {
+                // Fallback to type-based detection for old records
+                if (item.type === 'Bútorlap') {
+                  source = 'materials'
+                } else if (item.type && item.type !== 'Termék') {
+                  // Linear materials have various types (Él, Hátsólap, etc.)
+                  source = 'linear_materials'
+                }
               }
               
               return {
@@ -499,7 +511,11 @@ export default function ShopOrderClient({
                 megjegyzes: item.megjegyzes || '',
                 brand_name: '',
                 dimensions: '',
-                source: source
+                source: source,
+                // Preserve foreign keys from database
+                accessory_id: item.accessory_id || undefined,
+                material_id: item.material_id || undefined,
+                linear_material_id: item.linear_material_id || undefined
               }
             })
             setProductsTable(products)
@@ -1114,7 +1130,25 @@ export default function ShopOrderClient({
   const handleEditProduct = (product: ProductItem) => {
     setEditingProductId(product.id)
     setSelectedAccessory(null)
-    setSearchTerm('')
+    setSearchTerm(product.name) // Set search term to product name for display
+    
+    // Determine source and pending IDs from product's FKs
+    let pendingSource = product.source || 'accessories'
+    let pendingAccessoryId = ''
+    let pendingMaterialId = ''
+    let pendingLinearMaterialId = ''
+    
+    if (product.accessory_id) {
+      pendingSource = 'accessories'
+      pendingAccessoryId = product.accessory_id
+    } else if (product.material_id) {
+      pendingSource = 'materials'
+      pendingMaterialId = product.material_id
+    } else if (product.linear_material_id) {
+      pendingSource = 'linear_materials'
+      pendingLinearMaterialId = product.linear_material_id
+    }
+    
     setAccessoryData({
       name: product.name,
       sku: product.sku,
@@ -1130,7 +1164,12 @@ export default function ShopOrderClient({
       quantity: product.quantity,
       megjegyzes: product.megjegyzes,
       brand_name: product.brand_name || '',
-      dimensions: product.dimensions || ''
+      dimensions: product.dimensions || '',
+      // Preserve FKs when editing
+      pending_source: pendingSource,
+      pending_accessory_id: pendingAccessoryId,
+      pending_material_id: pendingMaterialId,
+      pending_linear_material_id: pendingLinearMaterialId
     })
     
     // Scroll to the top of the page
