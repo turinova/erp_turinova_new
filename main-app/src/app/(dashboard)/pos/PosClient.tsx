@@ -187,8 +187,16 @@ export default function PosClient({ customers }: PosClientProps) {
   const isScanningRef = useRef<boolean>(false)
   const lastScannedBarcodeRef = useRef<{ barcode: string; timestamp: number } | null>(null)
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const scanAbortControllerRef = useRef<AbortController | null>(null)
+  const searchAbortControllerRef = useRef<AbortController | null>(null)
+  const [isEditingField, setIsEditingField] = useState(false)
+  
+  // Simple cache for barcode scans (last 50 items, 5 minutes TTL)
+  const barcodeCacheRef = useRef<Map<string, { data: AccessoryItem; timestamp: number }>>(new Map())
+  const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+  const CACHE_MAX_SIZE = 50
 
-  const debouncedSearchTerm = useDebounce(searchTerm, 300)
+  const debouncedSearchTerm = useDebounce(searchTerm, 150)
 
   // Auto-focus barcode input on mount
   useEffect(() => {
@@ -232,27 +240,80 @@ export default function PosClient({ customers }: PosClientProps) {
     }
   }, [])
 
-  // Search accessories
+  // Search accessories (optimized with request cancellation)
   useEffect(() => {
+    // Cancel previous search request
+    if (searchAbortControllerRef.current) {
+      searchAbortControllerRef.current.abort()
+    }
+
     if (debouncedSearchTerm.trim().length >= 2) {
       setIsSearching(true)
-      fetch(`/api/pos/accessories?search=${encodeURIComponent(debouncedSearchTerm)}`)
-        .then(res => res.json())
+      
+      // Create new AbortController for this request
+      const abortController = new AbortController()
+      searchAbortControllerRef.current = abortController
+
+      fetch(`/api/pos/accessories?search=${encodeURIComponent(debouncedSearchTerm)}`, {
+        signal: abortController.signal
+      })
+        .then(res => {
+          if (abortController.signal.aborted) {
+            return null
+          }
+          if (!res.ok) {
+            // If response is not ok, return empty array
+            return []
+          }
+          return res.json()
+        })
         .then(data => {
-          setSearchResults(data)
+          if (abortController.signal.aborted) {
+            return
+          }
+          // Ensure data is always an array
+          if (Array.isArray(data)) {
+            setSearchResults(data)
+          } else {
+            // If it's an error object or something else, set empty array
+            setSearchResults([])
+          }
           setIsSearching(false)
         })
         .catch(err => {
+          // Ignore abort errors
+          if (err.name === 'AbortError') {
+            console.log('Search request aborted')
+            return
+          }
           console.error('Error searching accessories:', err)
-          setIsSearching(false)
+          if (!abortController.signal.aborted) {
+            setSearchResults([]) // Set empty array on error
+            setIsSearching(false)
+          }
         })
     } else {
       setSearchResults([])
+      setIsSearching(false)
+    }
+
+    // Cleanup function
+    return () => {
+      if (searchAbortControllerRef.current) {
+        searchAbortControllerRef.current.abort()
+        searchAbortControllerRef.current = null
+      }
     }
   }, [debouncedSearchTerm])
 
-  // Handle barcode input change (debounced for scanner)
+  // Handle barcode input change (debounced for scanner - optimized to 100ms)
   const handleBarcodeInputChange = (value: string) => {
+    // Don't process if user is editing a field
+    if (isEditingField) {
+      setBarcodeInput('')
+      return
+    }
+
     setBarcodeInput(value)
 
     // Clear previous timeout
@@ -261,41 +322,59 @@ export default function PosClient({ customers }: PosClientProps) {
       scanTimeoutRef.current = null
     }
 
-    // Set new timeout - trigger scan when input stops changing for 300ms
+    // Set new timeout - trigger scan when input stops changing for 100ms (optimized from 300ms)
     // Barcode scanners typically send characters very quickly, so we wait a bit
     scanTimeoutRef.current = setTimeout(() => {
       const trimmedValue = value.trim()
-      if (trimmedValue.length > 0 && !isScanningRef.current) {
+      if (trimmedValue.length > 0 && !isScanningRef.current && !isEditingField) {
         handleBarcodeScan(trimmedValue)
       }
-    }, 300)
+    }, 100)
   }
 
-  // Refocus barcode input helper
+  // Refocus barcode input helper (optimized - no requestAnimationFrame)
   const refocusBarcodeInput = () => {
-    // Use requestAnimationFrame for reliable refocus
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        if (barcodeInputRef.current) {
-          barcodeInputRef.current.focus()
-          barcodeInputRef.current.select() // Select all text for easy clearing
-        }
-      }, 50)
-    })
+    if (isEditingField) return // Don't refocus if user is editing a field
+    setTimeout(() => {
+      if (barcodeInputRef.current && !isEditingField) {
+        barcodeInputRef.current.focus()
+        barcodeInputRef.current.select() // Select all text for easy clearing
+      }
+    }, 10) // Minimal delay
   }
 
-  // Handle barcode scan
+  // Handle barcode scan (optimized with cache and request cancellation)
   const handleBarcodeScan = async (barcode: string) => {
-    if (!barcode || !barcode.trim()) {
+    if (!barcode || !barcode.trim() || isEditingField) {
       refocusBarcodeInput()
       return
     }
 
     const trimmedBarcode = barcode.trim()
 
+    // Check cache first
+    const cached = barcodeCacheRef.current.get(trimmedBarcode)
+    const now = Date.now()
+    if (cached && (now - cached.timestamp) < CACHE_TTL) {
+      // Cache hit - use cached data
+      const addedItemId = handleAddToCart(cached.data)
+      if (addedItemId) {
+        setHighlightedCartItemId(addedItemId)
+        if (highlightTimeoutRef.current) {
+          clearTimeout(highlightTimeoutRef.current)
+        }
+        highlightTimeoutRef.current = setTimeout(() => {
+          setHighlightedCartItemId(null)
+        }, 1000)
+      }
+      setBarcodeInput('')
+      isScanningRef.current = false
+      refocusBarcodeInput()
+      return
+    }
+
     // Prevent duplicate scans (same barcode within 200ms) - only for rapid-fire scans
     // This prevents accidental double-scans from the same barcode scanner input
-    const now = Date.now()
     if (
       lastScannedBarcodeRef.current &&
       lastScannedBarcodeRef.current.barcode === trimmedBarcode &&
@@ -314,6 +393,11 @@ export default function PosClient({ customers }: PosClientProps) {
       return
     }
 
+    // Cancel previous request if any
+    if (scanAbortControllerRef.current) {
+      scanAbortControllerRef.current.abort()
+    }
+
     // Clear any pending timeouts
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current)
@@ -324,8 +408,14 @@ export default function PosClient({ customers }: PosClientProps) {
     isScanningRef.current = true
     lastScannedBarcodeRef.current = { barcode: trimmedBarcode, timestamp: now }
 
+    // Create new AbortController for this request
+    const abortController = new AbortController()
+    scanAbortControllerRef.current = abortController
+
     try {
-      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}`)
+      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}`, {
+        signal: abortController.signal
+      })
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -342,6 +432,14 @@ export default function PosClient({ customers }: PosClientProps) {
       }
 
       const accessory: AccessoryItem = await response.json()
+
+      // Add to cache
+      if (barcodeCacheRef.current.size >= CACHE_MAX_SIZE) {
+        // Remove oldest entry
+        const firstKey = barcodeCacheRef.current.keys().next().value
+        barcodeCacheRef.current.delete(firstKey)
+      }
+      barcodeCacheRef.current.set(trimmedBarcode, { data: accessory, timestamp: now })
 
       // Add to cart and get the item ID that was added/updated
       const addedItemId = handleAddToCart(accessory)
@@ -668,6 +766,7 @@ export default function PosClient({ customers }: PosClientProps) {
                   relatedTarget?.closest('textarea')
                 
                 if (!isScanningRef.current && 
+                    !isEditingField &&
                     !isInputOrButton &&
                     activeElement?.id !== 'search-field' &&
                     relatedTarget?.id !== 'search-field') {
@@ -999,12 +1098,25 @@ export default function PosClient({ customers }: PosClientProps) {
                                   handleFeePriceChange(fee.id, parseFloat(e.target.value) || 0)
                                 }
                                 onFocus={() => {
+                                  // Set editing flag to prevent barcode input interference
+                                  setIsEditingField(true)
                                   // Clear barcode input and any pending scans when editing fee price
                                   setBarcodeInput('')
                                   if (scanTimeoutRef.current) {
                                     clearTimeout(scanTimeoutRef.current)
                                     scanTimeoutRef.current = null
                                   }
+                                }}
+                                onBlur={() => {
+                                  // Clear editing flag after a short delay
+                                  setTimeout(() => {
+                                    setIsEditingField(false)
+                                    refocusBarcodeInput()
+                                  }, 200)
+                                }}
+                                onKeyDown={(e) => {
+                                  // Stop event propagation to prevent barcode input from receiving it
+                                  e.stopPropagation()
                                 }}
                                 inputProps={{
                                   min: 0,
@@ -1061,12 +1173,25 @@ export default function PosClient({ customers }: PosClientProps) {
                                 handleDiscountPercentageChange(parseFloat(e.target.value) || 0)
                               }
                               onFocus={() => {
+                                // Set editing flag to prevent barcode input interference
+                                setIsEditingField(true)
                                 // Clear barcode input and any pending scans when editing discount
                                 setBarcodeInput('')
                                 if (scanTimeoutRef.current) {
                                   clearTimeout(scanTimeoutRef.current)
                                   scanTimeoutRef.current = null
                                 }
+                              }}
+                              onBlur={() => {
+                                // Clear editing flag after a short delay
+                                setTimeout(() => {
+                                  setIsEditingField(false)
+                                  refocusBarcodeInput()
+                                }, 200)
+                              }}
+                              onKeyDown={(e) => {
+                                // Stop event propagation to prevent barcode input from receiving it
+                                e.stopPropagation()
                               }}
                               inputProps={{
                                 min: 0,

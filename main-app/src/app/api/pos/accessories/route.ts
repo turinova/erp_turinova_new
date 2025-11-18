@@ -12,69 +12,82 @@ export async function GET(request: NextRequest) {
     }
 
     const trimmedSearch = searchTerm.trim()
+    const resultLimit = 50 // Limit results for performance
 
+    // OPTIMIZED: Parallel queries for name and SKU (both run simultaneously)
     // Query current_stock view joined with accessories table
     // This ensures we only get accessories that have stock movements
-    // Use separate queries for name and sku to avoid PostgREST parsing issues
-    
-    // Search by name - query current_stock and join accessories
-    const { data: nameStockResults } = await supabaseServer
-      .from('current_stock')
-      .select(`
-        accessory_id,
-        quantity_on_hand,
-        accessories!inner (
-          id,
-          name,
-          sku,
-          net_price,
-          deleted_at,
-          vat (
+    const [nameResult, skuResult] = await Promise.all([
+      // Search by name
+      supabaseServer
+        .from('current_stock')
+        .select(`
+          accessory_id,
+          quantity_on_hand,
+          accessories!inner (
             id,
-            kulcs
-          ),
-          currencies (
-            id,
-            name
+            name,
+            sku,
+            net_price,
+            deleted_at,
+            vat (
+              id,
+              kulcs
+            ),
+            currencies (
+              id,
+              name
+            )
           )
-        )
-      `)
-      .eq('product_type', 'accessory')
-      .not('accessory_id', 'is', null)
-      .gt('quantity_on_hand', 0) // Only show items with stock > 0
-      .ilike('accessories.name', `%${trimmedSearch}%`)
-      .is('accessories.deleted_at', null)
-
-    // Search by SKU - query current_stock and join accessories
-    const { data: skuStockResults } = await supabaseServer
-      .from('current_stock')
-      .select(`
-        accessory_id,
-        quantity_on_hand,
-        accessories!inner (
-          id,
-          name,
-          sku,
-          net_price,
-          deleted_at,
-          vat (
+        `)
+        .eq('product_type', 'accessory')
+        .not('accessory_id', 'is', null)
+        .gt('quantity_on_hand', 0)
+        .ilike('accessories.name', `%${trimmedSearch}%`)
+        .is('accessories.deleted_at', null)
+        .limit(resultLimit),
+      // Search by SKU
+      supabaseServer
+        .from('current_stock')
+        .select(`
+          accessory_id,
+          quantity_on_hand,
+          accessories!inner (
             id,
-            kulcs
-          ),
-          currencies (
-            id,
-            name
+            name,
+            sku,
+            net_price,
+            deleted_at,
+            vat (
+              id,
+              kulcs
+            ),
+            currencies (
+              id,
+              name
+            )
           )
-        )
-      `)
-      .eq('product_type', 'accessory')
-      .not('accessory_id', 'is', null)
-      .gt('quantity_on_hand', 0) // Only show items with stock > 0
-      .ilike('accessories.sku', `%${trimmedSearch}%`)
-      .is('accessories.deleted_at', null)
+        `)
+        .eq('product_type', 'accessory')
+        .not('accessory_id', 'is', null)
+        .gt('quantity_on_hand', 0)
+        .ilike('accessories.sku', `%${trimmedSearch}%`)
+        .is('accessories.deleted_at', null)
+        .limit(resultLimit)
+    ])
 
-    // Merge and group by accessory_id, summing quantity_on_hand
-    const allResults = [...(nameStockResults || []), ...(skuStockResults || [])]
+    // Check for errors
+    if (nameResult.error) {
+      console.error('Error searching accessories by name:', nameResult.error)
+      return NextResponse.json({ error: 'Failed to search accessories' }, { status: 500 })
+    }
+    if (skuResult.error) {
+      console.error('Error searching accessories by SKU:', skuResult.error)
+      return NextResponse.json({ error: 'Failed to search accessories' }, { status: 500 })
+    }
+
+    // Merge results from both queries
+    const allResults = [...(nameResult.data || []), ...(skuResult.data || [])]
     
     // Group by accessory_id and sum quantities
     const groupedByAccessory = new Map<string, {

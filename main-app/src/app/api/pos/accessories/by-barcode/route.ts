@@ -12,8 +12,7 @@ export async function GET(request: NextRequest) {
 
     const trimmedBarcode = barcode.trim()
 
-    // OPTIMIZED: Query accessories table first (fast index lookup)
-    // Then check current_stock view for inventory
+    // OPTIMIZED: Query accessory first (fast indexed lookup), then stock
     const { data: accessoryData, error: accessoryError } = await supabaseServer
       .from('accessories')
       .select(`
@@ -45,13 +44,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Accessory not found' }, { status: 404 })
     }
 
-    // Now check current_stock view for this specific accessory
+    // Now query stock for this specific accessory (fast, indexed lookup)
     const { data: stockData, error: stockError } = await supabaseServer
       .from('current_stock')
       .select('quantity_on_hand')
       .eq('product_type', 'accessory')
       .eq('accessory_id', accessoryData.id)
-      .gt('quantity_on_hand', 0) // Only items with stock > 0
+      .gt('quantity_on_hand', 0)
 
     if (stockError) {
       console.error('Error fetching stock:', stockError)
@@ -59,9 +58,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Sum quantity_on_hand across all warehouses
-    const quantity_on_hand = stockData?.reduce((sum, stock) => {
-      return sum + parseFloat(stock.quantity_on_hand.toString())
-    }, 0) || 0
+    const quantity_on_hand = (stockData || []).reduce((sum: number, stock: any) => {
+      return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
+    }, 0)
 
     // If no stock found, still return the accessory (user might want to see it)
     // But you can return 404 if you want to enforce stock > 0 requirement
