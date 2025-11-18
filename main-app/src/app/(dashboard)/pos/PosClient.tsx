@@ -113,16 +113,28 @@ interface DiscountItem {
   percentage: number
 }
 
-interface PosClientProps {
-  customers: Customer[]
+interface Worker {
+  id: string
+  name: string
+  nickname: string | null
+  mobile: string | null
+  color: string | null
+  created_at: string
+  updated_at: string
 }
 
-export default function PosClient({ customers }: PosClientProps) {
+interface PosClientProps {
+  customers: Customer[]
+  workers: Worker[]
+}
+
+export default function PosClient({ customers, workers }: PosClientProps) {
   const { hasAccess, loading } = usePagePermission('/pos')
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<AccessoryItem[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
   const [fees, setFees] = useState<FeeItem[]>([])
   const [discount, setDiscount] = useState<DiscountItem | null>(null)
@@ -138,6 +150,7 @@ export default function PosClient({ customers }: PosClientProps) {
       const savedCartItems = sessionStorage.getItem('pos_cart_items')
       const savedFees = sessionStorage.getItem('pos_fees')
       const savedDiscount = sessionStorage.getItem('pos_discount')
+      const savedWorkerId = sessionStorage.getItem('pos_selected_worker_id')
       if (savedCartItems) {
         setCartItems(JSON.parse(savedCartItems))
       }
@@ -147,10 +160,16 @@ export default function PosClient({ customers }: PosClientProps) {
       if (savedDiscount) {
         setDiscount(JSON.parse(savedDiscount))
       }
+      if (savedWorkerId) {
+        const worker = workers.find(w => w.id === savedWorkerId)
+        if (worker) {
+          setSelectedWorker(worker)
+        }
+      }
     } catch (error) {
       console.error('Error loading cart from session storage:', error)
     }
-  }, [])
+  }, [workers])
 
   // Save cart to session storage whenever it changes
   useEffect(() => {
@@ -182,6 +201,19 @@ export default function PosClient({ customers }: PosClientProps) {
       console.error('Error saving discount to session storage:', error)
     }
   }, [discount])
+
+  // Save selected worker to session storage whenever it changes
+  useEffect(() => {
+    try {
+      if (selectedWorker) {
+        sessionStorage.setItem('pos_selected_worker_id', selectedWorker.id)
+      } else {
+        sessionStorage.removeItem('pos_selected_worker_id')
+      }
+    } catch (error) {
+      console.error('Error saving worker to session storage:', error)
+    }
+  }, [selectedWorker])
   const barcodeInputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isScanningRef = useRef<boolean>(false)
@@ -667,6 +699,12 @@ export default function PosClient({ customers }: PosClientProps) {
     setEditingCustomer(customer)
   }
 
+  // Handle worker selection
+  const handleWorkerChange = (workerId: string) => {
+    const worker = workers.find(w => w.id === workerId)
+    setSelectedWorker(worker || null)
+  }
+
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -951,10 +989,12 @@ export default function PosClient({ customers }: PosClientProps) {
                   flex: 1,
                   overflowY: 'auto',
                   mb: 2,
-                  border: '1px solid',
-                  borderColor: 'divider',
+                  border: selectedWorker?.color ? `2px solid ${selectedWorker.color}` : '1px solid',
+                  borderColor: selectedWorker?.color ? selectedWorker.color : 'divider',
                   borderRadius: 1,
-                  minHeight: 0
+                  minHeight: 0,
+                  backgroundColor: selectedWorker?.color ? `${selectedWorker.color}10` : 'background.paper',
+                  transition: 'all 0.3s ease'
                 }}
               >
                 {cartItems.length === 0 && fees.length === 0 && !discount ? (
@@ -1271,17 +1311,94 @@ export default function PosClient({ customers }: PosClientProps) {
                     <RemoveCircleIcon />
                   </IconButton>
                 </Box>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  sx={{ py: 3, fontSize: '1.1rem', fontWeight: 'bold' }}
-                  disabled={cartItems.length === 0}
-                  onClick={handlePaymentClick}
-                >
-                  Fizetés
-                </Button>
+                {/* Worker Switcher and Fizetés Button */}
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    size="large"
+                    sx={{ 
+                      py: 3, 
+                      fontSize: '1.1rem', 
+                      fontWeight: 'bold', 
+                      width: '65%',
+                      height: '48px' // Explicit height to match worker input
+                    }}
+                    disabled={cartItems.length === 0}
+                    onClick={handlePaymentClick}
+                  >
+                    Fizetés
+                  </Button>
+                  <Autocomplete
+                    size="small"
+                    options={workers}
+                    getOptionLabel={(option) => option.nickname || option.name}
+                    value={selectedWorker}
+                    onChange={(event, newValue) => {
+                      if (newValue) {
+                        handleWorkerChange(newValue.id)
+                      } else {
+                        setSelectedWorker(null)
+                      }
+                      // Refocus barcode input after worker selection
+                      setTimeout(() => {
+                        refocusBarcodeInput()
+                      }, 100)
+                    }}
+                    onBlur={() => {
+                      // Refocus barcode input when worker field loses focus
+                      setTimeout(() => {
+                        if (!isEditingField) {
+                          refocusBarcodeInput()
+                        }
+                      }, 100)
+                    }}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Dolgozó"
+                        placeholder="Keresés dolgozó között..."
+                        onFocus={() => {
+                          // Set editing flag when worker field is focused
+                          setIsEditingField(true)
+                        }}
+                        onBlur={() => {
+                          // Clear editing flag after a delay
+                          setTimeout(() => {
+                            setIsEditingField(false)
+                            refocusBarcodeInput()
+                          }, 200)
+                        }}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            height: '48px', // Match button height (py: 3 = 24px top + 24px bottom, but button has fontSize which adds extra, so 48px total)
+                            backgroundColor: selectedWorker?.color ? `${selectedWorker.color}10` : 'background.paper',
+                            borderColor: selectedWorker?.color ? selectedWorker.color : undefined,
+                            '& fieldset': {
+                              borderColor: selectedWorker?.color ? selectedWorker.color : undefined,
+                              borderWidth: selectedWorker?.color ? '2px' : undefined,
+                            },
+                            '&:hover fieldset': {
+                              borderColor: selectedWorker?.color ? selectedWorker.color : undefined,
+                            },
+                            '&.Mui-focused fieldset': {
+                              borderColor: selectedWorker?.color ? selectedWorker.color : undefined,
+                              borderWidth: selectedWorker?.color ? '2px' : undefined,
+                            },
+                            transition: 'all 0.3s ease'
+                          }
+                        }}
+                      />
+                    )}
+                    isOptionEqualToValue={(option, value) => option.id === value.id}
+                    sx={{ width: '35%' }}
+                    ListboxProps={{
+                      style: {
+                        maxHeight: 300,
+                      }
+                    }}
+                  />
+                </Box>
               </Box>
             </Grid>
           </Grid>
