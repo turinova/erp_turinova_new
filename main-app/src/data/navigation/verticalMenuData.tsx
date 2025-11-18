@@ -43,6 +43,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#16A085' // Teal for reports
   },
   {
+    label: 'Pos',
+    href: '/pos',
+    icon: 'ri-computer-line',
+    iconColor: '#27AE60' // Green for POS/computer
+  },
+  {
     label: 'Lapszabászat',
     icon: 'ri-scissors-line',
     iconColor: '#E74C3C', // Red for cutting/manufacturing
