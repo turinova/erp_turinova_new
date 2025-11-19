@@ -1,0 +1,1458 @@
+'use client'
+
+import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { useDebounce } from '@/hooks/useDebounce'
+import {
+  Box,
+  Breadcrumbs,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider,
+  FormControl,
+  Grid,
+  IconButton,
+  InputLabel,
+  Link,
+  MenuItem,
+  Paper,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  Select,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+  Autocomplete,
+  Tooltip
+} from '@mui/material'
+import NextLink from 'next/link'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material'
+import { toast } from 'react-toastify'
+
+interface Customer {
+  id: string
+  name: string
+  email: string | null
+  mobile: string | null
+  discount_percent: number
+  billing_name: string | null
+  billing_country: string | null
+  billing_city: string | null
+  billing_postal_code: string | null
+  billing_street: string | null
+  billing_house_number: string | null
+  billing_tax_number: string | null
+  billing_company_reg_number: string | null
+}
+
+interface VatRate {
+  id: string
+  name: string
+  kulcs: number
+}
+
+interface Currency {
+  id: string
+  name: string
+}
+
+interface Unit {
+  id: string
+  name: string
+  shortform: string
+}
+
+interface Worker {
+  id: string
+  name: string
+  nickname: string | null
+  color: string
+}
+
+interface FeeType {
+  id: string
+  name: string
+  net_price: number
+  vat_id: string
+  currency_id: string
+}
+
+interface PosOrderItem {
+  id: string
+  item_type: 'product' | 'fee'
+  accessory_id: string | null
+  feetype_id: string | null
+  product_name: string
+  sku: string | null
+  quantity: number
+  unit_price_net: number
+  unit_price_gross: number
+  vat_id: string
+  currency_id: string
+  total_net: number
+  total_vat: number
+  total_gross: number
+}
+
+interface PosPayment {
+  id: string
+  payment_type: 'cash' | 'card'
+  amount: number
+  status: string
+  created_at: string
+  deleted_at: string | null
+}
+
+interface PosOrder {
+  id: string
+  pos_order_number: string
+  worker_id: string
+  worker_nickname: string
+  worker_color: string
+  customer_name: string | null
+  customer_email: string | null
+  customer_mobile: string | null
+  billing_name: string | null
+  billing_country: string | null
+  billing_city: string | null
+  billing_postal_code: string | null
+  billing_street: string | null
+  billing_house_number: string | null
+  billing_tax_number: string | null
+  billing_company_reg_number: string | null
+  discount_percentage: number
+  discount_amount: number
+  subtotal_net: number
+  total_vat: number
+  total_gross: number
+  status: string
+  created_at: string
+}
+
+interface PosOrderDetailClientProps {
+  id: string
+  initialOrder: PosOrder
+  initialItems: PosOrderItem[]
+  initialPayments: PosPayment[]
+  initialTotalPaid: number
+  initialBalance: number
+  initialCustomers: Customer[]
+  initialVatRates: VatRate[]
+  initialCurrencies: Currency[]
+  initialUnits: Unit[]
+  initialWorkers: Worker[]
+  initialFeeTypes: FeeType[]
+}
+
+export default function PosOrderDetailClient({
+  id,
+  initialOrder,
+  initialItems,
+  initialPayments,
+  initialTotalPaid,
+  initialBalance,
+  initialCustomers,
+  initialVatRates,
+  initialCurrencies,
+  initialUnits,
+  initialWorkers,
+  initialFeeTypes
+}: PosOrderDetailClientProps) {
+  const router = useRouter()
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Order state
+  const [order, setOrder] = useState<PosOrder>(initialOrder)
+  const [items, setItems] = useState<PosOrderItem[]>(initialItems)
+  const [payments, setPayments] = useState<PosPayment[]>(initialPayments)
+  // Calculate initial total paid from active payments only
+  const initialActivePayments = initialPayments.filter(p => !p.deleted_at)
+  const initialActiveTotalPaid = initialActivePayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+  const [totalPaid, setTotalPaid] = useState(initialActiveTotalPaid)
+  
+  // Calculate initial balance from summary (will be recalculated when summary changes)
+  const initialSummary = useMemo(() => {
+    const products = initialItems.filter(item => item.item_type === 'product')
+    const fees = initialItems.filter(item => item.item_type === 'fee')
+    
+    const itemsNet = products.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
+    const itemsVat = products.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
+    const itemsGross = products.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+    
+    const feesNet = fees.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
+    const feesVat = fees.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
+    const feesGross = fees.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+    
+    const totalNetBeforeDiscount = itemsNet + feesNet
+    const totalVatBeforeDiscount = itemsVat + feesVat
+    const totalGrossBeforeDiscount = itemsGross + feesGross
+    
+    const discountAmountValue = Number(initialOrder.discount_amount) || 0
+    const totalGrossAfterDiscount = totalGrossBeforeDiscount - discountAmountValue
+    
+    return { totalGrossAfterDiscount }
+  }, [])
+  
+  const [balance, setBalance] = useState(initialSummary.totalGrossAfterDiscount - initialActiveTotalPaid)
+
+  // Customer state
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [customerName, setCustomerName] = useState(initialOrder.customer_name || '')
+  const [customerEmail, setCustomerEmail] = useState(initialOrder.customer_email || '')
+  const [customerMobile, setCustomerMobile] = useState(initialOrder.customer_mobile || '')
+
+  // Billing state
+  const [billingName, setBillingName] = useState(initialOrder.billing_name || '')
+  const [billingCountry, setBillingCountry] = useState(initialOrder.billing_country || 'Magyarország')
+  const [billingCity, setBillingCity] = useState(initialOrder.billing_city || '')
+  const [billingPostalCode, setBillingPostalCode] = useState(initialOrder.billing_postal_code || '')
+  const [billingStreet, setBillingStreet] = useState(initialOrder.billing_street || '')
+  const [billingHouseNumber, setBillingHouseNumber] = useState(initialOrder.billing_house_number || '')
+  const [billingTaxNumber, setBillingTaxNumber] = useState(initialOrder.billing_tax_number || '')
+  const [billingCompanyRegNumber, setBillingCompanyRegNumber] = useState(initialOrder.billing_company_reg_number || '')
+
+  // References (declare first)
+  const [customers] = useState<Customer[]>(initialCustomers)
+  const [vatRates] = useState<VatRate[]>(initialVatRates)
+  const [currencies] = useState<Currency[]>(initialCurrencies)
+  const [units] = useState<Unit[]>(initialUnits)
+  const [workers] = useState<Worker[]>(initialWorkers)
+  const [feeTypes] = useState<FeeType[]>(initialFeeTypes)
+
+  // Worker state
+  const [workerId] = useState(initialOrder.worker_id)
+  const selectedWorker = workers.find(w => w.id === workerId)
+
+  // Discount state
+  const [discountPercentage, setDiscountPercentage] = useState(initialOrder.discount_percentage)
+  const [discountAmount, setDiscountAmount] = useState(initialOrder.discount_amount)
+
+  // Editing states
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [newItemType, setNewItemType] = useState<'product' | 'fee'>('product')
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+
+  // Payment modal state
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [newPaymentType, setNewPaymentType] = useState<'cash' | 'card'>('cash')
+  const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0)
+
+  // Calculate summary from items
+  const summary = useMemo(() => {
+    const products = items.filter(item => item.item_type === 'product')
+    const fees = items.filter(item => item.item_type === 'fee')
+    
+    const itemsNet = products.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
+    const itemsVat = products.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
+    const itemsGross = products.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+    
+    const feesNet = fees.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
+    const feesVat = fees.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
+    const feesGross = fees.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+    
+    // Totals before discount
+    const totalNetBeforeDiscount = itemsNet + feesNet
+    const totalVatBeforeDiscount = itemsVat + feesVat
+    const totalGrossBeforeDiscount = itemsGross + feesGross
+    
+    // Apply discount to gross total
+    const discountAmountValue = Number(discountAmount) || 0
+    const totalGrossAfterDiscount = totalGrossBeforeDiscount - discountAmountValue
+    
+    // Calculate net and VAT after discount proportionally
+    const discountRatio = totalGrossBeforeDiscount > 0 ? discountAmountValue / totalGrossBeforeDiscount : 0
+    const totalNetAfterDiscount = totalNetBeforeDiscount * (1 - discountRatio)
+    const totalVatAfterDiscount = totalVatBeforeDiscount * (1 - discountRatio)
+    
+    return {
+      itemsNet,
+      itemsVat,
+      itemsGross,
+      feesNet,
+      feesVat,
+      feesGross,
+      totalNetBeforeDiscount,
+      totalVatBeforeDiscount,
+      totalGrossBeforeDiscount,
+      totalNetAfterDiscount,
+      totalVatAfterDiscount,
+      totalGrossAfterDiscount
+    }
+  }, [items, discountAmount])
+
+  // Handle customer selection
+  const handleCustomerChange = (event: React.SyntheticEvent, newValue: Customer | null) => {
+    if (newValue) {
+      setSelectedCustomer(newValue)
+      setCustomerName(newValue.name)
+      setCustomerEmail(newValue.email || '')
+      setCustomerMobile(newValue.mobile || '')
+      // Also prefill billing data
+      setBillingName(newValue.billing_name || '')
+      setBillingCountry(newValue.billing_country || 'Magyarország')
+      setBillingCity(newValue.billing_city || '')
+      setBillingPostalCode(newValue.billing_postal_code || '')
+      setBillingStreet(newValue.billing_street || '')
+      setBillingHouseNumber(newValue.billing_house_number || '')
+      setBillingTaxNumber(newValue.billing_tax_number || '')
+      setBillingCompanyRegNumber(newValue.billing_company_reg_number || '')
+    } else {
+      setSelectedCustomer(null)
+      // Clear all customer and billing data
+      setCustomerName('')
+      setCustomerEmail('')
+      setCustomerMobile('')
+      setBillingName('')
+      setBillingCountry('Magyarország')
+      setBillingCity('')
+      setBillingPostalCode('')
+      setBillingStreet('')
+      setBillingHouseNumber('')
+      setBillingTaxNumber('')
+      setBillingCompanyRegNumber('')
+    }
+  }
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('hu-HU', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount) + ' Ft'
+  }
+
+  // Format date and time
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleString('hu-HU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Recalculate item totals when quantity or price changes
+  const recalculateItem = (item: PosOrderItem, newQuantity?: number, newUnitPriceNet?: number, newUnitPriceGross?: number): PosOrderItem => {
+    const quantity = newQuantity !== undefined ? newQuantity : item.quantity
+    const unitPriceNet = newUnitPriceNet !== undefined ? newUnitPriceNet : item.unit_price_net
+    const unitPriceGross = newUnitPriceGross !== undefined ? newUnitPriceGross : item.unit_price_gross
+    
+    const totalNet = unitPriceNet * quantity
+    const totalGross = unitPriceGross * quantity
+    const totalVat = totalGross - totalNet
+    
+    return {
+      ...item,
+      quantity,
+      unit_price_net: unitPriceNet,
+      unit_price_gross: unitPriceGross,
+      total_net: totalNet,
+      total_vat: totalVat,
+      total_gross: totalGross
+    }
+  }
+
+  // Update item quantity
+  const handleItemQuantityChange = (itemId: string, newQuantity: number) => {
+    setItems(prevItems => prevItems.map(item => 
+      item.id === itemId ? recalculateItem(item, newQuantity) : item
+    ))
+  }
+
+  // Update item unit price (net)
+  const handleItemPriceNetChange = (itemId: string, newPrice: number) => {
+    setItems(prevItems => prevItems.map(item => {
+      if (item.id !== itemId) return item
+      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+      const newGross = newPrice * (1 + vatRate / 100)
+      return recalculateItem(item, undefined, newPrice, newGross)
+    }))
+  }
+
+  // Update item unit price (gross)
+  const handleItemPriceGrossChange = (itemId: string, newPrice: number) => {
+    setItems(prevItems => prevItems.map(item => {
+      if (item.id !== itemId) return item
+      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+      const newNet = newPrice / (1 + vatRate / 100)
+      return recalculateItem(item, undefined, newNet, newPrice)
+    }))
+  }
+
+  // Remove item
+  const handleRemoveItem = (itemId: string) => {
+    setItems(prevItems => prevItems.filter(item => item.id !== itemId))
+  }
+
+  // Debounced search term for products
+  const debouncedProductSearchTerm = useDebounce(productSearchTerm, 300)
+  const productSearchAbortControllerRef = useRef<AbortController | null>(null)
+
+  // Search products when search term changes
+  useEffect(() => {
+    if (productSearchAbortControllerRef.current) {
+      productSearchAbortControllerRef.current.abort()
+    }
+
+    if (debouncedProductSearchTerm.trim().length >= 2) {
+      setIsSearchingProducts(true)
+      
+      const abortController = new AbortController()
+      productSearchAbortControllerRef.current = abortController
+
+      fetch(`/api/pos/accessories?search=${encodeURIComponent(debouncedProductSearchTerm)}`, {
+        signal: abortController.signal
+      })
+        .then(res => {
+          if (abortController.signal.aborted) return null
+          if (!res.ok) return []
+          return res.json()
+        })
+        .then(data => {
+          if (abortController.signal.aborted) return
+          if (Array.isArray(data)) {
+            setProductSearchResults(data)
+          } else {
+            setProductSearchResults([])
+          }
+          setIsSearchingProducts(false)
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return
+          console.error('Error searching products:', err)
+          if (!abortController.signal.aborted) {
+            setProductSearchResults([])
+            setIsSearchingProducts(false)
+          }
+        })
+    } else {
+      setProductSearchResults([])
+      setIsSearchingProducts(false)
+    }
+
+    return () => {
+      if (productSearchAbortControllerRef.current) {
+        productSearchAbortControllerRef.current.abort()
+        productSearchAbortControllerRef.current = null
+      }
+    }
+  }, [debouncedProductSearchTerm])
+
+  // Handle product selection
+  const handleProductSelect = (selectedProduct: any) => {
+    if (!selectedProduct) return
+
+    const vatRate = vatRates.find(v => v.id === selectedProduct.vat_id) || vatRates[0]
+    const vatPercent = vatRate?.kulcs || 0
+    const grossPrice = Math.round(selectedProduct.gross_price)
+
+    const newProduct: PosOrderItem = {
+      id: `temp-${Date.now()}`,
+      item_type: 'product',
+      accessory_id: selectedProduct.id,
+      feetype_id: null,
+      product_name: selectedProduct.name,
+      sku: selectedProduct.sku,
+      quantity: 1,
+      unit_price_net: selectedProduct.net_price,
+      unit_price_gross: grossPrice,
+      vat_id: selectedProduct.vat_id,
+      currency_id: selectedProduct.currency_id,
+      total_net: selectedProduct.net_price,
+      total_vat: grossPrice - selectedProduct.net_price,
+      total_gross: grossPrice
+    }
+
+    setItems(prevItems => [...prevItems, newProduct])
+    setAddingProduct(false)
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
+  // Add new product item
+  const handleAddProduct = () => {
+    setAddingProduct(true)
+  }
+
+  // Cancel adding product
+  const handleCancelAddProduct = () => {
+    setAddingProduct(false)
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
+  // Handle fee selection change
+  const handleFeeNameChange = (itemId: string, feetypeId: string | null) => {
+    if (!feetypeId) return
+    
+    const selectedFee = feeTypes.find(f => f.id === feetypeId)
+    if (!selectedFee) return
+    
+    const vatRate = vatRates.find(v => v.id === selectedFee.vat_id) || vatRates[0]
+    const vatPercent = vatRate?.kulcs || 0
+    const grossPrice = selectedFee.net_price * (1 + vatPercent / 100)
+    
+    setItems(prevItems => prevItems.map(item => {
+      if (item.id !== itemId) return item
+      return recalculateItem(
+        {
+          ...item,
+          feetype_id: feetypeId,
+          product_name: selectedFee.name,
+          unit_price_net: selectedFee.net_price,
+          unit_price_gross: grossPrice,
+          vat_id: selectedFee.vat_id,
+          currency_id: selectedFee.currency_id
+        }
+      )
+    }))
+  }
+
+  // Add new fee
+  const handleAddFee = () => {
+    if (feeTypes.length === 0) {
+      toast.warning('Nincs elérhető díjtípus')
+      return
+    }
+    
+    const defaultFee = feeTypes[0]
+    const defaultVat = vatRates.find(v => v.id === defaultFee.vat_id) || vatRates[0]
+    const vatPercent = defaultVat?.kulcs || 0
+    const grossPrice = defaultFee.net_price * (1 + vatPercent / 100)
+    
+    const newFee: PosOrderItem = {
+      id: `temp-${Date.now()}`,
+      item_type: 'fee',
+      accessory_id: null,
+      feetype_id: defaultFee.id,
+      product_name: defaultFee.name,
+      sku: null,
+      quantity: 1,
+      unit_price_net: defaultFee.net_price,
+      unit_price_gross: grossPrice,
+      vat_id: defaultFee.vat_id,
+      currency_id: defaultFee.currency_id,
+      total_net: defaultFee.net_price,
+      total_vat: grossPrice - defaultFee.net_price,
+      total_gross: grossPrice
+    }
+    
+    setItems(prevItems => [...prevItems, newFee])
+  }
+
+  // Soft delete payment
+  const handleRemovePayment = async (paymentId: string) => {
+    const paymentToRemove = payments.find(p => p.id === paymentId)
+    if (!paymentToRemove || paymentToRemove.deleted_at) return
+
+    try {
+      const res = await fetch(`/api/pos-orders/${id}/payments/${paymentId}`, {
+        method: 'DELETE'
+      })
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data?.error || 'Hiba a fizetés törlésekor')
+      }
+
+      // Update local state - mark as deleted but keep in list
+      setPayments(prevPayments => {
+        const updated = prevPayments.map(p => 
+          p.id === paymentId ? { ...p, deleted_at: new Date().toISOString() } : p
+        )
+        // Recalculate totals (exclude soft-deleted)
+        const activePayments = updated.filter(p => !p.deleted_at)
+        const newTotalPaid = activePayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+        setTotalPaid(newTotalPaid)
+        setBalance(summary.totalGrossAfterDiscount - newTotalPaid)
+        return updated
+      })
+      
+      toast.success('Fizetés törölve')
+    } catch (error: any) {
+      console.error('Error deleting payment:', error)
+      toast.error(error.message || 'Hiba a fizetés törlésekor')
+    }
+  }
+
+  // Open payment modal
+  const handleAddPayment = () => {
+    const remainingBalance = summary.totalGrossAfterDiscount - totalPaid
+    if (remainingBalance <= 0) {
+      toast.warning('A rendelés már teljesen kifizetve')
+      return
+    }
+    
+    setNewPaymentAmount(remainingBalance)
+    setPaymentModalOpen(true)
+  }
+
+  // Confirm and save new payment
+  const handleConfirmNewPayment = async () => {
+    if (newPaymentAmount <= 0) {
+      toast.error('A fizetési összegnek nagyobbnak kell lennie, mint 0')
+      return
+    }
+
+    const newTotalPaid = totalPaid + newPaymentAmount
+    if (newTotalPaid > summary.totalGrossAfterDiscount) {
+      toast.error('A fizetési összeg nem lehet nagyobb, mint a tartozás')
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/pos-orders/${id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_type: newPaymentType,
+          amount: newPaymentAmount
+        })
+      })
+      const data = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(data?.error || 'Hiba a fizetés hozzáadásakor')
+      }
+
+      // Add new payment to list
+      const newPayment: PosPayment = {
+        id: data.payment.id,
+        payment_type: newPaymentType,
+        amount: newPaymentAmount,
+        status: 'completed',
+        created_at: data.payment.created_at,
+        deleted_at: null
+      }
+      
+      setPayments(prevPayments => [...prevPayments, newPayment])
+      setTotalPaid(newTotalPaid)
+      setBalance(summary.totalGrossAfterDiscount - newTotalPaid)
+      setPaymentModalOpen(false)
+      setNewPaymentAmount(0)
+      setNewPaymentType('cash')
+      
+      toast.success('Fizetés hozzáadva')
+    } catch (error: any) {
+      console.error('Error adding payment:', error)
+      toast.error(error.message || 'Hiba a fizetés hozzáadásakor')
+    }
+  }
+
+  // Calculate total paid from active (non-deleted) payments
+  useEffect(() => {
+    const activePayments = payments.filter(p => !p.deleted_at)
+    const calculatedTotalPaid = activePayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
+    setTotalPaid(calculatedTotalPaid)
+    setBalance(summary.totalGrossAfterDiscount - calculatedTotalPaid)
+  }, [payments, summary.totalGrossAfterDiscount])
+
+  // Handle save
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      // TODO: Implement save logic with stock movement reversals
+      // 1. Update pos_order
+      // 2. Update/insert/delete pos_order_items
+      // 3. Update/insert/delete pos_payments
+      // 4. Handle stock movements (reverse old, create new)
+      
+      toast.success('Mentés sikeres')
+    } catch (error) {
+      console.error('Error saving POS order:', error)
+      toast.error('Hiba a mentés során')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <Link component={NextLink} href="/home" underline="hover" color="inherit">
+          <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+          Kezdőlap
+        </Link>
+        <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
+          Értékesítés
+        </Link>
+        <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
+          Rendelések
+        </Link>
+        <Typography color="text.primary">{order.pos_order_number}</Typography>
+      </Breadcrumbs>
+
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          POS rendelés: {order.pos_order_number}
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? 'Mentés...' : 'Mentés'}
+        </Button>
+      </Box>
+
+      <Stack spacing={3}>
+        {/* Two column layout: 60-40 */}
+        <Grid container spacing={3}>
+          {/* Left column: 60% - Alap adatok */}
+          <Grid item xs={12} md={7}>
+            <Stack spacing={3}>
+              {/* Alap adatok - Customer */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Alap adatok - Ügyfél
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Autocomplete
+                        fullWidth
+                        size="small"
+                        options={customers}
+                        getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
+                        value={selectedCustomer}
+                        inputValue={customerName}
+                        onInputChange={(event, newValue) => {
+                          setCustomerName(newValue)
+                          // If user clears the input, clear all customer and billing data
+                          if (!newValue || newValue.trim() === '') {
+                            setSelectedCustomer(null)
+                            setCustomerEmail('')
+                            setCustomerMobile('')
+                            setBillingName('')
+                            setBillingCountry('Magyarország')
+                            setBillingCity('')
+                            setBillingPostalCode('')
+                            setBillingStreet('')
+                            setBillingHouseNumber('')
+                            setBillingTaxNumber('')
+                            setBillingCompanyRegNumber('')
+                          }
+                        }}
+                        onChange={handleCustomerChange}
+                        freeSolo
+                        renderInput={(params) => (
+                          <TextField
+                            {...params}
+                            label="Ügyfél neve"
+                            size="small"
+                          />
+                        )}
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        label="E-mail"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Telefonszám"
+                        value={customerMobile}
+                        onChange={(e) => setCustomerMobile(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                  </Grid>
+          </CardContent>
+        </Card>
+
+              {/* Alap adatok - Billing */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Alap adatok - Számlázási adatok
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Számlázási név"
+                        value={billingName}
+                        onChange={(e) => setBillingName(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Ország"
+                        value={billingCountry}
+                        onChange={(e) => setBillingCountry(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Város"
+                        value={billingCity}
+                        onChange={(e) => setBillingCity(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Irányítószám"
+                        value={billingPostalCode}
+                        onChange={(e) => setBillingPostalCode(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Utca"
+                        value={billingStreet}
+                        onChange={(e) => setBillingStreet(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Házszám"
+                        value={billingHouseNumber}
+                        onChange={(e) => setBillingHouseNumber(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Adószám"
+                        value={billingTaxNumber}
+                        onChange={(e) => setBillingTaxNumber(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Cégjegyzékszám"
+                        value={billingCompanyRegNumber}
+                        onChange={(e) => setBillingCompanyRegNumber(e.target.value)}
+                        size="small"
+                      />
+                    </Grid>
+                  </Grid>
+          </CardContent>
+        </Card>
+            </Stack>
+          </Grid>
+
+          {/* Right column: 40% - Rendelési adatok and Tranzakciók */}
+          <Grid item xs={12} md={5}>
+            <Stack spacing={3}>
+              {/* Rendelési adatok */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Rendelési adatok
+                  </Typography>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12} md={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Rendelés szám:</strong>
+                      </Typography>
+                      <Typography variant="body1">
+                        {order.pos_order_number}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Létrehozva:</strong>
+                      </Typography>
+                      <Typography variant="body2">
+                        {formatDateTime(order.created_at)}
+                      </Typography>
+                    </Grid>
+                    {selectedWorker && (
+                      <Grid item xs={12} md={4}>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Dolgozó:</strong>
+                        </Typography>
+                        <Chip
+                          label={selectedWorker.nickname || selectedWorker.name}
+                          sx={{
+                            backgroundColor: selectedWorker.color || '#1976d2',
+                            color: 'white',
+                            fontWeight: 500
+                          }}
+                        />
+                      </Grid>
+                    )}
+                  </Grid>
+                </CardContent>
+              </Card>
+
+              {/* Tranzakciók */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Tranzakciók
+                  </Typography>
+                  {payments.length > 0 ? (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell padding="none" size="small">Fizetési mód</TableCell>
+                            <TableCell align="right" padding="none" size="small" sx={{ pr: 2 }}>Összeg</TableCell>
+                            <TableCell padding="none" size="small" sx={{ pl: 2 }}>Dátum</TableCell>
+                            <TableCell width={50} padding="none" size="small"></TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {payments.map(payment => {
+                            const isDeleted = !!payment.deleted_at
+                            return (
+                              <TableRow key={payment.id}>
+                                <TableCell padding="none" size="small">
+                                  <Chip
+                                    label={payment.payment_type === 'cash' ? 'Készpénz' : 'Bankkártya'}
+                                    size="small"
+                                    color={payment.payment_type === 'cash' ? 'success' : 'primary'}
+                                    sx={{
+                                      textDecoration: isDeleted ? 'line-through' : 'none',
+                                      opacity: isDeleted ? 0.6 : 1
+                                    }}
+                                  />
+                                </TableCell>
+                                <TableCell 
+                                  align="right" 
+                                  padding="none" 
+                                  size="small"
+                                  sx={{
+                                    textDecoration: isDeleted ? 'line-through' : 'none',
+                                    opacity: isDeleted ? 0.6 : 1,
+                                    pr: 2
+                                  }}
+                                >
+                                  {formatCurrency(payment.amount)}
+                                </TableCell>
+                                <TableCell 
+                                  padding="none" 
+                                  size="small"
+                                  sx={{
+                                    textDecoration: isDeleted ? 'line-through' : 'none',
+                                    opacity: isDeleted ? 0.6 : 1,
+                                    pl: 2
+                                  }}
+                                >
+                                  {formatDateTime(payment.created_at)}
+                                </TableCell>
+                                <TableCell padding="none" size="small">
+                                  {!isDeleted && (
+                                    <IconButton 
+                                      size="small" 
+                                      color="error"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleRemovePayment(payment.id)
+                                      }}
+                                    >
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Nincs fizetés
+                    </Typography>
+                  )}
+                  <Box sx={{ mt: 2 }}>
+                    <Button
+                      startIcon={<AddIcon />}
+                      variant="outlined"
+                      size="small"
+                      fullWidth
+                      onClick={handleAddPayment}
+                      disabled={balance <= 0 || summary.totalGrossAfterDiscount <= totalPaid}
+                    >
+                      Fizetés hozzáadása
+                    </Button>
+                  </Box>
+                  <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                    <Grid container spacing={1}>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Fizetve:</strong>
+                        </Typography>
+                        <Typography variant="body2">
+                          {formatCurrency(totalPaid)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6}>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Egyenleg:</strong>
+                        </Typography>
+                        <Typography variant="body2" color={balance > 0 ? 'error.main' : 'success.main'}>
+                          {formatCurrency(balance)}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Stack>
+          </Grid>
+        </Grid>
+
+        {/* Full width cards */}
+        {/* Tételek */}
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Tételek
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Név</TableCell>
+                    <TableCell>SKU</TableCell>
+                    <TableCell align="right">Mennyiség</TableCell>
+                    <TableCell align="right">Nettó egységár</TableCell>
+                    <TableCell align="right">Bruttó egységár</TableCell>
+                    <TableCell align="right">ÁFA</TableCell>
+                    <TableCell align="right">Bruttó részösszeg</TableCell>
+                    <TableCell width={50}></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {items.filter(item => item.item_type === 'product').map(item => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.product_name}</TableCell>
+                      <TableCell>{item.sku || '-'}</TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          type="number"
+                          value={item.quantity}
+                          size="small"
+                          sx={{ width: 80 }}
+                          onChange={(e) => {
+                            const newQty = parseFloat(e.target.value) || 0
+                            handleItemQuantityChange(item.id, newQty)
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">{formatCurrency(item.unit_price_net)}</TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          type="number"
+                          value={Math.round(item.unit_price_gross)}
+                          size="small"
+                          sx={{ width: 100 }}
+                          inputProps={{ step: 1 }}
+                          onChange={(e) => {
+                            const newPrice = Math.round(parseFloat(e.target.value) || 0)
+                            handleItemPriceGrossChange(item.id, newPrice)
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">{formatCurrency(item.total_vat)}</TableCell>
+                      <TableCell align="right">{formatCurrency(item.total_gross)}</TableCell>
+                      <TableCell>
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveItem(item.id)
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {addingProduct && (
+                    <TableRow>
+                      <TableCell colSpan={8}>
+                        <Autocomplete
+                          fullWidth
+                          size="small"
+                          options={productSearchResults}
+                          getOptionLabel={(option) => option.name || ''}
+                          loading={isSearchingProducts}
+                          inputValue={productSearchTerm}
+                          onInputChange={(event, newValue) => {
+                            setProductSearchTerm(newValue)
+                          }}
+                          onChange={(event, newValue) => {
+                            if (newValue) {
+                              handleProductSelect(newValue)
+                            }
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              placeholder="Keresés termék neve vagy SKU szerint..."
+                              size="small"
+                              InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                  <>
+                                    {isSearchingProducts ? <CircularProgress size={20} /> : null}
+                                    {params.InputProps.endAdornment}
+                                  </>
+                                )
+                              }}
+                            />
+                          )}
+                          renderOption={(props, option) => {
+                            const { key, ...otherProps } = props
+                            return (
+                              <Box component="li" key={key} {...otherProps}>
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="body2">{option.name}</Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    SKU: {option.sku} | Készlet: {option.quantity_on_hand} | {formatCurrency(option.gross_price)}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            )
+                          }}
+                          noOptionsText="Nincs találat"
+                          open={productSearchTerm.trim().length >= 2}
+                        />
+                        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                          <Button size="small" onClick={handleCancelAddProduct}>
+                            Mégse
+                          </Button>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Button
+              startIcon={<AddIcon />}
+              variant="outlined"
+              size="small"
+              sx={{ mt: 2 }}
+              onClick={handleAddProduct}
+              disabled={addingProduct}
+            >
+              Tétel hozzáadása
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Díjak */}
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Díjak
+            </Typography>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Név</TableCell>
+                    <TableCell align="right">Nettó egységár</TableCell>
+                    <TableCell align="right">Bruttó egységár</TableCell>
+                    <TableCell width={50}></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {items.filter(item => item.item_type === 'fee').map(item => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <Autocomplete
+                          size="small"
+                          options={feeTypes}
+                          getOptionLabel={(option) => option.name}
+                          value={feeTypes.find(f => f.id === item.feetype_id) || null}
+                          onChange={(event, newValue) => {
+                            if (newValue) {
+                              handleFeeNameChange(item.id, newValue.id)
+                            }
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              size="small"
+                              sx={{ width: 200 }}
+                            />
+                          )}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          type="number"
+                          value={item.unit_price_net}
+                          disabled
+                          size="small"
+                          sx={{ 
+                            width: 100,
+                            '& .MuiInputBase-input.Mui-disabled': {
+                              WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
+                              color: 'rgba(0, 0, 0, 0.87)',
+                              backgroundColor: 'transparent'
+                            },
+                            '& .MuiInputBase-root.Mui-disabled': {
+                              backgroundColor: 'transparent'
+                            }
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          type="number"
+                          value={Math.round(item.unit_price_gross)}
+                          size="small"
+                          sx={{ width: 100 }}
+                          inputProps={{ step: 1 }}
+                          onChange={(e) => {
+                            const newPrice = Math.round(parseFloat(e.target.value) || 0)
+                            handleItemPriceGrossChange(item.id, newPrice)
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <IconButton 
+                          size="small" 
+                          color="error"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemoveItem(item.id)
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Button
+              startIcon={<AddIcon />}
+              variant="outlined"
+              size="small"
+              sx={{ mt: 2 }}
+              onClick={handleAddFee}
+            >
+              Díj hozzáadása
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Summary */}
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Összesítés
+            </Typography>
+            <Grid container spacing={2}>
+              {/* Before discount section */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Kedvezmény nélkül:
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Nettó összesen kedvezmény nélkül
+                  </Typography>
+                  <Typography variant="h6">
+                    {formatCurrency(summary.totalNetBeforeDiscount)}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    ÁFA összesen kedvezmény nélkül
+                  </Typography>
+                  <Typography variant="h6">
+                    {formatCurrency(summary.totalVatBeforeDiscount)}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Bruttó összesen kedvezmény nélkül
+                  </Typography>
+                  <Typography variant="h6">
+                    {formatCurrency(summary.totalGrossBeforeDiscount)}
+                  </Typography>
+                </Box>
+              </Grid>
+
+              {/* Discount section */}
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Kedvezmény:
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Kedvezmény %"
+                  type="number"
+                  value={discountPercentage}
+                  onChange={(e) => {
+                    const percent = parseFloat(e.target.value) || 0
+                    setDiscountPercentage(percent)
+                    // Recalculate discount amount
+                    const newAmount = (summary.totalGrossBeforeDiscount * percent) / 100
+                    setDiscountAmount(newAmount)
+                  }}
+                  size="small"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  label="Kedvezmény összeg"
+                  value={formatCurrency(discountAmount)}
+                  disabled
+                  size="small"
+                  sx={{
+                    '& .MuiInputBase-input.Mui-disabled': {
+                      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
+                      color: 'rgba(0, 0, 0, 0.87)',
+                      backgroundColor: 'transparent'
+                    },
+                    '& .MuiInputBase-root.Mui-disabled': {
+                      backgroundColor: 'transparent'
+                    }
+                  }}
+                />
+              </Grid>
+
+              {/* After discount section */}
+              <Grid item xs={12}>
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Kedvezmény után:
+                </Typography>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, border: 1, borderColor: 'grey.300' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Nettó összesen
+                  </Typography>
+                  <Typography variant="h5" fontWeight="bold">
+                    {formatCurrency(summary.totalNetAfterDiscount)}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1, border: 1, borderColor: 'grey.300' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    ÁFA összesen
+                  </Typography>
+                  <Typography variant="h5" fontWeight="bold">
+                    {formatCurrency(summary.totalVatAfterDiscount)}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Box sx={{ p: 2, bgcolor: 'primary.lighter', borderRadius: 1, border: 1, borderColor: 'primary.main' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Bruttó összesen
+                  </Typography>
+                  <Typography variant="h5" color="primary.main" fontWeight="bold">
+                    {formatCurrency(summary.totalGrossAfterDiscount)}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </CardContent>
+        </Card>
+
+      </Stack>
+
+      {/* Payment Modal */}
+      <Dialog open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Fizetés hozzáadása</DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 1 }}>
+            <FormControl component="fieldset">
+              <Typography variant="body2" gutterBottom>
+                Fizetési mód
+              </Typography>
+              <RadioGroup
+                value={newPaymentType}
+                onChange={(e) => setNewPaymentType(e.target.value as 'cash' | 'card')}
+                row
+              >
+                <FormControlLabel value="cash" control={<Radio />} label="Készpénz" />
+                <FormControlLabel value="card" control={<Radio />} label="Bankkártya" />
+              </RadioGroup>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Összeg"
+              type="number"
+              value={newPaymentAmount}
+              onChange={(e) => {
+                const amount = parseFloat(e.target.value) || 0
+                setNewPaymentAmount(amount)
+              }}
+              helperText={`Tartozás: ${formatCurrency(summary.totalGrossAfterDiscount - totalPaid)}`}
+              inputProps={{ step: 1, min: 0, max: summary.totalGrossAfterDiscount - totalPaid }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentModalOpen(false)}>Mégse</Button>
+          <Button 
+            onClick={handleConfirmNewPayment} 
+            variant="contained"
+            disabled={newPaymentAmount <= 0 || newPaymentAmount > (summary.totalGrossAfterDiscount - totalPaid)}
+          >
+            Hozzáadás
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  )
+}
+

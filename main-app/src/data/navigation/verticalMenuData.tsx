@@ -49,6 +49,17 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#27AE60' // Green for POS/computer
   },
   {
+    label: 'Értékesítés',
+    icon: 'ri-shopping-cart-line',
+    iconColor: '#E67E22', // Orange for sales
+    children: [
+      {
+        label: 'Rendelések',
+        href: '/pos-orders'
+      }
+    ]
+  },
+  {
     label: 'Raktárak',
     icon: 'ri-archive-line',
     iconColor: '#D35400', // Orange for warehouse
