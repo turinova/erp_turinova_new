@@ -3326,3 +3326,121 @@ export async function getAllWarehouses() {
     return []
   }
 }
+
+export async function getAllStockMovements() {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return []
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from('stock_movements')
+      .select(`
+        id,
+        stock_movement_number,
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
+        quantity,
+        movement_type,
+        source_type,
+        source_id,
+        created_at,
+        note,
+        accessories:accessory_id(id, name, sku),
+        materials:material_id(id, name),
+        linear_materials:linear_material_id(id, name)
+      `)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Error fetching stock movements:', error)
+      return []
+    }
+
+    // Fetch source references
+    const sourceIdsByType = new Map<string, string[]>()
+    if (data) {
+      data.forEach((sm: any) => {
+        if (sm.source_type && sm.source_id) {
+          if (!sourceIdsByType.has(sm.source_type)) {
+            sourceIdsByType.set(sm.source_type, [])
+          }
+          sourceIdsByType.get(sm.source_type)!.push(sm.source_id)
+        }
+      })
+    }
+
+    // Fetch POS orders
+    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const { data: posOrders } = posOrderIds.length > 0
+      ? await supabaseServer
+          .from('pos_orders')
+          .select('id, pos_order_number')
+          .in('id', posOrderIds)
+      : { data: [] }
+    const posOrderMap = new Map((posOrders || []).map((po: any) => [po.id, po.pos_order_number]))
+
+    // Fetch shipments
+    const shipmentIds = sourceIdsByType.get('purchase_receipt') || []
+    const { data: shipments } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number')
+          .in('id', shipmentIds)
+      : { data: [] }
+    const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
+
+    // Transform data
+    const stockMovements = (data || []).map((sm: any) => {
+      let productName = ''
+      let sku = ''
+      
+      if (sm.product_type === 'accessory' && sm.accessories) {
+        productName = sm.accessories.name || ''
+        sku = sm.accessories.sku || ''
+      } else if (sm.product_type === 'material' && sm.materials) {
+        productName = sm.materials.name || ''
+      } else if (sm.product_type === 'linear_material' && sm.linear_materials) {
+        productName = sm.linear_materials.name || ''
+      }
+
+      let sourceReference = '-'
+      if (sm.source_type === 'pos_sale' && sm.source_id) {
+        sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
+        sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_id) {
+        sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      return {
+        id: sm.id,
+        stock_movement_number: sm.stock_movement_number || '',
+        warehouse_name: sm.warehouses?.name || '',
+        product_type: sm.product_type,
+        product_name: productName,
+        sku: sku,
+        quantity: Number(sm.quantity) || 0,
+        movement_type: sm.movement_type,
+        source_type: sm.source_type,
+        source_id: sm.source_id,
+        source_reference: sourceReference,
+        created_at: sm.created_at,
+        note: sm.note || ''
+      }
+    })
+
+    logTiming('Stock Movements Fetch', startTime, `returned ${stockMovements?.length || 0} records`)
+    return stockMovements || []
+  } catch (error) {
+    console.error('[SSR] Exception fetching stock movements:', error)
+    logTiming('Stock Movements Error', startTime)
+    return []
+  }
+}

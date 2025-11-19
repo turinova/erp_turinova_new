@@ -24,6 +24,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogActions,
   Checkbox,
   FormControlLabel,
   Chip
@@ -67,6 +68,8 @@ interface AccessoryItem {
   gross_price: number
   net_price: number
   currency_name: string
+  vat_id: string
+  currency_id: string
   image_url?: string | null
 }
 
@@ -84,6 +87,8 @@ interface CartItem {
   gross_price: number
   net_price: number
   currency_name: string
+  vat_id: string
+  currency_id: string
 }
 
 interface FeeType {
@@ -99,11 +104,15 @@ interface FeeType {
 
 interface FeeItem {
   id: string
-  feetype_id: string
+  feetype_id: string | null
   name: string
   quantity: number
   price: number
   currency_name: string
+  vat_id: string
+  currency_id: string
+  unit_price_net: number
+  unit_price_gross: number
 }
 
 interface DiscountItem {
@@ -142,32 +151,112 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const [barcodeInput, setBarcodeInput] = useState('')
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [pendingPaymentType, setPendingPaymentType] = useState<'cash' | 'card' | null>(null)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+
+  // Helper function to fetch accessory data by ID
+  const fetchAccessoryData = async (accessoryId: string): Promise<{ vat_id: string; currency_id: string } | null> => {
+    try {
+      const response = await fetch(`/api/accessories/${accessoryId}`)
+      if (!response.ok) {
+        return null
+      }
+      const data = await response.json()
+      return {
+        vat_id: data.vat_id || '',
+        currency_id: data.currency_id || ''
+      }
+    } catch (error) {
+      console.error('Error fetching accessory data:', error)
+      return null
+    }
+  }
+
+  // Validate and fix cart items - add missing vat_id and currency_id
+  const validateAndFixCartItems = async (items: CartItem[]): Promise<CartItem[]> => {
+    const fixedItems: CartItem[] = []
+    const itemsToFix: { item: CartItem; index: number }[] = []
+
+    // Check which items need fixing
+    items.forEach((item, index) => {
+      if (!item.vat_id || !item.currency_id) {
+        itemsToFix.push({ item, index })
+      } else {
+        fixedItems.push(item)
+      }
+    })
+
+    // If no items need fixing, return as-is
+    if (itemsToFix.length === 0) {
+      return items
+    }
+
+    // Fetch missing data for items that need it
+    const fixPromises = itemsToFix.map(async ({ item }) => {
+      const accessoryData = await fetchAccessoryData(item.accessory_id)
+      if (accessoryData && accessoryData.vat_id && accessoryData.currency_id) {
+        return {
+          ...item,
+          vat_id: accessoryData.vat_id,
+          currency_id: accessoryData.currency_id
+        }
+      }
+      // If we can't fetch the data, return null to remove the item
+      return null
+    })
+
+    const fixedResults = await Promise.all(fixPromises)
+    
+    // Add fixed items to the array
+    fixedResults.forEach((fixedItem) => {
+      if (fixedItem) {
+        fixedItems.push(fixedItem)
+      }
+    })
+
+    // If some items were removed, show a warning
+    if (fixedResults.some(item => item === null)) {
+      toast.warning('Néhány termék eltávolítva a kosárból, mert nem található az adatbázisban.')
+    }
+
+    return fixedItems
+  }
 
   // Load cart from session storage on mount
   useEffect(() => {
-    try {
-      const savedCartItems = sessionStorage.getItem('pos_cart_items')
-      const savedFees = sessionStorage.getItem('pos_fees')
-      const savedDiscount = sessionStorage.getItem('pos_discount')
-      const savedWorkerId = sessionStorage.getItem('pos_selected_worker_id')
-      if (savedCartItems) {
-        setCartItems(JSON.parse(savedCartItems))
-      }
-      if (savedFees) {
-        setFees(JSON.parse(savedFees))
-      }
-      if (savedDiscount) {
-        setDiscount(JSON.parse(savedDiscount))
-      }
-      if (savedWorkerId) {
-        const worker = workers.find(w => w.id === savedWorkerId)
-        if (worker) {
-          setSelectedWorker(worker)
+    const loadCartFromStorage = async () => {
+      try {
+        const savedCartItems = sessionStorage.getItem('pos_cart_items')
+        const savedFees = sessionStorage.getItem('pos_fees')
+        const savedDiscount = sessionStorage.getItem('pos_discount')
+        const savedWorkerId = sessionStorage.getItem('pos_selected_worker_id')
+        
+        if (savedCartItems) {
+          const parsedItems: CartItem[] = JSON.parse(savedCartItems)
+          // Validate and fix items that might be missing vat_id or currency_id
+          const validatedItems = await validateAndFixCartItems(parsedItems)
+          setCartItems(validatedItems)
         }
+        
+        if (savedFees) {
+          setFees(JSON.parse(savedFees))
+        }
+        if (savedDiscount) {
+          setDiscount(JSON.parse(savedDiscount))
+        }
+        if (savedWorkerId) {
+          const worker = workers.find(w => w.id === savedWorkerId)
+          if (worker) {
+            setSelectedWorker(worker)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cart from session storage:', error)
       }
-    } catch (error) {
-      console.error('Error loading cart from session storage:', error)
     }
+
+    loadCartFromStorage()
   }, [workers])
 
   // Save cart to session storage whenever it changes
@@ -537,7 +626,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         quantity: 1,
         gross_price: roundedPrice,
         net_price: accessory.net_price,
-        currency_name: accessory.currency_name
+        currency_name: accessory.currency_name,
+        vat_id: accessory.vat_id,
+        currency_id: accessory.currency_id
       }
       setCartItems(prev => [...prev, newItem])
       return newItem.id
@@ -602,7 +693,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       name: firstFeeType.name,
       quantity: 1,
       price: roundedPrice,
-      currency_name: firstFeeType.currency_name
+      currency_name: firstFeeType.currency_name,
+      vat_id: firstFeeType.vat_id,
+      currency_id: firstFeeType.currency_id,
+      unit_price_net: firstFeeType.net_price,
+      unit_price_gross: roundedPrice
     }
     setFees(prev => [...prev, newFee])
   }
@@ -617,7 +712,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     setFees(prev =>
       prev.map(fee =>
         fee.id === feeId
-          ? { ...fee, price: newPrice >= 0 ? newPrice : 0 }
+          ? { ...fee, price: newPrice >= 0 ? newPrice : 0, unit_price_gross: newPrice >= 0 ? newPrice : 0 }
           : fee
       )
     )
@@ -637,7 +732,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 feetype_id: selectedFeeType.id,
                 name: selectedFeeType.name,
                 price: roundedPrice,
-                currency_name: selectedFeeType.currency_name
+                currency_name: selectedFeeType.currency_name,
+                vat_id: selectedFeeType.vat_id,
+                currency_id: selectedFeeType.currency_id,
+                unit_price_net: selectedFeeType.net_price,
+                unit_price_gross: roundedPrice
               }
             : fee
         )
@@ -687,11 +786,175 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     })
   }
 
-  // Handle payment button click
+  // Handle payment button click - opens payment modal (original behavior)
   const handlePaymentClick = () => {
+    if (cartItems.length === 0) {
+      toast.warning('A kosár üres')
+      return
+    }
+    if (!selectedWorker) {
+      toast.warning('Válasszon dolgozót')
+      return
+    }
     setEditingCustomer(selectedCustomer)
     setPaymentModalOpen(true)
   }
+
+  // Handle payment type selection in payment modal - opens confirmation
+  const handlePaymentTypeClick = (paymentType: 'cash' | 'card') => {
+    setPendingPaymentType(paymentType)
+    setPaymentModalOpen(false)
+    setConfirmModalOpen(true)
+  }
+
+  // Handle confirm payment - creates POS order
+  const handleConfirmPayment = async () => {
+    if (!pendingPaymentType || !selectedWorker || cartItems.length === 0) {
+      toast.error('Hiányzó adatok a fizetéshez')
+      return
+    }
+
+    setIsProcessingPayment(true)
+
+    try {
+      // Validate all cart items have required fields before proceeding
+      let validCartItems = cartItems
+      const invalidItems = cartItems.filter(item => !item.vat_id || !item.currency_id || !item.accessory_id)
+      if (invalidItems.length > 0) {
+        // Try to fix invalid items
+        const fixedItems = await validateAndFixCartItems(cartItems)
+        const stillInvalid = fixedItems.filter(item => !item.vat_id || !item.currency_id || !item.accessory_id)
+        
+        if (stillInvalid.length > 0) {
+          toast.error('Néhány termék hiányos adatokkal rendelkezik. Kérjük, távolítsa el őket a kosárból és adja hozzá újra.')
+          setIsProcessingPayment(false)
+          return
+        }
+        
+        // Update cart with fixed items
+        setCartItems(fixedItems)
+        
+        // If cart is now empty after fixing, stop
+        if (fixedItems.length === 0) {
+          toast.error('A kosár üres lett az érvénytelen termékek eltávolítása után.')
+          setIsProcessingPayment(false)
+          return
+        }
+        
+        // Use fixed items for the rest of the function
+        validCartItems = fixedItems
+      }
+
+      // Calculate discount amount
+      const cartTotal = validCartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
+      const feesTotal = fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)
+      const subtotalBeforeDiscount = cartTotal + feesTotal
+      const discountAmount = discount ? (subtotalBeforeDiscount * discount.percentage) / 100 : 0
+
+      // Build items payload (use validated cart items)
+      const itemsPayload = validCartItems.map(item => ({
+        accessory_id: item.accessory_id,
+        name: item.name,
+        sku: item.sku,
+        quantity: item.quantity,
+        unit_price_net: item.net_price,
+        unit_price_gross: item.gross_price,
+        vat_id: item.vat_id,
+        currency_id: item.currency_id
+      }))
+
+      // Validate fees have required fields
+      const invalidFees = fees.filter(fee => !fee.vat_id || !fee.currency_id)
+      if (invalidFees.length > 0) {
+        toast.error('Néhány díj hiányos adatokkal rendelkezik. Kérjük, távolítsa el őket és adja hozzá újra.')
+        setIsProcessingPayment(false)
+        return
+      }
+
+      // Build fees payload
+      const feesPayload = fees.map(fee => ({
+        feetype_id: fee.feetype_id || null,
+        name: fee.name,
+        quantity: fee.quantity,
+        unit_price_net: fee.unit_price_net,
+        unit_price_gross: fee.unit_price_gross,
+        vat_id: fee.vat_id,
+        currency_id: fee.currency_id
+      }))
+
+      // Build customer payload (use editingCustomer if set, otherwise selectedCustomer)
+      const customer = editingCustomer || selectedCustomer
+      const customerPayload = customer ? {
+        name: customer.name || null,
+        email: customer.email || null,
+        mobile: customer.mobile || null,
+        billing_name: customer.billing_name || null,
+        billing_country: customer.billing_country || null,
+        billing_city: customer.billing_city || null,
+        billing_postal_code: customer.billing_postal_code || null,
+        billing_street: customer.billing_street || null,
+        billing_house_number: customer.billing_house_number || null,
+        billing_tax_number: customer.billing_tax_number || null,
+        billing_company_reg_number: customer.billing_company_reg_number || null
+      } : {}
+
+      // Build request payload
+      const payload = {
+        worker_id: selectedWorker.id,
+        payment_type: pendingPaymentType,
+        customer: customerPayload,
+        discount: {
+          percentage: discount?.percentage || 0,
+          amount: discountAmount
+        },
+        items: itemsPayload,
+        fees: feesPayload
+      }
+
+      // Call API
+      const response = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Hiba történt a rendelés létrehozásakor')
+      }
+
+      // Success - clear everything
+      toast.success(`Rendelés sikeresen létrehozva: ${data.pos_order?.pos_order_number || ''}`)
+      
+      // Clear cart, fees, discount, worker
+      setCartItems([])
+      setFees([])
+      setDiscount(null)
+      setSelectedWorker(null)
+      setSelectedCustomer(null)
+      setEditingCustomer(null)
+      
+      // Clear session storage
+      sessionStorage.removeItem('pos_cart_items')
+      sessionStorage.removeItem('pos_fees')
+      sessionStorage.removeItem('pos_discount')
+      sessionStorage.removeItem('pos_selected_worker_id')
+      
+      // Close modals
+      setConfirmModalOpen(false)
+      setPaymentModalOpen(false)
+      setPendingPaymentType(null)
+    } catch (error: any) {
+      console.error('Error creating POS order:', error)
+      toast.error(error.message || 'Hiba történt a rendelés létrehozásakor')
+    } finally {
+      setIsProcessingPayment(false)
+    }
+  }
+
 
   // Handle customer selection in modal
   const handleModalCustomerChange = (customer: Customer | null) => {
@@ -1663,6 +1926,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     fullWidth
                     startIcon={<CashIcon />}
                     sx={{ py: 2.5, fontSize: '1.1rem', fontWeight: 'bold' }}
+                    onClick={() => handlePaymentTypeClick('cash')}
+                    disabled={isProcessingPayment}
                   >
                     Készpénz
                   </Button>
@@ -1673,6 +1938,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     fullWidth
                     startIcon={<CardIcon />}
                     sx={{ py: 2.5, fontSize: '1.1rem', fontWeight: 'bold' }}
+                    onClick={() => handlePaymentTypeClick('card')}
+                    disabled={isProcessingPayment}
                   >
                     Bankkártya
                   </Button>
@@ -1680,6 +1947,140 @@ export default function PosClient({ customers, workers }: PosClientProps) {
             </Grid>
           </Grid>
         </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Modal */}
+      <Dialog
+        open={confirmModalOpen}
+        onClose={() => {
+          if (!isProcessingPayment) {
+            setConfirmModalOpen(false)
+            setPendingPaymentType(null)
+          }
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Rendelés megerősítése</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body1" sx={{ mb: 3, fontWeight: 'bold' }}>
+              Biztosan folytatod?
+            </Typography>
+
+            {/* Order Summary Table */}
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 'bold' }}>Mennyiség</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>Egységár</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>Részösszeg</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {cartItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="bold">
+                          {item.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {item.sku}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">{item.quantity}</TableCell>
+                      <TableCell align="right">
+                        {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
+                      </TableCell>
+                      <TableCell align="right">
+                        {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+
+            {/* Fees Section */}
+            {fees.length > 0 && (
+              <TableContainer sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Díjak</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>Összeg</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {fees.map((fee) => (
+                      <TableRow key={fee.id}>
+                        <TableCell>{fee.name}</TableCell>
+                        <TableCell align="right">
+                          {getFeeSubtotal(fee).toLocaleString('hu-HU')} {fee.currency_name}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* Discount Section */}
+            {discount && (
+              <TableContainer sx={{ mt: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Kedvezmény</TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 'bold' }}>Százalék</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>Összeg</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell>{discount.name}</TableCell>
+                      <TableCell align="center">{discount.percentage}%</TableCell>
+                      <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                        -{((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100).toLocaleString('hu-HU')} HUF
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+
+            {/* Total */}
+            <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+              <Typography variant="h6" align="right" sx={{ fontWeight: 'bold' }}>
+                Összesen: {total.toLocaleString('hu-HU')} HUF
+              </Typography>
+              <Typography variant="body2" align="right" color="text.secondary">
+                Fizetési mód: {pendingPaymentType === 'cash' ? 'Készpénz' : 'Bankkártya'}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => {
+              setConfirmModalOpen(false)
+              setPendingPaymentType(null)
+            }}
+            disabled={isProcessingPayment}
+          >
+            Mégse
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleConfirmPayment}
+            disabled={isProcessingPayment}
+          >
+            {isProcessingPayment ? 'Feldolgozás...' : 'Megerősítés'}
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   )

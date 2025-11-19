@@ -79,6 +79,8 @@ export async function GET(request: NextRequest) {
       gross_price: gross_price,
       net_price: accessoryData.net_price,
       currency_name: accessoryData.currencies?.name || 'HUF',
+      vat_id: accessoryData.vat?.id || '',
+      currency_id: accessoryData.currencies?.id || '',
       image_url: null
     })
   } catch (error) {

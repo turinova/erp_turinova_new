@@ -128,6 +128,8 @@ export async function GET(request: NextRequest) {
         gross_price: gross_price,
         net_price: accessory.net_price,
         currency_name: accessory.currencies?.name || 'HUF',
+        vat_id: accessory.vat?.id || '',
+        currency_id: accessory.currencies?.id || '',
         image_url: null
       }
     })
