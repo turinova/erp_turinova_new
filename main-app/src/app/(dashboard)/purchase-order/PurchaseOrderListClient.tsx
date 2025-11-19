@@ -3,11 +3,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Box, Button, Breadcrumbs, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, InputLabel, Link, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Checkbox, InputAdornment, Tooltip
+  Box, Button, Breadcrumbs, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, InputLabel, Link, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Checkbox, InputAdornment, Tooltip, Pagination
 } from '@mui/material'
 import NextLink from 'next/link'
 import { Home as HomeIcon, Add as AddIcon, Check as ApproveIcon, Delete as DeleteIcon, Search as SearchIcon, LocalShipping as ShippingIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface ShipmentInfo {
   id: string
@@ -28,90 +29,125 @@ interface PurchaseOrderRow {
 }
 
 interface PurchaseOrderListClientProps {
-  initialPurchaseOrders?: PurchaseOrderRow[]
+  initialPurchaseOrders: PurchaseOrderRow[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  initialSearchTerm: string
+  initialStatusFilter: string
+  initialPageSize: number
 }
 
-export default function PurchaseOrderListClient({ initialPurchaseOrders = [] }: PurchaseOrderListClientProps) {
+export default function PurchaseOrderListClient({ 
+  initialPurchaseOrders,
+  totalCount,
+  totalPages,
+  currentPage,
+  initialSearchTerm,
+  initialStatusFilter,
+  initialPageSize = 50
+}: PurchaseOrderListClientProps) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  const [allPurchaseOrders, setAllPurchaseOrders] = useState<PurchaseOrderRow[]>(initialPurchaseOrders) // Store ALL records
-  const [rows, setRows] = useState<PurchaseOrderRow[]>(initialPurchaseOrders) // Filtered/displayed records
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [partnerSearch, setPartnerSearch] = useState<string>('')
+  const [rows, setRows] = useState<PurchaseOrderRow[]>(initialPurchaseOrders)
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter)
+  const [partnerSearch, setPartnerSearch] = useState<string>(initialSearchTerm)
+  const [pageSize, setPageSize] = useState(initialPageSize)
+  const [clientPage, setClientPage] = useState(currentPage)
+  const [mounted, setMounted] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [shipmentConfirmOpen, setShipmentConfirmOpen] = useState(false)
   const [pendingShipmentPoId, setPendingShipmentPoId] = useState<string | null>(null)
+  const debouncedSearchTerm = useDebounce(partnerSearch, 500)
 
-  // Calculate status counts from ALL records, not filtered rows
-  const statusCounts = useMemo(() => {
-    return {
-      all: allPurchaseOrders.length,
-      draft: allPurchaseOrders.filter(r => r.status === 'draft').length,
-      confirmed: allPurchaseOrders.filter(r => r.status === 'confirmed').length,
-      partial: allPurchaseOrders.filter(r => r.status === 'partial').length,
-      received: allPurchaseOrders.filter(r => r.status === 'received').length,
-      cancelled: allPurchaseOrders.filter(r => r.status === 'cancelled').length
-    }
-  }, [allPurchaseOrders])
+  // Fetch total counts for filters (always show total, not filtered count)
+  const [statusCounts, setStatusCounts] = useState({
+    all: totalCount,
+    draft: 0,
+    confirmed: 0,
+    partial: 0,
+    received: 0,
+    cancelled: 0
+  })
 
-  const fetchRows = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
-      if (partnerSearch.trim()) params.set('search', partnerSearch.trim())
-      const res = await fetch(`/api/purchase-order?${params.toString()}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Hiba a PO-k lekérdezésekor')
-      const fetchedRows = data.purchase_orders || []
-      setRows(fetchedRows)
-      
-      // If fetching all (no filters), also update allPurchaseOrders
-      if (statusFilter === 'all' && !partnerSearch.trim()) {
-        setAllPurchaseOrders(fetchedRows)
-      } else {
-        // If filters are applied, fetch all records separately to update counts
-        fetch('/api/purchase-order')
-          .then(res => res.json())
-          .then(data => {
-            if (data.purchase_orders) {
-              setAllPurchaseOrders(data.purchase_orders)
-            }
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Fetch filter counts on mount
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const res = await fetch('/api/purchase-order')
+        const data = await res.json()
+        if (res.ok && data.purchase_orders) {
+          const all = data.purchase_orders
+          setStatusCounts({
+            all: all.length,
+            draft: all.filter((r: PurchaseOrderRow) => r.status === 'draft').length,
+            confirmed: all.filter((r: PurchaseOrderRow) => r.status === 'confirmed').length,
+            partial: all.filter((r: PurchaseOrderRow) => r.status === 'partial').length,
+            received: all.filter((r: PurchaseOrderRow) => r.status === 'received').length,
+            cancelled: all.filter((r: PurchaseOrderRow) => r.status === 'cancelled').length
           })
-          .catch(console.error)
+        }
+      } catch (e) {
+        console.error('Error fetching filter counts:', e)
       }
-    } catch (e) {
-      console.error(e)
-      toast.error('Hiba a PO-k betöltésekor')
-    } finally {
-      setLoading(false)
     }
+    fetchCounts()
+  }, [])
+
+  // Update rows when initialPurchaseOrders changes (from server-side pagination)
+  useEffect(() => {
+    setRows(initialPurchaseOrders)
+    setClientPage(currentPage)
+  }, [initialPurchaseOrders, currentPage])
+
+  // Handle filter changes - navigate to page 1 with new filters
+  const handleFilterChange = (newStatus: string) => {
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    if (newStatus !== 'all') params.set('status', newStatus)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/purchase-order?${params.toString()}`)
   }
 
-  // Only fetch if we don't have initial data or when filters change
+  // Handle search - navigate to page 1 with search term
   useEffect(() => {
-    if (initialPurchaseOrders.length === 0 || statusFilter !== 'all' || partnerSearch.trim()) {
-      fetchRows()
-    } else {
-      // Use initial data when no filters are applied
-      setRows(initialPurchaseOrders)
-      setAllPurchaseOrders(initialPurchaseOrders)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter])
-  
-  useEffect(() => {
-    if (partnerSearch.trim()) {
-      const h = setTimeout(() => { fetchRows() }, 400)
-      return () => clearTimeout(h)
-    } else if (initialPurchaseOrders.length > 0 && statusFilter === 'all') {
-      // Reset to initial data when search is cleared and no status filter
-      setRows(initialPurchaseOrders)
-      setAllPurchaseOrders(initialPurchaseOrders)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partnerSearch])
+    if (!mounted) return
+    
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/purchase-order?${params.toString()}`)
+  }, [debouncedSearchTerm, mounted, router, statusFilter, pageSize])
+
+  // Handle page change
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    const params = new URLSearchParams()
+    params.set('page', value.toString())
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/purchase-order?${params.toString()}`)
+  }
+
+  // Handle page size change
+  const handlePageSizeChange = (event: any) => {
+    const newPageSize = parseInt(event.target.value, 10)
+    setPageSize(newPageSize)
+    const params = new URLSearchParams()
+    params.set('page', '1') // Reset to first page
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    params.set('limit', newPageSize.toString())
+    router.push(`/purchase-order?${params.toString()}`)
+  }
+
 
   const handleApprove = async () => {
     if (selectedIds.size === 0) return
@@ -126,19 +162,8 @@ export default function PurchaseOrderListClient({ initialPurchaseOrders = [] }: 
       if (!res.ok) throw new Error(data?.error || 'Hiba a jóváhagyáskor')
       toast.success(`Jóváhagyva: ${data.updated_count}`)
       setSelectedIds(new Set())
-      // Refresh both filtered rows and all records
-      fetchRows()
-      // Also fetch all records to update counts
-      if (statusFilter !== 'all' || partnerSearch.trim()) {
-        fetch('/api/purchase-order')
-          .then(res => res.json())
-          .then(data => {
-            if (data.purchase_orders) {
-              setAllPurchaseOrders(data.purchase_orders)
-            }
-          })
-          .catch(console.error)
-      }
+      // Refresh the page to show updated data
+      router.refresh()
     } catch (e) {
       console.error(e)
       toast.error('Hiba a jóváhagyás során')
@@ -226,19 +251,8 @@ export default function PurchaseOrderListClient({ initialPurchaseOrders = [] }: 
       }
       
       setSelectedIds(new Set())
-      // Refresh both filtered rows and all records
-      fetchRows()
-      // Also fetch all records to update counts
-      if (statusFilter !== 'all' || partnerSearch.trim()) {
-        fetch('/api/purchase-order')
-          .then(res => res.json())
-          .then(data => {
-            if (data.purchase_orders) {
-              setAllPurchaseOrders(data.purchase_orders)
-            }
-          })
-          .catch(console.error)
-      }
+      // Refresh the page to show updated data
+      router.refresh()
     } catch (e) {
       console.error(e)
       // Error toast already shown above if it was a 400
@@ -274,42 +288,60 @@ export default function PurchaseOrderListClient({ initialPurchaseOrders = [] }: 
         </Typography>
         <Chip
           label={`Összes (${statusCounts.all})`}
-          onClick={() => setStatusFilter('all')}
+          onClick={() => {
+            setStatusFilter('all')
+            handleFilterChange('all')
+          }}
           color={statusFilter === 'all' ? 'primary' : 'default'}
           variant={statusFilter === 'all' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Várakozik (${statusCounts.draft})`}
-          onClick={() => setStatusFilter('draft')}
+          onClick={() => {
+            setStatusFilter('draft')
+            handleFilterChange('draft')
+          }}
           color={statusFilter === 'draft' ? 'warning' : 'default'}
           variant={statusFilter === 'draft' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Megrendelve (${statusCounts.confirmed})`}
-          onClick={() => setStatusFilter('confirmed')}
+          onClick={() => {
+            setStatusFilter('confirmed')
+            handleFilterChange('confirmed')
+          }}
           color={statusFilter === 'confirmed' ? 'success' : 'default'}
           variant={statusFilter === 'confirmed' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Részben beérkezett (${statusCounts.partial})`}
-          onClick={() => setStatusFilter('partial')}
+          onClick={() => {
+            setStatusFilter('partial')
+            handleFilterChange('partial')
+          }}
           color={statusFilter === 'partial' ? 'info' : 'default'}
           variant={statusFilter === 'partial' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Beérkezett (${statusCounts.received})`}
-          onClick={() => setStatusFilter('received')}
+          onClick={() => {
+            setStatusFilter('received')
+            handleFilterChange('received')
+          }}
           color={statusFilter === 'received' ? 'primary' : 'default'}
           variant={statusFilter === 'received' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Törölve (${statusCounts.cancelled})`}
-          onClick={() => setStatusFilter('cancelled')}
+          onClick={() => {
+            setStatusFilter('cancelled')
+            handleFilterChange('cancelled')
+          }}
           color={statusFilter === 'cancelled' ? 'error' : 'default'}
           variant={statusFilter === 'cancelled' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
@@ -422,12 +454,7 @@ export default function PurchaseOrderListClient({ initialPurchaseOrders = [] }: 
         </Box>
       )}
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper}>
+      <TableContainer component={Paper}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
@@ -535,7 +562,43 @@ export default function PurchaseOrderListClient({ initialPurchaseOrders = [] }: 
             </TableBody>
           </Table>
         </TableContainer>
-      )}
+
+      {/* Pagination */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          {debouncedSearchTerm || statusFilter !== 'all'
+            ? `Keresési eredmény: ${totalCount} rendelés` 
+            : `Összesen ${totalCount} rendelés`
+          }
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={pageSize}
+              onChange={handlePageSizeChange}
+              displayEmpty
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            Oldal mérete
+          </Typography>
+        </Box>
+        
+        <Pagination
+          count={totalPages}
+          page={clientPage}
+          onChange={handlePageChange}
+          color="primary"
+          showFirstButton
+          showLastButton
+        />
+      </Box>
 
       {/* Shipment Creation Confirmation Dialog */}
       <Dialog

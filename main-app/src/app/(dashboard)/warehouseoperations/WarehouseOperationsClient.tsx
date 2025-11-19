@@ -3,12 +3,13 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Box, Breadcrumbs, Chip, CircularProgress, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, InputAdornment
+  Box, Breadcrumbs, Chip, CircularProgress, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, InputAdornment, Pagination, Select, MenuItem, FormControl
 } from '@mui/material'
 import NextLink from 'next/link'
 import { Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { usePagePermission } from '@/hooks/usePagePermission'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface StockMovementRow {
   id: string
@@ -27,91 +28,133 @@ interface StockMovementRow {
 }
 
 interface WarehouseOperationsClientProps {
-  initialStockMovements?: StockMovementRow[]
+  initialStockMovements: StockMovementRow[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  initialSearchTerm: string
+  initialMovementType: string
+  initialSourceType: string
+  initialPageSize: number
 }
 
-export default function WarehouseOperationsClient({ initialStockMovements = [] }: WarehouseOperationsClientProps) {
+export default function WarehouseOperationsClient({ 
+  initialStockMovements,
+  totalCount,
+  totalPages,
+  currentPage,
+  initialSearchTerm,
+  initialMovementType,
+  initialSourceType,
+  initialPageSize = 50
+}: WarehouseOperationsClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [allStockMovements, setAllStockMovements] = useState<StockMovementRow[]>(initialStockMovements)
   const [rows, setRows] = useState<StockMovementRow[]>(initialStockMovements)
-  const [movementTypeFilter, setMovementTypeFilter] = useState<string>('all')
-  const [sourceTypeFilter, setSourceTypeFilter] = useState<string>('all')
-  const [search, setSearch] = useState<string>('')
+  const [movementTypeFilter, setMovementTypeFilter] = useState<string>(initialMovementType)
+  const [sourceTypeFilter, setSourceTypeFilter] = useState<string>(initialSourceType)
+  const [search, setSearch] = useState<string>(initialSearchTerm)
+  const [pageSize, setPageSize] = useState(initialPageSize)
+  const [clientPage, setClientPage] = useState(currentPage)
+  const [mounted, setMounted] = useState(false)
   const { hasAccess, loading: permissionLoading } = usePagePermission('/warehouseoperations')
+  const debouncedSearchTerm = useDebounce(search, 500)
 
-  // Calculate movement type counts from ALL records
-  const movementTypeCounts = useMemo(() => {
-    return {
-      all: allStockMovements.length,
-      in: allStockMovements.filter(r => r.movement_type === 'in').length,
-      out: allStockMovements.filter(r => r.movement_type === 'out').length,
-      adjustment: allStockMovements.filter(r => r.movement_type === 'adjustment').length
-    }
-  }, [allStockMovements])
+  // Fetch total counts for filters (always show total, not filtered count)
+  const [movementTypeCounts, setMovementTypeCounts] = useState({
+    all: totalCount,
+    in: 0,
+    out: 0,
+    adjustment: 0
+  })
+  const [sourceTypeCounts, setSourceTypeCounts] = useState<Record<string, number>>({})
 
-  // Calculate source type counts
-  const sourceTypeCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    allStockMovements.forEach(r => {
-      const st = r.source_type || 'unknown'
-      counts[st] = (counts[st] || 0) + 1
-    })
-    return counts
-  }, [allStockMovements])
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
-  const fetchRows = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (movementTypeFilter && movementTypeFilter !== 'all') params.set('movement_type', movementTypeFilter)
-      if (sourceTypeFilter && sourceTypeFilter !== 'all') params.set('source_type', sourceTypeFilter)
-      if (search.trim()) params.set('search', search.trim())
-      const res = await fetch(`/api/stock-movements?${params.toString()}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Hiba a készletmozgások lekérdezésekor')
-      const fetchedRows = data.stock_movements || []
-      setRows(fetchedRows)
-      
-      // Always fetch all records to update counts
-      if (movementTypeFilter !== 'all' || sourceTypeFilter !== 'all' || search.trim()) {
-        fetch('/api/stock-movements')
-          .then(res => res.json())
-          .then(data => {
-            if (data.stock_movements) {
-              setAllStockMovements(data.stock_movements)
-            }
+  // Fetch filter counts on mount
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        const res = await fetch('/api/stock-movements')
+        const data = await res.json()
+        if (res.ok && data.stock_movements) {
+          const all = data.stock_movements
+          setMovementTypeCounts({
+            all: all.length,
+            in: all.filter((r: StockMovementRow) => r.movement_type === 'in').length,
+            out: all.filter((r: StockMovementRow) => r.movement_type === 'out').length,
+            adjustment: all.filter((r: StockMovementRow) => r.movement_type === 'adjustment').length
           })
-          .catch(console.error)
-      } else {
-        setAllStockMovements(fetchedRows)
+          
+          const counts: Record<string, number> = {}
+          all.forEach((r: StockMovementRow) => {
+            const st = r.source_type || 'unknown'
+            counts[st] = (counts[st] || 0) + 1
+          })
+          setSourceTypeCounts(counts)
+        }
+      } catch (e) {
+        console.error('Error fetching filter counts:', e)
       }
-    } catch (e) {
-      console.error(e)
-      toast.error('Hiba a készletmozgások betöltésekor')
-    } finally {
-      setLoading(false)
     }
+    fetchCounts()
+  }, [])
+
+  // Update rows when initialStockMovements changes (from server-side pagination)
+  useEffect(() => {
+    setRows(initialStockMovements)
+    setClientPage(currentPage)
+  }, [initialStockMovements, currentPage])
+
+  // Handle filter changes - navigate to page 1 with new filters
+  const handleFilterChange = (newMovementType: string, newSourceType: string) => {
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    if (newMovementType !== 'all') params.set('movement_type', newMovementType)
+    if (newSourceType !== 'all') params.set('source_type', newSourceType)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/warehouseoperations?${params.toString()}`)
   }
 
+  // Handle search - navigate to page 1 with search term
   useEffect(() => {
-    if (initialStockMovements.length === 0 || movementTypeFilter !== 'all' || sourceTypeFilter !== 'all' || search.trim()) {
-      fetchRows()
-    } else {
-      setRows(initialStockMovements)
-      setAllStockMovements(initialStockMovements)
-    }
-  }, [movementTypeFilter, sourceTypeFilter, search])
+    if (!mounted) return
+    
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    if (movementTypeFilter !== 'all') params.set('movement_type', movementTypeFilter)
+    if (sourceTypeFilter !== 'all') params.set('source_type', sourceTypeFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/warehouseoperations?${params.toString()}`)
+  }, [debouncedSearchTerm, mounted, router, movementTypeFilter, sourceTypeFilter, pageSize])
 
-  // Debounce search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (search.trim() || movementTypeFilter !== 'all' || sourceTypeFilter !== 'all') {
-        fetchRows()
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [search])
+  // Handle page change
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    const params = new URLSearchParams()
+    params.set('page', value.toString())
+    if (movementTypeFilter !== 'all') params.set('movement_type', movementTypeFilter)
+    if (sourceTypeFilter !== 'all') params.set('source_type', sourceTypeFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/warehouseoperations?${params.toString()}`)
+  }
+
+  // Handle page size change
+  const handlePageSizeChange = (event: any) => {
+    const newPageSize = parseInt(event.target.value, 10)
+    setPageSize(newPageSize)
+    const params = new URLSearchParams()
+    params.set('page', '1') // Reset to first page
+    if (movementTypeFilter !== 'all') params.set('movement_type', movementTypeFilter)
+    if (sourceTypeFilter !== 'all') params.set('source_type', sourceTypeFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    params.set('limit', newPageSize.toString())
+    router.push(`/warehouseoperations?${params.toString()}`)
+  }
 
   if (permissionLoading) {
     return (
@@ -169,28 +212,40 @@ export default function WarehouseOperationsClient({ initialStockMovements = [] }
         </Typography>
         <Chip
           label={`Összes (${movementTypeCounts.all})`}
-          onClick={() => setMovementTypeFilter('all')}
+          onClick={() => {
+            setMovementTypeFilter('all')
+            handleFilterChange('all', sourceTypeFilter)
+          }}
           color={movementTypeFilter === 'all' ? 'primary' : 'default'}
           variant={movementTypeFilter === 'all' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Bejövő (${movementTypeCounts.in})`}
-          onClick={() => setMovementTypeFilter('in')}
+          onClick={() => {
+            setMovementTypeFilter('in')
+            handleFilterChange('in', sourceTypeFilter)
+          }}
           color={movementTypeFilter === 'in' ? 'success' : 'default'}
           variant={movementTypeFilter === 'in' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Kimenő (${movementTypeCounts.out})`}
-          onClick={() => setMovementTypeFilter('out')}
+          onClick={() => {
+            setMovementTypeFilter('out')
+            handleFilterChange('out', sourceTypeFilter)
+          }}
           color={movementTypeFilter === 'out' ? 'error' : 'default'}
           variant={movementTypeFilter === 'out' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Igazítás (${movementTypeCounts.adjustment})`}
-          onClick={() => setMovementTypeFilter('adjustment')}
+          onClick={() => {
+            setMovementTypeFilter('adjustment')
+            handleFilterChange('adjustment', sourceTypeFilter)
+          }}
           color={movementTypeFilter === 'adjustment' ? 'warning' : 'default'}
           variant={movementTypeFilter === 'adjustment' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
@@ -203,8 +258,11 @@ export default function WarehouseOperationsClient({ initialStockMovements = [] }
           Forrás típus:
         </Typography>
         <Chip
-          label={`Összes (${allStockMovements.length})`}
-          onClick={() => setSourceTypeFilter('all')}
+          label={`Összes (${totalCount})`}
+          onClick={() => {
+            setSourceTypeFilter('all')
+            handleFilterChange(movementTypeFilter, 'all')
+          }}
           color={sourceTypeFilter === 'all' ? 'primary' : 'default'}
           variant={sourceTypeFilter === 'all' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
@@ -213,7 +271,10 @@ export default function WarehouseOperationsClient({ initialStockMovements = [] }
           <Chip
             key={sourceType}
             label={`${getSourceTypeLabel(sourceType)} (${count})`}
-            onClick={() => setSourceTypeFilter(sourceType)}
+            onClick={() => {
+              setSourceTypeFilter(sourceType)
+              handleFilterChange(movementTypeFilter, sourceType)
+            }}
             color={sourceTypeFilter === sourceType ? 'primary' : 'default'}
             variant={sourceTypeFilter === sourceType ? 'filled' : 'outlined'}
             sx={{ cursor: 'pointer' }}
@@ -239,35 +300,30 @@ export default function WarehouseOperationsClient({ initialStockMovements = [] }
         />
       </Stack>
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table size="small" stickyHeader>
-            <TableHead>
+      <TableContainer component={Paper}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow>
+              <TableCell>Mozgás szám</TableCell>
+              <TableCell>Dátum</TableCell>
+              <TableCell>Raktár</TableCell>
+              <TableCell>Termék típus</TableCell>
+              <TableCell>Termék név</TableCell>
+              <TableCell>SKU</TableCell>
+              <TableCell align="right">Mennyiség</TableCell>
+              <TableCell>Mozgás típus</TableCell>
+              <TableCell>Forrás típus</TableCell>
+              <TableCell>Forrás</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {rows.length === 0 ? (
               <TableRow>
-                <TableCell>Mozgás szám</TableCell>
-                <TableCell>Dátum</TableCell>
-                <TableCell>Raktár</TableCell>
-                <TableCell>Termék típus</TableCell>
-                <TableCell>Termék név</TableCell>
-                <TableCell>SKU</TableCell>
-                <TableCell align="right">Mennyiség</TableCell>
-                <TableCell>Mozgás típus</TableCell>
-                <TableCell>Forrás típus</TableCell>
-                <TableCell>Forrás</TableCell>
+                <TableCell colSpan={10} align="center">
+                  Nincs megjeleníthető készletmozgás.
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={10} align="center">
-                    Nincs megjeleníthető készletmozgás.
-                  </TableCell>
-                </TableRow>
-              ) : rows.map(row => {
+            ) : rows.map(row => {
                 const sourceLink = getSourceLink(row)
                 const quantityColor = row.quantity > 0 ? 'success.main' : row.quantity < 0 ? 'error.main' : 'text.primary'
                 const quantitySign = row.quantity > 0 ? '+' : ''
@@ -338,7 +394,43 @@ export default function WarehouseOperationsClient({ initialStockMovements = [] }
             </TableBody>
           </Table>
         </TableContainer>
-      )}
+
+      {/* Pagination */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          {debouncedSearchTerm || movementTypeFilter !== 'all' || sourceTypeFilter !== 'all'
+            ? `Keresési eredmény: ${totalCount} készletmozgás` 
+            : `Összesen ${totalCount} készletmozgás`
+          }
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={pageSize}
+              onChange={handlePageSizeChange}
+              displayEmpty
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            Oldal mérete
+          </Typography>
+        </Box>
+        
+        <Pagination
+          count={totalPages}
+          page={clientPage}
+          onChange={handlePageChange}
+          color="primary"
+          showFirstButton
+          showLastButton
+        />
+      </Box>
     </Box>
   )
 }

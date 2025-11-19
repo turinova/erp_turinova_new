@@ -1,10 +1,20 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getAllStockMovements } from '@/lib/supabase-server'
+import { getStockMovementsWithPagination } from '@/lib/supabase-server'
 import WarehouseOperationsClient from './WarehouseOperationsClient'
 
 export const metadata: Metadata = {
   title: 'Műveletek'
+}
+
+interface PageProps {
+  searchParams: Promise<{
+    page?: string
+    limit?: string
+    search?: string
+    movement_type?: string
+    source_type?: string
+  }>
 }
 
 function WarehouseOperationsSkeleton() {
@@ -23,10 +33,17 @@ function WarehouseOperationsSkeleton() {
   )
 }
 
-export default async function WarehouseOperationsPage() {
+export default async function WarehouseOperationsPage({ searchParams }: PageProps) {
+  const resolvedParams = await searchParams
   const startTime = performance.now()
   
-  const stockMovements = await getAllStockMovements()
+  const page = parseInt(resolvedParams.page || '1', 10)
+  const limit = parseInt(resolvedParams.limit || '50', 10)
+  const searchTerm = resolvedParams.search || ''
+  const movementType = resolvedParams.movement_type || 'all'
+  const sourceType = resolvedParams.source_type || 'all'
+  
+  const stockMovementsData = await getStockMovementsWithPagination(page, limit, searchTerm, movementType, sourceType)
   
   const totalTime = performance.now()
   if (process.env.NODE_ENV !== 'production') {
@@ -35,7 +52,16 @@ export default async function WarehouseOperationsPage() {
 
   return (
     <Suspense fallback={<WarehouseOperationsSkeleton />}>
-      <WarehouseOperationsClient initialStockMovements={stockMovements} />
+      <WarehouseOperationsClient 
+        initialStockMovements={stockMovementsData.stockMovements}
+        totalCount={stockMovementsData.totalCount}
+        totalPages={stockMovementsData.totalPages}
+        currentPage={stockMovementsData.currentPage}
+        initialSearchTerm={searchTerm}
+        initialMovementType={movementType}
+        initialSourceType={sourceType}
+        initialPageSize={limit}
+      />
     </Suspense>
   )
 }

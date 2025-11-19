@@ -2826,6 +2826,162 @@ export async function getAllPurchaseOrders() {
   }
 }
 
+export async function getPurchaseOrdersWithPagination(
+  page: number = 1,
+  limit: number = 50,
+  search: string = '',
+  statusFilter: string = 'all'
+) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return { purchaseOrders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+
+  try {
+    const offset = (page - 1) * limit
+
+    // If search is provided, find matching PO IDs by partner name
+    let allMatchingPoIds: string[] = []
+    if (search && search.trim().length >= 2) {
+      const searchTerm = search.trim()
+      const { data: partnerMatches } = await supabaseServer
+        .from('purchase_orders')
+        .select('id, partner_id, partners:partner_id(name)')
+        .is('deleted_at', null)
+      
+      if (partnerMatches) {
+        allMatchingPoIds = partnerMatches
+          .filter((po: any) => po.partners?.name?.toLowerCase().includes(searchTerm.toLowerCase()))
+          .map((po: any) => po.id)
+      }
+    }
+
+    // Build the main query
+    let query = supabaseServer
+      .from('purchase_orders')
+      .select(`
+        id,
+        po_number,
+        status,
+        partner_id,
+        partners:partner_id(name),
+        warehouse_id,
+        order_date,
+        expected_date,
+        created_at,
+        items:purchase_order_items(count),
+        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity)
+      `, { count: 'exact' })
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    // Apply status filter
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+
+    // Apply search filter
+    if (search && search.trim().length >= 2 && allMatchingPoIds.length > 0) {
+      query = query.in('id', allMatchingPoIds)
+    } else if (search && search.trim().length >= 2 && allMatchingPoIds.length === 0) {
+      // No matches found, return empty result
+      return { purchaseOrders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const { data, error, count } = await query.range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching purchase orders:', error)
+      return { purchaseOrders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    // Fetch all shipments for the purchase orders
+    const poIds = (data || []).map((row: any) => row.id)
+    const { data: allShipments } = poIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number, purchase_order_id')
+          .in('purchase_order_id', poIds)
+          .is('deleted_at', null)
+      : { data: [] }
+
+    // Group shipments by purchase_order_id
+    const shipmentsByPo = new Map<string, Array<{ id: string; number: string }>>()
+    if (allShipments) {
+      allShipments.forEach((shipment: any) => {
+        if (shipment.purchase_order_id && shipment.shipment_number) {
+          if (!shipmentsByPo.has(shipment.purchase_order_id)) {
+            shipmentsByPo.set(shipment.purchase_order_id, [])
+          }
+          shipmentsByPo.get(shipment.purchase_order_id)!.push({
+            id: shipment.id,
+            number: shipment.shipment_number
+          })
+        }
+      })
+    }
+
+    // Check for stock movements
+    const allShipmentIds = Array.from(new Set(Array.from(shipmentsByPo.values()).flat().map(s => s.id)))
+    const { data: stockMovements } = allShipmentIds.length > 0
+      ? await supabaseServer
+          .from('stock_movements')
+          .select('source_id')
+          .eq('source_type', 'purchase_receipt')
+          .in('source_id', allShipmentIds)
+      : { data: [] }
+
+    const shipmentIdsWithStockMovements = new Set(
+      (stockMovements || []).map((sm: any) => sm.source_id)
+    )
+
+    // Compute net totals and counts
+    const result = (data || []).map((row: any) => {
+      const itemsCount = row.items?.length ? row.items[0]?.count ?? 0 : 0
+      const shipmentNumbers = shipmentsByPo.get(row.id) || []
+      const poShipmentIds = shipmentNumbers.map((s: { id: string }) => s.id)
+      const hasStockMovements = poShipmentIds.some((sid: string) => 
+        shipmentIdsWithStockMovements.has(sid)
+      )
+      const netTotal = Array.isArray(row.net_total)
+        ? row.net_total.reduce((sum: number, it: any) => {
+            const unit = Number(it?.net_price) || 0
+            const qty = Number(it?.quantity) || 0
+            return sum + unit * qty
+          }, 0)
+        : 0
+      return {
+        id: row.id,
+        po_number: row.po_number,
+        status: row.status,
+        partner_name: row.partners?.name || '',
+        items_count: itemsCount,
+        net_total: netTotal,
+        created_at: row.created_at,
+        expected_date: row.expected_date,
+        shipments: shipmentNumbers,
+        has_stock_movements: hasStockMovements
+      }
+    })
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Purchase Orders Paginated Fetch', startTime, `returned ${result.length} of ${totalCount} records`)
+    return {
+      purchaseOrders: result,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching purchase orders with pagination:', error)
+    logTiming('Purchase Orders Paginated Error', startTime)
+    return { purchaseOrders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+}
+
 export async function getAllShipments() {
   const startTime = performance.now()
   
@@ -2950,6 +3106,183 @@ export async function getAllShipments() {
     console.error('[SSR] Exception fetching shipments:', error)
     logTiming('Shipments Error', startTime)
     return []
+  }
+}
+
+export async function getShipmentsWithPagination(
+  page: number = 1,
+  limit: number = 50,
+  search: string = '',
+  statusFilter: string = 'all'
+) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return { shipments: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+
+  try {
+    const offset = (page - 1) * limit
+
+    // If search is provided, find matching shipment IDs by partner name or PO number
+    let allMatchingShipmentIds: string[] = []
+    if (search && search.trim().length >= 2) {
+      const searchTerm = search.trim()
+      const { data: allShipments } = await supabaseServer
+        .from('shipments')
+        .select('id, partner_id, partners:partner_id(name), purchase_order_id, purchase_orders:purchase_order_id(po_number)')
+      
+      if (allShipments) {
+        allMatchingShipmentIds = allShipments
+          .filter((s: any) => {
+            const partnerName = s.partners?.name?.toLowerCase() || ''
+            const poNumber = s.purchase_orders?.po_number?.toLowerCase() || ''
+            return partnerName.includes(searchTerm.toLowerCase()) || poNumber.includes(searchTerm.toLowerCase())
+          })
+          .map((s: any) => s.id)
+      }
+    }
+
+    // Build the main query - only fetch non-deleted shipments for display
+    let query = supabaseServer
+      .from('shipments')
+      .select(`
+        id,
+        shipment_number,
+        purchase_order_id,
+        status,
+        partner_id,
+        partners:partner_id(name),
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        shipment_date,
+        created_at,
+        deleted_at,
+        purchase_orders:purchase_order_id(po_number),
+        items:shipment_items(count)
+      `, { count: 'exact' })
+      .is('deleted_at', null) // Only show non-deleted in list
+      .order('created_at', { ascending: false })
+
+    // Apply status filter
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+
+    // Apply search filter
+    if (search && search.trim().length >= 2 && allMatchingShipmentIds.length > 0) {
+      query = query.in('id', allMatchingShipmentIds)
+    } else if (search && search.trim().length >= 2 && allMatchingShipmentIds.length === 0) {
+      // No matches found, return empty result
+      return { shipments: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const { data, error, count } = await query.range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching shipments:', error)
+      return { shipments: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    // Fetch VAT rates
+    const { data: vatRows } = await supabaseServer.from('vat').select('id, kulcs')
+    const vatMap = new Map<string, number>((vatRows || []).map(r => [r.id, r.kulcs || 0]))
+
+    // Fetch shipment items
+    const shipmentIds = (data || []).map((s: any) => s.id)
+    const { data: allItems } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipment_items')
+          .select(`
+            shipment_id,
+            quantity_received,
+            purchase_order_items:purchase_order_item_id(net_price, vat_id)
+          `)
+          .in('shipment_id', shipmentIds)
+          .is('deleted_at', null)
+      : { data: [] }
+
+    // Group items by shipment_id
+    const itemsByShipment = new Map<string, any[]>()
+    if (allItems) {
+      allItems.forEach((item: any) => {
+        const sid = item.shipment_id
+        if (!itemsByShipment.has(sid)) {
+          itemsByShipment.set(sid, [])
+        }
+        itemsByShipment.get(sid)!.push(item)
+      })
+    }
+
+    // Check for stock movements
+    const { data: stockMovements } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('stock_movements')
+          .select('source_id')
+          .eq('source_type', 'purchase_receipt')
+          .in('source_id', shipmentIds)
+      : { data: [] }
+
+    const shipmentIdsWithStockMovements = new Set(
+      (stockMovements || []).map((sm: any) => sm.source_id)
+    )
+
+    // Calculate totals for each shipment
+    const shipments = (data || []).map((shipment: any) => {
+      const itemsCount = shipment.items?.[0]?.count || 0
+      const items = itemsByShipment.get(shipment.id) || []
+      
+      let netTotal = 0
+      let grossTotal = 0
+
+      items.forEach((item: any) => {
+        const poi = item.purchase_order_items
+        if (poi) {
+          const qty = Number(item.quantity_received) || 0
+          const netPrice = Number(poi.net_price) || 0
+          const lineNet = qty * netPrice
+          const vatPercent = vatMap.get(poi.vat_id) || 0
+          const lineVat = Math.round(lineNet * (vatPercent / 100))
+          const lineGross = lineNet + lineVat
+          netTotal += lineNet
+          grossTotal += lineGross
+        }
+      })
+
+      const hasStockMovements = shipmentIdsWithStockMovements.has(shipment.id)
+
+      return {
+        id: shipment.id,
+        shipment_number: shipment.shipment_number || '',
+        po_number: shipment.purchase_orders?.po_number || '',
+        purchase_order_id: shipment.purchase_order_id,
+        status: shipment.status,
+        partner_name: shipment.partners?.name || '',
+        warehouse_name: shipment.warehouses?.name || '',
+        items_count: itemsCount,
+        net_total: netTotal,
+        gross_total: grossTotal,
+        created_at: shipment.created_at,
+        shipment_date: shipment.shipment_date,
+        deleted_at: shipment.deleted_at,
+        has_stock_movements: hasStockMovements
+      }
+    })
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Shipments Paginated Fetch', startTime, `returned ${shipments.length} of ${totalCount} records`)
+    return {
+      shipments,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching shipments with pagination:', error)
+    logTiming('Shipments Paginated Error', startTime)
+    return { shipments: [], totalCount: 0, totalPages: 0, currentPage: 1 }
   }
 }
 
@@ -3292,6 +3625,168 @@ export async function getAllStockMovements() {
     console.error('[SSR] Exception fetching stock movements:', error)
     logTiming('Stock Movements Error', startTime)
     return []
+  }
+}
+
+export async function getStockMovementsWithPagination(
+  page: number = 1,
+  limit: number = 50,
+  search: string = '',
+  movementType: string = 'all',
+  sourceType: string = 'all'
+) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+
+  try {
+    const offset = (page - 1) * limit
+
+    let query = supabaseServer
+      .from('stock_movements')
+      .select(`
+        id,
+        stock_movement_number,
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
+        quantity,
+        movement_type,
+        source_type,
+        source_id,
+        created_at,
+        note,
+        accessories:accessory_id(id, name, sku),
+        materials:material_id(id, name),
+        linear_materials:linear_material_id(id, name)
+      `, { count: 'exact' })
+      .order('created_at', { ascending: false })
+
+    // Apply filters
+    if (movementType && movementType !== 'all') {
+      query = query.eq('movement_type', movementType)
+    }
+    if (sourceType && sourceType !== 'all') {
+      query = query.eq('source_type', sourceType)
+    }
+
+    // If search is provided, we need to filter after fetching (because we need to join with product tables)
+    // For now, we'll fetch all matching records and filter client-side, then paginate
+    // This is not ideal for performance but works for MVP
+    const { data, error, count } = await query
+
+    if (error) {
+      console.error('Error fetching stock movements:', error)
+      return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    // Fetch source references
+    const sourceIdsByType = new Map<string, string[]>()
+    if (data) {
+      data.forEach((sm: any) => {
+        if (sm.source_type && sm.source_id) {
+          if (!sourceIdsByType.has(sm.source_type)) {
+            sourceIdsByType.set(sm.source_type, [])
+          }
+          sourceIdsByType.get(sm.source_type)!.push(sm.source_id)
+        }
+      })
+    }
+
+    // Fetch POS orders
+    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const { data: posOrders } = posOrderIds.length > 0
+      ? await supabaseServer
+          .from('pos_orders')
+          .select('id, pos_order_number')
+          .in('id', posOrderIds)
+      : { data: [] }
+    const posOrderMap = new Map((posOrders || []).map((po: any) => [po.id, po.pos_order_number]))
+
+    // Fetch shipments
+    const shipmentIds = sourceIdsByType.get('purchase_receipt') || []
+    const { data: shipments } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number')
+          .in('id', shipmentIds)
+      : { data: [] }
+    const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
+
+    // Transform and filter data
+    let stockMovements = (data || []).map((sm: any) => {
+      let productName = ''
+      let sku = ''
+      
+      if (sm.product_type === 'accessory' && sm.accessories) {
+        productName = sm.accessories.name || ''
+        sku = sm.accessories.sku || ''
+      } else if (sm.product_type === 'material' && sm.materials) {
+        productName = sm.materials.name || ''
+      } else if (sm.product_type === 'linear_material' && sm.linear_materials) {
+        productName = sm.linear_materials.name || ''
+      }
+
+      let sourceReference = '-'
+      if (sm.source_type === 'pos_sale' && sm.source_id) {
+        sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
+        sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_id) {
+        sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      // Apply search filter
+      if (search && search.trim()) {
+        const searchLower = search.trim().toLowerCase()
+        const matchesName = productName.toLowerCase().includes(searchLower)
+        const matchesSku = sku.toLowerCase().includes(searchLower)
+        const matchesNumber = sm.stock_movement_number?.toLowerCase().includes(searchLower)
+        if (!matchesName && !matchesSku && !matchesNumber) {
+          return null
+        }
+      }
+
+      return {
+        id: sm.id,
+        stock_movement_number: sm.stock_movement_number || '',
+        warehouse_name: sm.warehouses?.name || '',
+        product_type: sm.product_type,
+        product_name: productName,
+        sku: sku,
+        quantity: Number(sm.quantity) || 0,
+        movement_type: sm.movement_type,
+        source_type: sm.source_type,
+        source_id: sm.source_id,
+        source_reference: sourceReference,
+        created_at: sm.created_at,
+        note: sm.note || ''
+      }
+    }).filter(Boolean) // Remove null entries from search filter
+
+    // Calculate total count after filtering
+    const totalCount = search && search.trim() ? stockMovements.length : (count || 0)
+    const totalPages = Math.ceil(totalCount / limit)
+
+    // Apply pagination
+    const paginatedMovements = stockMovements.slice(offset, offset + limit)
+
+    logTiming('Stock Movements Paginated Fetch', startTime, `returned ${paginatedMovements.length} of ${totalCount} records`)
+    return {
+      stockMovements: paginatedMovements,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching stock movements with pagination:', error)
+    logTiming('Stock Movements Paginated Error', startTime)
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
   }
 }
 

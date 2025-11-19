@@ -1,10 +1,19 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getAllShipments } from '@/lib/supabase-server'
+import { getShipmentsWithPagination } from '@/lib/supabase-server'
 import ShipmentsListClient from './ShipmentsListClient'
 
 export const metadata: Metadata = {
   title: 'Szállítmányok'
+}
+
+interface PageProps {
+  searchParams: Promise<{
+    page?: string
+    limit?: string
+    search?: string
+    status?: string
+  }>
 }
 
 function ShipmentsSkeleton() {
@@ -23,10 +32,16 @@ function ShipmentsSkeleton() {
   )
 }
 
-export default async function ShipmentsPage() {
+export default async function ShipmentsPage({ searchParams }: PageProps) {
+  const resolvedParams = await searchParams
   const startTime = performance.now()
   
-  const shipments = await getAllShipments()
+  const page = parseInt(resolvedParams.page || '1', 10)
+  const limit = parseInt(resolvedParams.limit || '50', 10)
+  const searchTerm = resolvedParams.search || ''
+  const statusFilter = resolvedParams.status || 'all'
+  
+  const shipmentsData = await getShipmentsWithPagination(page, limit, searchTerm, statusFilter)
   
   const totalTime = performance.now()
   if (process.env.NODE_ENV !== 'production') {
@@ -35,7 +50,15 @@ export default async function ShipmentsPage() {
 
   return (
     <Suspense fallback={<ShipmentsSkeleton />}>
-      <ShipmentsListClient initialShipments={shipments} />
+      <ShipmentsListClient 
+        initialShipments={shipmentsData.shipments}
+        totalCount={shipmentsData.totalCount}
+        totalPages={shipmentsData.totalPages}
+        currentPage={shipmentsData.currentPage}
+        initialSearchTerm={searchTerm}
+        initialStatusFilter={statusFilter}
+        initialPageSize={limit}
+      />
     </Suspense>
   )
 }

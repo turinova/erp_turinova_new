@@ -1,10 +1,19 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getAllPurchaseOrders } from '@/lib/supabase-server'
+import { getPurchaseOrdersWithPagination } from '@/lib/supabase-server'
 import PurchaseOrderListClient from './PurchaseOrderListClient'
 
 export const metadata: Metadata = {
   title: 'Beszállítói rendelések'
+}
+
+interface PageProps {
+  searchParams: Promise<{
+    page?: string
+    limit?: string
+    search?: string
+    status?: string
+  }>
 }
 
 function PurchaseOrderSkeleton() {
@@ -23,10 +32,16 @@ function PurchaseOrderSkeleton() {
   )
 }
 
-export default async function PurchaseOrderPage() {
+export default async function PurchaseOrderPage({ searchParams }: PageProps) {
+  const resolvedParams = await searchParams
   const startTime = performance.now()
   
-  const purchaseOrders = await getAllPurchaseOrders()
+  const page = parseInt(resolvedParams.page || '1', 10)
+  const limit = parseInt(resolvedParams.limit || '50', 10)
+  const searchTerm = resolvedParams.search || ''
+  const statusFilter = resolvedParams.status || 'all'
+  
+  const purchaseOrdersData = await getPurchaseOrdersWithPagination(page, limit, searchTerm, statusFilter)
   
   const totalTime = performance.now()
   if (process.env.NODE_ENV !== 'production') {
@@ -35,7 +50,15 @@ export default async function PurchaseOrderPage() {
 
   return (
     <Suspense fallback={<PurchaseOrderSkeleton />}>
-      <PurchaseOrderListClient initialPurchaseOrders={purchaseOrders} />
+      <PurchaseOrderListClient 
+        initialPurchaseOrders={purchaseOrdersData.purchaseOrders}
+        totalCount={purchaseOrdersData.totalCount}
+        totalPages={purchaseOrdersData.totalPages}
+        currentPage={purchaseOrdersData.currentPage}
+        initialSearchTerm={searchTerm}
+        initialStatusFilter={statusFilter}
+        initialPageSize={limit}
+      />
     </Suspense>
   )
 }

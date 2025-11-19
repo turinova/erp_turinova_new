@@ -3,11 +3,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Box, Breadcrumbs, Chip, CircularProgress, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, InputAdornment, Checkbox, Button, Tooltip
+  Box, Breadcrumbs, Chip, CircularProgress, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, InputAdornment, Checkbox, Button, Tooltip, Pagination, Select, MenuItem, FormControl
 } from '@mui/material'
 import NextLink from 'next/link'
 import { Home as HomeIcon, Search as SearchIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface ShipmentRow {
   id: string
@@ -27,94 +28,128 @@ interface ShipmentRow {
 }
 
 interface ShipmentsListClientProps {
-  initialShipments?: ShipmentRow[]
+  initialShipments: ShipmentRow[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  initialSearchTerm: string
+  initialStatusFilter: string
+  initialPageSize: number
 }
 
-export default function ShipmentsListClient({ initialShipments = [] }: ShipmentsListClientProps) {
+export default function ShipmentsListClient({ 
+  initialShipments,
+  totalCount,
+  totalPages,
+  currentPage,
+  initialSearchTerm,
+  initialStatusFilter,
+  initialPageSize = 50
+}: ShipmentsListClientProps) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
-  // Store ALL records (including deleted) for accurate counts
-  const [allShipments, setAllShipments] = useState<ShipmentRow[]>(initialShipments)
-  // Filtered/displayed records - by default show only non-deleted
-  const [rows, setRows] = useState<ShipmentRow[]>(initialShipments.filter(s => !s.deleted_at))
-  const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [partnerSearch, setPartnerSearch] = useState<string>('')
+  const [rows, setRows] = useState<ShipmentRow[]>(initialShipments)
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter)
+  const [partnerSearch, setPartnerSearch] = useState<string>(initialSearchTerm)
+  const [pageSize, setPageSize] = useState(initialPageSize)
+  const [clientPage, setClientPage] = useState(currentPage)
+  const [mounted, setMounted] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
+  const debouncedSearchTerm = useDebounce(partnerSearch, 500)
 
-  // Calculate status counts from ALL records, not filtered rows
-  const statusCounts = useMemo(() => {
-    const nonDeletedRows = allShipments.filter(r => !r.deleted_at)
-    const deletedRows = allShipments.filter(r => r.deleted_at)
-    
-    return {
-      all: nonDeletedRows.length,
-      draft: nonDeletedRows.filter(r => r.status === 'draft').length,
-      received: nonDeletedRows.filter(r => r.status === 'received').length,
-      cancelled: deletedRows.length
-    }
-  }, [allShipments])
+  // Fetch total counts for filters (always show total, not filtered count)
+  const [statusCounts, setStatusCounts] = useState({
+    all: totalCount,
+    draft: 0,
+    received: 0,
+    cancelled: 0
+  })
 
-  const fetchRows = async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
-      if (partnerSearch.trim()) params.set('search', partnerSearch.trim())
-      const res = await fetch(`/api/shipments?${params.toString()}`)
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'Hiba a szállítmányok lekérdezésekor')
-      const fetchedRows = data.shipments || []
-      setRows(fetchedRows)
-      
-      // Always fetch all records (including deleted) to update counts
-      // Need to fetch both non-deleted and deleted shipments
-      Promise.all([
-        fetch('/api/shipments?status=all').then(res => res.json()),
-        fetch('/api/shipments?status=cancelled').then(res => res.json())
-      ])
-        .then(([allData, cancelledData]) => {
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Fetch filter counts on mount
+  useEffect(() => {
+    const fetchCounts = async () => {
+      try {
+        // Fetch all non-deleted and deleted shipments separately
+        const [allRes, cancelledRes] = await Promise.all([
+          fetch('/api/shipments?status=all'),
+          fetch('/api/shipments?status=cancelled')
+        ])
+        const [allData, cancelledData] = await Promise.all([
+          allRes.json(),
+          cancelledRes.json()
+        ])
+        
+        if (allRes.ok && cancelledRes.ok) {
           const allNonDeleted = allData.shipments || []
           const allDeleted = cancelledData.shipments || []
-          // Merge and deduplicate by id
-          const merged = [...allNonDeleted, ...allDeleted]
-          const unique = Array.from(new Map(merged.map(s => [s.id, s])).values())
-          setAllShipments(unique)
-        })
-        .catch(console.error)
-    } catch (e) {
-      console.error(e)
-      toast.error('Hiba a szállítmányok betöltésekor')
-    } finally {
-      setLoading(false)
+          setStatusCounts({
+            all: allNonDeleted.length,
+            draft: allNonDeleted.filter((r: ShipmentRow) => r.status === 'draft').length,
+            received: allNonDeleted.filter((r: ShipmentRow) => r.status === 'received').length,
+            cancelled: allDeleted.length
+          })
+        }
+      } catch (e) {
+        console.error('Error fetching filter counts:', e)
+      }
     }
+    fetchCounts()
+  }, [])
+
+  // Update rows when initialShipments changes (from server-side pagination)
+  useEffect(() => {
+    setRows(initialShipments)
+    setClientPage(currentPage)
+  }, [initialShipments, currentPage])
+
+  // Handle filter changes - navigate to page 1 with new filters
+  const handleFilterChange = (newStatus: string) => {
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    if (newStatus !== 'all') params.set('status', newStatus)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/shipments?${params.toString()}`)
   }
 
-  // Only fetch if we don't have initial data or when filters change
+  // Handle search - navigate to page 1 with search term
   useEffect(() => {
-    if (initialShipments.length === 0 || statusFilter !== 'all' || partnerSearch.trim()) {
-      fetchRows()
-    } else {
-      // Use initial data when no filters are applied
-      // Show only non-deleted in rows, but keep all in allShipments for counts
-      setRows(initialShipments.filter(s => !s.deleted_at))
-      setAllShipments(initialShipments)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter])
-  
-  useEffect(() => {
-    if (partnerSearch.trim()) {
-      const h = setTimeout(() => { fetchRows() }, 400)
-      return () => clearTimeout(h)
-    } else if (initialShipments.length > 0 && statusFilter === 'all') {
-      // Reset to initial data when search is cleared and no status filter
-      // Show only non-deleted in rows, but keep all in allShipments for counts
-      setRows(initialShipments.filter(s => !s.deleted_at))
-      setAllShipments(initialShipments)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [partnerSearch])
+    if (!mounted) return
+    
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/shipments?${params.toString()}`)
+  }, [debouncedSearchTerm, mounted, router, statusFilter, pageSize])
+
+  // Handle page change
+  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
+    const params = new URLSearchParams()
+    params.set('page', value.toString())
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    if (pageSize !== 50) params.set('limit', pageSize.toString())
+    router.push(`/shipments?${params.toString()}`)
+  }
+
+  // Handle page size change
+  const handlePageSizeChange = (event: any) => {
+    const newPageSize = parseInt(event.target.value, 10)
+    setPageSize(newPageSize)
+    const params = new URLSearchParams()
+    params.set('page', '1') // Reset to first page
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (debouncedSearchTerm.trim()) params.set('search', debouncedSearchTerm.trim())
+    params.set('limit', newPageSize.toString())
+    router.push(`/shipments?${params.toString()}`)
+  }
+
 
   const handleDelete = async () => {
     if (selectedIds.size === 0) return
@@ -150,24 +185,8 @@ export default function ShipmentsListClient({ initialShipments = [] }: Shipments
       const deletedCount = data.deleted_count || 0
       toast.success(`Törölve: ${deletedCount}`)
       setSelectedIds(new Set())
-      // Refresh both filtered rows and all records
-      fetchRows()
-      // Also fetch all records to update counts (including deleted)
-      if (statusFilter !== 'all' || partnerSearch.trim()) {
-        Promise.all([
-          fetch('/api/shipments?status=all').then(res => res.json()),
-          fetch('/api/shipments?status=cancelled').then(res => res.json())
-        ])
-          .then(([allData, cancelledData]) => {
-            const allNonDeleted = allData.shipments || []
-            const allDeleted = cancelledData.shipments || []
-            // Merge and deduplicate by id
-            const merged = [...allNonDeleted, ...allDeleted]
-            const unique = Array.from(new Map(merged.map(s => [s.id, s])).values())
-            setAllShipments(unique)
-          })
-          .catch(console.error)
-      }
+      // Refresh the page to show updated data
+      router.refresh()
     } catch (e) {
       console.error(e)
       // Error toast already shown above if it was a 400
@@ -203,28 +222,40 @@ export default function ShipmentsListClient({ initialShipments = [] }: Shipments
         </Typography>
         <Chip
           label={`Összes (${statusCounts.all})`}
-          onClick={() => setStatusFilter('all')}
+          onClick={() => {
+            setStatusFilter('all')
+            handleFilterChange('all')
+          }}
           color={statusFilter === 'all' ? 'primary' : 'default'}
           variant={statusFilter === 'all' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Várakozik (${statusCounts.draft})`}
-          onClick={() => setStatusFilter('draft')}
+          onClick={() => {
+            setStatusFilter('draft')
+            handleFilterChange('draft')
+          }}
           color={statusFilter === 'draft' ? 'warning' : 'default'}
           variant={statusFilter === 'draft' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Bevételezve (${statusCounts.received})`}
-          onClick={() => setStatusFilter('received')}
+          onClick={() => {
+            setStatusFilter('received')
+            handleFilterChange('received')
+          }}
           color={statusFilter === 'received' ? 'success' : 'default'}
           variant={statusFilter === 'received' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Törölve (${statusCounts.cancelled})`}
-          onClick={() => setStatusFilter('cancelled')}
+          onClick={() => {
+            setStatusFilter('cancelled')
+            handleFilterChange('cancelled')
+          }}
           color={statusFilter === 'cancelled' ? 'error' : 'default'}
           variant={statusFilter === 'cancelled' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
@@ -295,12 +326,7 @@ export default function ShipmentsListClient({ initialShipments = [] }: Shipments
         </Box>
       )}
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper}>
+      <TableContainer component={Paper}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
@@ -394,7 +420,43 @@ export default function ShipmentsListClient({ initialShipments = [] }: Shipments
             </TableBody>
           </Table>
         </TableContainer>
-      )}
+
+      {/* Pagination */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
+        <Typography variant="body2" color="text.secondary">
+          {debouncedSearchTerm || statusFilter !== 'all'
+            ? `Keresési eredmény: ${totalCount} szállítmány` 
+            : `Összesen ${totalCount} szállítmány`
+          }
+        </Typography>
+        
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <FormControl size="small" sx={{ minWidth: 80 }}>
+            <Select
+              value={pageSize}
+              onChange={handlePageSizeChange}
+              displayEmpty
+            >
+              <MenuItem value={10}>10</MenuItem>
+              <MenuItem value={20}>20</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+            </Select>
+          </FormControl>
+          <Typography variant="body2" color="text.secondary">
+            Oldal mérete
+          </Typography>
+        </Box>
+        
+        <Pagination
+          count={totalPages}
+          page={clientPage}
+          onChange={handlePageChange}
+          color="primary"
+          showFirstButton
+          showLastButton
+        />
+      </Box>
     </Box>
   )
 }
