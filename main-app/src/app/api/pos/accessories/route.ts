@@ -14,13 +14,12 @@ export async function GET(request: NextRequest) {
     const trimmedSearch = searchTerm.trim()
     const resultLimit = 50 // Limit results for performance
 
-    // Step 1: Get all accessories with stock from current_stock view
+    // Step 1: Get all accessories from current_stock view (including negative quantities)
     const { data: accessoryStockData, error: accessoryStockError } = await supabaseServer
       .from('current_stock')
       .select('accessory_id, quantity_on_hand')
       .eq('product_type', 'accessory')
       .not('accessory_id', 'is', null)
-      .gt('quantity_on_hand', 0)
 
     if (accessoryStockError) {
       console.error('Error fetching accessory stock:', accessoryStockError)
@@ -117,7 +116,6 @@ export async function GET(request: NextRequest) {
         `)
         .eq('product_type', 'material')
         .not('material_id', 'is', null)
-        .gt('quantity_on_hand', 0)
         .ilike('materials.name', `%${trimmedSearch}%`)
         .is('materials.deleted_at', null)
         .limit(resultLimit),
@@ -152,7 +150,6 @@ export async function GET(request: NextRequest) {
         `)
         .eq('product_type', 'linear_material')
         .not('linear_material_id', 'is', null)
-        .gt('quantity_on_hand', 0)
         .ilike('linear_materials.name', `%${trimmedSearch}%`)
         .is('linear_materials.deleted_at', null)
         .limit(resultLimit)

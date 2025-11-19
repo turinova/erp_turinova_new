@@ -43,29 +43,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Accessory not found' }, { status: 404 })
     }
 
-    // Now query stock for this specific accessory (fast, indexed lookup)
-    const { data: stockData, error: stockError } = await supabaseServer
-      .from('current_stock')
-      .select('quantity_on_hand')
-      .eq('product_type', 'accessory')
-      .eq('accessory_id', accessoryData.id)
-      .gt('quantity_on_hand', 0)
+        // Now query stock for this specific accessory (fast, indexed lookup) - including negative quantities
+        const { data: stockData, error: stockError } = await supabaseServer
+          .from('current_stock')
+          .select('quantity_on_hand')
+          .eq('product_type', 'accessory')
+          .eq('accessory_id', accessoryData.id)
 
     if (stockError) {
       console.error('Error fetching stock:', stockError)
       // Still return the accessory even if stock check fails
     }
 
-    // Sum quantity_on_hand across all warehouses
+    // Sum quantity_on_hand across all warehouses (including negative quantities)
     const quantity_on_hand = (stockData || []).reduce((sum: number, stock: any) => {
       return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
     }, 0)
-
-    // If no stock found, still return the accessory (user might want to see it)
-    // But you can return 404 if you want to enforce stock > 0 requirement
-    // if (quantity_on_hand === 0) {
-    //   return NextResponse.json({ error: 'Accessory out of stock' }, { status: 404 })
-    // }
 
     const vatPercent = accessoryData.vat?.kulcs || 0
     const gross_price = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)

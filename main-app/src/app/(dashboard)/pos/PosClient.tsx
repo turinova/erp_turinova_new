@@ -178,6 +178,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [pendingPaymentType, setPendingPaymentType] = useState<'cash' | 'card' | null>(null)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [imageModalOpen, setImageModalOpen] = useState(false)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [selectedImageName, setSelectedImageName] = useState<string>('')
 
   // Helper function to fetch accessory data by ID
   const fetchAccessoryData = async (accessoryId: string): Promise<{ vat_id: string; currency_id: string } | null> => {
@@ -460,10 +463,22 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
   // Handle barcode input change (debounced for scanner - optimized to 100ms)
   const handleBarcodeInputChange = (value: string) => {
-    // Don't process if user is editing a field
+    // Don't process if user is editing a critical field (fee price, discount)
+    // But allow barcode scanning even when search field has focus
     if (isEditingField) {
-      setBarcodeInput('')
-      return
+      // Only block if we're actually in a critical editing field
+      const activeElement = document.activeElement
+      const isCriticalField = 
+        activeElement?.id === 'fee-price-input' ||
+        activeElement?.id === 'discount-percentage-input' ||
+        activeElement?.closest('[id="fee-price-input"]') ||
+        activeElement?.closest('[id="discount-percentage-input"]')
+      
+      if (isCriticalField) {
+        setBarcodeInput('')
+        return
+      }
+      // Otherwise, allow barcode scanning to continue
     }
 
     setBarcodeInput(value)
@@ -486,9 +501,18 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
   // Refocus barcode input helper (optimized - no requestAnimationFrame)
   const refocusBarcodeInput = () => {
-    if (isEditingField) return // Don't refocus if user is editing a field
+    // Check if we're in a critical editing field
+    const activeElement = document.activeElement
+    const isCriticalField = 
+      activeElement?.id === 'fee-price-input' ||
+      activeElement?.id === 'discount-percentage-input' ||
+      activeElement?.closest('[id="fee-price-input"]') ||
+      activeElement?.closest('[id="discount-percentage-input"]')
+    
+    if (isEditingField && isCriticalField) return // Don't refocus if user is editing a critical field
+    
     setTimeout(() => {
-      if (barcodeInputRef.current && !isEditingField) {
+      if (barcodeInputRef.current && (!isEditingField || !isCriticalField)) {
         barcodeInputRef.current.focus()
         barcodeInputRef.current.select() // Select all text for easy clearing
       }
@@ -497,7 +521,15 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
   // Handle barcode scan (optimized with cache and request cancellation)
   const handleBarcodeScan = async (barcode: string) => {
-    if (!barcode || !barcode.trim() || isEditingField) {
+    // Check if we're in a critical editing field
+    const activeElement = document.activeElement
+    const isCriticalField = 
+      activeElement?.id === 'fee-price-input' ||
+      activeElement?.id === 'discount-percentage-input' ||
+      activeElement?.closest('[id="fee-price-input"]') ||
+      activeElement?.closest('[id="discount-percentage-input"]')
+    
+    if (!barcode || !barcode.trim() || (isEditingField && isCriticalField)) {
       refocusBarcodeInput()
       return
     }
@@ -1120,19 +1152,26 @@ export default function PosClient({ customers, workers }: PosClientProps) {
             autoFocus
             tabIndex={0}
             onBlur={(e) => {
-              // Clear barcode input when user focuses elsewhere to prevent accidental scanning
-              setBarcodeInput('')
+              // Don't clear barcode input on blur - keep it ready for scanning
               
               // Refocus if it loses focus, but only if:
               // 1. Not currently scanning
-              // 2. The new focus target is not an input/button (user interaction)
-              // 3. The new focus target is not the search field
+              // 2. Not editing a critical field
+              // 3. The new focus target is not any input field (let those fields handle their own blur)
               setTimeout(() => {
                 const activeElement = document.activeElement
                 const relatedTarget = e.relatedTarget as HTMLElement
                 
-                // Check if focus is going to any input, textarea, or button
-                const isInputOrButton = 
+                // Check if focus is going to a critical input (fee price, discount)
+                const isCriticalInput = 
+                  activeElement?.id === 'fee-price-input' ||
+                  activeElement?.id === 'discount-percentage-input' ||
+                  activeElement?.closest('[id="fee-price-input"]') ||
+                  activeElement?.closest('[id="discount-percentage-input"]')
+                
+                // Check if focus is going to any input/button/textarea
+                // This includes search field, customer field, and all other inputs
+                const isGoingToInput = 
                   activeElement?.tagName === 'INPUT' || 
                   activeElement?.tagName === 'BUTTON' ||
                   activeElement?.tagName === 'TEXTAREA' ||
@@ -1142,16 +1181,22 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                   activeElement?.closest('button') ||
                   activeElement?.closest('input') ||
                   activeElement?.closest('textarea') ||
+                  activeElement?.closest('[role="combobox"]') || // Autocomplete fields
                   relatedTarget?.closest('button') ||
                   relatedTarget?.closest('input') ||
-                  relatedTarget?.closest('textarea')
+                  relatedTarget?.closest('textarea') ||
+                  relatedTarget?.closest('[role="combobox"]') // Autocomplete fields
                 
+                // Refocus barcode input only if:
+                // - Not scanning
+                // - Not editing a critical field
+                // - Not going to any input field (let those fields handle their own blur to refocus barcode)
                 if (!isScanningRef.current && 
                     !isEditingField &&
-                    !isInputOrButton &&
-                    activeElement?.id !== 'search-field' &&
-                    relatedTarget?.id !== 'search-field') {
-                  barcodeInputRef.current?.focus()
+                    !isCriticalInput &&
+                    !isGoingToInput &&
+                    barcodeInputRef.current) {
+                  barcodeInputRef.current.focus()
                 }
               }, 100)
             }}
@@ -1172,6 +1217,37 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 placeholder="Keresés név vagy SKU alapján..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onBlur={(e) => {
+                  // When search field loses focus, refocus barcode input after a delay
+                  // But only if focus is not going to another input field
+                  setTimeout(() => {
+                    const activeElement = document.activeElement
+                    const relatedTarget = e.relatedTarget as HTMLElement
+                    
+                    // Check if focus is going to another input/button
+                    const isGoingToInput = 
+                      activeElement?.tagName === 'INPUT' || 
+                      activeElement?.tagName === 'BUTTON' ||
+                      activeElement?.tagName === 'TEXTAREA' ||
+                      relatedTarget?.tagName === 'INPUT' ||
+                      relatedTarget?.tagName === 'BUTTON' ||
+                      relatedTarget?.tagName === 'TEXTAREA' ||
+                      activeElement?.closest('button') ||
+                      activeElement?.closest('input') ||
+                      activeElement?.closest('textarea') ||
+                      relatedTarget?.closest('button') ||
+                      relatedTarget?.closest('input') ||
+                      relatedTarget?.closest('textarea')
+                    
+                    // Only refocus barcode input if not going to another input and not editing critical field
+                    if (!isScanningRef.current && 
+                        !isEditingField &&
+                        !isGoingToInput &&
+                        barcodeInputRef.current) {
+                      barcodeInputRef.current.focus()
+                    }
+                  }, 100)
+                }}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -1271,7 +1347,21 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   justifyContent: 'center',
                                   borderRadius: 1,
                                   overflow: 'hidden',
-                                  position: 'relative'
+                                  position: 'relative',
+                                  cursor: product.image_url ? 'pointer' : 'default',
+                                  '&:hover': product.image_url ? {
+                                    opacity: 0.8,
+                                    transform: 'scale(1.05)',
+                                    transition: 'all 0.2s ease'
+                                  } : {}
+                                }}
+                                onClick={(e) => {
+                                  if (product.image_url) {
+                                    e.stopPropagation() // Prevent row click
+                                    setSelectedImageUrl(product.image_url)
+                                    setSelectedImageName(product.name)
+                                    setImageModalOpen(true)
+                                  }
                                 }}
                               >
                                 {/* Placeholder icon - always present */}
@@ -1330,11 +1420,17 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 color={getTypeColor() as any}
                               />
                             </TableCell>
-                            <TableCell align="right">
-                              <Typography variant="body2">
-                                {product.quantity_on_hand} db
-                              </Typography>
-                            </TableCell>
+                              <TableCell align="right">
+                                <Typography 
+                                  variant="body2"
+                                  sx={{
+                                    color: product.quantity_on_hand < 0 ? 'error.main' : 'text.primary',
+                                    fontWeight: product.quantity_on_hand < 0 ? 'bold' : 'normal'
+                                  }}
+                                >
+                                  {product.quantity_on_hand} db
+                                </Typography>
+                              </TableCell>
                             <TableCell align="right">
                               <Typography variant="subtitle2" color="primary" fontWeight="bold">
                                 {roundedPrice.toLocaleString('hu-HU')} {product.currency_name}
@@ -1362,6 +1458,29 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 options={customers}
                 getOptionLabel={(option) => typeof option === 'string' ? option : option.name}
                 value={selectedCustomer}
+                onBlur={() => {
+                  // When customer field loses focus, refocus barcode input after a delay
+                  setTimeout(() => {
+                    const activeElement = document.activeElement
+                    
+                    // Check if focus is going to another input/button
+                    const isGoingToInput = 
+                      activeElement?.tagName === 'INPUT' || 
+                      activeElement?.tagName === 'BUTTON' ||
+                      activeElement?.tagName === 'TEXTAREA' ||
+                      activeElement?.closest('button') ||
+                      activeElement?.closest('input') ||
+                      activeElement?.closest('textarea')
+                    
+                    // Only refocus barcode input if not going to another input and not editing critical field
+                    if (!isScanningRef.current && 
+                        !isEditingField &&
+                        !isGoingToInput &&
+                        barcodeInputRef.current) {
+                      barcodeInputRef.current.focus()
+                    }
+                  }, 100)
+                }}
                 onChange={(event, newValue) => {
                   setSelectedCustomer(newValue)
                 }}
@@ -2223,6 +2342,69 @@ export default function PosClient({ customers, workers }: PosClientProps) {
             {isProcessingPayment ? 'Feldolgozás...' : 'Megerősítés'}
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Image Modal */}
+      <Dialog
+        open={imageModalOpen}
+        onClose={() => setImageModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            maxHeight: '90vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box component="span">{selectedImageName}</Box>
+          <IconButton
+            onClick={() => setImageModalOpen(false)}
+            size="small"
+            sx={{ ml: 2 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent
+          sx={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            p: 2,
+            overflow: 'auto',
+            flex: 1
+          }}
+        >
+          {selectedImageUrl && (
+            <Box
+              sx={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}
+            >
+              <img
+                src={selectedImageUrl}
+                alt={selectedImageName}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '70vh',
+                  objectFit: 'contain',
+                  borderRadius: 8
+                }}
+                onError={(e) => {
+                  console.error('Error loading image:', selectedImageUrl)
+                  e.currentTarget.style.display = 'none'
+                }}
+              />
+            </Box>
+          )}
+        </DialogContent>
       </Dialog>
     </Box>
   )
