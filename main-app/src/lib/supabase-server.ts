@@ -1826,7 +1826,7 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
 }
 
 // Get orders with pagination (for orders list page)
-export async function getOrdersWithPagination(page: number = 1, limit: number = 20, searchTerm?: string) {
+export async function getOrdersWithPagination(page: number = 1, limit: number = 50, searchTerm?: string, statusFilter?: string) {
   const startTime = performance.now()
   
   console.log(`[SSR] Fetching orders page ${page}, limit ${limit}, search: "${searchTerm || 'none'}"`)
@@ -1834,217 +1834,58 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
   try {
     const offset = (page - 1) * limit
     
-    // If search term is provided, we need to find orders that match either customer name or material names
+    // If search term is provided, find all matching order IDs first, then paginate
+    let allMatchingOrderIds: string[] = []
     if (searchTerm && searchTerm.trim()) {
       const trimmedSearch = searchTerm.trim()
       
-      // First, find materials that match the search term
-      console.log(`[SSR] Searching materials for: "${trimmedSearch}"`)
-      const { data: matchingMaterials, error: materialsError } = await supabaseServer
+      // Find orders matching customer name
+      const { data: customerMatches } = await supabaseServer
+        .from('quotes')
+        .select('id')
+        .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
+        .is('deleted_at', null)
+        .ilike('customers.name', `%${trimmedSearch}%`)
+      
+      // Find materials that match the search term
+      const { data: matchingMaterials } = await supabaseServer
         .from('materials')
         .select('id')
         .ilike('name', `%${trimmedSearch}%`)
       
-      if (materialsError) {
-        console.error('[SSR] Error searching materials:', materialsError)
-      }
-      
       const materialIds = matchingMaterials?.map(m => m.id) || []
-      console.log(`[SSR] Found ${materialIds.length} matching materials`)
       
-      // Then find quote IDs that have panels using these materials
+      // Find quote IDs that have panels using these materials
       let materialMatchIds: string[] = []
       if (materialIds.length > 0) {
-        console.log(`[SSR] Searching quote_panels for material IDs: ${materialIds.join(', ')}`)
-        const { data: materialMatches, error: panelsError } = await supabaseServer
+        const { data: materialMatches } = await supabaseServer
           .from('quote_panels')
           .select('quote_id')
           .in('material_id', materialIds)
         
-        if (panelsError) {
-          console.error('[SSR] Error searching quote_panels:', panelsError)
-        }
-        
         materialMatchIds = materialMatches?.map(m => m.quote_id) || []
-        console.log(`[SSR] Found ${materialMatchIds.length} matching quote panels`)
       }
       
-      // Build query with OR condition for customer name OR material matches
-      console.log(`[SSR] Building query with materialMatchIds: ${materialMatchIds.length} matches`)
-      let query = supabaseServer
+      // Also search by order_number
+      const { data: orderNumberMatches } = await supabaseServer
         .from('quotes')
-        .select(`
-          id,
-          order_number,
-          status,
-          payment_status,
-          final_total_after_discount,
-          updated_at,
-          production_machine_id,
-          production_date,
-          barcode,
-          customers!inner(
-            id,
-            name,
-            mobile,
-            email
-          ),
-          production_machines(
-            id,
-            machine_name
-          )
-        `, { count: 'exact' })
+        .select('id')
         .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
         .is('deleted_at', null)
-        .order('updated_at', { ascending: false })
-        .range(offset, offset + limit - 1)
+        .ilike('order_number', `%${trimmedSearch}%`)
       
-      // Execute two separate queries and combine results
-      console.log(`[SSR] Executing separate queries for customer and material matches...`)
+      // Combine and deduplicate all matching IDs
+      const customerIds = customerMatches?.map(o => o.id) || []
+      const orderNumberIds = orderNumberMatches?.map(o => o.id) || []
+      allMatchingOrderIds = [...new Set([...customerIds, ...materialMatchIds, ...orderNumberIds])]
       
-      // Query 1: Customer name matches
-      const customerQuery = supabaseServer
-        .from('quotes')
-        .select(`
-          id,
-          order_number,
-          status,
-          payment_status,
-          final_total_after_discount,
-          updated_at,
-          production_machine_id,
-          production_date,
-          ready_at,
-          barcode,
-          customers!inner(
-            id,
-            name,
-            mobile,
-            email
-          ),
-          production_machines(
-            id,
-            machine_name
-          )
-        `, { count: 'exact' })
-        .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
-        .is('deleted_at', null)
-        .ilike('customers.name', `%${trimmedSearch}%`)
-        .order('updated_at', { ascending: false})
-        .range(offset, offset + limit - 1)
-
-      // Query 2: Material matches (if any)
-      let materialQuery = null
-      if (materialMatchIds.length > 0) {
-        materialQuery = supabaseServer
-          .from('quotes')
-          .select(`
-            id,
-            order_number,
-            status,
-            payment_status,
-            final_total_after_discount,
-            updated_at,
-            production_machine_id,
-            production_date,
-            barcode,
-            customers!inner(
-              id,
-              name,
-              mobile,
-              email
-            ),
-            production_machines(
-              id,
-              machine_name
-            )
-          `, { count: 'exact' })
-          .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
-          .is('deleted_at', null)
-          .in('id', materialMatchIds)
-          .order('updated_at', { ascending: false })
-          .range(offset, offset + limit - 1)
-      }
-
-      // Execute both queries
-      const [customerResult, materialResult] = await Promise.all([
-        customerQuery,
-        materialQuery || Promise.resolve({ data: [], error: null, count: 0 })
-      ])
-
-      const { data: customerOrders, error: customerError, count: customerCount } = customerResult
-      const { data: materialOrders, error: materialError, count: materialCount } = materialResult
-
-      if (customerError) {
-        console.error('[SSR] Error fetching customer orders:', customerError)
-        logTiming('Orders Fetch Failed', startTime)
+      if (allMatchingOrderIds.length === 0) {
+        // No matches found, return empty result
         return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
-      }
-
-      if (materialError) {
-        console.error('[SSR] Error fetching material orders:', materialError)
-        logTiming('Orders Fetch Failed', startTime)
-        return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
-      }
-
-      // Combine and deduplicate results
-      const allOrders = [...(customerOrders || []), ...(materialOrders || [])]
-      const uniqueOrders = allOrders.filter((order, index, self) => 
-        index === self.findIndex(o => o.id === order.id)
-      )
-
-      // Sort by updated_at descending
-      uniqueOrders.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-
-      // Apply pagination to combined results
-      const paginatedOrders = uniqueOrders.slice(0, limit)
-      const totalCount = uniqueOrders.length
-      const totalPages = Math.ceil(totalCount / limit)
-
-      console.log(`[SSR] Combined results: ${uniqueOrders.length} total, ${paginatedOrders.length} on page`)
-
-      // Use the combined results as orders
-      const orders = paginatedOrders
-      
-      // Get payment totals for all orders (for payment modal)
-      const { data: paymentTotals } = await supabaseServer
-        .from('quote_payments')
-        .select('quote_id, amount')
-        .in('quote_id', orders?.map(o => o.id) || [])
-
-      const totalPaidByOrder = (paymentTotals || []).reduce((acc: Record<string, number>, p: any) => {
-        acc[p.quote_id] = (acc[p.quote_id] || 0) + p.amount
-        return acc
-      }, {})
-
-      // Transform the data
-      const transformedOrders = orders?.map(order => ({
-        id: order.id,
-        order_number: order.order_number || 'N/A',
-        status: order.status,
-        payment_status: order.payment_status || 'not_paid',
-        customer_name: order.customers?.name || 'Unknown Customer',
-        customer_mobile: order.customers?.mobile || '',
-        customer_email: order.customers?.email || '',
-        final_total: order.final_total_after_discount || 0,
-        total_paid: totalPaidByOrder[order.id] || 0,
-        remaining_balance: (order.final_total_after_discount || 0) - (totalPaidByOrder[order.id] || 0),
-        updated_at: order.updated_at,
-        production_machine_id: order.production_machine_id || null,
-        production_machine_name: order.production_machines?.machine_name || null,
-        production_date: order.production_date || null,
-        barcode: order.barcode || ''
-      })) || []
-
-      return {
-        orders: transformedOrders,
-        totalCount,
-        totalPages,
-        currentPage: page
       }
     }
     
-    // No search term - regular query
+    // Build the main query
     let query = supabaseServer
       .from('quotes')
       .select(`
@@ -2071,14 +1912,24 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
       `, { count: 'exact' })
       .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
       .is('deleted_at', null)
-      .order('updated_at', { ascending: false })
+    
+    // Apply status filter if provided
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+    
+    // Apply search filter - if we have matching IDs, filter by them
+    if (searchTerm && searchTerm.trim() && allMatchingOrderIds.length > 0) {
+      query = query.in('id', allMatchingOrderIds)
+    }
+    
+    query = query.order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
     const { data: orders, error: ordersError, count } = await query
 
     if (ordersError) {
       console.error('[SSR] Error fetching orders:', ordersError)
-      console.error('[SSR] Error details:', JSON.stringify(ordersError, null, 2))
       logTiming('Orders Fetch Failed', startTime)
       return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
     }
@@ -2089,30 +1940,29 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
       .select('quote_id, amount')
       .in('quote_id', orders?.map(o => o.id) || [])
 
-    const totalPaidByOrder = (paymentTotals || []).reduce((acc, p) => {
+    const totalPaidByOrder = (paymentTotals || []).reduce((acc: Record<string, number>, p: any) => {
       acc[p.quote_id] = (acc[p.quote_id] || 0) + p.amount
       return acc
-    }, {} as Record<string, number>)
+    }, {})
 
     // Transform the data
     const transformedOrders = orders?.map(order => ({
-      id: order.id,
-      order_number: order.order_number || 'N/A',
-      status: order.status,
-      payment_status: order.payment_status || 'not_paid',
-      customer_name: order.customers?.name || 'Unknown Customer',
-      customer_mobile: order.customers?.mobile || '',
-      customer_email: order.customers?.email || '',
-      final_total: order.final_total_after_discount || 0,
-      total_paid: totalPaidByOrder[order.id] || 0,
-      remaining_balance: (order.final_total_after_discount || 0) - (totalPaidByOrder[order.id] || 0),
-      updated_at: order.updated_at,
-      production_machine_id: order.production_machine_id || null,
-      production_machine_name: order.production_machines?.machine_name || null,
-      production_date: order.production_date || null,
-      ready_at: order.ready_at || null,
-      barcode: order.barcode || ''
-    })) || []
+        id: order.id,
+        order_number: order.order_number || 'N/A',
+        status: order.status,
+        payment_status: order.payment_status || 'not_paid',
+        customer_name: order.customers?.name || 'Unknown Customer',
+        customer_mobile: order.customers?.mobile || '',
+        customer_email: order.customers?.email || '',
+        final_total: order.final_total_after_discount || 0,
+        total_paid: totalPaidByOrder[order.id] || 0,
+        remaining_balance: (order.final_total_after_discount || 0) - (totalPaidByOrder[order.id] || 0),
+        updated_at: order.updated_at,
+        production_machine_id: order.production_machine_id || null,
+        production_machine_name: order.production_machines?.machine_name || null,
+        production_date: order.production_date || null,
+        barcode: order.barcode || ''
+      })) || []
 
     const totalCount = count || 0
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / limit) : 0
@@ -2120,7 +1970,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
     console.log(`[SSR] Pagination calculation: totalCount=${totalCount}, limit=${limit}, totalPages=${totalPages}`)
     logTiming('Orders Fetch Total', startTime, `returned ${transformedOrders.length} orders (page ${page}/${totalPages})`)
     console.log(`[SSR] Orders fetched successfully: ${transformedOrders.length} orders, total: ${totalCount}`)
-    
+
     return {
       orders: transformedOrders,
       totalCount,

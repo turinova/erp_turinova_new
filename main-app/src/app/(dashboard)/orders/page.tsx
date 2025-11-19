@@ -11,18 +11,21 @@ interface PageProps {
   searchParams: Promise<{
     page?: string
     search?: string
+    limit?: string
+    status?: string
   }>
 }
 
 export default async function OrdersPage({ searchParams }: PageProps) {
   const resolvedParams = await searchParams
-  const page = parseInt(resolvedParams.page || '1')
+  const page = parseInt(resolvedParams.page || '1', 10)
+  const limit = parseInt(resolvedParams.limit || '50', 10)
   const searchTerm = resolvedParams.search || ''
+  const statusFilter = resolvedParams.status || 'ordered'
   
-  // Fetch orders and machines in parallel
-  // Note: Using very large limit (99999) to effectively fetch all orders for client-side filtering
+  // Fetch orders and machines in parallel with proper server-side pagination
   const [ordersData, machines] = await Promise.all([
-    getOrdersWithPagination(1, 99999, searchTerm), // Always fetch page 1 with all orders
+    getOrdersWithPagination(page, limit, searchTerm, statusFilter),
     getAllProductionMachines()
   ])
   
@@ -30,8 +33,11 @@ export default async function OrdersPage({ searchParams }: PageProps) {
     <OrdersListClient 
       initialOrders={ordersData.orders}
       totalCount={ordersData.totalCount}
+      totalPages={ordersData.totalPages}
       currentPage={ordersData.currentPage}
       initialSearchTerm={searchTerm}
+      initialStatusFilter={statusFilter}
+      initialPageSize={limit}
       machines={machines}
     />
   )

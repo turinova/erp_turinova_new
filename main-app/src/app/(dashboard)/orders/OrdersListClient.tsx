@@ -73,29 +73,35 @@ interface Order {
 interface OrdersListClientProps {
   initialOrders: Order[]
   totalCount: number
+  totalPages: number
   currentPage: number
   initialSearchTerm: string
+  initialStatusFilter: string
+  initialPageSize: number
   machines: Machine[]
 }
 
 export default function OrdersListClient({ 
   initialOrders, 
-  totalCount, 
+  totalCount,
+  totalPages,
   currentPage, 
   initialSearchTerm,
+  initialStatusFilter,
+  initialPageSize,
   machines
 }: OrdersListClientProps) {
   const router = useRouter()
   
   const [orders, setOrders] = useState<Order[]>(initialOrders)
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '') // Initialize with server-side search term
+  const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '')
   const [mounted, setMounted] = useState(false)
   const [savingOrders, setSavingOrders] = useState<Set<string>>(new Set())
   const [defaultBusinessDay, setDefaultBusinessDay] = useState<Date | null>(null)
-  const [statusFilter, setStatusFilter] = useState<string>('ordered')
-  const [pageSize, setPageSize] = useState(20)
-  const [clientPage, setClientPage] = useState(1)
+  const [statusFilter, setStatusFilter] = useState<string>(initialStatusFilter || 'ordered')
+  const [pageSize, setPageSize] = useState(initialPageSize || 50)
+  const [clientPage, setClientPage] = useState(currentPage)
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [smsModalOpen, setSmsModalOpen] = useState(false)
@@ -118,6 +124,10 @@ export default function OrdersListClient({
     const timeoutId = setTimeout(() => {
       const params = new URLSearchParams()
       params.set('page', '1') // Reset to first page when searching
+      params.set('limit', pageSize.toString())
+      if (statusFilter !== 'all') {
+        params.set('status', statusFilter)
+      }
       if (searchTerm.trim()) {
         params.set('search', searchTerm.trim())
       }
@@ -125,38 +135,31 @@ export default function OrdersListClient({
     }, 500) // 500ms debounce
 
     return () => clearTimeout(timeoutId)
-  }, [searchTerm, mounted, router])
+  }, [searchTerm, statusFilter, pageSize, mounted, router])
 
-  // Update orders when initialOrders prop changes (from server-side search)
+  // Update orders when initialOrders prop changes (from server-side search/filter)
   useEffect(() => {
     setOrders(initialOrders)
-  }, [initialOrders])
+    setClientPage(currentPage)
+  }, [initialOrders, currentPage])
 
-  // Reset page when status filter changes (like customer-orders)
-  useEffect(() => {
-    setClientPage(1)
-  }, [statusFilter])
-
-  // Filter orders by status (client-side, like customer-orders)
-  const filteredOrders = orders.filter(order => {
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter
-    return matchesStatus
-  })
-
-  // Count orders by status
-  const statusCounts = {
-    all: orders.length,
-    ordered: orders.filter(o => o.status === 'ordered').length,
-    in_production: orders.filter(o => o.status === 'in_production').length,
-    ready: orders.filter(o => o.status === 'ready').length,
-    finished: orders.filter(o => o.status === 'finished').length,
-    cancelled: orders.filter(o => o.status === 'cancelled').length
+  // Handle status filter change - triggers server-side re-fetch
+  const handleStatusFilterChange = (newStatus: string) => {
+    setStatusFilter(newStatus)
+    const params = new URLSearchParams()
+    params.set('page', '1')
+    params.set('limit', pageSize.toString())
+    if (newStatus !== 'all') {
+      params.set('status', newStatus)
+    }
+    if (searchTerm.trim()) {
+      params.set('search', searchTerm.trim())
+    }
+    router.push(`/orders?${params.toString()}`)
   }
 
-  // Client-side pagination (like customer-orders)
-  const totalPages = Math.ceil(filteredOrders.length / pageSize)
-  const startIndex = (clientPage - 1) * pageSize
-  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + pageSize)
+  // Use server-side filtered and paginated orders (no client-side filtering needed)
+  const paginatedOrders = orders
 
   // Calculate next business day (skip weekends)
   const getNextBusinessDay = () => {
@@ -252,14 +255,33 @@ export default function OrdersListClient({
   // Search is now client-side, no need for navigation
 
   // Handle page change (client-side only, like customer-orders)
+  // Handle page change - triggers server-side re-fetch
   const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
-    setClientPage(value)
+    const params = new URLSearchParams()
+    params.set('page', value.toString())
+    params.set('limit', pageSize.toString())
+    if (statusFilter !== 'all') {
+      params.set('status', statusFilter)
+    }
+    if (searchTerm.trim()) {
+      params.set('search', searchTerm.trim())
+    }
+    router.push(`/orders?${params.toString()}`)
   }
 
-  // Handle page size change (like customer-orders)
+  // Handle page size change - triggers server-side re-fetch
   const handleLimitChange = (event: any) => {
-    setPageSize(event.target.value)
-    setClientPage(1)
+    const newPageSize = event.target.value
+    const params = new URLSearchParams()
+    params.set('page', '1') // Reset to first page when changing page size
+    params.set('limit', newPageSize.toString())
+    if (statusFilter !== 'all') {
+      params.set('status', statusFilter)
+    }
+    if (searchTerm.trim()) {
+      params.set('search', searchTerm.trim())
+    }
+    router.push(`/orders?${params.toString()}`)
   }
 
   // Handle row click (navigate to detail page)
@@ -800,43 +822,43 @@ export default function OrdersListClient({
           Szűrés:
         </Typography>
         <Chip
-          label={`Összes (${statusCounts.all})`}
-          onClick={() => setStatusFilter('all')}
+          label="Összes"
+          onClick={() => handleStatusFilterChange('all')}
           color={statusFilter === 'all' ? 'primary' : 'default'}
           variant={statusFilter === 'all' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
-          label={`Megrendelve (${statusCounts.ordered})`}
-          onClick={() => setStatusFilter('ordered')}
+          label="Megrendelve"
+          onClick={() => handleStatusFilterChange('ordered')}
           color={statusFilter === 'ordered' ? 'success' : 'default'}
           variant={statusFilter === 'ordered' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
-          label={`Gyártásban (${statusCounts.in_production})`}
-          onClick={() => setStatusFilter('in_production')}
+          label="Gyártásban"
+          onClick={() => handleStatusFilterChange('in_production')}
           color={statusFilter === 'in_production' ? 'warning' : 'default'}
           variant={statusFilter === 'in_production' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
-          label={`Kész (${statusCounts.ready})`}
-          onClick={() => setStatusFilter('ready')}
+          label="Kész"
+          onClick={() => handleStatusFilterChange('ready')}
           color={statusFilter === 'ready' ? 'info' : 'default'}
           variant={statusFilter === 'ready' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
-          label={`Lezárva (${statusCounts.finished})`}
-          onClick={() => setStatusFilter('finished')}
+          label="Lezárva"
+          onClick={() => handleStatusFilterChange('finished')}
           color={statusFilter === 'finished' ? 'default' : 'default'}
           variant={statusFilter === 'finished' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
-          label={`Törölve (${statusCounts.cancelled})`}
-          onClick={() => setStatusFilter('cancelled')}
+          label="Törölve"
+          onClick={() => handleStatusFilterChange('cancelled')}
           color={statusFilter === 'cancelled' ? 'error' : 'default'}
           variant={statusFilter === 'cancelled' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
@@ -1127,9 +1149,9 @@ export default function OrdersListClient({
       {/* Pagination */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
         <Typography variant="body2" color="text.secondary">
-          {searchTerm || statusFilter !== 'ordered' 
-            ? `Keresési eredmény: ${filteredOrders.length} megrendelés` 
-            : `Összesen ${orders.length} megrendelés`
+          {searchTerm || statusFilter !== 'all' 
+            ? `Keresési eredmény: ${totalCount} megrendelés` 
+            : `Összesen ${totalCount} megrendelés`
           }
         </Typography>
         
