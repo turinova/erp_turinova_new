@@ -1200,12 +1200,18 @@ export default function PosOrderDetailClient({
                             SKU: {item.sku}
                           </Typography>
                         )}
-                        {item.product_type === 'material' && (
+                        {item.product_type === 'material' && 
+                         item.length_mm != null && 
+                         item.width_mm != null && 
+                         item.thickness_mm != null && (
                           <Typography variant="caption" color="text.secondary" display="block">
                             {item.length_mm}×{item.width_mm}×{item.thickness_mm} mm
                           </Typography>
                         )}
-                        {item.product_type === 'linear_material' && (
+                        {item.product_type === 'linear_material' && 
+                         item.length != null && 
+                         item.width != null && 
+                         item.thickness != null && (
                           <Typography variant="caption" color="text.secondary" display="block">
                             {item.length}×{item.width}×{item.thickness} mm
                           </Typography>

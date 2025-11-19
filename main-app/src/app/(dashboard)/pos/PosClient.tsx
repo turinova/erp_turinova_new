@@ -1402,12 +1402,18 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   SKU: {product.sku}
                                 </Typography>
                               )}
-                              {product.product_type === 'material' && (
+                              {product.product_type === 'material' && 
+                               product.length_mm != null && 
+                               product.width_mm != null && 
+                               product.thickness_mm != null && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   {product.length_mm}×{product.width_mm}×{product.thickness_mm} mm
                                 </Typography>
                               )}
-                              {product.product_type === 'linear_material' && (
+                              {product.product_type === 'linear_material' && 
+                               product.length != null && 
+                               product.width != null && 
+                               product.thickness != null && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   {product.length}×{product.width}×{product.thickness} mm
                                 </Typography>

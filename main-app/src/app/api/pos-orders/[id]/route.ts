@@ -45,7 +45,7 @@ export async function GET(
       return NextResponse.json({ error: 'POS rendelés nem található' }, { status: 404 })
     }
 
-    // Fetch order items (products and fees)
+    // Fetch order items (products and fees) with dimensions from related tables
     const { data: items, error: itemsError } = await supabaseServer
       .from('pos_order_items')
       .select(`
@@ -67,7 +67,17 @@ export async function GET(
         total_vat,
         total_gross,
         created_at,
-        updated_at
+        updated_at,
+        materials:material_id (
+          length_mm,
+          width_mm,
+          thickness_mm
+        ),
+        linear_materials:linear_material_id (
+          length,
+          width,
+          thickness
+        )
       `)
       .eq('pos_order_id', id)
       .is('deleted_at', null)
@@ -77,6 +87,42 @@ export async function GET(
       console.error('Error fetching POS order items:', itemsError)
       return NextResponse.json({ error: 'Hiba a tételek lekérdezésekor' }, { status: 500 })
     }
+
+    // Transform items: flatten dimensions from related tables
+    const transformedItems = (items || []).map((item: any) => {
+      const transformed: any = { ...item }
+      
+      // Flatten dimensions from related tables
+      if (item.materials && Array.isArray(item.materials) && item.materials.length > 0) {
+        const material = item.materials[0]
+        transformed.length_mm = material.length_mm
+        transformed.width_mm = material.width_mm
+        transformed.thickness_mm = material.thickness_mm
+      } else if (item.materials && !Array.isArray(item.materials)) {
+        // Single object (not array)
+        transformed.length_mm = item.materials.length_mm
+        transformed.width_mm = item.materials.width_mm
+        transformed.thickness_mm = item.materials.thickness_mm
+      }
+      
+      if (item.linear_materials && Array.isArray(item.linear_materials) && item.linear_materials.length > 0) {
+        const linearMaterial = item.linear_materials[0]
+        transformed.length = linearMaterial.length
+        transformed.width = linearMaterial.width
+        transformed.thickness = linearMaterial.thickness
+      } else if (item.linear_materials && !Array.isArray(item.linear_materials)) {
+        // Single object (not array)
+        transformed.length = item.linear_materials.length
+        transformed.width = item.linear_materials.width
+        transformed.thickness = item.linear_materials.thickness
+      }
+      
+      // Remove nested objects
+      delete transformed.materials
+      delete transformed.linear_materials
+      
+      return transformed
+    })
 
     // Fetch payments (including soft-deleted)
     const { data: payments, error: paymentsError } = await supabaseServer
@@ -109,7 +155,7 @@ export async function GET(
         worker_nickname: order.workers?.nickname || '',
         worker_color: order.workers?.color || '#1976d2'
       },
-      items: items || [],
+      items: transformedItems,
       payments: payments || [],
       total_paid: totalPaid,
       balance: balance

@@ -3475,7 +3475,7 @@ export async function getPosOrderById(id: string) {
       return null
     }
 
-    // Fetch order items
+    // Fetch order items with dimensions from related tables
     const { data: items } = await supabaseServer
       .from('pos_order_items')
       .select(`
@@ -3495,28 +3495,71 @@ export async function getPosOrderById(id: string) {
         currency_id,
         total_net,
         total_vat,
-        total_gross
+        total_gross,
+        materials:material_id (
+          length_mm,
+          width_mm,
+          thickness_mm
+        ),
+        linear_materials:linear_material_id (
+          length,
+          width,
+          thickness
+        )
       `)
       .eq('pos_order_id', id)
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
     
-    // Normalize items: set default product_type for backward compatibility with old records
+    // Normalize items: set default product_type and flatten dimensions for backward compatibility with old records
     const normalizedItems = (items || []).map((item: any) => {
+      let normalizedItem = { ...item }
+      
+      // Set default product_type if missing
       if (item.item_type === 'product' && !item.product_type) {
         // Default based on which ID is present
         if (item.accessory_id) {
-          return { ...item, product_type: 'accessory' }
+          normalizedItem.product_type = 'accessory'
         } else if (item.material_id) {
-          return { ...item, product_type: 'material' }
+          normalizedItem.product_type = 'material'
         } else if (item.linear_material_id) {
-          return { ...item, product_type: 'linear_material' }
+          normalizedItem.product_type = 'linear_material'
         } else {
           // Fallback to accessory if no ID is present (backward compatibility)
-          return { ...item, product_type: 'accessory' }
+          normalizedItem.product_type = 'accessory'
         }
       }
-      return item
+      
+      // Flatten dimensions from related tables
+      if (item.materials && Array.isArray(item.materials) && item.materials.length > 0) {
+        const material = item.materials[0]
+        normalizedItem.length_mm = material.length_mm
+        normalizedItem.width_mm = material.width_mm
+        normalizedItem.thickness_mm = material.thickness_mm
+      } else if (item.materials && !Array.isArray(item.materials)) {
+        // Single object (not array)
+        normalizedItem.length_mm = item.materials.length_mm
+        normalizedItem.width_mm = item.materials.width_mm
+        normalizedItem.thickness_mm = item.materials.thickness_mm
+      }
+      
+      if (item.linear_materials && Array.isArray(item.linear_materials) && item.linear_materials.length > 0) {
+        const linearMaterial = item.linear_materials[0]
+        normalizedItem.length = linearMaterial.length
+        normalizedItem.width = linearMaterial.width
+        normalizedItem.thickness = linearMaterial.thickness
+      } else if (item.linear_materials && !Array.isArray(item.linear_materials)) {
+        // Single object (not array)
+        normalizedItem.length = item.linear_materials.length
+        normalizedItem.width = item.linear_materials.width
+        normalizedItem.thickness = item.linear_materials.thickness
+      }
+      
+      // Remove nested objects
+      delete normalizedItem.materials
+      delete normalizedItem.linear_materials
+      
+      return normalizedItem
     })
 
     // Fetch payments (including soft-deleted)
