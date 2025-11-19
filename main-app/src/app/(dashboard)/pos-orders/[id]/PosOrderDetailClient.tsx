@@ -94,7 +94,10 @@ interface FeeType {
 interface PosOrderItem {
   id: string
   item_type: 'product' | 'fee'
+  product_type?: 'accessory' | 'material' | 'linear_material'
   accessory_id: string | null
+  material_id: string | null
+  linear_material_id: string | null
   feetype_id: string | null
   product_name: string
   sku: string | null
@@ -106,6 +109,14 @@ interface PosOrderItem {
   total_net: number
   total_vat: number
   total_gross: number
+  // Material dimensions (for display)
+  length_mm?: number
+  width_mm?: number
+  thickness_mm?: number
+  // Linear material dimensions (for display)
+  length?: number
+  width?: number
+  thickness?: number
 }
 
 interface PosPayment {
@@ -178,7 +189,25 @@ export default function PosOrderDetailClient({
 
   // Order state
   const [order, setOrder] = useState<PosOrder>(initialOrder)
-  const [items, setItems] = useState<PosOrderItem[]>(initialItems)
+  // Normalize items: set default product_type for backward compatibility with old records
+  const normalizedInitialItems = initialItems.map(item => {
+    if (item.item_type === 'product' && !item.product_type) {
+      // Default to 'accessory' if product_type is null/undefined (backward compatibility)
+      // Determine based on which ID is present
+      if (item.accessory_id) {
+        return { ...item, product_type: 'accessory' as const }
+      } else if (item.material_id) {
+        return { ...item, product_type: 'material' as const }
+      } else if (item.linear_material_id) {
+        return { ...item, product_type: 'linear_material' as const }
+      } else {
+        // Fallback to accessory if no ID is present (shouldn't happen, but safe default)
+        return { ...item, product_type: 'accessory' as const }
+      }
+    }
+    return item
+  })
+  const [items, setItems] = useState<PosOrderItem[]>(normalizedInitialItems)
   const [payments, setPayments] = useState<PosPayment[]>(initialPayments)
   // Calculate initial total paid from active payments only
   const initialActivePayments = initialPayments.filter(p => !p.deleted_at)
@@ -187,8 +216,8 @@ export default function PosOrderDetailClient({
   
   // Calculate initial balance from summary (will be recalculated when summary changes)
   const initialSummary = useMemo(() => {
-    const products = initialItems.filter(item => item.item_type === 'product')
-    const fees = initialItems.filter(item => item.item_type === 'fee')
+    const products = normalizedInitialItems.filter(item => item.item_type === 'product')
+    const fees = normalizedInitialItems.filter(item => item.item_type === 'fee')
     
     const itemsNet = products.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
     const itemsVat = products.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
@@ -470,10 +499,13 @@ export default function PosOrderDetailClient({
     const newProduct: PosOrderItem = {
       id: `temp-${Date.now()}`,
       item_type: 'product',
-      accessory_id: selectedProduct.id,
+      product_type: selectedProduct.product_type || 'accessory',
+      accessory_id: selectedProduct.accessory_id || null,
+      material_id: selectedProduct.material_id || null,
+      linear_material_id: selectedProduct.linear_material_id || null,
       feetype_id: null,
       product_name: selectedProduct.name,
-      sku: selectedProduct.sku,
+      sku: selectedProduct.sku || null,
       quantity: 1,
       unit_price_net: selectedProduct.net_price,
       unit_price_gross: grossPrice,
@@ -481,7 +513,15 @@ export default function PosOrderDetailClient({
       currency_id: selectedProduct.currency_id,
       total_net: selectedProduct.net_price,
       total_vat: grossPrice - selectedProduct.net_price,
-      total_gross: grossPrice
+      total_gross: grossPrice,
+      // Material dimensions
+      length_mm: selectedProduct.length_mm,
+      width_mm: selectedProduct.width_mm,
+      thickness_mm: selectedProduct.thickness_mm,
+      // Linear material dimensions
+      length: selectedProduct.length,
+      width: selectedProduct.width,
+      thickness: selectedProduct.thickness
     }
 
     setItems(prevItems => [...prevItems, newProduct])
@@ -710,7 +750,10 @@ export default function PosOrderDetailClient({
         return {
           id: isNew ? null : item.id, // null for new items
           item_type: item.item_type,
+          product_type: item.product_type || 'accessory',
           accessory_id: item.accessory_id || null,
+          material_id: item.material_id || null,
+          linear_material_id: item.linear_material_id || null,
           feetype_id: item.feetype_id || null,
           product_name: item.product_name,
           sku: item.sku || null,
@@ -730,7 +773,10 @@ export default function PosOrderDetailClient({
           itemsPayload.push({
             id: deletedItem.id,
             item_type: deletedItem.item_type,
+            product_type: deletedItem.product_type || 'accessory',
             accessory_id: deletedItem.accessory_id || null,
+            material_id: deletedItem.material_id || null,
+            linear_material_id: deletedItem.linear_material_id || null,
             feetype_id: deletedItem.feetype_id || null,
             product_name: deletedItem.product_name,
             sku: deletedItem.sku || null,
@@ -1147,8 +1193,25 @@ export default function PosOrderDetailClient({
                 <TableBody>
                   {items.filter(item => item.item_type === 'product').map(item => (
                     <TableRow key={item.id}>
-                      <TableCell>{item.product_name}</TableCell>
-                      <TableCell>{item.sku || '-'}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{item.product_name}</Typography>
+                        {item.product_type === 'accessory' && item.sku && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            SKU: {item.sku}
+                          </Typography>
+                        )}
+                        {item.product_type === 'material' && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {item.length_mm}×{item.width_mm}×{item.thickness_mm} mm
+                          </Typography>
+                        )}
+                        {item.product_type === 'linear_material' && (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            {item.length}×{item.width}×{item.thickness} mm
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>{item.product_type === 'accessory' ? (item.sku || '-') : '-'}</TableCell>
                       <TableCell align="right">
                         <TextField
                           type="number"
@@ -1228,12 +1291,62 @@ export default function PosOrderDetailClient({
                           )}
                           renderOption={(props, option) => {
                             const { key, ...otherProps } = props
+                            const getTypeLabel = () => {
+                              switch (option.product_type) {
+                                case 'accessory':
+                                  return 'Kellék'
+                                case 'material':
+                                  return 'Bútorlap'
+                                case 'linear_material':
+                                  return 'Szálas termék'
+                                default:
+                                  return ''
+                              }
+                            }
+                            const getTypeColor = () => {
+                              switch (option.product_type) {
+                                case 'accessory':
+                                  return 'primary'
+                                case 'material':
+                                  return 'secondary'
+                                case 'linear_material':
+                                  return 'success'
+                                default:
+                                  return 'default'
+                              }
+                            }
+                            const getDimensions = () => {
+                              if (option.product_type === 'material') {
+                                return `${option.length_mm}×${option.width_mm}×${option.thickness_mm} mm`
+                              } else if (option.product_type === 'linear_material') {
+                                return `${option.length}×${option.width}×${option.thickness} mm`
+                              }
+                              return null
+                            }
                             return (
                               <Box component="li" key={key} {...otherProps}>
                                 <Box sx={{ flex: 1 }}>
-                                  <Typography variant="body2">{option.name}</Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                    <Typography variant="body2">{option.name}</Typography>
+                                    <Chip
+                                      label={getTypeLabel()}
+                                      size="small"
+                                      color={getTypeColor() as any}
+                                    />
+                                  </Box>
+                                  {option.product_type === 'material' && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {option.length_mm}×{option.width_mm}×{option.thickness_mm} mm
+                                    </Typography>
+                                  )}
+                                  {option.product_type === 'linear_material' && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {option.length}×{option.width}×{option.thickness} mm
+                                    </Typography>
+                                  )}
                                   <Typography variant="caption" color="text.secondary">
-                                    SKU: {option.sku} | Készlet: {option.quantity_on_hand} | {formatCurrency(option.gross_price)}
+                                    {option.product_type === 'accessory' && option.sku && `SKU: ${option.sku} | `}
+                                    Készlet: {option.quantity_on_hand} | {formatCurrency(option.gross_price)}
                                   </Typography>
                                 </Box>
                               </Box>

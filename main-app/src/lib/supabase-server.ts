@@ -3481,7 +3481,10 @@ export async function getPosOrderById(id: string) {
       .select(`
         id,
         item_type,
+        product_type,
         accessory_id,
+        material_id,
+        linear_material_id,
         feetype_id,
         product_name,
         sku,
@@ -3497,6 +3500,24 @@ export async function getPosOrderById(id: string) {
       .eq('pos_order_id', id)
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
+    
+    // Normalize items: set default product_type for backward compatibility with old records
+    const normalizedItems = (items || []).map((item: any) => {
+      if (item.item_type === 'product' && !item.product_type) {
+        // Default based on which ID is present
+        if (item.accessory_id) {
+          return { ...item, product_type: 'accessory' }
+        } else if (item.material_id) {
+          return { ...item, product_type: 'material' }
+        } else if (item.linear_material_id) {
+          return { ...item, product_type: 'linear_material' }
+        } else {
+          // Fallback to accessory if no ID is present (backward compatibility)
+          return { ...item, product_type: 'accessory' }
+        }
+      }
+      return item
+    })
 
     // Fetch payments (including soft-deleted)
     const { data: payments } = await supabaseServer
@@ -3524,7 +3545,7 @@ export async function getPosOrderById(id: string) {
         worker_nickname: order.workers?.nickname || '',
         worker_color: order.workers?.color || '#1976d2'
       },
-      items: items || [],
+      items: normalizedItems,
       payments: payments || [],
       total_paid: totalPaid,
       balance: balance

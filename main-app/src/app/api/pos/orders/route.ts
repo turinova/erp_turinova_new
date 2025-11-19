@@ -37,9 +37,28 @@ export async function POST(request: NextRequest) {
 
     // Validate items structure
     for (const item of items) {
-      if (!item.accessory_id || !item.name || !item.quantity || !item.unit_price_net || !item.unit_price_gross || !item.vat_id || !item.currency_id) {
+      if (!item.product_type || !item.name || !item.quantity || !item.unit_price_net || !item.unit_price_gross || !item.vat_id || !item.currency_id) {
         return NextResponse.json(
-          { error: 'Minden termékhez szükséges: accessory_id, name, quantity, unit_price_net, unit_price_gross, vat_id, currency_id' },
+          { error: 'Minden termékhez szükséges: product_type, name, quantity, unit_price_net, unit_price_gross, vat_id, currency_id' },
+          { status: 400 }
+        )
+      }
+      // Validate that appropriate ID is present based on product_type
+      if (item.product_type === 'accessory' && !item.accessory_id) {
+        return NextResponse.json(
+          { error: 'Kellék termékekhez szükséges: accessory_id' },
+          { status: 400 }
+        )
+      }
+      if (item.product_type === 'material' && !item.material_id) {
+        return NextResponse.json(
+          { error: 'Bútorlap termékekhez szükséges: material_id' },
+          { status: 400 }
+        )
+      }
+      if (item.product_type === 'linear_material' && !item.linear_material_id) {
+        return NextResponse.json(
+          { error: 'Szálas termékekhez szükséges: linear_material_id' },
           { status: 400 }
         )
       }

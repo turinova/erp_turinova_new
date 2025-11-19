@@ -60,10 +60,11 @@ interface Customer {
   sms_notification?: boolean
 }
 
-interface AccessoryItem {
+interface ProductItem {
   id: string
+  product_type: 'accessory' | 'material' | 'linear_material'
   name: string
-  sku: string
+  sku?: string
   quantity_on_hand: number
   gross_price: number
   net_price: number
@@ -71,6 +72,18 @@ interface AccessoryItem {
   vat_id: string
   currency_id: string
   image_url?: string | null
+  // Accessory fields
+  accessory_id?: string
+  // Material fields
+  material_id?: string
+  length_mm?: number
+  width_mm?: number
+  thickness_mm?: number
+  // Linear material fields
+  linear_material_id?: string
+  length?: number
+  width?: number
+  thickness?: number
 }
 
 // Helper function to round up to nearest 10
@@ -80,15 +93,26 @@ const roundUpToNearest10 = (value: number): number => {
 
 interface CartItem {
   id: string
-  accessory_id: string
+  product_type: 'accessory' | 'material' | 'linear_material'
+  accessory_id?: string
+  material_id?: string
+  linear_material_id?: string
   name: string
-  sku: string
+  sku?: string
   quantity: number
   gross_price: number
   net_price: number
   currency_name: string
   vat_id: string
   currency_id: string
+  // Material dimensions (for display)
+  length_mm?: number
+  width_mm?: number
+  thickness_mm?: number
+  // Linear material dimensions (for display)
+  length?: number
+  width?: number
+  thickness?: number
 }
 
 interface FeeType {
@@ -139,7 +163,7 @@ interface PosClientProps {
 export default function PosClient({ customers, workers }: PosClientProps) {
   const { hasAccess, loading } = usePagePermission('/pos')
   const [searchTerm, setSearchTerm] = useState('')
-  const [searchResults, setSearchResults] = useState<AccessoryItem[]>([])
+  const [searchResults, setSearchResults] = useState<ProductItem[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
@@ -178,10 +202,16 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     const fixedItems: CartItem[] = []
     const itemsToFix: { item: CartItem; index: number }[] = []
 
-    // Check which items need fixing
+    // Check which items need fixing (only accessories can be fixed via API)
     items.forEach((item, index) => {
       if (!item.vat_id || !item.currency_id) {
-        itemsToFix.push({ item, index })
+        // Only try to fix accessories (materials/linear_materials should always have these from search)
+        if (item.product_type === 'accessory' && item.accessory_id) {
+          itemsToFix.push({ item, index })
+        } else {
+          // Materials/linear_materials without vat_id/currency_id should be removed
+          // (they should always have these from search results)
+        }
       } else {
         fixedItems.push(item)
       }
@@ -192,14 +222,16 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       return items
     }
 
-    // Fetch missing data for items that need it
+    // Fetch missing data for accessories that need it
     const fixPromises = itemsToFix.map(async ({ item }) => {
-      const accessoryData = await fetchAccessoryData(item.accessory_id)
-      if (accessoryData && accessoryData.vat_id && accessoryData.currency_id) {
-        return {
-          ...item,
-          vat_id: accessoryData.vat_id,
-          currency_id: accessoryData.currency_id
+      if (item.product_type === 'accessory' && item.accessory_id) {
+        const accessoryData = await fetchAccessoryData(item.accessory_id)
+        if (accessoryData && accessoryData.vat_id && accessoryData.currency_id) {
+          return {
+            ...item,
+            vat_id: accessoryData.vat_id,
+            currency_id: accessoryData.currency_id
+          }
         }
       }
       // If we can't fetch the data, return null to remove the item
@@ -312,7 +344,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const [isEditingField, setIsEditingField] = useState(false)
   
   // Simple cache for barcode scans (last 50 items, 5 minutes TTL)
-  const barcodeCacheRef = useRef<Map<string, { data: AccessoryItem; timestamp: number }>>(new Map())
+  const barcodeCacheRef = useRef<Map<string, { data: ProductItem; timestamp: number }>>(new Map())
   const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
   const CACHE_MAX_SIZE = 50
 
@@ -551,18 +583,30 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         return
       }
 
-      const accessory: AccessoryItem = await response.json()
+      const product: ProductItem = await response.json()
+
+      // Barcode scanning only works for accessories
+      if (product.product_type !== 'accessory') {
+        toast.error('Vonalkód csak kellékekhez használható')
+        lastScannedBarcodeRef.current = null
+        setBarcodeInput('')
+        isScanningRef.current = false
+        refocusBarcodeInput()
+        return
+      }
 
       // Add to cache
       if (barcodeCacheRef.current.size >= CACHE_MAX_SIZE) {
         // Remove oldest entry
         const firstKey = barcodeCacheRef.current.keys().next().value
-        barcodeCacheRef.current.delete(firstKey)
+        if (firstKey) {
+          barcodeCacheRef.current.delete(firstKey)
+        }
       }
-      barcodeCacheRef.current.set(trimmedBarcode, { data: accessory, timestamp: now })
+      barcodeCacheRef.current.set(trimmedBarcode, { data: product, timestamp: now })
 
       // Add to cart and get the item ID that was added/updated
-      const addedItemId = handleAddToCart(accessory)
+      const addedItemId = handleAddToCart(product)
       
       // Highlight the cart item
       if (addedItemId) {
@@ -602,15 +646,24 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   }
 
   // Add item to cart - returns the item ID that was added/updated
-  const handleAddToCart = (accessory: AccessoryItem): string | null => {
-    const existingItem = cartItems.find(item => item.accessory_id === accessory.id)
-    const roundedPrice = roundUpToNearest10(accessory.gross_price)
+  const handleAddToCart = (product: ProductItem): string | null => {
+    // Find existing item based on product type and ID
+    let existingItem: CartItem | undefined
+    if (product.product_type === 'accessory' && product.accessory_id) {
+      existingItem = cartItems.find(item => item.product_type === 'accessory' && item.accessory_id === product.accessory_id)
+    } else if (product.product_type === 'material' && product.material_id) {
+      existingItem = cartItems.find(item => item.product_type === 'material' && item.material_id === product.material_id)
+    } else if (product.product_type === 'linear_material' && product.linear_material_id) {
+      existingItem = cartItems.find(item => item.product_type === 'linear_material' && item.linear_material_id === product.linear_material_id)
+    }
+
+    const roundedPrice = roundUpToNearest10(product.gross_price)
     
     if (existingItem) {
       // Increment quantity
       setCartItems(prev =>
         prev.map(item =>
-          item.id === existingItem.id
+          item.id === existingItem!.id
             ? { ...item, quantity: item.quantity + 1, gross_price: roundedPrice }
             : item
         )
@@ -620,15 +673,26 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       // Add new item
       const newItem: CartItem = {
         id: Date.now().toString(),
-        accessory_id: accessory.id,
-        name: accessory.name,
-        sku: accessory.sku,
+        product_type: product.product_type,
+        accessory_id: product.accessory_id,
+        material_id: product.material_id,
+        linear_material_id: product.linear_material_id,
+        name: product.name,
+        sku: product.sku,
         quantity: 1,
         gross_price: roundedPrice,
-        net_price: accessory.net_price,
-        currency_name: accessory.currency_name,
-        vat_id: accessory.vat_id,
-        currency_id: accessory.currency_id
+        net_price: product.net_price,
+        currency_name: product.currency_name,
+        vat_id: product.vat_id,
+        currency_id: product.currency_id,
+        // Material dimensions
+        length_mm: product.length_mm,
+        width_mm: product.width_mm,
+        thickness_mm: product.thickness_mm,
+        // Linear material dimensions
+        length: product.length,
+        width: product.width,
+        thickness: product.thickness
       }
       setCartItems(prev => [...prev, newItem])
       return newItem.id
@@ -819,11 +883,25 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     try {
       // Validate all cart items have required fields before proceeding
       let validCartItems = cartItems
-      const invalidItems = cartItems.filter(item => !item.vat_id || !item.currency_id || !item.accessory_id)
+      const invalidItems = cartItems.filter(item => {
+        if (!item.vat_id || !item.currency_id) return true
+        // Check for appropriate ID based on product type
+        if (item.product_type === 'accessory' && !item.accessory_id) return true
+        if (item.product_type === 'material' && !item.material_id) return true
+        if (item.product_type === 'linear_material' && !item.linear_material_id) return true
+        return false
+      })
       if (invalidItems.length > 0) {
-        // Try to fix invalid items
+        // Try to fix invalid items (only accessories can be fixed)
         const fixedItems = await validateAndFixCartItems(cartItems)
-        const stillInvalid = fixedItems.filter(item => !item.vat_id || !item.currency_id || !item.accessory_id)
+        const stillInvalid = fixedItems.filter(item => {
+          if (!item.vat_id || !item.currency_id) return true
+          // Check for appropriate ID based on product type
+          if (item.product_type === 'accessory' && !item.accessory_id) return true
+          if (item.product_type === 'material' && !item.material_id) return true
+          if (item.product_type === 'linear_material' && !item.linear_material_id) return true
+          return false
+        })
         
         if (stillInvalid.length > 0) {
           toast.error('Néhány termék hiányos adatokkal rendelkezik. Kérjük, távolítsa el őket a kosárból és adja hozzá újra.')
@@ -853,9 +931,12 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
       // Build items payload (use validated cart items)
       const itemsPayload = validCartItems.map(item => ({
-        accessory_id: item.accessory_id,
+        product_type: item.product_type,
+        accessory_id: item.accessory_id || null,
+        material_id: item.material_id || null,
+        linear_material_id: item.linear_material_id || null,
         name: item.name,
-        sku: item.sku,
+        sku: item.sku || null,
         quantity: item.quantity,
         unit_price_net: item.net_price,
         unit_price_gross: item.gross_price,
@@ -1128,24 +1209,56 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       <TableRow>
                         <TableCell sx={{ fontWeight: 'bold' }} width={80}>Kép</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Termék neve</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }}>SKU</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }}>Típus / Méretek</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }} align="right">Készlet</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }} align="right">Ár</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {searchResults.map((accessory) => {
-                        const roundedPrice = roundUpToNearest10(accessory.gross_price)
+                      {searchResults.map((product) => {
+                        const roundedPrice = roundUpToNearest10(product.gross_price)
+                        const getTypeLabel = () => {
+                          switch (product.product_type) {
+                            case 'accessory':
+                              return 'Kellék'
+                            case 'material':
+                              return 'Bútorlap'
+                            case 'linear_material':
+                              return 'Szálas termék'
+                            default:
+                              return ''
+                          }
+                        }
+                        const getTypeColor = () => {
+                          switch (product.product_type) {
+                            case 'accessory':
+                              return 'primary'
+                            case 'material':
+                              return 'secondary'
+                            case 'linear_material':
+                              return 'success'
+                            default:
+                              return 'default'
+                          }
+                        }
+                        const getDimensions = () => {
+                          if (product.product_type === 'material') {
+                            return `${product.length_mm}×${product.width_mm}×${product.thickness_mm} mm`
+                          } else if (product.product_type === 'linear_material') {
+                            return `${product.length}×${product.width}×${product.thickness} mm`
+                          }
+                          return null
+                        }
                         return (
                           <TableRow
-                            key={accessory.id}
+                            key={`${product.product_type}_${product.id}`}
                             sx={{
                               cursor: 'pointer',
                               '&:hover': {
                                 backgroundColor: (theme) => theme.palette.action.hover
                               }
                             }}
-                            onClick={() => handleAddToCart(accessory)}
+                            onClick={() => handleAddToCart(product)}
                           >
                             <TableCell>
                               <Box
@@ -1171,10 +1284,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   }} 
                                 />
                                 {/* Product image - overlays icon if available */}
-                                {accessory.image_url && (
+                                {product.image_url && (
                                   <img
-                                    src={accessory.image_url}
-                                    alt={accessory.name}
+                                    src={product.image_url}
+                                    alt={product.name}
                                     style={{
                                       width: '100%',
                                       height: '100%',
@@ -1192,22 +1305,39 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             </TableCell>
                             <TableCell>
                               <Typography variant="subtitle2" fontWeight="bold">
-                                {accessory.name}
+                                {product.name}
                               </Typography>
+                              {product.product_type === 'accessory' && product.sku && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  SKU: {product.sku}
+                                </Typography>
+                              )}
+                              {product.product_type === 'material' && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {product.length_mm}×{product.width_mm}×{product.thickness_mm} mm
+                                </Typography>
+                              )}
+                              {product.product_type === 'linear_material' && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {product.length}×{product.width}×{product.thickness} mm
+                                </Typography>
+                              )}
                             </TableCell>
                             <TableCell>
-                              <Typography variant="body2" color="text.secondary">
-                                {accessory.sku}
-                              </Typography>
+                              <Chip
+                                label={getTypeLabel()}
+                                size="small"
+                                color={getTypeColor() as any}
+                              />
                             </TableCell>
                             <TableCell align="right">
                               <Typography variant="body2">
-                                {accessory.quantity_on_hand} db
+                                {product.quantity_on_hand} db
                               </Typography>
                             </TableCell>
                             <TableCell align="right">
                               <Typography variant="subtitle2" color="primary" fontWeight="bold">
-                                {roundedPrice.toLocaleString('hu-HU')} {accessory.currency_name}
+                                {roundedPrice.toLocaleString('hu-HU')} {product.currency_name}
                               </Typography>
                             </TableCell>
                           </TableRow>
@@ -1291,14 +1421,26 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             })
                           }}
                         >
-                          {/* Column 1: Name and SKU */}
+                          {/* Column 1: Name, Type, and Details */}
                           <TableCell>
                             <Typography variant="subtitle2" fontWeight="bold">
                               {item.name}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {item.sku}
-                            </Typography>
+                            {item.product_type === 'accessory' && item.sku && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                SKU: {item.sku}
+                              </Typography>
+                            )}
+                            {item.product_type === 'material' && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {item.length_mm}×{item.width_mm}×{item.thickness_mm} mm
+                              </Typography>
+                            )}
+                            {item.product_type === 'linear_material' && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {item.length}×{item.width}×{item.thickness} mm
+                              </Typography>
+                            )}
                           </TableCell>
 
                           {/* Column 2: Mennyiség */}

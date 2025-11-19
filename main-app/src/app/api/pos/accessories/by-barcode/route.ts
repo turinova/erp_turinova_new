@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
         id,
         name,
         sku,
-        barcode,
         net_price,
         deleted_at,
         vat (
@@ -73,6 +72,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       id: accessoryData.id,
+      product_type: 'accessory',
+      accessory_id: accessoryData.id,
       name: accessoryData.name,
       sku: accessoryData.sku,
       quantity_on_hand: quantity_on_hand,

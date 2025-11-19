@@ -33,6 +33,7 @@ DECLARE
   v_existing_item record;
   v_existing_movement record;
   v_old_quantity numeric(10,2);
+  v_product_type varchar(30);
   v_new_quantity numeric(10,2);
   v_quantity_diff numeric(10,2);
   v_result jsonb;
@@ -127,33 +128,36 @@ BEGIN
         WHERE id = (v_item->>'id')::uuid;
         
         -- If it's a product (not a fee), create reverse stock movement
-        IF (v_item->>'item_type')::text = 'product' AND (v_item->>'accessory_id') IS NOT NULL THEN
-          -- Get the old quantity from the item before deletion
-          SELECT quantity INTO v_old_quantity
+        IF (v_item->>'item_type')::text = 'product' THEN
+          -- Get the old quantity and product info from the item before deletion
+          SELECT quantity, product_type, accessory_id, material_id, linear_material_id INTO v_existing_item
           FROM public.pos_order_items
           WHERE id = (v_item->>'id')::uuid;
           
           -- Create IN movement to reverse the original OUT movement
-          IF v_old_quantity IS NOT NULL AND v_old_quantity > 0 THEN
-            INSERT INTO public.stock_movements (
-              warehouse_id,
-              product_type,
-              accessory_id,
-              quantity,
-              movement_type,
-              source_type,
-              source_id,
-              note
-            ) VALUES (
-              v_warehouse_id,
-              'accessory',
-              (v_item->>'accessory_id')::uuid,
-              v_old_quantity, -- positive for IN movement
-              'in',
-              'pos_sale',
-              p_pos_order_id,
-              'POS rendelés módosítás: tétel törölve - ' || v_pos_order_number
-            );
+          IF v_existing_item.quantity IS NOT NULL AND v_existing_item.quantity > 0 THEN
+            IF v_existing_item.accessory_id IS NOT NULL THEN
+              INSERT INTO public.stock_movements (
+                warehouse_id, product_type, accessory_id, quantity, movement_type, source_type, source_id, note
+              ) VALUES (
+                v_warehouse_id, 'accessory', v_existing_item.accessory_id, v_existing_item.quantity, 'in', 'pos_sale', p_pos_order_id,
+                'POS rendelés módosítás: tétel törölve - ' || v_pos_order_number
+              );
+            ELSIF v_existing_item.material_id IS NOT NULL THEN
+              INSERT INTO public.stock_movements (
+                warehouse_id, product_type, material_id, quantity, movement_type, source_type, source_id, note
+              ) VALUES (
+                v_warehouse_id, 'material', v_existing_item.material_id, v_existing_item.quantity, 'in', 'pos_sale', p_pos_order_id,
+                'POS rendelés módosítás: tétel törölve - ' || v_pos_order_number
+              );
+            ELSIF v_existing_item.linear_material_id IS NOT NULL THEN
+              INSERT INTO public.stock_movements (
+                warehouse_id, product_type, linear_material_id, quantity, movement_type, source_type, source_id, note
+              ) VALUES (
+                v_warehouse_id, 'linear_material', v_existing_item.linear_material_id, v_existing_item.quantity, 'in', 'pos_sale', p_pos_order_id,
+                'POS rendelés módosítás: tétel törölve - ' || v_pos_order_number
+              );
+            END IF;
           END IF;
         END IF;
       ELSE
@@ -169,6 +173,7 @@ BEGIN
         
         UPDATE public.pos_order_items
         SET
+          product_type = COALESCE((v_item->>'product_type')::varchar, 'accessory'),
           product_name = v_item->>'product_name',
           sku = NULLIF(v_item->>'sku', ''),
           quantity = v_new_quantity,
@@ -176,60 +181,73 @@ BEGIN
           unit_price_gross = (v_item->>'unit_price_gross')::numeric,
           vat_id = (v_item->>'vat_id')::uuid,
           currency_id = (v_item->>'currency_id')::uuid,
+          accessory_id = CASE WHEN (v_item->>'accessory_id') IS NOT NULL AND (v_item->>'accessory_id') != '' THEN (v_item->>'accessory_id')::uuid ELSE NULL END,
+          material_id = CASE WHEN (v_item->>'material_id') IS NOT NULL AND (v_item->>'material_id') != '' THEN (v_item->>'material_id')::uuid ELSE NULL END,
+          linear_material_id = CASE WHEN (v_item->>'linear_material_id') IS NOT NULL AND (v_item->>'linear_material_id') != '' THEN (v_item->>'linear_material_id')::uuid ELSE NULL END,
           total_net = v_item_total_net,
           total_vat = v_item_total_vat,
           total_gross = v_item_total_gross,
           updated_at = now()
         WHERE id = (v_item->>'id')::uuid;
         
-        -- If it's a product (not a fee), handle stock movements
-        IF (v_item->>'item_type')::text = 'product' AND (v_item->>'accessory_id') IS NOT NULL THEN
+        -- If it's a product (not a fee), handle stock movements for all product types
+        IF (v_item->>'item_type')::text = 'product' THEN
           -- Calculate quantity difference
           v_quantity_diff := v_new_quantity - COALESCE(v_old_quantity, 0);
           
           IF v_quantity_diff != 0 THEN
-            IF v_quantity_diff < 0 THEN
-              -- Quantity decreased: create IN movement (reverse the difference)
-              INSERT INTO public.stock_movements (
-                warehouse_id,
-                product_type,
-                accessory_id,
-                quantity,
-                movement_type,
-                source_type,
-                source_id,
-                note
-              ) VALUES (
-                v_warehouse_id,
-                'accessory',
-                (v_item->>'accessory_id')::uuid,
-                ABS(v_quantity_diff), -- positive for IN movement
-                'in',
-                'pos_sale',
-                p_pos_order_id,
-                'POS rendelés módosítás: mennyiség csökkentve - ' || v_pos_order_number
-              );
-            ELSE
-              -- Quantity increased: create OUT movement (for the additional quantity)
-              INSERT INTO public.stock_movements (
-                warehouse_id,
-                product_type,
-                accessory_id,
-                quantity,
-                movement_type,
-                source_type,
-                source_id,
-                note
-              ) VALUES (
-                v_warehouse_id,
-                'accessory',
-                (v_item->>'accessory_id')::uuid,
-                -1 * v_quantity_diff, -- negative for OUT movement
-                'out',
-                'pos_sale',
-                p_pos_order_id,
-                'POS rendelés módosítás: mennyiség növelve - ' || v_pos_order_number
-              );
+            -- Determine product type and ID
+            IF (v_item->>'accessory_id') IS NOT NULL AND (v_item->>'accessory_id') != '' THEN
+              -- Accessory
+              IF v_quantity_diff < 0 THEN
+                INSERT INTO public.stock_movements (
+                  warehouse_id, product_type, accessory_id, quantity, movement_type, source_type, source_id, note
+                ) VALUES (
+                  v_warehouse_id, 'accessory', (v_item->>'accessory_id')::uuid, ABS(v_quantity_diff), 'in', 'pos_sale', p_pos_order_id,
+                  'POS rendelés módosítás: mennyiség csökkentve - ' || v_pos_order_number
+                );
+              ELSE
+                INSERT INTO public.stock_movements (
+                  warehouse_id, product_type, accessory_id, quantity, movement_type, source_type, source_id, note
+                ) VALUES (
+                  v_warehouse_id, 'accessory', (v_item->>'accessory_id')::uuid, -1 * v_quantity_diff, 'out', 'pos_sale', p_pos_order_id,
+                  'POS rendelés módosítás: mennyiség növelve - ' || v_pos_order_number
+                );
+              END IF;
+            ELSIF (v_item->>'material_id') IS NOT NULL AND (v_item->>'material_id') != '' THEN
+              -- Material
+              IF v_quantity_diff < 0 THEN
+                INSERT INTO public.stock_movements (
+                  warehouse_id, product_type, material_id, quantity, movement_type, source_type, source_id, note
+                ) VALUES (
+                  v_warehouse_id, 'material', (v_item->>'material_id')::uuid, ABS(v_quantity_diff), 'in', 'pos_sale', p_pos_order_id,
+                  'POS rendelés módosítás: mennyiség csökkentve - ' || v_pos_order_number
+                );
+              ELSE
+                INSERT INTO public.stock_movements (
+                  warehouse_id, product_type, material_id, quantity, movement_type, source_type, source_id, note
+                ) VALUES (
+                  v_warehouse_id, 'material', (v_item->>'material_id')::uuid, -1 * v_quantity_diff, 'out', 'pos_sale', p_pos_order_id,
+                  'POS rendelés módosítás: mennyiség növelve - ' || v_pos_order_number
+                );
+              END IF;
+            ELSIF (v_item->>'linear_material_id') IS NOT NULL AND (v_item->>'linear_material_id') != '' THEN
+              -- Linear material
+              IF v_quantity_diff < 0 THEN
+                INSERT INTO public.stock_movements (
+                  warehouse_id, product_type, linear_material_id, quantity, movement_type, source_type, source_id, note
+                ) VALUES (
+                  v_warehouse_id, 'linear_material', (v_item->>'linear_material_id')::uuid, ABS(v_quantity_diff), 'in', 'pos_sale', p_pos_order_id,
+                  'POS rendelés módosítás: mennyiség csökkentve - ' || v_pos_order_number
+                );
+              ELSE
+                INSERT INTO public.stock_movements (
+                  warehouse_id, product_type, linear_material_id, quantity, movement_type, source_type, source_id, note
+                ) VALUES (
+                  v_warehouse_id, 'linear_material', (v_item->>'linear_material_id')::uuid, -1 * v_quantity_diff, 'out', 'pos_sale', p_pos_order_id,
+                  'POS rendelés módosítás: mennyiség növelve - ' || v_pos_order_number
+                );
+              END IF;
             END IF;
           END IF;
         END IF;
@@ -244,7 +262,10 @@ BEGIN
         INSERT INTO public.pos_order_items (
           pos_order_id,
           item_type,
+          product_type,
           accessory_id,
+          material_id,
+          linear_material_id,
           feetype_id,
           product_name,
           sku,
@@ -259,7 +280,10 @@ BEGIN
         ) VALUES (
           p_pos_order_id,
           (v_item->>'item_type')::varchar,
+          COALESCE((v_item->>'product_type')::varchar, 'accessory'),
           CASE WHEN (v_item->>'accessory_id') IS NOT NULL AND (v_item->>'accessory_id') != '' THEN (v_item->>'accessory_id')::uuid ELSE NULL END,
+          CASE WHEN (v_item->>'material_id') IS NOT NULL AND (v_item->>'material_id') != '' THEN (v_item->>'material_id')::uuid ELSE NULL END,
+          CASE WHEN (v_item->>'linear_material_id') IS NOT NULL AND (v_item->>'linear_material_id') != '' THEN (v_item->>'linear_material_id')::uuid ELSE NULL END,
           CASE WHEN (v_item->>'feetype_id') IS NOT NULL AND (v_item->>'feetype_id') != '' THEN (v_item->>'feetype_id')::uuid ELSE NULL END,
           v_item->>'product_name',
           NULLIF(v_item->>'sku', ''),
@@ -273,27 +297,30 @@ BEGIN
           v_item_total_gross
         );
         
-        -- If it's a new product (not a fee), create OUT stock movement
-        IF (v_item->>'item_type')::text = 'product' AND (v_item->>'accessory_id') IS NOT NULL THEN
-          INSERT INTO public.stock_movements (
-            warehouse_id,
-            product_type,
-            accessory_id,
-            quantity,
-            movement_type,
-            source_type,
-            source_id,
-            note
-          ) VALUES (
-            v_warehouse_id,
-            'accessory',
-            (v_item->>'accessory_id')::uuid,
-            -1 * (v_item->>'quantity')::numeric, -- negative for outgoing
-            'out',
-            'pos_sale',
-            p_pos_order_id,
-            'POS rendelés módosítás: új tétel hozzáadva - ' || v_pos_order_number
-          );
+        -- If it's a new product (not a fee), create OUT stock movement for all product types
+        IF (v_item->>'item_type')::text = 'product' THEN
+          IF (v_item->>'accessory_id') IS NOT NULL AND (v_item->>'accessory_id') != '' THEN
+            INSERT INTO public.stock_movements (
+              warehouse_id, product_type, accessory_id, quantity, movement_type, source_type, source_id, note
+            ) VALUES (
+              v_warehouse_id, 'accessory', (v_item->>'accessory_id')::uuid, -1 * (v_item->>'quantity')::numeric, 'out', 'pos_sale', p_pos_order_id,
+              'POS rendelés módosítás: új tétel hozzáadva - ' || v_pos_order_number
+            );
+          ELSIF (v_item->>'material_id') IS NOT NULL AND (v_item->>'material_id') != '' THEN
+            INSERT INTO public.stock_movements (
+              warehouse_id, product_type, material_id, quantity, movement_type, source_type, source_id, note
+            ) VALUES (
+              v_warehouse_id, 'material', (v_item->>'material_id')::uuid, -1 * (v_item->>'quantity')::numeric, 'out', 'pos_sale', p_pos_order_id,
+              'POS rendelés módosítás: új tétel hozzáadva - ' || v_pos_order_number
+            );
+          ELSIF (v_item->>'linear_material_id') IS NOT NULL AND (v_item->>'linear_material_id') != '' THEN
+            INSERT INTO public.stock_movements (
+              warehouse_id, product_type, linear_material_id, quantity, movement_type, source_type, source_id, note
+            ) VALUES (
+              v_warehouse_id, 'linear_material', (v_item->>'linear_material_id')::uuid, -1 * (v_item->>'quantity')::numeric, 'out', 'pos_sale', p_pos_order_id,
+              'POS rendelés módosítás: új tétel hozzáadva - ' || v_pos_order_number
+            );
+          END IF;
         END IF;
       END IF;
     END IF;

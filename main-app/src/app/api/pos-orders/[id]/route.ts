@@ -51,7 +51,10 @@ export async function GET(
       .select(`
         id,
         item_type,
+        product_type,
         accessory_id,
+        material_id,
+        linear_material_id,
         feetype_id,
         product_name,
         sku,
