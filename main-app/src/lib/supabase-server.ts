@@ -3516,17 +3516,53 @@ export async function getPosOrdersWithPagination(page: number = 1, limit: number
     const totalCount = count || 0
     const totalPages = Math.ceil(totalCount / limit)
 
-    // Transform the data
-    const orders = data?.map(order => ({
-      id: order.id,
-      pos_order_number: order.pos_order_number || '',
-      customer_name: order.customer_name || 'Üzleti vásárló',
-      total_gross: Number(order.total_gross) || 0,
-      status: order.status,
-      created_at: order.created_at,
-      worker_nickname: order.workers?.nickname || '',
-      worker_color: order.workers?.color || '#1976d2'
-    })) || []
+    // Fetch payment totals for all orders in this page
+    const orderIds = data?.map(o => o.id) || []
+    let paymentTotals: Record<string, number> = {}
+    
+    if (orderIds.length > 0) {
+      const { data: payments, error: paymentsError } = await supabaseServer
+        .from('pos_payments')
+        .select('pos_order_id, amount, deleted_at')
+        .in('pos_order_id', orderIds)
+        .is('deleted_at', null) // Only count active (non-deleted) payments
+      
+      if (!paymentsError && payments) {
+        // Calculate total paid per order
+        payments.forEach((payment: any) => {
+          const orderId = payment.pos_order_id
+          const amount = Number(payment.amount || 0)
+          paymentTotals[orderId] = (paymentTotals[orderId] || 0) + amount
+        })
+      }
+    }
+
+    // Transform the data and calculate payment_status
+    const orders = data?.map(order => {
+      const totalPaid = paymentTotals[order.id] || 0
+      const totalGross = Number(order.total_gross) || 0
+      
+      let payment_status: 'paid' | 'partial' | 'unpaid'
+      if (totalPaid >= totalGross) {
+        payment_status = 'paid'
+      } else if (totalPaid > 0) {
+        payment_status = 'partial'
+      } else {
+        payment_status = 'unpaid'
+      }
+      
+      return {
+        id: order.id,
+        pos_order_number: order.pos_order_number || '',
+        customer_name: order.customer_name || 'Üzleti vásárló',
+        total_gross: totalGross,
+        status: order.status,
+        payment_status: payment_status,
+        created_at: order.created_at,
+        worker_nickname: order.workers?.nickname || '',
+        worker_color: order.workers?.color || '#1976d2'
+      }
+    }) || []
 
     logTiming('POS Orders Total', startTime, `Transformed ${orders.length} orders`)
     console.log(`[SSR] POS orders fetched successfully: ${orders.length} orders, total: ${totalCount}`)

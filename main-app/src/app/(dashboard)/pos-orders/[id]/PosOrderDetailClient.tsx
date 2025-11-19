@@ -672,16 +672,102 @@ export default function PosOrderDetailClient({
   const handleSave = async () => {
     setSaving(true)
     try {
-      // TODO: Implement save logic with stock movement reversals
-      // 1. Update pos_order
-      // 2. Update/insert/delete pos_order_items
-      // 3. Update/insert/delete pos_payments
-      // 4. Handle stock movements (reverse old, create new)
+      // Build customer_data object
+      const customerData = {
+        customer_name: customerName || null,
+        customer_email: customerEmail || null,
+        customer_mobile: customerMobile || null,
+        billing_name: billingName || null,
+        billing_country: billingCountry || null,
+        billing_city: billingCity || null,
+        billing_postal_code: billingPostalCode || null,
+        billing_street: billingStreet || null,
+        billing_house_number: billingHouseNumber || null,
+        billing_tax_number: billingTaxNumber || null,
+        billing_company_reg_number: billingCompanyRegNumber || null
+      }
+
+      // Build discount object
+      const discountData = {
+        percentage: discountPercentage || 0,
+        amount: discountAmount || 0
+      }
+
+      // Build items array
+      // Track which items existed initially
+      const initialItemIds = new Set(initialItems.map(item => item.id))
       
+      // Find items that were deleted (existed in initialItems but not in current items)
+      const deletedItemIds = initialItems
+        .filter(initialItem => !items.find(item => item.id === initialItem.id))
+        .map(item => item.id)
+      
+      // Build items payload
+      const itemsPayload = items.map(item => {
+        // Check if this is a new item (temp ID or not in initial items)
+        const isNew = item.id.startsWith('temp-') || !initialItemIds.has(item.id)
+        
+        return {
+          id: isNew ? null : item.id, // null for new items
+          item_type: item.item_type,
+          accessory_id: item.accessory_id || null,
+          feetype_id: item.feetype_id || null,
+          product_name: item.product_name,
+          sku: item.sku || null,
+          quantity: item.quantity,
+          unit_price_net: item.unit_price_net,
+          unit_price_gross: item.unit_price_gross,
+          vat_id: item.vat_id,
+          currency_id: item.currency_id,
+          deleted: false
+        }
+      })
+      
+      // Add deleted items to payload
+      deletedItemIds.forEach(deletedId => {
+        const deletedItem = initialItems.find(item => item.id === deletedId)
+        if (deletedItem) {
+          itemsPayload.push({
+            id: deletedItem.id,
+            item_type: deletedItem.item_type,
+            accessory_id: deletedItem.accessory_id || null,
+            feetype_id: deletedItem.feetype_id || null,
+            product_name: deletedItem.product_name,
+            sku: deletedItem.sku || null,
+            quantity: deletedItem.quantity,
+            unit_price_net: deletedItem.unit_price_net,
+            unit_price_gross: deletedItem.unit_price_gross,
+            vat_id: deletedItem.vat_id,
+            currency_id: deletedItem.currency_id,
+            deleted: true
+          })
+        }
+      })
+
+      // Call API
+      const res = await fetch(`/api/pos-orders/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_data: customerData,
+          discount: discountData,
+          items: itemsPayload
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Hiba a mentés során')
+      }
+
       toast.success('Mentés sikeres')
-    } catch (error) {
+      
+      // Refresh page data
+      router.refresh()
+    } catch (error: any) {
       console.error('Error saving POS order:', error)
-      toast.error('Hiba a mentés során')
+      toast.error(error.message || 'Hiba a mentés során')
     } finally {
       setSaving(false)
     }
@@ -1113,6 +1199,7 @@ export default function PosOrderDetailClient({
                           size="small"
                           options={productSearchResults}
                           getOptionLabel={(option) => option.name || ''}
+                          filterOptions={(options) => options} // Disable client-side filtering - API already filters by name and SKU
                           loading={isSearchingProducts}
                           inputValue={productSearchTerm}
                           onInputChange={(event, newValue) => {

@@ -35,6 +35,7 @@ interface PosOrder {
   customer_name: string
   total_gross: number
   status: string
+  payment_status: 'paid' | 'partial' | 'unpaid'
   created_at: string
   worker_nickname: string
   worker_color: string
@@ -154,6 +155,20 @@ export default function PosOrdersClient({
     }
   }
 
+  // Get payment status display info
+  const getPaymentStatusInfo = (paymentStatus: 'paid' | 'partial' | 'unpaid') => {
+    switch (paymentStatus) {
+      case 'paid':
+        return { label: 'Kifizetve', color: 'success' as const }
+      case 'partial':
+        return { label: 'Részben fizetve', color: 'warning' as const }
+      case 'unpaid':
+        return { label: 'Nincs fizetve', color: 'error' as const }
+      default:
+        return { label: 'Ismeretlen', color: 'default' as const }
+    }
+  }
+
   if (permissionLoading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -223,6 +238,7 @@ export default function PosOrdersClient({
                 <TableCell>Ügyfél</TableCell>
                 <TableCell align="right">Bruttó összesen</TableCell>
                 <TableCell>Státusz</TableCell>
+                <TableCell>Fizetési státusz</TableCell>
                 <TableCell>Dátum</TableCell>
                 <TableCell>Dolgozó</TableCell>
               </TableRow>
@@ -230,12 +246,13 @@ export default function PosOrdersClient({
             <TableBody>
               {orders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
+                  <TableCell colSpan={8} align="center">
                     Nincs megjeleníthető rendelés.
                   </TableCell>
                 </TableRow>
               ) : orders.map(order => {
                 const statusInfo = getStatusInfo(order.status)
+                const paymentStatusInfo = getPaymentStatusInfo(order.payment_status)
                 return (
                   <TableRow
                     key={order.id}
@@ -257,6 +274,13 @@ export default function PosOrdersClient({
                         label={statusInfo.label} 
                         size="small"
                         color={statusInfo.color}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={paymentStatusInfo.label} 
+                        size="small"
+                        color={paymentStatusInfo.color}
                       />
                     </TableCell>
                     <TableCell>{formatDateTime(order.created_at)}</TableCell>

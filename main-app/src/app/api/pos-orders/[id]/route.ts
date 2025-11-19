@@ -126,13 +126,32 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    // TODO: Implement update logic with stock movement reversals
-    // This will be implemented in the next step
+    // Validate required fields
+    if (!body.customer_data || !body.discount || !body.items) {
+      return NextResponse.json({ error: 'Hiányzó kötelező mezők' }, { status: 400 })
+    }
 
-    return NextResponse.json({ error: 'Not implemented yet' }, { status: 501 })
-  } catch (error) {
+    // Call PostgreSQL function for atomic update
+    const { data, error } = await supabaseServer.rpc('update_pos_order', {
+      p_pos_order_id: id,
+      p_customer_data: body.customer_data,
+      p_discount: body.discount,
+      p_items: body.items
+    })
+
+    if (error) {
+      console.error('Error updating POS order:', error)
+      // Extract user-friendly error message
+      const errorMessage = error.message || 'Hiba a rendelés frissítésekor'
+      return NextResponse.json({ error: errorMessage }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true, data })
+  } catch (error: any) {
     console.error('Error in PUT /api/pos-orders/[id]', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ 
+      error: error.message || 'Internal server error' 
+    }, { status: 500 })
   }
 }
 
