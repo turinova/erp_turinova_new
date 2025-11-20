@@ -1,0 +1,19 @@
+{
+  "name": "Turinova PDA",
+  "short_name": "PDA",
+  "description": "Turinova PDA Terminal",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1976d2",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/images/turinova-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
