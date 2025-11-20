@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import {
   Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton
 } from '@mui/material'
@@ -60,6 +60,14 @@ export default function ShipmentDetailClient({
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
+  
+  // Barcode scanning state
+  const [barcodeInput, setBarcodeInput] = useState('')
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null)
+  const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isScanningRef = useRef(false)
 
   // Only fetch if we don't have initial data
   useEffect(() => {
@@ -71,6 +79,29 @@ export default function ShipmentDetailClient({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Focus barcode input on mount and when status is draft
+  useEffect(() => {
+    if (header?.status === 'draft' && barcodeInputRef.current) {
+      // Small delay to ensure page is fully rendered
+      const timer = setTimeout(() => {
+        barcodeInputRef.current?.focus()
+      }, 100)
+      return () => clearTimeout(timer)
+    }
+  }, [header?.status])
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current)
+      }
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const fetchVatRates = async () => {
     try {
@@ -246,6 +277,125 @@ export default function ShipmentDetailClient({
     })
   }
 
+  // Handle barcode input change (debounced for scanner)
+  const handleBarcodeInputChange = (value: string) => {
+    setBarcodeInput(value)
+
+    // Clear previous timeout
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current)
+      scanTimeoutRef.current = null
+    }
+
+    // Set new timeout - trigger scan when input stops changing for 100ms
+    scanTimeoutRef.current = setTimeout(() => {
+      const trimmedValue = value.trim()
+      if (trimmedValue.length > 0 && !isScanningRef.current && header?.status === 'draft') {
+        handleBarcodeScan(trimmedValue)
+      }
+    }, 100)
+  }
+
+  // Handle barcode scan
+  const handleBarcodeScan = async (barcode: string) => {
+    if (!barcode || !barcode.trim() || header?.status !== 'draft') {
+      refocusBarcodeInput()
+      return
+    }
+
+    const trimmedBarcode = barcode.trim()
+
+    // Prevent multiple scans while one is in progress
+    if (isScanningRef.current) {
+      refocusBarcodeInput()
+      return
+    }
+
+    // Clear any pending timeouts
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current)
+      scanTimeoutRef.current = null
+    }
+
+    // Mark as scanning
+    isScanningRef.current = true
+
+    try {
+      // Fetch accessory by barcode
+      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}`)
+      
+      if (!response.ok) {
+        const data = await response.json()
+        if (response.status === 404) {
+          toast.error('Vonalkód nem található a rendszerben')
+        } else {
+          toast.error('Hiba a vonalkód keresésekor')
+        }
+        setBarcodeInput('')
+        refocusBarcodeInput()
+        return
+      }
+
+      const accessoryData = await response.json()
+      const sku = accessoryData.sku
+
+      // Find matching items by SKU
+      const matchingItems = items
+        .map((item, index) => ({ item, index }))
+        .filter(({ item }) => item.sku === sku)
+
+      if (matchingItems.length === 0) {
+        toast.error(`A termék (SKU: ${sku}) nem található ebben a szállítmányban`)
+        setBarcodeInput('')
+        refocusBarcodeInput()
+        return
+      }
+
+      // Find first matching item (allow exceeding target_quantity)
+      const itemToUpdate = matchingItems[0]
+
+      if (!itemToUpdate) {
+        // This shouldn't happen since we already checked matchingItems.length === 0
+        toast.error(`A termék (SKU: ${sku}) nem található ebben a szállítmányban`)
+        setBarcodeInput('')
+        refocusBarcodeInput()
+        return
+      }
+
+      // Update quantity_received by 1
+      const newQuantity = itemToUpdate.item.quantity_received + 1
+      updateItemQuantity(itemToUpdate.index, newQuantity)
+
+      // Highlight the quantity field
+      setHighlightedItemId(itemToUpdate.item.id)
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current)
+      }
+      highlightTimeoutRef.current = setTimeout(() => {
+        setHighlightedItemId(null)
+      }, 1000)
+
+      setBarcodeInput('')
+    } catch (error) {
+      console.error('Error scanning barcode:', error)
+      toast.error('Hiba a vonalkód feldolgozásakor')
+      setBarcodeInput('')
+    } finally {
+      isScanningRef.current = false
+      refocusBarcodeInput()
+    }
+  }
+
+  // Refocus barcode input
+  const refocusBarcodeInput = () => {
+    if (header?.status === 'draft' && barcodeInputRef.current) {
+      setTimeout(() => {
+        barcodeInputRef.current?.focus()
+        barcodeInputRef.current?.select()
+      }, 10)
+    }
+  }
+
   const totals = items.reduce((acc, it) => {
     acc.net += it.net_total
     acc.gross += it.gross_total
@@ -266,6 +416,47 @@ export default function ShipmentDetailClient({
 
   return (
     <Box sx={{ p: 3 }}>
+      {/* Hidden barcode input for scanner */}
+      {header?.status === 'draft' && (
+        <TextField
+          inputRef={barcodeInputRef}
+          value={barcodeInput}
+          onChange={(e) => handleBarcodeInputChange(e.target.value)}
+          onKeyDown={(e) => {
+            // Barcode scanners often send Enter at the end
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              if (scanTimeoutRef.current) {
+                clearTimeout(scanTimeoutRef.current)
+                scanTimeoutRef.current = null
+              }
+              const trimmedValue = barcodeInput.trim()
+              if (trimmedValue.length > 0 && !isScanningRef.current) {
+                handleBarcodeScan(trimmedValue)
+              }
+            }
+          }}
+          sx={{
+            position: 'absolute',
+            left: '-9999px',
+            width: '1px',
+            height: '1px',
+            opacity: 0,
+            pointerEvents: 'auto',
+            zIndex: -1
+          }}
+          autoFocus
+          tabIndex={0}
+          onBlur={(e) => {
+            // Only refocus if we're not clicking on an input field
+            const target = e.relatedTarget as HTMLElement
+            if (!target || !target.closest('input, textarea, select')) {
+              refocusBarcodeInput()
+            }
+          }}
+        />
+      )}
+
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
         <Link component={NextLink} underline="hover" color="inherit" href="/home" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <HomeIcon fontSize="small" />
@@ -366,9 +557,39 @@ export default function ShipmentDetailClient({
                         Nincs tétel
                       </TableCell>
                     </TableRow>
-                  ) : items.map((item, idx) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{item.product_name}</TableCell>
+                  ) : items.map((item, idx) => {
+                    // Determine row background color based on quantity comparison
+                    const getRowBackgroundColor = () => {
+                      if (item.quantity_received < item.target_quantity) {
+                        return 'rgba(244, 67, 54, 0.05)' // Very light red
+                      } else if (item.quantity_received === item.target_quantity) {
+                        return 'rgba(76, 175, 80, 0.05)' // Very light green
+                      } else {
+                        return 'rgba(255, 152, 0, 0.05)' // Very light orange
+                      }
+                    }
+
+                    return (
+                      <TableRow 
+                        key={item.id}
+                        sx={{
+                          backgroundColor: getRowBackgroundColor(),
+                          '&:hover': {
+                            backgroundColor: (theme) => {
+                              const baseColor = getRowBackgroundColor()
+                              // Slightly darken on hover while maintaining the base color
+                              if (item.quantity_received < item.target_quantity) {
+                                return 'rgba(244, 67, 54, 0.1)'
+                              } else if (item.quantity_received === item.target_quantity) {
+                                return 'rgba(76, 175, 80, 0.1)'
+                              } else {
+                                return 'rgba(255, 152, 0, 0.1)'
+                              }
+                            }
+                          }
+                        }}
+                      >
+                        <TableCell>{item.product_name}</TableCell>
                       <TableCell>{item.sku}</TableCell>
                       <TableCell align="right">
                         <TextField
@@ -383,6 +604,16 @@ export default function ShipmentDetailClient({
                             if (e.target.value === '') {
                               updateItemQuantity(idx, 0)
                             }
+                            // Refocus barcode input after editing
+                            if (header?.status === 'draft') {
+                              refocusBarcodeInput()
+                            }
+                          }}
+                          onFocus={() => {
+                            // Clear highlight when user manually edits
+                            if (highlightedItemId === item.id) {
+                              setHighlightedItemId(null)
+                            }
                           }}
                           inputProps={{ min: 0, step: 0.01 }}
                           sx={{ 
@@ -395,6 +626,25 @@ export default function ShipmentDetailClient({
                                 },
                                 '&.Mui-focused': {
                                   borderColor: 'error.main',
+                                }
+                              }
+                            }),
+                            ...(highlightedItemId === item.id && {
+                              '& .MuiOutlinedInput-root': {
+                                borderColor: 'success.main',
+                                borderWidth: 2,
+                                borderStyle: 'solid',
+                                animation: 'glow 1s ease-out',
+                                '@keyframes glow': {
+                                  '0%': {
+                                    boxShadow: '0 0 0 0 rgba(76, 175, 80, 0.7)',
+                                  },
+                                  '50%': {
+                                    boxShadow: '0 0 10px 5px rgba(76, 175, 80, 0.5)',
+                                  },
+                                  '100%': {
+                                    boxShadow: '0 0 0 0 rgba(76, 175, 80, 0)',
+                                  }
                                 }
                               }
                             })
@@ -438,7 +688,8 @@ export default function ShipmentDetailClient({
                         </IconButton>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                   {items.length > 0 && (
                     <TableRow>
                       <TableCell colSpan={5} align="right"><strong>Összesen:</strong></TableCell>
