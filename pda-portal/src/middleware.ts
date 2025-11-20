@@ -34,6 +34,9 @@ export async function middleware(req: NextRequest) {
     // Token is valid, add user info to headers
     response.headers.set('x-user-id', payload.userId as string)
     response.headers.set('x-user-email', payload.email as string)
+    if (payload.workerId) {
+      response.headers.set('x-worker-id', payload.workerId as string)
+    }
     
     return response
   } catch (error) {

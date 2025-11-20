@@ -108,6 +108,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       email: user.email,
       fullName: user.full_name,
+      workerId: pinData.worker_id || null,
       type: 'pda_session'
     })
       .setProtectedHeader({ alg: 'HS256' })
@@ -121,7 +122,8 @@ export async function POST(req: NextRequest) {
       user: {
         id: user.id,
         email: user.email,
-        full_name: user.full_name
+        full_name: user.full_name,
+        worker_id: pinData.worker_id || null
       }
     })
     
