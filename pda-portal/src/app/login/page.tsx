@@ -57,6 +57,8 @@ export default function PDALoginPage() {
       }
       
       toast.success('Sikeres bejelentkezés!')
+      // Set flag to prevent auto-logout on main page
+      sessionStorage.setItem('pda_just_logged_in', 'true')
       router.push('/')
       
     } catch (error) {

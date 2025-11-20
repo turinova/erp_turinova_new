@@ -135,8 +135,18 @@ interface Customer {
 }
 
 export default function POSPage() {
-  // Force PIN entry every time app icon is tapped
+  // Force PIN entry every time app icon is tapped (but not after login)
   useEffect(() => {
+    // Check if we just came from login page (skip logout in this case)
+    const cameFromLogin = sessionStorage.getItem('pda_just_logged_in') === 'true'
+    
+    if (cameFromLogin) {
+      // Clear the flag so it doesn't persist
+      sessionStorage.removeItem('pda_just_logged_in')
+      // Don't force logout - user just logged in
+      return
+    }
+    
     let hasClearedToken = false
     
     const forceLogout = async () => {
