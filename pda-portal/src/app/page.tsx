@@ -135,6 +135,49 @@ interface Customer {
 }
 
 export default function POSPage() {
+  // Force PIN entry every time app icon is tapped
+  useEffect(() => {
+    let hasClearedToken = false
+    
+    const forceLogout = async () => {
+      if (hasClearedToken) return
+      hasClearedToken = true
+      
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' })
+        // Redirect to login
+        window.location.href = '/login'
+      } catch (error) {
+        console.error('Error forcing logout:', error)
+        // Still redirect to login even if API call fails
+        window.location.href = '/login'
+      }
+    }
+    
+    // Method 1: Check if page was loaded directly (not from cache)
+    const handlePageShow = (e: PageTransitionEvent) => {
+      // If page was NOT restored from cache, it's a fresh app launch
+      if (!e.persisted) {
+        forceLogout()
+      }
+    }
+    
+    // Method 2: Check navigation type
+    if (typeof window !== 'undefined' && window.performance) {
+      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
+      if (nav && (nav.type === 'navigate' || nav.type === 'reload')) {
+        // Fresh page load - force logout
+        forceLogout()
+      }
+    }
+    
+    // Method 3: Listen for pageshow event (handles PWA restores)
+    window.addEventListener('pageshow', handlePageShow)
+    
+    return () => {
+      window.removeEventListener('pageshow', handlePageShow)
+    }
+  }, [])
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState<ProductItem[]>([])
   const [isSearching, setIsSearching] = useState(false)

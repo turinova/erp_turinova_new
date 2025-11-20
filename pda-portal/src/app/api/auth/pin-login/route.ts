@@ -130,12 +130,14 @@ export async function POST(req: NextRequest) {
     // Set cookie - for localhost, don't set domain
     const cookieDomain = process.env.NODE_ENV === 'production' ? '.turinova.hu' : undefined
     
+    // Set cookie as session-only (no maxAge) so it's cleared when app closes
+    // This forces PIN entry every time the app is opened
     response.cookies.set('pda_token', token, {
       ...(cookieDomain && { domain: cookieDomain }),
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: 8 * 60 * 60, // 8 hours
+      // No maxAge - session cookie that expires when browser/app closes
       path: '/'
     })
     
