@@ -218,6 +218,18 @@ export default function ReportsClient() {
     fetchMetrics()
   }, [hasAccess, selectedMonth])
 
+  // Currency formatting functions
+  const formatCurrency = (value: number) => `${Math.round(value).toLocaleString('hu-HU')} Ft`
+  const formatCurrencyInThousands = (value: number) => {
+    const thousands = Math.round(value / 1000)
+    return `${thousands.toLocaleString('hu-HU')} e Ft`
+  }
+  const formatSignedCurrency = (value: number) => {
+    const rounded = Math.round(Math.abs(value))
+    const sign = value >= 0 ? '+' : '-'
+    return `${sign}${rounded.toLocaleString('hu-HU')} Ft`
+  }
+
   const chartSeries = useMemo(() => {
     return [
       {
@@ -266,7 +278,7 @@ export default function ReportsClient() {
     },
     yaxis: {
       labels: {
-        formatter: value => `${Math.round(value).toLocaleString('hu-HU')} Ft`
+        formatter: value => formatCurrencyInThousands(value)
       }
     },
     tooltip: {
@@ -274,7 +286,7 @@ export default function ReportsClient() {
         format: range === 'day' ? 'yyyy.MM.dd' : range === 'week' ? 'yyyy. \'W\'ww' : 'yyyy.MM'
       },
       y: {
-        formatter: value => `${Math.round(value).toLocaleString('hu-HU')} Ft`
+        formatter: value => formatCurrencyInThousands(value)
       }
     }
   }), [range])
@@ -357,13 +369,6 @@ export default function ReportsClient() {
     }
     return ''
   }, [metrics, selectedMonth])
-
-  const formatCurrency = (value: number) => `${Math.round(value).toLocaleString('hu-HU')} Ft`
-  const formatSignedCurrency = (value: number) => {
-    const rounded = Math.round(Math.abs(value))
-    const sign = value >= 0 ? '+' : '-'
-    return `${sign}${rounded.toLocaleString('hu-HU')} Ft`
-  }
 
   if (loading) {
     return (
@@ -503,11 +508,11 @@ export default function ReportsClient() {
                         </Typography>
                       </TableCell>
                       <TableCell align='right'>{item.quoteCount}</TableCell>
-                      <TableCell align='right'>{formatCurrency(item.materialNet)}</TableCell>
-                      <TableCell align='right'>{formatCurrency(item.materialNetProfit)}</TableCell>
-                      <TableCell align='right'>{formatCurrency(item.edgeNet)}</TableCell>
-                      <TableCell align='right'>{formatCurrency(item.cuttingNet)}</TableCell>
-                      <TableCell align='right'>{formatCurrency(item.totalMaterialNet)}</TableCell>
+                      <TableCell align='right'>{formatCurrencyInThousands(item.materialNet)}</TableCell>
+                      <TableCell align='right'>{formatCurrencyInThousands(item.materialNetProfit)}</TableCell>
+                      <TableCell align='right'>{formatCurrencyInThousands(item.edgeNet)}</TableCell>
+                      <TableCell align='right'>{formatCurrencyInThousands(item.cuttingNet)}</TableCell>
+                      <TableCell align='right'>{formatCurrencyInThousands(item.totalMaterialNet)}</TableCell>
                     </TableRow>
                   ))}
                   {metrics.machineTotals && (
@@ -524,27 +529,27 @@ export default function ReportsClient() {
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='subtitle2' sx={{ fontWeight: 700 }}>
-                          {formatCurrency(metrics.machineTotals.materialNet)}
+                          {formatCurrencyInThousands(metrics.machineTotals.materialNet)}
                         </Typography>
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='subtitle2' sx={{ fontWeight: 700 }}>
-                          {formatCurrency(metrics.machineTotals.materialNetProfit)}
+                          {formatCurrencyInThousands(metrics.machineTotals.materialNetProfit)}
                         </Typography>
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='subtitle2' sx={{ fontWeight: 700 }}>
-                          {formatCurrency(metrics.machineTotals.edgeNet)}
+                          {formatCurrencyInThousands(metrics.machineTotals.edgeNet)}
                         </Typography>
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='subtitle2' sx={{ fontWeight: 700 }}>
-                          {formatCurrency(metrics.machineTotals.cuttingNet)}
+                          {formatCurrencyInThousands(metrics.machineTotals.cuttingNet)}
                         </Typography>
                       </TableCell>
                       <TableCell align='right'>
                         <Typography variant='subtitle2' sx={{ fontWeight: 700 }}>
-                          {formatCurrency(metrics.machineTotals.totalMaterialNet)}
+                          {formatCurrencyInThousands(metrics.machineTotals.totalMaterialNet)}
                         </Typography>
                       </TableCell>
                     </TableRow>
