@@ -846,7 +846,7 @@ export default function POSPage() {
   }, [cartItems, fees, discountAmount])
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
       {/* Hidden barcode input for scanner */}
       <input
         ref={barcodeInputRef}
@@ -884,10 +884,10 @@ export default function POSPage() {
         autoComplete="off"
       />
 
-      {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto pb-4 overscroll-contain">
+      {/* Fixed Top Section */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200">
         {/* Customer Selection */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10 space-y-3 backdrop-blur-sm bg-white/95">
+        <div className="p-4 space-y-3">
           {/* Customer Dropdown - Only show if no customer selected */}
           {!selectedCustomer && (
             <div className="relative">
@@ -989,9 +989,9 @@ export default function POSPage() {
           />
         </div>
 
-        {/* Search Results */}
+        {/* Search Results - Fixed section */}
         {searchTerm.trim().length >= 2 && (
-          <div className="p-4 border-b border-gray-200 bg-white">
+          <div className="flex-shrink-0 p-4 border-b border-gray-200 bg-white">
             {isSearching ? (
               <div className="text-center text-gray-500 py-4">
                 <p>Keresés...</p>
@@ -1073,16 +1073,18 @@ export default function POSPage() {
             )}
           </div>
         )}
+      </div>
 
-        {/* Cart Items */}
-        <div className="p-4">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Kosár</h2>
-          {cartItems.length === 0 && fees.length === 0 && !discount ? (
-            <div className="text-center text-gray-500 py-8">
-              <p>A kosár üres</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
+      {/* Scrollable Cart Items Section */}
+        <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
+          <div className="p-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Kosár</h2>
+            {cartItems.length === 0 && fees.length === 0 && !discount ? (
+              <div className="text-center text-gray-500 py-8">
+                <p>A kosár üres</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
               {/* Cart Items */}
               {cartItems.map((item) => (
                 <div
@@ -1237,10 +1239,10 @@ export default function POSPage() {
                   </div>
                 </>
               )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
       {/* Fixed Bottom Section */}
       <div className="bg-white border-t border-gray-200 shadow-lg flex-shrink-0">

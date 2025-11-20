@@ -3,8 +3,24 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    background-color: #f9fafb; /* gray-50 */
+    overscroll-behavior: none;
+    height: 100%;
+    overflow: hidden;
+  }
+  
   body {
     @apply bg-gray-50 text-gray-900;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
+    height: 100%;
+    overflow: hidden;
+    /* Account for safe areas */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 }
 
@@ -29,21 +45,15 @@
   }
 }
 
-/* Fullscreen mobile support */
-@supports (padding: max(0px)) {
-  body {
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
-  }
-}
-
 /* Prevent pull-to-refresh on mobile */
 html {
   overscroll-behavior: none;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  overscroll-behavior: none;
-  -webkit-overflow-scrolling: touch;
+  height: 100%;
+  overflow: hidden;
 }
 
