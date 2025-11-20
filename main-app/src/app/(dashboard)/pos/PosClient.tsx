@@ -395,6 +395,29 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     }
   }, [])
 
+  // Refocus barcode input when editing ends
+  useEffect(() => {
+    if (!isEditingField && barcodeInputRef.current) {
+      // Small delay to ensure the blur from the fee field is complete
+      const timer = setTimeout(() => {
+        const activeElement = document.activeElement
+        const isCriticalField = 
+          activeElement?.id === 'fee-price-input' ||
+          activeElement?.id === 'discount-percentage-input' ||
+          activeElement?.closest('[id="fee-price-input"]') ||
+          activeElement?.closest('[id="discount-percentage-input"]')
+        
+        // Only refocus if not in a critical field and not scanning
+        if (!isCriticalField && !isScanningRef.current && barcodeInputRef.current) {
+          barcodeInputRef.current.focus()
+          barcodeInputRef.current.select()
+        }
+      }, 150)
+      
+      return () => clearTimeout(timer)
+    }
+  }, [isEditingField])
+
   // Search accessories (optimized with request cancellation)
   useEffect(() => {
     // Cancel previous search request
@@ -463,17 +486,24 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
   // Handle barcode input change (debounced for scanner - optimized to 100ms)
   const handleBarcodeInputChange = (value: string) => {
+    // Check if we're in a critical editing field FIRST (before any processing)
+    const activeElement = document.activeElement
+    const isCriticalField = 
+      activeElement?.id === 'fee-price-input' ||
+      activeElement?.id === 'discount-percentage-input' ||
+      activeElement?.closest('[id="fee-price-input"]') ||
+      activeElement?.closest('[id="discount-percentage-input"]')
+    
+    // If in critical field, ignore barcode input completely
+    if (isCriticalField) {
+      setBarcodeInput('')
+      return
+    }
+
     // Don't process if user is editing a critical field (fee price, discount)
     // But allow barcode scanning even when search field has focus
     if (isEditingField) {
       // Only block if we're actually in a critical editing field
-      const activeElement = document.activeElement
-      const isCriticalField = 
-        activeElement?.id === 'fee-price-input' ||
-        activeElement?.id === 'discount-percentage-input' ||
-        activeElement?.closest('[id="fee-price-input"]') ||
-        activeElement?.closest('[id="discount-percentage-input"]')
-      
       if (isCriticalField) {
         setBarcodeInput('')
         return
@@ -493,7 +523,15 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     // Barcode scanners typically send characters very quickly, so we wait a bit
     scanTimeoutRef.current = setTimeout(() => {
       const trimmedValue = value.trim()
-      if (trimmedValue.length > 0 && !isScanningRef.current && !isEditingField) {
+      // Double-check active element before scanning
+      const currentActiveElement = document.activeElement
+      const stillInCriticalField = 
+        currentActiveElement?.id === 'fee-price-input' ||
+        currentActiveElement?.id === 'discount-percentage-input' ||
+        currentActiveElement?.closest('[id="fee-price-input"]') ||
+        currentActiveElement?.closest('[id="discount-percentage-input"]')
+      
+      if (trimmedValue.length > 0 && !isScanningRef.current && !isEditingField && !stillInCriticalField) {
         handleBarcodeScan(trimmedValue)
       }
     }, 100)
@@ -501,6 +539,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
   // Refocus barcode input helper (optimized - no requestAnimationFrame)
   const refocusBarcodeInput = () => {
+    // Don't refocus if we're editing a critical field
+    if (isEditingField) {
+      return
+    }
+    
     // Check if we're in a critical editing field
     const activeElement = document.activeElement
     const isCriticalField = 
@@ -509,14 +552,29 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       activeElement?.closest('[id="fee-price-input"]') ||
       activeElement?.closest('[id="discount-percentage-input"]')
     
-    if (isEditingField && isCriticalField) return // Don't refocus if user is editing a critical field
+    if (isCriticalField) {
+      return // Don't refocus if user is editing a critical field
+    }
     
+    // Use a slightly longer delay to ensure state is updated
     setTimeout(() => {
-      if (barcodeInputRef.current && (!isEditingField || !isCriticalField)) {
+      // Double-check state before refocusing
+      if (isEditingField) return
+      
+      const currentActiveElement = document.activeElement
+      const stillInCriticalField = 
+        currentActiveElement?.id === 'fee-price-input' ||
+        currentActiveElement?.id === 'discount-percentage-input' ||
+        currentActiveElement?.closest('[id="fee-price-input"]') ||
+        currentActiveElement?.closest('[id="discount-percentage-input"]')
+      
+      if (stillInCriticalField) return
+      
+      if (barcodeInputRef.current) {
         barcodeInputRef.current.focus()
         barcodeInputRef.current.select() // Select all text for easy clearing
       }
-    }, 10) // Minimal delay
+    }, 50) // Slightly longer delay to ensure state updates
   }
 
   // Handle barcode scan (optimized with cache and request cancellation)
@@ -808,7 +866,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     setFees(prev =>
       prev.map(fee =>
         fee.id === feeId
-          ? { ...fee, price: newPrice >= 0 ? newPrice : 0, unit_price_gross: newPrice >= 0 ? newPrice : 0 }
+          ? { ...fee, price: newPrice, unit_price_gross: newPrice } // Allow negative values
           : fee
       )
     )
@@ -1122,8 +1180,40 @@ export default function PosClient({ customers, workers }: PosClientProps) {
           <TextField
             inputRef={barcodeInputRef}
             value={barcodeInput}
-            onChange={(e) => handleBarcodeInputChange(e.target.value)}
+            onChange={(e) => {
+              // Immediately check if we're in a critical field before processing
+              const activeElement = document.activeElement
+              const isCriticalField = 
+                activeElement?.id === 'fee-price-input' ||
+                activeElement?.id === 'discount-percentage-input' ||
+                activeElement?.closest('[id="fee-price-input"]') ||
+                activeElement?.closest('[id="discount-percentage-input"]')
+              
+              // If in critical field, ignore the input completely
+              if (isCriticalField || isEditingField) {
+                setBarcodeInput('')
+                return
+              }
+              
+              handleBarcodeInputChange(e.target.value)
+            }}
             onKeyDown={(e) => {
+              // Check if we're in a critical field
+              const activeElement = document.activeElement
+              const isCriticalField = 
+                activeElement?.id === 'fee-price-input' ||
+                activeElement?.id === 'discount-percentage-input' ||
+                activeElement?.closest('[id="fee-price-input"]') ||
+                activeElement?.closest('[id="discount-percentage-input"]')
+              
+              // If in critical field, ignore all key events
+              if (isCriticalField || isEditingField) {
+                e.preventDefault()
+                e.stopPropagation()
+                setBarcodeInput('')
+                return
+              }
+              
               // Barcode scanners often send Enter at the end
               // Trigger scan immediately on Enter
               if (e.key === 'Enter') {
@@ -1140,17 +1230,18 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 }
               }
             }}
+            disabled={isEditingField}
             sx={{
               position: 'absolute',
               left: '-9999px',
               width: '1px',
               height: '1px',
               opacity: 0,
-              pointerEvents: 'auto',
+              pointerEvents: isEditingField ? 'none' : 'auto',
               zIndex: -1 // Keep it behind everything but still focusable
             }}
-            autoFocus
-            tabIndex={0}
+            autoFocus={false}
+            tabIndex={isEditingField ? -1 : 0}
             onBlur={(e) => {
               // Don't clear barcode input on blur - keep it ready for scanning
               
@@ -1189,7 +1280,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 
                 // Refocus barcode input only if:
                 // - Not scanning
-                // - Not editing a critical field
+                // - Not editing a critical field (check both state and active element)
                 // - Not going to any input field (let those fields handle their own blur to refocus barcode)
                 if (!isScanningRef.current && 
                     !isEditingField &&
@@ -1198,7 +1289,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     barcodeInputRef.current) {
                   barcodeInputRef.current.focus()
                 }
-              }, 100)
+              }, 150) // Slightly longer delay to ensure isEditingField is cleared
             }}
           />
 
@@ -1660,14 +1751,18 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
                               <TextField
+                                id="fee-price-input"
                                 type="number"
                                 size="small"
                                 value={fee.price}
-                                onChange={(e) =>
-                                  handleFeePriceChange(fee.id, parseFloat(e.target.value) || 0)
-                                }
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  // Allow empty string, negative numbers, and valid numbers
+                                  const numValue = val === '' ? 0 : parseFloat(val) || 0
+                                  handleFeePriceChange(fee.id, numValue)
+                                }}
                                 onFocus={() => {
-                                  // Set editing flag to prevent barcode input interference
+                                  // Set editing flag IMMEDIATELY (synchronously)
                                   setIsEditingField(true)
                                   // Clear barcode input and any pending scans when editing fee price
                                   setBarcodeInput('')
@@ -1675,20 +1770,49 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                     clearTimeout(scanTimeoutRef.current)
                                     scanTimeoutRef.current = null
                                   }
+                                  // Also clear any scanning state
+                                  isScanningRef.current = false
+                                  // Blur the barcode input to prevent it from receiving events
+                                  if (barcodeInputRef.current) {
+                                    barcodeInputRef.current.blur()
+                                  }
                                 }}
-                                onBlur={() => {
-                                  // Clear editing flag after a short delay
-                                  setTimeout(() => {
+                                onBlur={(e) => {
+                                  // Check if focus is going to another input field
+                                  const relatedTarget = e.relatedTarget as HTMLElement
+                                  const isGoingToAnotherInput = 
+                                    relatedTarget?.tagName === 'INPUT' ||
+                                    relatedTarget?.tagName === 'TEXTAREA' ||
+                                    relatedTarget?.closest('input') ||
+                                    relatedTarget?.closest('textarea') ||
+                                    relatedTarget?.closest('[role="combobox"]')
+                                  
+                                  // Clear editing flag immediately if not going to another input
+                                  if (!isGoingToAnotherInput) {
                                     setIsEditingField(false)
-                                    refocusBarcodeInput()
-                                  }, 200)
+                                    // Refocus barcode input after a short delay to ensure the blur is complete
+                                    setTimeout(() => {
+                                      refocusBarcodeInput()
+                                    }, 100)
+                                  } else {
+                                    // If going to another input, clear the flag but don't refocus yet
+                                    // The other input's onBlur will handle refocusing
+                                    setTimeout(() => {
+                                      setIsEditingField(false)
+                                    }, 50)
+                                  }
                                 }}
                                 onKeyDown={(e) => {
-                                  // Stop event propagation to prevent barcode input from receiving it
+                                  // Stop event propagation AND prevent default for non-allowed keys
                                   e.stopPropagation()
+                                  // Allow number keys, minus, decimal point, backspace, delete, arrow keys, tab
+                                  const allowedKeys = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '.', 'Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter']
+                                  if (!allowedKeys.includes(e.key) && !e.ctrlKey && !e.metaKey) {
+                                    e.preventDefault()
+                                  }
                                 }}
                                 inputProps={{
-                                  min: 0,
+                                  // Remove min: 0 to allow negative values
                                   step: 1,
                                   style: { textAlign: 'right', width: '80px' }
                                 }}
