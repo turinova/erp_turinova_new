@@ -58,14 +58,19 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to include calculated fields
-    const transformedData = feeTypes?.map(feeType => ({
-      ...feeType,
-      vat_name: feeType.vat?.name || '',
-      vat_percent: feeType.vat?.kulcs || 0,
-      currency_name: feeType.currencies?.name || '',
-      vat_amount: (feeType.net_price * (feeType.vat?.kulcs || 0)) / 100,
-      gross_price: feeType.net_price + ((feeType.net_price * (feeType.vat?.kulcs || 0)) / 100)
-    })) || []
+    const transformedData = feeTypes?.map((feeType: any) => {
+      const vat = Array.isArray(feeType.vat) ? feeType.vat[0] : feeType.vat
+      const currency = Array.isArray(feeType.currencies) ? feeType.currencies[0] : feeType.currencies
+      
+      return {
+        ...feeType,
+        vat_name: vat?.name || '',
+        vat_percent: vat?.kulcs || 0,
+        currency_name: currency?.name || '',
+        vat_amount: (feeType.net_price * (vat?.kulcs || 0)) / 100,
+        gross_price: feeType.net_price + ((feeType.net_price * (vat?.kulcs || 0)) / 100)
+      }
+    }) || []
 
     return NextResponse.json(transformedData)
     
