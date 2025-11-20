@@ -885,9 +885,9 @@ export default function POSPage() {
       />
 
       {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto pb-4">
+      <div className="flex-1 overflow-y-auto pb-4 overscroll-contain">
         {/* Customer Selection */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10 space-y-3">
+        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10 space-y-3 backdrop-blur-sm bg-white/95">
           {/* Customer Dropdown - Only show if no customer selected */}
           {!selectedCustomer && (
             <div className="relative">
@@ -1161,16 +1161,16 @@ export default function POSPage() {
                     <div
                       key={fee.id}
                       onClick={() => handleEditFee(fee)}
-                      className="bg-white p-4 rounded-lg border-2 border-blue-200 bg-blue-50 cursor-pointer hover:border-blue-400 hover:bg-blue-100 active:scale-98 transition-all"
+                      className="bg-white p-3 rounded-lg border-2 border-blue-200 bg-blue-50 cursor-pointer hover:border-blue-400 hover:bg-blue-100 active:scale-98 transition-all"
                     >
-                      {/* Top Row: Fee Name */}
-                      <div className="mb-3">
-                        <p className="font-semibold text-gray-900 text-base break-words">{fee.name}</p>
-                      </div>
-
-                      {/* Bottom Row: Delete button and Pricing */}
+                      {/* Single Row: Title, Delete, Amount */}
                       <div className="flex items-center justify-between gap-3">
-                        {/* Left: Delete button */}
+                        {/* Left: Fee Name */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-gray-900 text-base truncate">{fee.name}</p>
+                        </div>
+
+                        {/* Center: Delete button */}
                         <div className="flex-shrink-0">
                           <button
                             onClick={(e) => {
@@ -1186,11 +1186,9 @@ export default function POSPage() {
 
                         {/* Right: Amount */}
                         <div className="flex-shrink-0">
-                          <div className="text-right">
-                            <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
-                              {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
-                            </p>
-                          </div>
+                          <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
+                            {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -1206,16 +1204,16 @@ export default function POSPage() {
                   </div>
                   <div
                     onClick={handleOpenDiscountModal}
-                    className="bg-white p-4 rounded-lg border-2 border-orange-200 bg-orange-50 cursor-pointer hover:border-orange-400 hover:bg-orange-100 active:scale-98 transition-all"
+                    className="bg-white p-3 rounded-lg border-2 border-orange-200 bg-orange-50 cursor-pointer hover:border-orange-400 hover:bg-orange-100 active:scale-98 transition-all"
                   >
-                    {/* Top Row: Discount Name */}
-                    <div className="mb-3">
-                      <p className="font-semibold text-gray-900 text-base break-words">Kedvezmény ({discount.percent}%)</p>
-                    </div>
-
-                    {/* Bottom Row: Delete button and Amount */}
+                    {/* Single Row: Title, Delete, Amount */}
                     <div className="flex items-center justify-between gap-3">
-                      {/* Left: Delete button */}
+                      {/* Left: Discount Name */}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-base truncate">Kedvezmény ({discount.percent}%)</p>
+                      </div>
+
+                      {/* Center: Delete button */}
                       <div className="flex-shrink-0">
                         <button
                           onClick={(e) => {
@@ -1231,11 +1229,9 @@ export default function POSPage() {
 
                       {/* Right: Amount */}
                       <div className="flex-shrink-0">
-                        <div className="text-right">
-                          <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
-                            -{discountAmount.toLocaleString('hu-HU')} Ft
-                          </p>
-                        </div>
+                        <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
+                          -{discountAmount.toLocaleString('hu-HU')} Ft
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1247,7 +1243,7 @@ export default function POSPage() {
       </div>
 
       {/* Fixed Bottom Section */}
-      <div className="bg-white border-t border-gray-200 shadow-lg">
+      <div className="bg-white border-t border-gray-200 shadow-lg flex-shrink-0">
         {/* Row 1: Összesen, Fee, Discount */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           {/* Összesen */}
