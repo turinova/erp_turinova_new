@@ -124,22 +124,41 @@ export async function GET(request: NextRequest) {
     const getOriginalFilename = (imageUrl: string | null): string => {
       if (!imageUrl) return ''
       
-      // First try: Direct lookup in media_files table by full_url
-      const originalName = mediaUrlMap.get(imageUrl)
+      // Normalize URL (remove trailing slash if present)
+      const normalizeUrl = (url: string) => url.endsWith('/') ? url.slice(0, -1) : url
+      const normalizedImageUrl = normalizeUrl(imageUrl)
+      
+      // First try: Direct lookup in media_files table by full_url (normalized)
+      const originalName = mediaUrlMap.get(normalizedImageUrl)
       if (originalName) {
+        console.log(`[Export] Found original filename for ${imageUrl}: ${originalName}`)
         return originalName
       }
       
       // Fallback: Extract filename from URL for files not in media_files table
-      // URL format: https://.../materials/materials/timestamp-filename.ext
-      const match = imageUrl.match(/materials\/materials\/\d+-(.+\.(webp|png|jpeg|jpg|gif))$/)
+      // URL format 1: https://.../materials/materials/timestamp-filename.ext (from /api/media/upload)
+      // URL format 2: https://.../materials/materials/uuid-timestamp.ext (from ImageUpload component)
+      // Match any prefix (digits or UUID) followed by dash and filename
+      const match = imageUrl.match(/materials\/materials\/[^/]+-(.+\.(webp|png|jpeg|jpg|gif))$/i)
       if (match) {
-        return match[1] // Return the original filename part (e.g., "1003HG-18.png")
+        // For timestamp-filename.ext format, return the original filename part
+        // For uuid-timestamp.ext format, we can't extract original name, so return stored filename
+        const extracted = match[1]
+        // Check if this looks like a timestamp-only filename (no original name embedded)
+        // If it's just a timestamp.ext, return empty (no original name available)
+        // Otherwise, return the extracted part
+        if (/^\d+\.(webp|png|jpeg|jpg|gif)$/i.test(extracted)) {
+          // This is uuid-timestamp.ext format, no original filename available
+          console.log(`[Export] UUID format detected for ${imageUrl}, no original filename available`)
+          return '' // Return empty - original filename not embedded in stored name
+        }
+        return extracted // Return the original filename part (e.g., "1003HG-18.png")
       }
       
       // Last resort: extract any filename from the URL
       const urlParts = imageUrl.split('/')
       const filename = urlParts[urlParts.length - 1]
+      console.log(`[Export] Using last resort filename extraction: ${filename}`)
       return filename || ''
     }
 

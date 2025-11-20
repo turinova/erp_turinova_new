@@ -613,6 +613,10 @@ export default function MaterialsEditClient({
                 onImageChange={(url) => handleInputChange('image_url', url || '')}
                 materialId={material.id}
                 disabled={isSaving}
+                bucketName="materials"
+                pathPrefix="materials"
+                altText="Material preview"
+                registerInMediaFiles={true}
               />
               {mounted && (
                 <Box sx={{ mt: 2, textAlign: 'center' }}>

@@ -21,15 +21,25 @@ export async function POST(request: NextRequest) {
     const skuMap = new Map(existingAccessories?.map(a => [a.sku, a.id]) || [])
 
     // Fetch reference data
-    const { data: currencies } = await supabaseServer.from('currencies').select('id, name').is('deleted_at', null)
-    const { data: vatRates } = await supabaseServer.from('vat').select('id, name, kulcs').is('deleted_at', null)
-    const { data: units } = await supabaseServer.from('units').select('id, name').is('deleted_at', null)
-    const { data: partners } = await supabaseServer.from('partners').select('id, name').is('deleted_at', null)
+    const [currenciesRes, vatRatesRes, unitsRes, partnersRes, mediaFilesRes] = await Promise.all([
+      supabaseServer.from('currencies').select('id, name').is('deleted_at', null),
+      supabaseServer.from('vat').select('id, name, kulcs').is('deleted_at', null),
+      supabaseServer.from('units').select('id, name').is('deleted_at', null),
+      supabaseServer.from('partners').select('id, name').is('deleted_at', null),
+      supabaseServer.from('media_files').select('original_filename, stored_filename, full_url')
+    ])
 
-    const currencyMap = new Map(currencies?.map(c => [c.name, c.id]) || [])
-    const vatMap = new Map(vatRates?.map(v => [`${v.name} (${v.kulcs}%)`, v.id]) || [])
-    const unitMap = new Map(units?.map(u => [u.name, u.id]) || [])
-    const partnerMap = new Map(partners?.map(p => [p.name, p.id]) || [])
+    const currencies = currenciesRes.data || []
+    const vatRates = vatRatesRes.data || []
+    const units = unitsRes.data || []
+    const partners = partnersRes.data || []
+    const mediaFiles = mediaFilesRes.data || []
+
+    const currencyMap = new Map(currencies.map(c => [c.name, c.id]))
+    const vatMap = new Map(vatRates.map(v => [`${v.name} (${v.kulcs}%)`, v.id]))
+    const unitMap = new Map(units.map(u => [u.name, u.id]))
+    const partnerMap = new Map(partners.map(p => [p.name, p.id]))
+    const mediaFilesByOriginalName = new Map(mediaFiles.map(m => [m.original_filename, m.full_url]))
 
     const preview = []
     const errors = []
@@ -72,17 +82,25 @@ export async function POST(request: NextRequest) {
       // Calculate net_price from base_price * multiplier
       const netPrice = Math.round(basePrice * multiplier)
 
+      // Validate image filename if provided
+      const imageFilename = String(row['Kép fájlnév'] || '').trim()
+      if (imageFilename && !mediaFilesByOriginalName.has(imageFilename)) {
+        errors.push(`Sor ${rowNum}: Kép fájl "${imageFilename}" nem található a Media könyvtárban!`)
+      }
+
       preview.push({
         row: rowNum,
         action,
         sku,
         name: row['Név'],
+        barcode: row['Vonalkód'] || '',
         basePrice,
         multiplier,
         vat: vatString,
         currency: row['Pénznem'],
         unit: row['Mértékegység'],
-        partner: row['Partner']
+        partner: row['Partner'],
+        imageFilename: imageFilename || ''
       })
     }
 

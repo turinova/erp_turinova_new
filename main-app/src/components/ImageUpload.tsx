@@ -11,9 +11,22 @@ interface ImageUploadProps {
   onImageChange: (url: string | null) => void
   materialId: string
   disabled?: boolean
+  bucketName?: string
+  pathPrefix?: string
+  altText?: string
+  registerInMediaFiles?: boolean // If true, register uploaded file in media_files table
 }
 
-export default function ImageUpload({ currentImageUrl, onImageChange, materialId, disabled = false }: ImageUploadProps) {
+export default function ImageUpload({ 
+  currentImageUrl, 
+  onImageChange, 
+  materialId, 
+  disabled = false,
+  bucketName = 'materials',
+  pathPrefix = 'materials',
+  altText = 'Material preview',
+  registerInMediaFiles = false
+}: ImageUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -58,13 +71,13 @@ return
       // Create a unique filename
       const fileExt = file.name.split('.').pop()
       const fileName = `${materialId}-${Date.now()}.${fileExt}`
-      const filePath = `materials/${fileName}`
+      const filePath = `${pathPrefix}/${fileName}`
 
       console.log('Uploading file:', filePath)
 
       // Upload the file
       const { data, error: uploadError } = await supabase.storage
-        .from('materials')
+        .from(bucketName)
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false
@@ -76,10 +89,59 @@ return
 
       // Get the public URL
       const { data: { publicUrl } } = supabase.storage
-        .from('materials')
+        .from(bucketName)
         .getPublicUrl(filePath)
 
       setUploadProgress(100)
+      
+      // Register in media_files table if requested (for accessories, etc.)
+      if (registerInMediaFiles) {
+        try {
+          console.log('[ImageUpload] Registering file in media_files:', {
+            original_filename: file.name,
+            stored_filename: fileName,
+            storage_path: filePath,
+            full_url: publicUrl,
+            size: file.size,
+            mimetype: file.type,
+            bucket: bucketName
+          })
+          
+          const registerResponse = await fetch('/api/media/register', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              original_filename: file.name,
+              stored_filename: fileName,
+              storage_path: filePath,
+              full_url: publicUrl,
+              size: file.size,
+              mimetype: file.type,
+              bucket: bucketName
+            })
+          })
+
+          const registerData = await registerResponse.json()
+          
+          if (!registerResponse.ok) {
+            console.error('[ImageUpload] Failed to register file in media_files:', registerData)
+            // Don't throw error - upload succeeded, registration is optional
+          } else {
+            console.log('[ImageUpload] File registered in media_files:', {
+              original: file.name,
+              registered: registerData.mediaFile?.original_filename,
+              url: registerData.mediaFile?.full_url,
+              alreadyExists: registerData.alreadyExists
+            })
+          }
+        } catch (registerError) {
+          console.error('[ImageUpload] Error registering file in media_files:', registerError)
+          // Don't throw error - upload succeeded, registration is optional
+        }
+      }
+      
       onImageChange(publicUrl)
       
       // Clean up old image if it exists
@@ -88,8 +150,8 @@ return
 
         if (oldPath) {
           await supabase.storage
-            .from('materials')
-            .remove([`materials/${oldPath}`])
+            .from(bucketName)
+            .remove([`${pathPrefix}/${oldPath}`])
         }
       }
 
@@ -100,7 +162,7 @@ return
       setUploading(false)
       setUploadProgress(0)
     }
-  }, [materialId, currentImageUrl, onImageChange])
+  }, [materialId, currentImageUrl, onImageChange, bucketName, pathPrefix, registerInMediaFiles])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -143,8 +205,8 @@ return
 
         if (fileName) {
           await supabase.storage
-            .from('materials')
-            .remove([`materials/${fileName}`])
+            .from(bucketName)
+            .remove([`${pathPrefix}/${fileName}`])
         }
 
         onImageChange(null)
@@ -188,7 +250,7 @@ return
           >
             <img
               src={currentImageUrl}
-              alt="Material preview"
+              alt={altText}
               style={{
                 width: '100%',
                 height: '100%',

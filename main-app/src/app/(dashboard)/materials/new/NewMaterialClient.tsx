@@ -351,6 +351,10 @@ export default function NewMaterialClient({
                 onImageChange={(url) => handleInputChange('image_url', url || '')}
                 materialId={tempMaterialId}
                 disabled={isSaving}
+                bucketName="materials"
+                pathPrefix="materials"
+                altText="Material preview"
+                registerInMediaFiles={true}
               />
               {mounted && (
                 <Box sx={{ mt: 2, textAlign: 'center' }}>

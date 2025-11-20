@@ -43,15 +43,25 @@ export async function POST(request: NextRequest) {
     console.log(`[Import] Sample SKUs in map:`, sampleSKUs)
 
     // Fetch reference data
-    const { data: currencies } = await supabaseServer.from('currencies').select('id, name').is('deleted_at', null)
-    const { data: vatRates } = await supabaseServer.from('vat').select('id, name, kulcs').is('deleted_at', null)
-    const { data: units } = await supabaseServer.from('units').select('id, name').is('deleted_at', null)
-    const { data: partners } = await supabaseServer.from('partners').select('id, name').is('deleted_at', null)
+    const [currenciesRes, vatRatesRes, unitsRes, partnersRes, mediaFilesRes] = await Promise.all([
+      supabaseServer.from('currencies').select('id, name').is('deleted_at', null),
+      supabaseServer.from('vat').select('id, name, kulcs').is('deleted_at', null),
+      supabaseServer.from('units').select('id, name').is('deleted_at', null),
+      supabaseServer.from('partners').select('id, name').is('deleted_at', null),
+      supabaseServer.from('media_files').select('original_filename, stored_filename, full_url')
+    ])
 
-    const currencyMap = new Map(currencies?.map(c => [c.name, c.id]) || [])
-    const vatMap = new Map(vatRates?.map(v => [`${v.name} (${v.kulcs}%)`, v.id]) || [])
-    const unitMap = new Map(units?.map(u => [u.name, u.id]) || [])
-    const partnerMap = new Map(partners?.map(p => [p.name, p.id]) || [])
+    const currencies = currenciesRes.data || []
+    const vatRates = vatRatesRes.data || []
+    const units = unitsRes.data || []
+    const partners = partnersRes.data || []
+    const mediaFiles = mediaFilesRes.data || []
+
+    const currencyMap = new Map(currencies.map(c => [c.name, c.id]))
+    const vatMap = new Map(vatRates.map(v => [`${v.name} (${v.kulcs}%)`, v.id]))
+    const unitMap = new Map(units.map(u => [u.name, u.id]))
+    const partnerMap = new Map(partners.map(p => [p.name, p.id]))
+    const mediaFilesByOriginalName = new Map(mediaFiles.map(m => [m.original_filename, m.full_url]))
 
     console.log(`[Import] Processing ${data.length} records from Excel file`)
     const startTime = Date.now()
@@ -83,12 +93,26 @@ export async function POST(request: NextRequest) {
         // Calculate net_price from base_price * multiplier
         const netPrice = Math.round(basePrice * multiplier)
 
+        // Get image URL from media library if filename provided
+        const imageFilename = String(row['Kép fájlnév'] || '').trim()
+        let imageUrl = null
+        if (imageFilename) {
+          imageUrl = mediaFilesByOriginalName.get(imageFilename)
+          if (imageUrl) {
+            console.log(`[Import] Found image "${imageFilename}" -> ${imageUrl}`)
+          } else {
+            console.log(`[Import] Image "${imageFilename}" not found - skipping image`)
+          }
+        }
+
         const accessoryData = {
           name: row['Név']?.toString().trim(),
           sku: row['SKU']?.toString().trim(),
+          barcode: row['Vonalkód'] ? String(row['Vonalkód']).trim() : null,
           base_price: Math.round(basePrice),
           multiplier: parseFloat(multiplier.toFixed(2)),
           net_price: netPrice,
+          image_url: imageUrl,
           vat_id: vatId,
           currency_id: currencyMap.get(row['Pénznem']?.toString().trim()),
           units_id: unitMap.get(row['Mértékegység']?.toString().trim()),

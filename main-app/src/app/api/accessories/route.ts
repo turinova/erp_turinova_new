@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, sku, base_price, multiplier, net_price, vat_id, currency_id, units_id, partners_id } = body
+    const { name, sku, barcode, base_price, multiplier, net_price, vat_id, currency_id, units_id, partners_id, image_url } = body
 
     // Validate required fields
     if (!name || !sku || base_price === undefined || multiplier === undefined || !vat_id || !currency_id || !units_id || !partners_id) {
@@ -103,9 +103,11 @@ export async function POST(request: NextRequest) {
       .insert({
         name: name.trim(),
         sku: sku.trim(),
+        barcode: barcode ? barcode.trim() : null,
         base_price: Math.round(base_price), // Convert to integer
         multiplier: parseFloat(multiplier.toFixed(2)), // Round to 2 decimal places
         net_price: Math.round(net_price), // Convert to integer
+        image_url: image_url || null,
         vat_id,
         currency_id,
         units_id,

@@ -11,9 +11,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         id, 
         name, 
         sku, 
+        barcode,
         base_price,
         multiplier,
         net_price, 
+        image_url,
         created_at, 
         updated_at,
         vat_id,
@@ -73,7 +75,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, sku, base_price, multiplier, vat_id, currency_id, units_id, partners_id } = body
+    const { name, sku, barcode, base_price, multiplier, vat_id, currency_id, units_id, partners_id, image_url } = body
 
     // Validate required fields
     if (!name || !sku || base_price === undefined || multiplier === undefined || !vat_id || !currency_id || !units_id || !partners_id) {
@@ -100,9 +102,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       .update({
         name: name.trim(),
         sku: sku.trim(),
+        barcode: barcode ? barcode.trim() : null,
         base_price: Math.round(base_price),
         multiplier: parseFloat(multiplier.toFixed(2)),
         net_price: net_price,
+        image_url: image_url || null,
         vat_id,
         currency_id,
         units_id,
@@ -114,9 +118,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         id, 
         name, 
         sku, 
+        barcode,
         base_price,
         multiplier,
         net_price, 
+        image_url,
         created_at, 
         updated_at,
         vat_id,

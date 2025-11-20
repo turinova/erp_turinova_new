@@ -121,17 +121,95 @@ export async function GET(request: NextRequest) {
     
     console.log(`[Export] Exporting ${validAccessories.length} valid accessories`)
 
+    // Fetch media files to map image_url to original filename
+    const { data: mediaFiles } = await supabaseServer
+      .from('media_files')
+      .select('original_filename, full_url, stored_filename')
+    
+    // Create map with normalized URLs (remove trailing slashes, etc.)
+    const normalizeUrl = (url: string) => url.trim().replace(/\/$/, '')
+    const mediaUrlMap = new Map(mediaFiles?.map(m => [normalizeUrl(m.full_url), m.original_filename]) || [])
+    
+    // Also create map by stored_filename for fallback lookup
+    const extractStoredFilename = (url: string): string | null => {
+      const parts = url.split('/')
+      return parts[parts.length - 1] || null
+    }
+    const mediaFilenameMap = new Map(mediaFiles?.map(m => [m.stored_filename, m.original_filename]) || [])
+    
+    // Debug: Log first few media files
+    if (mediaFiles && mediaFiles.length > 0) {
+      console.log(`[Export] Loaded ${mediaFiles.length} media files for lookup`)
+      console.log(`[Export] Sample media files:`, mediaFiles.slice(0, 3).map(m => ({
+        original: m.original_filename,
+        stored: m.stored_filename,
+        url: m.full_url
+      })))
+    }
+    
+    // Helper function to get original filename from image_url
+    const getOriginalFilename = (imageUrl: string | null | undefined): string => {
+      if (!imageUrl) return ''
+      
+      const normalizedImageUrl = normalizeUrl(imageUrl)
+      
+      // First try: Direct lookup in media_files table by full_url (normalized)
+      const originalName = mediaUrlMap.get(normalizedImageUrl)
+      if (originalName) {
+        console.log(`[Export] Found original filename for ${imageUrl}: ${originalName}`)
+        return originalName
+      }
+      
+      // Second try: Lookup by stored_filename (extract from URL)
+      const storedFilename = extractStoredFilename(imageUrl)
+      if (storedFilename) {
+        const originalNameByFilename = mediaFilenameMap.get(storedFilename)
+        if (originalNameByFilename) {
+          console.log(`[Export] Found original filename by stored_filename for ${imageUrl}: ${originalNameByFilename}`)
+          return originalNameByFilename
+        }
+      }
+      
+      // Debug: Log if not found
+      console.log(`[Export] No media_files record found for URL: ${imageUrl} (stored_filename: ${storedFilename})`)
+      
+      // Fallback: Try to extract original filename from stored filename pattern
+      // For accessories: URL format: https://.../accessories/accessories/{uuid}-{timestamp}.{ext}
+      // For materials: URL format: https://.../materials/materials/{timestamp}-{original}.{ext}
+      
+      // Try accessories pattern first (uuid-timestamp.ext)
+      const accessoriesMatch = imageUrl.match(/accessories\/accessories\/[a-f0-9-]+-(\d+)\.(webp|png|jpeg|jpg|gif)$/i)
+      if (accessoriesMatch) {
+        // For accessories, we can't extract original filename from stored name
+        // Return empty string - user needs to register the file or re-upload
+        return ''
+      }
+      
+      // Try materials pattern (timestamp-original.ext)
+      const materialsMatch = imageUrl.match(/materials\/materials\/\d+-(.+\.(webp|png|jpeg|jpg|gif))$/)
+      if (materialsMatch) {
+        return materialsMatch[1] // Return the original filename part
+      }
+      
+      // Last resort: extract any filename from the URL
+      const urlParts = imageUrl.split('/')
+      const filename = urlParts[urlParts.length - 1]
+      return filename || ''
+    }
+
     // Transform for Excel with base_price and multiplier
     const excelData = validAccessories?.map(accessory => {
       return {
         'Név': accessory.name,
         'SKU': accessory.sku,
-               'Beszerzési ár (Ft)': accessory.base_price,
-               'Árrés szorzó': accessory.multiplier,
+        'Vonalkód': accessory.barcode || '',
+        'Beszerzési ár (Ft)': accessory.base_price,
+        'Árrés szorzó': accessory.multiplier,
         'ÁFA': `${accessory.vat?.name || ''} (${accessory.vat?.kulcs || 0}%)`,
         'Pénznem': accessory.currencies?.name || '',
         'Mértékegység': accessory.units?.name || '',
-        'Partner': accessory.partners?.name || ''
+        'Partner': accessory.partners?.name || '',
+        'Kép fájlnév': getOriginalFilename(accessory.image_url)
       }
     }) || []
 
@@ -144,12 +222,14 @@ export async function GET(request: NextRequest) {
     ws['!cols'] = [
       { wch: 30 }, // Név
       { wch: 15 }, // SKU
-             { wch: 15 }, // Beszerzési ár (Ft)
-             { wch: 10 }, // Árrés szorzó
+      { wch: 15 }, // Vonalkód
+      { wch: 15 }, // Beszerzési ár (Ft)
+      { wch: 10 }, // Árrés szorzó
       { wch: 20 }, // ÁFA
       { wch: 10 }, // Pénznem
       { wch: 15 }, // Mértékegység
-      { wch: 20 }  // Partner
+      { wch: 20 }, // Partner
+      { wch: 25 }  // Kép fájlnév
     ]
 
     // Generate buffer

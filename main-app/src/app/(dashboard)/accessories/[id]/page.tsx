@@ -7,6 +7,7 @@ interface AccessoryFormData {
   id: string
   name: string
   sku: string
+  barcode?: string | null
   base_price: number
   multiplier: number
   net_price: number
@@ -14,6 +15,7 @@ interface AccessoryFormData {
   currency_id: string
   units_id: string
   partners_id: string
+  image_url?: string | null
 }
 
 // Loading skeleton component
@@ -78,13 +80,15 @@ export default async function EditAccessoryPage({ params }: { params: Promise<{ 
     id: accessory.id,
     name: accessory.name,
     sku: accessory.sku,
+    barcode: accessory.barcode || null,
     base_price: accessory.base_price || 0,
     multiplier: accessory.multiplier || 1.38,
     net_price: accessory.net_price,
     vat_id: accessory.vat_id,
     currency_id: accessory.currency_id,
     units_id: accessory.units_id,
-    partners_id: accessory.partners_id
+    partners_id: accessory.partners_id,
+    image_url: accessory.image_url || null
   }
 
   // Pass pre-loaded data to client component with Suspense boundary

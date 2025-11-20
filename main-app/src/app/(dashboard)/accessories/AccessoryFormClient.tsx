@@ -14,14 +14,20 @@ import {
   Paper,
   Alert,
   CircularProgress,
-  Grid
+  Grid,
+  Card,
+  CardHeader,
+  CardContent
 } from '@mui/material'
 import { toast } from 'react-toastify'
+import ImageUpload from '@/components/ImageUpload'
+import MediaLibraryModal from '@/components/MediaLibraryModal'
 
 interface AccessoryFormData {
   id?: string
   name: string
   sku: string
+  barcode?: string | null
   base_price: number
   multiplier: number
   net_price: number
@@ -29,6 +35,7 @@ interface AccessoryFormData {
   currency_id: string
   units_id: string
   partners_id: string
+  image_url?: string | null
 }
 
 interface VatRate {
@@ -70,17 +77,26 @@ export default function AccessoryFormClient({
 }: AccessoryFormClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const [formData, setFormData] = useState<AccessoryFormData>({
     name: '',
     sku: '',
+    barcode: null,
     base_price: 0,
     multiplier: 1.38,
     net_price: 0,
     vat_id: '',
     currency_id: '',
     units_id: '',
-    partners_id: ''
+    partners_id: '',
+    image_url: null
   })
+
+  // Ensure client-side only rendering for media library button
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Set default values when component mounts
   useEffect(() => {
@@ -274,6 +290,18 @@ export default function AccessoryFormClient({
               />
             </Grid>
 
+            {/* Row 1.5: Barcode */}
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                label="Vonalkód"
+                value={formData.barcode || ''}
+                onChange={(e) => handleInputChange('barcode', e.target.value)}
+                disabled={loading}
+                helperText="Opcionális vonalkód"
+              />
+            </Grid>
+
             {/* Row 2: Beszerzési ár, Árrés szorzó, ÁFA, Pénznem, Mértékegység */}
             <Grid item xs={12} md={2.4}>
               <TextField
@@ -354,14 +382,48 @@ export default function AccessoryFormClient({
               </FormControl>
             </Grid>
 
+            {/* Image Upload */}
+            <Grid item xs={12} md={6}>
+              <Card sx={{ height: '100%' }}>
+                <CardHeader title="Képfeltöltés" />
+                <CardContent>
+                  <ImageUpload
+                    currentImageUrl={formData.image_url || undefined}
+                    onImageChange={(url) => handleInputChange('image_url', url || '')}
+                    materialId={initialData?.id || 'new'}
+                    disabled={loading}
+                    bucketName="accessories"
+                    pathPrefix="accessories"
+                    altText="Accessory preview"
+                    registerInMediaFiles={true}
+                  />
+                  {mounted && (
+                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        vagy
+                      </Typography>
+                      <Button
+                        variant="outlined"
+                        onClick={() => setMediaLibraryOpen(true)}
+                        disabled={loading}
+                        fullWidth
+                      >
+                        Média könyvtárból választás
+                      </Button>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
             {/* Price Calculation Display */}
-            <Grid item xs={12}>
-              <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2, bgcolor: 'grey.50', height: '100%' }}>
                 <Typography variant="h6" gutterBottom>
                   Ár számítás
                 </Typography>
                 <Grid container spacing={2}>
-                  <Grid item xs={3}>
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">
                       Beszerzési ár:
                     </Typography>
@@ -369,7 +431,7 @@ export default function AccessoryFormClient({
                       {formatCurrency(formData.base_price)}
                     </Typography>
                   </Grid>
-                  <Grid item xs={3}>
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">
                       Árrés szorzó:
                     </Typography>
@@ -377,7 +439,7 @@ export default function AccessoryFormClient({
                       {formData.multiplier}x
                     </Typography>
                   </Grid>
-                  <Grid item xs={3}>
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">
                       Nettó ár:
                     </Typography>
@@ -385,7 +447,7 @@ export default function AccessoryFormClient({
                       {formatCurrency(formData.net_price)}
                     </Typography>
                   </Grid>
-                  <Grid item xs={3}>
+                  <Grid item xs={6}>
                     <Typography variant="body2" color="text.secondary">
                       Bruttó ár:
                     </Typography>
@@ -420,6 +482,19 @@ export default function AccessoryFormClient({
           </Grid>
         </form>
       </Paper>
+
+      {/* Media Library Modal */}
+      {mounted && (
+        <MediaLibraryModal
+          open={mediaLibraryOpen}
+          onClose={() => setMediaLibraryOpen(false)}
+          onSelect={(url) => {
+            handleInputChange('image_url', url)
+            setMediaLibraryOpen(false)
+          }}
+          currentImageUrl={formData.image_url || undefined}
+        />
+      )}
     </Box>
   )
 }
