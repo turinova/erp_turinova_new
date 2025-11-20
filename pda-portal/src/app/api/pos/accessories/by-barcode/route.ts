@@ -73,7 +73,11 @@ export async function GET(request: NextRequest) {
       return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
     }, 0)
 
-    const vatPercent = accessoryData.vat?.kulcs || 0
+    // Handle vat and currencies relations (can be array or object)
+    const vat = Array.isArray(accessoryData.vat) ? accessoryData.vat[0] : accessoryData.vat
+    const currency = Array.isArray(accessoryData.currencies) ? accessoryData.currencies[0] : accessoryData.currencies
+
+    const vatPercent = vat?.kulcs || 0
     const gross_price = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
 
     return NextResponse.json({
@@ -85,9 +89,9 @@ export async function GET(request: NextRequest) {
       quantity_on_hand: quantity_on_hand,
       gross_price: gross_price,
       net_price: accessoryData.net_price,
-      currency_name: accessoryData.currencies?.name || 'HUF',
-      vat_id: accessoryData.vat?.id || '',
-      currency_id: accessoryData.currencies?.id || '',
+      currency_name: currency?.name || 'HUF',
+      vat_id: vat?.id || '',
+      currency_id: currency?.id || '',
       image_url: accessoryData.image_url || null
     })
   } catch (error) {
