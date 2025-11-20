@@ -20,6 +20,7 @@ export async function GET(request: NextRequest) {
         name,
         sku,
         net_price,
+        image_url,
         deleted_at,
         vat (
           id,
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
       currency_name: accessoryData.currencies?.name || 'HUF',
       vat_id: accessoryData.vat?.id || '',
       currency_id: accessoryData.currencies?.id || '',
-      image_url: null
+      image_url: accessoryData.image_url || null
     })
   } catch (error) {
     console.error('Error in POS accessories by-barcode GET:', error)

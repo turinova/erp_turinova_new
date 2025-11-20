@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
               name,
               sku,
               net_price,
+              image_url,
               deleted_at,
               vat (
                 id,
@@ -70,6 +71,7 @@ export async function GET(request: NextRequest) {
               name,
               sku,
               net_price,
+              image_url,
               deleted_at,
               vat (
                 id,
@@ -281,7 +283,7 @@ export async function GET(request: NextRequest) {
       if (item.product_type === 'accessory') {
         result.sku = product.sku || ''
         result.accessory_id = item.accessory_id
-        result.image_url = null // Accessories don't have image_url column
+        result.image_url = product.image_url || null // Accessories now have image_url column
       } else if (item.product_type === 'material') {
         result.material_id = item.material_id
         result.length_mm = product.length_mm
