@@ -525,8 +525,23 @@ export default function POSPage() {
       return
     }
     
+    // Don't refocus if another input is focused
+    const activeElement = document.activeElement
+    if (activeElement && (
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA'
+    ) && activeElement !== barcodeInputRef.current) {
+      return // User is typing in another field
+    }
+    
     setTimeout(() => {
       if (isEditingField || !document.hasFocus()) return
+      
+      // Double check no other input is focused
+      const currentActive = document.activeElement
+      if (currentActive?.tagName === 'INPUT' && currentActive !== barcodeInputRef.current) {
+        return
+      }
       
       if (barcodeInputRef.current) {
         // Check if input is actually focused, if not, focus it
@@ -540,6 +555,21 @@ export default function POSPage() {
 
   // Handle barcode input change (debounced for scanner - 100ms)
   const handleBarcodeInputChange = (value: string) => {
+    // CRITICAL: Only process if barcode input is actually focused
+    // If user is typing in search or customer field, ignore this input
+    const activeElement = document.activeElement
+    if (activeElement !== barcodeInputRef.current) {
+      // User is typing in another field, don't process as barcode
+      setBarcodeInput('') // Clear to prevent accumulation
+      return
+    }
+    
+    // Also check if isEditingField is true (double safety)
+    if (isEditingField) {
+      setBarcodeInput('') // Clear to prevent accumulation
+      return
+    }
+
     setBarcodeInput(value)
 
     // Clear previous timeout
@@ -559,6 +589,13 @@ export default function POSPage() {
 
   // Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
+    // Double check that barcode input is still focused before processing
+    const activeElement = document.activeElement
+    if (activeElement !== barcodeInputRef.current) {
+      // User switched to another field, don't process scan
+      return
+    }
+    
     if (!barcode || !barcode.trim() || isEditingField) {
       refocusBarcodeInput()
       return
@@ -1175,6 +1212,11 @@ export default function POSPage() {
         value={barcodeInput}
         onChange={(e) => handleBarcodeInputChange(e.target.value)}
         onKeyDown={(e) => {
+          // Only process if barcode input is actually focused
+          if (document.activeElement !== barcodeInputRef.current || isEditingField) {
+            return
+          }
+          
           // Barcode scanners often send Enter at the end
           if (e.key === 'Enter') {
             e.preventDefault()
@@ -1188,11 +1230,24 @@ export default function POSPage() {
             }
           }
         }}
-        onBlur={() => {
-          // Immediately refocus if we're not editing a field
-          if (!isEditingField && document.hasFocus()) {
+        onBlur={(e) => {
+          // Don't refocus if user clicked on another input field
+          const activeElement = document.activeElement
+          const isAnotherInput = activeElement && (
+            activeElement.tagName === 'INPUT' ||
+            activeElement.tagName === 'TEXTAREA'
+          ) && activeElement !== barcodeInputRef.current
+
+          if (!isEditingField && !isAnotherInput && document.hasFocus()) {
             setTimeout(() => {
-              if (barcodeInputRef.current && !isEditingField) {
+              // Double check before refocusing
+              const currentActive = document.activeElement
+              const stillAnotherInput = currentActive && (
+                currentActive.tagName === 'INPUT' ||
+                currentActive.tagName === 'TEXTAREA'
+              ) && currentActive !== barcodeInputRef.current
+              
+              if (barcodeInputRef.current && !isEditingField && !stillAnotherInput) {
                 barcodeInputRef.current.focus()
               }
             }, 10)
