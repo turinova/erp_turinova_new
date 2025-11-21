@@ -94,6 +94,14 @@ interface CartItem {
   currency_name: string
   vat_id: string
   currency_id: string
+  // Material dimensions
+  length_mm?: number
+  width_mm?: number
+  thickness_mm?: number
+  // Linear material dimensions
+  length?: number
+  width?: number
+  thickness?: number
 }
 
 interface FeeType {
@@ -111,10 +119,11 @@ interface FeeItem {
   id: string
   feetype_id: string | null
   name: string
-  amount: number
+  amount: number // Gross amount
   currency_name: string
   vat_id: string
   currency_id: string
+  vat_percent: number // VAT percentage for calculating net price
 }
 
 interface Customer {
@@ -139,11 +148,23 @@ export default function POSPage() {
   useEffect(() => {
     // Check if we just came from login page (skip logout in this case)
     const cameFromLogin = sessionStorage.getItem('pda_just_logged_in') === 'true'
+    const referrer = typeof window !== 'undefined' ? document.referrer : ''
     
-    if (cameFromLogin) {
+    // Also check referrer to detect navigation from login page
+    const cameFromLoginPage = cameFromLogin || referrer.includes('/login')
+    
+    if (cameFromLoginPage) {
       // Clear the flag so it doesn't persist
       sessionStorage.removeItem('pda_just_logged_in')
       // Don't force logout - user just logged in
+      return
+    }
+    
+    // Check if cookie exists - if it does, don't force logout
+    // This handles the case where cookie is set but sessionStorage check failed
+    const hasCookie = document.cookie.includes('pda_token=')
+    if (hasCookie) {
+      // Cookie exists, user is authenticated, don't force logout
       return
     }
     
@@ -164,28 +185,43 @@ export default function POSPage() {
       }
     }
     
-    // Method 1: Check if page was loaded directly (not from cache)
-    const handlePageShow = (e: PageTransitionEvent) => {
-      // If page was NOT restored from cache, it's a fresh app launch
-      if (!e.persisted) {
-        forceLogout()
+    // Add a small delay to ensure sessionStorage and cookies are available
+    const timeoutId = setTimeout(() => {
+      // Double-check sessionStorage and cookie after a brief delay
+      const stillCameFromLogin = sessionStorage.getItem('pda_just_logged_in') === 'true'
+      const currentReferrer = typeof window !== 'undefined' ? document.referrer : ''
+      const stillHasCookie = document.cookie.includes('pda_token=')
+      
+      if (stillCameFromLogin || currentReferrer.includes('/login') || stillHasCookie) {
+        sessionStorage.removeItem('pda_just_logged_in')
+        return
       }
-    }
-    
-    // Method 2: Check navigation type
-    if (typeof window !== 'undefined' && window.performance) {
-      const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
-      if (nav && (nav.type === 'navigate' || nav.type === 'reload')) {
-        // Fresh page load - force logout
-        forceLogout()
+      
+      // Method 1: Check if page was loaded directly (not from cache)
+      const handlePageShow = (e: PageTransitionEvent) => {
+        // If page was NOT restored from cache, it's a fresh app launch
+        if (!e.persisted) {
+          forceLogout()
+        }
       }
-    }
-    
-    // Method 3: Listen for pageshow event (handles PWA restores)
-    window.addEventListener('pageshow', handlePageShow)
+      
+      // Method 2: Check navigation type (only if not from login and no cookie)
+      if (typeof window !== 'undefined' && window.performance) {
+        const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming
+        if (nav && (nav.type === 'navigate' || nav.type === 'reload')) {
+          // Only force logout if we didn't come from login and no cookie exists
+          if (!currentReferrer.includes('/login') && !stillHasCookie) {
+            forceLogout()
+          }
+        }
+      }
+      
+      // Method 3: Listen for pageshow event (handles PWA restores)
+      window.addEventListener('pageshow', handlePageShow)
+    }, 200) // Increased delay to ensure cookie is available
     
     return () => {
-      window.removeEventListener('pageshow', handlePageShow)
+      clearTimeout(timeoutId)
     }
   }, [])
   const [searchTerm, setSearchTerm] = useState('')
@@ -198,6 +234,8 @@ export default function POSPage() {
   const [highlightedCartItemId, setHighlightedCartItemId] = useState<string | null>(null)
   const [isEditingField, setIsEditingField] = useState(false)
   const [workerColor, setWorkerColor] = useState<string>('#1976d2') // Default blue
+  const [workerId, setWorkerId] = useState<string | null>(null)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
   const [feeModalOpen, setFeeModalOpen] = useState(false)
   const [feeTypes, setFeeTypes] = useState<FeeType[]>([])
   const [selectedFeeType, setSelectedFeeType] = useState<FeeType | null>(null)
@@ -209,6 +247,7 @@ export default function POSPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerSearchTerm, setCustomerSearchTerm] = useState('')
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
 
   // Barcode scanning refs
   const barcodeInputRef = useRef<HTMLInputElement>(null)
@@ -226,20 +265,30 @@ export default function POSPage() {
 
   // Fetch worker color on mount
   useEffect(() => {
-    const fetchWorkerColor = async () => {
+    const fetchWorkerData = async () => {
       try {
-        const response = await fetch('/api/worker/color')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.color) {
-            setWorkerColor(data.color)
+        // Fetch worker color
+        const colorResponse = await fetch('/api/worker/color')
+        if (colorResponse.ok) {
+          const colorData = await colorResponse.json()
+          if (colorData.color) {
+            setWorkerColor(colorData.color)
+          }
+        }
+
+        // Fetch worker_id
+        const workerIdResponse = await fetch('/api/worker/id')
+        if (workerIdResponse.ok) {
+          const workerIdData = await workerIdResponse.json()
+          if (workerIdData.worker_id) {
+            setWorkerId(workerIdData.worker_id)
           }
         }
       } catch (error) {
-        console.error('Error fetching worker color:', error)
+        console.error('Error fetching worker data:', error)
       }
     }
-    fetchWorkerColor()
+    fetchWorkerData()
   }, [])
 
   // Fetch fee types on mount
@@ -283,13 +332,15 @@ export default function POSPage() {
 
   // Auto-add discount when customer is selected
   useEffect(() => {
-    if (selectedCustomer && selectedCustomer.discount_percent && selectedCustomer.discount_percent > 0 && !discount) {
+    if (selectedCustomer && selectedCustomer.discount_percent && selectedCustomer.discount_percent > 0) {
+      // Always add/update discount when customer with discount is selected
       setDiscount({
         percent: selectedCustomer.discount_percent,
         amount: 0 // Will be calculated
       })
     }
-  }, [selectedCustomer, discount])
+    // Note: Discount is deletable via the trash button - we don't auto-remove it when customer is removed
+  }, [selectedCustomer])
 
   // Auto-focus barcode input on mount and after page becomes visible
   useEffect(() => {
@@ -639,7 +690,15 @@ export default function POSPage() {
         net_price: product.net_price,
         currency_name: product.currency_name,
         vat_id: product.vat_id,
-        currency_id: product.currency_id
+        currency_id: product.currency_id,
+        // Material dimensions
+        length_mm: product.length_mm,
+        width_mm: product.width_mm,
+        thickness_mm: product.thickness_mm,
+        // Linear material dimensions
+        length: product.length,
+        width: product.width,
+        thickness: product.thickness
       }
       setCartItems(prev => [...prev, newItem])
       return newItem.id
@@ -788,36 +847,44 @@ export default function POSPage() {
       return
     }
     
+    if (!selectedFeeType) {
+      toast.error('Válasszon díjtípust')
+      return
+    }
+
     if (editingFeeId) {
-      // Edit existing fee
+      // Update existing fee
       setFees(prev =>
         prev.map(fee =>
           fee.id === editingFeeId
             ? {
                 ...fee,
-                feetype_id: selectedFeeType.id,
                 name: selectedFeeType.name,
                 amount: feeAmount,
-                currency_name: selectedFeeType.currency_name,
+                feetype_id: selectedFeeType.id,
                 vat_id: selectedFeeType.vat_id,
-                currency_id: selectedFeeType.currency_id
+                currency_id: selectedFeeType.currency_id,
+                vat_percent: selectedFeeType.vat_percent
               }
             : fee
         )
       )
-    } else {
-      // Add new fee
-      const newFee: FeeItem = {
-        id: Date.now().toString(),
-        feetype_id: selectedFeeType.id,
-        name: selectedFeeType.name,
-        amount: feeAmount,
-        currency_name: selectedFeeType.currency_name,
-        vat_id: selectedFeeType.vat_id,
-        currency_id: selectedFeeType.currency_id
-      }
-      setFees(prev => [...prev, newFee])
+      handleCloseFeeModal()
+      return
     }
+    
+    // Add new fee
+    const newFee: FeeItem = {
+      id: Date.now().toString(),
+      feetype_id: selectedFeeType.id,
+      name: selectedFeeType.name,
+      amount: feeAmount, // Gross amount
+      currency_name: selectedFeeType.currency_name,
+      vat_id: selectedFeeType.vat_id,
+      currency_id: selectedFeeType.currency_id,
+      vat_percent: selectedFeeType.vat_percent
+    }
+    setFees(prev => [...prev, newFee])
     
     handleCloseFeeModal()
   }
@@ -898,6 +965,145 @@ export default function POSPage() {
     return subtotal - discountAmount
   }, [cartItems, fees, discountAmount])
 
+  // Handle payment
+  const handlePayment = async (paymentType: 'cash' | 'card') => {
+    if (!workerId) {
+      toast.error('Dolgozó ID hiányzik')
+      return
+    }
+
+    if (cartItems.length === 0) {
+      toast.error('A kosár üres')
+      return
+    }
+
+    setIsProcessingPayment(true)
+
+    try {
+      // Validate cart items
+      const invalidItems = cartItems.filter(item => {
+        if (!item.vat_id || !item.currency_id) return true
+        if (item.product_type === 'accessory' && !item.accessory_id) return true
+        if (item.product_type === 'material' && !item.material_id) return true
+        if (item.product_type === 'linear_material' && !item.linear_material_id) return true
+        return false
+      })
+
+      if (invalidItems.length > 0) {
+        toast.error('Néhány termék hiányos adatokkal rendelkezik. Kérjük, távolítsa el őket a kosárból és adja hozzá újra.')
+        setIsProcessingPayment(false)
+        return
+      }
+
+      // Calculate discount amount
+      const cartTotal = cartItems.reduce((sum, item) => sum + (item.quantity * item.gross_price), 0)
+      const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
+      const subtotalBeforeDiscount = cartTotal + feesTotal
+      const discountAmount = discount ? (subtotalBeforeDiscount * discount.percent) / 100 : 0
+
+      // Build items payload
+      const itemsPayload = cartItems.map(item => ({
+        product_type: item.product_type,
+        accessory_id: item.accessory_id || null,
+        material_id: item.material_id || null,
+        linear_material_id: item.linear_material_id || null,
+        name: item.name,
+        sku: item.sku || null,
+        quantity: item.quantity,
+        unit_price_net: item.net_price,
+        unit_price_gross: item.gross_price,
+        vat_id: item.vat_id,
+        currency_id: item.currency_id
+      }))
+
+      // Validate fees
+      const invalidFees = fees.filter(fee => !fee.vat_id || !fee.currency_id || !fee.vat_percent)
+      if (invalidFees.length > 0) {
+        toast.error('Néhány díj hiányos adatokkal rendelkezik. Kérjük, távolítsa el őket és adja hozzá újra.')
+        setIsProcessingPayment(false)
+        return
+      }
+
+      // Build fees payload - calculate net from gross
+      const feesPayload = fees.map(fee => {
+        // Calculate net price from gross: net = gross / (1 + vat_percent / 100)
+        const unitPriceNet = fee.amount / (1 + fee.vat_percent / 100)
+        return {
+          feetype_id: fee.feetype_id || null,
+          name: fee.name,
+          quantity: 1, // Fees always have quantity 1
+          unit_price_net: Math.round(unitPriceNet * 100) / 100, // Round to 2 decimals
+          unit_price_gross: fee.amount,
+          vat_id: fee.vat_id,
+          currency_id: fee.currency_id
+        }
+      })
+
+      // Build customer payload
+      const customerPayload = selectedCustomer ? {
+        name: selectedCustomer.name || null,
+        email: selectedCustomer.email || null,
+        mobile: selectedCustomer.mobile || null,
+        billing_name: selectedCustomer.billing_name || null,
+        billing_country: selectedCustomer.billing_country || null,
+        billing_city: selectedCustomer.billing_city || null,
+        billing_postal_code: selectedCustomer.billing_postal_code || null,
+        billing_street: selectedCustomer.billing_street || null,
+        billing_house_number: selectedCustomer.billing_house_number || null,
+        billing_tax_number: selectedCustomer.billing_tax_number || null,
+        billing_company_reg_number: selectedCustomer.billing_company_reg_number || null
+      } : {}
+
+      // Build request payload
+      const payload = {
+        worker_id: workerId,
+        payment_type: paymentType,
+        customer: customerPayload,
+        discount: {
+          percentage: discount?.percent || 0,
+          amount: discountAmount
+        },
+        items: itemsPayload,
+        fees: feesPayload
+      }
+
+      // Call API
+      const response = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Hiba történt a rendelés létrehozásakor')
+      }
+
+      // Success - clear everything
+      toast.success(`Rendelés sikeresen létrehozva: ${data.pos_order?.pos_order_number || ''}`)
+      
+      // Clear cart, fees, discount, customer
+      setCartItems([])
+      setFees([])
+      setDiscount(null)
+      setSelectedCustomer(null)
+      
+      // Clear session storage
+      sessionStorage.removeItem('pda_cart')
+      
+      // Close payment modal
+      setPaymentModalOpen(false)
+    } catch (error: any) {
+      console.error('Error creating POS order:', error)
+      toast.error(error.message || 'Hiba történt a rendelés létrehozásakor')
+    } finally {
+      setIsProcessingPayment(false)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
       {/* Hidden barcode input for scanner */}
@@ -940,7 +1146,7 @@ export default function POSPage() {
       {/* Fixed Top Section */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200">
         {/* Customer Selection */}
-        <div className="p-4 space-y-3">
+        <div className="p-3 space-y-2">
           {/* Customer Dropdown - Only show if no customer selected */}
           {!selectedCustomer && (
             <div className="relative">
@@ -962,7 +1168,7 @@ export default function POSPage() {
                     }
                   }, 200)
                 }}
-                className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 text-base border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
               />
               {/* Customer Dropdown Results */}
               {customerSearchTerm.trim().length >= 2 && (
@@ -1003,8 +1209,8 @@ export default function POSPage() {
           )}
 
           {/* Selected Customer Display */}
-          {selectedCustomer && (
-            <div className="p-3 bg-blue-50 border-2 border-blue-200 rounded-lg">
+            {selectedCustomer && (
+              <div className="p-2.5 bg-blue-50 border-2 border-blue-200 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-semibold text-gray-900">{selectedCustomer.name}</p>
@@ -1038,7 +1244,7 @@ export default function POSPage() {
             onBlur={() => {
               setTimeout(() => setIsEditingField(false), 100)
             }}
-            className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+            className="w-full px-3 py-2 text-base border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
           />
         </div>
 
@@ -1130,54 +1336,54 @@ export default function POSPage() {
 
       {/* Scrollable Cart Items Section */}
         <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
-          <div className="p-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Kosár</h2>
+          <div className="p-3">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">Kosár</h2>
             {cartItems.length === 0 && fees.length === 0 && !discount ? (
               <div className="text-center text-gray-500 py-8">
                 <p>A kosár üres</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2">
               {/* Cart Items */}
               {cartItems.map((item) => (
                 <div
                   key={item.id}
-                  className={`bg-white p-4 rounded-lg border-2 transition-all duration-300 ${
+                  className={`bg-white p-2.5 rounded-lg border-2 transition-all duration-300 ${
                     highlightedCartItemId === item.id
                       ? 'border-green-500 bg-green-50 shadow-md'
                       : 'border-gray-200'
                   }`}
                 >
                   {/* Top Row: Product Name and SKU */}
-                  <div className="mb-3">
-                    <p className="font-semibold text-gray-900 text-base break-words">{item.name}</p>
+                  <div className="mb-2">
+                    <p className="font-semibold text-gray-900 text-sm break-words leading-tight">{item.name}</p>
                     {item.sku && (
-                      <p className="text-xs text-gray-500 mt-1 break-words">SKU: {item.sku}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 break-words">SKU: {item.sku}</p>
                     )}
                   </div>
 
                   {/* Bottom Row: Controls and Pricing */}
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center justify-between gap-2">
                     {/* Left: Unit Price */}
                     <div className="flex-shrink-0">
-                      <p className="text-sm text-gray-600">
+                      <p className="text-xs text-gray-600">
                         {item.gross_price.toLocaleString('hu-HU')} Ft / db
                       </p>
                     </div>
 
                     {/* Center: Quantity Controls */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           handleQuantityChange(item.id, item.quantity - 1)
                         }}
-                        className="w-10 h-10 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
+                        className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
                         aria-label="Mennyiség csökkentése"
                       >
                         <MinusIcon />
                       </button>
-                      <div className={`w-12 text-center font-semibold text-lg ${
+                      <div className={`w-10 text-center font-semibold text-base ${
                         highlightedCartItemId === item.id ? 'text-green-600' : 'text-gray-900'
                       }`}>
                         {item.quantity}
@@ -1187,7 +1393,7 @@ export default function POSPage() {
                           e.stopPropagation()
                           handleQuantityChange(item.id, item.quantity + 1)
                         }}
-                        className="w-10 h-10 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
+                        className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
                         aria-label="Mennyiség növelése"
                       >
                         <PlusIcon />
@@ -1197,7 +1403,7 @@ export default function POSPage() {
                     {/* Right: Subtotal */}
                     <div className="flex-shrink-0">
                       <div className="text-right">
-                        <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
+                        <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
                           {(item.quantity * item.gross_price).toLocaleString('hu-HU')} Ft
                         </p>
                       </div>
@@ -1216,13 +1422,13 @@ export default function POSPage() {
                     <div
                       key={fee.id}
                       onClick={() => handleEditFee(fee)}
-                      className="bg-white p-3 rounded-lg border-2 border-blue-200 bg-blue-50 cursor-pointer hover:border-blue-400 hover:bg-blue-100 active:scale-98 transition-all"
+                      className="bg-white p-2.5 rounded-lg border-2 border-blue-200 bg-blue-50 cursor-pointer hover:border-blue-400 hover:bg-blue-100 active:scale-98 transition-all"
                     >
                       {/* Single Row: Title, Delete, Amount */}
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center justify-between gap-2">
                         {/* Left: Fee Name */}
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-gray-900 text-base truncate">{fee.name}</p>
+                          <p className="font-semibold text-gray-900 text-sm truncate">{fee.name}</p>
                         </div>
 
                         {/* Center: Delete button */}
@@ -1232,7 +1438,7 @@ export default function POSPage() {
                               e.stopPropagation()
                               handleDeleteFee(fee.id)
                             }}
-                            className="w-10 h-10 rounded-lg border-2 border-red-300 text-red-600 flex items-center justify-center active:bg-red-50 active:scale-95 transition-all touch-manipulation"
+                            className="w-9 h-9 rounded-lg border-2 border-red-300 text-red-600 flex items-center justify-center active:bg-red-50 active:scale-95 transition-all touch-manipulation"
                             aria-label="Díj törlése"
                           >
                             <TrashIcon />
@@ -1241,7 +1447,7 @@ export default function POSPage() {
 
                         {/* Right: Amount */}
                         <div className="flex-shrink-0">
-                          <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
+                          <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
                             {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
                           </p>
                         </div>
@@ -1259,13 +1465,13 @@ export default function POSPage() {
                   </div>
                   <div
                     onClick={handleOpenDiscountModal}
-                    className="bg-white p-3 rounded-lg border-2 border-orange-200 bg-orange-50 cursor-pointer hover:border-orange-400 hover:bg-orange-100 active:scale-98 transition-all"
+                    className="bg-white p-2.5 rounded-lg border-2 border-orange-200 bg-orange-50 cursor-pointer hover:border-orange-400 hover:bg-orange-100 active:scale-98 transition-all"
                   >
                     {/* Single Row: Title, Delete, Amount */}
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-2">
                       {/* Left: Discount Name */}
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-900 text-base truncate">Kedvezmény ({discount.percent}%)</p>
+                        <p className="font-semibold text-gray-900 text-sm truncate">Kedvezmény ({discount.percent}%)</p>
                       </div>
 
                       {/* Center: Delete button */}
@@ -1275,7 +1481,7 @@ export default function POSPage() {
                             e.stopPropagation()
                             handleDeleteDiscount()
                           }}
-                          className="w-10 h-10 rounded-lg border-2 border-red-300 text-red-600 flex items-center justify-center active:bg-red-50 active:scale-95 transition-all touch-manipulation"
+                          className="w-9 h-9 rounded-lg border-2 border-red-300 text-red-600 flex items-center justify-center active:bg-red-50 active:scale-95 transition-all touch-manipulation"
                           aria-label="Kedvezmény törlése"
                         >
                           <TrashIcon />
@@ -1284,7 +1490,7 @@ export default function POSPage() {
 
                       {/* Right: Amount */}
                       <div className="flex-shrink-0">
-                        <p className="font-semibold text-gray-900 text-lg whitespace-nowrap">
+                        <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
                           -{discountAmount.toLocaleString('hu-HU')} Ft
                         </p>
                       </div>
@@ -1335,6 +1541,11 @@ export default function POSPage() {
         <div className="p-4">
           <button
             disabled={cartItems.length === 0}
+            onClick={() => {
+              if (cartItems.length > 0) {
+                setPaymentModalOpen(true)
+              }
+            }}
             className="w-full text-white py-4 rounded-lg font-bold text-lg disabled:bg-gray-400 disabled:cursor-not-allowed transition-all"
             style={{
               backgroundColor: cartItems.length === 0 ? undefined : workerColor,
@@ -1375,6 +1586,141 @@ export default function POSPage() {
           </button>
         </div>
       </div>
+
+      {/* Payment Modal - Fullscreen */}
+      {paymentModalOpen && (
+        <div className="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden">
+          {/* Fixed Top Section */}
+          <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Megrendelő neve: {selectedCustomer ? selectedCustomer.name : 'Üzleti vásárló'}
+              </h2>
+              <button
+                onClick={() => setPaymentModalOpen(false)}
+                className="w-10 h-10 rounded-full border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all"
+                aria-label="Bezárás"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Table Header */}
+            <div className="grid grid-cols-4 gap-2 text-sm font-semibold text-gray-700 border-b border-gray-300 pb-2">
+              <div>Termék</div>
+              <div className="text-center">Mennyiség</div>
+              <div className="text-right">Egységár</div>
+              <div className="text-right">Részösszeg</div>
+            </div>
+          </div>
+
+          {/* Scrollable Table Content */}
+          <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4">
+            <div className="space-y-0">
+              {/* Cart Items */}
+              {cartItems.map((item) => {
+                const getDimensions = () => {
+                  if (item.product_type === 'material' && 'length_mm' in item && 'width_mm' in item && 'thickness_mm' in item) {
+                    return `${item.length_mm}×${item.width_mm}×${item.thickness_mm} mm`
+                  } else if (item.product_type === 'linear_material' && 'length' in item && 'width' in item && 'thickness' in item) {
+                    return `${item.length}×${item.width}×${item.thickness} mm`
+                  }
+                  return null
+                }
+                return (
+                <div key={item.id} className="grid grid-cols-4 gap-2 py-2 border-b border-gray-100">
+                  <div className="min-w-0 break-words">
+                    <p className="font-semibold text-sm text-gray-900 break-words">{item.name}</p>
+                    {item.sku && (
+                      <p className="text-xs text-gray-500 break-words">SKU: {item.sku}</p>
+                    )}
+                    {getDimensions() && (
+                      <p className="text-xs text-gray-500 break-words">{getDimensions()}</p>
+                    )}
+                  </div>
+                  <div className="text-center text-sm text-gray-900">{item.quantity}</div>
+                  <div className="text-right text-sm text-gray-900">
+                    {item.gross_price.toLocaleString('hu-HU')} Ft
+                  </div>
+                  <div className="text-right text-sm font-semibold text-gray-900">
+                    {(item.quantity * item.gross_price).toLocaleString('hu-HU')} Ft
+                  </div>
+                </div>
+                )
+              })}
+
+              {/* Fees */}
+              {fees.map((fee) => (
+                <div key={fee.id} className="grid grid-cols-4 gap-2 py-2 border-b border-gray-100 bg-blue-50">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-gray-900 truncate">{fee.name}</p>
+                    <p className="text-xs text-gray-500">Díj</p>
+                  </div>
+                  <div className="text-center text-sm text-gray-900">1</div>
+                  <div className="text-right text-sm text-gray-900">
+                    {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                  </div>
+                  <div className="text-right text-sm font-semibold text-gray-900">
+                    {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                  </div>
+                </div>
+              ))}
+
+              {/* Discount */}
+              {discount && (
+                <div className="grid grid-cols-4 gap-2 py-2 border-b border-gray-100 bg-orange-50">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-gray-900 truncate">Kedvezmény</p>
+                    <p className="text-xs text-gray-500">{discount.percent}%</p>
+                  </div>
+                  <div className="text-center text-sm text-gray-900">{discount.percent}%</div>
+                  <div className="text-right text-sm text-gray-900">-</div>
+                  <div className="text-right text-sm font-semibold text-red-600">
+                    -{discountAmount.toLocaleString('hu-HU')} Ft
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Fixed Bottom Section */}
+          <div className="flex-shrink-0 bg-white border-t border-gray-200 p-4 space-y-3">
+            {/* Összesen - Fixed above buttons */}
+            <div className="flex justify-between items-center">
+              <p className="text-lg font-semibold text-gray-900">Összesen:</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {total.toLocaleString('hu-HU')} Ft
+              </p>
+            </div>
+
+            {/* Payment Buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => handlePayment('cash')}
+                disabled={isProcessingPayment}
+                className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg active:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Készpénz
+              </button>
+              <button
+                onClick={() => handlePayment('card')}
+                disabled={isProcessingPayment}
+                className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-lg active:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Bankkártya
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fee Modal */}
       {feeModalOpen && (

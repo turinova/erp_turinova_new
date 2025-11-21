@@ -21,7 +21,7 @@ export default async function OrdersPage({ searchParams }: PageProps) {
   const page = parseInt(resolvedParams.page || '1', 10)
   const limit = parseInt(resolvedParams.limit || '50', 10)
   const searchTerm = resolvedParams.search || ''
-  const statusFilter = resolvedParams.status || 'all'
+  const statusFilter = resolvedParams.status || 'ordered'
   
   // Fetch orders and machines in parallel with proper server-side pagination
   const [ordersData, machines] = await Promise.all([

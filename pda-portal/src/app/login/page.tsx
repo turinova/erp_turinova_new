@@ -56,10 +56,11 @@ export default function PDALoginPage() {
         return
       }
       
-      toast.success('Sikeres bejelentkezés!')
       // Set flag to prevent auto-logout on main page
       sessionStorage.setItem('pda_just_logged_in', 'true')
-      router.push('/')
+      // Use window.location.href instead of router.push to ensure cookie is available
+      // This forces a full page reload which ensures the cookie is sent with the request
+      window.location.href = '/'
       
     } catch (error) {
       console.error('Login error:', error)
