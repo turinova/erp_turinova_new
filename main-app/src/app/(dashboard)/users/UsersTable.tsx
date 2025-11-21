@@ -2,8 +2,8 @@
 
 import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Switch, FormControlLabel, Grid } from '@mui/material'
-import { Search as SearchIcon, Security as SecurityIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogActions, Switch, FormControlLabel, Grid, Autocomplete } from '@mui/material'
+import { Search as SearchIcon, Security as SecurityIcon, Add as AddIcon, Delete as DeleteIcon, Lock as LockIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { createUserAction, deleteUsersAction } from './actions'
 
@@ -54,6 +54,19 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingUsers, setDeletingUsers] = useState(false)
 
+  const [pinDialogOpen, setPinDialogOpen] = useState(false)
+  const [selectedUserForPin, setSelectedUserForPin] = useState<User | null>(null)
+  const [userPinData, setUserPinData] = useState<any>(null)
+  const [workers, setWorkers] = useState<any[]>([])
+  const [loadingWorkers, setLoadingWorkers] = useState(false)
+  const [pinFormData, setPinFormData] = useState({
+    pin: '',
+    worker_id: null as string | null,
+    is_active: true
+  })
+  const [savingPin, setSavingPin] = useState(false)
+  const [loadingPinData, setLoadingPinData] = useState(false)
+
   const [isPending, startTransition] = useTransition()
 
   // Filter users based on search term
@@ -82,6 +95,106 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
 
   const isAllSelected = selectedUsers.length === filteredUsers.length && filteredUsers.length > 0
   const isIndeterminate = selectedUsers.length > 0 && selectedUsers.length < filteredUsers.length
+
+  // Open PIN dialog
+  const handleOpenPinDialog = async (user: User) => {
+    setSelectedUserForPin(user)
+    setPinDialogOpen(true)
+    setLoadingPinData(true)
+    setLoadingWorkers(true)
+
+    try {
+      // Fetch PIN data
+      const pinResponse = await fetch(`/api/user-pins/${user.id}`)
+      const pinData = await pinResponse.json()
+      
+      if (pinResponse.ok) {
+        setUserPinData(pinData)
+        setPinFormData({
+          pin: pinData?.pin || '',
+          worker_id: pinData?.worker_id || null,
+          is_active: pinData?.is_active !== undefined ? pinData.is_active : true
+        })
+      } else {
+        // No PIN exists yet
+        setUserPinData(null)
+        setPinFormData({
+          pin: '',
+          worker_id: null,
+          is_active: true
+        })
+      }
+
+      // Fetch workers
+      const workersResponse = await fetch('/api/workers')
+      const workersData = await workersResponse.json()
+      
+      if (workersResponse.ok) {
+        setWorkers(workersData || [])
+      } else {
+        toast.error('Hiba a dolgozók betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading PIN data:', error)
+      toast.error('Hiba az adatok betöltésekor')
+    } finally {
+      setLoadingPinData(false)
+      setLoadingWorkers(false)
+    }
+  }
+
+  // Close PIN dialog
+  const handleClosePinDialog = () => {
+    setPinDialogOpen(false)
+    setSelectedUserForPin(null)
+    setUserPinData(null)
+    setPinFormData({
+      pin: '',
+      worker_id: null,
+      is_active: true
+    })
+  }
+
+  // Save PIN
+  const handleSavePin = async () => {
+    if (!selectedUserForPin) return
+
+    // Validate PIN format
+    if (!pinFormData.pin || !/^\d{6}$/.test(pinFormData.pin)) {
+      toast.error('A PIN pontosan 6 számjegyből kell álljon')
+      return
+    }
+
+    setSavingPin(true)
+
+    try {
+      const response = await fetch(`/api/user-pins/${selectedUserForPin.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          pin: pinFormData.pin,
+          worker_id: pinFormData.worker_id,
+          is_active: pinFormData.is_active
+        })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success('PIN sikeresen mentve')
+        handleClosePinDialog()
+      } else {
+        toast.error(data.error || 'Hiba a PIN mentésekor')
+      }
+    } catch (error) {
+      console.error('Error saving PIN:', error)
+      toast.error('Hiba a PIN mentésekor')
+    } finally {
+      setSavingPin(false)
+    }
+  }
 
   // Open permissions dialog
   const handleOpenPermissions = async (user: User) => {
@@ -340,14 +453,24 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
                   }
                 </TableCell>
                 <TableCell>
-                  <Button
-                    size="small"
-                    startIcon={<SecurityIcon />}
-                    onClick={() => handleOpenPermissions(user)}
-                    color="primary"
-                  >
-                    Jogosultságok
-                  </Button>
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      startIcon={<SecurityIcon />}
+                      onClick={() => handleOpenPermissions(user)}
+                      color="primary"
+                    >
+                      Jogosultságok
+                    </Button>
+                    <Button
+                      size="small"
+                      startIcon={<LockIcon />}
+                      onClick={() => handleOpenPinDialog(user)}
+                      color="secondary"
+                    >
+                      PIN kezelése
+                    </Button>
+                  </Box>
                 </TableCell>
               </TableRow>
             ))}
@@ -704,6 +827,201 @@ export default function UsersTable({ initialUsers, initialPages }: UsersTablePro
             sx={{ minWidth: 120 }}
           >
             {deletingUsers ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* PIN Management Dialog */}
+      <Dialog
+        open={pinDialogOpen}
+        onClose={handleClosePinDialog}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 1.5,
+            maxHeight: '85vh'
+          }
+        }}
+      >
+        <DialogTitle sx={{ py: 1.5, px: 2.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ 
+              p: 1, 
+              bgcolor: 'secondary.50', 
+              borderRadius: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <LockIcon sx={{ fontSize: 20, color: 'secondary.main' }} />
+            </Box>
+            <Box>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+                PIN kezelése
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {selectedUserForPin?.email}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogTitle>
+
+        <DialogContent sx={{ pt: 2, pb: 1.5, px: 2.5 }}>
+          {loadingPinData ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Grid container spacing={3}>
+              {/* PIN Input */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="PIN"
+                  value={pinFormData.pin}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 6)
+                    setPinFormData(prev => ({ ...prev, pin: value }))
+                  }}
+                  placeholder="123456"
+                  helperText="Pontosan 6 számjegy"
+                  inputProps={{
+                    maxLength: 6,
+                    pattern: '[0-9]{6}'
+                  }}
+                />
+              </Grid>
+
+              {/* Worker Selection */}
+              <Grid item xs={12}>
+                <Autocomplete
+                  options={workers}
+                  getOptionLabel={(option) => option.nickname || option.name || ''}
+                  value={workers.find(w => w.id === pinFormData.worker_id) || null}
+                  onChange={(event, newValue) => {
+                    setPinFormData(prev => ({ 
+                      ...prev, 
+                      worker_id: newValue ? newValue.id : null 
+                    }))
+                  }}
+                  loading={loadingWorkers}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Dolgozó"
+                      placeholder="Válasszon dolgozót (opcionális)"
+                      helperText="A dolgozó kiválasztása opcionális"
+                    />
+                  )}
+                />
+              </Grid>
+
+              {/* Active Toggle */}
+              <Grid item xs={12}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={pinFormData.is_active}
+                      onChange={(e) => setPinFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                    />
+                  }
+                  label="Aktív"
+                />
+              </Grid>
+
+              {/* Information Section */}
+              {userPinData && (
+                <>
+                  <Grid item xs={12}>
+                    <Box sx={{ 
+                      mt: 2, 
+                      p: 2, 
+                      bgcolor: 'grey.50',
+                      borderRadius: 1,
+                      border: 1,
+                      borderColor: 'grey.200'
+                    }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Információk
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Létrehozva
+                          </Typography>
+                          <Typography variant="body2">
+                            {userPinData.created_at 
+                              ? new Date(userPinData.created_at).toLocaleString('hu-HU')
+                              : 'N/A'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Módosítva
+                          </Typography>
+                          <Typography variant="body2">
+                            {userPinData.updated_at 
+                              ? new Date(userPinData.updated_at).toLocaleString('hu-HU')
+                              : 'N/A'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Utolsó használat
+                          </Typography>
+                          <Typography variant="body2">
+                            {userPinData.last_used_at 
+                              ? new Date(userPinData.last_used_at).toLocaleString('hu-HU')
+                              : 'Még nem használták'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary">
+                            Sikertelen próbálkozások
+                          </Typography>
+                          <Typography variant="body2">
+                            {userPinData.failed_attempts || 0}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography variant="caption" color="text.secondary">
+                            Zárolva
+                          </Typography>
+                          <Typography variant="body2">
+                            {userPinData.locked_until 
+                              ? `Igen, ${new Date(userPinData.locked_until).toLocaleString('hu-HU')}`
+                              : 'Nincs zárolva'}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </Box>
+                  </Grid>
+                </>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+
+        <DialogActions sx={{ py: 1.5, px: 2.5, borderTop: 1, borderColor: 'divider', bgcolor: 'grey.50' }}>
+          <Button 
+            onClick={handleClosePinDialog}
+            variant="outlined"
+            size="medium"
+            sx={{ minWidth: 100 }}
+            disabled={savingPin}
+          >
+            Mégse
+          </Button>
+          <Button 
+            onClick={handleSavePin} 
+            variant="contained"
+            size="medium"
+            sx={{ minWidth: 100 }}
+            disabled={savingPin || !pinFormData.pin || pinFormData.pin.length !== 6}
+            startIcon={savingPin ? <CircularProgress size={20} /> : null}
+          >
+            {savingPin ? 'Mentés...' : 'Mentés'}
           </Button>
         </DialogActions>
       </Dialog>
