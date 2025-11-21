@@ -293,6 +293,55 @@ export default function POSPage() {
     fetchWorkerData()
   }, [])
 
+  // Prevent iOS navigation bar from appearing when Bluetooth keyboard/scanner is connected
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'visualViewport' in window) {
+      const handleViewportChange = () => {
+        // Force hide navigation bar by preventing scroll
+        if (window.visualViewport) {
+          window.scrollTo(0, 0)
+          // Prevent any scrolling that might trigger nav bar
+          document.body.style.position = 'fixed'
+          document.body.style.width = '100%'
+          document.body.style.height = '100%'
+          // Force viewport to stay at top
+          if (window.scrollY !== 0) {
+            window.scrollTo(0, 0)
+          }
+        }
+      }
+
+      const handleScroll = () => {
+        // Prevent scrolling that triggers nav bar
+        if (window.scrollY !== 0) {
+          window.scrollTo(0, 0)
+        }
+      }
+
+      // Lock scroll position
+      const lockScroll = () => {
+        document.body.style.position = 'fixed'
+        document.body.style.width = '100%'
+        document.body.style.height = '100%'
+        document.body.style.overflow = 'hidden'
+      }
+
+      lockScroll()
+
+      window.visualViewport?.addEventListener('resize', handleViewportChange)
+      window.visualViewport?.addEventListener('scroll', handleViewportChange)
+      window.addEventListener('scroll', handleScroll, { passive: false })
+      window.addEventListener('resize', handleViewportChange)
+
+      return () => {
+        window.visualViewport?.removeEventListener('resize', handleViewportChange)
+        window.visualViewport?.removeEventListener('scroll', handleViewportChange)
+        window.removeEventListener('scroll', handleScroll)
+        window.removeEventListener('resize', handleViewportChange)
+      }
+    }
+  }, [])
+
   // Fetch fee types on mount
   useEffect(() => {
     const fetchFeeTypes = async () => {
@@ -1122,6 +1171,7 @@ export default function POSPage() {
       <input
         ref={barcodeInputRef}
         type="text"
+        inputMode="none"
         value={barcodeInput}
         onChange={(e) => handleBarcodeInputChange(e.target.value)}
         onKeyDown={(e) => {

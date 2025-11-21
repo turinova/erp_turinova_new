@@ -24,6 +24,29 @@
   }
 }
 
+/* Prevent iOS navigation bar from appearing when Bluetooth keyboard/scanner is connected */
+@supports (-webkit-touch-callout: none) {
+  html {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+  
+  body {
+    /* Force fullscreen on iOS */
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    height: -webkit-fill-available;
+    overflow: hidden;
+  }
+  
+  /* Prevent viewport resize when keyboard appears */
+  html:not([data-scroll-locked]) {
+    height: 100vh;
+    height: -webkit-fill-available;
+  }
+}
+
 @layer components {
   .btn-pda {
     @apply px-6 py-4 text-lg font-semibold rounded-lg;
