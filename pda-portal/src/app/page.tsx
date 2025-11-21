@@ -236,6 +236,8 @@ export default function POSPage() {
   const [workerColor, setWorkerColor] = useState<string>('#1976d2') // Default blue
   const [workerId, setWorkerId] = useState<string | null>(null)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false)
+  const [pendingPaymentType, setPendingPaymentType] = useState<'cash' | 'card' | null>(null)
   const [feeModalOpen, setFeeModalOpen] = useState(false)
   const [feeTypes, setFeeTypes] = useState<FeeType[]>([])
   const [selectedFeeType, setSelectedFeeType] = useState<FeeType | null>(null)
@@ -965,8 +967,16 @@ export default function POSPage() {
     return subtotal - discountAmount
   }, [cartItems, fees, discountAmount])
 
-  // Handle payment
-  const handlePayment = async (paymentType: 'cash' | 'card') => {
+  // Handle payment type click - opens confirmation modal
+  const handlePaymentTypeClick = (paymentType: 'cash' | 'card') => {
+    setPendingPaymentType(paymentType)
+    setPaymentModalOpen(false)
+    setConfirmModalOpen(true)
+  }
+
+  // Handle confirm payment - creates POS order
+  const handleConfirmPayment = async () => {
+    if (!pendingPaymentType) return
     if (!workerId) {
       toast.error('Dolgozó ID hiányzik')
       return
@@ -1057,7 +1067,7 @@ export default function POSPage() {
       // Build request payload
       const payload = {
         worker_id: workerId,
-        payment_type: paymentType,
+        payment_type: pendingPaymentType,
         customer: customerPayload,
         discount: {
           percentage: discount?.percent || 0,
@@ -1094,8 +1104,10 @@ export default function POSPage() {
       // Clear session storage
       sessionStorage.removeItem('pda_cart')
       
-      // Close payment modal
+      // Close modals
+      setConfirmModalOpen(false)
       setPaymentModalOpen(false)
+      setPendingPaymentType(null)
     } catch (error: any) {
       console.error('Error creating POS order:', error)
       toast.error(error.message || 'Hiba történt a rendelés létrehozásakor')
@@ -1608,9 +1620,9 @@ export default function POSPage() {
             </div>
             
             {/* Table Header */}
-            <div className="grid grid-cols-4 gap-2 text-sm font-semibold text-gray-700 border-b border-gray-300 pb-2">
+            <div className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 text-sm font-semibold text-gray-700 border-b border-gray-300 pb-2">
               <div>Termék</div>
-              <div className="text-center">Mennyiség</div>
+              <div className="text-center">Me.</div>
               <div className="text-right">Egységár</div>
               <div className="text-right">Részösszeg</div>
             </div>
@@ -1630,7 +1642,7 @@ export default function POSPage() {
                   return null
                 }
                 return (
-                <div key={item.id} className="grid grid-cols-4 gap-2 py-2 border-b border-gray-100">
+                <div key={item.id} className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100">
                   <div className="min-w-0 break-words">
                     <p className="font-semibold text-sm text-gray-900 break-words">{item.name}</p>
                     {item.sku && (
@@ -1653,7 +1665,7 @@ export default function POSPage() {
 
               {/* Fees */}
               {fees.map((fee) => (
-                <div key={fee.id} className="grid grid-cols-4 gap-2 py-2 border-b border-gray-100 bg-blue-50">
+                <div key={fee.id} className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100 bg-blue-50">
                   <div className="min-w-0">
                     <p className="font-semibold text-sm text-gray-900 truncate">{fee.name}</p>
                     <p className="text-xs text-gray-500">Díj</p>
@@ -1670,7 +1682,7 @@ export default function POSPage() {
 
               {/* Discount */}
               {discount && (
-                <div className="grid grid-cols-4 gap-2 py-2 border-b border-gray-100 bg-orange-50">
+                <div className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100 bg-orange-50">
                   <div className="min-w-0">
                     <p className="font-semibold text-sm text-gray-900 truncate">Kedvezmény</p>
                     <p className="text-xs text-gray-500">{discount.percent}%</p>
@@ -1698,7 +1710,7 @@ export default function POSPage() {
             {/* Payment Buttons */}
             <div className="grid grid-cols-2 gap-3">
               <button
-                onClick={() => handlePayment('cash')}
+                onClick={() => handlePaymentTypeClick('cash')}
                 disabled={isProcessingPayment}
                 className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg active:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
@@ -1708,7 +1720,7 @@ export default function POSPage() {
                 Készpénz
               </button>
               <button
-                onClick={() => handlePayment('card')}
+                onClick={() => handlePaymentTypeClick('card')}
                 disabled={isProcessingPayment}
                 className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-lg active:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
@@ -1716,6 +1728,177 @@ export default function POSPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                 </svg>
                 Bankkártya
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal - Fullscreen */}
+      {confirmModalOpen && (
+        <div className="fixed inset-0 bg-white z-50 flex flex-col overflow-hidden">
+          {/* Fixed Top Section */}
+          <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Vásárlás megerősítése
+              </h2>
+              <button
+                onClick={() => {
+                  if (!isProcessingPayment) {
+                    setConfirmModalOpen(false)
+                    setPendingPaymentType(null)
+                  }
+                }}
+                disabled={isProcessingPayment}
+                className="w-10 h-10 rounded-full border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all disabled:opacity-50"
+                aria-label="Bezárás"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <p className="text-base font-bold text-gray-900 mb-4">
+              Biztosan folytatod?
+            </p>
+
+            {/* Table Header */}
+            <div className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 text-sm font-semibold text-gray-700 border-b border-gray-300 pb-2">
+              <div>Termék</div>
+              <div className="text-center">Me.</div>
+              <div className="text-right">Egységár</div>
+              <div className="text-right">Részösszeg</div>
+            </div>
+          </div>
+
+          {/* Scrollable Table Content */}
+          <div className="flex-1 overflow-y-auto overscroll-contain min-h-0 p-4">
+            <div className="space-y-0">
+              {/* Cart Items */}
+              {cartItems.map((item) => {
+                const getDimensions = () => {
+                  if (item.product_type === 'material' && 'length_mm' in item && 'width_mm' in item && 'thickness_mm' in item) {
+                    return `${item.length_mm}×${item.width_mm}×${item.thickness_mm} mm`
+                  } else if (item.product_type === 'linear_material' && 'length' in item && 'width' in item && 'thickness' in item) {
+                    return `${item.length}×${item.width}×${item.thickness} mm`
+                  }
+                  return null
+                }
+                return (
+                <div key={item.id} className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100">
+                  <div className="min-w-0 break-words">
+                    <p className="font-semibold text-sm text-gray-900 break-words">{item.name}</p>
+                    {item.sku && (
+                      <p className="text-xs text-gray-500 break-words">SKU: {item.sku}</p>
+                    )}
+                    {getDimensions() && (
+                      <p className="text-xs text-gray-500 break-words">{getDimensions()}</p>
+                    )}
+                  </div>
+                  <div className="text-center text-sm text-gray-900">{item.quantity}</div>
+                  <div className="text-right text-sm text-gray-900">
+                    {item.gross_price.toLocaleString('hu-HU')} Ft
+                  </div>
+                  <div className="text-right text-sm font-semibold text-gray-900">
+                    {(item.quantity * item.gross_price).toLocaleString('hu-HU')} Ft
+                  </div>
+                </div>
+                )
+              })}
+
+              {/* Fees */}
+              {fees.length > 0 && (
+                <>
+                  <div className="pt-2 pb-1">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase">Díjak</h3>
+                  </div>
+                  {fees.map((fee) => (
+                    <div key={fee.id} className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100 bg-blue-50">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 truncate">{fee.name}</p>
+                        <p className="text-xs text-gray-500">Díj</p>
+                      </div>
+                      <div className="text-center text-sm text-gray-900">1</div>
+                      <div className="text-right text-sm text-gray-900">
+                        {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                      </div>
+                      <div className="text-right text-sm font-semibold text-gray-900">
+                        {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Discount */}
+              {discount && (
+                <>
+                  <div className="pt-2 pb-1">
+                    <h3 className="text-sm font-semibold text-gray-700 uppercase">Kedvezmény</h3>
+                  </div>
+                  <div className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100 bg-orange-50">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 truncate">Kedvezmény</p>
+                      <p className="text-xs text-gray-500">{discount.percent}%</p>
+                    </div>
+                    <div className="text-center text-sm text-gray-900">{discount.percent}%</div>
+                    <div className="text-right text-sm text-gray-900">-</div>
+                    <div className="text-right text-sm font-semibold text-red-600">
+                      -{discountAmount.toLocaleString('hu-HU')} Ft
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Fixed Bottom Section */}
+          <div className="flex-shrink-0 bg-white border-t border-gray-200 p-4 space-y-3">
+            {/* Összesen - Fixed above buttons */}
+            <div className="flex justify-between items-center">
+              <p className="text-lg font-semibold text-gray-900">Összesen:</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {total.toLocaleString('hu-HU')} Ft
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-gray-600">
+                Fizetési mód: {pendingPaymentType === 'cash' ? 'Készpénz' : 'Bankkártya'}
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => {
+                  if (!isProcessingPayment) {
+                    setConfirmModalOpen(false)
+                    setPendingPaymentType(null)
+                  }
+                }}
+                disabled={isProcessingPayment}
+                className="w-full bg-gray-200 text-gray-700 py-4 rounded-lg font-bold text-lg active:bg-gray-300 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Mégse
+              </button>
+              <button
+                onClick={handleConfirmPayment}
+                disabled={isProcessingPayment}
+                className="w-full bg-green-600 text-white py-4 rounded-lg font-bold text-lg active:bg-green-700 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {isProcessingPayment ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Feldolgozás...
+                  </>
+                ) : (
+                  'Megerősítés'
+                )}
               </button>
             </div>
           </div>
