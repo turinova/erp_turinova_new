@@ -1945,8 +1945,8 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
       return acc
     }, {})
 
-    // Transform the data
-    const transformedOrders = orders?.map(order => ({
+      // Transform the data
+      const transformedOrders = orders?.map(order => ({
         id: order.id,
         order_number: order.order_number || 'N/A',
         status: order.status,
@@ -1961,6 +1961,7 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
         production_machine_id: order.production_machine_id || null,
         production_machine_name: order.production_machines?.machine_name || null,
         production_date: order.production_date || null,
+        ready_at: order.ready_at || null,
         barcode: order.barcode || ''
       })) || []
 
