@@ -125,9 +125,8 @@ export default function OrdersListClient({
       const params = new URLSearchParams()
       params.set('page', '1') // Reset to first page when searching
       params.set('limit', pageSize.toString())
-      if (statusFilter !== 'all') {
-        params.set('status', statusFilter)
-      }
+      // Always add status param to preserve filter state
+      params.set('status', statusFilter)
       if (searchTerm.trim()) {
         params.set('search', searchTerm.trim())
       }
@@ -149,9 +148,8 @@ export default function OrdersListClient({
     const params = new URLSearchParams()
     params.set('page', '1')
     params.set('limit', pageSize.toString())
-    if (newStatus !== 'all') {
-      params.set('status', newStatus)
-    }
+    // Always add status param, even for 'all', so we can distinguish from initial load
+    params.set('status', newStatus)
     if (searchTerm.trim()) {
       params.set('search', searchTerm.trim())
     }
@@ -260,9 +258,8 @@ export default function OrdersListClient({
     const params = new URLSearchParams()
     params.set('page', value.toString())
     params.set('limit', pageSize.toString())
-    if (statusFilter !== 'all') {
-      params.set('status', statusFilter)
-    }
+    // Always add status param to preserve filter state
+    params.set('status', statusFilter)
     if (searchTerm.trim()) {
       params.set('search', searchTerm.trim())
     }
@@ -275,9 +272,8 @@ export default function OrdersListClient({
     const params = new URLSearchParams()
     params.set('page', '1') // Reset to first page when changing page size
     params.set('limit', newPageSize.toString())
-    if (statusFilter !== 'all') {
-      params.set('status', statusFilter)
-    }
+    // Always add status param to preserve filter state
+    params.set('status', statusFilter)
     if (searchTerm.trim()) {
       params.set('search', searchTerm.trim())
     }
