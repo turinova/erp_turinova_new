@@ -459,6 +459,8 @@ export default function PurchaseOrderFormClient({
   const router = useRouter()
   const [loading, setLoading] = useState(mode === 'edit' && !initialHeader)
   const [saving, setSaving] = useState(false)
+  const [loadingPartners, setLoadingPartners] = useState(false)
+  const [partnersError, setPartnersError] = useState<string | null>(null)
 
   const [partners, setPartners] = useState<PartnerRow[]>(initialPartners)
   const [warehouses, setWarehouses] = useState<WarehouseRow[]>(initialWarehouses)
@@ -533,16 +535,41 @@ export default function PurchaseOrderFormClient({
             vatRes.ok ? vatRes.json() : { vat: [] },
             curRes.ok ? curRes.json() : { currencies: [] },
             unitRes.ok ? unitRes.json() : { units: [] },
-            partnerRes.ok ? partnerRes.json() : { partners: [] },
+            partnerRes.ok ? partnerRes.json() : null,
             whRes.ok ? whRes.json() : { warehouses: [] }
           ])
+          
+          // Improved error handling for partners
+          if (initialPartners.length === 0) {
+            setLoadingPartners(true)
+            if (partnerRes.ok && partnerData && !partnerData.error) {
+              // Check if response is an array or has partners property
+              const partnersArray = Array.isArray(partnerData) 
+                ? partnerData 
+                : (partnerData.partners || [])
+              setPartners(partnersArray)
+              setPartnersError(null)
+            } else {
+              const errorMsg = partnerData?.error || 'Nem sikerült betölteni a beszállítókat'
+              console.error('Error fetching partners:', errorMsg)
+              setPartnersError(errorMsg)
+              setPartners([]) // Ensure we always have an array
+              toast.error(errorMsg)
+            }
+            setLoadingPartners(false)
+          }
+          
           if (initialVatRates.length === 0) setVatRates(vatData.vat || vatData || [])
           if (initialCurrencies.length === 0) setCurrencies(curData.currencies || curData || [])
           if (initialUnits.length === 0) setUnits(unitData.units || unitData || [])
-          if (initialPartners.length === 0) setPartners(partnerData.partners || partnerData || [])
           if (initialWarehouses.length === 0) setWarehouses(whData.warehouses || whData || [])
         } catch (e) {
-          // ignore
+          console.error('Error loading static data:', e)
+          if (initialPartners.length === 0) {
+            setPartnersError('Hiba történt a beszállítók betöltésekor')
+            setPartners([])
+            toast.error('Hiba történt a beszállítók betöltésekor')
+          }
         }
       }
       loadStatic()
@@ -847,26 +874,38 @@ export default function PurchaseOrderFormClient({
             )}
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <FormControl fullWidth required>
-                  <InputLabel>Beszállító</InputLabel>
-                  <Select
-                    value={partnerId}
-                    label="Beszállító"
-                    onChange={(e) => setPartnerId(e.target.value)}
-                    disabled={mode === 'edit' && poStatus !== 'draft'}
-                    MenuProps={{
-                      PaperProps: {
-                        style: { maxHeight: 320, width: 360 }
-                      }
-                    }}
-                  >
-                    {partners.map(p => (
-                      <MenuItem key={p.id} value={p.id}>
-                        {p.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  options={partners}
+                  getOptionLabel={(option) => option.name || ''}
+                  value={partners.find(p => p.id === partnerId) || null}
+                  onChange={(_, newValue) => {
+                    setPartnerId(newValue?.id || '')
+                  }}
+                  disabled={(mode === 'edit' && poStatus !== 'draft') || loadingPartners}
+                  loading={loadingPartners}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Beszállító"
+                      required
+                      error={!!partnersError}
+                      helperText={partnersError || ''}
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {loadingPartners ? <CircularProgress color="inherit" size={20} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                  noOptionsText={partnersError ? 'Hiba történt' : 'Nincs találat'}
+                  ListboxProps={{
+                    style: { maxHeight: 320 }
+                  }}
+                />
               </Grid>
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth required>

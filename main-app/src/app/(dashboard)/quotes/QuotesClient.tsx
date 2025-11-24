@@ -83,6 +83,27 @@ export default function QuotesClient({
     setMounted(true)
   }, [])
 
+  // Update quotes when initialQuotes prop changes (from server-side search/filter)
+  useEffect(() => {
+    setQuotes(initialQuotes)
+  }, [initialQuotes])
+
+  // Debounced search effect - triggers server-side search (like orders page)
+  useEffect(() => {
+    if (!mounted) return
+
+    const timeoutId = setTimeout(() => {
+      const params = new URLSearchParams()
+      params.set('page', '1') // Reset to first page when searching
+      if (searchTerm.trim()) {
+        params.set('search', searchTerm.trim())
+      }
+      router.push(`/quotes?${params.toString()}`)
+    }, 500) // 500ms debounce
+
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm, mounted, router])
+
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('hu-HU', {
@@ -103,21 +124,9 @@ export default function QuotesClient({
     })
   }
 
-  // Filter quotes based on search term (client-side filtering for current page)
-  const filteredQuotes = useMemo(() => {
-    if (!quotes || !Array.isArray(quotes)) return []
-    
-    if (!searchTerm.trim()) return quotes
-    
-    const term = searchTerm.toLowerCase()
-    return quotes.filter(quote => 
-      quote.customer_name.toLowerCase().includes(term)
-    )
-  }, [quotes, searchTerm])
-
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      setSelectedQuotes(filteredQuotes.map(quote => quote.id))
+      setSelectedQuotes(quotes.map(quote => quote.id))
     } else {
       setSelectedQuotes([])
     }
@@ -131,26 +140,25 @@ export default function QuotesClient({
     )
   }
 
-  const handleSearch = () => {
-    const params = new URLSearchParams(searchParams)
-    if (searchTerm.trim()) {
-      params.set('search', searchTerm.trim())
-    } else {
-      params.delete('search')
-    }
-    params.set('page', '1') // Reset to first page when searching
-    router.push(`/quotes?${params.toString()}`)
-  }
-
   const handleKeyPress = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter') {
-      handleSearch()
+      // Trigger immediate search (bypass debounce)
+      const params = new URLSearchParams()
+      params.set('page', '1')
+      if (searchTerm.trim()) {
+        params.set('search', searchTerm.trim())
+      }
+      router.push(`/quotes?${params.toString()}`)
     }
   }
 
   const handlePageChange = (event: React.ChangeEvent<unknown>, page: number) => {
-    const params = new URLSearchParams(searchParams)
+    const params = new URLSearchParams()
     params.set('page', page.toString())
+    // Always include search param if it exists
+    if (searchTerm.trim()) {
+      params.set('search', searchTerm.trim())
+    }
     router.push(`/quotes?${params.toString()}`)
   }
 
@@ -196,8 +204,8 @@ export default function QuotesClient({
     setDeleteDialogOpen(false)
   }
 
-  const isAllSelected = selectedQuotes.length === filteredQuotes.length && filteredQuotes.length > 0
-  const isIndeterminate = selectedQuotes.length > 0 && selectedQuotes.length < filteredQuotes.length
+  const isAllSelected = selectedQuotes.length === quotes.length && quotes.length > 0
+  const isIndeterminate = selectedQuotes.length > 0 && selectedQuotes.length < quotes.length
 
   // Check access permission
   useEffect(() => {
@@ -310,7 +318,7 @@ export default function QuotesClient({
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredQuotes.map((quote) => (
+            {quotes.map((quote) => (
               <TableRow 
                 key={quote.id} 
                 hover 

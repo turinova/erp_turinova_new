@@ -1273,6 +1273,7 @@ export async function getAllPartners() {
       created_at,
       updated_at
     `)
+    .eq('status', 'active')
     .is('deleted_at', null)
     .order('name', { ascending: true })
 
@@ -1754,7 +1755,49 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
   try {
     const offset = (page - 1) * limit
     
-    // Build query with search if provided
+    // If search term is provided, find all matching quote IDs first, then paginate
+    let allMatchingQuoteIds: string[] = []
+    if (searchTerm && searchTerm.trim()) {
+      const trimmedSearch = searchTerm.trim()
+      
+      // Find quotes matching customer name
+      const { data: customerMatches, error: customerError } = await supabaseServer
+        .from('quotes')
+        .select('id, customers!inner(name)')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .ilike('customers.name', `%${trimmedSearch}%`)
+      
+      if (customerError) {
+        console.error('[SSR] Error searching quotes by customer name:', customerError)
+      }
+      
+      // Also search by quote_number
+      const { data: quoteNumberMatches, error: quoteNumberError } = await supabaseServer
+        .from('quotes')
+        .select('id')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .ilike('quote_number', `%${trimmedSearch}%`)
+      
+      if (quoteNumberError) {
+        console.error('[SSR] Error searching quotes by quote number:', quoteNumberError)
+      }
+      
+      // Combine and deduplicate all matching IDs
+      const customerIds = customerMatches?.map(q => q.id) || []
+      const quoteNumberIds = quoteNumberMatches?.map(q => q.id) || []
+      allMatchingQuoteIds = [...new Set([...customerIds, ...quoteNumberIds])]
+      
+      console.log(`[SSR] Search results: ${customerIds.length} customer matches, ${quoteNumberIds.length} quote number matches, ${allMatchingQuoteIds.length} total unique matches`)
+      
+      if (allMatchingQuoteIds.length === 0) {
+        // No matches found, return empty result
+        return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+      }
+    }
+    
+    // Build the main query
     let query = supabaseServer
       .from('quotes')
       .select(`
@@ -1776,13 +1819,16 @@ export async function getQuotesWithPagination(page: number = 1, limit: number = 
       `, { count: 'exact' })
       .eq('status', 'draft') // Only show draft quotes, not orders
       .is('deleted_at', null)
+
+    // Apply search filter - if we have matching IDs, filter by them
+    if (searchTerm && searchTerm.trim() && allMatchingQuoteIds.length > 0) {
+      query = query.in('id', allMatchingQuoteIds)
+    }
+
+    // Apply ordering and pagination AFTER all filters
+    query = query
       .order('updated_at', { ascending: false })
       .range(offset, offset + limit - 1)
-
-    // Apply search filter if provided
-    if (searchTerm && searchTerm.trim()) {
-      query = query.ilike('customers.name', `%${searchTerm.trim()}%`)
-    }
 
     const { data: quotes, error: quotesError, count } = await query
 

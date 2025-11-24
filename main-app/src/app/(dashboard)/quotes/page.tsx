@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   title: 'Ajánlatok'
 }
 
+// Force dynamic rendering to prevent caching issues with pagination
+export const dynamic = 'force-dynamic'
+
 interface PageProps {
   searchParams: Promise<{ 
     page?: string
