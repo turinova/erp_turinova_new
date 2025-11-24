@@ -164,6 +164,14 @@ export async function getMaterialById(id: string) {
     .single()
 
   // Transform the data to match the expected format
+  // Handle currencies and vat which might be arrays from Supabase joins
+  const currenciesObj = Array.isArray(materialData.currencies) 
+    ? materialData.currencies[0] || null 
+    : materialData.currencies || null
+  const vatObj = Array.isArray(materialData.vat) 
+    ? materialData.vat[0] || null 
+    : materialData.vat || null
+
   return {
     id: materialData.id,
     name: materialData.name || `Material ${materialData.id}`,
@@ -192,8 +200,8 @@ export async function getMaterialById(id: string) {
     units_id: materialData.units_id || null,
     currency_id: materialData.currency_id || null,
     vat_id: materialData.vat_id || null,
-    currencies: materialData.currencies || null,
-    vat: materialData.vat || null,
+    currencies: currenciesObj,
+    vat: vatObj,
     created_at: materialData.created_at,
     updated_at: materialData.updated_at
   }
@@ -1886,12 +1894,16 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
       const trimmedSearch = searchTerm.trim()
       
       // Find orders matching customer name
-      const { data: customerMatches } = await supabaseServer
+      const { data: customerMatches, error: customerError } = await supabaseServer
         .from('quotes')
-        .select('id')
+        .select('id, customers!inner(name)')
         .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
         .is('deleted_at', null)
         .ilike('customers.name', `%${trimmedSearch}%`)
+      
+      if (customerError) {
+        console.error('[SSR] Error searching orders by customer name:', customerError)
+      }
       
       // Find materials that match the search term
       const { data: matchingMaterials } = await supabaseServer
@@ -3836,6 +3848,549 @@ export async function getStockMovementsWithPagination(
     console.error('[SSR] Exception fetching stock movements with pagination:', error)
     logTiming('Stock Movements Paginated Error', startTime)
     return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+}
+
+// Get stock movements for a specific accessory with pagination
+export async function getStockMovementsByAccessory(
+  accessoryId: string,
+  page: number = 1,
+  limit: number = 50
+) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+
+  try {
+    const offset = (page - 1) * limit
+
+    const { data, error, count } = await supabaseServer
+      .from('stock_movements')
+      .select(`
+        id,
+        stock_movement_number,
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        product_type,
+        accessory_id,
+        quantity,
+        movement_type,
+        source_type,
+        source_id,
+        created_at,
+        note,
+        accessories:accessory_id(id, name, sku)
+      `, { count: 'exact' })
+      .eq('product_type', 'accessory')
+      .eq('accessory_id', accessoryId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching stock movements by accessory:', error)
+      return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    // Fetch source references
+    const sourceIdsByType = new Map<string, string[]>()
+    if (data) {
+      data.forEach((sm: any) => {
+        if (sm.source_type && sm.source_id) {
+          if (!sourceIdsByType.has(sm.source_type)) {
+            sourceIdsByType.set(sm.source_type, [])
+          }
+          sourceIdsByType.get(sm.source_type)!.push(sm.source_id)
+        }
+      })
+    }
+
+    // Fetch POS orders
+    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const { data: posOrders } = posOrderIds.length > 0
+      ? await supabaseServer
+          .from('pos_orders')
+          .select('id, pos_order_number')
+          .in('id', posOrderIds)
+      : { data: [] }
+    const posOrderMap = new Map((posOrders || []).map((po: any) => [po.id, po.pos_order_number]))
+
+    // Fetch shipments
+    const shipmentIds = sourceIdsByType.get('purchase_receipt') || []
+    const { data: shipments } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number')
+          .in('id', shipmentIds)
+      : { data: [] }
+    const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
+
+    // Transform data
+    const stockMovements = (data || []).map((sm: any) => {
+      const productName = sm.accessories?.name || ''
+      const sku = sm.accessories?.sku || ''
+
+      let sourceReference = '-'
+      if (sm.source_type === 'pos_sale' && sm.source_id) {
+        sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
+        sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_id) {
+        sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      return {
+        id: sm.id,
+        stock_movement_number: sm.stock_movement_number || '',
+        warehouse_name: sm.warehouses?.name || '',
+        product_type: sm.product_type,
+        product_name: productName,
+        sku: sku,
+        quantity: Number(sm.quantity) || 0,
+        movement_type: sm.movement_type,
+        source_type: sm.source_type,
+        source_id: sm.source_id,
+        source_reference: sourceReference,
+        created_at: sm.created_at,
+        note: sm.note || ''
+      }
+    })
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Stock Movements By Accessory Fetch', startTime, `returned ${stockMovements.length} of ${totalCount} records`)
+    return {
+      stockMovements,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching stock movements by accessory:', error)
+    logTiming('Stock Movements By Accessory Error', startTime)
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+}
+
+// Get current stock for an accessory
+export async function getAccessoryCurrentStock(accessoryId: string) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return null
+  }
+
+  try {
+    // Get all current_stock records for this accessory (may be multiple warehouses)
+    const { data: stockData, error } = await supabaseServer
+      .from('current_stock')
+      .select('quantity_on_hand, last_movement_at, stock_value')
+      .eq('product_type', 'accessory')
+      .eq('accessory_id', accessoryId)
+
+    if (error) {
+      console.error('Error fetching accessory current stock:', error)
+      return null
+    }
+
+    if (!stockData || stockData.length === 0) {
+      return {
+        quantity_on_hand: 0,
+        stock_value: 0,
+        last_movement_at: null
+      }
+    }
+
+    // Sum quantities and stock values across all warehouses
+    const quantityOnHand = stockData.reduce((sum, item) => {
+      return sum + Number(item.quantity_on_hand || 0)
+    }, 0)
+
+    const stockValue = stockData.reduce((sum, item) => {
+      return sum + Number(item.stock_value || 0)
+    }, 0)
+
+    // Get the most recent movement date
+    const lastMovementAt = stockData
+      .map(item => item.last_movement_at)
+      .filter(Boolean)
+      .sort()
+      .reverse()[0] || null
+
+    logTiming('Accessory Current Stock Fetch', startTime, `quantity: ${quantityOnHand}, value: ${stockValue}`)
+    return {
+      quantity_on_hand: quantityOnHand,
+      stock_value: stockValue,
+      last_movement_at: lastMovementAt
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching accessory current stock:', error)
+    logTiming('Accessory Current Stock Error', startTime)
+    return null
+  }
+}
+
+// Get stock movements for a specific material with pagination
+export async function getStockMovementsByMaterial(
+  materialId: string,
+  page: number = 1,
+  limit: number = 50
+) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+
+  try {
+    const offset = (page - 1) * limit
+
+    const { data, error, count } = await supabaseServer
+      .from('stock_movements')
+      .select(`
+        id,
+        stock_movement_number,
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        product_type,
+        material_id,
+        quantity,
+        movement_type,
+        source_type,
+        source_id,
+        created_at,
+        note,
+        materials:material_id(id, name)
+      `, { count: 'exact' })
+      .eq('product_type', 'material')
+      .eq('material_id', materialId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching stock movements by material:', error)
+      return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    // Fetch source references
+    const sourceIdsByType = new Map<string, string[]>()
+    if (data) {
+      data.forEach((sm: any) => {
+        if (sm.source_type && sm.source_id) {
+          if (!sourceIdsByType.has(sm.source_type)) {
+            sourceIdsByType.set(sm.source_type, [])
+          }
+          sourceIdsByType.get(sm.source_type)!.push(sm.source_id)
+        }
+      })
+    }
+
+    // Fetch POS orders
+    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const { data: posOrders } = posOrderIds.length > 0
+      ? await supabaseServer
+          .from('pos_orders')
+          .select('id, pos_order_number')
+          .in('id', posOrderIds)
+      : { data: [] }
+    const posOrderMap = new Map((posOrders || []).map((po: any) => [po.id, po.pos_order_number]))
+
+    // Fetch shipments
+    const shipmentIds = sourceIdsByType.get('purchase_receipt') || []
+    const { data: shipments } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number')
+          .in('id', shipmentIds)
+      : { data: [] }
+    const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
+
+    // Transform data
+    const stockMovements = (data || []).map((sm: any) => {
+      const productName = sm.materials?.name || ''
+      const sku = '' // Materials don't have SKU
+
+      let sourceReference = '-'
+      if (sm.source_type === 'pos_sale' && sm.source_id) {
+        sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
+        sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_id) {
+        sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      return {
+        id: sm.id,
+        stock_movement_number: sm.stock_movement_number || '',
+        warehouse_name: sm.warehouses?.name || '',
+        product_type: sm.product_type,
+        product_name: productName,
+        sku: sku,
+        quantity: Number(sm.quantity) || 0,
+        movement_type: sm.movement_type,
+        source_type: sm.source_type,
+        source_id: sm.source_id,
+        source_reference: sourceReference,
+        created_at: sm.created_at,
+        note: sm.note || ''
+      }
+    })
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Stock Movements By Material Fetch', startTime, `returned ${stockMovements.length} of ${totalCount} records`)
+    return {
+      stockMovements,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching stock movements by material:', error)
+    logTiming('Stock Movements By Material Error', startTime)
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+}
+
+// Get current stock for a material
+export async function getMaterialCurrentStock(materialId: string) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return null
+  }
+
+  try {
+    // Get all current_stock records for this material (may be multiple warehouses)
+    const { data: stockData, error } = await supabaseServer
+      .from('current_stock')
+      .select('quantity_on_hand, last_movement_at, stock_value')
+      .eq('product_type', 'material')
+      .eq('material_id', materialId)
+
+    if (error) {
+      console.error('Error fetching material current stock:', error)
+      return null
+    }
+
+    if (!stockData || stockData.length === 0) {
+      return {
+        quantity_on_hand: 0,
+        stock_value: 0,
+        last_movement_at: null
+      }
+    }
+
+    // Sum quantities and stock values across all warehouses
+    const quantityOnHand = stockData.reduce((sum, item) => {
+      return sum + Number(item.quantity_on_hand || 0)
+    }, 0)
+
+    const stockValue = stockData.reduce((sum, item) => {
+      return sum + Number(item.stock_value || 0)
+    }, 0)
+
+    // Get the most recent movement date
+    const lastMovementAt = stockData
+      .map(item => item.last_movement_at)
+      .filter(Boolean)
+      .sort()
+      .reverse()[0] || null
+
+    logTiming('Material Current Stock Fetch', startTime, `quantity: ${quantityOnHand}, value: ${stockValue}`)
+    return {
+      quantity_on_hand: quantityOnHand,
+      stock_value: stockValue,
+      last_movement_at: lastMovementAt
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching material current stock:', error)
+    logTiming('Material Current Stock Error', startTime)
+    return null
+  }
+}
+
+// Get stock movements for a specific linear material with pagination
+export async function getStockMovementsByLinearMaterial(
+  linearMaterialId: string,
+  page: number = 1,
+  limit: number = 50
+) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+
+  try {
+    const offset = (page - 1) * limit
+
+    const { data, error, count } = await supabaseServer
+      .from('stock_movements')
+      .select(`
+        id,
+        stock_movement_number,
+        warehouse_id,
+        warehouses:warehouse_id(name),
+        product_type,
+        linear_material_id,
+        quantity,
+        movement_type,
+        source_type,
+        source_id,
+        created_at,
+        note,
+        linear_materials:linear_material_id(id, name)
+      `, { count: 'exact' })
+      .eq('product_type', 'linear_material')
+      .eq('linear_material_id', linearMaterialId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error('Error fetching stock movements by linear material:', error)
+      return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    // Fetch source references
+    const sourceIdsByType = new Map<string, string[]>()
+    if (data) {
+      data.forEach((sm: any) => {
+        if (sm.source_type && sm.source_id) {
+          if (!sourceIdsByType.has(sm.source_type)) {
+            sourceIdsByType.set(sm.source_type, [])
+          }
+          sourceIdsByType.get(sm.source_type)!.push(sm.source_id)
+        }
+      })
+    }
+
+    // Fetch POS orders
+    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const { data: posOrders } = posOrderIds.length > 0
+      ? await supabaseServer
+          .from('pos_orders')
+          .select('id, pos_order_number')
+          .in('id', posOrderIds)
+      : { data: [] }
+    const posOrderMap = new Map((posOrders || []).map((po: any) => [po.id, po.pos_order_number]))
+
+    // Fetch shipments
+    const shipmentIds = sourceIdsByType.get('purchase_receipt') || []
+    const { data: shipments } = shipmentIds.length > 0
+      ? await supabaseServer
+          .from('shipments')
+          .select('id, shipment_number')
+          .in('id', shipmentIds)
+      : { data: [] }
+    const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
+
+    // Transform data
+    const stockMovements = (data || []).map((sm: any) => {
+      const productName = sm.linear_materials?.name || ''
+      const sku = '' // Linear materials don't have SKU
+
+      let sourceReference = '-'
+      if (sm.source_type === 'pos_sale' && sm.source_id) {
+        sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
+        sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_id) {
+        sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      return {
+        id: sm.id,
+        stock_movement_number: sm.stock_movement_number || '',
+        warehouse_name: sm.warehouses?.name || '',
+        product_type: sm.product_type,
+        product_name: productName,
+        sku: sku,
+        quantity: Number(sm.quantity) || 0,
+        movement_type: sm.movement_type,
+        source_type: sm.source_type,
+        source_id: sm.source_id,
+        source_reference: sourceReference,
+        created_at: sm.created_at,
+        note: sm.note || ''
+      }
+    })
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Stock Movements By Linear Material Fetch', startTime, `returned ${stockMovements.length} of ${totalCount} records`)
+    return {
+      stockMovements,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching stock movements by linear material:', error)
+    logTiming('Stock Movements By Linear Material Error', startTime)
+    return { stockMovements: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+}
+
+// Get current stock for a linear material
+export async function getLinearMaterialCurrentStock(linearMaterialId: string) {
+  const startTime = performance.now()
+  
+  if (!checkSupabaseConfig()) {
+    return null
+  }
+
+  try {
+    // Get all current_stock records for this linear material (may be multiple warehouses)
+    const { data: stockData, error } = await supabaseServer
+      .from('current_stock')
+      .select('quantity_on_hand, last_movement_at, stock_value')
+      .eq('product_type', 'linear_material')
+      .eq('linear_material_id', linearMaterialId)
+
+    if (error) {
+      console.error('Error fetching linear material current stock:', error)
+      return null
+    }
+
+    if (!stockData || stockData.length === 0) {
+      return {
+        quantity_on_hand: 0,
+        stock_value: 0,
+        last_movement_at: null
+      }
+    }
+
+    // Sum quantities and stock values across all warehouses
+    const quantityOnHand = stockData.reduce((sum, item) => {
+      return sum + Number(item.quantity_on_hand || 0)
+    }, 0)
+
+    const stockValue = stockData.reduce((sum, item) => {
+      return sum + Number(item.stock_value || 0)
+    }, 0)
+
+    // Get the most recent movement date
+    const lastMovementAt = stockData
+      .map(item => item.last_movement_at)
+      .filter(Boolean)
+      .sort()
+      .reverse()[0] || null
+
+    logTiming('Linear Material Current Stock Fetch', startTime, `quantity: ${quantityOnHand}, value: ${stockValue}`)
+    return {
+      quantity_on_hand: quantityOnHand,
+      stock_value: stockValue,
+      last_movement_at: lastMovementAt
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching linear material current stock:', error)
+    logTiming('Linear Material Current Stock Error', startTime)
+    return null
   }
 }
 

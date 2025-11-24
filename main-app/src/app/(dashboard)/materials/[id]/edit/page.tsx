@@ -8,7 +8,9 @@ import {
   getAllVatRates,
   getMaterialPriceHistory,
   getAllPartners,
-  getAllUnits
+  getAllUnits,
+  getStockMovementsByMaterial,
+  getMaterialCurrentStock
 } from '@/lib/supabase-server'
 import MaterialsEditClient from './MaterialsEditClient'
 
@@ -20,6 +22,7 @@ interface Material {
   thickness_mm: number
   grain_direction: boolean
   on_stock: boolean
+  active: boolean
   image_url: string | null
   brand_id: string
   brand_name: string
@@ -71,7 +74,7 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
   const resolvedParams = await params
   
   // Fetch all data on the server for SSR (prevents hydration issues)
-  const [material, brands, currencies, vatRates, priceHistory, partners, units, inventorySummary, inventoryTransactions] = await Promise.all([
+  const [material, brands, currencies, vatRates, priceHistory, partners, units, stockMovementsData, currentStock] = await Promise.all([
     getMaterialById(resolvedParams.id),
     getAllBrandsForMaterials(),
     getAllCurrencies(),
@@ -79,50 +82,8 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
     getMaterialPriceHistory(resolvedParams.id),
     getAllPartners(),
     getAllUnits(),
-    // Fetch inventory summary
-    (async () => {
-      const { supabaseServer } = await import('@/lib/supabase-server')
-      const { data } = await supabaseServer
-        .from('material_inventory_summary')
-        .select('*')
-        .eq('material_id', resolvedParams.id)
-        .single()
-      return data
-    })(),
-    // Fetch inventory transactions with order_number
-    (async () => {
-      const { supabaseServer } = await import('@/lib/supabase-server')
-      const { data } = await supabaseServer
-        .from('material_inventory_transactions')
-        .select('*')
-        .eq('material_id', resolvedParams.id)
-        .order('created_at', { ascending: false })
-        .limit(100)
-      
-      // Enrich with order_number for shop_order_item references
-      const enrichedData = await Promise.all((data || []).map(async (transaction: any) => {
-        if (transaction.reference_type === 'shop_order_item') {
-          const { data: itemData } = await supabaseServer
-            .from('shop_order_items')
-            .select('order_id, shop_orders!inner(order_number)')
-            .eq('id', transaction.reference_id)
-            .single()
-
-          if (itemData) {
-            return {
-              ...transaction,
-              order_number: (itemData.shop_orders as any)?.order_number || null
-            }
-          }
-        }
-        return {
-          ...transaction,
-          order_number: null
-        }
-      }))
-      
-      return enrichedData
-    })()
+    getStockMovementsByMaterial(resolvedParams.id, 1, 50), // Fetch first page with 50 items
+    getMaterialCurrentStock(resolvedParams.id)
   ])
   
   if (!material) {
@@ -130,17 +91,23 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
   }
 
   // Pass pre-loaded data to client component
+  // Type assertion to handle Supabase join types
+  const materialTyped = material as Material
+  
   return (
     <MaterialsEditClient 
-      initialMaterial={material} 
+      initialMaterial={materialTyped} 
       initialBrands={brands}
       initialCurrencies={currencies}
       initialVatRates={vatRates}
       initialPriceHistory={priceHistory}
       initialPartners={partners}
       initialUnits={units}
-      initialInventorySummary={inventorySummary}
-      initialInventoryTransactions={inventoryTransactions}
+      initialStockMovements={stockMovementsData.stockMovements}
+      stockMovementsTotalCount={stockMovementsData.totalCount}
+      stockMovementsTotalPages={stockMovementsData.totalPages}
+      stockMovementsCurrentPage={stockMovementsData.currentPage}
+      currentStock={currentStock}
     />
   )
 }

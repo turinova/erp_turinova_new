@@ -41,7 +41,9 @@ import {
 import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
-import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Refresh as RefreshIcon } from '@mui/icons-material'
+import { Home as HomeIcon, ArrowBack as ArrowBackIcon } from '@mui/icons-material'
+import NextLink from 'next/link'
+import { Pagination } from '@mui/material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -123,34 +125,20 @@ interface Unit {
   shortform: string
 }
 
-interface InventorySummary {
-  material_id: string
-  material_name: string
-  sku: string
-  brand_name: string | null
-  length_mm: number
-  width_mm: number
-  thickness_mm: number
-  quantity_on_hand: number
-  quantity_reserved: number
-  quantity_available: number
-  average_cost_per_board: number
-  total_inventory_value: number
-  last_movement_at: string | null
-}
-
-interface InventoryTransaction {
+interface StockMovementRow {
   id: string
-  material_id: string
+  stock_movement_number: string
+  warehouse_name: string
+  product_type: string
+  product_name: string
   sku: string
-  transaction_type: 'in' | 'out' | 'reserved' | 'released'
   quantity: number
-  unit_price: number | null
-  reference_type: 'shop_order_item' | 'quote' | 'manual'
-  reference_id: string
+  movement_type: string
+  source_type: string
+  source_id: string | null
+  source_reference: string
   created_at: string
-  comment: string | null
-  order_number?: string | null // Order number for Bevételezés
+  note: string
 }
 
 interface MaterialsEditClientProps {
@@ -161,8 +149,15 @@ interface MaterialsEditClientProps {
   initialPriceHistory: PriceHistory[]
   initialPartners: Partner[]
   initialUnits: Unit[]
-  initialInventorySummary: InventorySummary | null
-  initialInventoryTransactions: InventoryTransaction[]
+  initialStockMovements?: StockMovementRow[]
+  stockMovementsTotalCount?: number
+  stockMovementsTotalPages?: number
+  stockMovementsCurrentPage?: number
+  currentStock?: {
+    quantity_on_hand: number
+    stock_value: number
+    last_movement_at: string | null
+  } | null
 }
 
 export default function MaterialsEditClient({ 
@@ -173,8 +168,11 @@ export default function MaterialsEditClient({
   initialPriceHistory,
   initialPartners,
   initialUnits,
-  initialInventorySummary,
-  initialInventoryTransactions
+  initialStockMovements = [],
+  stockMovementsTotalCount = 0,
+  stockMovementsTotalPages = 0,
+  stockMovementsCurrentPage = 1,
+  currentStock = null
 }: MaterialsEditClientProps) {
   const router = useRouter()
   
@@ -197,8 +195,10 @@ export default function MaterialsEditClient({
   const [currencies] = useState<Currency[]>(initialCurrencies)
   const [vatRates] = useState<VAT[]>(initialVatRates)
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>(initialPriceHistory)
-  const [inventorySummary, setInventorySummary] = useState<InventorySummary | null>(initialInventorySummary)
-  const [inventoryTransactions, setInventoryTransactions] = useState<InventoryTransaction[]>(initialInventoryTransactions)
+  const [stockMovements, setStockMovements] = useState<StockMovementRow[]>(initialStockMovements)
+  const [stockMovementsPage, setStockMovementsPage] = useState(stockMovementsCurrentPage)
+  const [stockMovementsTotal, setStockMovementsTotal] = useState(stockMovementsTotalCount)
+  const [stockMovementsPages, setStockMovementsPages] = useState(stockMovementsTotalPages)
   const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
   
   // Ensure client-side only rendering for media library button
@@ -379,6 +379,61 @@ export default function MaterialsEditClient({
   // Handle tab change
   const handleTabChange = (event: SyntheticEvent, newValue: string) => {
     setActiveTab(newValue)
+  }
+
+  // Sync stock movements when initialStockMovements changes
+  useEffect(() => {
+    setStockMovements(initialStockMovements)
+    setStockMovementsPage(stockMovementsCurrentPage)
+    setStockMovementsTotal(stockMovementsTotalCount)
+    setStockMovementsPages(stockMovementsTotalPages)
+  }, [initialStockMovements, stockMovementsCurrentPage, stockMovementsTotalCount, stockMovementsTotalPages])
+
+  // Handle stock movements page change
+  const handleStockMovementsPageChange = async (event: React.ChangeEvent<unknown>, value: number) => {
+    setStockMovementsPage(value)
+    try {
+      const response = await fetch(`/api/materials/${initialMaterial.id}/stock-movements?page=${value}&limit=50`)
+      if (response.ok) {
+        const data = await response.json()
+        setStockMovements(data.stockMovements || [])
+        setStockMovementsTotal(data.totalCount || 0)
+        setStockMovementsPages(data.totalPages || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching stock movements:', error)
+    }
+  }
+
+  // Get source link for stock movement
+  const getSourceLink = (row: StockMovementRow) => {
+    if (row.source_type === 'pos_sale' && row.source_id) {
+      return `/pos-orders/${row.source_id}`
+    } else if (row.source_type === 'purchase_receipt' && row.source_id) {
+      return `/shipments/${row.source_id}`
+    }
+    return null
+  }
+
+  // Get source type label
+  const getSourceTypeLabel = (sourceType: string) => {
+    const labels: Record<string, string> = {
+      'pos_sale': 'POS eladás',
+      'purchase_receipt': 'Beszerzési bevételezés',
+      'quote': 'Árajánlat',
+      'adjustment': 'Készletigazítás'
+    }
+    return labels[sourceType] || sourceType
+  }
+
+  // Format currency
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('hu-HU', {
+      style: 'currency',
+      currency: 'HUF',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount)
   }
 
   // Refresh inventory data
@@ -1037,63 +1092,38 @@ export default function MaterialsEditClient({
             {/* Inventory Summary Card */}
             <Grid item xs={12}>
               <Card>
-                <CardHeader 
-                  title="Készlet összesítő"
-                  action={
-                    <IconButton onClick={handleRefreshInventory} size="small">
-                      <RefreshIcon />
-                    </IconButton>
-                  }
-                />
+                <CardHeader title="Készlet összesítő" />
                 <CardContent>
-                  {inventorySummary ? (
+                  {currentStock ? (
                     <Grid container spacing={3}>
                       <Grid item xs={12} sm={6} md={3}>
                         <Box>
                           <Typography variant="caption" color="text.secondary">Készleten</Typography>
                           <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-                            {inventorySummary.quantity_on_hand} db
+                            {currentStock.quantity_on_hand} db
                           </Typography>
                         </Box>
                       </Grid>
                       <Grid item xs={12} sm={6} md={3}>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">Foglalva</Typography>
-                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'warning.main' }}>
-                            {inventorySummary.quantity_reserved} db
-                          </Typography>
-                        </Box>
-                      </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">Elérhető</Typography>
-                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: inventorySummary.quantity_available < 5 ? 'error.main' : 'success.main' }}>
-                            {inventorySummary.quantity_available} db
-                          </Typography>
-                        </Box>
-                      </Grid>
-                      <Grid item xs={12} sm={6} md={3}>
-                        <Box>
-                          <Typography variant="caption" color="text.secondary">Átlag ár / tábla (Nettó)</Typography>
-                          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                            {Math.round(inventorySummary.average_cost_per_board).toLocaleString('hu-HU')} Ft
-                          </Typography>
-                        </Box>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
                         <Box>
                           <Typography variant="caption" color="text.secondary">Készlet értéke</Typography>
                           <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-                            {Math.round(inventorySummary.total_inventory_value).toLocaleString('hu-HU')} Ft
+                            {formatCurrency(currentStock.stock_value)}
                           </Typography>
                         </Box>
                       </Grid>
-                      {inventorySummary.last_movement_at && (
-                        <Grid item xs={12} sm={6}>
+                      {currentStock.last_movement_at && (
+                        <Grid item xs={12} sm={6} md={3}>
                           <Box>
                             <Typography variant="caption" color="text.secondary">Utolsó mozgás</Typography>
                             <Typography variant="body2">
-                              {formatDateTime(inventorySummary.last_movement_at)}
+                              {new Date(currentStock.last_movement_at).toLocaleDateString('hu-HU', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
                             </Typography>
                           </Box>
                         </Grid>
@@ -1108,84 +1138,116 @@ export default function MaterialsEditClient({
               </Card>
             </Grid>
 
-            {/* Inventory Transactions History */}
+            {/* Stock Movements Table */}
             <Grid item xs={12}>
               <Card>
                 <CardHeader title="Készlet mozgások" />
                 <CardContent>
-                  {inventoryTransactions.length > 0 ? (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell><strong>Dátum</strong></TableCell>
-                            <TableCell><strong>Típus</strong></TableCell>
-                            <TableCell align="right"><strong>Mennyiség</strong></TableCell>
-                            <TableCell align="right"><strong>Egységár</strong></TableCell>
-                            <TableCell align="right"><strong>Összesen</strong></TableCell>
-                            <TableCell><strong>Hivatkozás</strong></TableCell>
-                            <TableCell><strong>Megjegyzés</strong></TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {inventoryTransactions.map((transaction) => (
-                            <TableRow key={transaction.id}>
-                              <TableCell>
-                                <Typography variant="body2">
-                                  {formatDateTime(transaction.created_at)}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={getTransactionTypeLabel(transaction.transaction_type)}
-                                  size="small"
-                                  color={getTransactionTypeColor(transaction.transaction_type) as any}
-                                />
-                              </TableCell>
-                              <TableCell align="right">
-                                <Typography 
-                                  variant="body2" 
-                                  sx={{ 
-                                    fontWeight: 'bold',
-                                    color: transaction.quantity > 0 ? 'success.main' : 'error.main'
-                                  }}
-                                >
-                                  {transaction.quantity > 0 ? '+' : ''}{transaction.quantity} db
-                                </Typography>
-                              </TableCell>
-                              <TableCell align="right">
-                                {transaction.unit_price ? 
-                                  `${transaction.unit_price.toLocaleString('hu-HU')} Ft` : 
-                                  '-'
-                                }
-                              </TableCell>
-                              <TableCell align="right">
-                                {transaction.unit_price ? 
-                                  <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
-                                    {(Math.abs(transaction.quantity) * transaction.unit_price).toLocaleString('hu-HU')} Ft
-                                  </Typography> : 
-                                  '-'
-                                }
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="caption" color="text.secondary">
-                                  {transaction.reference_type === 'shop_order_item' ? 'Beszerzés' : 
-                                   transaction.reference_type === 'quote' ? 'Árajánlat' : 
-                                   'Manuális'}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="caption">
-                                  {transaction.order_number && transaction.reference_type === 'shop_order_item' 
-                                    ? `${transaction.comment || 'Bevételezés'} - ${transaction.order_number}` 
-                                    : transaction.comment || '-'}
-                                </Typography>
-                              </TableCell>
+                  {stockMovements.length > 0 ? (
+                    <>
+                      <TableContainer component={Paper}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Mozgás szám</TableCell>
+                              <TableCell>Dátum</TableCell>
+                              <TableCell>Raktár</TableCell>
+                              <TableCell>Termék típus</TableCell>
+                              <TableCell>Termék név</TableCell>
+                              <TableCell>SKU</TableCell>
+                              <TableCell align="right">Mennyiség</TableCell>
+                              <TableCell>Mozgás típus</TableCell>
+                              <TableCell>Forrás típus</TableCell>
+                              <TableCell>Forrás</TableCell>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
+                          </TableHead>
+                          <TableBody>
+                            {stockMovements.map((row) => {
+                              const sourceLink = getSourceLink(row)
+                              const quantityColor = row.quantity > 0 ? 'success.main' : row.quantity < 0 ? 'error.main' : 'text.primary'
+                              const quantitySign = row.quantity > 0 ? '+' : ''
+                              
+                              return (
+                                <TableRow
+                                  key={row.id}
+                                  hover
+                                  sx={{ cursor: sourceLink ? 'pointer' : 'default' }}
+                                  onClick={() => sourceLink && router.push(sourceLink)}
+                                >
+                                  <TableCell><strong>{row.stock_movement_number}</strong></TableCell>
+                                  <TableCell>{row.created_at ? new Date(row.created_at).toLocaleDateString('hu-HU', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : ''}</TableCell>
+                                  <TableCell>{row.warehouse_name}</TableCell>
+                                  <TableCell>
+                                    <Chip 
+                                      label={row.product_type === 'accessory' ? 'Kellék' : row.product_type === 'material' ? 'Táblás anyag' : 'Szálas anyag'} 
+                                      size="small"
+                                      color="info"
+                                      variant="outlined"
+                                    />
+                                  </TableCell>
+                                  <TableCell>{row.product_name || '-'}</TableCell>
+                                  <TableCell>{row.sku || '-'}</TableCell>
+                                  <TableCell align="right">
+                                    <Typography sx={{ color: quantityColor, fontWeight: 500 }}>
+                                      {quantitySign}{new Intl.NumberFormat('hu-HU', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      }).format(row.quantity)}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip 
+                                      label={row.movement_type === 'in' ? 'Bejövő' : row.movement_type === 'out' ? 'Kimenő' : 'Igazítás'} 
+                                      size="small"
+                                      color={
+                                        row.movement_type === 'in' ? 'success' :
+                                        row.movement_type === 'out' ? 'error' :
+                                        'warning'
+                                      }
+                                    />
+                                  </TableCell>
+                                  <TableCell>{getSourceTypeLabel(row.source_type)}</TableCell>
+                                  <TableCell>
+                                    {sourceLink ? (
+                                      <Link
+                                        component={NextLink}
+                                        href={sourceLink}
+                                        onClick={(e) => e.stopPropagation()}
+                                        underline="hover"
+                                      >
+                                        {row.source_reference}
+                                      </Link>
+                                    ) : (
+                                      row.source_reference
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+
+                      {/* Pagination */}
+                      {stockMovementsPages > 1 && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                          <Pagination
+                            count={stockMovementsPages}
+                            page={stockMovementsPage}
+                            onChange={handleStockMovementsPageChange}
+                            color="primary"
+                            showFirstButton
+                            showLastButton
+                          />
+                        </Box>
+                      )}
+                    </>
                   ) : (
                     <Typography variant="body2" color="text.secondary">
                       Még nincs készlet mozgás ennél az anyagnál.

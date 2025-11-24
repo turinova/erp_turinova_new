@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getLinearMaterialById, getAllBrandsForLinearMaterials, getAllVatRatesForLinearMaterials, getAllCurrenciesForLinearMaterials, getAllPartners, getAllUnits } from '@/lib/supabase-server'
+import { getLinearMaterialById, getAllBrandsForLinearMaterials, getAllVatRatesForLinearMaterials, getAllCurrenciesForLinearMaterials, getAllPartners, getAllUnits, getStockMovementsByLinearMaterial, getLinearMaterialCurrentStock } from '@/lib/supabase-server'
 import { supabaseServer } from '@/lib/supabase-server'
 import LinearMaterialEditClient from './LinearMaterialEditClient'
 
@@ -22,12 +22,14 @@ export default async function LinearMaterialEditPage({ params }: { params: Promi
     notFound()
   }
 
-  const [brands, vatRates, currencies, partners, units] = await Promise.all([
+  const [brands, vatRates, currencies, partners, units, stockMovementsData, currentStock] = await Promise.all([
     getAllBrandsForLinearMaterials(),
     getAllVatRatesForLinearMaterials(),
     getAllCurrenciesForLinearMaterials(),
     getAllPartners(),
-    getAllUnits()
+    getAllUnits(),
+    getStockMovementsByLinearMaterial(id, 1, 50), // Fetch first page with 50 items
+    getLinearMaterialCurrentStock(id)
   ])
 
   // Fetch price history (last 10)
@@ -95,6 +97,11 @@ export default async function LinearMaterialEditPage({ params }: { params: Promi
       partners={partners}
       units={units}
       priceHistory={enrichedHistory}
+      initialStockMovements={stockMovementsData.stockMovements}
+      stockMovementsTotalCount={stockMovementsData.totalCount}
+      stockMovementsTotalPages={stockMovementsData.totalPages}
+      stockMovementsCurrentPage={stockMovementsData.currentPage}
+      currentStock={currentStock}
     />
   )
 }

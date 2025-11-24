@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getAccessoryById, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners } from '@/lib/supabase-server'
+import { getAccessoryById, getAllVatRates, getAllCurrencies, getAllUnits, getAllPartners, getStockMovementsByAccessory, getAccessoryCurrentStock } from '@/lib/supabase-server'
 import AccessoryFormClient from '../AccessoryFormClient'
 
 interface AccessoryFormData {
@@ -51,12 +51,14 @@ export default async function EditAccessoryPage({ params }: { params: Promise<{ 
   const startTime = performance.now()
 
   // Fetch all required data on the server
-  const [accessory, vatRates, currencies, units, partners] = await Promise.all([
+  const [accessory, vatRates, currencies, units, partners, stockMovementsData, currentStock] = await Promise.all([
     getAccessoryById(id),
     getAllVatRates(),
     getAllCurrencies(),
     getAllUnits(),
-    getAllPartners()
+    getAllPartners(),
+    getStockMovementsByAccessory(id, 1, 50), // Fetch first page with 50 items
+    getAccessoryCurrentStock(id)
   ])
 
   const totalTime = performance.now()
@@ -100,6 +102,11 @@ export default async function EditAccessoryPage({ params }: { params: Promise<{ 
         currencies={currencies}
         units={units}
         partners={partners}
+        initialStockMovements={stockMovementsData.stockMovements}
+        stockMovementsTotalCount={stockMovementsData.totalCount}
+        stockMovementsTotalPages={stockMovementsData.totalPages}
+        stockMovementsCurrentPage={stockMovementsData.currentPage}
+        currentStock={currentStock}
       />
     </Suspense>
   )

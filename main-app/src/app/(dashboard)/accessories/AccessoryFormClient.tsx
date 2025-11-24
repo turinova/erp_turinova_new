@@ -20,8 +20,20 @@ import {
   CardContent,
   Stack,
   Breadcrumbs,
-  Link
+  Link,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  Pagination
 } from '@mui/material'
+import TabPanel from '@mui/lab/TabPanel'
+import TabContext from '@mui/lab/TabContext'
+import CustomTabList from '@core/components/mui/TabList'
+import Tab from '@mui/material/Tab'
 import { Home as HomeIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
@@ -65,12 +77,37 @@ interface Partner {
   name: string
 }
 
+interface StockMovementRow {
+  id: string
+  stock_movement_number: string
+  warehouse_name: string
+  product_type: string
+  product_name: string
+  sku: string
+  quantity: number
+  movement_type: string
+  source_type: string
+  source_id: string | null
+  source_reference: string
+  created_at: string
+  note: string
+}
+
 interface AccessoryFormClientProps {
   initialData?: AccessoryFormData
   vatRates: VatRate[]
   currencies: Currency[]
   units: Unit[]
   partners: Partner[]
+  initialStockMovements?: StockMovementRow[]
+  stockMovementsTotalCount?: number
+  stockMovementsTotalPages?: number
+  stockMovementsCurrentPage?: number
+  currentStock?: {
+    quantity_on_hand: number
+    stock_value: number
+    last_movement_at: string | null
+  } | null
 }
 
 export default function AccessoryFormClient({ 
@@ -78,12 +115,22 @@ export default function AccessoryFormClient({
   vatRates, 
   currencies, 
   units, 
-  partners 
+  partners,
+  initialStockMovements = [],
+  stockMovementsTotalCount = 0,
+  stockMovementsTotalPages = 0,
+  stockMovementsCurrentPage = 1,
+  currentStock = null
 }: AccessoryFormClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [activeTab, setActiveTab] = useState('1')
+  const [stockMovements, setStockMovements] = useState<StockMovementRow[]>(initialStockMovements)
+  const [stockMovementsPage, setStockMovementsPage] = useState(stockMovementsCurrentPage)
+  const [stockMovementsTotal, setStockMovementsTotal] = useState(stockMovementsTotalCount)
+  const [stockMovementsPages, setStockMovementsPages] = useState(stockMovementsTotalPages)
   const [formData, setFormData] = useState<AccessoryFormData>({
     name: '',
     sku: '',
@@ -102,6 +149,58 @@ export default function AccessoryFormClient({
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Sync stock movements when initialStockMovements changes
+  useEffect(() => {
+    setStockMovements(initialStockMovements)
+    setStockMovementsPage(stockMovementsCurrentPage)
+    setStockMovementsTotal(stockMovementsTotalCount)
+    setStockMovementsPages(stockMovementsTotalPages)
+  }, [initialStockMovements, stockMovementsCurrentPage, stockMovementsTotalCount, stockMovementsTotalPages])
+
+  // Handle tab change
+  const handleTabChange = (event: React.SyntheticEvent, newValue: string) => {
+    setActiveTab(newValue)
+  }
+
+  // Handle stock movements page change
+  const handleStockMovementsPageChange = async (event: React.ChangeEvent<unknown>, value: number) => {
+    if (!initialData?.id) return
+    
+    setStockMovementsPage(value)
+    try {
+      const response = await fetch(`/api/accessories/${initialData.id}/stock-movements?page=${value}&limit=50`)
+      if (response.ok) {
+        const data = await response.json()
+        setStockMovements(data.stockMovements || [])
+        setStockMovementsTotal(data.totalCount || 0)
+        setStockMovementsPages(data.totalPages || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching stock movements:', error)
+    }
+  }
+
+  // Get source link for stock movement
+  const getSourceLink = (row: StockMovementRow) => {
+    if (row.source_type === 'pos_sale' && row.source_id) {
+      return `/pos-orders/${row.source_id}`
+    } else if (row.source_type === 'purchase_receipt' && row.source_id) {
+      return `/shipments/${row.source_id}`
+    }
+    return null
+  }
+
+  // Get source type label
+  const getSourceTypeLabel = (sourceType: string) => {
+    const labels: Record<string, string> = {
+      'pos_sale': 'POS eladás',
+      'purchase_receipt': 'Beszerzési bevételezés',
+      'quote': 'Árajánlat',
+      'adjustment': 'Készletigazítás'
+    }
+    return labels[sourceType] || sourceType
+  }
 
   // Set default values when component mounts
   useEffect(() => {
@@ -275,7 +374,16 @@ export default function AccessoryFormClient({
         {initialData?.id ? 'Termék szerkesztése' : 'Új termék'}
       </Typography>
 
-      <form onSubmit={handleSubmit}>
+      {/* Tabs */}
+      <TabContext value={activeTab}>
+        <CustomTabList pill='true' onChange={handleTabChange} aria-label='accessory tabs'>
+          <Tab value='1' label='Alap adatok' />
+          <Tab value='2' label='Készlet' />
+        </CustomTabList>
+
+        {/* Tab 1: Alap adatok */}
+        <TabPanel value='1' sx={{ p: 0, pt: 3 }}>
+          <form onSubmit={handleSubmit}>
         <Stack spacing={3}>
           {/* Row 1: Alap információk and Képfeltöltés */}
           <Grid container spacing={3}>
@@ -421,10 +529,7 @@ export default function AccessoryFormClient({
                     sx={{
                       '& .MuiInputBase-input[readonly]': {
                         cursor: 'default',
-                        backgroundColor: 'action.disabledBackground',
-                        '&:hover': {
-                          backgroundColor: 'action.disabledBackground'
-                        }
+                        WebkitTextFillColor: 'inherit'
                       }
                     }}
                   />
@@ -553,6 +658,181 @@ export default function AccessoryFormClient({
           </Box>
         </Stack>
       </form>
+        </TabPanel>
+
+        {/* Tab 2: Készlet */}
+        <TabPanel value='2' sx={{ p: 0, pt: 3 }}>
+          <Grid container spacing={3}>
+            {/* Inventory Summary Card */}
+            <Grid item xs={12}>
+              <Card>
+                <CardHeader title="Készlet összesítő" />
+                <CardContent>
+                  {currentStock ? (
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Készleten</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                            {currentStock.quantity_on_hand} db
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Box>
+                          <Typography variant="caption" color="text.secondary">Készlet értéke</Typography>
+                          <Typography variant="h5" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                            {formatCurrency(currentStock.stock_value)}
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      {currentStock.last_movement_at && (
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">Utolsó mozgás</Typography>
+                            <Typography variant="body2">
+                              {new Date(currentStock.last_movement_at).toLocaleDateString('hu-HU', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Nincs készlet adat. A termék még nem érkezett be a raktárba.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Stock Movements Table */}
+            <Grid item xs={12}>
+              <Card>
+                <CardHeader title="Készlet mozgások" />
+                <CardContent>
+                  {stockMovements.length > 0 ? (
+                    <>
+                      <TableContainer component={Paper}>
+                        <Table size="small" stickyHeader>
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Mozgás szám</TableCell>
+                              <TableCell>Dátum</TableCell>
+                              <TableCell>Raktár</TableCell>
+                              <TableCell>Termék típus</TableCell>
+                              <TableCell>Termék név</TableCell>
+                              <TableCell>SKU</TableCell>
+                              <TableCell align="right">Mennyiség</TableCell>
+                              <TableCell>Mozgás típus</TableCell>
+                              <TableCell>Forrás típus</TableCell>
+                              <TableCell>Forrás</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {stockMovements.map((row) => {
+                              const sourceLink = getSourceLink(row)
+                              const quantityColor = row.quantity > 0 ? 'success.main' : row.quantity < 0 ? 'error.main' : 'text.primary'
+                              const quantitySign = row.quantity > 0 ? '+' : ''
+                              
+                              return (
+                                <TableRow
+                                  key={row.id}
+                                  hover
+                                  sx={{ cursor: sourceLink ? 'pointer' : 'default' }}
+                                  onClick={() => sourceLink && router.push(sourceLink)}
+                                >
+                                  <TableCell><strong>{row.stock_movement_number}</strong></TableCell>
+                                  <TableCell>{row.created_at ? new Date(row.created_at).toLocaleDateString('hu-HU', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : ''}</TableCell>
+                                  <TableCell>{row.warehouse_name}</TableCell>
+                                  <TableCell>
+                                    <Chip 
+                                      label={row.product_type === 'accessory' ? 'Kellék' : row.product_type === 'material' ? 'Táblás anyag' : 'Szálas anyag'} 
+                                      size="small"
+                                      color="info"
+                                      variant="outlined"
+                                    />
+                                  </TableCell>
+                                  <TableCell>{row.product_name || '-'}</TableCell>
+                                  <TableCell>{row.sku || '-'}</TableCell>
+                                  <TableCell align="right">
+                                    <Typography sx={{ color: quantityColor, fontWeight: 500 }}>
+                                      {quantitySign}{new Intl.NumberFormat('hu-HU', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                      }).format(row.quantity)}
+                                    </Typography>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip 
+                                      label={row.movement_type === 'in' ? 'Bejövő' : row.movement_type === 'out' ? 'Kimenő' : 'Igazítás'} 
+                                      size="small"
+                                      color={
+                                        row.movement_type === 'in' ? 'success' :
+                                        row.movement_type === 'out' ? 'error' :
+                                        'warning'
+                                      }
+                                    />
+                                  </TableCell>
+                                  <TableCell>{getSourceTypeLabel(row.source_type)}</TableCell>
+                                  <TableCell>
+                                    {sourceLink ? (
+                                      <Link
+                                        component={NextLink}
+                                        href={sourceLink}
+                                        onClick={(e) => e.stopPropagation()}
+                                        underline="hover"
+                                      >
+                                        {row.source_reference}
+                                      </Link>
+                                    ) : (
+                                      row.source_reference
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+
+                      {/* Pagination */}
+                      {stockMovementsPages > 1 && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                          <Pagination
+                            count={stockMovementsPages}
+                            page={stockMovementsPage}
+                            onChange={handleStockMovementsPageChange}
+                            color="primary"
+                            showFirstButton
+                            showLastButton
+                          />
+                        </Box>
+                      )}
+                    </>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      Még nincs készlet mozgás ennél a terméknél.
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
+      </TabContext>
 
       {/* Media Library Modal */}
       {mounted && (
