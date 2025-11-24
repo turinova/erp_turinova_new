@@ -35,6 +35,8 @@ import {
   Image as ImageIcon,
   AddCircle as AddCircleIcon,
   RemoveCircle as RemoveCircleIcon,
+  Add as AddIcon,
+  Remove as RemoveIcon,
   Close as CloseIcon,
   AttachMoney as CashIcon,
   CreditCard as CardIcon
@@ -1661,36 +1663,66 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
                           {/* Column 2: Mennyiség */}
                           <TableCell align="center">
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                handleQuantityChange(item.id, parseInt(e.target.value) || 0)
-                              }
-                              inputProps={{
-                                min: 1,
-                                style: { textAlign: 'center', width: '60px' }
-                              }}
-                              sx={{
-                                width: '80px',
-                                ...(highlightedCartItemId === item.id && {
-                                  '& .MuiOutlinedInput-root': {
-                                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
-                                    borderColor: (theme) => theme.palette.success.main,
-                                    borderWidth: '1px',
-                                    borderStyle: 'solid',
-                                    transition: 'background-color 0.2s ease',
-                                    '&:hover': {
-                                      backgroundColor: 'rgba(76, 175, 80, 0.15)',
-                                    },
-                                    '&.Mui-focused': {
-                                      backgroundColor: 'rgba(76, 175, 80, 0.15)',
-                                    }
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
+                                disabled={item.quantity <= 1}
+                                sx={{ 
+                                  width: 32, 
+                                  height: 32,
+                                  '&:disabled': {
+                                    opacity: 0.3
                                   }
-                                })
-                              }}
-                            />
+                                }}
+                              >
+                                <RemoveIcon fontSize="small" />
+                              </IconButton>
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  handleQuantityChange(item.id, parseInt(e.target.value) || 0)
+                                }
+                                inputProps={{
+                                  min: 1,
+                                  style: { textAlign: 'center', width: '50px', padding: '4px' }
+                                }}
+                                sx={{
+                                  width: '70px',
+                                  '& .MuiOutlinedInput-root': {
+                                    '& input': {
+                                      padding: '6px 8px'
+                                    }
+                                  },
+                                  ...(highlightedCartItemId === item.id && {
+                                    '& .MuiOutlinedInput-root': {
+                                      backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                      borderColor: (theme) => theme.palette.success.main,
+                                      borderWidth: '1px',
+                                      borderStyle: 'solid',
+                                      transition: 'background-color 0.2s ease',
+                                      '&:hover': {
+                                        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+                                      },
+                                      '&.Mui-focused': {
+                                        backgroundColor: 'rgba(76, 175, 80, 0.15)',
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
+                                sx={{ width: 32, height: 32 }}
+                              >
+                                <AddIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
                           </TableCell>
 
                           {/* Column 3: Bruttó Részösszeg */}
