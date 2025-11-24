@@ -17,8 +17,13 @@ import {
   Grid,
   Card,
   CardHeader,
-  CardContent
+  CardContent,
+  Stack,
+  Breadcrumbs,
+  Link
 } from '@mui/material'
+import { Home as HomeIcon } from '@mui/icons-material'
+import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import ImageUpload from '@/components/ImageUpload'
 import MediaLibraryModal from '@/components/MediaLibraryModal'
@@ -242,147 +247,98 @@ export default function AccessoryFormClient({
 
   return (
     <Box sx={{ p: 3 }}>
+      <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
+        <Link
+          component={NextLink}
+          underline="hover"
+          color="inherit"
+          href="/home"
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
+        >
+          <HomeIcon fontSize="small" />
+          Főoldal
+        </Link>
+        <Link
+          component={NextLink}
+          underline="hover"
+          color="inherit"
+          href="/accessories"
+        >
+          Termékek
+        </Link>
+        <Typography color="text.primary">
+          {initialData?.id ? 'Szerkesztés' : 'Új termék'}
+        </Typography>
+      </Breadcrumbs>
+
       <Typography variant="h4" component="h1" gutterBottom>
         {initialData?.id ? 'Termék szerkesztése' : 'Új termék'}
       </Typography>
 
-      <Paper sx={{ p: 3 }}>
-        <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit}>
+        <Stack spacing={3}>
+          {/* Row 1: Alap információk and Képfeltöltés */}
           <Grid container spacing={3}>
-            {/* Row 1: Partner, Termék neve, SKU */}
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth required disabled={loading}>
-                <InputLabel>Partner</InputLabel>
-                <Select
-                  value={formData.partners_id}
-                  onChange={(e) => handleInputChange('partners_id', e.target.value)}
-                  label="Partner"
-                >
-                  {partners.map((partner) => (
-                    <MenuItem key={partner.id} value={partner.id}>
-                      {partner.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ height: '100%' }}>
+                <CardHeader title="Alap információk" />
+                <CardContent>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth required disabled={loading}>
+                        <InputLabel>Partner</InputLabel>
+                        <Select
+                          value={formData.partners_id}
+                          onChange={(e) => handleInputChange('partners_id', e.target.value)}
+                          label="Partner"
+                        >
+                          {partners.map((partner) => (
+                            <MenuItem key={partner.id} value={partner.id}>
+                              {partner.name}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Termék neve"
+                        value={formData.name}
+                        onChange={(e) => handleInputChange('name', e.target.value)}
+                        required
+                        disabled={loading}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="SKU"
+                        value={formData.sku}
+                        onChange={(e) => handleInputChange('sku', e.target.value)}
+                        required
+                        disabled={loading}
+                        helperText="Egyedi termékszám"
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Vonalkód"
+                        value={formData.barcode || ''}
+                        onChange={(e) => handleInputChange('barcode', e.target.value)}
+                        disabled={loading}
+                        helperText="Opcionális"
+                      />
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
             </Grid>
 
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Termék neve"
-                value={formData.name}
-                onChange={(e) => handleInputChange('name', e.target.value)}
-                required
-                disabled={loading}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="SKU"
-                value={formData.sku}
-                onChange={(e) => handleInputChange('sku', e.target.value)}
-                required
-                disabled={loading}
-                helperText="Egyedi termékszám"
-              />
-            </Grid>
-
-            {/* Row 1.5: Barcode */}
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Vonalkód"
-                value={formData.barcode || ''}
-                onChange={(e) => handleInputChange('barcode', e.target.value)}
-                disabled={loading}
-                helperText="Opcionális vonalkód"
-              />
-            </Grid>
-
-            {/* Row 2: Beszerzési ár, Árrés szorzó, ÁFA, Pénznem, Mértékegység */}
-            <Grid item xs={12} md={2.4}>
-              <TextField
-                fullWidth
-                label="Beszerzési ár (Ft)"
-                type="number"
-                value={formData.base_price}
-                onChange={(e) => handleInputChange('base_price', parseFloat(e.target.value) || 0)}
-                required
-                disabled={loading}
-                inputProps={{ min: 0, step: 1 }}
-                helperText="Szorzó előtti beszerzési ár"
-              />
-            </Grid>
-
-            <Grid item xs={12} md={2.4}>
-              <TextField
-                fullWidth
-                label="Árrés szorzó"
-                type="number"
-                value={formData.multiplier}
-                onChange={(e) => handleInputChange('multiplier', parseFloat(e.target.value) || 1.38)}
-                required
-                disabled={loading}
-                inputProps={{ min: 1.0, max: 5.0, step: 0.01 }}
-                helperText="1.00 - 5.00 közötti érték"
-              />
-            </Grid>
-
-            <Grid item xs={12} md={2.4}>
-              <FormControl fullWidth required disabled={loading}>
-                <InputLabel>ÁFA *</InputLabel>
-                <Select
-                  value={formData.vat_id}
-                  onChange={(e) => handleInputChange('vat_id', e.target.value)}
-                  label="ÁFA *"
-                >
-                  {vatRates.map((vat) => (
-                    <MenuItem key={vat.id} value={vat.id}>
-                      {vat.name} ({vat.kulcs}%)
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={2.4}>
-              <FormControl fullWidth required disabled={loading}>
-                <InputLabel>Pénznem *</InputLabel>
-                <Select
-                  value={formData.currency_id}
-                  onChange={(e) => handleInputChange('currency_id', e.target.value)}
-                  label="Pénznem *"
-                >
-                  {currencies.map((currency) => (
-                    <MenuItem key={currency.id} value={currency.id}>
-                      {currency.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={2.4}>
-              <FormControl fullWidth required disabled={loading}>
-                <InputLabel>Mértékegység *</InputLabel>
-                <Select
-                  value={formData.units_id}
-                  onChange={(e) => handleInputChange('units_id', e.target.value)}
-                  label="Mértékegység *"
-                >
-                  {units.map((unit) => (
-                    <MenuItem key={unit.id} value={unit.id}>
-                      {unit.name} ({unit.shortform})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            {/* Image Upload */}
             <Grid item xs={12} md={6}>
               <Card sx={{ height: '100%' }}>
                 <CardHeader title="Képfeltöltés" />
@@ -415,73 +371,188 @@ export default function AccessoryFormClient({
                 </CardContent>
               </Card>
             </Grid>
+          </Grid>
 
-            {/* Price Calculation Display */}
-            <Grid item xs={12} md={6}>
-              <Paper sx={{ p: 2, bgcolor: 'grey.50', height: '100%' }}>
-                <Typography variant="h6" gutterBottom>
-                  Ár számítás
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Beszerzési ár:
+          {/* Card 2: Árazás */}
+          <Card>
+            <CardHeader title="Árazás" />
+            <CardContent>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Beszerzési ár (Ft)"
+                    type="number"
+                    value={formData.base_price}
+                    onChange={(e) => handleInputChange('base_price', parseFloat(e.target.value) || 0)}
+                    required
+                    disabled={loading}
+                    inputProps={{ min: 0, step: 1 }}
+                    helperText="Szorzó előtti beszerzési ár"
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Árrés szorzó"
+                    type="number"
+                    value={formData.multiplier}
+                    onChange={(e) => handleInputChange('multiplier', parseFloat(e.target.value) || 1.38)}
+                    required
+                    disabled={loading}
+                    inputProps={{ min: 1.0, max: 5.0, step: 0.01 }}
+                    helperText="1.00 - 5.00 közötti érték"
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Nettó ár (Ft)"
+                    type="number"
+                    value={formData.net_price}
+                    helperText="Automatikusan számított"
+                    inputProps={{ 
+                      min: 0, 
+                      step: 1,
+                      readOnly: true
+                    }}
+                    sx={{
+                      '& .MuiInputBase-input[readonly]': {
+                        cursor: 'default',
+                        backgroundColor: 'action.disabledBackground',
+                        '&:hover': {
+                          backgroundColor: 'action.disabledBackground'
+                        }
+                      }
+                    }}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth required disabled={loading}>
+                    <InputLabel>ÁFA</InputLabel>
+                    <Select
+                      value={formData.vat_id}
+                      onChange={(e) => handleInputChange('vat_id', e.target.value)}
+                      label="ÁFA"
+                    >
+                      {vatRates.map((vat) => (
+                        <MenuItem key={vat.id} value={vat.id}>
+                          {vat.name} ({vat.kulcs}%)
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth required disabled={loading}>
+                    <InputLabel>Pénznem</InputLabel>
+                    <Select
+                      value={formData.currency_id}
+                      onChange={(e) => handleInputChange('currency_id', e.target.value)}
+                      label="Pénznem"
+                    >
+                      {currencies.map((currency) => (
+                        <MenuItem key={currency.id} value={currency.id}>
+                          {currency.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <FormControl fullWidth required disabled={loading}>
+                    <InputLabel>Mértékegység</InputLabel>
+                    <Select
+                      value={formData.units_id}
+                      onChange={(e) => handleInputChange('units_id', e.target.value)}
+                      label="Mértékegység"
+                    >
+                      {units.map((unit) => (
+                        <MenuItem key={unit.id} value={unit.id}>
+                          {unit.name} ({unit.shortform})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          {/* Card 3: Ár számítás */}
+          <Card>
+            <CardHeader title="Ár számítás" />
+            <CardContent>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Beszerzési ár
                     </Typography>
                     <Typography variant="h6">
                       {formatCurrency(formData.base_price)}
                     </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Árrés szorzó:
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Árrés szorzó
                     </Typography>
                     <Typography variant="h6" color="info.main">
                       {formData.multiplier}x
                     </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Nettó ár:
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Nettó ár
                     </Typography>
                     <Typography variant="h6">
                       {formatCurrency(formData.net_price)}
                     </Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Bruttó ár:
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Bruttó ár
                     </Typography>
                     <Typography variant="h6" fontWeight="bold" color="primary">
                       {formatCurrency(calculatedPrices.gross_price)}
                     </Typography>
-                  </Grid>
+                  </Box>
                 </Grid>
-              </Paper>
-            </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
 
-            {/* Actions */}
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                <Button
-                  variant="outlined"
-                  onClick={() => router.back()}
-                  disabled={loading}
-                >
-                  Vissza
-                </Button>
-                <Button
-                  type="submit"
-                  variant="contained"
-                  disabled={loading}
-                  startIcon={loading ? <CircularProgress size={20} /> : undefined}
-                >
-                  {loading ? 'Mentés...' : (initialData?.id ? 'Frissítés' : 'Mentés')}
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </form>
-      </Paper>
+          {/* Actions */}
+          <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', pt: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => router.back()}
+              disabled={loading}
+            >
+              Vissza
+            </Button>
+            <Button
+              type="submit"
+              variant="contained"
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : undefined}
+            >
+              {loading ? 'Mentés...' : (initialData?.id ? 'Frissítés' : 'Mentés')}
+            </Button>
+          </Box>
+        </Stack>
+      </form>
 
       {/* Media Library Modal */}
       {mounted && (
