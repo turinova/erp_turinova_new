@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import {
   Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton
 } from '@mui/material'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 
@@ -592,68 +592,106 @@ export default function ShipmentDetailClient({
                         <TableCell>{item.product_name}</TableCell>
                       <TableCell>{item.sku}</TableCell>
                       <TableCell align="right">
-                        <TextField
-                          type="number"
-                          size="small"
-                          value={item.quantity_received === 0 ? '' : item.quantity_received}
-                          onChange={(e) => {
-                            const val = e.target.value
-                            updateItemQuantity(idx, val === '' ? '' : Number(val) || 0)
-                          }}
-                          onBlur={(e) => {
-                            if (e.target.value === '') {
-                              updateItemQuantity(idx, 0)
-                            }
-                            // Refocus barcode input after editing
-                            if (header?.status === 'draft') {
-                              refocusBarcodeInput()
-                            }
-                          }}
-                          onFocus={() => {
-                            // Clear highlight when user manually edits
-                            if (highlightedItemId === item.id) {
-                              setHighlightedItemId(null)
-                            }
-                          }}
-                          inputProps={{ min: 0, step: 0.01 }}
-                          sx={{ 
-                            width: 100,
-                            ...(item.quantity_received > item.target_quantity && {
-                              '& .MuiOutlinedInput-root': {
-                                borderColor: 'error.main',
-                                '&:hover': {
-                                  borderColor: 'error.main',
-                                },
-                                '&.Mui-focused': {
-                                  borderColor: 'error.main',
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                          {header.status === 'draft' && (
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => {
+                                const newQuantity = Math.max(0, item.quantity_received - 1)
+                                updateItemQuantity(idx, newQuantity)
+                              }}
+                              disabled={item.quantity_received <= 0}
+                              sx={{ 
+                                width: 32, 
+                                height: 32,
+                                '&:disabled': {
+                                  opacity: 0.3
                                 }
+                              }}
+                            >
+                              <RemoveCircleIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={item.quantity_received === 0 ? '' : item.quantity_received}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              updateItemQuantity(idx, val === '' ? '' : Number(val) || 0)
+                            }}
+                            onBlur={(e) => {
+                              if (e.target.value === '') {
+                                updateItemQuantity(idx, 0)
                               }
-                            }),
-                            ...(highlightedItemId === item.id && {
-                              '& .MuiOutlinedInput-root': {
-                                borderColor: 'success.main',
-                                borderWidth: 2,
-                                borderStyle: 'solid',
-                                animation: 'glow 1s ease-out',
-                                '@keyframes glow': {
-                                  '0%': {
-                                    boxShadow: '0 0 0 0 rgba(76, 175, 80, 0.7)',
+                              // Refocus barcode input after editing
+                              if (header?.status === 'draft') {
+                                refocusBarcodeInput()
+                              }
+                            }}
+                            onFocus={() => {
+                              // Clear highlight when user manually edits
+                              if (highlightedItemId === item.id) {
+                                setHighlightedItemId(null)
+                              }
+                            }}
+                            inputProps={{ min: 0, step: 0.01 }}
+                            sx={{ 
+                              width: 100,
+                              ...(item.quantity_received > item.target_quantity && {
+                                '& .MuiOutlinedInput-root': {
+                                  borderColor: 'error.main',
+                                  '&:hover': {
+                                    borderColor: 'error.main',
                                   },
-                                  '50%': {
-                                    boxShadow: '0 0 10px 5px rgba(76, 175, 80, 0.5)',
-                                  },
-                                  '100%': {
-                                    boxShadow: '0 0 0 0 rgba(76, 175, 80, 0)',
+                                  '&.Mui-focused': {
+                                    borderColor: 'error.main',
                                   }
                                 }
-                              }
-                            })
-                          }}
-                          placeholder="0"
-                          disabled={header.status === 'received' || header.status === 'cancelled'}
-                          error={item.quantity_received > item.target_quantity}
-                          helperText={item.quantity_received > item.target_quantity ? 'Több mint a cél mennyiség' : ''}
-                        />
+                              }),
+                              ...(highlightedItemId === item.id && {
+                                '& .MuiOutlinedInput-root': {
+                                  borderColor: 'success.main',
+                                  borderWidth: 2,
+                                  borderStyle: 'solid',
+                                  animation: 'glow 1s ease-out',
+                                  '@keyframes glow': {
+                                    '0%': {
+                                      boxShadow: '0 0 0 0 rgba(76, 175, 80, 0.7)',
+                                    },
+                                    '50%': {
+                                      boxShadow: '0 0 10px 5px rgba(76, 175, 80, 0.5)',
+                                    },
+                                    '100%': {
+                                      boxShadow: '0 0 0 0 rgba(76, 175, 80, 0)',
+                                    }
+                                  }
+                                }
+                              })
+                            }}
+                            placeholder="0"
+                            disabled={header.status === 'received' || header.status === 'cancelled'}
+                            error={item.quantity_received > item.target_quantity}
+                            helperText={item.quantity_received > item.target_quantity ? 'Több mint a cél mennyiség' : ''}
+                          />
+                          {header.status === 'draft' && (
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              onClick={() => {
+                                const newQuantity = item.quantity_received + 1
+                                updateItemQuantity(idx, newQuantity)
+                              }}
+                              sx={{ 
+                                width: 32, 
+                                height: 32
+                              }}
+                            >
+                              <AddCircleIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Box>
                       </TableCell>
                       <TableCell align="right">{item.target_quantity}</TableCell>
                       <TableCell align="right">
