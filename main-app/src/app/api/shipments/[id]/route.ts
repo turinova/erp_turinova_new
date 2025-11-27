@@ -99,6 +99,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const stockMovementNumbers = (stockMovements || []).map((sm: any) => sm.stock_movement_number)
 
+    // Fetch workers who received this shipment
+    const { data: receiptWorkers } = await supabaseServer
+      .from('shipment_receipt_workers')
+      .select(`
+        worker_id,
+        received_at,
+        workers:worker_id (
+          id,
+          name,
+          nickname,
+          color
+        )
+      `)
+      .eq('shipment_id', id)
+      .order('received_at', { ascending: true })
+
+    const workers = (receiptWorkers || []).map((rw: any) => ({
+      id: rw.workers?.id || rw.worker_id,
+      name: rw.workers?.name || '',
+      nickname: rw.workers?.nickname || null,
+      color: rw.workers?.color || '#1976d2',
+      received_at: rw.received_at
+    }))
+
     return NextResponse.json({
       header: {
         id: shipment.id,
@@ -113,7 +137,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         status: shipment.status,
         note: shipment.note,
         created_at: shipment.created_at,
-        stock_movement_numbers: stockMovementNumbers
+        stock_movement_numbers: stockMovementNumbers,
+        receipt_workers: workers
       },
       items,
       summary: totals

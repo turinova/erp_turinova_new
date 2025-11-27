@@ -5,10 +5,22 @@ import { supabaseServer } from '@/lib/supabase-server'
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const body = await request.json()
+    const workerIds = body?.worker_ids || []
+
+    // Validate that at least one worker is provided
+    if (!Array.isArray(workerIds) || workerIds.length === 0) {
+      return NextResponse.json(
+        { error: 'Legalább egy dolgozó kiválasztása kötelező' },
+        { status: 400 }
+      )
+    }
 
     // Call the PostgreSQL function via RPC
+    // Note: Supabase RPC uses positional arguments or named arguments matching function parameters
     const { data, error } = await supabaseServer.rpc('receive_shipment', {
-      p_shipment_id: id
+      p_shipment_id: id,
+      p_worker_ids: workerIds
     })
 
     if (error) {

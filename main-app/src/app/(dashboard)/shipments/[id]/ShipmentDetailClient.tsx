@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react'
 import {
-  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton
+  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup
 } from '@mui/material'
 import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
@@ -45,6 +45,13 @@ interface ShipmentHeader {
   note?: string
   created_at: string
   stock_movement_numbers?: string[]
+  receipt_workers?: Array<{
+    id: string
+    name: string
+    nickname: string | null
+    color: string
+    received_at: string
+  }>
 }
 
 export default function ShipmentDetailClient({ 
@@ -60,6 +67,8 @@ export default function ShipmentDetailClient({
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
+  const [workers, setWorkers] = useState<Array<{ id: string; name: string; nickname: string | null; color: string }>>([])
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<string>>(new Set())
   
   // Barcode scanning state
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -185,7 +194,7 @@ export default function ShipmentDetailClient({
     }
   }
 
-  const handleReceiveShipment = () => {
+  const handleReceiveShipment = async () => {
     if (!header) return
     
     // Validate that at least one item has quantity_received > 0
@@ -195,11 +204,32 @@ export default function ShipmentDetailClient({
       return
     }
 
+    // Fetch workers when opening the modal
+    try {
+      const response = await fetch('/api/workers')
+      if (response.ok) {
+        const workersData = await response.json()
+        setWorkers(workersData || [])
+      }
+    } catch (error) {
+      console.error('Error fetching workers:', error)
+      toast.error('Hiba a dolgozók lekérdezésekor')
+      return
+    }
+
+    setSelectedWorkerIds(new Set())
     setReceiveConfirmOpen(true)
   }
 
   const handleConfirmReceiveShipment = async () => {
     if (!header) return
+    
+    // Validate that at least one worker is selected
+    if (selectedWorkerIds.size === 0) {
+      toast.error('Legalább egy dolgozót ki kell választani')
+      return
+    }
+
     setReceiveConfirmOpen(false)
     setReceiving(true)
     try {
@@ -220,9 +250,11 @@ export default function ShipmentDetailClient({
         throw new Error(saveData?.error || 'Hiba a mentéskor')
       }
 
-      // Then, receive the shipment
+      // Then, receive the shipment with worker IDs
       const res = await fetch(`/api/shipments/${id}/receive`, {
-        method: 'POST'
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_ids: Array.from(selectedWorkerIds) })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Hiba a bevételezéskor')
@@ -530,6 +562,25 @@ export default function ShipmentDetailClient({
                 </Box>
               </Grid>
             )}
+            {header.receipt_workers && header.receipt_workers.length > 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="body2" color="text.secondary">Bevételezte:</Typography>
+                  {header.receipt_workers.map((worker) => (
+                    <Chip
+                      key={worker.id}
+                      label={worker.nickname || worker.name}
+                      size="small"
+                      sx={{
+                        backgroundColor: worker.color || '#1976d2',
+                        color: 'white',
+                        fontWeight: 500
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Grid>
+            )}
           </Grid>
         </Paper>
 
@@ -783,14 +834,108 @@ export default function ShipmentDetailClient({
         onClose={() => setReceiveConfirmOpen(false)}
         aria-labelledby="receive-dialog-title"
         aria-describedby="receive-dialog-description"
+        maxWidth="sm"
+        fullWidth
       >
         <DialogTitle id="receive-dialog-title">
           Szállítmány bevételezése
         </DialogTitle>
         <DialogContent>
-          <DialogContentText id="receive-dialog-description">
+          <DialogContentText id="receive-dialog-description" sx={{ mb: 3 }}>
             Biztosan be szeretnéd vételezni ezt a szállítmányt? Ez létrehozza a készletmozgásokat és frissíti a beszerzési rendelés státuszát.
           </DialogContentText>
+          
+          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+            Válassz dolgozó(kat) aki(k) bevételezik:
+          </Typography>
+          
+          <Grid container spacing={1.5}>
+            {workers.map((worker) => (
+              <Grid item xs={3} key={worker.id}>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selectedWorkerIds.has(worker.id)}
+                      onChange={(e) => {
+                        setSelectedWorkerIds(prev => {
+                          const copy = new Set(prev)
+                          if (e.target.checked) {
+                            copy.add(worker.id)
+                          } else {
+                            copy.delete(worker.id)
+                          }
+                          return copy
+                        })
+                      }}
+                      sx={{
+                        '& .MuiSvgIcon-root': {
+                          fontSize: 32 // Larger checkbox for tablet
+                        },
+                        padding: 1.5 // Larger touch target
+                      }}
+                    />
+                  }
+                  label={
+                    <Chip
+                      label={worker.nickname || worker.name}
+                      sx={{
+                        backgroundColor: worker.color || '#1976d2',
+                        color: 'white',
+                        fontWeight: 500,
+                        height: 'auto',
+                        minHeight: 48, // Minimum height for tablet tapping
+                        fontSize: '1rem',
+                        width: '100%',
+                        '& .MuiChip-label': {
+                          px: 2,
+                          py: 1.5,
+                          whiteSpace: 'normal',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          maxWidth: '100%',
+                          lineHeight: 1.4,
+                          wordBreak: 'break-word'
+                        }
+                      }}
+                    />
+                  }
+                  sx={{
+                    margin: 0,
+                    padding: 1,
+                    borderRadius: 1,
+                    width: '100%',
+                    '&:hover': {
+                      backgroundColor: 'action.hover'
+                    },
+                    cursor: 'pointer',
+                    userSelect: 'none'
+                  }}
+                  onClick={(e) => {
+                    // Make entire label area clickable
+                    if (e.target !== e.currentTarget) return
+                    setSelectedWorkerIds(prev => {
+                      const copy = new Set(prev)
+                      if (copy.has(worker.id)) {
+                        copy.delete(worker.id)
+                      } else {
+                        copy.add(worker.id)
+                      }
+                      return copy
+                    })
+                  }}
+                />
+              </Grid>
+            ))}
+          </Grid>
+          
+          {workers.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Nincsenek elérhető dolgozók
+            </Typography>
+          )}
         </DialogContent>
         <DialogActions>
           <Button
@@ -803,7 +948,7 @@ export default function ShipmentDetailClient({
             onClick={handleConfirmReceiveShipment}
             variant="contained"
             color="primary"
-            disabled={receiving}
+            disabled={receiving || selectedWorkerIds.size === 0}
             startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
             {receiving ? 'Bevételezés...' : 'Bevételezés'}
