@@ -1216,7 +1216,8 @@ export async function getAllCurrenciesForLinearMaterials() {
 // Companies SSR functions
 // Partners SSR functions
 export async function getPartnerById(id: string) {
-  const { data, error } = await supabaseServer
+  // Try with email_template_html first (if migration has been run)
+  let { data, error } = await supabaseServer
     .from('partners')
     .select(`
       id,
@@ -1231,6 +1232,7 @@ export async function getPartnerById(id: string) {
       company_registration_number,
       bank_account,
       notes,
+      email_template_html,
       status,
       contact_person,
       vat_id,
@@ -1242,6 +1244,44 @@ export async function getPartnerById(id: string) {
     .eq('id', id)
     .is('deleted_at', null)
     .single()
+
+  // If error is due to missing column, retry without email_template_html
+  if (error && (error.message?.includes('column') || error.code === '42703')) {
+    const { data: fallbackData, error: fallbackError } = await supabaseServer
+      .from('partners')
+      .select(`
+        id,
+        name,
+        country,
+        postal_code,
+        city,
+        address,
+        mobile,
+        email,
+        tax_number,
+        company_registration_number,
+        bank_account,
+        notes,
+        status,
+        contact_person,
+        vat_id,
+        currency_id,
+        payment_terms,
+        created_at,
+        updated_at
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (fallbackError) {
+      console.error('Error fetching partner:', fallbackError)
+      return null
+    }
+
+    // Add null for email_template_html if column doesn't exist
+    return { ...fallbackData, email_template_html: null }
+  }
 
   if (error) {
     console.error('Error fetching partner:', error)
@@ -2931,6 +2971,8 @@ export async function getPurchaseOrdersWithPagination(
         order_date,
         expected_date,
         created_at,
+        email_sent,
+        email_sent_at,
         items:purchase_order_items(count),
         net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity)
       `, { count: 'exact' })
@@ -3021,6 +3063,8 @@ export async function getPurchaseOrdersWithPagination(
         net_total: netTotal,
         created_at: row.created_at,
         expected_date: row.expected_date,
+        email_sent: row.email_sent || false,
+        email_sent_at: row.email_sent_at || null,
         shipments: shipmentNumbers,
         has_stock_movements: hasStockMovements
       }

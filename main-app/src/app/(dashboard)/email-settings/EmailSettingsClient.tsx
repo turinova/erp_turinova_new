@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -19,6 +19,11 @@ import { Home as HomeIcon, Save as SaveIcon, Mail as MailIcon, Send as SendIcon 
 import { toast } from 'react-toastify'
 import { useRouter } from 'next/navigation'
 import { usePagePermission } from '@/hooks/usePagePermission'
+import { useEditor, EditorContent } from '@tiptap/react'
+import { StarterKit } from '@tiptap/starter-kit'
+import { Placeholder } from '@tiptap/extension-placeholder'
+import { TextAlign } from '@tiptap/extension-text-align'
+import '@/libs/styles/tiptapEditor.css'
 
 interface SMTPSetting {
   id: string
@@ -29,6 +34,7 @@ interface SMTPSetting {
   password: string
   from_email: string
   from_name: string
+  signature_html: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -53,8 +59,31 @@ export default function EmailSettingsClient({ initialSettings }: EmailSettingsCl
     password: '', // Don't prefill password
     from_email: initialSettings?.from_email || '',
     from_name: initialSettings?.from_name || 'Turinova',
+    signature_html: initialSettings?.signature_html || '',
     is_active: initialSettings?.is_active ?? true
   })
+
+  // Initialize TipTap editor for signature
+  const signatureEditor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: 'Írja be az aláírást...'
+      }),
+      TextAlign.configure({
+        types: ['heading', 'paragraph']
+      }),
+    ],
+    content: initialSettings?.signature_html || '',
+    immediatelyRender: false,
+  })
+
+  // Update editor content when initialSettings changes
+  useEffect(() => {
+    if (signatureEditor && initialSettings?.signature_html !== undefined) {
+      signatureEditor.commands.setContent(initialSettings.signature_html || '')
+    }
+  }, [signatureEditor, initialSettings?.signature_html])
 
   if (permissionsLoading) {
     return (
@@ -176,12 +205,18 @@ export default function EmailSettingsClient({ initialSettings }: EmailSettingsCl
       
       const method = initialSettings ? 'PUT' : 'POST'
 
+      // Get signature HTML from editor
+      const signatureHtml = signatureEditor?.getHTML() || ''
+
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          signature_html: signatureHtml
+        }),
       })
 
       if (!response.ok) {
@@ -343,6 +378,35 @@ export default function EmailSettingsClient({ initialSettings }: EmailSettingsCl
               placeholder="Turinova"
               required
             />
+          </Grid>
+
+          {/* Signature */}
+          <Grid item xs={12}>
+            <Typography variant="h6" sx={{ mt: 2, mb: 2, fontWeight: 500 }}>
+              Email Aláírás
+            </Typography>
+            <Divider sx={{ mb: 3 }} />
+          </Grid>
+
+          <Grid item xs={12}>
+            <Box
+              sx={{
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                minHeight: '200px',
+                '& .ProseMirror': {
+                  minHeight: '200px',
+                  fontSize: '14px',
+                  p: 2
+                }
+              }}
+            >
+              <EditorContent editor={signatureEditor} />
+            </Box>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+              Az aláírás manuálisan beszúrható az email szerkesztőben
+            </Typography>
           </Grid>
 
           {/* Active Status */}

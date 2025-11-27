@@ -26,8 +26,8 @@ import {
   FormatAlignRight as AlignRightIcon,
   FormatAlignJustify as AlignJustifyIcon,
   TableChart as TableIcon,
-  DeleteOutline as DeleteRowIcon,
-  DeleteSweep as DeleteTableIcon
+  Draw as SignatureIcon,
+  Description as TemplateIcon
 } from '@mui/icons-material'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
@@ -66,11 +66,17 @@ interface PurchaseOrderItem {
 const EditorToolbar = ({ 
   editor, 
   onInsertTable,
-  isInTable
+  onInsertSignature,
+  hasSignature,
+  onInsertTemplate,
+  hasTemplate
 }: { 
   editor: Editor | null
   onInsertTable: () => void
-  isInTable: boolean
+  onInsertSignature: () => void
+  hasSignature: boolean
+  onInsertTemplate: () => void
+  hasTemplate: boolean
 }) => {
   if (!editor) {
     return null
@@ -199,46 +205,39 @@ const EditorToolbar = ({
       >
         <TableIcon fontSize="small" />
       </IconButton>
-      {isInTable && (
+      {hasTemplate && (
         <>
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           <IconButton
             size="small"
-            onClick={() => {
-              try {
-                editor.chain().focus().deleteRow().run()
-              } catch (error) {
-                toast.error('Nem lehet törölni ezt a sort')
-              }
-            }}
-            color="error"
+            onClick={onInsertTemplate}
+            color="primary"
             sx={{ 
               border: 1, 
-              borderColor: 'error.main',
+              borderColor: 'primary.main',
               borderRadius: 1
             }}
-            title="Sor törlése"
+            title="Email sablon beszúrása"
           >
-            <DeleteRowIcon fontSize="small" />
+            <TemplateIcon fontSize="small" />
           </IconButton>
+        </>
+      )}
+      {hasSignature && (
+        <>
+          <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           <IconButton
             size="small"
-            onClick={() => {
-              try {
-                editor.chain().focus().deleteTable().run()
-              } catch (error) {
-                toast.error('Nem lehet törölni ezt a táblázatot')
-              }
-            }}
-            color="error"
+            onClick={onInsertSignature}
+            color="primary"
             sx={{ 
               border: 1, 
-              borderColor: 'error.main',
+              borderColor: 'primary.main',
               borderRadius: 1
             }}
-            title="Táblázat törlése"
+            title="Aláírás beszúrása"
           >
-            <DeleteTableIcon fontSize="small" />
+            <SignatureIcon fontSize="small" />
           </IconButton>
         </>
       )}
@@ -256,7 +255,9 @@ export default function EmailComposeModal({
   const [subject, setSubject] = useState('')
   const [loadingItems, setLoadingItems] = useState(false)
   const [poItems, setPoItems] = useState<PurchaseOrderItem[]>([])
-  const [isInTable, setIsInTable] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [signature, setSignature] = useState<string | null>(null)
+  const [partnerTemplate, setPartnerTemplate] = useState<string | null>(null)
 
   // Initialize TipTap editor with table extensions
   const editor = useEditor({
@@ -275,18 +276,10 @@ export default function EmailComposeModal({
       TableHeader,
       TableCell,
     ],
-    immediatelyRender: false,
-    onUpdate: ({ editor }) => {
-      // Update table state for button visibility
-      setIsInTable(editor.isActive('table') || editor.isActive('tableCell') || editor.isActive('tableRow'))
-    },
-    onSelectionUpdate: ({ editor }) => {
-      // Update table state when selection changes
-      setIsInTable(editor.isActive('table') || editor.isActive('tableCell') || editor.isActive('tableRow'))
-    }
+    immediatelyRender: false
   })
 
-  // Fetch purchase order items when modal opens
+  // Fetch purchase order items and signature when modal opens
   useEffect(() => {
     if (open && poId) {
       const fetchItems = async () => {
@@ -299,6 +292,20 @@ export default function EmailComposeModal({
             // Pre-fill email from partner
             if (data.header?.partner_email) {
               setTo(data.header.partner_email)
+            }
+            
+            // Fetch partner template based on PO's partner_id
+            if (data.header?.partner_id) {
+              try {
+                const partnerResponse = await fetch(`/api/partners/${data.header.partner_id}`)
+                if (partnerResponse.ok) {
+                  const partnerData = await partnerResponse.json()
+                  setPartnerTemplate(partnerData?.email_template_html || null)
+                }
+              } catch (error) {
+                console.error('Error fetching partner template:', error)
+                // Don't show error toast, template is optional
+              }
             }
             
             // Fetch all units once
@@ -330,7 +337,23 @@ export default function EmailComposeModal({
           setLoadingItems(false)
         }
       }
+
+      // Fetch signature from active SMTP settings
+      const fetchSignature = async () => {
+        try {
+          const response = await fetch('/api/email-settings')
+          if (response.ok) {
+            const data = await response.json()
+            setSignature(data?.signature_html || null)
+          }
+        } catch (error) {
+          console.error('Error fetching signature:', error)
+          // Don't show error toast, signature is optional
+        }
+      }
+
       fetchItems()
+      fetchSignature()
     }
   }, [open, poId])
 
@@ -344,16 +367,119 @@ export default function EmailComposeModal({
     }
   }, [open, poNumber, editor])
 
+  // Auto-insert content when all data is loaded
+  useEffect(() => {
+    if (open && editor && !loadingItems) {
+      // Wait a bit to ensure editor is ready and data is set
+      const timer = setTimeout(() => {
+        if (!editor) return
+        
+        let content = ''
+        
+        // 1. Insert partner template (if exists)
+        if (partnerTemplate) {
+          content += partnerTemplate + '<br><br>'
+        }
+        
+        // 2. Insert purchase order items (if exists)
+        if (poItems.length > 0) {
+          let listHTML = ''
+          poItems.forEach((item, index) => {
+            const unitName = item.units?.shortform || item.units?.name || '-'
+            const productName = item.description || '-'
+            
+            // Include SKU only for accessories (not for materials or linear_materials)
+            if (item.product_type === 'accessory' && item.accessories?.sku) {
+              listHTML += `${index + 1}. ${productName} - ${item.accessories.sku} - ${item.quantity} - ${unitName}<br>`
+            } else {
+              listHTML += `${index + 1}. ${productName} - ${item.quantity} - ${unitName}<br>`
+            }
+          })
+          content += listHTML + '<br>'
+        }
+        
+        // 3. Insert signature (if exists)
+        if (signature) {
+          content += signature
+        }
+        
+        // Insert all content at once
+        if (content) {
+          editor.commands.setContent(content)
+        }
+      }, 300) // Small delay to ensure editor is ready
+      
+      return () => clearTimeout(timer)
+    }
+  }, [open, editor, loadingItems, partnerTemplate, poItems, signature])
+
   const handleClose = () => {
     if (!open) return
     onClose()
   }
 
-  const handleSend = () => {
-    // TODO: Implement email sending functionality
-    const body = editor?.getHTML() || ''
-    console.log('Send email:', { to, subject, body })
-    handleClose()
+  const handleSend = async () => {
+    // Validation
+    if (!to || !to.trim()) {
+      toast.error('Címzett email cím kötelező')
+      return
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(to.trim())) {
+      toast.error('Érvényes email cím szükséges')
+      return
+    }
+
+    if (!subject || !subject.trim()) {
+      toast.error('Tárgy kötelező')
+      return
+    }
+
+    const html = editor?.getHTML() || ''
+    // Check if body has content (remove empty paragraphs and whitespace)
+    const textContent = editor?.getText() || ''
+    if (!textContent.trim()) {
+      toast.error('Email tartalom kötelező')
+      return
+    }
+
+    setIsSending(true)
+    try {
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          to: to.trim(),
+          subject: subject.trim(),
+          html: html,
+          po_id: poId,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Hiba az email küldésekor')
+      }
+
+      toast.success('Email sikeresen elküldve')
+      
+      // Clear form and close modal
+      setTo('')
+      setSubject('')
+      if (editor) {
+        editor.commands.clearContent()
+      }
+      handleClose()
+    } catch (error: any) {
+      toast.error(error.message || 'Hiba az email küldésekor')
+      // Keep modal open on error
+    } finally {
+      setIsSending(false)
+    }
   }
 
   const handleInsertTable = () => {
@@ -362,36 +488,45 @@ export default function EmailComposeModal({
       return
     }
 
-    // Create table HTML
-    let tableHTML = '<table style="border-collapse: collapse; width: 100%; margin: 16px 0;">'
-    
-    // Header row
-    tableHTML += '<thead><tr style="background-color: #f5f5f5;">'
-    tableHTML += '<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Termék neve</th>'
-    tableHTML += '<th style="border: 1px solid #ddd; padding: 8px; text-align: left;">SKU</th>'
-    tableHTML += '<th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Mennyiség</th>'
-    tableHTML += '<th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Mértékegység</th>'
-    tableHTML += '</tr></thead>'
-    
-            // Body rows
-            tableHTML += '<tbody>'
-            poItems.forEach((item) => {
-              const unitName = item.units?.shortform || item.units?.name || '-'
-              // Extract SKU only for accessories (materials and linear_materials don't have SKU)
-              const sku = (item.product_type === 'accessory' && item.accessories?.sku) ? item.accessories.sku : '-'
-              
-              tableHTML += '<tr>'
-              tableHTML += `<td style="border: 1px solid #ddd; padding: 8px;">${item.description || '-'}</td>`
-              tableHTML += `<td style="border: 1px solid #ddd; padding: 8px;">${sku}</td>`
-              tableHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: right;">${item.quantity}</td>`
-              tableHTML += `<td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${unitName}</td>`
-              tableHTML += '</tr>'
-            })
-            tableHTML += '</tbody></table>'
+    // Create HTML numbered list with line breaks for email rendering
+    let listHTML = ''
+    poItems.forEach((item, index) => {
+      const unitName = item.units?.shortform || item.units?.name || '-'
+      const productName = item.description || '-'
+      
+      // Include SKU only for accessories (not for materials or linear_materials)
+      if (item.product_type === 'accessory' && item.accessories?.sku) {
+        listHTML += `${index + 1}. ${productName} - ${item.accessories.sku} - ${item.quantity} - ${unitName}<br>`
+      } else {
+        listHTML += `${index + 1}. ${productName} - ${item.quantity} - ${unitName}<br>`
+      }
+    })
 
-    // Insert table into editor
-    editor.chain().focus().insertContent(tableHTML).run()
-    toast.success('Táblázat beszúrva')
+    // Insert HTML with line breaks at cursor position
+    editor.chain().focus().insertContent(listHTML).run()
+    toast.success('Tételek beszúrva')
+  }
+
+  const handleInsertTemplate = () => {
+    if (!editor || !partnerTemplate) {
+      toast.warning('Nincs elérhető email sablon')
+      return
+    }
+
+    // Insert template HTML at cursor position
+    editor.chain().focus().insertContent(partnerTemplate).run()
+    toast.success('Email sablon beszúrva')
+  }
+
+  const handleInsertSignature = () => {
+    if (!editor || !signature) {
+      toast.warning('Nincs elérhető aláírás')
+      return
+    }
+
+    // Insert signature HTML at cursor position
+    editor.chain().focus().insertContent(signature).run()
+    toast.success('Aláírás beszúrva')
   }
 
   return (
@@ -450,7 +585,10 @@ export default function EmailComposeModal({
             <EditorToolbar 
               editor={editor} 
               onInsertTable={handleInsertTable}
-              isInTable={isInTable}
+              onInsertSignature={handleInsertSignature}
+              hasSignature={!!signature}
+              onInsertTemplate={handleInsertTemplate}
+              hasTemplate={!!partnerTemplate}
             />
             <Box
               sx={{
@@ -507,9 +645,10 @@ export default function EmailComposeModal({
           variant="contained"
           color="primary"
           onClick={handleSend}
-          startIcon={<SendIcon />}
+          startIcon={isSending ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
+          disabled={isSending}
         >
-          Küldés
+          {isSending ? 'Küldés...' : 'Küldés'}
         </Button>
       </DialogActions>
     </Dialog>

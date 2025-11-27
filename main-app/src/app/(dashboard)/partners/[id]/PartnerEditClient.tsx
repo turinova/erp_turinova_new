@@ -7,6 +7,11 @@ import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { useEditor, EditorContent } from '@tiptap/react'
+import { StarterKit } from '@tiptap/starter-kit'
+import { Placeholder } from '@tiptap/extension-placeholder'
+import { TextAlign } from '@tiptap/extension-text-align'
+import '@/libs/styles/tiptapEditor.css'
 
 interface Partner {
   id: string
@@ -21,6 +26,7 @@ interface Partner {
   company_registration_number: string
   bank_account: string
   notes: string
+  email_template_html: string | null
   status: string
   contact_person: string
   vat_id: string
@@ -71,6 +77,28 @@ export default function PartnerEditClient({ initialPartner, allVatRates, allCurr
   const [partner, setPartner] = useState<Partner>(initialPartner)
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
+
+  // Initialize TipTap editor for email template
+  const templateEditor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: 'Írja be az email sablont...'
+      }),
+      TextAlign.configure({
+        types: ['heading', 'paragraph']
+      }),
+    ],
+    content: initialPartner?.email_template_html || '',
+    immediatelyRender: false,
+  })
+
+  // Update editor content when initialPartner changes
+  useEffect(() => {
+    if (templateEditor && initialPartner?.email_template_html !== undefined) {
+      templateEditor.commands.setContent(initialPartner.email_template_html || '')
+    }
+  }, [templateEditor, initialPartner?.email_template_html])
 
   const handleBack = () => {
     router.push('/partners')
@@ -192,12 +220,18 @@ export default function PartnerEditClient({ initialPartner, allVatRates, allCurr
     setIsSaving(true)
 
     try {
+      // Get template HTML from editor
+      const templateHtml = templateEditor?.getHTML() || null
+
       const response = await fetch(`/api/partners/${partner.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(partner),
+        body: JSON.stringify({
+          ...partner,
+          email_template_html: templateHtml
+        }),
       })
 
       if (response.ok) {
@@ -537,6 +571,35 @@ export default function PartnerEditClient({ initialPartner, allVatRates, allCurr
               onChange={(e) => handleInputChange('notes', e.target.value)}
               placeholder="További megjegyzések..."
             />
+          </Grid>
+
+          {/* Email Template */}
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
+              Email Sablon
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+          </Grid>
+
+          <Grid item xs={12}>
+            <Box
+              sx={{
+                border: 1,
+                borderColor: 'divider',
+                borderRadius: 1,
+                minHeight: '200px',
+                '& .ProseMirror': {
+                  minHeight: '200px',
+                  fontSize: '14px',
+                  p: 2
+                }
+              }}
+            >
+              <EditorContent editor={templateEditor} />
+            </Box>
+            <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+              Az email sablon manuálisan beszúrható az email szerkesztőben. Ez lesz az email kezdő része.
+            </Typography>
           </Grid>
 
           {/* Metadata */}

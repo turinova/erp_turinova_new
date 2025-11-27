@@ -25,6 +25,8 @@ interface PurchaseOrderRow {
   net_total: number | null
   created_at: string
   expected_date: string | null
+  email_sent: boolean
+  email_sent_at: string | null
   shipments: ShipmentInfo[]
   has_stock_movements?: boolean
 }
@@ -497,6 +499,7 @@ export default function PurchaseOrderListClient({
                 </TableCell>
                 <TableCell>Beszerzési rendelés szám</TableCell>
                 <TableCell>Státusz</TableCell>
+                <TableCell>Email küldve</TableCell>
                 <TableCell>Beszállító</TableCell>
                 <TableCell align="right">Tételek száma</TableCell>
                 <TableCell align="right">Nettó összesen</TableCell>
@@ -508,7 +511,7 @@ export default function PurchaseOrderListClient({
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center">
+                  <TableCell colSpan={10} align="center">
                     Nincs megjeleníthető beszerzési rendelés.
                   </TableCell>
                 </TableRow>
@@ -554,6 +557,24 @@ export default function PurchaseOrderListClient({
                           />
                         )
                       })()}
+                    </TableCell>
+                    <TableCell>
+                      {row.email_sent ? (
+                        <Tooltip title={row.email_sent_at ? `Küldve: ${new Date(row.email_sent_at).toLocaleString('hu-HU')}` : 'Email elküldve'}>
+                          <Chip 
+                            label="Igen" 
+                            size="small" 
+                            color="success"
+                            icon={<EmailIcon />}
+                          />
+                        </Tooltip>
+                      ) : (
+                        <Chip 
+                          label="Nem" 
+                          size="small" 
+                          color="default"
+                        />
+                      )}
                     </TableCell>
                     <TableCell>{row.partner_name}</TableCell>
                     <TableCell align="right">{row.items_count}</TableCell>

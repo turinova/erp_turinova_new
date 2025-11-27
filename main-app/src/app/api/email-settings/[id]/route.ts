@@ -36,7 +36,7 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { host, port, secure, user: smtpUser, password, from_email, from_name, is_active } = body
+    const { host, port, secure, user: smtpUser, password, from_email, from_name, signature_html, is_active } = body
 
     // Validation
     if (!host || !port || !smtpUser || !from_email || !from_name) {
@@ -54,6 +54,7 @@ export async function PUT(
       "user": smtpUser,
       from_email,
       from_name,
+      signature_html: signature_html || null,
       is_active: is_active ?? true
     }
 

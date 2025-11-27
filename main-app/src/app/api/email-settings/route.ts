@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabaseServer
       .from('smtp_settings')
-      .select('id, host, port, secure, "user", from_email, from_name, is_active, created_at, updated_at')
+      .select('id, host, port, secure, "user", from_email, from_name, signature_html, is_active, created_at, updated_at')
       .eq('is_active', true)
       .is('deleted_at', null)
       .maybeSingle()
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { host, port, secure, user: smtpUser, password, from_email, from_name, is_active } = body
+    const { host, port, secure, user: smtpUser, password, from_email, from_name, signature_html, is_active } = body
 
     // Validation
     if (!host || !port || !smtpUser || !password || !from_email || !from_name) {
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
         password: encryptedPassword,
         from_email,
         from_name,
+        signature_html: signature_html || null,
         is_active: is_active ?? true
       })
       .select()

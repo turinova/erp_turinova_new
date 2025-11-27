@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
         order_date,
         expected_date,
         created_at,
+        email_sent,
+        email_sent_at,
         items:purchase_order_items(count),
         net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity)
       `)
@@ -106,6 +108,8 @@ export async function GET(request: NextRequest) {
         net_total: netTotal,
         created_at: row.created_at,
         expected_date: row.expected_date,
+        email_sent: row.email_sent || false,
+        email_sent_at: row.email_sent_at,
         shipments: shipmentNumbers,
         has_stock_movements: hasStockMovements
       }

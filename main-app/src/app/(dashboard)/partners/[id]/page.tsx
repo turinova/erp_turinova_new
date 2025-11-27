@@ -17,6 +17,7 @@ interface Partner {
   company_registration_number: string
   bank_account: string
   notes: string
+  email_template_html: string | null
   status: string
   contact_person: string
   vat_id: string
