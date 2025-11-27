@@ -8,7 +8,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { data: po, error } = await supabaseServer
       .from('purchase_orders')
       .select(`
-        id, po_number, status, partner_id, partners:partner_id(name),
+        id, po_number, status, partner_id, partners:partner_id(name, email),
         warehouse_id, order_date, expected_date, note, created_at, updated_at,
         purchase_order_items (
           id, product_type, accessory_id, material_id, linear_material_id,
@@ -50,20 +50,24 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       totalGross += lineNet + lineVat
     }
 
+    // Handle partners as array (Supabase returns arrays for joins)
+    const partner = Array.isArray(po.partners) ? po.partners[0] : po.partners
+
     return NextResponse.json({
       header: {
         id: po.id,
         po_number: po.po_number,
         status: po.status,
         partner_id: po.partner_id,
-        partner_name: po.partners?.name || '',
+        partner_name: partner?.name || '',
+        partner_email: partner?.email || '',
         warehouse_id: po.warehouse_id,
         order_date: po.order_date,
         expected_date: po.expected_date,
         note: po.note,
         created_at: po.created_at,
         updated_at: po.updated_at,
-        shipments_count: (po.shipments || []).length
+        shipments_count: 0 // Not fetched in this query
       },
       items: po.purchase_order_items || [],
       summary: {

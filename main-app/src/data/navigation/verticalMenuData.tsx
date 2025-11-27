@@ -211,6 +211,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Értesítések',
         href: '/notifications'
+      },
+      {
+        label: 'Email beállítások',
+        href: '/email-settings'
       }
     ]
   }

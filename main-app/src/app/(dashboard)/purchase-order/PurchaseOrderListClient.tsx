@@ -6,9 +6,10 @@ import {
   Box, Button, Breadcrumbs, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, FormControl, InputLabel, Link, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, Checkbox, InputAdornment, Tooltip, Pagination
 } from '@mui/material'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Add as AddIcon, Check as ApproveIcon, Delete as DeleteIcon, Search as SearchIcon, LocalShipping as ShippingIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Add as AddIcon, Check as ApproveIcon, Delete as DeleteIcon, Search as SearchIcon, LocalShipping as ShippingIcon, Email as EmailIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { useDebounce } from '@/hooks/useDebounce'
+import EmailComposeModal from './EmailComposeModal'
 
 interface ShipmentInfo {
   id: string
@@ -58,6 +59,8 @@ export default function PurchaseOrderListClient({
   const [busy, setBusy] = useState(false)
   const [shipmentConfirmOpen, setShipmentConfirmOpen] = useState(false)
   const [pendingShipmentPoId, setPendingShipmentPoId] = useState<string | null>(null)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [selectedPoForEmail, setSelectedPoForEmail] = useState<{ id: string; poNumber: string } | null>(null)
   const debouncedSearchTerm = useDebounce(partnerSearch, 500)
 
   // Fetch total counts for filters (always show total, not filtered count)
@@ -400,6 +403,27 @@ export default function PurchaseOrderListClient({
           })()}
           {selectedIds.size === 1 && (() => {
             const selectedPo = rows.find(r => r.id === Array.from(selectedIds)[0])
+            return selectedPo?.status === 'draft' ? (
+              <Button
+                variant="contained"
+                color="info"
+                startIcon={<EmailIcon />}
+                onClick={() => {
+                  const po = rows.find(r => r.id === Array.from(selectedIds)[0])
+                  if (po) {
+                    setSelectedPoForEmail({ id: po.id, poNumber: po.po_number })
+                    setEmailModalOpen(true)
+                  }
+                }}
+                disabled={busy}
+                size="small"
+              >
+                E-mail küldés
+              </Button>
+            ) : null
+          })()}
+          {selectedIds.size === 1 && (() => {
+            const selectedPo = rows.find(r => r.id === Array.from(selectedIds)[0])
             const hasShipments = selectedPo?.shipments && selectedPo.shipments.length > 0
             return selectedPo?.status === 'confirmed' && !hasShipments ? (
               <Button
@@ -640,6 +664,19 @@ export default function PurchaseOrderListClient({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Email Compose Modal */}
+      {selectedPoForEmail && (
+        <EmailComposeModal
+          open={emailModalOpen}
+          onClose={() => {
+            setEmailModalOpen(false)
+            setSelectedPoForEmail(null)
+          }}
+          poId={selectedPoForEmail.id}
+          poNumber={selectedPoForEmail.poNumber}
+        />
+      )}
     </Box>
   )
 }
