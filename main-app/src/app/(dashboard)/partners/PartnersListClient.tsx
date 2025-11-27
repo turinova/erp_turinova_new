@@ -90,7 +90,13 @@ export default function PartnersListClient({ initialPartners }: PartnersListClie
       const response = await fetch('/api/partners')
       if (response.ok) {
         const data = await response.json()
-        setPartners(data)
+        // Ensure data is an array (defensive check)
+        if (Array.isArray(data)) {
+          setPartners(data)
+        } else {
+          console.error('Invalid response format from API')
+          setPartners([])
+        }
       } else {
         console.error('Failed to refresh partners')
         toast.error('Hiba történt a beszállítók frissítésekor!', {

@@ -66,7 +66,7 @@ export default function PartnerNewClient({ allVatRates, allCurrencies }: Partner
     contact_person: '',
     vat_id: '',
     currency_id: '2dc21d30-c7e8-4d3a-b57a-1e0a4870ec1b', // HUF as default
-    payment_terms: 0
+    payment_terms: 30
   })
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -190,8 +190,21 @@ export default function PartnerNewClient({ allVatRates, allCurrencies }: Partner
         // Redirect to the new partner's edit page
         router.push(`/partners/${result.id}`)
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.message || 'Mentés sikertelen')
+        // Handle empty or non-JSON response
+        let errorMessage = 'Mentés sikertelen'
+        try {
+          const text = await response.text()
+          if (text) {
+            const errorData = JSON.parse(text)
+            errorMessage = errorData.error || errorData.message || errorMessage
+          } else {
+            errorMessage = response.statusText || errorMessage
+          }
+        } catch (e) {
+          // Response is not JSON, use status text
+          errorMessage = response.statusText || errorMessage
+        }
+        throw new Error(errorMessage)
       }
     } catch (error) {
       console.error('Save error:', error)
