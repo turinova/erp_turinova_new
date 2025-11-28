@@ -878,9 +878,54 @@ export default function ShipmentDetailClient({
             Biztosan be szeretnéd vételezni ezt a szállítmányt? Ez létrehozza a készletmozgásokat és frissíti a beszerzési rendelés státuszát.
           </DialogContentText>
           
-          <Typography variant="body2" color="text.secondary">
-            Worker selection temporarily removed for testing
+          <Typography variant="body2" sx={{ mb: 2, fontWeight: 500 }}>
+            Válassz dolgozó(kat) aki(k) bevételezik:
           </Typography>
+          
+          {workers.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Dolgozók betöltése...
+            </Typography>
+          ) : (
+            <Grid container spacing={1.5} sx={{ mb: 2 }}>
+              {workers.map((worker) => {
+                const isSelected = selectedWorkerIds.includes(worker.id)
+                return (
+                  <Grid item xs={3} key={worker.id}>
+                    <Button
+                      fullWidth
+                      variant={isSelected ? 'contained' : 'outlined'}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        if (isSelected) {
+                          setSelectedWorkerIds(prev => prev.filter(id => id !== worker.id))
+                        } else {
+                          setSelectedWorkerIds(prev => [...prev, worker.id])
+                        }
+                      }}
+                      sx={{
+                        touchAction: 'manipulation',
+                        minHeight: '48px',
+                        backgroundColor: isSelected ? (worker.color || '#1976d2') : 'transparent',
+                        borderColor: worker.color || '#1976d2',
+                        color: isSelected ? '#fff' : (worker.color || '#1976d2'),
+                        '&:hover': {
+                          backgroundColor: isSelected ? (worker.color || '#1976d2') : 'rgba(0, 0, 0, 0.04)',
+                          borderColor: worker.color || '#1976d2',
+                        },
+                        fontSize: '0.875rem',
+                        textTransform: 'none',
+                        fontWeight: isSelected ? 600 : 400,
+                      }}
+                    >
+                      {worker.nickname || worker.name}
+                    </Button>
+                  </Grid>
+                )
+              })}
+            </Grid>
+          )}
         </DialogContent>
         <DialogActions sx={{ touchAction: 'manipulation' }}>
           <Button
@@ -902,7 +947,7 @@ export default function ShipmentDetailClient({
             }}
             variant="contained"
             color="primary"
-            disabled={receiving}
+            disabled={receiving || selectedWorkerIds.length === 0}
             sx={{ touchAction: 'manipulation' }}
             startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
