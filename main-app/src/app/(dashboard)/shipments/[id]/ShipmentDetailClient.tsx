@@ -68,7 +68,7 @@ export default function ShipmentDetailClient({
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
   const [workers, setWorkers] = useState<Array<{ id: string; name: string; nickname: string | null; color: string }>>([])
-  const [selectedWorkerIds, setSelectedWorkerIds] = useState<Set<string>>(new Set())
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([])
   
   // Barcode scanning state
   const [barcodeInput, setBarcodeInput] = useState('')
@@ -88,6 +88,23 @@ export default function ShipmentDetailClient({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Fetch workers on component mount so they're ready when modal opens
+  useEffect(() => {
+    const fetchWorkers = async () => {
+      try {
+        const response = await fetch('/api/workers')
+        if (response.ok) {
+          const workersData = await response.json()
+          setWorkers(workersData || [])
+        }
+      } catch (error) {
+        console.error('Error fetching workers:', error)
+        // Don't show error toast here - it's not critical for page load
+      }
+    }
+    fetchWorkers()
+  }, []) // Only run once on mount
 
   // Focus barcode input on mount and when status is draft
   useEffect(() => {
@@ -204,20 +221,8 @@ export default function ShipmentDetailClient({
       return
     }
 
-    // Fetch workers when opening the modal
-    try {
-      const response = await fetch('/api/workers')
-      if (response.ok) {
-        const workersData = await response.json()
-        setWorkers(workersData || [])
-      }
-    } catch (error) {
-      console.error('Error fetching workers:', error)
-      toast.error('Hiba a dolgozók lekérdezésekor')
-      return
-    }
-
-    setSelectedWorkerIds(new Set())
+    // Workers are already fetched on component mount, just open the modal
+    setSelectedWorkerIds([])
     setReceiveConfirmOpen(true)
   }
 
@@ -225,7 +230,7 @@ export default function ShipmentDetailClient({
     if (!header) return
     
     // Validate that at least one worker is selected
-    if (selectedWorkerIds.size === 0) {
+    if (selectedWorkerIds.length === 0) {
       toast.error('Legalább egy dolgozót ki kell választani')
       return
     }
@@ -254,7 +259,7 @@ export default function ShipmentDetailClient({
       const res = await fetch(`/api/shipments/${id}/receive`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ worker_ids: Array.from(selectedWorkerIds) })
+        body: JSON.stringify({ worker_ids: selectedWorkerIds })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Hiba a bevételezéskor')
@@ -849,21 +854,21 @@ export default function ShipmentDetailClient({
             Válassz dolgozó(kat) aki(k) bevételezik:
           </Typography>
           
-          <Grid container spacing={1.5}>
-            {workers.map((worker) => (
-              <Grid item xs={3} key={worker.id}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Stack spacing={2}>
+            {workers.map((worker) => {
+              const isSelected = selectedWorkerIds.includes(worker.id)
+              return (
+                <Box key={worker.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Checkbox
-                    checked={selectedWorkerIds.has(worker.id)}
+                    checked={isSelected}
                     onChange={(e) => {
+                      const checked = e.currentTarget.checked
                       setSelectedWorkerIds(prev => {
-                        const copy = new Set(prev)
-                        if (e.target.checked) {
-                          copy.add(worker.id)
+                        if (checked) {
+                          return [...prev, worker.id]
                         } else {
-                          copy.delete(worker.id)
+                          return prev.filter(id => id !== worker.id)
                         }
-                        return copy
                       })
                     }}
                   />
@@ -894,9 +899,9 @@ export default function ShipmentDetailClient({
                     }}
                   />
                 </Box>
-              </Grid>
-            ))}
-          </Grid>
+              )
+            })}
+          </Stack>
           
           {workers.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
@@ -915,7 +920,7 @@ export default function ShipmentDetailClient({
             onClick={handleConfirmReceiveShipment}
             variant="contained"
             color="primary"
-            disabled={receiving || selectedWorkerIds.size === 0}
+            disabled={receiving || selectedWorkerIds.length === 0}
             startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
             {receiving ? 'Bevételezés...' : 'Bevételezés'}
