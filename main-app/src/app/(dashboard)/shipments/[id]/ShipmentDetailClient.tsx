@@ -850,13 +850,45 @@ export default function ShipmentDetailClient({
           </Typography>
           
           <Grid container spacing={1.5}>
-            {workers.map((worker) => (
-              <Grid item xs={3} key={worker.id}>
-                <FormControlLabel
-                  control={
+            {workers.map((worker) => {
+              const isSelected = selectedWorkerIds.has(worker.id)
+              return (
+                <Grid item xs={3} key={worker.id}>
+                  <Box
+                    onClick={() => {
+                      setSelectedWorkerIds(prev => {
+                        const copy = new Set(prev)
+                        if (copy.has(worker.id)) {
+                          copy.delete(worker.id)
+                        } else {
+                          copy.add(worker.id)
+                        }
+                        return copy
+                      })
+                    }}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      padding: 1.5,
+                      borderRadius: 1,
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      touchAction: 'manipulation',
+                      WebkitTapHighlightColor: 'transparent',
+                      backgroundColor: isSelected ? 'action.selected' : 'transparent',
+                      '&:hover': {
+                        backgroundColor: 'action.hover'
+                      },
+                      '&:active': {
+                        backgroundColor: 'action.selected'
+                      }
+                    }}
+                  >
                     <Checkbox
-                      checked={selectedWorkerIds.has(worker.id)}
+                      checked={isSelected}
                       onChange={(e) => {
+                        e.stopPropagation()
                         setSelectedWorkerIds(prev => {
                           const copy = new Set(prev)
                           if (e.target.checked) {
@@ -867,17 +899,19 @@ export default function ShipmentDetailClient({
                           return copy
                         })
                       }}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                      }}
                       sx={{
                         '& .MuiSvgIcon-root': {
                           fontSize: 32 // Larger checkbox for tablet
                         },
-                        padding: 1.5, // Larger touch target
-                        touchAction: 'manipulation', // Prevent double-tap zoom on iPad
-                        WebkitTapHighlightColor: 'transparent' // Remove tap highlight on iOS
+                        padding: 0.5,
+                        touchAction: 'manipulation',
+                        WebkitTapHighlightColor: 'transparent',
+                        pointerEvents: 'auto'
                       }}
                     />
-                  }
-                  label={
                     <Chip
                       label={worker.nickname || worker.name}
                       sx={{
@@ -885,9 +919,10 @@ export default function ShipmentDetailClient({
                         color: 'white',
                         fontWeight: 500,
                         height: 'auto',
-                        minHeight: 48, // Minimum height for tablet tapping
+                        minHeight: 48,
                         fontSize: '1rem',
-                        width: '100%',
+                        flex: 1,
+                        pointerEvents: 'none', // Prevent chip from blocking clicks
                         '& .MuiChip-label': {
                           px: 2,
                           py: 1.5,
@@ -903,23 +938,10 @@ export default function ShipmentDetailClient({
                         }
                       }}
                     />
-                  }
-                  sx={{
-                    margin: 0,
-                    padding: 1,
-                    borderRadius: 1,
-                    width: '100%',
-                    '&:hover': {
-                      backgroundColor: 'action.hover'
-                    },
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    touchAction: 'manipulation', // Prevent double-tap zoom on iPad
-                    WebkitTapHighlightColor: 'transparent' // Remove tap highlight on iOS
-                  }}
-                />
-              </Grid>
-            ))}
+                  </Box>
+                </Grid>
+              )
+            })}
           </Grid>
           
           {workers.length === 0 && (
