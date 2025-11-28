@@ -851,57 +851,9 @@ export default function ShipmentDetailClient({
             Biztosan be szeretnéd vételezni ezt a szállítmányt? Ez létrehozza a készletmozgásokat és frissíti a beszerzési rendelés státuszát.
           </DialogContentText>
           
-          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
-            Válassz dolgozó(kat) aki(k) bevételezik:
+          <Typography variant="body2" color="text.secondary">
+            Worker selection temporarily removed for testing
           </Typography>
-          
-          <Stack spacing={1.5}>
-            {workers.map((worker) => {
-              const isSelected = selectedWorkerIds.includes(worker.id)
-              const workerColor = worker.color || '#1976d2'
-              return (
-                <Button
-                  key={worker.id}
-                  variant={isSelected ? 'contained' : 'outlined'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setSelectedWorkerIds(prev => 
-                      prev.includes(worker.id) 
-                        ? prev.filter(id => id !== worker.id)
-                        : [...prev, worker.id]
-                    )
-                  }}
-                  startIcon={isSelected ? <CheckIcon /> : undefined}
-                  fullWidth
-                  sx={{
-                    minHeight: 56,
-                    fontSize: '1rem',
-                    fontWeight: 500,
-                    textTransform: 'none',
-                    justifyContent: 'flex-start',
-                    touchAction: 'manipulation',
-                    WebkitTapHighlightColor: 'transparent',
-                    ...(isSelected && {
-                      backgroundColor: workerColor,
-                      color: 'white'
-                    }),
-                    ...(!isSelected && {
-                      borderColor: workerColor,
-                      borderWidth: 2
-                    })
-                  }}
-                >
-                  {worker.nickname || worker.name}
-                </Button>
-              )
-            })}
-          </Stack>
-          
-          {workers.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Nincsenek elérhető dolgozók
-            </Typography>
-          )}
         </DialogContent>
         <DialogActions>
           <Button
