@@ -836,7 +836,12 @@ export default function ShipmentDetailClient({
       {/* Receive Shipment Confirmation Dialog */}
       <Dialog
         open={receiveConfirmOpen}
-        onClose={() => setReceiveConfirmOpen(false)}
+        onClose={(event, reason) => {
+          // Only close on backdrop click or escape, not on content clicks
+          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
+            setReceiveConfirmOpen(false)
+          }
+        }}
         aria-labelledby="receive-dialog-title"
         aria-describedby="receive-dialog-description"
         maxWidth="sm"
@@ -854,68 +859,61 @@ export default function ShipmentDetailClient({
             Válassz dolgozó(kat) aki(k) bevételezik:
           </Typography>
           
-          <Stack spacing={1.5}>
+          <Grid container spacing={1.5}>
             {workers.map((worker) => {
               const isSelected = selectedWorkerIds.includes(worker.id)
               const workerColor = worker.color || '#1976d2'
               return (
-                <Chip
-                  key={worker.id}
-                  label={worker.nickname || worker.name}
-                  onClick={() => {
-                    setSelectedWorkerIds(prev => {
-                      if (isSelected) {
-                        return prev.filter(id => id !== worker.id)
-                      } else {
-                        return [...prev, worker.id]
+                <Grid item xs={3} key={worker.id}>
+                  <Button
+                    variant={isSelected ? 'contained' : 'outlined'}
+                    onClick={(e) => {
+                      e.stopPropagation() // Prevent event bubbling to Dialog
+                      e.preventDefault() // Prevent default behavior
+                      setSelectedWorkerIds(prev => {
+                        if (isSelected) {
+                          return prev.filter(id => id !== worker.id)
+                        } else {
+                          return [...prev, worker.id]
+                        }
+                      })
+                    }}
+                    startIcon={isSelected ? <CheckIcon /> : <Box sx={{ width: 24, height: 24 }} />}
+                    fullWidth
+                    sx={{
+                      backgroundColor: isSelected ? workerColor : 'transparent',
+                      color: isSelected ? 'white' : 'text.primary',
+                      borderColor: workerColor,
+                      borderWidth: 2,
+                      borderStyle: 'solid',
+                      minHeight: 56, // Large touch target for iOS
+                      fontSize: '1rem',
+                      fontWeight: 500,
+                      textTransform: 'none',
+                      justifyContent: 'flex-start',
+                      touchAction: 'manipulation', // Prevent double-tap zoom
+                      WebkitTapHighlightColor: 'transparent', // Remove iOS tap highlight
+                      userSelect: 'none',
+                      '&:hover': {
+                        backgroundColor: isSelected ? workerColor : 'action.hover',
+                        opacity: isSelected ? 0.9 : 1,
+                        borderColor: workerColor
+                      },
+                      '&:active': {
+                        transform: 'scale(0.98)',
+                        opacity: 0.95
+                      },
+                      '& .MuiButton-startIcon': {
+                        marginRight: 1
                       }
-                    })
-                  }}
-                  icon={isSelected ? <CheckIcon sx={{ color: 'white !important' }} /> : undefined}
-                  sx={{
-                    backgroundColor: isSelected ? workerColor : 'grey.300',
-                    color: isSelected ? 'white' : 'text.primary',
-                    fontWeight: 500,
-                    minHeight: 56, // Large touch target for iOS (minimum 44px, using 56px for safety)
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    touchAction: 'manipulation', // Prevent double-tap zoom
-                    WebkitTapHighlightColor: 'transparent', // Remove iOS tap highlight
-                    border: isSelected ? `3px solid ${workerColor}` : '3px solid transparent',
-                    transition: 'all 0.2s ease-in-out',
-                    '&:hover': {
-                      opacity: 0.85,
-                      transform: 'scale(1.02)'
-                    },
-                    '&:active': {
-                      transform: 'scale(0.98)',
-                      opacity: 0.9
-                    },
-                    '& .MuiChip-label': {
-                      px: 2,
-                      py: 1.5,
-                      whiteSpace: 'normal',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      maxWidth: '100%',
-                      lineHeight: 1.4,
-                      wordBreak: 'break-word',
-                      minHeight: 56, // Ensure label area is also large enough
-                      display: 'flex',
-                      alignItems: 'center',
-                      flex: 1
-                    },
-                    '& .MuiChip-icon': {
-                      marginLeft: 1,
-                      marginRight: -0.5,
-                      fontSize: '1.5rem'
-                    }
-                  }}
-                />
+                    }}
+                  >
+                    {worker.nickname || worker.name}
+                  </Button>
+                </Grid>
               )
             })}
-          </Stack>
+          </Grid>
           
           {workers.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
