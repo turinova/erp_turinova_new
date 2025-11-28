@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import {
   Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup
 } from '@mui/material'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 
@@ -854,51 +854,65 @@ export default function ShipmentDetailClient({
             Válassz dolgozó(kat) aki(k) bevételezik:
           </Typography>
           
-          <Stack spacing={2}>
+          <Stack spacing={1.5}>
             {workers.map((worker) => {
               const isSelected = selectedWorkerIds.includes(worker.id)
+              const workerColor = worker.color || '#1976d2'
               return (
-                <Box key={worker.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Checkbox
-                    checked={isSelected}
-                    onChange={(e) => {
-                      const checked = e.currentTarget.checked
-                      setSelectedWorkerIds(prev => {
-                        if (checked) {
-                          return [...prev, worker.id]
-                        } else {
-                          return prev.filter(id => id !== worker.id)
-                        }
-                      })
-                    }}
-                  />
-                  <Chip
-                    label={worker.nickname || worker.name}
-                    sx={{
-                      backgroundColor: worker.color || '#1976d2',
-                      color: 'white',
-                      fontWeight: 500,
-                      height: 'auto',
-                      minHeight: 48,
-                      fontSize: '1rem',
-                      flex: 1,
-                      pointerEvents: 'none',
-                      '& .MuiChip-label': {
-                        px: 2,
-                        py: 1.5,
-                        whiteSpace: 'normal',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        maxWidth: '100%',
-                        lineHeight: 1.4,
-                        wordBreak: 'break-word'
+                <Chip
+                  key={worker.id}
+                  label={worker.nickname || worker.name}
+                  onClick={() => {
+                    setSelectedWorkerIds(prev => {
+                      if (isSelected) {
+                        return prev.filter(id => id !== worker.id)
+                      } else {
+                        return [...prev, worker.id]
                       }
-                    }}
-                  />
-                </Box>
+                    })
+                  }}
+                  icon={isSelected ? <CheckIcon sx={{ color: 'white !important' }} /> : undefined}
+                  sx={{
+                    backgroundColor: isSelected ? workerColor : 'grey.300',
+                    color: isSelected ? 'white' : 'text.primary',
+                    fontWeight: 500,
+                    minHeight: 56, // Large touch target for iOS (minimum 44px, using 56px for safety)
+                    fontSize: '1rem',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    touchAction: 'manipulation', // Prevent double-tap zoom
+                    WebkitTapHighlightColor: 'transparent', // Remove iOS tap highlight
+                    border: isSelected ? `3px solid ${workerColor}` : '3px solid transparent',
+                    transition: 'all 0.2s ease-in-out',
+                    '&:hover': {
+                      opacity: 0.85,
+                      transform: 'scale(1.02)'
+                    },
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                      opacity: 0.9
+                    },
+                    '& .MuiChip-label': {
+                      px: 2,
+                      py: 1.5,
+                      whiteSpace: 'normal',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      maxWidth: '100%',
+                      lineHeight: 1.4,
+                      wordBreak: 'break-word',
+                      minHeight: 56, // Ensure label area is also large enough
+                      display: 'flex',
+                      alignItems: 'center',
+                      flex: 1
+                    },
+                    '& .MuiChip-icon': {
+                      marginLeft: 1,
+                      marginRight: -0.5,
+                      fontSize: '1.5rem'
+                    }
+                  }}
+                />
               )
             })}
           </Stack>
