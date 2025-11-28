@@ -106,16 +106,17 @@ export default function ShipmentDetailClient({
     fetchWorkers()
   }, []) // Only run once on mount
 
-  // Focus barcode input on mount and when status is draft
+  // Focus barcode input on mount and when status is draft (but not when modal is open)
   useEffect(() => {
-    if (header?.status === 'draft' && barcodeInputRef.current) {
+    if (header?.status === 'draft' && barcodeInputRef.current && !receiveConfirmOpen) {
       // Small delay to ensure page is fully rendered
+      // Only focus if modal is NOT open to prevent conflicts
       const timer = setTimeout(() => {
         barcodeInputRef.current?.focus()
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [header?.status])
+  }, [header?.status, receiveConfirmOpen])
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -836,12 +837,7 @@ export default function ShipmentDetailClient({
       {/* Receive Shipment Confirmation Dialog */}
       <Dialog
         open={receiveConfirmOpen}
-        onClose={(event, reason) => {
-          // Only close on backdrop click or escape, not on content clicks
-          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-            setReceiveConfirmOpen(false)
-          }
-        }}
+        onClose={() => setReceiveConfirmOpen(false)}
         aria-labelledby="receive-dialog-title"
         aria-describedby="receive-dialog-description"
         maxWidth="sm"
@@ -869,12 +865,12 @@ export default function ShipmentDetailClient({
                     variant={isSelected ? 'contained' : 'outlined'}
                     onClick={(e) => {
                       e.stopPropagation() // Prevent event bubbling to Dialog
-                      e.preventDefault() // Prevent default behavior
+                      const workerId = worker.id // Get from closure
                       setSelectedWorkerIds(prev => {
-                        if (isSelected) {
-                          return prev.filter(id => id !== worker.id)
+                        if (prev.includes(workerId)) {
+                          return prev.filter(id => id !== workerId)
                         } else {
-                          return [...prev, worker.id]
+                          return [...prev, workerId]
                         }
                       })
                     }}
@@ -900,7 +896,6 @@ export default function ShipmentDetailClient({
                         borderColor: workerColor
                       },
                       '&:active': {
-                        transform: 'scale(0.98)',
                         opacity: 0.95
                       },
                       '& .MuiButton-startIcon': {
