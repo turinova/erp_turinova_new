@@ -850,98 +850,52 @@ export default function ShipmentDetailClient({
           </Typography>
           
           <Grid container spacing={1.5}>
-            {workers.map((worker) => {
-              const isSelected = selectedWorkerIds.has(worker.id)
-              return (
-                <Grid item xs={3} key={worker.id}>
-                  <Box
-                    onClick={() => {
+            {workers.map((worker) => (
+              <Grid item xs={3} key={worker.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Checkbox
+                    checked={selectedWorkerIds.has(worker.id)}
+                    onChange={(e) => {
                       setSelectedWorkerIds(prev => {
                         const copy = new Set(prev)
-                        if (copy.has(worker.id)) {
-                          copy.delete(worker.id)
-                        } else {
+                        if (e.target.checked) {
                           copy.add(worker.id)
+                        } else {
+                          copy.delete(worker.id)
                         }
                         return copy
                       })
                     }}
+                  />
+                  <Chip
+                    label={worker.nickname || worker.name}
                     sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1,
-                      padding: 1.5,
-                      borderRadius: 1,
-                      cursor: 'pointer',
-                      userSelect: 'none',
-                      touchAction: 'manipulation',
-                      WebkitTapHighlightColor: 'transparent',
-                      backgroundColor: isSelected ? 'action.selected' : 'transparent',
-                      '&:hover': {
-                        backgroundColor: 'action.hover'
-                      },
-                      '&:active': {
-                        backgroundColor: 'action.selected'
+                      backgroundColor: worker.color || '#1976d2',
+                      color: 'white',
+                      fontWeight: 500,
+                      height: 'auto',
+                      minHeight: 48,
+                      fontSize: '1rem',
+                      flex: 1,
+                      pointerEvents: 'none',
+                      '& .MuiChip-label': {
+                        px: 2,
+                        py: 1.5,
+                        whiteSpace: 'normal',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: '100%',
+                        lineHeight: 1.4,
+                        wordBreak: 'break-word'
                       }
                     }}
-                  >
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={(e) => {
-                        e.stopPropagation()
-                        setSelectedWorkerIds(prev => {
-                          const copy = new Set(prev)
-                          if (e.target.checked) {
-                            copy.add(worker.id)
-                          } else {
-                            copy.delete(worker.id)
-                          }
-                          return copy
-                        })
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                      }}
-                      sx={{
-                        '& .MuiSvgIcon-root': {
-                          fontSize: 32 // Larger checkbox for tablet
-                        },
-                        padding: 0.5,
-                        touchAction: 'manipulation',
-                        WebkitTapHighlightColor: 'transparent',
-                        pointerEvents: 'auto'
-                      }}
-                    />
-                    <Chip
-                      label={worker.nickname || worker.name}
-                      sx={{
-                        backgroundColor: worker.color || '#1976d2',
-                        color: 'white',
-                        fontWeight: 500,
-                        height: 'auto',
-                        minHeight: 48,
-                        fontSize: '1rem',
-                        flex: 1,
-                        pointerEvents: 'none', // Prevent chip from blocking clicks
-                        '& .MuiChip-label': {
-                          px: 2,
-                          py: 1.5,
-                          whiteSpace: 'normal',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          maxWidth: '100%',
-                          lineHeight: 1.4,
-                          wordBreak: 'break-word'
-                        }
-                      }}
-                    />
-                  </Box>
-                </Grid>
-              )
-            })}
+                  />
+                </Box>
+              </Grid>
+            ))}
           </Grid>
           
           {workers.length === 0 && (
