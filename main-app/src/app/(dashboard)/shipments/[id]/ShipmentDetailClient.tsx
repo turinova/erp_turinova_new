@@ -857,19 +857,27 @@ export default function ShipmentDetailClient({
         </DialogContent>
         <DialogActions>
           <Button
-            onClick={() => setReceiveConfirmOpen(false)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setReceiveConfirmOpen(false)
+            }}
             disabled={receiving}
           >
             Mégse
           </Button>
           <Button
-            onClick={handleConfirmReceiveShipment}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              // Temporarily just close the modal for testing
+              setReceiveConfirmOpen(false)
+              // handleConfirmReceiveShipment() - commented out for testing
+            }}
             variant="contained"
             color="primary"
             disabled={receiving}
-            startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
-            {receiving ? 'Bevételezés...' : 'Bevételezés'}
+            Bevételezés
           </Button>
         </DialogActions>
       </Dialog>
