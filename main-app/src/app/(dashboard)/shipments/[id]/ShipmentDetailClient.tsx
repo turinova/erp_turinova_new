@@ -118,6 +118,21 @@ export default function ShipmentDetailClient({
     }
   }, [header?.status, receiveConfirmOpen])
 
+  // Blur barcode input when modal opens to prevent conflicts on iPad/mobile
+  useEffect(() => {
+    if (receiveConfirmOpen && barcodeInputRef.current) {
+      // Immediately blur and disable the barcode input when modal opens
+      barcodeInputRef.current.blur()
+      // Clear any pending scans
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current)
+        scanTimeoutRef.current = null
+      }
+      isScanningRef.current = false
+      setBarcodeInput('')
+    }
+  }, [receiveConfirmOpen])
+
   // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
@@ -317,6 +332,11 @@ export default function ShipmentDetailClient({
 
   // Handle barcode input change (debounced for scanner)
   const handleBarcodeInputChange = (value: string) => {
+    // Don't process barcode input when modal is open
+    if (receiveConfirmOpen) {
+      return
+    }
+    
     setBarcodeInput(value)
 
     // Clear previous timeout
@@ -328,7 +348,7 @@ export default function ShipmentDetailClient({
     // Set new timeout - trigger scan when input stops changing for 100ms
     scanTimeoutRef.current = setTimeout(() => {
       const trimmedValue = value.trim()
-      if (trimmedValue.length > 0 && !isScanningRef.current && header?.status === 'draft') {
+      if (trimmedValue.length > 0 && !isScanningRef.current && header?.status === 'draft' && !receiveConfirmOpen) {
         handleBarcodeScan(trimmedValue)
       }
     }, 100)
@@ -336,7 +356,8 @@ export default function ShipmentDetailClient({
 
   // Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
-    if (!barcode || !barcode.trim() || header?.status !== 'draft') {
+    // Don't process scans when modal is open
+    if (receiveConfirmOpen || !barcode || !barcode.trim() || header?.status !== 'draft') {
       refocusBarcodeInput()
       return
     }
@@ -455,7 +476,7 @@ export default function ShipmentDetailClient({
   return (
     <Box sx={{ p: 3 }}>
       {/* Hidden barcode input for scanner */}
-      {header?.status === 'draft' && (
+      {header?.status === 'draft' && !receiveConfirmOpen && (
         <TextField
           inputRef={barcodeInputRef}
           value={barcodeInput}
@@ -480,7 +501,7 @@ export default function ShipmentDetailClient({
             width: '1px',
             height: '1px',
             opacity: 0,
-            pointerEvents: 'auto',
+            pointerEvents: receiveConfirmOpen ? 'none' : 'auto',
             zIndex: -1
           }}
           autoFocus
@@ -842,6 +863,12 @@ export default function ShipmentDetailClient({
         aria-describedby="receive-dialog-description"
         maxWidth="sm"
         fullWidth
+        disablePortal={false}
+        PaperProps={{
+          sx: {
+            touchAction: 'manipulation'
+          }
+        }}
       >
         <DialogTitle id="receive-dialog-title">
           Szállítmány bevételezése
@@ -855,13 +882,15 @@ export default function ShipmentDetailClient({
             Worker selection temporarily removed for testing
           </Typography>
         </DialogContent>
-        <DialogActions>
+        <DialogActions sx={{ touchAction: 'manipulation' }}>
           <Button
             onClick={(e) => {
               e.stopPropagation()
+              e.preventDefault()
               setReceiveConfirmOpen(false)
             }}
             disabled={receiving}
+            sx={{ touchAction: 'manipulation' }}
           >
             Mégse
           </Button>
@@ -869,15 +898,15 @@ export default function ShipmentDetailClient({
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
-              // Temporarily just close the modal for testing
-              setReceiveConfirmOpen(false)
-              // handleConfirmReceiveShipment() - commented out for testing
+              handleConfirmReceiveShipment()
             }}
             variant="contained"
             color="primary"
             disabled={receiving}
+            sx={{ touchAction: 'manipulation' }}
+            startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
-            Bevételezés
+            {receiving ? 'Bevételezés...' : 'Bevételezés'}
           </Button>
         </DialogActions>
       </Dialog>
