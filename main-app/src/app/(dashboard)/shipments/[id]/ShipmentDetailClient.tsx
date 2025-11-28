@@ -871,7 +871,9 @@ export default function ShipmentDetailClient({
                         '& .MuiSvgIcon-root': {
                           fontSize: 32 // Larger checkbox for tablet
                         },
-                        padding: 1.5 // Larger touch target
+                        padding: 1.5, // Larger touch target
+                        touchAction: 'manipulation', // Prevent double-tap zoom on iPad
+                        WebkitTapHighlightColor: 'transparent' // Remove tap highlight on iOS
                       }}
                     />
                   }
@@ -911,20 +913,9 @@ export default function ShipmentDetailClient({
                       backgroundColor: 'action.hover'
                     },
                     cursor: 'pointer',
-                    userSelect: 'none'
-                  }}
-                  onClick={(e) => {
-                    // Make entire label area clickable
-                    if (e.target !== e.currentTarget) return
-                    setSelectedWorkerIds(prev => {
-                      const copy = new Set(prev)
-                      if (copy.has(worker.id)) {
-                        copy.delete(worker.id)
-                      } else {
-                        copy.add(worker.id)
-                      }
-                      return copy
-                    })
+                    userSelect: 'none',
+                    touchAction: 'manipulation', // Prevent double-tap zoom on iPad
+                    WebkitTapHighlightColor: 'transparent' // Remove tap highlight on iOS
                   }}
                 />
               </Grid>
