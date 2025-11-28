@@ -855,60 +855,47 @@ export default function ShipmentDetailClient({
             Válassz dolgozó(kat) aki(k) bevételezik:
           </Typography>
           
-          <Grid container spacing={1.5}>
+          <Stack spacing={1.5}>
             {workers.map((worker) => {
               const isSelected = selectedWorkerIds.includes(worker.id)
               const workerColor = worker.color || '#1976d2'
               return (
-                <Grid item xs={3} key={worker.id}>
-                  <Button
-                    variant={isSelected ? 'contained' : 'outlined'}
-                    onClick={(e) => {
-                      e.stopPropagation() // Prevent event bubbling to Dialog
-                      const workerId = worker.id // Get from closure
-                      setSelectedWorkerIds(prev => {
-                        if (prev.includes(workerId)) {
-                          return prev.filter(id => id !== workerId)
-                        } else {
-                          return [...prev, workerId]
-                        }
-                      })
-                    }}
-                    startIcon={isSelected ? <CheckIcon /> : <Box sx={{ width: 24, height: 24 }} />}
-                    fullWidth
-                    sx={{
-                      backgroundColor: isSelected ? workerColor : 'transparent',
-                      color: isSelected ? 'white' : 'text.primary',
+                <Button
+                  key={worker.id}
+                  variant={isSelected ? 'contained' : 'outlined'}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSelectedWorkerIds(prev => 
+                      prev.includes(worker.id) 
+                        ? prev.filter(id => id !== worker.id)
+                        : [...prev, worker.id]
+                    )
+                  }}
+                  startIcon={isSelected ? <CheckIcon /> : undefined}
+                  fullWidth
+                  sx={{
+                    minHeight: 56,
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    textTransform: 'none',
+                    justifyContent: 'flex-start',
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent',
+                    ...(isSelected && {
+                      backgroundColor: workerColor,
+                      color: 'white'
+                    }),
+                    ...(!isSelected && {
                       borderColor: workerColor,
-                      borderWidth: 2,
-                      borderStyle: 'solid',
-                      minHeight: 56, // Large touch target for iOS
-                      fontSize: '1rem',
-                      fontWeight: 500,
-                      textTransform: 'none',
-                      justifyContent: 'flex-start',
-                      touchAction: 'manipulation', // Prevent double-tap zoom
-                      WebkitTapHighlightColor: 'transparent', // Remove iOS tap highlight
-                      userSelect: 'none',
-                      '&:hover': {
-                        backgroundColor: isSelected ? workerColor : 'action.hover',
-                        opacity: isSelected ? 0.9 : 1,
-                        borderColor: workerColor
-                      },
-                      '&:active': {
-                        opacity: 0.95
-                      },
-                      '& .MuiButton-startIcon': {
-                        marginRight: 1
-                      }
-                    }}
-                  >
-                    {worker.nickname || worker.name}
-                  </Button>
-                </Grid>
+                      borderWidth: 2
+                    })
+                  }}
+                >
+                  {worker.nickname || worker.name}
+                </Button>
               )
             })}
-          </Grid>
+          </Stack>
           
           {workers.length === 0 && (
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
@@ -927,7 +914,7 @@ export default function ShipmentDetailClient({
             onClick={handleConfirmReceiveShipment}
             variant="contained"
             color="primary"
-            disabled={receiving || selectedWorkerIds.length === 0}
+            disabled={receiving}
             startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
             {receiving ? 'Bevételezés...' : 'Bevételezés'}
