@@ -22,8 +22,8 @@ export async function GET(request: NextRequest) {
         created_at,
         email_sent,
         email_sent_at,
-        items:purchase_order_items(count),
-        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity)
+        items:purchase_order_items(deleted_at),
+        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity, deleted_at)
       `)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -81,7 +81,10 @@ export async function GET(request: NextRequest) {
 
     // Compute net totals and counts client-side from joined data
     const result = (data || []).map((row: any) => {
-      const itemsCount = row.items?.length ? row.items[0]?.count ?? 0 : 0
+      // Filter out soft-deleted items
+      const activeItems = Array.isArray(row.items) ? row.items.filter((item: any) => !item.deleted_at) : []
+      const itemsCount = activeItems.length
+      
       // Get shipments for this PO
       const shipmentNumbers = shipmentsByPo.get(row.id) || []
       
@@ -91,14 +94,15 @@ export async function GET(request: NextRequest) {
         shipmentIdsWithStockMovements.has(sid)
       )
       
-      // Sum net_price * quantity across joined purchase_order_items rows
-      const netTotal = Array.isArray(row.net_total)
-        ? row.net_total.reduce((sum: number, it: any) => {
-            const unit = Number(it?.net_price) || 0
-            const qty = Number(it?.quantity) || 0
-            return sum + unit * qty
-          }, 0)
-        : 0
+      // Sum net_price * quantity across non-deleted purchase_order_items rows
+      const activeNetTotalItems = Array.isArray(row.net_total) 
+        ? row.net_total.filter((it: any) => !it.deleted_at) 
+        : []
+      const netTotal = activeNetTotalItems.reduce((sum: number, it: any) => {
+        const unit = Number(it?.net_price) || 0
+        const qty = Number(it?.quantity) || 0
+        return sum + unit * qty
+      }, 0)
       return {
         id: row.id,
         po_number: row.po_number,
