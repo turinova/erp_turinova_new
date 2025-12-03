@@ -1347,14 +1347,19 @@ export default function OptiClient({
     setIsSavingQuote(true)
 
     try {
-      // Prepare panels data for saving
+      // Prepare panels data for saving with validation
       const panelsToSave = addedPanels.map(panel => {
         // Find material by name only (no dimensions in táblásAnyag anymore)
         const materialName = panel.táblásAnyag.trim()
         const material = materials.find(m => m.name === materialName)
         
+        // Validate material exists
+        if (!material || !material.id) {
+          throw new Error(`Anyag nem található: "${materialName}". Az anyagok listája elavult lehet. Kérjük, frissítse az oldalt (F5) és próbálja újra.`)
+        }
+        
         return {
-          material_id: material?.id || '',
+          material_id: material.id,
           width_mm: parseInt(panel.hosszúság),
           height_mm: parseInt(panel.szélesség),
           quantity: parseInt(panel.darab),
