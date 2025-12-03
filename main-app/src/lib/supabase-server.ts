@@ -3584,7 +3584,7 @@ export async function getPurchaseOrderById(id: string) {
         warehouse_id, order_date, expected_date, note, created_at, updated_at,
         purchase_order_items (
           id, product_type, accessory_id, material_id, linear_material_id,
-          quantity, net_price, vat_id, currency_id, units_id, description,
+          quantity, net_price, vat_id, currency_id, units_id, description, deleted_at,
           accessories:accessory_id (name, sku),
           materials:material_id (name),
           linear_materials:linear_material_id (name)
