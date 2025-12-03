@@ -663,10 +663,35 @@ export default function ShipmentDetailClient({
         throw new Error(errorData.error || 'Hiba a tétel hozzáadásakor')
       }
 
+      const data = await response.json()
+
+      // Calculate totals for the new item
+      const vatPercent = vatRates.get(data.item.vat_id) || 0
+      const net_total = data.item.quantity_received * data.item.net_price
+      const vat_amount = Math.round(net_total * (vatPercent / 100))
+      const gross_total = net_total + vat_amount
+
+      // Create the new item with calculated totals
+      const newItem: ShipmentItem = {
+        id: data.item.id,
+        purchase_order_item_id: data.item.purchase_order_item_id,
+        product_name: data.item.product_name,
+        sku: data.item.sku,
+        quantity_received: data.item.quantity_received,
+        target_quantity: data.item.target_quantity,
+        net_price: data.item.net_price,
+        net_total: net_total,
+        gross_total: gross_total,
+        vat_id: data.item.vat_id,
+        currency_id: data.item.currency_id,
+        units_id: data.item.units_id,
+        note: data.item.note
+      }
+
+      // Add to items state directly (no page reload!)
+      setItems(prevItems => [...prevItems, newItem])
+
       toast.success('Tétel hozzáadva')
-      
-      // Refresh data to get the new item
-      await fetchData()
 
       setAddingProduct(false)
       setProductSearchTerm('')
