@@ -31,6 +31,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'PO nem található' }, { status: 404 })
     }
 
+    // Filter out soft-deleted items
+    const activeItems = (po.purchase_order_items || []).filter((item: any) => !item.deleted_at)
+
     // Totals
     const { data: vatRows } = await supabaseServer.from('vat').select('id, kulcs')
     const vatMap = new Map<string, number>((vatRows || []).map(r => [r.id, r.kulcs || 0]))
@@ -40,7 +43,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     let totalNet = 0
     let totalVat = 0
     let totalGross = 0
-    for (const item of po.purchase_order_items || []) {
+    for (const item of activeItems) {
       itemsCount += 1
       const qty = Number(item.quantity) || 0
       totalQty += qty
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const partner = Array.isArray(po.partners) ? po.partners[0] : po.partners
 
     // Fetch received quantities for each PO item
-    const poItemIds = (po.purchase_order_items || []).map((item: any) => item.id)
+    const poItemIds = activeItems.map((item: any) => item.id)
     let receivedQuantitiesMap = new Map<string, number>()
     
     if (poItemIds.length > 0) {
@@ -83,7 +86,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Transform items to use actual product names from related tables
-    const transformedItems = (po.purchase_order_items || []).map((item: any) => {
+    const transformedItems = activeItems.map((item: any) => {
       // Get actual product name from related table
       let productName = item.description || ''
       let productSku = ''

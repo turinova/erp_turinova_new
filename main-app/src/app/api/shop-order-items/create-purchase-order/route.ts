@@ -22,12 +22,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`[CREATE PO] Processing ${shop_order_item_ids.length} shop order items`)
 
-    // 1. Check if any items already linked to existing POs (exclude deleted POs)
+    // 1. Check if any items already linked to existing POs (exclude deleted POs and deleted PO items)
     const { data: existingLinks, error: checkError } = await supabaseServer
       .from('purchase_order_items')
       .select('shop_order_item_id, purchase_order_id, purchase_orders!inner(po_number, status, deleted_at)')
       .in('shop_order_item_id', shop_order_item_ids)
       .not('shop_order_item_id', 'is', null)
+      .is('deleted_at', null)
       .is('purchase_orders.deleted_at', null)
 
     if (checkError) {
