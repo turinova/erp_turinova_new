@@ -3638,6 +3638,33 @@ export async function getPurchaseOrderById(id: string) {
       updated_at: po.updated_at
     }
 
+    // Fetch received quantities for each PO item
+    const poItemIds = (po.purchase_order_items || []).map((item: any) => item.id)
+    let receivedQuantitiesMap = new Map<string, number>()
+    
+    if (poItemIds.length > 0) {
+      const { data: receivedData } = await supabaseServer
+        .from('shipment_items')
+        .select(`
+          purchase_order_item_id,
+          quantity_received,
+          shipments!inner(status, deleted_at)
+        `)
+        .in('purchase_order_item_id', poItemIds)
+        .is('deleted_at', null)
+        .eq('shipments.status', 'received')
+        .is('shipments.deleted_at', null)
+
+      // Sum received quantities per PO item
+      if (receivedData) {
+        receivedData.forEach((row: any) => {
+          const poItemId = row.purchase_order_item_id
+          const qty = Number(row.quantity_received) || 0
+          receivedQuantitiesMap.set(poItemId, (receivedQuantitiesMap.get(poItemId) || 0) + qty)
+        })
+      }
+    }
+
     // Transform items to use actual product names from related tables
     const transformedItems = (po.purchase_order_items || []).map((item: any) => {
       // Get actual product name from related table
@@ -3658,7 +3685,8 @@ export async function getPurchaseOrderById(id: string) {
       return {
         ...item,
         description: productName, // Override with actual product name
-        sku: productSku
+        sku: productSku,
+        quantity_received: receivedQuantitiesMap.get(item.id) || 0
       }
     })
 

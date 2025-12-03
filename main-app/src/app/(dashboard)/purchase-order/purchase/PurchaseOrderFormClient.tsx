@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import {
-  Box, Breadcrumbs, Button, Card, CardContent, CircularProgress, FormControl, Grid, InputLabel, Link, MenuItem, Paper, Select, Stack, TextField, Typography, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, IconButton, Tooltip
+  Box, Breadcrumbs, Button, Card, CardContent, Chip, CircularProgress, FormControl, Grid, InputLabel, Link, MenuItem, Paper, Select, Stack, TextField, Typography, TableContainer, Table, TableHead, TableBody, TableRow, TableCell, IconButton, Tooltip
 } from '@mui/material'
 import { Delete as DeleteIcon, Info as InfoIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
@@ -58,6 +58,7 @@ interface ItemDraft {
   units_id: string
   sku?: string
   megjegyzes?: string
+  quantity_received?: number // Total quantity received from all shipments
   // Internal: store multiplier used at selection time to allow edits
   __multiplier?: number
 }
@@ -490,8 +491,9 @@ export default function PurchaseOrderFormClient({
     vat_id: it.vat_id,
     currency_id: it.currency_id,
     units_id: it.units_id,
-    sku: it.accessories?.sku || '',
-    megjegyzes: ''
+    sku: it.sku || it.accessories?.sku || '',
+    megjegyzes: '',
+    quantity_received: Number(it.quantity_received) || 0
   }))
 
   const [items, setItems] = useState<ItemDraft[]>(initialItemsTransformed)
@@ -606,7 +608,8 @@ export default function PurchaseOrderFormClient({
             vat_id: it.vat_id,
             currency_id: it.currency_id,
             units_id: it.units_id,
-            sku: it.accessories?.sku || it.materials?.sku || it.linear_materials?.sku || ''
+            sku: it.sku || it.accessories?.sku || it.materials?.sku || it.linear_materials?.sku || '',
+            quantity_received: Number(it.quantity_received) || 0
           }))
           setItems(loadedItems)
           // Store original item IDs for tracking deletions
@@ -1003,6 +1006,9 @@ export default function PurchaseOrderFormClient({
                           <TableCell>SKU</TableCell>
                           <TableCell align="right">Mennyiség</TableCell>
                           <TableCell align="center">Mértékegység</TableCell>
+                          {mode === 'edit' && poStatus !== 'draft' && (
+                            <TableCell align="right">Beérkezett</TableCell>
+                          )}
                           <TableCell align="right">Nettó egységár</TableCell>
                           <TableCell align="right">ÁFA %</TableCell>
                           <TableCell align="right">Nettó összesen</TableCell>
@@ -1045,6 +1051,29 @@ export default function PurchaseOrderFormClient({
                                   return unit ? (unit.shortform || unit.name) : '-'
                                 })()}
                               </TableCell>
+                              {mode === 'edit' && poStatus !== 'draft' && (
+                                <TableCell align="right">
+                                  <Chip
+                                    label={it.quantity_received || 0}
+                                    size="small"
+                                    color={
+                                      (it.quantity_received || 0) === qty 
+                                        ? 'success' // Green - exact match
+                                        : (it.quantity_received || 0) < qty
+                                          ? 'error' // Red - less than ordered
+                                          : 'warning' // Orange - more than ordered
+                                    }
+                                    sx={{
+                                      fontWeight: 600,
+                                      minWidth: 50,
+                                      color: 'white',
+                                      '& .MuiChip-label': {
+                                        color: 'white'
+                                      }
+                                    }}
+                                  />
+                                </TableCell>
+                              )}
                               <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(netUnit)} Ft</TableCell>
                               <TableCell align="right">{vatPercent}%</TableCell>
                               <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(lineNet)} Ft</TableCell>

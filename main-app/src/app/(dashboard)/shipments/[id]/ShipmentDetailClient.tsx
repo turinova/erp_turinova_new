@@ -605,6 +605,17 @@ export default function ShipmentDetailClient({
                       }}
                     />
                   ))}
+                  {header.receipt_workers[0]?.received_at && (
+                    <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                      - {new Date(header.receipt_workers[0].received_at).toLocaleString('hu-HU', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </Typography>
+                  )}
                 </Box>
               </Grid>
             )}
