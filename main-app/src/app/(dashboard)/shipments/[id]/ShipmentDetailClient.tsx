@@ -64,6 +64,8 @@ export default function ShipmentDetailClient({
   const [saving, setSaving] = useState(false)
   const [receiving, setReceiving] = useState(false)
   const [receiveConfirmOpen, setReceiveConfirmOpen] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null)
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
@@ -204,15 +206,45 @@ export default function ShipmentDetailClient({
     }
   }
 
+  // Play warning sound for errors
+  const playWarningSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      
+      oscillator.frequency.value = 800 // Hz
+      oscillator.type = 'sine'
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+      
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + 0.3)
+    } catch (error) {
+      // Silently fail if audio not supported
+      console.log('Audio not supported:', error)
+    }
+  }
+
   const handleDeleteItem = async (itemId: string) => {
-    if (!confirm('Biztosan törölni szeretnéd ezt a tételt?')) return
+    setItemToDelete(itemId)
+    setDeleteConfirmOpen(true)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!itemToDelete) return
+    setDeleteConfirmOpen(false)
     setSaving(true)
     try {
       const res = await fetch(`/api/shipments/${id}/items`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          updates: [{ id: itemId, deleted: true }]
+          updates: [{ id: itemToDelete, deleted: true }]
         })
       })
       const data = await res.json()
@@ -224,6 +256,7 @@ export default function ShipmentDetailClient({
       toast.error('Hiba a tétel törlésekor')
     } finally {
       setSaving(false)
+      setItemToDelete(null)
     }
   }
 
@@ -385,6 +418,7 @@ export default function ShipmentDetailClient({
       
       if (!response.ok) {
         const data = await response.json()
+        playWarningSound()
         if (response.status === 404) {
           toast.error('Vonalkód nem található a rendszerben')
         } else {
@@ -406,6 +440,7 @@ export default function ShipmentDetailClient({
       if (matchingItems.length === 0) {
         // Item not in shipment - check if we should add it
         if (!header?.partner_id) {
+          playWarningSound()
           toast.error('PO partner információ nem található')
           setBarcodeInput('')
           refocusBarcodeInput()
@@ -414,6 +449,7 @@ export default function ShipmentDetailClient({
 
         // Check if accessory's partner matches PO's partner
         if (accessoryData.partners_id !== header.partner_id) {
+          playWarningSound()
           toast.error(`Ez a termék másik beszállítóhoz tartozik (${sku})`)
           setBarcodeInput('')
           refocusBarcodeInput()
@@ -422,6 +458,7 @@ export default function ShipmentDetailClient({
 
         // Validate required fields
         if (!accessoryData.units_id || !accessoryData.vat_id || !accessoryData.currency_id) {
+          playWarningSound()
           toast.error('A terméknek hiányzik az egység, ÁFA vagy pénznem beállítása')
           setBarcodeInput('')
           refocusBarcodeInput()
@@ -471,6 +508,7 @@ export default function ShipmentDetailClient({
           return
         } catch (error) {
           console.error('Error adding item to shipment:', error)
+          playWarningSound()
           toast.error('Hiba a termék hozzáadásakor')
           setBarcodeInput('')
           refocusBarcodeInput()
@@ -483,6 +521,7 @@ export default function ShipmentDetailClient({
 
       if (!itemToUpdate) {
         // This shouldn't happen since we already checked matchingItems.length === 0
+        playWarningSound()
         toast.error(`A termék (SKU: ${sku}) nem található ebben a szállítmányban`)
         setBarcodeInput('')
         refocusBarcodeInput()
@@ -505,6 +544,7 @@ export default function ShipmentDetailClient({
       setBarcodeInput('')
     } catch (error) {
       console.error('Error scanning barcode:', error)
+      playWarningSound()
       toast.error('Hiba a vonalkód feldolgozásakor')
       setBarcodeInput('')
     } finally {
@@ -1059,6 +1099,40 @@ export default function ShipmentDetailClient({
             startIcon={receiving ? <CircularProgress size={18} /> : <SaveIcon />}
           >
             {receiving ? 'Bevételezés...' : 'Bevételezés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Item Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Tétel törlése
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Biztosan törölni szeretnéd ezt a tételt?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDeleteConfirmOpen(false)}
+            disabled={saving}
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            variant="contained"
+            color="error"
+            disabled={saving}
+            startIcon={saving ? <CircularProgress size={18} /> : <DeleteIcon />}
+          >
+            {saving ? 'Törlés...' : 'Törlés'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -18,6 +18,9 @@ interface StockMovementRow {
   product_type: string
   product_name: string
   sku: string
+  accessory_id: string | null
+  material_id: string | null
+  linear_material_id: string | null
   quantity: number
   movement_type: string
   source_type: string
@@ -191,6 +194,17 @@ export default function WarehouseOperationsClient({
     return null
   }
 
+  const getProductLink = (row: StockMovementRow) => {
+    if (row.product_type === 'accessory' && row.accessory_id) {
+      return `/accessories/${row.accessory_id}`
+    } else if (row.product_type === 'material' && row.material_id) {
+      return `/materials/${row.material_id}/edit`
+    } else if (row.product_type === 'linear_material' && row.linear_material_id) {
+      return `/linear-materials/${row.linear_material_id}/edit`
+    }
+    return null
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
@@ -325,6 +339,7 @@ export default function WarehouseOperationsClient({
               </TableRow>
             ) : rows.map(row => {
                 const sourceLink = getSourceLink(row)
+                const productLink = getProductLink(row)
                 const quantityColor = row.quantity > 0 ? 'success.main' : row.quantity < 0 ? 'error.main' : 'text.primary'
                 const quantitySign = row.quantity > 0 ? '+' : ''
                 
@@ -352,7 +367,21 @@ export default function WarehouseOperationsClient({
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>{row.product_name || '-'}</TableCell>
+                    <TableCell>
+                      {productLink ? (
+                        <Link
+                          component={NextLink}
+                          href={productLink}
+                          onClick={(e) => e.stopPropagation()}
+                          underline="hover"
+                          sx={{ fontWeight: 500 }}
+                        >
+                          {row.product_name || '-'}
+                        </Link>
+                      ) : (
+                        row.product_name || '-'
+                      )}
+                    </TableCell>
                     <TableCell>{row.sku || '-'}</TableCell>
                     <TableCell align="right">
                       <Typography sx={{ color: quantityColor, fontWeight: 500 }}>
