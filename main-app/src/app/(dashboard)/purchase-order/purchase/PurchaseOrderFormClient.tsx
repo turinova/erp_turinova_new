@@ -1218,7 +1218,7 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Össz. mennyiség</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft'
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedQty > 0
                       ? totals.receivedQty
                       : totals.totalQty
                     }
@@ -1229,7 +1229,7 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Termékek Nettó [HUF]</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft'
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedNet > 0
                       ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedNet)} Ft`
                       : `${new Intl.NumberFormat('hu-HU').format(totals.totalNet)} Ft`
                     }
@@ -1240,7 +1240,7 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Termékek ÁFA [HUF]</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft'
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedVat > 0
                       ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedVat)} Ft`
                       : `${new Intl.NumberFormat('hu-HU').format(totals.totalVat)} Ft`
                     }
@@ -1251,7 +1251,7 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Bruttó összesen</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft'
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedGross > 0
                       ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedGross)} Ft`
                       : `${new Intl.NumberFormat('hu-HU').format(totals.totalGross)} Ft`
                     }
