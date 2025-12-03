@@ -582,7 +582,7 @@ export default function PurchaseOrderListClient({
                     <TableCell align="right">
                       {row.net_total !== null && row.net_total !== undefined ? (
                         row.status !== 'draft' && row.received_net_total !== undefined && row.received_net_total !== row.net_total ? (
-                          `${new Intl.NumberFormat('hu-HU').format(row.received_net_total)} / ${new Intl.NumberFormat('hu-HU').format(row.net_total)} Ft`
+                          `${new Intl.NumberFormat('hu-HU').format(row.received_net_total)} Ft`
                         ) : (
                           `${new Intl.NumberFormat('hu-HU').format(row.net_total)} Ft`
                         )

@@ -1218,8 +1218,8 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Össz. mennyiség</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedQty !== totals.totalQty
-                      ? `${totals.receivedQty} / ${totals.totalQty}`
+                    {mode === 'edit' && poStatus !== 'draft'
+                      ? totals.receivedQty
                       : totals.totalQty
                     }
                   </Typography>
@@ -1229,8 +1229,8 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Termékek Nettó [HUF]</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedNet !== totals.totalNet
-                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedNet)} / ${new Intl.NumberFormat('hu-HU').format(totals.totalNet)} Ft`
+                    {mode === 'edit' && poStatus !== 'draft'
+                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedNet)} Ft`
                       : `${new Intl.NumberFormat('hu-HU').format(totals.totalNet)} Ft`
                     }
                   </Typography>
@@ -1240,8 +1240,8 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Termékek ÁFA [HUF]</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedVat !== totals.totalVat
-                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedVat)} / ${new Intl.NumberFormat('hu-HU').format(totals.totalVat)} Ft`
+                    {mode === 'edit' && poStatus !== 'draft'
+                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedVat)} Ft`
                       : `${new Intl.NumberFormat('hu-HU').format(totals.totalVat)} Ft`
                     }
                   </Typography>
@@ -1251,8 +1251,8 @@ export default function PurchaseOrderFormClient({
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Bruttó összesen</Typography>
                   <Typography variant="h6">
-                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedGross !== totals.totalGross
-                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedGross)} / ${new Intl.NumberFormat('hu-HU').format(totals.totalGross)} Ft`
+                    {mode === 'edit' && poStatus !== 'draft'
+                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedGross)} Ft`
                       : `${new Intl.NumberFormat('hu-HU').format(totals.totalGross)} Ft`
                     }
                   </Typography>
