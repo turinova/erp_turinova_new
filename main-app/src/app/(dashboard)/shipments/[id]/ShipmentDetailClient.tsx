@@ -117,19 +117,19 @@ export default function ShipmentDetailClient({
 
   // Focus barcode input on mount and when status is draft (but not when modal is open)
   useEffect(() => {
-    if (header?.status === 'draft' && barcodeInputRef.current && !receiveConfirmOpen && !addingProduct) {
+    if (header?.status === 'draft' && barcodeInputRef.current && !receiveConfirmOpen && !addingProduct && !deleteConfirmOpen) {
       // Small delay to ensure page is fully rendered
       // Only focus if modal is NOT open AND not adding product to prevent conflicts
       const timer = setTimeout(() => {
-        barcodeInputRef.current?.focus()
+        barcodeInputRef.current?.focus({ preventScroll: true })
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [header?.status, receiveConfirmOpen, addingProduct])
+  }, [header?.status, receiveConfirmOpen, addingProduct, deleteConfirmOpen])
 
-  // Blur barcode input when modal opens to prevent conflicts on iPad/mobile
+  // Blur barcode input when modals open to prevent conflicts on iPad/mobile
   useEffect(() => {
-    if (receiveConfirmOpen && barcodeInputRef.current) {
+    if ((receiveConfirmOpen || deleteConfirmOpen) && barcodeInputRef.current) {
       // Immediately blur and disable the barcode input when modal opens
       barcodeInputRef.current.blur()
       // Clear any pending scans
@@ -140,7 +140,7 @@ export default function ShipmentDetailClient({
       isScanningRef.current = false
       setBarcodeInput('')
     }
-  }, [receiveConfirmOpen])
+  }, [receiveConfirmOpen, deleteConfirmOpen])
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -265,6 +265,10 @@ export default function ShipmentDetailClient({
     } finally {
       setSaving(false)
       setItemToDelete(null)
+      // Refocus barcode input after delete dialog closes
+      setTimeout(() => {
+        refocusBarcodeInput()
+      }, 100)
     }
   }
 
@@ -563,9 +567,9 @@ export default function ShipmentDetailClient({
 
   // Refocus barcode input
   const refocusBarcodeInput = () => {
-    if (header?.status === 'draft' && !addingProduct && barcodeInputRef.current) {
+    if (header?.status === 'draft' && !addingProduct && !deleteConfirmOpen && barcodeInputRef.current) {
       setTimeout(() => {
-        barcodeInputRef.current?.focus()
+        barcodeInputRef.current?.focus({ preventScroll: true })
         barcodeInputRef.current?.select()
       }, 10)
     }
@@ -744,7 +748,7 @@ export default function ShipmentDetailClient({
   return (
     <Box sx={{ p: 3 }}>
       {/* Hidden barcode input for scanner */}
-      {header?.status === 'draft' && !receiveConfirmOpen && (
+      {header?.status === 'draft' && !receiveConfirmOpen && !deleteConfirmOpen && (
         <TextField
           inputRef={barcodeInputRef}
           value={barcodeInput}
@@ -775,15 +779,15 @@ export default function ShipmentDetailClient({
           autoFocus
           tabIndex={0}
           onBlur={(e) => {
-            // Don't refocus if adding product or clicking on interactive elements
-            if (addingProduct) return
+            // Don't refocus if adding product, deleting, or clicking on interactive elements
+            if (addingProduct || deleteConfirmOpen) return
             
             const target = e.relatedTarget as HTMLElement
             if (!target) {
               // No related target (clicked outside) - refocus after a delay
               setTimeout(() => {
-                if (header?.status === 'draft' && !receiveConfirmOpen && !addingProduct && barcodeInputRef.current) {
-                  barcodeInputRef.current.focus()
+                if (header?.status === 'draft' && !receiveConfirmOpen && !addingProduct && !deleteConfirmOpen && barcodeInputRef.current) {
+                  barcodeInputRef.current.focus({ preventScroll: true })
                 }
               }, 100)
               return

@@ -132,6 +132,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
       // Handle soft delete
       if (upd.deleted) {
+        // Get the purchase_order_item_id before deleting
+        const { data: shipmentItem, error: fetchError } = await supabaseServer
+          .from('shipment_items')
+          .select('purchase_order_item_id')
+          .eq('id', upd.id)
+          .eq('shipment_id', id)
+          .single()
+
+        if (fetchError) {
+          console.error('Error fetching shipment item:', fetchError)
+          return NextResponse.json({ error: 'Tétel nem található' }, { status: 404 })
+        }
+
+        // Soft-delete the shipment_item
         const { error } = await supabaseServer
           .from('shipment_items')
           .update({ deleted_at: new Date().toISOString() })
@@ -140,6 +154,19 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         if (error) {
           console.error('Error deleting shipment item:', error)
           return NextResponse.json({ error: 'Hiba a tétel törlésekor' }, { status: 500 })
+        }
+
+        // Also soft-delete the corresponding purchase_order_item (since 1 PO = 1 Shipment)
+        if (shipmentItem.purchase_order_item_id) {
+          const { error: poItemError } = await supabaseServer
+            .from('purchase_order_items')
+            .update({ deleted_at: new Date().toISOString() })
+            .eq('id', shipmentItem.purchase_order_item_id)
+          
+          if (poItemError) {
+            console.error('Error deleting purchase_order_item:', poItemError)
+            // Don't fail the whole request, but log it
+          }
         }
       } else if (upd.quantity_received !== undefined) {
         // Get the purchase_order_item_id first
