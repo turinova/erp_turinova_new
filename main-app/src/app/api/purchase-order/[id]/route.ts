@@ -13,7 +13,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         purchase_order_items (
           id, product_type, accessory_id, material_id, linear_material_id,
           quantity, net_price, vat_id, currency_id, units_id, description,
-          accessories:accessory_id ( sku )
+          accessories:accessory_id (name, sku),
+          materials:material_id (name),
+          linear_materials:linear_material_id (name)
         )
       `)
       .eq('id', id)
@@ -53,6 +55,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Handle partners as array (Supabase returns arrays for joins)
     const partner = Array.isArray(po.partners) ? po.partners[0] : po.partners
 
+    // Transform items to use actual product names from related tables
+    const transformedItems = (po.purchase_order_items || []).map((item: any) => {
+      // Get actual product name from related table
+      let productName = item.description || ''
+      let productSku = ''
+      
+      if (item.accessory_id && item.accessories) {
+        productName = item.accessories.name || item.description
+        productSku = item.accessories.sku || ''
+      } else if (item.material_id && item.materials) {
+        productName = item.materials.name || item.description
+        productSku = '' // Materials don't have SKU
+      } else if (item.linear_material_id && item.linear_materials) {
+        productName = item.linear_materials.name || item.description
+        productSku = '' // Linear materials don't have SKU
+      }
+      
+      return {
+        ...item,
+        description: productName, // Override with actual product name
+        sku: productSku
+      }
+    })
+
     return NextResponse.json({
       header: {
         id: po.id,
@@ -69,7 +95,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         updated_at: po.updated_at,
         shipments_count: 0 // Not fetched in this query
       },
-      items: po.purchase_order_items || [],
+      items: transformedItems,
       summary: {
         itemsCount,
         totalQty,

@@ -34,6 +34,11 @@ export async function GET(request: NextRequest) {
         units_id,
         partner_id,
         vat_id,
+        currency_id,
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
         shop_orders!inner (
           id,
           customer_name,
@@ -52,7 +57,10 @@ export async function GET(request: NextRequest) {
           id,
           name,
           kulcs
-        )
+        ),
+        accessories:accessory_id(name, sku),
+        materials:material_id(name),
+        linear_materials:linear_material_id(name)
       `, { count: 'exact' })
       .is('shop_orders.deleted_at', null)
 
@@ -108,7 +116,17 @@ export async function GET(request: NextRequest) {
         base_price: item.base_price,
         multiplier: item.multiplier,
         gross_unit_price: grossUnitPrice,
-        gross_total: Math.round(grossUnitPrice * item.quantity)
+        gross_total: Math.round(grossUnitPrice * item.quantity),
+        units_id: item.units_id,
+        vat_id: item.vat_id,
+        currency_id: item.currency_id,
+        product_type: item.product_type,
+        accessory_id: item.accessory_id,
+        material_id: item.material_id,
+        linear_material_id: item.linear_material_id,
+        accessories: item.accessories || null,
+        materials: item.materials || null,
+        linear_materials: item.linear_materials || null
       }
     }) || []
 

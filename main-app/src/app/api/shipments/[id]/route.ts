@@ -30,7 +30,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Szállítmány nem található' }, { status: 404 })
     }
 
-    // Fetch shipment items with PO item details
+    // Fetch shipment items with PO item details and related product data
     const { data: shipmentItems, error: itemsError } = await supabaseServer
       .from('shipment_items')
       .select(`
@@ -38,7 +38,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         purchase_order_items:purchase_order_item_id (
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
-          accessories:accessory_id (sku)
+          accessories:accessory_id (name, sku),
+          materials:material_id (name),
+          linear_materials:linear_material_id (name)
         )
       `)
       .eq('shipment_id', id)
@@ -56,7 +58,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Process items with calculations
     const items = (shipmentItems || []).map((si: any) => {
       const poi = si.purchase_order_items
-      const sku = poi?.accessories?.sku || ''
+      
+      // Get product name from related table or fallback to description
+      let productName = poi?.description || ''
+      if (poi?.accessory_id && poi?.accessories?.name) {
+        productName = poi.accessories.name
+      } else if (poi?.material_id && poi?.materials?.name) {
+        productName = poi.materials.name
+      } else if (poi?.linear_material_id && poi?.linear_materials?.name) {
+        productName = poi.linear_materials.name
+      }
+      
+      // Get SKU (only accessories have SKU)
+      const sku = (poi?.accessory_id && poi?.accessories?.sku) ? poi.accessories.sku : ''
+      
       const targetQty = Number(poi?.quantity) || 0
       const receivedQty = Number(si.quantity_received) || 0
       const netPrice = Number(poi?.net_price) || 0
@@ -68,7 +83,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return {
         id: si.id,
         purchase_order_item_id: si.purchase_order_item_id,
-        product_name: poi?.description || '',
+        product_name: productName,
         sku,
         quantity_received: receivedQty,
         target_quantity: targetQty,

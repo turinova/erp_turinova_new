@@ -2638,6 +2638,11 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
         units_id,
         partner_id,
         vat_id,
+        currency_id,
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
         shop_orders!inner (
           id,
           customer_name,
@@ -2657,7 +2662,10 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
           id,
           name,
           kulcs
-        )
+        ),
+        accessories:accessory_id(name, sku),
+        materials:material_id(name),
+        linear_materials:linear_material_id(name)
       `, { count: 'exact' })
       .is('shop_orders.deleted_at', null)
 
@@ -2714,7 +2722,17 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
         base_price: item.base_price,
         multiplier: item.multiplier,
         gross_unit_price: grossUnitPrice,
-        gross_total: Math.round(grossUnitPrice * item.quantity)
+        gross_total: Math.round(grossUnitPrice * item.quantity),
+        units_id: item.units_id,
+        vat_id: item.vat_id,
+        currency_id: item.currency_id,
+        product_type: item.product_type,
+        accessory_id: item.accessory_id,
+        material_id: item.material_id,
+        linear_material_id: item.linear_material_id,
+        accessories: item.accessories || null,
+        materials: item.materials || null,
+        linear_materials: item.linear_materials || null
       }
     }) || []
 
@@ -3424,7 +3442,7 @@ export async function getShipmentById(id: string) {
       return null
     }
 
-    // Fetch shipment items with PO item details
+    // Fetch shipment items with PO item details and related product data
     const { data: shipmentItems, error: itemsError } = await supabaseServer
       .from('shipment_items')
       .select(`
@@ -3432,7 +3450,9 @@ export async function getShipmentById(id: string) {
         purchase_order_items:purchase_order_item_id (
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
-          accessories:accessory_id (sku)
+          accessories:accessory_id (name, sku),
+          materials:material_id (name),
+          linear_materials:linear_material_id (name)
         )
       `)
       .eq('shipment_id', id)
@@ -3450,7 +3470,20 @@ export async function getShipmentById(id: string) {
     // Process items with calculations
     const items = (shipmentItems || []).map((si: any) => {
       const poi = si.purchase_order_items
-      const sku = poi?.accessories?.sku || ''
+      
+      // Get actual product name from related table
+      let productName = poi?.description || ''
+      if (poi?.accessory_id && poi?.accessories?.name) {
+        productName = poi.accessories.name
+      } else if (poi?.material_id && poi?.materials?.name) {
+        productName = poi.materials.name
+      } else if (poi?.linear_material_id && poi?.linear_materials?.name) {
+        productName = poi.linear_materials.name
+      }
+      
+      // Get SKU (only accessories have SKU)
+      const sku = (poi?.accessory_id && poi?.accessories?.sku) ? poi.accessories.sku : ''
+      
       const targetQty = Number(poi?.quantity) || 0
       const receivedQty = Number(si.quantity_received) || 0
       const netPrice = Number(poi?.net_price) || 0
@@ -3462,7 +3495,7 @@ export async function getShipmentById(id: string) {
       return {
         id: si.id,
         purchase_order_item_id: si.purchase_order_item_id,
-        product_name: poi?.description || '',
+        product_name: productName,
         sku,
         quantity_received: receivedQty,
         target_quantity: targetQty,
@@ -3552,7 +3585,9 @@ export async function getPurchaseOrderById(id: string) {
         purchase_order_items (
           id, product_type, accessory_id, material_id, linear_material_id,
           quantity, net_price, vat_id, currency_id, units_id, description,
-          accessories:accessory_id ( sku )
+          accessories:accessory_id (name, sku),
+          materials:material_id (name),
+          linear_materials:linear_material_id (name)
         )
       `)
       .eq('id', id)
@@ -3603,8 +3638,32 @@ export async function getPurchaseOrderById(id: string) {
       updated_at: po.updated_at
     }
 
+    // Transform items to use actual product names from related tables
+    const transformedItems = (po.purchase_order_items || []).map((item: any) => {
+      // Get actual product name from related table
+      let productName = item.description || ''
+      let productSku = ''
+      
+      if (item.accessory_id && item.accessories) {
+        productName = item.accessories.name || item.description
+        productSku = item.accessories.sku || ''
+      } else if (item.material_id && item.materials) {
+        productName = item.materials.name || item.description
+        productSku = '' // Materials don't have SKU
+      } else if (item.linear_material_id && item.linear_materials) {
+        productName = item.linear_materials.name || item.description
+        productSku = '' // Linear materials don't have SKU
+      }
+      
+      return {
+        ...item,
+        description: productName, // Override with actual product name
+        sku: productSku
+      }
+    })
+
     logTiming('Purchase Order By ID Fetch', startTime)
-    return { header, items: po.purchase_order_items || [], summary: { itemsCount, totalQty, totalNet, totalVat, totalGross } }
+    return { header, items: transformedItems, summary: { itemsCount, totalQty, totalNet, totalVat, totalGross } }
   } catch (error) {
     console.error('[SSR] Exception fetching purchase order by ID:', error)
     logTiming('Purchase Order By ID Error', startTime)

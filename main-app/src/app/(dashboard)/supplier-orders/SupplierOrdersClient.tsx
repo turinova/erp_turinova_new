@@ -45,10 +45,12 @@ import {
   Delete as DeleteIcon,
   Description as TextIcon,
   ContentCopy as CopyIcon,
-  Check as CheckIcon
+  Check as CheckIcon,
+  AddShoppingCart as CreatePOIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import BeszerzésSmsModal from './BeszerzésSmsModal'
+import CreatePurchaseOrderModal from './CreatePurchaseOrderModal'
 
 interface ShopOrderItem {
   id: string
@@ -73,6 +75,16 @@ interface ShopOrderItem {
   multiplier: number
   gross_unit_price: number
   gross_total: number
+  units_id: string
+  vat_id: string
+  currency_id: string
+  product_type: string | null
+  accessory_id: string | null
+  material_id: string | null
+  linear_material_id: string | null
+  accessories?: { name: string; sku: string } | null
+  materials?: { name: string } | null
+  linear_materials?: { name: string } | null
 }
 
 interface Partner {
@@ -121,9 +133,29 @@ export default function SupplierOrdersClient({
   const [beszerzésSmsEligibleOrders, setBeszerzésSmsEligibleOrders] = useState<any[]>([])
   const [isSendingSms, setIsSendingSms] = useState(false)
   
+  // PO Creation
+  const [createPoModalOpen, setCreatePoModalOpen] = useState(false)
+  const [warehouses, setWarehouses] = useState<any[]>([])
+  
   // Ensure client-side only rendering
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // Fetch warehouses on mount for PO creation
+  useEffect(() => {
+    const fetchWarehouses = async () => {
+      try {
+        const res = await fetch('/api/warehouses')
+        if (res.ok) {
+          const data = await res.json()
+          setWarehouses(data.warehouses || [])
+        }
+      } catch (error) {
+        console.error('Error fetching warehouses:', error)
+      }
+    }
+    fetchWarehouses()
   }, [])
 
   // Color palette for partner rows - vibrant but not too bright
@@ -203,6 +235,24 @@ export default function SupplierOrdersClient({
   const startIndex = (currentPage - 1) * pageSize
   const paginatedItems = filteredItems.slice(startIndex, startIndex + pageSize)
 
+  // Check if selected items can create PO (same partner_id)
+  const canCreatePO = React.useMemo(() => {
+    if (selectedItems.length === 0) return { canCreate: false, reason: '' }
+    
+    const selectedItemsData = items.filter(item => selectedItems.includes(item.id))
+    const partnerIds = [...new Set(selectedItemsData.map(item => item.partner_id).filter(Boolean))]
+    
+    if (partnerIds.length === 0) {
+      return { canCreate: false, reason: 'Nincs beszállító' }
+    }
+    if (partnerIds.length > 1) {
+      return { canCreate: false, reason: 'Több beszállító' }
+    }
+    
+    const partnerName = selectedItemsData[0]?.partner_name || ''
+    return { canCreate: true, reason: '', partnerName }
+  }, [selectedItems, items])
+
   // Don't render until mounted (avoid hydration errors)
   if (!mounted) {
     return (
@@ -228,6 +278,29 @@ export default function SupplierOrdersClient({
       month: '2-digit',
       day: '2-digit'
     })
+  }
+
+  // Helper function to get display name from database or fallback
+  const getDisplayName = (item: ShopOrderItem): string => {
+    if (item.accessory_id && item.accessories) {
+      return item.accessories.name
+    } else if (item.material_id && item.materials) {
+      return item.materials.name
+    } else if (item.linear_material_id && item.linear_materials) {
+      return item.linear_materials.name
+    }
+    // Free-typed item or data not loaded
+    return item.product_name
+  }
+
+  // Helper function to get display SKU
+  const getDisplaySku = (item: ShopOrderItem): string => {
+    // Only accessories have SKU
+    if (item.accessory_id && item.accessories?.sku) {
+      return item.accessories.sku
+    }
+    // Free-typed or materials/linear_materials (no SKU)
+    return item.sku || '-'
   }
 
   // Get status display info
@@ -648,6 +721,35 @@ export default function SupplierOrdersClient({
           >
             Szöveg generálás
           </Button>
+          {canCreatePO.canCreate && (
+            <Tooltip title={`Beszerzési rendelés létrehozása - ${canCreatePO.partnerName}`}>
+              <Button
+                variant="contained"
+                color="secondary"
+                startIcon={<CreatePOIcon />}
+                onClick={() => setCreatePoModalOpen(true)}
+                disabled={isUpdating}
+                size="small"
+              >
+                PO Létrehozása ({selectedItems.length})
+              </Button>
+            </Tooltip>
+          )}
+          {!canCreatePO.canCreate && selectedItems.length > 0 && canCreatePO.reason && (
+            <Tooltip title={`PO nem hozható létre: ${canCreatePO.reason}`}>
+              <span>
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  startIcon={<CreatePOIcon />}
+                  disabled
+                  size="small"
+                >
+                  PO Létrehozása
+                </Button>
+              </span>
+            </Tooltip>
+          )}
         </Box>
       )}
       
@@ -736,7 +838,7 @@ export default function SupplierOrdersClient({
                         }}
                       >
                         <Typography variant="body2" sx={{ userSelect: 'text', flex: 1 }}>
-                          {item.product_name}
+                          {getDisplayName(item)}
                         </Typography>
                         <Tooltip title="Másolás">
                           <Box
@@ -744,7 +846,7 @@ export default function SupplierOrdersClient({
                             component="span"
                             onClick={(e) => {
                               e.stopPropagation()
-                              navigator.clipboard.writeText(item.product_name)
+                              navigator.clipboard.writeText(getDisplayName(item))
                               toast.success('Termék név másolva!')
                             }}
                             sx={{
@@ -776,7 +878,7 @@ export default function SupplierOrdersClient({
                         }}
                       >
                         <Typography variant="body2" sx={{ userSelect: 'text', flex: 1 }}>
-                          {item.sku}
+                          {getDisplaySku(item)}
                         </Typography>
                         <Tooltip title="Másolás">
                           <Box
@@ -784,8 +886,11 @@ export default function SupplierOrdersClient({
                             component="span"
                             onClick={(e) => {
                               e.stopPropagation()
-                              navigator.clipboard.writeText(item.sku)
-                              toast.success('SKU másolva!')
+                              const skuToCopy = getDisplaySku(item)
+                              if (skuToCopy !== '-') {
+                                navigator.clipboard.writeText(skuToCopy)
+                                toast.success('SKU másolva!')
+                              }
                             }}
                             sx={{
                               opacity: 0,
@@ -958,6 +1063,19 @@ export default function SupplierOrdersClient({
         onConfirm={handleBeszerzésSmsConfirmation}
         orders={beszerzésSmsEligibleOrders}
         isProcessing={isSendingSms}
+      />
+
+      {/* Create Purchase Order Modal */}
+      <CreatePurchaseOrderModal
+        open={createPoModalOpen}
+        onClose={() => setCreatePoModalOpen(false)}
+        selectedItems={items.filter(item => selectedItems.includes(item.id))}
+        warehouses={warehouses}
+        onSuccess={() => {
+          setSelectedItems([])
+          setCreatePoModalOpen(false)
+          router.refresh()
+        }}
       />
     </Box>
   )
