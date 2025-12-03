@@ -523,8 +523,14 @@ export default function PurchaseOrderFormClient({
     let totalNet = 0
     let totalVat = 0
     let totalGross = 0
+    let receivedQty = 0
+    let receivedNet = 0
+    let receivedVat = 0
+    let receivedGross = 0
     const vatMap = new Map(vatRates.map(v => [v.id, v.kulcs || 0]))
+    
     for (const it of items) {
+      // Ordered totals
       totalQty += it.quantity || 0
       const netUnit = Math.round(Number(it.net_price) || 0)
       const lineNet = netUnit * (it.quantity || 0)
@@ -533,8 +539,28 @@ export default function PurchaseOrderFormClient({
       const lineVat = Math.round(lineNet * (vatPercent / 100))
       totalVat += lineVat
       totalGross += lineNet + lineVat
+      
+      // Received totals (for non-draft POs)
+      const qtyReceived = it.quantity_received || 0
+      receivedQty += qtyReceived
+      const lineNetReceived = netUnit * qtyReceived
+      receivedNet += lineNetReceived
+      const lineVatReceived = Math.round(lineNetReceived * (vatPercent / 100))
+      receivedVat += lineVatReceived
+      receivedGross += lineNetReceived + lineVatReceived
     }
-    return { itemsCount, totalQty, totalNet, totalVat, totalGross }
+    
+    return { 
+      itemsCount, 
+      totalQty, 
+      totalNet, 
+      totalVat, 
+      totalGross,
+      receivedQty,
+      receivedNet,
+      receivedVat,
+      receivedGross
+    }
   }, [items, vatRates])
 
   // Only fetch static data if not provided via props
@@ -1191,25 +1217,45 @@ export default function PurchaseOrderFormClient({
               <Grid item xs={12} md={2.5}>
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Össz. mennyiség</Typography>
-                  <Typography variant="h6">{totals.totalQty}</Typography>
+                  <Typography variant="h6">
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedQty !== totals.totalQty
+                      ? `${totals.receivedQty} / ${totals.totalQty}`
+                      : totals.totalQty
+                    }
+                  </Typography>
                 </CardContent></Card>
               </Grid>
               <Grid item xs={12} md={2.5}>
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Termékek Nettó [HUF]</Typography>
-                  <Typography variant="h6">{new Intl.NumberFormat('hu-HU').format(totals.totalNet)} Ft</Typography>
+                  <Typography variant="h6">
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedNet !== totals.totalNet
+                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedNet)} / ${new Intl.NumberFormat('hu-HU').format(totals.totalNet)} Ft`
+                      : `${new Intl.NumberFormat('hu-HU').format(totals.totalNet)} Ft`
+                    }
+                  </Typography>
                 </CardContent></Card>
               </Grid>
               <Grid item xs={12} md={2.5}>
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Termékek ÁFA [HUF]</Typography>
-                  <Typography variant="h6">{new Intl.NumberFormat('hu-HU').format(totals.totalVat)} Ft</Typography>
+                  <Typography variant="h6">
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedVat !== totals.totalVat
+                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedVat)} / ${new Intl.NumberFormat('hu-HU').format(totals.totalVat)} Ft`
+                      : `${new Intl.NumberFormat('hu-HU').format(totals.totalVat)} Ft`
+                    }
+                  </Typography>
                 </CardContent></Card>
               </Grid>
               <Grid item xs={12} md={2}>
                 <Card><CardContent>
                   <Typography variant="caption" color="text.secondary">Bruttó összesen</Typography>
-                  <Typography variant="h6">{new Intl.NumberFormat('hu-HU').format(totals.totalGross)} Ft</Typography>
+                  <Typography variant="h6">
+                    {mode === 'edit' && poStatus !== 'draft' && totals.receivedGross !== totals.totalGross
+                      ? `${new Intl.NumberFormat('hu-HU').format(totals.receivedGross)} / ${new Intl.NumberFormat('hu-HU').format(totals.totalGross)} Ft`
+                      : `${new Intl.NumberFormat('hu-HU').format(totals.totalGross)} Ft`
+                    }
+                  </Typography>
                 </CardContent></Card>
               </Grid>
             </Grid>

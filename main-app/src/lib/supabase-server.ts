@@ -2992,7 +2992,7 @@ export async function getPurchaseOrdersWithPagination(
         email_sent,
         email_sent_at,
         items:purchase_order_items(deleted_at),
-        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(net_price, quantity, deleted_at)
+        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(id, net_price, quantity, deleted_at)
       `, { count: 'exact' })
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -3057,6 +3057,31 @@ export async function getPurchaseOrdersWithPagination(
       (stockMovements || []).map((sm: any) => sm.source_id)
     )
 
+    // Fetch received quantities for all POs (for non-draft POs)
+    const { data: receivedData } = poIds.length > 0
+      ? await supabaseServer
+          .from('shipment_items')
+          .select(`
+            purchase_order_item_id,
+            quantity_received,
+            shipments!inner(purchase_order_id, status, deleted_at)
+          `)
+          .in('shipments.purchase_order_id', poIds)
+          .is('deleted_at', null)
+          .eq('shipments.status', 'received')
+          .is('shipments.deleted_at', null)
+      : { data: [] }
+
+    // Group received quantities by purchase_order_item_id
+    const receivedByPoItem = new Map<string, number>()
+    if (receivedData) {
+      receivedData.forEach((row: any) => {
+        const poItemId = row.purchase_order_item_id
+        const qty = Number(row.quantity_received) || 0
+        receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + qty)
+      })
+    }
+
     // Compute net totals and counts
     const result = (data || []).map((row: any) => {
       // Filter out soft-deleted items
@@ -3069,7 +3094,7 @@ export async function getPurchaseOrdersWithPagination(
         shipmentIdsWithStockMovements.has(sid)
       )
       
-      // Sum net_price * quantity across non-deleted purchase_order_items rows
+      // Sum net_price * quantity across non-deleted purchase_order_items rows (ordered total)
       const activeNetTotalItems = Array.isArray(row.net_total) 
         ? row.net_total.filter((it: any) => !it.deleted_at) 
         : []
@@ -3079,6 +3104,13 @@ export async function getPurchaseOrdersWithPagination(
         return sum + unit * qty
       }, 0)
       
+      // Calculate received total (net_price * quantity_received)
+      const receivedNetTotal = activeNetTotalItems.reduce((sum: number, it: any) => {
+        const unit = Number(it?.net_price) || 0
+        const qtyReceived = receivedByPoItem.get(it.id) || 0
+        return sum + (unit * qtyReceived)
+      }, 0)
+      
       return {
         id: row.id,
         po_number: row.po_number,
@@ -3086,6 +3118,7 @@ export async function getPurchaseOrdersWithPagination(
         partner_name: row.partners?.name || '',
         items_count: itemsCount,
         net_total: netTotal,
+        received_net_total: receivedNetTotal,
         created_at: row.created_at,
         expected_date: row.expected_date,
         email_sent: row.email_sent || false,

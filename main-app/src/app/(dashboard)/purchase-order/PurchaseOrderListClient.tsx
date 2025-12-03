@@ -23,6 +23,7 @@ interface PurchaseOrderRow {
   partner_name: string
   items_count: number
   net_total: number | null
+  received_net_total?: number | null
   created_at: string
   expected_date: string | null
   email_sent: boolean
@@ -578,7 +579,15 @@ export default function PurchaseOrderListClient({
                     </TableCell>
                     <TableCell>{row.partner_name}</TableCell>
                     <TableCell align="right">{row.items_count}</TableCell>
-                    <TableCell align="right">{row.net_total ? new Intl.NumberFormat('hu-HU').format(row.net_total) + ' Ft' : '-'}</TableCell>
+                    <TableCell align="right">
+                      {row.net_total !== null && row.net_total !== undefined ? (
+                        row.status !== 'draft' && row.received_net_total !== undefined && row.received_net_total !== row.net_total ? (
+                          `${new Intl.NumberFormat('hu-HU').format(row.received_net_total)} / ${new Intl.NumberFormat('hu-HU').format(row.net_total)} Ft`
+                        ) : (
+                          `${new Intl.NumberFormat('hu-HU').format(row.net_total)} Ft`
+                        )
+                      ) : '-'}
+                    </TableCell>
                     <TableCell>{row.created_at ? new Date(row.created_at).toLocaleDateString('hu-HU') : ''}</TableCell>
                     <TableCell>{row.expected_date ? new Date(row.expected_date).toLocaleDateString('hu-HU') : '-'}</TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
