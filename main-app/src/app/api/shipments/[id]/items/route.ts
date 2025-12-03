@@ -14,6 +14,119 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Update each shipment item
     for (const upd of updates) {
+      // Handle adding new item (no id, has action: 'add')
+      if (upd.action === 'add') {
+        // Validate required fields for new item
+        if (!upd.quantity_received || upd.net_price === undefined || !upd.vat_id || !upd.currency_id || !upd.units_id || !upd.accessory_id) {
+          return NextResponse.json({ error: 'Új tétel hozzáadásához szükséges: accessory_id, quantity_received, net_price, vat_id, currency_id, units_id' }, { status: 400 })
+        }
+
+        // Get the purchase_order_id and shipment status
+        const { data: shipment, error: shipmentErr } = await supabaseServer
+          .from('shipments')
+          .select('purchase_order_id, status')
+          .eq('id', id)
+          .single()
+
+        if (shipmentErr || !shipment) {
+          console.error('Error fetching shipment:', shipmentErr)
+          return NextResponse.json({ error: 'Szállítmány nem található' }, { status: 404 })
+        }
+
+        // Check if shipment is in draft status
+        if (shipment.status !== 'draft') {
+          return NextResponse.json({ 
+            error: `Csak vázlat státuszú szállítmányhoz lehet új tételt hozzáadni (jelenlegi státusz: ${shipment.status})` 
+          }, { status: 400 })
+        }
+
+        // Check if PO already has this accessory (to avoid duplicates)
+        const { data: existingPoItem } = await supabaseServer
+          .from('purchase_order_items')
+          .select('id')
+          .eq('purchase_order_id', shipment.purchase_order_id)
+          .eq('accessory_id', upd.accessory_id)
+          .is('deleted_at', null)
+          .maybeSingle()
+
+        let poItemId: string
+
+        if (existingPoItem) {
+          // Use existing PO item
+          poItemId = existingPoItem.id
+          console.log(`[BARCODE ADD] Using existing PO item for accessory: ${upd.accessory_id}`)
+        } else {
+          // Create a new purchase_order_item for this accessory
+          const { data: newPoItem, error: poiErr } = await supabaseServer
+            .from('purchase_order_items')
+            .insert({
+              purchase_order_id: shipment.purchase_order_id,
+              product_type: 'accessory',
+              accessory_id: upd.accessory_id,
+              quantity: Number(upd.quantity_received), // Match scanned quantity
+              net_price: Math.round(Number(upd.net_price) || 0),
+              vat_id: upd.vat_id,
+              currency_id: upd.currency_id,
+              units_id: upd.units_id,
+              description: upd.note || 'Vonalkóddal hozzáadva'
+            })
+            .select('id')
+            .single()
+
+          if (poiErr || !newPoItem) {
+            console.error('Error creating PO item:', poiErr)
+            return NextResponse.json({ 
+              error: `Hiba a PO tétel létrehozásakor: ${poiErr?.message || 'Ismeretlen hiba'}` 
+            }, { status: 500 })
+          }
+          
+          poItemId = newPoItem.id
+          console.log(`[BARCODE ADD] Created new PO item for accessory: ${upd.accessory_id}`)
+        }
+
+        // Now create the shipment_item and return the full item details
+        const { data: newShipmentItem, error: insertErr } = await supabaseServer
+          .from('shipment_items')
+          .insert({
+            shipment_id: id,
+            purchase_order_item_id: poItemId,
+            quantity_received: Number(upd.quantity_received),
+            note: upd.note || null
+          })
+          .select('id, purchase_order_item_id, quantity_received, note')
+          .single()
+
+        if (insertErr || !newShipmentItem) {
+          console.error('Error inserting shipment item:', insertErr)
+          return NextResponse.json({ error: 'Hiba a tétel hozzáadásakor: ' + insertErr.message }, { status: 500 })
+        }
+
+        // Get accessory details for the response
+        const { data: accessory } = await supabaseServer
+          .from('accessories')
+          .select('name, sku')
+          .eq('id', upd.accessory_id)
+          .single()
+
+        // Return the created item details
+        return NextResponse.json({ 
+          success: true,
+          item: {
+            id: newShipmentItem.id,
+            purchase_order_item_id: newShipmentItem.purchase_order_item_id,
+            product_name: accessory?.name || 'Unknown',
+            sku: accessory?.sku || '',
+            quantity_received: newShipmentItem.quantity_received,
+            target_quantity: Number(upd.quantity_received), // Matches PO item quantity
+            net_price: Math.round(Number(upd.net_price) || 0),
+            vat_id: upd.vat_id,
+            currency_id: upd.currency_id,
+            units_id: upd.units_id,
+            note: newShipmentItem.note
+          }
+        })
+      }
+
       if (!upd.id) {
         continue
       }

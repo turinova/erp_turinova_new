@@ -404,10 +404,78 @@ export default function ShipmentDetailClient({
         .filter(({ item }) => item.sku === sku)
 
       if (matchingItems.length === 0) {
-        toast.error(`A termék (SKU: ${sku}) nem található ebben a szállítmányban`)
-        setBarcodeInput('')
-        refocusBarcodeInput()
-        return
+        // Item not in shipment - check if we should add it
+        if (!header?.partner_id) {
+          toast.error('PO partner információ nem található')
+          setBarcodeInput('')
+          refocusBarcodeInput()
+          return
+        }
+
+        // Check if accessory's partner matches PO's partner
+        if (accessoryData.partners_id !== header.partner_id) {
+          toast.error(`Ez a termék másik beszállítóhoz tartozik (${sku})`)
+          setBarcodeInput('')
+          refocusBarcodeInput()
+          return
+        }
+
+        // Validate required fields
+        if (!accessoryData.units_id || !accessoryData.vat_id || !accessoryData.currency_id) {
+          toast.error('A terméknek hiányzik az egység, ÁFA vagy pénznem beállítása')
+          setBarcodeInput('')
+          refocusBarcodeInput()
+          return
+        }
+
+        // Add new item to shipment
+        try {
+          const addRes = await fetch(`/api/shipments/${id}/items`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              updates: [{
+                action: 'add',
+                accessory_id: accessoryData.accessory_id,
+                quantity_received: 1,
+                net_price: accessoryData.base_price || 0,
+                vat_id: accessoryData.vat_id,
+                currency_id: accessoryData.currency_id,
+                units_id: accessoryData.units_id,
+                note: `Vonalkóddal hozzáadva: ${sku}`
+              }]
+            })
+          })
+          const addData = await addRes.json()
+          if (!addRes.ok) throw new Error(addData?.error || 'Hiba a tétel hozzáadásakor')
+          
+          // Calculate totals for the new item
+          const newItem = addData.item
+          const netPrice = newItem.net_price
+          const vatPercent = vatRates.get(newItem.vat_id) || 0
+          const lineNet = newItem.quantity_received * netPrice
+          const lineVat = Math.round(lineNet * (vatPercent / 100))
+          const lineGross = lineNet + lineVat
+          
+          // Add item to state with calculated totals
+          const itemWithTotals: ShipmentItem = {
+            ...newItem,
+            net_total: lineNet,
+            gross_total: lineGross
+          }
+          
+          setItems(prev => [...prev, itemWithTotals])
+          toast.success(`Termék hozzáadva: ${accessoryData.name} (${sku})`)
+          setBarcodeInput('')
+          refocusBarcodeInput()
+          return
+        } catch (error) {
+          console.error('Error adding item to shipment:', error)
+          toast.error('Hiba a termék hozzáadásakor')
+          setBarcodeInput('')
+          refocusBarcodeInput()
+          return
+        }
       }
 
       // Find first matching item (allow exceeding target_quantity)
@@ -501,17 +569,31 @@ export default function ShipmentDetailClient({
             width: '1px',
             height: '1px',
             opacity: 0,
-            pointerEvents: receiveConfirmOpen ? 'none' : 'auto',
+            pointerEvents: 'none',
             zIndex: -1
           }}
           autoFocus
           tabIndex={0}
           onBlur={(e) => {
-            // Only refocus if we're not clicking on an input field
+            // Don't refocus if clicking on interactive elements
             const target = e.relatedTarget as HTMLElement
-            if (!target || !target.closest('input, textarea, select')) {
-              refocusBarcodeInput()
+            if (!target) {
+              // No related target (clicked outside) - refocus after a delay
+              setTimeout(() => {
+                if (header?.status === 'draft' && !receiveConfirmOpen && barcodeInputRef.current) {
+                  barcodeInputRef.current.focus()
+                }
+              }, 100)
+              return
             }
+            
+            // If clicking on input/textarea/select/button, don't refocus
+            if (target.closest('input, textarea, select, button')) {
+              return
+            }
+            
+            // Otherwise, refocus
+            refocusBarcodeInput()
           }}
         />
       )}
@@ -689,6 +771,12 @@ export default function ShipmentDetailClient({
                               onClick={() => {
                                 const newQuantity = Math.max(0, item.quantity_received - 1)
                                 updateItemQuantity(idx, newQuantity)
+                                // Refocus barcode input after button click
+                                if (header?.status === 'draft' && !receiveConfirmOpen) {
+                                  setTimeout(() => {
+                                    refocusBarcodeInput()
+                                  }, 100)
+                                }
                               }}
                               disabled={item.quantity_received <= 0}
                               sx={{ 
@@ -714,9 +802,11 @@ export default function ShipmentDetailClient({
                               if (e.target.value === '') {
                                 updateItemQuantity(idx, 0)
                               }
-                              // Refocus barcode input after editing
-                              if (header?.status === 'draft') {
-                                refocusBarcodeInput()
+                              // Refocus barcode input after editing (with delay to avoid conflicts)
+                              if (header?.status === 'draft' && !receiveConfirmOpen) {
+                                setTimeout(() => {
+                                  refocusBarcodeInput()
+                                }, 150)
                               }
                             }}
                             onFocus={() => {
@@ -771,6 +861,12 @@ export default function ShipmentDetailClient({
                               onClick={() => {
                                 const newQuantity = item.quantity_received + 1
                                 updateItemQuantity(idx, newQuantity)
+                                // Refocus barcode input after button click
+                                if (header?.status === 'draft' && !receiveConfirmOpen) {
+                                  setTimeout(() => {
+                                    refocusBarcodeInput()
+                                  }, 100)
+                                }
                               }}
                               sx={{ 
                                 width: 32, 

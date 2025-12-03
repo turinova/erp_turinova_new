@@ -26,6 +26,7 @@ interface PurchaseOrderFormClientProps {
     note: string | null
     created_at: string
     updated_at: string
+    shipments?: Array<{ id: string; number: string }>
   } | null
   initialItems?: any[]
   initialVatRates?: VatRow[]
@@ -501,6 +502,21 @@ export default function PurchaseOrderFormClient({
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editingItem, setEditingItem] = useState<(ItemDraft & { base_price_hint?: number }) | null>(null)
 
+  // Styling for disabled fields to make them more readable
+  const disabledFieldSx = {
+    '& .MuiInputBase-input.Mui-disabled': {
+      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
+      color: 'rgba(0, 0, 0, 0.87)'
+    },
+    '& .MuiInputLabel-root.Mui-disabled': {
+      color: 'rgba(0, 0, 0, 0.6)'
+    },
+    '& .MuiSelect-select.Mui-disabled': {
+      WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
+      color: 'rgba(0, 0, 0, 0.87)'
+    }
+  }
+
   const totals = useMemo(() => {
     let itemsCount = items.length
     let totalQty = 0
@@ -893,6 +909,7 @@ export default function PurchaseOrderFormClient({
                       required
                       error={!!partnersError}
                       helperText={partnersError || ''}
+                      sx={disabledFieldSx}
                       InputProps={{
                         ...params.InputProps,
                         endAdornment: (
@@ -918,6 +935,7 @@ export default function PurchaseOrderFormClient({
                     label="Raktár" 
                     onChange={(e) => setWarehouseId(e.target.value)}
                     disabled={mode === 'edit' && poStatus !== 'draft'}
+                    sx={disabledFieldSx}
                   >
                     {warehouses.map(w => <MenuItem key={w.id} value={w.id}>{w.name}</MenuItem>)}
                   </Select>
@@ -933,6 +951,7 @@ export default function PurchaseOrderFormClient({
                   onChange={(e) => setOrderDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                   disabled={mode === 'edit' && poStatus !== 'draft'}
+                  sx={disabledFieldSx}
                 />
               </Grid>
               <Grid item xs={12} md={2}>
@@ -945,8 +964,49 @@ export default function PurchaseOrderFormClient({
                   onChange={(e) => setExpectedDate(e.target.value)}
                   InputLabelProps={{ shrink: true }}
                   disabled={mode === 'edit' && poStatus !== 'draft'}
+                  sx={disabledFieldSx}
                 />
               </Grid>
+              {mode === 'edit' && initialHeader && (
+                <>
+                  <Grid item xs={12} md={3}>
+                    <TextField
+                      fullWidth
+                      label="PO szám"
+                      value={initialHeader.po_number}
+                      disabled
+                      InputProps={{
+                        readOnly: true,
+                      }}
+                      sx={disabledFieldSx}
+                    />
+                  </Grid>
+                  {initialHeader.shipments && initialHeader.shipments.length > 0 && (
+                    <Grid item xs={12} md={9}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', pt: 1 }}>
+                        <Typography variant="body2" color="text.secondary">Szállítmányok:</Typography>
+                        {initialHeader.shipments.map((shipment) => (
+                          <Link
+                            key={shipment.id}
+                            component={NextLink}
+                            href={`/shipments/${shipment.id}`}
+                            underline="hover"
+                            sx={{ fontWeight: 500 }}
+                          >
+                            <Chip 
+                              label={shipment.number}
+                              size="small"
+                              clickable
+                              color="primary"
+                              variant="outlined"
+                            />
+                          </Link>
+                        ))}
+                      </Box>
+                    </Grid>
+                  )}
+                </>
+              )}
               <Grid item xs={12}>
                 <TextField 
                   fullWidth 
@@ -956,6 +1016,7 @@ export default function PurchaseOrderFormClient({
                   multiline 
                   minRows={2}
                   disabled={mode === 'edit' && poStatus !== 'draft'}
+                  sx={disabledFieldSx}
                 />
               </Grid>
             </Grid>

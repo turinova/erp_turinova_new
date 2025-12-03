@@ -20,8 +20,11 @@ export async function GET(request: NextRequest) {
         name,
         sku,
         net_price,
+        base_price,
         image_url,
         deleted_at,
+        partners_id,
+        units_id,
         vat (
           id,
           kulcs
@@ -73,6 +76,9 @@ export async function GET(request: NextRequest) {
       quantity_on_hand: quantity_on_hand,
       gross_price: gross_price,
       net_price: accessoryData.net_price,
+      base_price: accessoryData.base_price || 0,
+      partners_id: accessoryData.partners_id || null,
+      units_id: accessoryData.units_id || null,
       currency_name: accessoryData.currencies?.name || 'HUF',
       vat_id: accessoryData.vat?.id || '',
       currency_id: accessoryData.currencies?.id || '',
