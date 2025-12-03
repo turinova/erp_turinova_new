@@ -471,7 +471,7 @@ export default function PurchaseOrderFormClient({
   const [units, setUnits] = useState<UnitRow[]>(initialUnits)
 
   const [partnerId, setPartnerId] = useState(initialHeader?.partner_id || '')
-  const [warehouseId, setWarehouseId] = useState(initialHeader?.warehouse_id || '')
+  const [warehouseId, setWarehouseId] = useState(initialHeader?.warehouse_id || (initialWarehouses.length > 0 ? initialWarehouses[0].id : ''))
   const [orderDate, setOrderDate] = useState<string>(initialHeader?.order_date || new Date().toISOString().slice(0, 10))
   const [expectedDate, setExpectedDate] = useState<string>(initialHeader?.expected_date || '')
   const [note, setNote] = useState<string>(initialHeader?.note || '')
