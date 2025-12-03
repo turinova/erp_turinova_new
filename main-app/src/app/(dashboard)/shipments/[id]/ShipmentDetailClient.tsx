@@ -117,15 +117,15 @@ export default function ShipmentDetailClient({
 
   // Focus barcode input on mount and when status is draft (but not when modal is open)
   useEffect(() => {
-    if (header?.status === 'draft' && barcodeInputRef.current && !receiveConfirmOpen) {
+    if (header?.status === 'draft' && barcodeInputRef.current && !receiveConfirmOpen && !addingProduct) {
       // Small delay to ensure page is fully rendered
-      // Only focus if modal is NOT open to prevent conflicts
+      // Only focus if modal is NOT open AND not adding product to prevent conflicts
       const timer = setTimeout(() => {
         barcodeInputRef.current?.focus()
       }, 100)
       return () => clearTimeout(timer)
     }
-  }, [header?.status, receiveConfirmOpen])
+  }, [header?.status, receiveConfirmOpen, addingProduct])
 
   // Blur barcode input when modal opens to prevent conflicts on iPad/mobile
   useEffect(() => {
@@ -563,7 +563,7 @@ export default function ShipmentDetailClient({
 
   // Refocus barcode input
   const refocusBarcodeInput = () => {
-    if (header?.status === 'draft' && barcodeInputRef.current) {
+    if (header?.status === 'draft' && !addingProduct && barcodeInputRef.current) {
       setTimeout(() => {
         barcodeInputRef.current?.focus()
         barcodeInputRef.current?.select()
@@ -696,6 +696,11 @@ export default function ShipmentDetailClient({
       setAddingProduct(false)
       setProductSearchTerm('')
       setProductSearchResults([])
+      
+      // Refocus barcode input after adding item
+      setTimeout(() => {
+        refocusBarcodeInput()
+      }, 100)
     } catch (error: any) {
       console.error('Error adding item:', error)
       toast.error(error.message || 'Hiba a tétel hozzáadásakor')
@@ -712,6 +717,10 @@ export default function ShipmentDetailClient({
     setAddingProduct(false)
     setProductSearchTerm('')
     setProductSearchResults([])
+    // Refocus barcode input after canceling
+    setTimeout(() => {
+      refocusBarcodeInput()
+    }, 100)
   }
 
   const totals = items.reduce((acc, it) => {
@@ -766,12 +775,14 @@ export default function ShipmentDetailClient({
           autoFocus
           tabIndex={0}
           onBlur={(e) => {
-            // Don't refocus if clicking on interactive elements
+            // Don't refocus if adding product or clicking on interactive elements
+            if (addingProduct) return
+            
             const target = e.relatedTarget as HTMLElement
             if (!target) {
               // No related target (clicked outside) - refocus after a delay
               setTimeout(() => {
-                if (header?.status === 'draft' && !receiveConfirmOpen && barcodeInputRef.current) {
+                if (header?.status === 'draft' && !receiveConfirmOpen && !addingProduct && barcodeInputRef.current) {
                   barcodeInputRef.current.focus()
                 }
               }, 100)
