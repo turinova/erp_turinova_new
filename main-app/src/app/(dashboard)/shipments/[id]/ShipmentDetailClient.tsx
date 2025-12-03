@@ -2,11 +2,12 @@
 
 import React, { useEffect, useState, useRef } from 'react'
 import {
-  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup
+  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete
 } from '@mui/material'
 import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
+import { useDebounce } from '@/hooks/useDebounce'
 
 interface ShipmentDetailClientProps {
   id: string
@@ -79,6 +80,12 @@ export default function ShipmentDetailClient({
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isScanningRef = useRef(false)
+
+  // Product search state (for manual adding)
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
 
   // Only fetch if we don't have initial data
   useEffect(() => {
@@ -564,6 +571,124 @@ export default function ShipmentDetailClient({
     }
   }
 
+  // Debounced search term for products
+  const debouncedProductSearchTerm = useDebounce(productSearchTerm, 300)
+  const productSearchAbortControllerRef = useRef<AbortController | null>(null)
+
+  // Search products when search term changes
+  useEffect(() => {
+    if (productSearchAbortControllerRef.current) {
+      productSearchAbortControllerRef.current.abort()
+    }
+
+    if (debouncedProductSearchTerm.trim().length >= 2 && header?.partner_id) {
+      setIsSearchingProducts(true)
+      
+      const abortController = new AbortController()
+      productSearchAbortControllerRef.current = abortController
+
+      fetch(`/api/shipments/accessories?search=${encodeURIComponent(debouncedProductSearchTerm)}&partner_id=${header.partner_id}`, {
+        signal: abortController.signal
+      })
+        .then(res => {
+          if (abortController.signal.aborted) return null
+          if (!res.ok) return []
+          return res.json()
+        })
+        .then(data => {
+          if (abortController.signal.aborted) return
+          if (Array.isArray(data)) {
+            setProductSearchResults(data)
+          } else {
+            setProductSearchResults([])
+          }
+          setIsSearchingProducts(false)
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return
+          console.error('Error searching products:', err)
+          if (!abortController.signal.aborted) {
+            setProductSearchResults([])
+            setIsSearchingProducts(false)
+          }
+        })
+    } else {
+      setProductSearchResults([])
+      setIsSearchingProducts(false)
+    }
+
+    return () => {
+      if (productSearchAbortControllerRef.current) {
+        productSearchAbortControllerRef.current.abort()
+        productSearchAbortControllerRef.current = null
+      }
+    }
+  }, [debouncedProductSearchTerm, header?.partner_id])
+
+  // Handle product selection from search
+  const handleProductSelect = async (selectedProduct: any) => {
+    if (!selectedProduct || !header) return
+
+    // Check if item already exists
+    const existingItem = items.find(item => item.sku === selectedProduct.sku)
+    if (existingItem) {
+      toast.error('Ez a termék már szerepel a listában')
+      setAddingProduct(false)
+      setProductSearchTerm('')
+      setProductSearchResults([])
+      return
+    }
+
+    // Create a new shipment item using PATCH with action: 'add'
+    try {
+      const response = await fetch(`/api/shipments/${id}/items`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updates: [{
+            action: 'add',
+            accessory_id: selectedProduct.id,
+            quantity_received: 1,
+            net_price: selectedProduct.net_price,
+            vat_id: selectedProduct.vat_id,
+            currency_id: selectedProduct.currency_id,
+            units_id: selectedProduct.units_id,
+            note: 'Kézzel hozzáadva'
+          }]
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Hiba a tétel hozzáadásakor')
+      }
+
+      toast.success('Tétel hozzáadva')
+      
+      // Refresh data to get the new item
+      await fetchData()
+
+      setAddingProduct(false)
+      setProductSearchTerm('')
+      setProductSearchResults([])
+    } catch (error: any) {
+      console.error('Error adding item:', error)
+      toast.error(error.message || 'Hiba a tétel hozzáadásakor')
+    }
+  }
+
+  // Add new product item
+  const handleAddProduct = () => {
+    setAddingProduct(true)
+  }
+
+  // Cancel adding product
+  const handleCancelAddProduct = () => {
+    setAddingProduct(false)
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
   const totals = items.reduce((acc, it) => {
     acc.net += it.net_total
     acc.gross += it.gross_total
@@ -954,6 +1079,68 @@ export default function ShipmentDetailClient({
                     </TableRow>
                     )
                   })}
+                  {addingProduct && (
+                    <TableRow>
+                      <TableCell colSpan={8}>
+                        <Autocomplete
+                          fullWidth
+                          size="small"
+                          options={productSearchResults}
+                          getOptionLabel={(option) => `${option.name} (${option.sku})`}
+                          filterOptions={(options) => options} // Disable client-side filtering - API already filters
+                          loading={isSearchingProducts}
+                          inputValue={productSearchTerm}
+                          onInputChange={(event, newValue) => {
+                            setProductSearchTerm(newValue)
+                          }}
+                          onChange={(event, newValue) => {
+                            if (newValue) {
+                              handleProductSelect(newValue)
+                            }
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              placeholder="Keresés termék neve vagy SKU szerint..."
+                              size="small"
+                              InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                  <>
+                                    {isSearchingProducts ? <CircularProgress size={20} /> : null}
+                                    {params.InputProps.endAdornment}
+                                  </>
+                                )
+                              }}
+                            />
+                          )}
+                          renderOption={(props, option) => {
+                            const { key, ...otherProps } = props
+                            return (
+                              <Box component="li" key={key} {...otherProps}>
+                                <Box sx={{ flex: 1 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                    <Typography variant="body2">{option.name}</Typography>
+                                    <Chip label="Kellék" size="small" color="primary" />
+                                  </Box>
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    SKU: {option.sku} | Nettó: {new Intl.NumberFormat('hu-HU').format(option.net_price)} Ft
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            )
+                          }}
+                          noOptionsText="Nincs találat"
+                          open={productSearchTerm.trim().length >= 2}
+                        />
+                        <Box sx={{ mt: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                          <Button size="small" onClick={handleCancelAddProduct}>
+                            Mégse
+                          </Button>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {items.length > 0 && (
                     <TableRow>
                       <TableCell colSpan={5} align="right"><strong>Összesen:</strong></TableCell>
@@ -965,6 +1152,16 @@ export default function ShipmentDetailClient({
                 </TableBody>
               </Table>
             </TableContainer>
+            {header.status === 'draft' && (
+              <Button
+                variant="outlined"
+                onClick={handleAddProduct}
+                disabled={addingProduct}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Tétel hozzáadása
+              </Button>
+            )}
           </Stack>
         </Paper>
 
