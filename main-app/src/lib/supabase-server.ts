@@ -3322,7 +3322,7 @@ export async function getShipmentsWithPagination(
         created_at,
         deleted_at,
         purchase_orders:purchase_order_id(po_number),
-        items:shipment_items(count)
+        items:shipment_items(deleted_at)
       `, { count: 'exact' })
       .is('deleted_at', null) // Only show non-deleted in list
       .order('created_at', { ascending: false })
@@ -3392,7 +3392,6 @@ export async function getShipmentsWithPagination(
 
     // Calculate totals for each shipment
     const shipments = (data || []).map((shipment: any) => {
-      const itemsCount = shipment.items?.[0]?.count || 0
       const items = itemsByShipment.get(shipment.id) || []
       
       let netTotal = 0
@@ -3412,6 +3411,10 @@ export async function getShipmentsWithPagination(
         }
       })
 
+      // Filter out soft-deleted items  
+      const activeItems = Array.isArray(shipment.items) ? shipment.items.filter((item: any) => !item.deleted_at) : []
+      const itemsCount = activeItems.length
+      
       const hasStockMovements = shipmentIdsWithStockMovements.has(shipment.id)
 
       return {

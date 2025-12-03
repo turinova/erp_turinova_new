@@ -250,7 +250,8 @@ export default function ShipmentDetailClient({
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || 'Hiba a tétel törlésekor')
       toast.success('Tétel törölve')
-      fetchData()
+      // Remove item from state instead of reloading
+      setItems(prev => prev.filter(item => item.id !== itemToDelete))
     } catch (e) {
       console.error(e)
       toast.error('Hiba a tétel törlésekor')
