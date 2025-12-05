@@ -793,7 +793,7 @@ export default function ShipmentDetailClient({
       printContainer.style.height = `${25 * printAmount}mm`
       document.body.appendChild(printContainer)
 
-      // Add print styles
+      // Add print styles - hide everything except label container
       const style = document.createElement('style')
       style.id = 'label-print-styles'
       style.textContent = `
@@ -801,6 +801,18 @@ export default function ShipmentDetailClient({
           @page {
             size: 33mm 25mm;
             margin: 0;
+            /* Disable browser headers and footers */
+            marks: none;
+          }
+          
+          /* Disable browser print headers/footers */
+          @page {
+            @top-left { content: ""; }
+            @top-center { content: ""; }
+            @top-right { content: ""; }
+            @bottom-left { content: ""; }
+            @bottom-center { content: ""; }
+            @bottom-right { content: ""; }
           }
           
           * {
@@ -809,20 +821,53 @@ export default function ShipmentDetailClient({
             color-adjust: exact !important;
           }
           
-          html, body {
+          /* Hide everything on the page */
+          html {
             margin: 0 !important;
             padding: 0 !important;
             width: 33mm !important;
             height: auto !important;
+            overflow: hidden !important;
           }
           
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 33mm !important;
+            height: auto !important;
+            overflow: hidden !important;
+            background: white !important;
+          }
+          
+          /* Hide ALL elements except our print container */
           body > *:not(#label-print-container) {
             display: none !important;
             visibility: hidden !important;
             height: 0 !important;
+            width: 0 !important;
             overflow: hidden !important;
+            opacity: 0 !important;
+            position: absolute !important;
+            left: -9999px !important;
           }
           
+          /* Hide all nested elements outside our container */
+          body *:not(#label-print-container):not(#label-print-container *) {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          
+          /* Hide head elements */
+          head > *:not(#label-print-styles) {
+            display: none !important;
+          }
+          
+          script, style:not(#label-print-styles), link, meta, title {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          
+          /* Only show our print container */
           #label-print-container {
             position: relative !important;
             left: 0 !important;
@@ -832,6 +877,8 @@ export default function ShipmentDetailClient({
             padding: 0 !important;
             background: white !important;
             display: block !important;
+            visibility: visible !important;
+            z-index: 9999 !important;
           }
           
           #label-print-container > .label-print-item {
@@ -854,12 +901,45 @@ export default function ShipmentDetailClient({
             background: white !important;
             overflow: hidden !important;
             font-family: Arial, sans-serif !important;
+            visibility: visible !important;
           }
           
           #label-print-container > .label-print-item:last-child {
             page-break-after: auto !important;
             break-after: auto !important;
           }
+          
+          /* Hide any links or interactive elements */
+          a, button, input, select, textarea {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          
+          /* Ensure only text content is visible in our container */
+          #label-print-container * {
+            text-decoration: none !important;
+            color: #000000 !important;
+            visibility: visible !important;
+          }
+          
+          /* Make sure all text elements are visible */
+          #label-print-container [data-field] {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+          
+          /* Hide browser UI elements */
+          ::-webkit-scrollbar {
+            display: none !important;
+          }
+        }
+        
+        /* Non-print styles - hide container from screen */
+        #label-print-container {
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
         }
         
         .label-print-item {
@@ -880,12 +960,12 @@ export default function ShipmentDetailClient({
       `
       document.head.appendChild(style)
 
-      // Render labels
+      // Render labels - match modal preview exactly
       for (let i = 0; i < printAmount; i++) {
         const labelDiv = document.createElement('div')
         labelDiv.className = 'label-print-item'
         
-        // Top section - Name, SKU, Price
+        // Top section - Name, SKU, Price (centered vertically)
         const topSection = document.createElement('div')
         topSection.style.width = '100%'
         topSection.style.textAlign = 'center'
@@ -894,46 +974,73 @@ export default function ShipmentDetailClient({
         topSection.style.flexDirection = 'column'
         topSection.style.justifyContent = 'center'
         topSection.style.alignItems = 'center'
-        topSection.style.gap = '1mm'
+        topSection.style.gap = '0.5mm'
+        topSection.style.minHeight = '0'
+        topSection.style.overflow = 'hidden'
+        topSection.style.padding = '0.5mm'
         
-        // Product Name
+        // Group all text elements together (matching modal preview)
+        const textGroup = document.createElement('div')
+        textGroup.style.display = 'flex'
+        textGroup.style.flexDirection = 'column'
+        textGroup.style.justifyContent = 'center'
+        textGroup.style.alignItems = 'center'
+        textGroup.style.gap = '0.5mm'
+        
+        // Product Name (matching modal: 18px = ~4.5mm at print scale)
         if (labelFields.showName && itemToPrint.product_name) {
           const nameEl = document.createElement('div')
-          nameEl.style.fontSize = '3.5mm'
+          nameEl.style.fontSize = '4.5mm' // Scaled from 18px
           nameEl.style.fontWeight = 'bold'
           nameEl.style.color = '#000000'
           nameEl.style.lineHeight = '1.2'
           nameEl.style.wordWrap = 'break-word'
+          nameEl.style.overflowWrap = 'break-word'
           nameEl.style.maxWidth = '100%'
           nameEl.style.overflow = 'hidden'
-          nameEl.textContent = itemToPrint.product_name
-          topSection.appendChild(nameEl)
+          nameEl.style.textAlign = 'center'
+          nameEl.style.textDecoration = 'none'
+          nameEl.style.visibility = 'visible'
+          nameEl.style.display = 'block'
+          nameEl.setAttribute('data-field', 'name')
+          nameEl.textContent = itemToPrint.product_name || ''
+          textGroup.appendChild(nameEl)
         }
         
-        // SKU
+        // SKU (matching modal: 24px = ~6mm at print scale)
         if (labelFields.showSku && itemToPrint.sku) {
           const skuEl = document.createElement('div')
-          skuEl.style.fontSize = '4.5mm'
+          skuEl.style.fontSize = '6mm' // Scaled from 24px
           skuEl.style.color = '#000000'
           skuEl.style.lineHeight = '1.2'
-          skuEl.textContent = itemToPrint.sku
-          topSection.appendChild(skuEl)
+          skuEl.style.display = 'block'
+          skuEl.style.textDecoration = 'none'
+          skuEl.style.visibility = 'visible'
+          skuEl.setAttribute('data-field', 'sku')
+          skuEl.textContent = itemToPrint.sku || ''
+          textGroup.appendChild(skuEl)
         }
         
-        // Price
+        // Price (matching modal: 48px = ~12mm at print scale)
         if (labelFields.showPrice) {
           const priceEl = document.createElement('div')
-          priceEl.style.fontSize = '9mm'
+          priceEl.style.fontSize = '12mm' // Scaled from 48px
           priceEl.style.fontWeight = 'bold'
           priceEl.style.color = '#000000'
           priceEl.style.lineHeight = '1.2'
-          priceEl.textContent = `${new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice)} Ft`
-          topSection.appendChild(priceEl)
+          priceEl.style.display = 'block'
+          priceEl.style.textDecoration = 'none'
+          priceEl.style.visibility = 'visible'
+          priceEl.setAttribute('data-field', 'price')
+          const priceText = `${new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice)} Ft`
+          priceEl.textContent = priceText
+          textGroup.appendChild(priceEl)
         }
         
+        topSection.appendChild(textGroup)
         labelDiv.appendChild(topSection)
         
-        // Barcode section
+        // Barcode section (at bottom, matching modal)
         if (labelFields.showBarcode && itemToPrint.barcode) {
           const barcodeSection = document.createElement('div')
           barcodeSection.style.width = '100%'
@@ -943,8 +1050,9 @@ export default function ShipmentDetailClient({
           barcodeSection.style.flexShrink = '0'
           barcodeSection.style.marginTop = 'auto'
           barcodeSection.style.paddingBottom = '1mm'
+          barcodeSection.style.paddingLeft = '0.5mm'
+          barcodeSection.style.paddingRight = '0.5mm'
           
-          // Create barcode using react-barcode (we'll render it to canvas)
           const barcodeWrapper = document.createElement('div')
           barcodeWrapper.style.width = '100%'
           barcodeWrapper.style.maxWidth = '100%'
@@ -1010,12 +1118,58 @@ export default function ShipmentDetailClient({
           const labels = printContainer.querySelectorAll('.label-print-item')
           console.log(`Created ${labels.length} labels, expected ${printAmount}`)
           
+          // Debug: Check if data is present
+          console.log('Print data:', {
+            showName: labelFields.showName,
+            showSku: labelFields.showSku,
+            showPrice: labelFields.showPrice,
+            showBarcode: labelFields.showBarcode,
+            productName: itemToPrint.product_name,
+            sku: itemToPrint.sku,
+            price: calculatedSellingPrice,
+            barcode: itemToPrint.barcode
+          })
+          
+          // Verify elements are created
+          const nameElements = printContainer.querySelectorAll('[data-field="name"]')
+          const skuElements = printContainer.querySelectorAll('[data-field="sku"]')
+          const priceElements = printContainer.querySelectorAll('[data-field="price"]')
+          console.log(`Name elements: ${nameElements.length}, SKU elements: ${skuElements.length}, Price elements: ${priceElements.length}`)
+          
           if (labels.length !== printAmount) {
             console.error(`Label count mismatch: ${labels.length} vs ${printAmount}`)
           }
 
-          // Trigger print dialog
-          window.print()
+          // Verify data is actually in the DOM before printing
+          const firstLabel = labels[0]
+          if (firstLabel) {
+            const nameInDom = firstLabel.querySelector('[data-field="name"]')
+            const priceInDom = firstLabel.querySelector('[data-field="price"]')
+            console.log('First label check:', {
+              nameElement: nameInDom ? nameInDom.textContent : 'NOT FOUND',
+              priceElement: priceInDom ? priceInDom.textContent : 'NOT FOUND',
+              nameVisible: nameInDom ? window.getComputedStyle(nameInDom).visibility : 'N/A',
+              priceVisible: priceInDom ? window.getComputedStyle(priceInDom).visibility : 'N/A'
+            })
+            
+            // If elements are missing, show error
+            if (labelFields.showName && !nameInDom) {
+              console.error('Product name element not found in DOM!')
+            }
+            if (labelFields.showPrice && !priceInDom) {
+              console.error('Price element not found in DOM!')
+            }
+          }
+
+          // Show toast with instructions
+          toast.info('Kérjük, a nyomtatási beállításokban tiltsa le a "Fejlécek és láblécek" opciót!', {
+            autoClose: 5000
+          })
+
+          // Small delay to show toast, then trigger print
+          setTimeout(() => {
+            window.print()
+          }, 500)
 
           // Clean up after a delay (give time for print dialog to open)
           // Use a longer timeout to ensure print dialog has time to process
