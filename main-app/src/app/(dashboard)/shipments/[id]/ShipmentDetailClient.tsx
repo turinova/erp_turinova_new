@@ -1,10 +1,15 @@
 'use client'
 
-import React, { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
-  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete
+  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel
 } from '@mui/material'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon } from '@mui/icons-material'
+import dynamic from 'next/dynamic'
+
+// Dynamic import for Barcode to avoid SSR issues
+const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon, Print as PrintIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -21,6 +26,7 @@ interface ShipmentItem {
   purchase_order_item_id: string
   product_name: string
   sku: string
+  barcode: string | null
   quantity_received: number
   target_quantity: number
   net_price: number
@@ -67,6 +73,18 @@ export default function ShipmentDetailClient({
   const [receiveConfirmOpen, setReceiveConfirmOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
+  const [printLabelOpen, setPrintLabelOpen] = useState(false)
+  const [itemToPrint, setItemToPrint] = useState<ShipmentItem | null>(null)
+  const [priceMultiplier, setPriceMultiplier] = useState<number>(1.75)
+  const [labelFields, setLabelFields] = useState({
+    showName: true,
+    showSku: true,
+    showBarcode: true,
+    showPrice: true
+  })
+  const [printAmount, setPrintAmount] = useState<number>(1)
+  const [isPrinting, setIsPrinting] = useState(false)
+  const [priceRounding, setPriceRounding] = useState<'none' | '10' | '100'>('none')
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
@@ -727,6 +745,326 @@ export default function ShipmentDetailClient({
     }, 100)
   }
 
+  // Handle print label modal open
+  const handleOpenPrintLabel = (item: ShipmentItem) => {
+    setItemToPrint(item)
+    setPriceMultiplier(1.75)
+    setPrintAmount(item.quantity_received || 1)
+    // If no barcode, don't select it by default
+    const hasBarcode = !!item.barcode
+    setLabelFields({
+      showName: true,
+      showSku: true,
+      showBarcode: hasBarcode,
+      showPrice: true
+    })
+    setPrintLabelOpen(true)
+  }
+
+  // Handle print label - Browser print with canvas rendering
+  const handlePrintLabel = async () => {
+    if (!itemToPrint) return
+
+    // Validate at least one field is selected
+    if (!labelFields.showName && !labelFields.showSku && !labelFields.showBarcode && !labelFields.showPrice) {
+      toast.error('Válasszon ki legalább egy mezőt a címkéhez!')
+      return
+    }
+
+    setIsPrinting(true)
+    try {
+      // Clean up any existing print containers
+      const existingContainer = document.getElementById('label-print-container')
+      if (existingContainer) {
+        document.body.removeChild(existingContainer)
+      }
+      const existingStyle = document.getElementById('label-print-styles')
+      if (existingStyle) {
+        document.head.removeChild(existingStyle)
+      }
+
+      // Create a hidden print container
+      const printContainer = document.createElement('div')
+      printContainer.id = 'label-print-container'
+      printContainer.style.position = 'absolute'
+      printContainer.style.left = '-9999px'
+      printContainer.style.top = '-9999px'
+      printContainer.style.width = '33mm'
+      printContainer.style.height = `${25 * printAmount}mm`
+      document.body.appendChild(printContainer)
+
+      // Add print styles
+      const style = document.createElement('style')
+      style.id = 'label-print-styles'
+      style.textContent = `
+        @media print {
+          @page {
+            size: 33mm 25mm;
+            margin: 0;
+          }
+          
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 33mm !important;
+            height: auto !important;
+          }
+          
+          body > *:not(#label-print-container) {
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
+          }
+          
+          #label-print-container {
+            position: relative !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 33mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            display: block !important;
+          }
+          
+          #label-print-container > .label-print-item {
+            width: 33mm !important;
+            height: 25mm !important;
+            min-height: 25mm !important;
+            max-height: 25mm !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            border: none !important;
+            margin: 0 !important;
+            padding: 2mm !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            align-items: center !important;
+            background: white !important;
+            overflow: hidden !important;
+            font-family: Arial, sans-serif !important;
+          }
+          
+          #label-print-container > .label-print-item:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+        }
+        
+        .label-print-item {
+          width: 33mm;
+          height: 25mm;
+          border: 1px solid #ccc;
+          margin: 2mm;
+          padding: 2mm;
+          box-sizing: border-box;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+          background: white;
+          overflow: hidden;
+          font-family: Arial, sans-serif;
+        }
+      `
+      document.head.appendChild(style)
+
+      // Render labels
+      for (let i = 0; i < printAmount; i++) {
+        const labelDiv = document.createElement('div')
+        labelDiv.className = 'label-print-item'
+        
+        // Top section - Name, SKU, Price
+        const topSection = document.createElement('div')
+        topSection.style.width = '100%'
+        topSection.style.textAlign = 'center'
+        topSection.style.flex = '1'
+        topSection.style.display = 'flex'
+        topSection.style.flexDirection = 'column'
+        topSection.style.justifyContent = 'center'
+        topSection.style.alignItems = 'center'
+        topSection.style.gap = '1mm'
+        
+        // Product Name
+        if (labelFields.showName && itemToPrint.product_name) {
+          const nameEl = document.createElement('div')
+          nameEl.style.fontSize = '3.5mm'
+          nameEl.style.fontWeight = 'bold'
+          nameEl.style.color = '#000000'
+          nameEl.style.lineHeight = '1.2'
+          nameEl.style.wordWrap = 'break-word'
+          nameEl.style.maxWidth = '100%'
+          nameEl.style.overflow = 'hidden'
+          nameEl.textContent = itemToPrint.product_name
+          topSection.appendChild(nameEl)
+        }
+        
+        // SKU
+        if (labelFields.showSku && itemToPrint.sku) {
+          const skuEl = document.createElement('div')
+          skuEl.style.fontSize = '4.5mm'
+          skuEl.style.color = '#000000'
+          skuEl.style.lineHeight = '1.2'
+          skuEl.textContent = itemToPrint.sku
+          topSection.appendChild(skuEl)
+        }
+        
+        // Price
+        if (labelFields.showPrice) {
+          const priceEl = document.createElement('div')
+          priceEl.style.fontSize = '9mm'
+          priceEl.style.fontWeight = 'bold'
+          priceEl.style.color = '#000000'
+          priceEl.style.lineHeight = '1.2'
+          priceEl.textContent = `${new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice)} Ft`
+          topSection.appendChild(priceEl)
+        }
+        
+        labelDiv.appendChild(topSection)
+        
+        // Barcode section
+        if (labelFields.showBarcode && itemToPrint.barcode) {
+          const barcodeSection = document.createElement('div')
+          barcodeSection.style.width = '100%'
+          barcodeSection.style.display = 'flex'
+          barcodeSection.style.justifyContent = 'center'
+          barcodeSection.style.alignItems = 'flex-end'
+          barcodeSection.style.flexShrink = '0'
+          barcodeSection.style.marginTop = 'auto'
+          barcodeSection.style.paddingBottom = '1mm'
+          
+          // Create barcode using react-barcode (we'll render it to canvas)
+          const barcodeWrapper = document.createElement('div')
+          barcodeWrapper.style.width = '100%'
+          barcodeWrapper.style.maxWidth = '100%'
+          barcodeWrapper.id = `barcode-${i}`
+          barcodeSection.appendChild(barcodeWrapper)
+          labelDiv.appendChild(barcodeSection)
+        }
+        
+        printContainer.appendChild(labelDiv)
+      }
+
+      // Wait a bit for DOM to update, then render barcodes
+      setTimeout(async () => {
+        // Render barcodes using bwip-js
+        if (labelFields.showBarcode && itemToPrint.barcode) {
+          try {
+            // Dynamically import bwip-js only in browser
+            const bwipjs = await import('bwip-js')
+            const barcodeWrappers = printContainer.querySelectorAll('[id^="barcode-"]')
+            for (const wrapper of Array.from(barcodeWrappers)) {
+              try {
+                const canvas = document.createElement('canvas')
+                // Render CODE128 barcode
+                await bwipjs.default.toCanvas(canvas, {
+                  bcid: 'code128',        // Barcode type
+                  text: itemToPrint.barcode || '',  // Text to encode
+                  scale: 2,                // Scaling factor
+                  height: 10,              // Bar height (in mm)
+                  includetext: false,      // Don't show text below barcode
+                  textxalign: 'center',
+                })
+                canvas.style.width = '100%'
+                canvas.style.height = 'auto'
+                canvas.style.maxWidth = '100%'
+                wrapper.appendChild(canvas)
+              } catch (error) {
+                console.error('Error rendering barcode:', error)
+                // Fallback: show barcode text
+                const fallback = document.createElement('div')
+                fallback.style.fontSize = '2mm'
+                fallback.style.color = '#000000'
+                fallback.textContent = itemToPrint.barcode || ''
+                wrapper.appendChild(fallback)
+              }
+            }
+          } catch (importError) {
+            console.error('Error importing bwip-js:', importError)
+            // Fallback: show barcode text
+            const barcodeWrappers = printContainer.querySelectorAll('[id^="barcode-"]')
+            barcodeWrappers.forEach((wrapper) => {
+              const fallback = document.createElement('div')
+              fallback.style.fontSize = '2mm'
+              fallback.style.color = '#000000'
+              fallback.textContent = itemToPrint.barcode || ''
+              wrapper.appendChild(fallback)
+            })
+          }
+        }
+
+        // Small delay to ensure barcodes are rendered
+        setTimeout(() => {
+          // Verify we have the correct number of labels
+          const labels = printContainer.querySelectorAll('.label-print-item')
+          console.log(`Created ${labels.length} labels, expected ${printAmount}`)
+          
+          if (labels.length !== printAmount) {
+            console.error(`Label count mismatch: ${labels.length} vs ${printAmount}`)
+          }
+
+          // Trigger print dialog
+          window.print()
+
+          // Clean up after a delay (give time for print dialog to open)
+          // Use a longer timeout to ensure print dialog has time to process
+          setTimeout(() => {
+            const container = document.getElementById('label-print-container')
+            if (container && container.parentNode) {
+              container.parentNode.removeChild(container)
+            }
+            const styleEl = document.getElementById('label-print-styles')
+            if (styleEl && styleEl.parentNode) {
+              styleEl.parentNode.removeChild(styleEl)
+            }
+            setIsPrinting(false)
+            setPrintLabelOpen(false)
+            toast.success(`${printAmount} címke nyomtatása elindítva`)
+          }, 2000)
+        }, 300)
+      }, 100)
+    } catch (error: any) {
+      console.error('Error printing label:', error)
+      toast.error(error.message || 'Hiba a nyomtatás során')
+      setIsPrinting(false)
+      
+      // Clean up on error
+      const printContainer = document.getElementById('label-print-container')
+      if (printContainer) {
+        document.body.removeChild(printContainer)
+      }
+      const styleEl = document.getElementById('label-print-styles')
+      if (styleEl) {
+        document.head.removeChild(styleEl)
+      }
+    }
+  }
+
+  // Calculate selling price with rounding
+  const calculatedSellingPrice = useMemo(() => {
+    if (!itemToPrint) return 0
+    const basePrice = itemToPrint.net_price * priceMultiplier
+    
+    if (priceRounding === '10') {
+      return Math.round(basePrice / 10) * 10
+    } else if (priceRounding === '100') {
+      return Math.round(basePrice / 100) * 100
+    }
+    
+    return Math.round(basePrice)
+  }, [itemToPrint, priceMultiplier, priceRounding])
+
   const totals = items.reduce((acc, it) => {
     acc.net += it.net_total
     acc.gross += it.gross_total
@@ -1108,13 +1446,24 @@ export default function ShipmentDetailClient({
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.net_total)} Ft</TableCell>
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.gross_total)} Ft</TableCell>
                       <TableCell>
-                        <IconButton 
-                          size="small" 
-                          onClick={() => handleDeleteItem(item.id)}
-                          disabled={header.status === 'received' || header.status === 'cancelled'}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          {header.status === 'received' && (
+                            <IconButton 
+                              size="small" 
+                              onClick={() => handleOpenPrintLabel(item)}
+                              color="primary"
+                            >
+                              <PrintIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleDeleteItem(item.id)}
+                            disabled={header.status === 'received' || header.status === 'cancelled'}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       </TableCell>
                     </TableRow>
                     )
@@ -1371,6 +1720,330 @@ export default function ShipmentDetailClient({
             startIcon={saving ? <CircularProgress size={18} /> : <DeleteIcon />}
           >
             {saving ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Print Label Modal */}
+      <Dialog
+        open={printLabelOpen}
+        onClose={() => setPrintLabelOpen(false)}
+        maxWidth="md"
+        fullWidth
+        aria-labelledby="print-label-dialog-title"
+      >
+        <DialogTitle id="print-label-dialog-title">
+          Címke nyomtatása
+        </DialogTitle>
+        <DialogContent>
+          {itemToPrint && (
+            <Grid container spacing={3} sx={{ mt: 1 }}>
+              {/* Row 1 - Controls */}
+              <Grid item xs={12}>
+                <Grid container spacing={2} alignItems="flex-start">
+                  {/* Section 1: Megjelenítendő mezők */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        p: 2,
+                        backgroundColor: 'background.paper'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Megjelenítendő mezők
+                      </Typography>
+                      <FormGroup sx={{ gap: 0.5 }}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showName}
+                              onChange={(e) => setLabelFields({ ...labelFields, showName: e.target.checked })}
+                              size="small"
+                            />
+                          }
+                          label="Termék neve"
+                          sx={{ m: 0 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showSku}
+                              onChange={(e) => setLabelFields({ ...labelFields, showSku: e.target.checked })}
+                              size="small"
+                            />
+                          }
+                          label="SKU"
+                          sx={{ m: 0 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showBarcode}
+                              onChange={(e) => setLabelFields({ ...labelFields, showBarcode: e.target.checked })}
+                              disabled={!itemToPrint.barcode}
+                              size="small"
+                            />
+                          }
+                          label="Vonalkód"
+                          sx={{ m: 0 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showPrice}
+                              onChange={(e) => setLabelFields({ ...labelFields, showPrice: e.target.checked })}
+                              size="small"
+                            />
+                          }
+                          label="Ár"
+                          sx={{ m: 0 }}
+                        />
+                      </FormGroup>
+                    </Box>
+                  </Grid>
+
+                  {/* Section 2: Ár szorzó + Eladási ár */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        p: 2,
+                        backgroundColor: 'background.paper'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Ár beállítások
+                      </Typography>
+                      <Stack spacing={2}>
+                        <TextField
+                          label="Ár szorzó"
+                          type="number"
+                          value={priceMultiplier}
+                          onChange={(e) => setPriceMultiplier(Number(e.target.value) || 1.75)}
+                          inputProps={{ min: 0.01, step: 0.01 }}
+                          fullWidth
+                          size="small"
+                          helperText="Alapértelmezett: 1.75"
+                        />
+                        <TextField
+                          label="Eladási ár"
+                          value={new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice) + ' Ft'}
+                          fullWidth
+                          disabled
+                          size="small"
+                        />
+                      </Stack>
+                    </Box>
+                  </Grid>
+
+                  {/* Section 3: Ár kerekítés */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        p: 2,
+                        backgroundColor: 'background.paper'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Ár kerekítés
+                      </Typography>
+                      <FormControl component="fieldset" size="small" fullWidth>
+                        <RadioGroup
+                          value={priceRounding}
+                          onChange={(e) => setPriceRounding(e.target.value as 'none' | '10' | '100')}
+                          row
+                          sx={{ mt: 0 }}
+                        >
+                          <FormControlLabel value="none" control={<Radio size="small" />} label="Nincs" sx={{ mr: 1 }} />
+                          <FormControlLabel value="10" control={<Radio size="small" />} label="10-re" sx={{ mr: 1 }} />
+                          <FormControlLabel value="100" control={<Radio size="small" />} label="100-ra" />
+                        </RadioGroup>
+                      </FormControl>
+                    </Box>
+                  </Grid>
+
+                  {/* Section 4: Nyomtatandó mennyiség */}
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        p: 2,
+                        backgroundColor: 'background.paper'
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Nyomtatás
+                      </Typography>
+                      <TextField
+                        label="Nyomtatandó mennyiség"
+                        type="number"
+                        value={printAmount}
+                        onChange={(e) => setPrintAmount(Math.max(1, Number(e.target.value) || 1))}
+                        inputProps={{ min: 1 }}
+                        fullWidth
+                        size="small"
+                        helperText={`Alapértelmezett: ${itemToPrint.quantity_received}`}
+                      />
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Grid>
+
+              {/* Row 2 - Preview */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom sx={{ textAlign: 'center' }}>
+                  Előnézet (33mm × 25mm - 2x nagyított):
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    width: '100%'
+                  }}
+                >
+                  <Box
+                    sx={{
+                      // Show at 2x scale for visibility, maintaining exact aspect ratio
+                      width: '248px', // 33mm * 2 = 66mm at 96 DPI ≈ 248px
+                      height: '188px', // 25mm * 2 = 50mm at 96 DPI ≈ 188px
+                      border: '2px solid #ccc',
+                      p: 1,
+                      backgroundColor: 'white',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      overflow: 'hidden',
+                      boxSizing: 'border-box',
+                      position: 'relative'
+                    }}
+                  >
+                  {/* Top section - Name, SKU, Price (centered vertically above barcode) */}
+                  <Box sx={{ 
+                    width: '100%', 
+                    textAlign: 'center',
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center', // Center all content vertically
+                    alignItems: 'center',
+                    minHeight: 0,
+                    overflow: 'hidden',
+                    py: 0.5
+                  }}>
+                    {/* Group all text elements together and center them */}
+                    <Box sx={{ 
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: 0.5
+                    }}>
+                      {labelFields.showName && (
+                        <Typography
+                          component="div"
+                          sx={{
+                            fontSize: '18px', // 30% bigger (14px * 1.3 = 18.2px)
+                            fontWeight: 'bold',
+                            color: '#000000', // Black color
+                            lineHeight: 1.2,
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word',
+                            hyphens: 'auto',
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            textAlign: 'center',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          {itemToPrint.product_name}
+                        </Typography>
+                      )}
+                      {labelFields.showSku && (
+                        <Typography
+                          sx={{
+                            fontSize: '24px', // Double size (12px * 2)
+                            color: '#000000', // Black color
+                            display: 'block',
+                            lineHeight: 1.2
+                          }}
+                        >
+                          {itemToPrint.sku}
+                        </Typography>
+                      )}
+                      {labelFields.showPrice && (
+                        <Typography
+                          sx={{
+                            fontSize: '48px', // Double size
+                            fontWeight: 'bold',
+                            color: '#000000', // Black color
+                            display: 'block',
+                            lineHeight: 1.2
+                          }}
+                        >
+                          {new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice)} Ft
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {/* Bottom section - Barcode (full width) */}
+                  {labelFields.showBarcode && itemToPrint.barcode && (
+                    <Box sx={{ 
+                      width: '100%', 
+                      display: 'flex', 
+                      justifyContent: 'center', 
+                      alignItems: 'flex-end',
+                      flexShrink: 0,
+                      mt: 'auto',
+                      pb: 0.5,
+                      px: 0.5,
+                      overflow: 'hidden'
+                    }}>
+                      <Box sx={{ width: '100%', maxWidth: '100%' }}>
+                        <Barcode
+                          value={itemToPrint.barcode}
+                          format="CODE128"
+                          width={3.0} // Wider for full width
+                          height={36} // Scaled 2x
+                          fontSize={12} // Scaled 2x
+                          displayValue={false}
+                          margin={0}
+                        />
+                      </Box>
+                    </Box>
+                  )}
+                  </Box>
+                </Box>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPrintLabelOpen(false)} disabled={isPrinting}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handlePrintLabel}
+            variant="contained"
+            color="primary"
+            disabled={isPrinting || (!labelFields.showName && !labelFields.showSku && !labelFields.showBarcode && !labelFields.showPrice)}
+            startIcon={isPrinting ? <CircularProgress size={18} /> : <PrintIcon />}
+          >
+            {isPrinting ? 'Nyomtatás...' : 'Nyomtatás'}
           </Button>
         </DialogActions>
       </Dialog>

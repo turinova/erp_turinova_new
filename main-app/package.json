@@ -43,6 +43,7 @@
     "@types/uuid": "^10.0.0",
     "@vercel/speed-insights": "^1.2.0",
     "apexcharts": "^5.3.5",
+    "bwip-js": "^4.8.0",
     "classnames": "2.5.1",
     "critters": "^0.0.23",
     "date-fns": "^4.1.0",

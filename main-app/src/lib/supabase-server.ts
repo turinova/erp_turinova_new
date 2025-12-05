@@ -3493,7 +3493,7 @@ export async function getShipmentById(id: string) {
         purchase_order_items:purchase_order_item_id (
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
-          accessories:accessory_id (name, sku),
+          accessories:accessory_id (name, sku, barcode),
           materials:material_id (name),
           linear_materials:linear_material_id (name)
         )
@@ -3527,6 +3527,9 @@ export async function getShipmentById(id: string) {
       // Get SKU (only accessories have SKU)
       const sku = (poi?.accessory_id && poi?.accessories?.sku) ? poi.accessories.sku : ''
       
+      // Get barcode (only accessories have barcode)
+      const barcode = (poi?.accessory_id && poi?.accessories?.barcode) ? poi.accessories.barcode : null
+      
       const targetQty = Number(poi?.quantity) || 0
       const receivedQty = Number(si.quantity_received) || 0
       const netPrice = Number(poi?.net_price) || 0
@@ -3540,6 +3543,7 @@ export async function getShipmentById(id: string) {
         purchase_order_item_id: si.purchase_order_item_id,
         product_name: productName,
         sku,
+        barcode,
         quantity_received: receivedQty,
         target_quantity: targetQty,
         net_price: netPrice,
