@@ -62,6 +62,15 @@ interface ItemDraft {
   quantity_received?: number // Total quantity received from all shipments
   // Internal: store multiplier used at selection time to allow edits
   __multiplier?: number
+  // Manual entry flags
+  __isManual?: boolean // Flag indicating manual entry (no FK selected)
+  __manualData?: { // Data needed to create accessory on save
+    name: string
+    sku: string
+    base_price: number
+    multiplier: number // Default 1.38
+    partners_id: string // From PO partner_id
+  }
 }
 
 interface ProductPickerProps {
@@ -142,6 +151,23 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
   }, [searchTerm])
 
   const handleAccessoryChange = (_: any, newValue: any | null) => {
+    if (typeof newValue === 'string') {
+      // User typed a new product name (free text entry)
+      setSelectedItem(null)
+      setSearchTerm(newValue)
+      setForm(prev => ({
+        ...prev,
+        name: newValue,
+        sku: prev.sku, // Keep SKU if user already typed it
+        base_price: prev.base_price, // Keep base_price
+        pending_source: '',
+        pending_accessory_id: '',
+        pending_material_id: '',
+        pending_linear_material_id: ''
+      }))
+      return
+    }
+    
     if (!newValue) {
       setSelectedItem(null)
       setForm(prev => ({
@@ -158,6 +184,8 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
       }))
       return
     }
+    
+    // User selected from database - auto-select
     setSelectedItem(newValue)
     // store pending FKs and fill fields
     const source = newValue.source
@@ -177,25 +205,51 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
     }))
   }
 
-  const canAdd =
-    !!form.pending_source &&
-    (form.pending_accessory_id || form.pending_material_id || form.pending_linear_material_id) &&
-    Number(form.base_price) >= 0 &&
+  // Validation: Allow manual entry (name + sku) OR database selection (FK)
+  const canAdd = 
+    // Manual entry: name, sku, base_price > 0, quantity, vat, currency, units
+    ((!!form.name && form.name.trim().length > 0 && !!form.sku && form.sku.trim().length > 0) ||
+     // Database selection: pending_source and FK
+     (!!form.pending_source && (form.pending_accessory_id || form.pending_material_id || form.pending_linear_material_id))) &&
+    Number(form.base_price) > 0 && // Must be > 0 (database constraint)
     Number(form.quantity) > 0 &&
     !!form.vat_id &&
     !!form.currency_id &&
     !!form.units_id
 
-  const onSubmitAdd = () => {
+  const onSubmitAdd = async () => {
     if (disabled) return // Prevent any action if disabled
     if (!canAdd) return
+    
+    // Determine if this is a manual entry (no FK selected)
+    const isManualEntry = !form.pending_accessory_id && !form.pending_material_id && !form.pending_linear_material_id
+    
+    // If manual entry, validate SKU uniqueness before adding
+    if (isManualEntry && form.sku && form.sku.trim()) {
+      try {
+        const checkRes = await fetch(`/api/accessories/validate-sku?sku=${encodeURIComponent(form.sku.trim())}`)
+        if (checkRes.ok) {
+          const data = await checkRes.json()
+          if (!data.unique) {
+            toast.error(`A SKU "${form.sku.trim()}" már létezik az adatbázisban. Kérjük válassza ki az adatbázisból vagy használjon másik SKU-t.`)
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Error checking SKU uniqueness:', error)
+        // Continue anyway - will be caught on save
+      }
+    }
+    
     // For purchase orders, net_price should be the base_price (beszerzési ár) without multiplier
-    // The multiplier is only used for selling price calculations, not purchase price
-    const effectiveMultiplier = selectedItem?.multiplier || editingItem?.__multiplier || 1
+    const effectiveMultiplier = selectedItem?.multiplier || editingItem?.__multiplier || 1.38
     const netUnit = Math.round(Number(form.base_price) || 0)  // No multiplier for purchase orders!
-    const product_type =
-      form.pending_source === 'materials' ? 'material' :
-      form.pending_source === 'linear_materials' ? 'linear_material' : 'accessory'
+    
+    const product_type = isManualEntry
+      ? 'accessory'  // Manual entries are always accessories
+      : (form.pending_source === 'materials' ? 'material' :
+         form.pending_source === 'linear_materials' ? 'linear_material' : 'accessory')
+    
     const newItem: ItemDraft = {
       id: editingItem?.id, // Preserve ID when updating
       product_type,
@@ -210,11 +264,24 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
       units_id: form.units_id,
       sku: form.sku,
       megjegyzes: form.megjegyzes,
-      __multiplier: effectiveMultiplier  // Keep for reference, but not used in calculation
+      __multiplier: effectiveMultiplier,  // Keep for reference, but not used in calculation
+      // Preserve manual entry flags if editing a manual entry, or add if new manual entry
+      ...(editingItem?.__isManual || isManualEntry ? {
+        __isManual: true,
+        __manualData: {
+          name: form.name.trim(),
+          sku: form.sku.trim(),
+          base_price: netUnit,
+          multiplier: editingItem?.__manualData?.multiplier || 1.38,  // Preserve existing or default
+          partners_id: editingItem?.__manualData?.partners_id || ''  // Preserve existing or empty (set on save)
+        }
+      } : {})
     }
+    
     console.log('Adding new item:', newItem)
     if (editingIndex !== null) onUpdate(editingIndex, newItem)
     else onAdd(newItem)
+    
     // reset selection
     setSelectedItem(null)
     setSearchTerm('')
@@ -235,6 +302,30 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
   // Load editing item into form when provided
   useEffect(() => {
     if (editingIndex !== null && editingItem) {
+      // Check if this is a manual entry
+      if (editingItem.__isManual && editingItem.__manualData) {
+        // Manual entry: load manual data, keep as manual (no FK)
+        setForm(prev => ({
+          ...prev,
+          name: editingItem.__manualData!.name,
+          sku: editingItem.__manualData!.sku,
+          base_price: String(editingItem.__manualData!.base_price || editingItem.net_price || ''),
+          quantity: editingItem.quantity,
+          vat_id: editingItem.vat_id,
+          currency_id: editingItem.currency_id,
+          units_id: editingItem.units_id,
+          megjegyzes: editingItem.megjegyzes || '',
+          pending_source: '',
+          pending_accessory_id: '',
+          pending_material_id: '',
+          pending_linear_material_id: ''
+        }))
+        setSearchTerm(editingItem.__manualData!.name)
+        setSelectedItem(null)  // No selection for manual entries
+        return
+      }
+      
+      // Database item: load normally
       const pending_source = editingItem.pending_source ||
         (editingItem.material_id ? 'materials' : editingItem.linear_material_id ? 'linear_materials' : 'accessories')
       // For purchase orders, net_price should equal base_price (no multiplier applied)
@@ -287,8 +378,16 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
           isOptionEqualToValue={(a, b) => (a && b) ? a.id === b.id && a.source === b.source : a === b}
           value={selectedItem}
           onChange={handleAccessoryChange}
-          inputValue={searchTerm}
-          onInputChange={(_, v) => setSearchTerm(v)}
+          inputValue={searchTerm || form.name}
+          onInputChange={(_, newInputValue) => {
+            setSearchTerm(newInputValue)
+            // Update form.name when user types (like shoporder)
+            setForm(prev => ({
+              ...prev,
+              name: newInputValue
+            }))
+          }}
+          freeSolo
           filterOptions={(o) => o}
           disabled={disabled}
           renderOption={(props, option) => {
@@ -348,7 +447,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
           size="small"
           value={form.sku}
           onChange={(e) => setForm(prev => ({ ...prev, sku: e.target.value }))}
-          disabled
+          disabled={disabled}
         />
       </Grid>
       <Grid item xs={12} md={2}>
@@ -732,20 +831,77 @@ export default function PurchaseOrderFormClient({
         const data = await res.json()
         if (!res.ok) throw new Error(data?.error || 'Hiba a PO létrehozásakor')
         const poId = data.id
+        
         if (items.length > 0) {
-          // map items to API shape
-          const prepared = items.map(it => ({
-            product_type: it.product_type,
-            accessory_id: it.accessory_id || null,
-            material_id: it.material_id || null,
-            linear_material_id: it.linear_material_id || null,
-            quantity: it.quantity,
-            net_price: Math.round(Number(it.net_price) || 0),
-            vat_id: it.vat_id,
-            currency_id: it.currency_id,
-            units_id: it.units_id,
-            description: it.description || ''
-          }))
+          // Step 1: Process manual entries - create accessories
+          const processedItems = []
+          for (const item of items) {
+            if (item.__isManual && item.__manualData) {
+              // Create new accessory
+              try {
+                const accessoryRes = await fetch('/api/accessories', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: item.__manualData.name,
+                    sku: item.__manualData.sku,
+                    base_price: item.__manualData.base_price,
+                    multiplier: item.__manualData.multiplier || 1.38,
+                    // net_price calculated by trigger, but API needs it for validation
+                    net_price: Math.round(item.__manualData.base_price * (item.__manualData.multiplier || 1.38)),
+                    vat_id: item.vat_id,
+                    currency_id: item.currency_id,
+                    units_id: item.units_id,
+                    partners_id: item.__manualData.partners_id || partnerId
+                  })
+                })
+                
+                const accessoryData = await accessoryRes.json()
+                
+                if (!accessoryRes.ok) {
+                  if (accessoryRes.status === 409) {
+                    throw new Error(`A SKU "${item.__manualData.sku}" már létezik az adatbázisban.`)
+                  }
+                  throw new Error(accessoryData?.error || 'Hiba a termék létrehozásakor')
+                }
+                
+                // Update item with new accessory ID
+                processedItems.push({
+                  ...item,
+                  accessory_id: accessoryData.id,
+                  product_type: 'accessory',
+                  // Remove manual flags
+                  __isManual: undefined,
+                  __manualData: undefined
+                })
+              } catch (error: any) {
+                toast.error(error.message || 'Hiba a termék létrehozásakor')
+                throw error  // Stop save process
+              }
+            } else {
+              // Regular item (from database)
+              processedItems.push(item)
+            }
+          }
+          
+          // Step 2: Save all items (now all have valid FKs)
+          const prepared = processedItems.map(it => {
+            // Remove internal flags
+            const { __isManual, __manualData, __multiplier, ...cleanItem } = it
+            return {
+              product_type: cleanItem.product_type,
+              accessory_id: cleanItem.accessory_id || null,
+              material_id: cleanItem.material_id || null,
+              linear_material_id: cleanItem.linear_material_id || null,
+              quantity: cleanItem.quantity,
+              net_price: Math.round(Number(cleanItem.net_price) || 0),
+              vat_id: cleanItem.vat_id,
+              currency_id: cleanItem.currency_id,
+              units_id: cleanItem.units_id,
+              description: cleanItem.description || ''
+            }
+          })
+          
           const resItems = await fetch(`/api/purchase-order/${poId}/items`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -840,20 +996,75 @@ export default function PurchaseOrderFormClient({
           }
         }
 
-        // Insert new items
+        // Insert new items (process manual entries first)
         if (itemsToInsert.length > 0) {
-          const prepared = itemsToInsert.map(it => ({
-            product_type: it.product_type,
-            accessory_id: it.accessory_id || null,
-            material_id: it.material_id || null,
-            linear_material_id: it.linear_material_id || null,
-            quantity: it.quantity,
-            net_price: Math.round(Number(it.net_price) || 0),
-            vat_id: it.vat_id,
-            currency_id: it.currency_id,
-            units_id: it.units_id,
-            description: it.description || ''
-          }))
+          // Step 1: Process manual entries - create accessories
+          const processedItemsToInsert = []
+          for (const item of itemsToInsert) {
+            if (item.__isManual && item.__manualData) {
+              // Create new accessory
+              try {
+                const accessoryRes = await fetch('/api/accessories', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    name: item.__manualData.name,
+                    sku: item.__manualData.sku,
+                    base_price: item.__manualData.base_price,
+                    multiplier: item.__manualData.multiplier || 1.38,
+                    // net_price calculated by trigger, but API needs it for validation
+                    net_price: Math.round(item.__manualData.base_price * (item.__manualData.multiplier || 1.38)),
+                    vat_id: item.vat_id,
+                    currency_id: item.currency_id,
+                    units_id: item.units_id,
+                    partners_id: item.__manualData.partners_id || partnerId
+                  })
+                })
+                
+                const accessoryData = await accessoryRes.json()
+                
+                if (!accessoryRes.ok) {
+                  if (accessoryRes.status === 409) {
+                    throw new Error(`A SKU "${item.__manualData.sku}" már létezik az adatbázisban.`)
+                  }
+                  throw new Error(accessoryData?.error || 'Hiba a termék létrehozásakor')
+                }
+                
+                // Update item with new accessory ID
+                processedItemsToInsert.push({
+                  ...item,
+                  accessory_id: accessoryData.id,
+                  product_type: 'accessory',
+                  // Remove manual flags
+                  __isManual: undefined,
+                  __manualData: undefined
+                })
+              } catch (error: any) {
+                toast.error(error.message || 'Hiba a termék létrehozásakor')
+                throw error  // Stop save process
+              }
+            } else {
+              // Regular item (from database)
+              processedItemsToInsert.push(item)
+            }
+          }
+          
+          // Step 2: Prepare items for API (remove internal flags)
+          const prepared = processedItemsToInsert.map(it => {
+            const { __isManual, __manualData, __multiplier, ...cleanItem } = it
+            return {
+              product_type: cleanItem.product_type,
+              accessory_id: cleanItem.accessory_id || null,
+              material_id: cleanItem.material_id || null,
+              linear_material_id: cleanItem.linear_material_id || null,
+              quantity: cleanItem.quantity,
+              net_price: Math.round(Number(cleanItem.net_price) || 0),
+              vat_id: cleanItem.vat_id,
+              currency_id: cleanItem.currency_id,
+              units_id: cleanItem.units_id,
+              description: cleanItem.description || ''
+            }
+          })
           console.log('Inserting items:', prepared)
           const resInsert = await fetch(`/api/purchase-order/${id}/items`, {
             method: 'POST',
