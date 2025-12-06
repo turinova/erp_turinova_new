@@ -189,8 +189,10 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
   const onSubmitAdd = () => {
     if (disabled) return // Prevent any action if disabled
     if (!canAdd) return
+    // For purchase orders, net_price should be the base_price (beszerzési ár) without multiplier
+    // The multiplier is only used for selling price calculations, not purchase price
     const effectiveMultiplier = selectedItem?.multiplier || editingItem?.__multiplier || 1
-    const netUnit = Math.round((Number(form.base_price) || 0) * (effectiveMultiplier || 1))
+    const netUnit = Math.round(Number(form.base_price) || 0)  // No multiplier for purchase orders!
     const product_type =
       form.pending_source === 'materials' ? 'material' :
       form.pending_source === 'linear_materials' ? 'linear_material' : 'accessory'
@@ -208,7 +210,7 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
       units_id: form.units_id,
       sku: form.sku,
       megjegyzes: form.megjegyzes,
-      __multiplier: effectiveMultiplier
+      __multiplier: effectiveMultiplier  // Keep for reference, but not used in calculation
     }
     console.log('Adding new item:', newItem)
     if (editingIndex !== null) onUpdate(editingIndex, newItem)
@@ -235,6 +237,9 @@ function ProductPicker({ vatRates, currencies, units, onAdd, onUpdate, editingIn
     if (editingIndex !== null && editingItem) {
       const pending_source = editingItem.pending_source ||
         (editingItem.material_id ? 'materials' : editingItem.linear_material_id ? 'linear_materials' : 'accessories')
+      // For purchase orders, net_price should equal base_price (no multiplier applied)
+      // However, we keep the reverse calculation for backward compatibility with old data
+      // where net_price might have been base_price * multiplier
       const base_price_val = editingItem.base_price_hint ??
         (editingItem.__multiplier ? Math.round(editingItem.net_price / editingItem.__multiplier) : editingItem.net_price)
       setForm(prev => ({

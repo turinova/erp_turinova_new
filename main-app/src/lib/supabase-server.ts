@@ -3493,7 +3493,7 @@ export async function getShipmentById(id: string) {
         purchase_order_items:purchase_order_item_id (
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
-          accessories:accessory_id (name, sku, barcode),
+          accessories:accessory_id (name, sku, barcode, base_price, multiplier),
           materials:material_id (name),
           linear_materials:linear_material_id (name)
         )
@@ -3544,6 +3544,8 @@ export async function getShipmentById(id: string) {
         product_name: productName,
         sku,
         barcode,
+        accessory_id: poi?.accessory_id || null,
+        product_type: poi?.product_type || null,
         quantity_received: receivedQty,
         target_quantity: targetQty,
         net_price: netPrice,
@@ -3552,7 +3554,9 @@ export async function getShipmentById(id: string) {
         vat_id: poi?.vat_id,
         currency_id: poi?.currency_id,
         units_id: poi?.units_id,
-        note: si.note
+        note: si.note,
+        base_price: poi?.accessories?.base_price || null,
+        multiplier: poi?.accessories?.multiplier || null
       }
     })
 

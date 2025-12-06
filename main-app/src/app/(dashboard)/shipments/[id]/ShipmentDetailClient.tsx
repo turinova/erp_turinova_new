@@ -4,13 +4,13 @@ import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import {
-  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel
+  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel, Tooltip
 } from '@mui/material'
 import dynamic from 'next/dynamic'
 
 // Dynamic import for Barcode to avoid SSR issues
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon, Print as PrintIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon, Print as PrintIcon, Add as AddIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -28,6 +28,8 @@ interface ShipmentItem {
   product_name: string
   sku: string
   barcode: string | null
+  accessory_id: string | null
+  product_type: string | null
   quantity_received: number
   target_quantity: number
   net_price: number
@@ -37,6 +39,8 @@ interface ShipmentItem {
   currency_id: string
   units_id: string
   note?: string
+  base_price?: number | null
+  multiplier?: number | null
 }
 
 interface ShipmentHeader {
@@ -76,7 +80,8 @@ export default function ShipmentDetailClient({
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
   const [printLabelOpen, setPrintLabelOpen] = useState(false)
   const [itemToPrint, setItemToPrint] = useState<ShipmentItem | null>(null)
-  const [priceMultiplier, setPriceMultiplier] = useState<number>(1.75)
+  const [priceMultiplier, setPriceMultiplier] = useState<number>(1.753)
+  const [manualSellingPrice, setManualSellingPrice] = useState<number | null>(null)
   const [labelFields, setLabelFields] = useState({
     showName: true,
     showSku: true,
@@ -86,6 +91,11 @@ export default function ShipmentDetailClient({
   const [printAmount, setPrintAmount] = useState<number>(1)
   const [isPrinting, setIsPrinting] = useState(false)
   const [priceRounding, setPriceRounding] = useState<'none' | '10' | '100'>('none')
+  const [editableProductName, setEditableProductName] = useState<string>('')
+  const [barcodeModalOpen, setBarcodeModalOpen] = useState(false)
+  const [itemForBarcode, setItemForBarcode] = useState<ShipmentItem | null>(null)
+  const [barcodeInputValue, setBarcodeInputValue] = useState('')
+  const [savingBarcode, setSavingBarcode] = useState(false)
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
@@ -700,6 +710,9 @@ export default function ShipmentDetailClient({
         purchase_order_item_id: data.item.purchase_order_item_id,
         product_name: data.item.product_name,
         sku: data.item.sku,
+        barcode: data.item.barcode || null,
+        accessory_id: data.item.accessory_id || null,
+        product_type: data.item.product_type || null,
         quantity_received: data.item.quantity_received,
         target_quantity: data.item.target_quantity,
         net_price: data.item.net_price,
@@ -749,7 +762,9 @@ export default function ShipmentDetailClient({
   // Handle print label modal open
   const handleOpenPrintLabel = (item: ShipmentItem) => {
     setItemToPrint(item)
-    setPriceMultiplier(1.75)
+    setEditableProductName(item.product_name)
+    setPriceMultiplier(1.753)
+    setManualSellingPrice(null)
     setPrintAmount(item.quantity_received || 1)
     // If no barcode, don't select it by default
     const hasBarcode = !!item.barcode
@@ -762,150 +777,305 @@ export default function ShipmentDetailClient({
     setPrintLabelOpen(true)
   }
 
-  // Label component for printing - EXACTLY 33mm x 25mm with all data visible
-  const PrintLabel = ({ item, fields, price }: { item: ShipmentItem, fields: typeof labelFields, price: number }) => {
+  // Generate EAN-13 barcode (13 digits)
+  const generateEAN13 = (): string => {
+    // EAN-13 format: 12 digits + 1 check digit
+    // Generate 12 random digits (first digit should be 0-9, rest can be 0-9)
+    let code = ''
+    for (let i = 0; i < 12; i++) {
+      code += Math.floor(Math.random() * 10).toString()
+    }
+    
+    // Calculate check digit
+    let sum = 0
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(code[i])
+      // Odd positions (1-indexed) are multiplied by 1, even by 3
+      if ((i + 1) % 2 === 1) {
+        sum += digit
+      } else {
+        sum += digit * 3
+      }
+    }
+    const checkDigit = (10 - (sum % 10)) % 10
+    return code + checkDigit.toString()
+  }
+
+  const handleOpenBarcodeModal = (item: ShipmentItem) => {
+    if (!item.accessory_id || item.product_type !== 'accessory') {
+      toast.error('Csak kiegészítőknek lehet vonalkódot hozzáadni')
+      return
+    }
+    setItemForBarcode(item)
+    setBarcodeInputValue(item.barcode || '')
+    setBarcodeModalOpen(true)
+  }
+
+  const handleGenerateBarcode = () => {
+    const newBarcode = generateEAN13()
+    setBarcodeInputValue(newBarcode)
+  }
+
+  const handleSaveBarcode = async () => {
+    if (!itemForBarcode || !itemForBarcode.accessory_id) {
+      toast.error('Nincs kiválasztott kiegészítő')
+      return
+    }
+
+    if (!barcodeInputValue.trim()) {
+      toast.error('A vonalkód nem lehet üres')
+      return
+    }
+
+    setSavingBarcode(true)
+    try {
+      const response = await fetch(`/api/accessories/${itemForBarcode.accessory_id}/barcode`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          barcode: barcodeInputValue.trim()
+        })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Hiba a vonalkód mentésekor')
+      }
+
+      toast.success('Vonalkód sikeresen mentve')
+      setBarcodeModalOpen(false)
+      setItemForBarcode(null)
+      setBarcodeInputValue('')
+      
+      // Refresh items
+      await refreshItems()
+    } catch (error: any) {
+      console.error('Error saving barcode:', error)
+      toast.error(error.message || 'Hiba a vonalkód mentésekor')
+    } finally {
+      setSavingBarcode(false)
+    }
+  }
+
+  const refreshItems = async () => {
+    try {
+      const response = await fetch(`/api/shipments/${id}`)
+      if (!response.ok) {
+        throw new Error('Hiba a tételek frissítésekor')
+      }
+      const data = await response.json()
+      if (data.items) {
+        setItems(data.items)
+      }
+    } catch (error) {
+      console.error('Error refreshing items:', error)
+    }
+  }
+
+  // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
+  // Using native divs and CSS Grid to eliminate all spacing
+  const PrintLabel = ({ item, fields, price, productName }: { item: ShipmentItem, fields: typeof labelFields, price: number, productName: string }) => {
     // Label dimensions: 33mm x 25mm
-    // Padding: 0.5mm top/sides, 0mm bottom (barcode flush to bottom)
-    // Barcode needs ~6mm at bottom (no padding)
-    // Text area: ~18.5mm height available
-    // Font sizes calculated to fit:
-    // - Name: 2mm (can wrap to 2-3 lines = ~6mm)
-    // - SKU: 2mm = ~2.5mm  
-    // - Price: 3.5mm = ~4mm
-    // - Gaps: 0.2mm x 2 = 0.4mm
-    // Total: ~13mm (fits in 18.5mm)
+    // Fixed-height vertical sections using CSS Grid:
+    // - Termék név: 5.3mm
+    // - SKU: 3.0mm
+    // - Price: 8.3mm
+    // - Barcode: 8.3mm
+    // Total: 25mm
+    // No padding, no margin, no gaps
+    
+    const text = productName || item.product_name || 'N/A'
+    const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
+    
+    // Build grid template rows based on visible fields
+    const gridRows: string[] = []
+    if (fields.showName) gridRows.push('5.3mm')
+    if (fields.showSku && item.sku) gridRows.push('3.0mm')
+    if (fields.showPrice) gridRows.push('8.3mm')
+    if (fields.showBarcode && item.barcode) gridRows.push('8.3mm')
     
     return (
-      <Box
-        sx={{
+      <div
+        style={{
           width: '33mm',
           height: '25mm',
           border: '1px solid #000',
-          padding: '0.5mm 0.5mm 0mm 0.5mm', // top, right, bottom, left - no bottom padding
+          padding: 0,
+          margin: 0,
           backgroundColor: 'white',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-          alignItems: 'center',
+          display: 'grid',
+          gridTemplateRows: gridRows.join(' '),
+          gridTemplateColumns: '100%',
+          gap: 0,
+          rowGap: 0,
+          columnGap: 0,
           overflow: 'hidden',
           boxSizing: 'border-box',
           position: 'relative'
         }}
       >
-        {/* Top section - Name, SKU, Price (centered vertically above barcode) */}
-        <Box sx={{ 
-          width: '100%', 
-          textAlign: 'center',
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: 0,
-          overflow: 'hidden',
-          paddingTop: '0.3mm',
-          paddingBottom: '0.2mm'
-        }}>
-          {/* Group all text elements together and center them */}
-          <Box sx={{ 
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: '0.2mm',
-            width: '100%'
-          }}>
-            {fields.showName && (
-              <Typography
-                component="div"
-                sx={{
-                  fontSize: '2mm', // Reduced to prevent overflow
-                  fontWeight: 'bold',
-                  color: '#000000',
-                  lineHeight: 1.2,
-                  wordWrap: 'break-word',
-                  overflowWrap: 'break-word',
-                  maxWidth: '100%',
-                  textAlign: 'center',
-                  display: 'block',
-                  visibility: 'visible',
-                  opacity: 1,
-                  whiteSpace: 'normal',
-                  margin: 0,
-                  padding: 0
-                }}
-              >
-                {item.product_name || 'N/A'}
-              </Typography>
-            )}
-            {fields.showSku && item.sku && (
-              <Typography
-                sx={{
-                  fontSize: '2mm', // Reduced
-                  color: '#000000',
-                  display: 'block',
-                  lineHeight: 1.2,
-                  visibility: 'visible',
-                  opacity: 1,
-                  margin: 0,
-                  padding: 0
-                }}
-              >
-                {item.sku}
-              </Typography>
-            )}
-            {fields.showPrice && (
-              <Typography
-                sx={{
-                  fontSize: '3.5mm', // Reduced but still prominent
-                  fontWeight: 'bold',
-                  color: '#000000',
-                  display: 'block',
-                  lineHeight: 1.2,
-                  whiteSpace: 'nowrap',
-                  visibility: 'visible',
-                  opacity: 1,
-                  margin: 0,
-                  padding: 0
-                }}
-              >
-                {new Intl.NumberFormat('hu-HU').format(price)} Ft
-              </Typography>
-            )}
-          </Box>
-        </Box>
+        {/* Section 1: Termék név - 5.3mm */}
+        {fields.showName && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box',
+              lineHeight: 1.1
+            }}
+          >
+            <div
+              style={{
+                fontSize: nameFontSize,
+                fontWeight: 'bold',
+                color: '#000000',
+                lineHeight: 1.1,
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                maxWidth: '100%',
+                textAlign: 'center',
+                margin: 0,
+                padding: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'normal',
+                overflow: 'hidden'
+              }}
+            >
+              {text}
+            </div>
+          </div>
+        )}
 
-        {/* Bottom section - Barcode (full width, flush to bottom, no padding) */}
+        {/* Section 2: SKU - 3.0mm */}
+        {fields.showSku && item.sku && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                fontSize: '2.2mm',
+                color: '#000000',
+                lineHeight: 1,
+                margin: 0,
+                padding: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden'
+              }}
+            >
+              {item.sku}
+            </div>
+          </div>
+        )}
+
+        {/* Section 3: Price - 8.3mm */}
+        {fields.showPrice && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                fontSize: '6mm',
+                fontWeight: 'bold',
+                color: '#000000',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                margin: 0,
+                padding: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              }}
+            >
+              {new Intl.NumberFormat('hu-HU').format(price)} Ft
+            </div>
+          </div>
+        )}
+
+        {/* Section 4: Barcode - 8.3mm - Flush to bottom */}
         {fields.showBarcode && item.barcode && (
-          <Box sx={{ 
-            width: '100%', 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'flex-end',
-            flexShrink: 0,
-            marginTop: 'auto',
-            paddingBottom: 0, // No padding at bottom
-            paddingLeft: '0.5mm',
-            paddingRight: '0.5mm',
-            overflow: 'hidden',
-            height: '6mm', // Reduced height
-            minHeight: '6mm',
-            marginBottom: 0 // No margin
-          }}>
-            <Box sx={{ width: '100%', maxWidth: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 0 }}>
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-end',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                padding: 0,
+                margin: 0,
+                overflow: 'hidden'
+              }}
+            >
               <Barcode
                 value={item.barcode}
                 format="CODE128"
                 width={2.5}
-                height={24} // Reduced height
+                height={32}
                 fontSize={10}
                 displayValue={false}
                 margin={0}
               />
-            </Box>
-          </Box>
+            </div>
+          </div>
         )}
-      </Box>
+      </div>
     )
   }
 
@@ -943,7 +1113,7 @@ export default function ShipmentDetailClient({
       printContainer.style.top = '-9999px'
       document.body.appendChild(printContainer)
 
-      // Add print styles
+      // Add print styles - AGGRESSIVE VERSION with direct targeting
       const style = document.createElement('style')
       style.id = 'label-print-styles'
       style.textContent = `
@@ -957,27 +1127,33 @@ export default function ShipmentDetailClient({
         
         @media print {
           @page {
-            size: 33mm 25mm;
-            margin: 0;
+            size: 33mm 25mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
           }
           
+          /* Override ALL browser defaults */
           * {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
             color-adjust: exact !important;
+            box-sizing: border-box !important;
           }
           
-          /* Hide everything except our container */
+          /* Force html and body to zero spacing */
           html, body {
             margin: 0 !important;
             padding: 0 !important;
             width: 33mm !important;
             height: auto !important;
             background: white !important;
+            overflow: visible !important;
           }
           
+          /* Hide everything except our container */
           body > *:not(#label-print-container) {
             display: none !important;
+            visibility: hidden !important;
           }
           
           /* Show our container */
@@ -991,9 +1167,11 @@ export default function ShipmentDetailClient({
             background: white !important;
             display: block !important;
             visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 9999 !important;
           }
           
-          /* Label items */
+          /* Label items - main grid container */
           #label-print-container > div {
             width: 33mm !important;
             height: 25mm !important;
@@ -1002,6 +1180,18 @@ export default function ShipmentDetailClient({
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            display: grid !important;
+            grid-auto-rows: 0 !important;
+            grid-auto-flow: row !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+            border-collapse: collapse !important;
+            border-spacing: 0 !important;
           }
           
           #label-print-container > div:last-child {
@@ -1009,27 +1199,219 @@ export default function ShipmentDetailClient({
             break-after: auto !important;
           }
           
-          /* Ensure all content is visible - especially Typography and Box components */
-          #label-print-container * {
+          /* NUCLEAR OPTION: Remove ALL spacing from EVERY element */
+          #label-print-container *,
+          #label-print-container *::before,
+          #label-print-container *::after {
+            margin: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            margin-block: 0 !important;
+            margin-block-start: 0 !important;
+            margin-block-end: 0 !important;
+            margin-inline: 0 !important;
+            margin-inline-start: 0 !important;
+            margin-inline-end: 0 !important;
+            padding: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            border-spacing: 0 !important;
+            border-collapse: collapse !important;
             visibility: visible !important;
-            color: #000000 !important;
+            opacity: 1 !important;
           }
           
-          /* Force Typography components to be visible */
-          #label-print-container p,
-          #label-print-container div[class*="Typography"],
-          #label-print-container span {
-            display: block !important;
+          /* Ensure text is visible and black - preserve inline styles */
+          #label-print-container div {
+            color: #000000 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+          
+          /* Remove pseudo-elements completely */
+          #label-print-container *::before,
+          #label-print-container *::after {
+            content: none !important;
+            display: none !important;
+            height: 0 !important;
+            width: 0 !important;
+          }
+          
+          /* ALL divs - force no spacing but preserve visibility */
+          #label-print-container div {
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            box-sizing: border-box !important;
             visibility: visible !important;
             opacity: 1 !important;
             color: #000000 !important;
           }
           
-          /* Force Box components to be visible */
-          #label-print-container div[class*="Box"] {
+          /* Only hide overflow on main container, not on text containers */
+          #label-print-container > div {
+            overflow: hidden !important;
+          }
+          
+          /* Text containers should show content */
+          #label-print-container > div > div > div {
+            overflow: visible !important;
+          }
+          
+          /* Main grid container - enforce grid with no gaps */
+          #label-print-container > div {
+            display: grid !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            grid-auto-rows: 0 !important;
+            min-height: 0 !important;
+          }
+          
+          /* Grid children (sections) - these are ALSO flex containers */
+          #label-print-container > div > div {
             display: flex !important;
+            align-self: stretch !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            overflow: hidden !important;
+            flex-shrink: 0 !important;
+            flex-grow: 0 !important;
+          }
+          
+          /* Nested flex containers (text wrappers inside sections) */
+          #label-print-container > div > div > div {
+            display: flex !important;
+            gap: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            overflow: hidden !important;
+            line-height: 1 !important;
+            border: none !important;
+            outline: none !important;
+          }
+          
+          /* Barcode section - LAST grid row - force to bottom */
+          #label-print-container > div > div:last-child {
+            align-self: stretch !important;
+            display: flex !important;
+            align-items: flex-end !important;
+            justify-content: center !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+          }
+          
+          /* Barcode wrapper div */
+          #label-print-container > div > div:last-child > div {
+            display: flex !important;
+            align-items: flex-end !important;
+            justify-content: center !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+          }
+          
+          /* SVG barcode - force to bottom with no spacing */
+          #label-print-container svg {
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            vertical-align: bottom !important;
+            align-self: flex-end !important;
+            width: 100% !important;
+            height: auto !important;
+            max-height: 100% !important;
+            overflow: visible !important;
+          }
+          
+          /* All SVG children */
+          #label-print-container svg * {
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
+            vertical-align: bottom !important;
+          }
+          
+          /* Don't override grid-template-rows - let inline styles from PrintLabel work */
+          /* Just ensure no auto-sizing */
+          #label-print-container > div {
+            grid-auto-rows: 0 !important;
+            /* grid-template-rows is set inline by PrintLabel component - don't override */
+          }
+          
+          /* Ensure grid rows don't grow or shrink - exact heights */
+          #label-print-container > div > div {
+            min-height: 0 !important;
+            max-height: 100% !important;
+            flex-shrink: 0 !important;
+            flex-grow: 0 !important;
+            flex-basis: auto !important;
+          }
+          
+          /* Text content - ensure visibility and proper spacing */
+          /* DO NOT override font-size - let inline styles from component work */
+          #label-print-container > div > div > div {
+            line-height: 1 !important;
+            letter-spacing: 0 !important;
+            word-spacing: 0 !important;
+            color: #000000 !important;
             visibility: visible !important;
             opacity: 1 !important;
+            display: flex !important;
+            /* font-size comes from inline styles - don't override */
+          }
+          
+          /* Ensure all text content is visible */
+          #label-print-container > div > div > div,
+          #label-print-container > div > div > div * {
+            color: #000000 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+          
+          /* Force text rendering and ensure content is visible */
+          #label-print-container {
+            -webkit-font-smoothing: antialiased !important;
+            -moz-osx-font-smoothing: grayscale !important;
+            text-rendering: optimizeLegibility !important;
+          }
+          
+          /* Ensure text nodes inside divs are visible */
+          #label-print-container > div > div > div {
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            overflow-wrap: break-word !important;
+          }
+          
+          /* Make sure flex containers show their content */
+          #label-print-container > div > div {
+            min-width: 0 !important;
+            min-height: 0 !important;
           }
         }
       `
@@ -1058,6 +1440,7 @@ export default function ShipmentDetailClient({
               item={itemToPrint}
               fields={labelFields}
               price={calculatedSellingPrice}
+              productName={editableProductName}
             />
           ))}
         </>
@@ -1145,19 +1528,36 @@ export default function ShipmentDetailClient({
     }
   }
 
-  // Calculate selling price with rounding
+  // Calculate selling price with rounding (ALWAYS ROUND UP)
+  // Use manual override if set, otherwise calculate from multiplier and rounding
   const calculatedSellingPrice = useMemo(() => {
+    if (manualSellingPrice !== null) {
+      return manualSellingPrice
+    }
     if (!itemToPrint) return 0
     const basePrice = itemToPrint.net_price * priceMultiplier
     
     if (priceRounding === '10') {
-      return Math.round(basePrice / 10) * 10
+      return Math.ceil(basePrice / 10) * 10  // Round UP to nearest 10
     } else if (priceRounding === '100') {
-      return Math.round(basePrice / 100) * 100
+      return Math.ceil(basePrice / 100) * 100  // Round UP to nearest 100
     }
     
     return Math.round(basePrice)
-  }, [itemToPrint, priceMultiplier, priceRounding])
+  }, [itemToPrint, priceMultiplier, priceRounding, manualSellingPrice])
+
+  // Calculate current selling price from accessory: base_price * multiplier * (1 + vat) rounded UP to nearest 10
+  const currentSellingPrice = useMemo(() => {
+    if (!itemToPrint || !itemToPrint.accessory_id || !itemToPrint.base_price || !itemToPrint.multiplier) {
+      return null
+    }
+    
+    const vatPercent = vatRates.get(itemToPrint.vat_id) || 0
+    const priceWithVat = itemToPrint.base_price * itemToPrint.multiplier * (1 + vatPercent / 100)
+    
+    // Always round UP to nearest 10
+    return Math.ceil(priceWithVat / 10) * 10
+  }, [itemToPrint, vatRates])
 
   const totals = items.reduce((acc, it) => {
     acc.net += it.net_total
@@ -1356,13 +1756,14 @@ export default function ShipmentDetailClient({
                     <TableCell align="right">Nettó egységár</TableCell>
                     <TableCell align="right">Nettó összesen</TableCell>
                     <TableCell align="right">Bruttó összesen</TableCell>
+                    <TableCell align="center">Vonalkód</TableCell>
                     <TableCell>Művelet</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} align="center">
+                      <TableCell colSpan={9} align="center">
                         Nincs tétel
                       </TableCell>
                     </TableRow>
@@ -1539,6 +1940,23 @@ export default function ShipmentDetailClient({
                       </TableCell>
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.net_total)} Ft</TableCell>
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.gross_total)} Ft</TableCell>
+                      <TableCell align="center">
+                        {item.product_type === 'accessory' && item.accessory_id ? (
+                          item.barcode ? (
+                            <Tooltip title={item.barcode} arrow>
+                              <CheckIcon color="success" />
+                            </Tooltip>
+                          ) : (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleOpenBarcodeModal(item)}
+                              color="primary"
+                            >
+                              <AddIcon fontSize="small" />
+                            </IconButton>
+                          )
+                        ) : null}
+                      </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {header.status === 'received' && (
@@ -1564,7 +1982,7 @@ export default function ShipmentDetailClient({
                   })}
                   {addingProduct && (
                     <TableRow>
-                      <TableCell colSpan={8}>
+                      <TableCell colSpan={9}>
                         <Autocomplete
                           fullWidth
                           size="small"
@@ -1832,24 +2250,39 @@ export default function ShipmentDetailClient({
         <DialogContent>
           {itemToPrint && (
             <Grid container spacing={3} sx={{ mt: 1 }}>
-              {/* Row 1 - Controls */}
+              {/* Single Card with all sections */}
               <Grid item xs={12}>
-                <Grid container spacing={2} alignItems="flex-start">
-                  {/* Section 1: Megjelenítendő mezők */}
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        p: 2,
-                        backgroundColor: 'background.paper'
-                      }}
-                    >
+                <Box
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 3,
+                    backgroundColor: 'background.paper'
+                  }}
+                >
+                  {/* Row 1: Termék neve + Megjelenítendő mezők (horizontally) */}
+                  <Grid container spacing={3} sx={{ mb: 3 }}>
+                    {/* Termék neve */}
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Termék neve
+                      </Typography>
+                      <TextField
+                        label="Termék neve (szerkeszthető)"
+                        value={editableProductName}
+                        onChange={(e) => setEditableProductName(e.target.value)}
+                        fullWidth
+                        size="small"
+                      />
+                    </Grid>
+
+                    {/* Megjelenítendő mezők */}
+                    <Grid item xs={12} sm={6}>
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
                         Megjelenítendő mezők
                       </Typography>
-                      <FormGroup sx={{ gap: 0.5 }}>
+                      <FormGroup row sx={{ gap: 2 }}>
                         <FormControlLabel
                           control={
                             <Checkbox
@@ -1896,56 +2329,59 @@ export default function ShipmentDetailClient({
                           sx={{ m: 0 }}
                         />
                       </FormGroup>
-                    </Box>
+                    </Grid>
                   </Grid>
 
-                  {/* Section 2: Ár szorzó + Eladási ár */}
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        p: 2,
-                        backgroundColor: 'background.paper'
-                      }}
-                    >
+                  {/* Divider */}
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 3 }} />
+
+                  {/* Row 2: Ár beállítások + Ár kerekítés + Jelenlegi eladási ár (horizontally) */}
+                  <Grid container spacing={3} sx={{ mb: 3 }}>
+                    {/* Ár beállítások */}
+                    <Grid item xs={12} sm={4}>
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
                         Ár beállítások
                       </Typography>
-                      <Stack spacing={2}>
-                        <TextField
-                          label="Ár szorzó"
-                          type="number"
-                          value={priceMultiplier}
-                          onChange={(e) => setPriceMultiplier(Number(e.target.value) || 1.75)}
-                          inputProps={{ min: 0.01, step: 0.01 }}
-                          fullWidth
-                          size="small"
-                          helperText="Alapértelmezett: 1.75"
-                        />
-                        <TextField
-                          label="Eladási ár"
-                          value={new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice) + ' Ft'}
-                          fullWidth
-                          disabled
-                          size="small"
-                        />
-                      </Stack>
-                    </Box>
-                  </Grid>
+                      <Grid container spacing={2}>
+                        <Grid item xs={6}>
+                          <TextField
+                            label="Ár szorzó"
+                            type="number"
+                            value={priceMultiplier}
+                            onChange={(e) => setPriceMultiplier(Number(e.target.value) || 1.753)}
+                            inputProps={{ min: 0.01, step: 0.01 }}
+                            fullWidth
+                            size="small"
+                            helperText="Alapértelmezett: 1.753"
+                          />
+                        </Grid>
+                        <Grid item xs={6}>
+                          <TextField
+                            label="Eladási ár"
+                            type="number"
+                            value={calculatedSellingPrice}
+                            onChange={(e) => {
+                              const value = Number(e.target.value)
+                              if (!isNaN(value) && value >= 0) {
+                                setManualSellingPrice(value)
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const value = Number(e.target.value)
+                              if (isNaN(value) || value < 0) {
+                                setManualSellingPrice(null)
+                              }
+                            }}
+                            fullWidth
+                            size="small"
+                            inputProps={{ min: 0, step: 1 }}
+                          />
+                        </Grid>
+                      </Grid>
+                    </Grid>
 
-                  {/* Section 3: Ár kerekítés */}
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        p: 2,
-                        backgroundColor: 'background.paper'
-                      }}
-                    >
+                    {/* Ár kerekítés */}
+                    <Grid item xs={12} sm={4}>
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
                         Ár kerekítés
                       </Typography>
@@ -1961,20 +2397,45 @@ export default function ShipmentDetailClient({
                           <FormControlLabel value="100" control={<Radio size="small" />} label="100-ra" />
                         </RadioGroup>
                       </FormControl>
-                    </Box>
+                    </Grid>
+
+                    {/* Jelenlegi eladási ár */}
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Jelenlegi eladási ár
+                      </Typography>
+                      {currentSellingPrice !== null ? (
+                        <Typography
+                          variant="h4"
+                          sx={{
+                            color: 'error.main',
+                            fontWeight: 'bold',
+                            fontSize: '2rem',
+                            lineHeight: 1.2
+                          }}
+                        >
+                          {new Intl.NumberFormat('hu-HU').format(currentSellingPrice)} Ft
+                        </Typography>
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                            fontStyle: 'italic'
+                          }}
+                        >
+                          Csak kiegészítőknél elérhető
+                        </Typography>
+                      )}
+                    </Grid>
                   </Grid>
 
-                  {/* Section 4: Nyomtatandó mennyiség */}
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Box
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        p: 2,
-                        backgroundColor: 'background.paper'
-                      }}
-                    >
+                  {/* Divider */}
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 3 }} />
+
+                  {/* Row 3: Nyomtatás */}
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
                         Nyomtatás
                       </Typography>
@@ -1987,10 +2448,11 @@ export default function ShipmentDetailClient({
                         fullWidth
                         size="small"
                         helperText={`Alapértelmezett: ${itemToPrint.quantity_received}`}
+                        sx={{ maxWidth: '300px' }}
                       />
-                    </Box>
+                    </Grid>
                   </Grid>
-                </Grid>
+                </Box>
               </Grid>
 
               {/* Row 2 - Preview */}
@@ -2005,133 +2467,200 @@ export default function ShipmentDetailClient({
                     width: '100%'
                   }}
                 >
-                  <Box
-                    sx={{
+                  <div
+                    style={{
                       // Show at 2x scale for visibility, maintaining exact aspect ratio
                       // 33mm x 25mm at 96 DPI = 124.8px x 94.5px
                       // 2x scale = 249.6px x 189px ≈ 250px x 189px
                       width: '250px',
                       height: '189px',
                       border: '2px solid #ccc',
-                      padding: '3.78px 3.78px 0px 3.78px', // top, right, bottom, left - no bottom padding
+                      padding: 0,
+                      margin: 0,
                       backgroundColor: 'white',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
+                      display: 'grid',
+                      gridTemplateRows: (() => {
+                        const rows: string[] = []
+                        if (labelFields.showName) rows.push('40px') // 5.3mm * 2x
+                        if (labelFields.showSku && itemToPrint.sku) rows.push('22.68px') // 3.0mm * 2x
+                        if (labelFields.showPrice) rows.push('62.74px') // 8.3mm * 2x
+                        if (labelFields.showBarcode && itemToPrint.barcode) rows.push('62.74px') // 8.3mm * 2x
+                        return rows.join(' ')
+                      })(),
+                      gridTemplateColumns: '100%',
+                      gap: 0,
+                      rowGap: 0,
+                      columnGap: 0,
                       overflow: 'hidden',
                       boxSizing: 'border-box',
                       position: 'relative'
                     }}
                   >
-                  {/* Top section - Name, SKU, Price (centered vertically above barcode) */}
-                  <Box sx={{ 
-                    width: '100%', 
-                    textAlign: 'center',
-                    flex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    minHeight: 0,
-                    overflow: 'hidden',
-                    paddingTop: '2.27px', // 0.3mm print * 2x = 0.6mm = 2.27px
-                    paddingBottom: '1.13px' // 0.2mm print * 2x = 0.4mm = 1.51px
-                  }}>
-                    {/* Group all text elements together and center them */}
-                    <Box sx={{ 
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      gap: '1.13px', // 0.2mm print * 2x = 0.4mm = 1.51px at 96 DPI
-                      width: '100%'
-                    }}>
-                      {labelFields.showName && (
-                        <Typography
-                          component="div"
-                          sx={{
-                            fontSize: '15.12px', // 2mm print * 2x scale = 4mm = 15.12px at 96 DPI
+                    {/* Section 1: Termék név - 5.3mm * 2x = 10.6mm = 40px */}
+                    {labelFields.showName && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box',
+                          lineHeight: 1.1
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: (() => {
+                              const text = editableProductName || itemToPrint.product_name || ''
+                              if (text.length > 25) {
+                                return '18.9px' // 2.5mm * 2x = 5mm = 18.9px at 96 DPI
+                              }
+                              return '26.46px' // 3.5mm * 2x = 7mm = 26.46px at 96 DPI
+                            })(),
                             fontWeight: 'bold',
                             color: '#000000',
-                            lineHeight: 1.2,
+                            lineHeight: 1.1,
                             wordWrap: 'break-word',
                             overflowWrap: 'break-word',
                             maxWidth: '100%',
                             textAlign: 'center',
-                            display: 'block',
-                            whiteSpace: 'normal',
                             margin: 0,
-                            padding: 0
+                            padding: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            whiteSpace: 'normal',
+                            overflow: 'hidden'
                           }}
                         >
-                          {itemToPrint.product_name}
-                        </Typography>
-                      )}
-                      {labelFields.showSku && (
-                        <Typography
-                          sx={{
-                            fontSize: '15.12px', // 2mm print * 2x scale = 4mm = 15.12px
+                          {editableProductName || itemToPrint.product_name}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 2: SKU - 3.0mm * 2x = 6mm = 22.68px */}
+                    {labelFields.showSku && itemToPrint.sku && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '16.63px', // 2.2mm * 2x = 4.4mm = 16.63px
                             color: '#000000',
-                            display: 'block',
-                            lineHeight: 1.2,
+                            lineHeight: 1,
                             margin: 0,
-                            padding: 0
+                            padding: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden'
                           }}
                         >
                           {itemToPrint.sku}
-                        </Typography>
-                      )}
-                      {labelFields.showPrice && (
-                        <Typography
-                          sx={{
-                            fontSize: '26.46px', // 3.5mm print * 2x scale = 7mm = 26.46px at 96 DPI
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 3: Price - 8.3mm * 2x = 16.6mm = 62.74px */}
+                    {labelFields.showPrice && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '45.36px', // 6mm * 2x = 12mm = 45.36px at 96 DPI
                             fontWeight: 'bold',
                             color: '#000000',
-                            display: 'block',
-                            lineHeight: 1.2,
+                            lineHeight: 1,
                             whiteSpace: 'nowrap',
                             margin: 0,
-                            padding: 0
+                            padding: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden'
                           }}
                         >
                           {new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice)} Ft
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
+                        </div>
+                      </div>
+                    )}
 
-                  {/* Bottom section - Barcode (full width, flush to bottom, no padding) */}
-                  {labelFields.showBarcode && itemToPrint.barcode && (
-                    <Box sx={{ 
-                      width: '100%', 
-                      display: 'flex', 
-                      justifyContent: 'center', 
-                      alignItems: 'flex-end',
-                      flexShrink: 0,
-                      marginTop: 'auto',
-                      paddingBottom: 0, // No padding at bottom
-                      paddingLeft: '3.78px',
-                      paddingRight: '3.78px',
-                      overflow: 'hidden',
-                      height: '45.36px', // 6mm print * 2x = 12mm = 45.36px at 96 DPI
-                      minHeight: '45.36px',
-                      marginBottom: 0 // No margin
-                    }}>
-                      <Box sx={{ width: '100%', maxWidth: '100%', height: '100%', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 0 }}>
-                        <Barcode
-                          value={itemToPrint.barcode}
-                          format="CODE128"
-                          width={2.5}
-                          height={24} // Reduced height
-                          fontSize={10}
-                          displayValue={false}
-                          margin={0}
-                        />
-                      </Box>
-                    </Box>
-                  )}
-                  </Box>
+                    {/* Section 4: Barcode - 8.3mm * 2x = 16.6mm = 62.74px - Flush to bottom */}
+                    {labelFields.showBarcode && itemToPrint.barcode && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'flex-end',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'center',
+                            padding: 0,
+                            margin: 0,
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <Barcode
+                            value={itemToPrint.barcode}
+                            format="CODE128"
+                            width={2.5}
+                            height={50}
+                            fontSize={10}
+                            displayValue={false}
+                            margin={0}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </Box>
               </Grid>
             </Grid>
@@ -2149,6 +2678,70 @@ export default function ShipmentDetailClient({
             startIcon={isPrinting ? <CircularProgress size={18} /> : <PrintIcon />}
           >
             {isPrinting ? 'Nyomtatás...' : 'Nyomtatás'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Barcode Modal */}
+      <Dialog
+        open={barcodeModalOpen}
+        onClose={() => {
+          setBarcodeModalOpen(false)
+          setItemForBarcode(null)
+          setBarcodeInputValue('')
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Vonalkód hozzáadása</DialogTitle>
+        <DialogContent>
+          {itemForBarcode && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Termék: {itemForBarcode.product_name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
+                SKU: {itemForBarcode.sku}
+              </Typography>
+              <TextField
+                label="Vonalkód"
+                value={barcodeInputValue}
+                onChange={(e) => setBarcodeInputValue(e.target.value)}
+                fullWidth
+                sx={{ mb: 2 }}
+                inputProps={{ maxLength: 64 }}
+                helperText="Bármilyen vonalkód formátum (max 64 karakter)"
+              />
+              <Button
+                variant="outlined"
+                onClick={handleGenerateBarcode}
+                fullWidth
+                sx={{ mb: 2 }}
+              >
+                EAN-13 vonalkód generálása
+              </Button>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setBarcodeModalOpen(false)
+              setItemForBarcode(null)
+              setBarcodeInputValue('')
+            }}
+            disabled={savingBarcode}
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handleSaveBarcode}
+            variant="contained"
+            color="primary"
+            disabled={savingBarcode || !barcodeInputValue.trim()}
+            startIcon={savingBarcode ? <CircularProgress size={18} /> : <SaveIcon />}
+          >
+            {savingBarcode ? 'Mentés...' : 'Mentés'}
           </Button>
         </DialogActions>
       </Dialog>

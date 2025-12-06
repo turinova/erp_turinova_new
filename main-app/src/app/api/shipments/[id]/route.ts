@@ -38,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         purchase_order_items:purchase_order_item_id (
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
-          accessories:accessory_id (name, sku),
+          accessories:accessory_id (name, sku, barcode, base_price, multiplier),
           materials:material_id (name),
           linear_materials:linear_material_id (name)
         )
@@ -72,6 +72,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       // Get SKU (only accessories have SKU)
       const sku = (poi?.accessory_id && poi?.accessories?.sku) ? poi.accessories.sku : ''
       
+      // Get barcode (only accessories have barcode)
+      const barcode = (poi?.accessory_id && poi?.accessories?.barcode) ? poi.accessories.barcode : null
+      
       const targetQty = Number(poi?.quantity) || 0
       const receivedQty = Number(si.quantity_received) || 0
       const netPrice = Number(poi?.net_price) || 0
@@ -85,6 +88,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         purchase_order_item_id: si.purchase_order_item_id,
         product_name: productName,
         sku,
+        barcode,
+        accessory_id: poi?.accessory_id || null,
+        product_type: poi?.product_type || null,
         quantity_received: receivedQty,
         target_quantity: targetQty,
         net_price: netPrice,
@@ -93,7 +99,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         vat_id: poi?.vat_id,
         currency_id: poi?.currency_id,
         units_id: poi?.units_id,
-        note: si.note
+        note: si.note,
+        base_price: poi?.accessories?.base_price || null,
+        multiplier: poi?.accessories?.multiplier || null
       }
     })
 
