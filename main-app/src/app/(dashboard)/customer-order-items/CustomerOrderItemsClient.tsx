@@ -62,9 +62,9 @@ interface CustomerOrderItem {
   material_id: string | null
   linear_material_id: string | null
   purchase_order_item_id: string | null
-  accessories?: { name: string; sku: string; partners_id: string } | null
-  materials?: { name: string } | null
-  linear_materials?: { name: string } | null
+  accessories?: { name: string; sku: string; partners_id: string; base_price: number } | null
+  materials?: { name: string; base_price: number } | null
+  linear_materials?: { name: string; base_price: number } | null
 }
 
 interface Partner {
@@ -536,6 +536,7 @@ export default function CustomerOrderItemsClient({
               <TableCell><strong>Termék neve</strong></TableCell>
               <TableCell><strong>SKU</strong></TableCell>
               <TableCell align="right"><strong>Mennyiség</strong></TableCell>
+              <TableCell align="right"><strong>Beszerzési ár</strong></TableCell>
               <TableCell align="right"><strong>Bruttó egységár</strong></TableCell>
               <TableCell align="right"><strong>Bruttó összesen</strong></TableCell>
               <TableCell><strong>Státusz</strong></TableCell>
@@ -544,7 +545,7 @@ export default function CustomerOrderItemsClient({
           <TableBody>
             {filteredItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
                     {searchTerm || statusFilter || partnerFilter ? 'Nincs találat' : 'Még nincs termék'}
                   </Typography>
@@ -606,6 +607,17 @@ export default function CustomerOrderItemsClient({
                     <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>
                       <Typography variant="body2">
                         {item.quantity}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>
+                      <Typography variant="body2" fontWeight="bold" color="primary.main">
+                        {item.accessories?.base_price 
+                          ? formatCurrency(item.accessories.base_price)
+                          : item.materials?.base_price
+                          ? formatCurrency(item.materials.base_price)
+                          : item.linear_materials?.base_price
+                          ? formatCurrency(item.linear_materials.base_price)
+                          : '-'}
                       </Typography>
                     </TableCell>
                     <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>

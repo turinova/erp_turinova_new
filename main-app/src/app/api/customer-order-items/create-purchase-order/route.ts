@@ -52,9 +52,9 @@ export async function POST(request: NextRequest) {
         id, product_name, sku, quantity, unit_price_net, unit_price_gross, status,
         product_type, accessory_id, material_id, linear_material_id,
         vat_id, currency_id, units_id, order_id, shop_order_item_id,
-        accessories:accessory_id(name, sku, partners_id, units_id),
-        materials:material_id(name, units_id),
-        linear_materials:linear_material_id(name, units_id)
+        accessories:accessory_id(name, sku, partners_id, units_id, base_price),
+        materials:material_id(name, units_id, base_price),
+        linear_materials:linear_material_id(name, units_id, base_price)
       `)
       .in('id', customer_order_item_ids)
       .is('deleted_at', null)
@@ -124,6 +124,19 @@ export async function POST(request: NextRequest) {
           customerItem.linear_materials?.units_id || 
           null
         
+        // Get base_price from the related product table (cost price, not selling price)
+        const basePrice = customerItem.accessories?.base_price || 
+          customerItem.materials?.base_price || 
+          customerItem.linear_materials?.base_price || 
+          null
+        
+        if (!basePrice) {
+          console.error(`[CREATE PO] No base_price found for item ${customerItem.id}`)
+          return NextResponse.json({ 
+            error: `Nem található beszerzési ár a termékhez: ${customerItem.product_name}` 
+          }, { status: 400 })
+        }
+        
         poItems.push({
           customer_order_item_id: customerItem.id,
           product_type: customerItem.product_type,
@@ -131,7 +144,7 @@ export async function POST(request: NextRequest) {
           material_id: customerItem.material_id,
           linear_material_id: customerItem.linear_material_id,
           quantity: customerItem.quantity,
-          net_price: customerItem.unit_price_net, // This is already base_price * multiplier
+          net_price: Math.round(basePrice), // Use base_price (cost), not unit_price_net (selling price)
           vat_id: customerItem.vat_id,
           currency_id: customerItem.currency_id,
           units_id: unitsId,
@@ -163,6 +176,20 @@ export async function POST(request: NextRequest) {
         
         const unitsId = customerItem.units_id || accessoryWithUnits?.units_id || null
 
+        // Get base_price from the linked accessory
+        const { data: accessoryWithPrice } = await supabaseServer
+          .from('accessories')
+          .select('base_price')
+          .eq('id', action.accessory_id)
+          .single()
+        
+        if (!accessoryWithPrice?.base_price) {
+          console.error(`[CREATE PO] No base_price found for accessory ${action.accessory_id}`)
+          return NextResponse.json({ 
+            error: `Nem található beszerzési ár a termékhez: ${accessory.name}` 
+          }, { status: 400 })
+        }
+        
         poItems.push({
           customer_order_item_id: customerItem.id,
           product_type: 'accessory',
@@ -170,7 +197,7 @@ export async function POST(request: NextRequest) {
           material_id: null,
           linear_material_id: null,
           quantity: customerItem.quantity,
-          net_price: customerItem.unit_price_net,
+          net_price: Math.round(accessoryWithPrice.base_price), // Use base_price (cost), not unit_price_net (selling price)
           vat_id: customerItem.vat_id,
           currency_id: customerItem.currency_id,
           units_id: unitsId,
@@ -249,7 +276,7 @@ export async function POST(request: NextRequest) {
           material_id: null,
           linear_material_id: null,
           quantity: customerItem.quantity,
-          net_price: customerItem.unit_price_net,
+          net_price: Math.round(action.new_accessory_data.base_price), // Use base_price (cost) from the new accessory data
           vat_id: customerItem.vat_id,
           currency_id: customerItem.currency_id,
           units_id: customerItem.units_id || action.new_accessory_data.units_id || null,

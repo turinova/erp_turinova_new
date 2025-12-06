@@ -2810,10 +2810,11 @@ export async function getAllCustomerOrderItems(page: number = 1, limit: number =
         accessories:accessory_id (
           name,
           sku,
-          units_id
+          units_id,
+          base_price
         ),
-        materials:material_id(name, units_id),
-        linear_materials:linear_material_id(name, units_id)
+        materials:material_id(name, units_id, base_price),
+        linear_materials:linear_material_id(name, units_id, base_price)
       `, { count: 'exact' })
       .eq('item_type', 'product')
       .is('customer_orders.deleted_at', null)
@@ -2902,8 +2903,8 @@ export async function getAllCustomerOrderItems(page: number = 1, limit: number =
                 name
               )
             ),
-            materials:material_id(name, units_id),
-            linear_materials:linear_material_id(name, units_id)
+            materials:material_id(name, units_id, base_price),
+            linear_materials:linear_material_id(name, units_id, base_price)
           `, { count: 'exact' })
           .eq('item_type', 'product')
           .is('customer_orders.deleted_at', null)
