@@ -1,11 +1,16 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
+import { createRoot } from 'react-dom/client'
+import dynamic from 'next/dynamic'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip, Pagination, FormControl, InputLabel, Select, MenuItem, Menu, ListItemIcon, ListItemText } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material'
+// Dynamic import for Barcode to avoid SSR issues
+const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
+
+import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip, Pagination, FormControl, InputLabel, Select, MenuItem, Menu, ListItemIcon, ListItemText, Grid, FormGroup, FormControlLabel, RadioGroup, Radio } from '@mui/material'
+import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, ArrowDropDown as ArrowDropDownIcon, Print as PrintIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -15,6 +20,7 @@ interface Accessory {
   id: string
   name: string
   sku: string
+  barcode?: string | null
   base_price: number
   multiplier: number
   net_price: number
@@ -80,6 +86,19 @@ export default function AccessoriesListClient({
     processed: number
     status: string
   } | null>(null)
+
+  // Print label states
+  const [printLabelOpen, setPrintLabelOpen] = useState(false)
+  const [accessoryToPrint, setAccessoryToPrint] = useState<Accessory | null>(null)
+  const [editableProductName, setEditableProductName] = useState<string>('')
+  const [labelFields, setLabelFields] = useState({
+    showName: true,
+    showSku: true,
+    showBarcode: true,
+    showPrice: true
+  })
+  const [printAmount, setPrintAmount] = useState<number>(1)
+  const [isPrinting, setIsPrinting] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -291,6 +310,536 @@ export default function AccessoriesListClient({
 
   const handleDeleteCancel = () => {
     setDeleteModalOpen(false)
+  }
+
+  const handleOpenPrintLabel = async () => {
+    if (selectedAccessories.length !== 1) {
+      toast.error('Válasszon ki pontosan egy terméket a címke nyomtatásához!')
+      return
+    }
+
+    const accessoryId = selectedAccessories[0]
+    const accessory = filteredAccessories.find(a => a.id === accessoryId)
+    
+    if (!accessory) {
+      toast.error('Termék nem található!')
+      return
+    }
+
+    // Fetch full accessory details including barcode
+    try {
+      const response = await fetch(`/api/accessories/${accessoryId}`)
+      if (!response.ok) {
+        throw new Error('Hiba a termék adatainak betöltésekor')
+      }
+      const fullAccessory = await response.json()
+      
+      // Update accessory with barcode
+      const accessoryWithBarcode: Accessory = {
+        ...accessory,
+        barcode: fullAccessory.barcode || null
+      }
+      
+      setAccessoryToPrint(accessoryWithBarcode)
+      setEditableProductName(accessoryWithBarcode.name)
+      setLabelFields({
+        showName: true,
+        showSku: true,
+        showBarcode: !!accessoryWithBarcode.barcode,
+        showPrice: true
+      })
+      setPrintAmount(1)
+      setPrintLabelOpen(true)
+    } catch (error: any) {
+      console.error('Error fetching accessory details:', error)
+      toast.error(error.message || 'Hiba a termék adatainak betöltésekor')
+    }
+  }
+
+  // Calculate current selling price: base_price * multiplier * (1 + vat_percent/100) rounded up to nearest 10
+  const currentSellingPrice = useMemo(() => {
+    if (!accessoryToPrint) return null
+    
+    const basePrice = accessoryToPrint.base_price || 0
+    const multiplier = accessoryToPrint.multiplier || 1.38
+    const vatPercent = accessoryToPrint.vat_percent || 0
+    
+    const price = basePrice * multiplier * (1 + vatPercent / 100)
+    // Round up to nearest 10
+    return Math.ceil(price / 10) * 10
+  }, [accessoryToPrint])
+
+  // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
+  const PrintLabel = ({ accessory, fields, price, productName }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string }) => {
+    const text = productName || accessory.name || 'N/A'
+    const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
+    
+    // Build grid template rows based on visible fields
+    const gridRows: string[] = []
+    if (fields.showName) gridRows.push('5.3mm')
+    if (fields.showSku && accessory.sku) gridRows.push('3.0mm')
+    if (fields.showPrice) gridRows.push('8.3mm')
+    if (fields.showBarcode && accessory.barcode) gridRows.push('8.3mm')
+    
+    return (
+      <div
+        style={{
+          width: '33mm',
+          height: '25mm',
+          border: '1px solid #000',
+          padding: 0,
+          margin: 0,
+          backgroundColor: 'white',
+          display: 'grid',
+          gridTemplateRows: gridRows.join(' '),
+          gridTemplateColumns: '100%',
+          gap: 0,
+          rowGap: 0,
+          columnGap: 0,
+          overflow: 'hidden',
+          boxSizing: 'border-box',
+          position: 'relative'
+        }}
+      >
+        {/* Section 1: Termék név - 5.3mm */}
+        {fields.showName && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box',
+              lineHeight: 1.1
+            }}
+          >
+            <div
+              style={{
+                fontSize: nameFontSize,
+                fontWeight: 'bold',
+                color: '#000000',
+                lineHeight: 1.1,
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+                maxWidth: '100%',
+                textAlign: 'center',
+                margin: 0,
+                padding: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'normal',
+                overflow: 'hidden'
+              }}
+            >
+              {text}
+            </div>
+          </div>
+        )}
+
+        {/* Section 2: SKU - 3.0mm */}
+        {fields.showSku && accessory.sku && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                fontSize: '2.2mm',
+                color: '#000000',
+                lineHeight: 1,
+                margin: 0,
+                padding: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden'
+              }}
+            >
+              {accessory.sku}
+            </div>
+          </div>
+        )}
+
+        {/* Section 3: Price - 8.3mm */}
+        {fields.showPrice && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                fontSize: '6mm',
+                fontWeight: 'bold',
+                color: '#000000',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                margin: 0,
+                padding: 0,
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              }}
+            >
+              {new Intl.NumberFormat('hu-HU').format(price)} Ft
+            </div>
+          </div>
+        )}
+
+        {/* Section 4: Barcode - 8.3mm - Flush to bottom */}
+        {fields.showBarcode && accessory.barcode && (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              alignSelf: 'stretch',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'flex-end',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxSizing: 'border-box'
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'flex-end',
+                justifyContent: 'center',
+                padding: 0,
+                margin: 0,
+                overflow: 'hidden'
+              }}
+            >
+              <Barcode
+                value={accessory.barcode}
+                format="CODE128"
+                width={2.5}
+                height={32}
+                fontSize={10}
+                displayValue={false}
+                margin={0}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Handle print label - Using React components (same as shipments page)
+  const handlePrintLabel = async () => {
+    if (!accessoryToPrint) return
+
+    // Validate at least one field is selected
+    if (!labelFields.showName && !labelFields.showSku && !labelFields.showBarcode && !labelFields.showPrice) {
+      toast.error('Válasszon ki legalább egy mezőt a címkéhez!')
+      return
+    }
+
+    setIsPrinting(true)
+    try {
+      // Clean up any existing print containers
+      const existingContainer = document.getElementById('label-print-container')
+      if (existingContainer) {
+        const root = (existingContainer as any)._reactRootContainer
+        if (root) {
+          root.unmount()
+        }
+        document.body.removeChild(existingContainer)
+      }
+      const existingStyle = document.getElementById('label-print-styles')
+      if (existingStyle) {
+        document.head.removeChild(existingStyle)
+      }
+
+      // Create a hidden print container
+      const printContainer = document.createElement('div')
+      printContainer.id = 'label-print-container'
+      printContainer.style.position = 'absolute'
+      printContainer.style.left = '-9999px'
+      printContainer.style.top = '-9999px'
+      document.body.appendChild(printContainer)
+
+      // Add print styles - Same as shipments page
+      const style = document.createElement('style')
+      style.id = 'label-print-styles'
+      style.textContent = `
+        /* Screen styles - hide container */
+        #label-print-container {
+          position: absolute !important;
+          left: -9999px !important;
+          top: -9999px !important;
+          visibility: hidden !important;
+        }
+        
+        @media print {
+          @page {
+            size: 33mm 25mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          
+          /* Override ALL browser defaults */
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            box-sizing: border-box !important;
+          }
+          
+          /* Force html and body to zero spacing */
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 33mm !important;
+            height: auto !important;
+            background: white !important;
+            overflow: visible !important;
+          }
+          
+          /* Hide everything except our container */
+          body > *:not(#label-print-container) {
+            display: none !important;
+            visibility: hidden !important;
+          }
+          
+          /* Show our container */
+          #label-print-container {
+            position: relative !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 33mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            z-index: 9999 !important;
+          }
+          
+          /* Label items - main grid container */
+          #label-print-container > div {
+            width: 33mm !important;
+            height: 25mm !important;
+            page-break-after: always !important;
+            break-after: page !important;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            display: grid !important;
+            grid-auto-rows: 0 !important;
+            grid-auto-flow: row !important;
+            overflow: hidden !important;
+            box-sizing: border-box !important;
+            border-collapse: collapse !important;
+            border-spacing: 0 !important;
+          }
+          
+          #label-print-container > div:last-child {
+            page-break-after: auto !important;
+            break-after: auto !important;
+          }
+          
+          /* NUCLEAR OPTION: Remove ALL spacing from EVERY element */
+          #label-print-container *,
+          #label-print-container *::before,
+          #label-print-container *::after {
+            margin: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            margin-block: 0 !important;
+            margin-block-start: 0 !important;
+            margin-block-end: 0 !important;
+            margin-inline: 0 !important;
+            margin-inline-start: 0 !important;
+            margin-inline-end: 0 !important;
+            padding: 0 !important;
+            padding-top: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            border-spacing: 0 !important;
+            border-collapse: collapse !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+          
+          /* Ensure text is visible and black - preserve inline styles */
+          #label-print-container div {
+            color: #000000 !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+          }
+          
+          /* Remove pseudo-elements completely */
+          #label-print-container *::before,
+          #label-print-container *::after {
+            content: none !important;
+            display: none !important;
+            height: 0 !important;
+            width: 0 !important;
+          }
+          
+          /* ALL divs - force no spacing but preserve visibility */
+          #label-print-container div {
+            margin: 0 !important;
+            padding: 0 !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            box-sizing: border-box !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            color: #000000 !important;
+          }
+          
+          /* Only hide overflow on main container, not on text containers */
+          #label-print-container > div {
+            overflow: hidden !important;
+          }
+          
+          /* Text containers should show content */
+          #label-print-container > div > div > div {
+            overflow: visible !important;
+          }
+          
+          /* Main grid container - enforce grid with no gaps */
+          #label-print-container > div {
+            display: grid !important;
+            gap: 0 !important;
+            row-gap: 0 !important;
+            column-gap: 0 !important;
+            grid-gap: 0 !important;
+            grid-auto-rows: 0 !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            flex-shrink: 0 !important;
+            flex-grow: 0 !important;
+          }
+          
+          /* Grid children - stretch to fill rows */
+          #label-print-container > div > div {
+            align-self: stretch !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+            flex-shrink: 0 !important;
+            flex-grow: 0 !important;
+          }
+          
+          /* SVG barcode - align to bottom */
+          #label-print-container svg {
+            vertical-align: bottom !important;
+            align-self: flex-end !important;
+          }
+          
+          /* Barcode container - align to bottom */
+          #label-print-container > div > div:last-child {
+            align-items: flex-end !important;
+          }
+        }
+      `
+      document.head.appendChild(style)
+
+      // Render labels using React
+      const root = createRoot(printContainer)
+      const labels = []
+      for (let i = 0; i < printAmount; i++) {
+        labels.push(
+          <PrintLabel
+            key={i}
+            accessory={accessoryToPrint}
+            fields={labelFields}
+            price={currentSellingPrice || 0}
+            productName={editableProductName}
+          />
+        )
+      }
+      root.render(<>{labels}</>)
+      
+      // Store root reference for cleanup
+      ;(printContainer as any)._reactRootContainer = root
+
+      // Wait a bit for React to render
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // Trigger print
+      window.print()
+
+      // Cleanup after print dialog closes (or is cancelled)
+      setTimeout(() => {
+        try {
+          const container = document.getElementById('label-print-container')
+          if (container) {
+            const rootRef = (container as any)._reactRootContainer
+            if (rootRef) {
+              rootRef.unmount()
+            }
+            document.body.removeChild(container)
+          }
+          const styleEl = document.getElementById('label-print-styles')
+          if (styleEl) {
+            document.head.removeChild(styleEl)
+          }
+        } catch (e) {
+          console.error('Cleanup error:', e)
+        }
+      }, 1000)
+    } catch (error: any) {
+      console.error('Print error:', error)
+      toast.error('Hiba a nyomtatás során')
+    } finally {
+      setIsPrinting(false)
+    }
   }
 
   const handleExport = async (exportType: 'current' | 'all' | 'selected') => {
@@ -597,6 +1146,16 @@ export default function AccessoriesListClient({
             </Button>
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
+            {selectedAccessories.length === 1 && (
+              <Button
+                variant="outlined"
+                startIcon={<PrintIcon />}
+                color="primary"
+                onClick={handleOpenPrintLabel}
+              >
+                Címke nyomtatás
+              </Button>
+            )}
             <Button
               variant="outlined"
               startIcon={<DeleteIcon />}
@@ -877,6 +1436,400 @@ export default function AccessoriesListClient({
             ) : (
               'Import megerősítése'
             )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Print Label Modal */}
+      <Dialog
+        open={printLabelOpen}
+        onClose={() => setPrintLabelOpen(false)}
+        maxWidth="md"
+        fullWidth
+        aria-labelledby="print-label-dialog-title"
+      >
+        <DialogTitle id="print-label-dialog-title">
+          Címke nyomtatása
+        </DialogTitle>
+        <DialogContent>
+          {accessoryToPrint && (
+            <Grid container spacing={3} sx={{ mt: 1 }}>
+              {/* Single Card with all sections */}
+              <Grid item xs={12}>
+                <Box
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    p: 3,
+                    backgroundColor: 'background.paper'
+                  }}
+                >
+                  {/* Row 1: Termék neve + Megjelenítendő mezők (horizontally) */}
+                  <Grid container spacing={3} sx={{ mb: 3 }}>
+                    {/* Termék neve */}
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Termék neve
+                      </Typography>
+                      <TextField
+                        label="Termék neve (szerkeszthető)"
+                        value={editableProductName}
+                        onChange={(e) => setEditableProductName(e.target.value)}
+                        fullWidth
+                        size="small"
+                      />
+                    </Grid>
+
+                    {/* Megjelenítendő mezők */}
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Megjelenítendő mezők
+                      </Typography>
+                      <FormGroup row sx={{ gap: 2 }}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showName}
+                              onChange={(e) => setLabelFields({ ...labelFields, showName: e.target.checked })}
+                              size="small"
+                            />
+                          }
+                          label="Termék neve"
+                          sx={{ m: 0 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showSku}
+                              onChange={(e) => setLabelFields({ ...labelFields, showSku: e.target.checked })}
+                              size="small"
+                            />
+                          }
+                          label="SKU"
+                          sx={{ m: 0 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showBarcode}
+                              onChange={(e) => setLabelFields({ ...labelFields, showBarcode: e.target.checked })}
+                              disabled={!accessoryToPrint.barcode}
+                              size="small"
+                            />
+                          }
+                          label="Vonalkód"
+                          sx={{ m: 0 }}
+                        />
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              checked={labelFields.showPrice}
+                              onChange={(e) => setLabelFields({ ...labelFields, showPrice: e.target.checked })}
+                              size="small"
+                            />
+                          }
+                          label="Ár"
+                          sx={{ m: 0 }}
+                        />
+                      </FormGroup>
+                    </Grid>
+                  </Grid>
+
+                  {/* Divider */}
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 3 }} />
+
+                  {/* Row 2: Jelenlegi eladási ár */}
+                  <Grid container spacing={3} sx={{ mb: 3 }}>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Jelenlegi eladási ár
+                      </Typography>
+                      {currentSellingPrice !== null ? (
+                        <Typography
+                          variant="h4"
+                          sx={{
+                            color: 'error.main',
+                            fontWeight: 'bold',
+                            fontSize: '2rem',
+                            lineHeight: 1.2
+                          }}
+                        >
+                          {new Intl.NumberFormat('hu-HU').format(currentSellingPrice)} Ft
+                        </Typography>
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            color: 'text.secondary',
+                            fontStyle: 'italic'
+                          }}
+                        >
+                          Ár számítható
+                        </Typography>
+                      )}
+                    </Grid>
+                  </Grid>
+
+                  {/* Divider */}
+                  <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 3 }} />
+
+                  {/* Row 3: Nyomtatás */}
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Nyomtatás
+                      </Typography>
+                      <TextField
+                        label="Nyomtatandó mennyiség"
+                        type="number"
+                        value={printAmount}
+                        onChange={(e) => setPrintAmount(Math.max(1, Number(e.target.value) || 1))}
+                        inputProps={{ min: 1 }}
+                        fullWidth
+                        size="small"
+                        helperText="Alapértelmezett: 1"
+                        sx={{ maxWidth: '300px' }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Grid>
+
+              {/* Row 2 - Preview */}
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom sx={{ textAlign: 'center' }}>
+                  Előnézet (33mm × 25mm - 2x nagyított):
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    width: '100%'
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '250px',
+                      height: '189px',
+                      border: '2px solid #ccc',
+                      padding: 0,
+                      margin: 0,
+                      backgroundColor: 'white',
+                      display: 'grid',
+                      gridTemplateRows: (() => {
+                        const rows: string[] = []
+                        if (labelFields.showName) rows.push('40px')
+                        if (labelFields.showSku && accessoryToPrint.sku) rows.push('22.68px')
+                        if (labelFields.showPrice) rows.push('62.74px')
+                        if (labelFields.showBarcode && accessoryToPrint.barcode) rows.push('62.74px')
+                        return rows.join(' ')
+                      })(),
+                      gridTemplateColumns: '100%',
+                      gap: 0,
+                      rowGap: 0,
+                      columnGap: 0,
+                      overflow: 'hidden',
+                      boxSizing: 'border-box',
+                      position: 'relative'
+                    }}
+                  >
+                    {/* Section 1: Termék név */}
+                    {labelFields.showName && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box',
+                          lineHeight: 1.1
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: (() => {
+                              const text = editableProductName || accessoryToPrint.name || ''
+                              if (text.length > 25) {
+                                return '18.9px'
+                              }
+                              return '26.46px'
+                            })(),
+                            fontWeight: 'bold',
+                            color: '#000000',
+                            lineHeight: 1.1,
+                            wordWrap: 'break-word',
+                            overflowWrap: 'break-word',
+                            maxWidth: '100%',
+                            textAlign: 'center',
+                            margin: 0,
+                            padding: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            whiteSpace: 'normal',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          {editableProductName || accessoryToPrint.name}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 2: SKU */}
+                    {labelFields.showSku && accessoryToPrint.sku && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '16.63px',
+                            color: '#000000',
+                            lineHeight: 1,
+                            margin: 0,
+                            padding: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          {accessoryToPrint.sku}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 3: Price */}
+                    {labelFields.showPrice && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: '45.36px',
+                            fontWeight: 'bold',
+                            color: '#000000',
+                            lineHeight: 1,
+                            whiteSpace: 'nowrap',
+                            margin: 0,
+                            padding: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            overflow: 'hidden'
+                          }}
+                        >
+                          {new Intl.NumberFormat('hu-HU').format(currentSellingPrice || 0)} Ft
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section 4: Barcode */}
+                    {labelFields.showBarcode && accessoryToPrint.barcode && (
+                      <div
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          alignSelf: 'stretch',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'flex-end',
+                          overflow: 'hidden',
+                          padding: 0,
+                          margin: 0,
+                          boxSizing: 'border-box'
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'center',
+                            padding: 0,
+                            margin: 0,
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <Barcode
+                            value={accessoryToPrint.barcode}
+                            format="CODE128"
+                            width={2.5}
+                            height={32}
+                            fontSize={10}
+                            displayValue={false}
+                            margin={0}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Box>
+              </Grid>
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setPrintLabelOpen(false)
+              setAccessoryToPrint(null)
+              setEditableProductName('')
+              setLabelFields({
+                showName: true,
+                showSku: true,
+                showBarcode: true,
+                showPrice: true
+              })
+              setPrintAmount(1)
+            }}
+            disabled={isPrinting}
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handlePrintLabel}
+            variant="contained"
+            color="primary"
+            disabled={isPrinting || !accessoryToPrint}
+            startIcon={isPrinting ? <CircularProgress size={18} /> : <PrintIcon />}
+          >
+            {isPrinting ? 'Nyomtatás...' : 'Nyomtatás'}
           </Button>
         </DialogActions>
       </Dialog>
