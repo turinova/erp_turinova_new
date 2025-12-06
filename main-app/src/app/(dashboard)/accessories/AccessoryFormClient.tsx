@@ -28,13 +28,15 @@ import {
   TableHead,
   TableRow,
   Chip,
-  Pagination
+  Pagination,
+  IconButton,
+  InputAdornment
 } from '@mui/material'
 import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
 import Tab from '@mui/material/Tab'
-import { Home as HomeIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Add as AddIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import ImageUpload from '@/components/ImageUpload'
@@ -267,6 +269,42 @@ export default function AccessoryFormClient({
     }))
   }
 
+  const generateEAN13 = (): string => {
+    // EAN-13 format: 12 digits + 1 check digit
+    // Generate 12 random digits (first digit should be 0-9, rest can be 0-9)
+    let code = ''
+    for (let i = 0; i < 12; i++) {
+      code += Math.floor(Math.random() * 10).toString()
+    }
+    
+    // Calculate check digit
+    let sum = 0
+    for (let i = 0; i < 12; i++) {
+      const digit = parseInt(code[i])
+      // Odd positions (1-indexed) are multiplied by 1, even by 3
+      if ((i + 1) % 2 === 1) {
+        sum += digit
+      } else {
+        sum += digit * 3
+      }
+    }
+    const checkDigit = (10 - (sum % 10)) % 10
+    return code + checkDigit.toString()
+  }
+
+  const handleGenerateBarcode = () => {
+    const newBarcode = generateEAN13()
+    handleInputChange('barcode', newBarcode)
+    toast.success('EAN-13 vonalkód generálva', {
+      position: "top-right",
+      autoClose: 2000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -440,6 +478,21 @@ export default function AccessoryFormClient({
                         onChange={(e) => handleInputChange('barcode', e.target.value)}
                         disabled={loading}
                         helperText="Opcionális"
+                        InputProps={{
+                          endAdornment: !formData.barcode ? (
+                            <InputAdornment position="end">
+                              <IconButton
+                                size="small"
+                                onClick={handleGenerateBarcode}
+                                disabled={loading}
+                                color="primary"
+                                edge="end"
+                              >
+                                <AddIcon fontSize="small" />
+                              </IconButton>
+                            </InputAdornment>
+                          ) : null
+                        }}
                       />
                     </Grid>
                   </Grid>
