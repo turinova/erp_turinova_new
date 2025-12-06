@@ -2754,6 +2754,562 @@ export async function getAllShopOrderItems(page: number = 1, limit: number = 50,
   }
 }
 
+// Fetch all customer order items for customer-order-items page
+export async function getAllCustomerOrderItems(page: number = 1, limit: number = 50, search: string = '', status: string = '', partnerId: string = '') {
+  if (!checkSupabaseConfig()) return { items: [], totalCount: 0, totalPages: 0 }
+
+  const startTime = performance.now()
+  const offset = (page - 1) * limit
+
+  try {
+    console.log(`[SSR] Fetching customer order items page ${page}, limit ${limit}, search: "${search}", status: "${status}", partner: "${partnerId}"`)
+
+    // Build the query with joins to get all related data
+    let query = supabaseServer
+      .from('customer_order_items')
+      .select(`
+        id,
+        product_name,
+        sku,
+        quantity,
+        unit_price_net,
+        unit_price_gross,
+        total_net,
+        total_vat,
+        total_gross,
+        status,
+        created_at,
+        updated_at,
+        deleted_at,
+        order_id,
+        shop_order_item_id,
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
+        purchase_order_item_id,
+        vat_id,
+        currency_id,
+        units_id,
+        partner_id,
+        customer_orders!inner (
+          id,
+          customer_name,
+          customer_mobile,
+          order_number
+        ),
+        vat (
+          id,
+          name,
+          kulcs
+        ),
+        partners:partner_id (
+          id,
+          name
+        ),
+        accessories:accessory_id (
+          name,
+          sku,
+          units_id
+        ),
+        materials:material_id(name, units_id),
+        linear_materials:linear_material_id(name, units_id)
+      `, { count: 'exact' })
+      .eq('item_type', 'product')
+      .is('customer_orders.deleted_at', null)
+
+    // Apply deleted_at filter based on status
+    // If status is 'deleted', show only soft-deleted items, otherwise exclude them
+    if (status === 'deleted') {
+      query = query.not('deleted_at', 'is', null)  // Show only deleted items
+    } else {
+      query = query.is('deleted_at', null)  // Filter out soft-deleted items
+    }
+
+    // Apply filters
+    if (search && search.length >= 2) {
+      query = query.or(`product_name.ilike.%${search}%,sku.ilike.%${search}%,customer_orders.customer_name.ilike.%${search}%`)
+    }
+
+    if (status && status !== 'deleted') {
+      query = query.eq('status', status)
+    }
+
+    if (partnerId) {
+      // Filter by partner_id directly from customer_order_items
+      query = query.eq('partner_id', partnerId)
+    }
+
+    const { data, error, count } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    logTiming('Customer Order Items DB Query', startTime, `Found ${data?.length || 0} items`)
+
+    if (error) {
+      console.error('[SSR] Error fetching customer order items:', error)
+      console.error('[SSR] Error details:', JSON.stringify(error, null, 2))
+      console.error('[SSR] Error message:', error.message)
+      console.error('[SSR] Error code:', error.code)
+      // If error is due to missing column (migration not run), try without partner_id
+      if (error.message?.includes('partner_id') || error.code === '42703' || error.code === 'PGRST116' || (error.message && typeof error.message === 'string' && error.message.toLowerCase().includes('column'))) {
+        console.log('[SSR] Retrying query without partner_id column (migration may not be run yet)')
+        // Retry without partner_id and partners join
+        let fallbackQuery = supabaseServer
+          .from('customer_order_items')
+          .select(`
+            id,
+            product_name,
+            sku,
+            quantity,
+            unit_price_net,
+            unit_price_gross,
+            total_net,
+            total_vat,
+            total_gross,
+            status,
+            created_at,
+            updated_at,
+            deleted_at,
+            order_id,
+            shop_order_item_id,
+            product_type,
+            accessory_id,
+            material_id,
+            linear_material_id,
+            purchase_order_item_id,
+            vat_id,
+            currency_id,
+            units_id,
+            customer_orders!inner (
+              id,
+              customer_name,
+              customer_mobile,
+              order_number
+            ),
+            vat (
+              id,
+              name,
+              kulcs
+            ),
+            accessories:accessory_id (
+              name,
+              sku,
+              units_id,
+              partners_id,
+              partners:partners_id (
+                id,
+                name
+              )
+            ),
+            materials:material_id(name, units_id),
+            linear_materials:linear_material_id(name, units_id)
+          `, { count: 'exact' })
+          .eq('item_type', 'product')
+          .is('customer_orders.deleted_at', null)
+
+        // Apply deleted_at filter
+        if (status === 'deleted') {
+          fallbackQuery = fallbackQuery.not('deleted_at', 'is', null)
+        } else {
+          fallbackQuery = fallbackQuery.is('deleted_at', null)
+        }
+
+        // Apply filters
+        if (search && search.length >= 2) {
+          fallbackQuery = fallbackQuery.or(`product_name.ilike.%${search}%,sku.ilike.%${search}%,customer_orders.customer_name.ilike.%${search}%`)
+        }
+
+        if (status && status !== 'deleted') {
+          fallbackQuery = fallbackQuery.eq('status', status)
+        }
+
+        const { data: fallbackData, error: fallbackError, count: fallbackCount } = await fallbackQuery
+          .order('created_at', { ascending: false })
+          .range(offset, offset + limit - 1)
+
+        if (fallbackError) {
+          console.error('[SSR] Error in fallback query:', fallbackError)
+          return { items: [], totalCount: 0, totalPages: 0 }
+        }
+
+        const totalCount = fallbackCount || 0
+        const totalPages = Math.ceil(totalCount / limit)
+
+        // Transform with fallback logic (get partner from accessories only)
+        const items = fallbackData?.map(item => {
+          const partnerId = item.accessories?.partners_id || null
+          const partnerName = item.accessories?.partners?.name || null
+          
+          return {
+            id: item.id,
+            product_name: item.product_name,
+            sku: item.sku,
+            quantity: item.quantity,
+            status: item.status,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+            deleted_at: item.deleted_at || null,
+            order_id: item.order_id,
+            shop_order_item_id: item.shop_order_item_id,
+            customer_name: item.customer_orders?.customer_name,
+            customer_mobile: item.customer_orders?.customer_mobile,
+            order_number: item.customer_orders?.order_number,
+            partner_id: partnerId,
+            partner_name: partnerName,
+            vat_name: item.vat?.name,
+            vat_percent: item.vat?.kulcs,
+            unit_price_net: item.unit_price_net,
+            unit_price_gross: item.unit_price_gross,
+            total_net: item.total_net,
+            total_vat: item.total_vat,
+            total_gross: item.total_gross,
+            vat_id: item.vat_id,
+            currency_id: item.currency_id,
+            product_type: item.product_type,
+            accessory_id: item.accessory_id,
+            material_id: item.material_id,
+            linear_material_id: item.linear_material_id,
+            purchase_order_item_id: item.purchase_order_item_id,
+            accessories: item.accessories || null,
+            materials: item.materials || null,
+            linear_materials: item.linear_materials || null
+          }
+        }) || []
+
+        return {
+          items,
+          totalCount,
+          totalPages,
+          currentPage: page,
+          limit
+        }
+      }
+      return { items: [], totalCount: 0, totalPages: 0 }
+    }
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    // Transform the data to include calculated fields
+    const items = data?.map(item => {
+      // Get partner_id and partner_name directly from customer_order_items
+      const partnerId = item.partner_id || null
+      const partnerName = item.partners?.name || null
+      
+      return {
+        id: item.id,
+        product_name: item.product_name,
+        sku: item.sku,
+        quantity: item.quantity,
+        status: item.status,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+        deleted_at: item.deleted_at || null,
+        order_id: item.order_id,
+        shop_order_item_id: item.shop_order_item_id,
+        customer_name: item.customer_orders?.customer_name,
+        customer_mobile: item.customer_orders?.customer_mobile,
+        order_number: item.customer_orders?.order_number,
+        partner_id: partnerId,
+        partner_name: partnerName,
+        vat_name: item.vat?.name,
+        vat_percent: item.vat?.kulcs,
+        unit_price_net: item.unit_price_net,
+        unit_price_gross: item.unit_price_gross,
+        total_net: item.total_net,
+        total_vat: item.total_vat,
+        total_gross: item.total_gross,
+        vat_id: item.vat_id,
+        currency_id: item.currency_id,
+        product_type: item.product_type,
+        accessory_id: item.accessory_id,
+        material_id: item.material_id,
+        linear_material_id: item.linear_material_id,
+        purchase_order_item_id: item.purchase_order_item_id,
+        accessories: item.accessories || null,
+        materials: item.materials || null,
+        linear_materials: item.linear_materials || null
+      }
+    }) || []
+
+    // No need for client-side filtering anymore since we filter in the query
+    const filteredItems = items
+
+    logTiming('Customer Order Items Total', startTime, `returned ${filteredItems.length} items`)
+    console.log(`[SSR] Customer order items fetched successfully: ${filteredItems.length} items, total: ${totalCount}`)
+
+    return {
+      items: filteredItems,
+      totalCount: totalCount,
+      totalPages: totalPages,
+      currentPage: page,
+      limit
+    }
+
+  } catch (error) {
+    console.error('[SSR] Error fetching customer order items:', error)
+    logTiming('Customer Order Items Fetch Error', startTime)
+    return { items: [], totalCount: 0, totalPages: 0 }
+  }
+}
+
+// Fetch all customer orders with pagination for fulfillment-orders page
+export async function getCustomerOrdersWithPagination(page: number = 1, limit: number = 50, search: string = '', status: string = '') {
+  if (!checkSupabaseConfig()) return { orders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+
+  const startTime = performance.now()
+  const offset = (page - 1) * limit
+
+  try {
+    console.log(`[SSR] Fetching customer orders page ${page}, limit ${limit}, search: "${search}", status: "${status}"`)
+
+    // If search is provided, find matching order IDs from both customer_name and product_name
+    let allMatchingOrderIds: string[] = []
+    if (search && search.trim().length >= 2) {
+      const searchTerm = search.trim()
+      
+      // Find orders matching customer_name
+      const { data: customerMatches } = await supabaseServer
+        .from('customer_orders')
+        .select('id')
+        .ilike('customer_name', `%${searchTerm}%`)
+        .is('deleted_at', null)
+      
+      // Find orders matching product_name in items
+      const { data: itemMatches } = await supabaseServer
+        .from('customer_order_items')
+        .select('order_id')
+        .ilike('product_name', `%${searchTerm}%`)
+        .is('deleted_at', null)
+      
+      // Combine and deduplicate
+      const customerIds = customerMatches?.map(o => o.id) || []
+      const itemOrderIds = itemMatches?.map(i => i.order_id) || []
+      allMatchingOrderIds = [...new Set([...customerIds, ...itemOrderIds])]
+    }
+
+    // Build the main query
+    let query = supabaseServer
+      .from('customer_orders')
+      .select(`
+        id,
+        order_number,
+        worker_id,
+        customer_name,
+        total_gross,
+        status,
+        created_at,
+        sms_sent_at,
+        workers(nickname, color)
+      `, { count: 'exact' })
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    // Apply status filter
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    // Apply search filter - if we have matching IDs, filter by them
+    if (search && search.trim().length >= 2 && allMatchingOrderIds.length > 0) {
+      query = query.in('id', allMatchingOrderIds)
+    } else if (search && search.trim().length >= 2 && allMatchingOrderIds.length === 0) {
+      // No matches found, return empty result
+      return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const { data, error, count } = await query
+      .range(offset, offset + limit - 1)
+
+    logTiming('Customer Orders DB Query', startTime, `Found ${data?.length || 0} orders`)
+
+    if (error) {
+      console.error('[SSR] Error fetching customer orders:', error)
+      return { orders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    // Fetch payment totals for all orders in this page
+    const orderIds = data?.map(o => o.id) || []
+    let paymentTotals: Record<string, number> = {}
+    
+    if (orderIds.length > 0) {
+      const { data: payments, error: paymentsError } = await supabaseServer
+        .from('customer_order_payments')
+        .select('customer_order_id, amount, deleted_at')
+        .in('customer_order_id', orderIds)
+        .is('deleted_at', null) // Only count active (non-deleted) payments
+      
+      if (!paymentsError && payments) {
+        // Calculate total paid per order
+        payments.forEach((payment: any) => {
+          const orderId = payment.customer_order_id
+          const amount = Number(payment.amount || 0)
+          paymentTotals[orderId] = (paymentTotals[orderId] || 0) + amount
+        })
+      }
+    }
+
+    // Transform the data and calculate payment_status
+    const orders = data?.map(order => {
+      const totalPaid = paymentTotals[order.id] || 0
+      const totalGross = Number(order.total_gross) || 0
+      
+      let payment_status: 'paid' | 'partial' | 'unpaid'
+      if (totalPaid >= totalGross) {
+        payment_status = 'paid'
+      } else if (totalPaid > 0) {
+        payment_status = 'partial'
+      } else {
+        payment_status = 'unpaid'
+      }
+      
+      return {
+        id: order.id,
+        order_number: order.order_number || '',
+        customer_name: order.customer_name || '',
+        total_gross: totalGross,
+        status: order.status,
+        payment_status: payment_status,
+        created_at: order.created_at,
+        sms_sent_at: order.sms_sent_at || null,
+        worker_nickname: order.workers?.nickname || '',
+        worker_color: order.workers?.color || '#1976d2'
+      }
+    }) || []
+
+    logTiming('Customer Orders Total', startTime, `Transformed ${orders.length} orders`)
+    console.log(`[SSR] Customer orders fetched successfully: ${orders.length} orders, total: ${totalCount}`)
+
+    return {
+      orders,
+      totalCount,
+      totalPages,
+      currentPage: page,
+      limit
+    }
+
+  } catch (error) {
+    console.error('[SSR] Error fetching customer orders:', error)
+    logTiming('Customer Orders Fetch Error', startTime)
+    return { orders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+  }
+}
+
+export async function getCustomerOrderById(id: string) {
+  if (!checkSupabaseConfig()) return null
+
+  const startTime = performance.now()
+
+  try {
+    // Fetch customer order with worker
+    const { data: order, error: orderError } = await supabaseServer
+      .from('customer_orders')
+      .select(`
+        id,
+        order_number,
+        worker_id,
+        customer_name,
+        customer_email,
+        customer_mobile,
+        billing_name,
+        billing_country,
+        billing_city,
+        billing_postal_code,
+        billing_street,
+        billing_house_number,
+        billing_tax_number,
+        billing_company_reg_number,
+        discount_percentage,
+        discount_amount,
+        subtotal_net,
+        total_vat,
+        total_gross,
+        status,
+        created_at,
+        updated_at,
+        sms_sent_at,
+        workers(nickname, color)
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (orderError || !order) {
+      logTiming('Customer Order By ID Error', startTime)
+      return null
+    }
+
+    // Fetch order items
+    const { data: items } = await supabaseServer
+      .from('customer_order_items')
+      .select(`
+        id,
+        item_type,
+        product_type,
+        accessory_id,
+        material_id,
+        linear_material_id,
+        feetype_id,
+        product_name,
+        sku,
+        quantity,
+        unit_price_net,
+        unit_price_gross,
+        vat_id,
+        currency_id,
+        units_id,
+        total_net,
+        total_vat,
+        total_gross,
+        status,
+        purchase_order_item_id
+      `)
+      .eq('order_id', id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+
+    // Fetch payments (including soft-deleted)
+    const { data: payments } = await supabaseServer
+      .from('customer_order_payments')
+      .select(`
+        id,
+        payment_type,
+        amount,
+        status,
+        created_at,
+        deleted_at
+      `)
+      .eq('customer_order_id', id)
+      .order('created_at', { ascending: true })
+
+    // Calculate total paid and balance (exclude soft-deleted payments)
+    const activePayments = payments?.filter((p: any) => !p.deleted_at) || []
+    const totalPaid = activePayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
+    const balance = Number(order.total_gross || 0) - totalPaid
+
+    logTiming('Customer Order By ID Fetch', startTime, 'success')
+    return {
+      order: {
+        ...order,
+        worker_nickname: order.workers?.nickname || '',
+        worker_color: order.workers?.color || '#1976d2'
+      },
+      items: items || [],
+      payments: payments || [],
+      total_paid: totalPaid,
+      balance: balance
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching customer order by ID:', error)
+    logTiming('Customer Order By ID Error', startTime)
+    return null
+  }
+}
+
 /**
  * Get all SMS settings (message templates)
  */
@@ -3859,6 +4415,45 @@ export async function getAllStockMovements() {
       : { data: [] }
     const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
 
+    // Fetch customer orders for handover
+    const customerOrderIds = sourceIdsByType.get('customer_order_handover') || []
+    const { data: customerOrders } = customerOrderIds.length > 0
+      ? await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', customerOrderIds)
+      : { data: [] }
+    const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
+
+    // Fetch customer orders for reservations (source_id is customer_order_item.id)
+    const reservationItemIds = sourceIdsByType.get('customer_order_reservation') || []
+    let reservationOrderMap = new Map<string, { orderId: string, orderNumber: string }>()
+    if (reservationItemIds.length > 0) {
+      // First, get the order_id from customer_order_items
+      const { data: reservationItems } = await supabaseServer
+        .from('customer_order_items')
+        .select('id, order_id')
+        .in('id', reservationItemIds)
+      
+      if (reservationItems && reservationItems.length > 0) {
+        const orderIds = [...new Set(reservationItems.map((item: any) => item.order_id))]
+        // Then fetch customer_orders to get order_number
+        const { data: reservationOrders } = await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', orderIds)
+        
+        // Create map: item_id -> { orderId, orderNumber }
+        const orderNumberMap = new Map((reservationOrders || []).map((co: any) => [co.id, co.order_number]))
+        reservationItems.forEach((item: any) => {
+          const orderNumber = orderNumberMap.get(item.order_id)
+          if (orderNumber) {
+            reservationOrderMap.set(item.id, { orderId: item.order_id, orderNumber })
+          }
+        })
+      }
+    }
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       let productName = ''
@@ -3878,8 +4473,23 @@ export async function getAllStockMovements() {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
+        sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
+        // Customer order deletion - display special label
+        sourceReference = 'Ügyfél rendelés törlés'
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      // For reservations, get the order_id for linking
+      let sourceOrderId = sm.source_id
+      if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceOrderId = reservationInfo?.orderId || sm.source_id
       }
 
       return {
@@ -3892,7 +4502,7 @@ export async function getAllStockMovements() {
         quantity: Number(sm.quantity) || 0,
         movement_type: sm.movement_type,
         source_type: sm.source_type,
-        source_id: sm.source_id,
+        source_id: sourceOrderId, // Use order_id for reservations, original source_id for others
         source_reference: sourceReference,
         created_at: sm.created_at,
         note: sm.note || ''
@@ -3998,6 +4608,45 @@ export async function getStockMovementsWithPagination(
       : { data: [] }
     const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
 
+    // Fetch customer orders for handover
+    const customerOrderIds = sourceIdsByType.get('customer_order_handover') || []
+    const { data: customerOrders } = customerOrderIds.length > 0
+      ? await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', customerOrderIds)
+      : { data: [] }
+    const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
+
+    // Fetch customer orders for reservations (source_id is customer_order_item.id)
+    const reservationItemIds = sourceIdsByType.get('customer_order_reservation') || []
+    let reservationOrderMap = new Map<string, { orderId: string, orderNumber: string }>()
+    if (reservationItemIds.length > 0) {
+      // First, get the order_id from customer_order_items
+      const { data: reservationItems } = await supabaseServer
+        .from('customer_order_items')
+        .select('id, order_id')
+        .in('id', reservationItemIds)
+      
+      if (reservationItems && reservationItems.length > 0) {
+        const orderIds = [...new Set(reservationItems.map((item: any) => item.order_id))]
+        // Then fetch customer_orders to get order_number
+        const { data: reservationOrders } = await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', orderIds)
+        
+        // Create map: item_id -> { orderId, orderNumber }
+        const orderNumberMap = new Map((reservationOrders || []).map((co: any) => [co.id, co.order_number]))
+        reservationItems.forEach((item: any) => {
+          const orderNumber = orderNumberMap.get(item.order_id)
+          if (orderNumber) {
+            reservationOrderMap.set(item.id, { orderId: item.order_id, orderNumber })
+          }
+        })
+      }
+    }
+
     // Transform and filter data
     let stockMovements = (data || []).map((sm: any) => {
       let productName = ''
@@ -4017,6 +4666,14 @@ export async function getStockMovementsWithPagination(
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
+        sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
+        // Customer order deletion - display special label
+        sourceReference = 'Ügyfél rendelés törlés'
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
       }
@@ -4032,6 +4689,13 @@ export async function getStockMovementsWithPagination(
         }
       }
 
+      // For reservations, get the order_id for linking
+      let sourceOrderId = sm.source_id
+      if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceOrderId = reservationInfo?.orderId || sm.source_id
+      }
+
       return {
         id: sm.id,
         stock_movement_number: sm.stock_movement_number || '',
@@ -4045,7 +4709,7 @@ export async function getStockMovementsWithPagination(
         quantity: Number(sm.quantity) || 0,
         movement_type: sm.movement_type,
         source_type: sm.source_type,
-        source_id: sm.source_id,
+        source_id: sourceOrderId, // Use order_id for reservations, original source_id for others
         source_reference: sourceReference,
         created_at: sm.created_at,
         note: sm.note || ''
@@ -4148,6 +4812,45 @@ export async function getStockMovementsByAccessory(
       : { data: [] }
     const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
 
+    // Fetch customer orders for handover
+    const customerOrderIds = sourceIdsByType.get('customer_order_handover') || []
+    const { data: customerOrders } = customerOrderIds.length > 0
+      ? await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', customerOrderIds)
+      : { data: [] }
+    const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
+
+    // Fetch customer orders for reservations (source_id is customer_order_item.id)
+    const reservationItemIds = sourceIdsByType.get('customer_order_reservation') || []
+    let reservationOrderMap = new Map<string, { orderId: string, orderNumber: string }>()
+    if (reservationItemIds.length > 0) {
+      // First, get the order_id from customer_order_items
+      const { data: reservationItems } = await supabaseServer
+        .from('customer_order_items')
+        .select('id, order_id')
+        .in('id', reservationItemIds)
+      
+      if (reservationItems && reservationItems.length > 0) {
+        const orderIds = [...new Set(reservationItems.map((item: any) => item.order_id))]
+        // Then fetch customer_orders to get order_number
+        const { data: reservationOrders } = await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', orderIds)
+        
+        // Create map: item_id -> { orderId, orderNumber }
+        const orderNumberMap = new Map((reservationOrders || []).map((co: any) => [co.id, co.order_number]))
+        reservationItems.forEach((item: any) => {
+          const orderNumber = orderNumberMap.get(item.order_id)
+          if (orderNumber) {
+            reservationOrderMap.set(item.id, { orderId: item.order_id, orderNumber })
+          }
+        })
+      }
+    }
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       const productName = sm.accessories?.name || ''
@@ -4158,8 +4861,23 @@ export async function getStockMovementsByAccessory(
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
+        sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
+        // Customer order deletion - display special label
+        sourceReference = 'Ügyfél rendelés törlés'
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      // For reservations, get the order_id for linking
+      let sourceOrderId = sm.source_id
+      if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceOrderId = reservationInfo?.orderId || sm.source_id
       }
 
       return {
@@ -4172,7 +4890,7 @@ export async function getStockMovementsByAccessory(
         quantity: Number(sm.quantity) || 0,
         movement_type: sm.movement_type,
         source_type: sm.source_type,
-        source_id: sm.source_id,
+        source_id: sourceOrderId, // Use order_id for reservations, original source_id for others
         source_reference: sourceReference,
         created_at: sm.created_at,
         note: sm.note || ''
@@ -4329,6 +5047,45 @@ export async function getStockMovementsByMaterial(
       : { data: [] }
     const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
 
+    // Fetch customer orders for handover
+    const customerOrderIds = sourceIdsByType.get('customer_order_handover') || []
+    const { data: customerOrders } = customerOrderIds.length > 0
+      ? await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', customerOrderIds)
+      : { data: [] }
+    const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
+
+    // Fetch customer orders for reservations (source_id is customer_order_item.id)
+    const reservationItemIds = sourceIdsByType.get('customer_order_reservation') || []
+    let reservationOrderMap = new Map<string, { orderId: string, orderNumber: string }>()
+    if (reservationItemIds.length > 0) {
+      // First, get the order_id from customer_order_items
+      const { data: reservationItems } = await supabaseServer
+        .from('customer_order_items')
+        .select('id, order_id')
+        .in('id', reservationItemIds)
+      
+      if (reservationItems && reservationItems.length > 0) {
+        const orderIds = [...new Set(reservationItems.map((item: any) => item.order_id))]
+        // Then fetch customer_orders to get order_number
+        const { data: reservationOrders } = await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', orderIds)
+        
+        // Create map: item_id -> { orderId, orderNumber }
+        const orderNumberMap = new Map((reservationOrders || []).map((co: any) => [co.id, co.order_number]))
+        reservationItems.forEach((item: any) => {
+          const orderNumber = orderNumberMap.get(item.order_id)
+          if (orderNumber) {
+            reservationOrderMap.set(item.id, { orderId: item.order_id, orderNumber })
+          }
+        })
+      }
+    }
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       const productName = sm.materials?.name || ''
@@ -4339,8 +5096,23 @@ export async function getStockMovementsByMaterial(
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
+        sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
+        // Customer order deletion - display special label
+        sourceReference = 'Ügyfél rendelés törlés'
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      // For reservations, get the order_id for linking
+      let sourceOrderId = sm.source_id
+      if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceOrderId = reservationInfo?.orderId || sm.source_id
       }
 
       return {
@@ -4353,7 +5125,7 @@ export async function getStockMovementsByMaterial(
         quantity: Number(sm.quantity) || 0,
         movement_type: sm.movement_type,
         source_type: sm.source_type,
-        source_id: sm.source_id,
+        source_id: sourceOrderId, // Use order_id for reservations, original source_id for others
         source_reference: sourceReference,
         created_at: sm.created_at,
         note: sm.note || ''
@@ -4510,6 +5282,45 @@ export async function getStockMovementsByLinearMaterial(
       : { data: [] }
     const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
 
+    // Fetch customer orders for handover
+    const customerOrderIds = sourceIdsByType.get('customer_order_handover') || []
+    const { data: customerOrders } = customerOrderIds.length > 0
+      ? await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', customerOrderIds)
+      : { data: [] }
+    const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
+
+    // Fetch customer orders for reservations (source_id is customer_order_item.id)
+    const reservationItemIds = sourceIdsByType.get('customer_order_reservation') || []
+    let reservationOrderMap = new Map<string, { orderId: string, orderNumber: string }>()
+    if (reservationItemIds.length > 0) {
+      // First, get the order_id from customer_order_items
+      const { data: reservationItems } = await supabaseServer
+        .from('customer_order_items')
+        .select('id, order_id')
+        .in('id', reservationItemIds)
+      
+      if (reservationItems && reservationItems.length > 0) {
+        const orderIds = [...new Set(reservationItems.map((item: any) => item.order_id))]
+        // Then fetch customer_orders to get order_number
+        const { data: reservationOrders } = await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', orderIds)
+        
+        // Create map: item_id -> { orderId, orderNumber }
+        const orderNumberMap = new Map((reservationOrders || []).map((co: any) => [co.id, co.order_number]))
+        reservationItems.forEach((item: any) => {
+          const orderNumber = orderNumberMap.get(item.order_id)
+          if (orderNumber) {
+            reservationOrderMap.set(item.id, { orderId: item.order_id, orderNumber })
+          }
+        })
+      }
+    }
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       const productName = sm.linear_materials?.name || ''
@@ -4520,8 +5331,23 @@ export async function getStockMovementsByLinearMaterial(
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
+        sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
+        // Customer order deletion - display special label
+        sourceReference = 'Ügyfél rendelés törlés'
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
+      }
+
+      // For reservations, get the order_id for linking
+      let sourceOrderId = sm.source_id
+      if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
+        const reservationInfo = reservationOrderMap.get(sm.source_id)
+        sourceOrderId = reservationInfo?.orderId || sm.source_id
       }
 
       return {
@@ -4534,7 +5360,7 @@ export async function getStockMovementsByLinearMaterial(
         quantity: Number(sm.quantity) || 0,
         movement_type: sm.movement_type,
         source_type: sm.source_type,
-        source_id: sm.source_id,
+        source_id: sourceOrderId, // Use order_id for reservations, original source_id for others
         source_reference: sourceReference,
         created_at: sm.created_at,
         note: sm.note || ''

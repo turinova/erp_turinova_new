@@ -83,6 +83,16 @@ export async function GET(request: NextRequest) {
       : { data: [] }
     const shipmentMap = new Map((shipments || []).map((s: any) => [s.id, s.shipment_number]))
 
+    // Fetch customer orders
+    const customerOrderIds = sourceIdsByType.get('customer_order_handover') || []
+    const { data: customerOrders } = customerOrderIds.length > 0
+      ? await supabaseServer
+          .from('customer_orders')
+          .select('id, order_number')
+          .in('id', customerOrderIds)
+      : { data: [] }
+    const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       // Get product name and SKU based on product_type
@@ -104,6 +114,8 @@ export async function GET(request: NextRequest) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
+        sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
       }

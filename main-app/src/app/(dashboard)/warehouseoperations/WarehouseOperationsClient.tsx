@@ -180,7 +180,9 @@ export default function WarehouseOperationsClient({
       'pos_sale': 'POS eladás',
       'purchase_receipt': 'Beszerzési bevételezés',
       'quote': 'Árajánlat',
-      'adjustment': 'Készletigazítás'
+      'adjustment': 'Készletigazítás',
+      'customer_order_handover': 'Megrendelés átadás',
+      'customer_order_reservation': 'Foglalás'
     }
     return labels[sourceType] || sourceType
   }
@@ -190,6 +192,10 @@ export default function WarehouseOperationsClient({
       return `/pos-orders/${row.source_id}`
     } else if (row.source_type === 'purchase_receipt' && row.source_id) {
       return `/shipments/${row.source_id}`
+    } else if (row.source_type === 'customer_order_handover' && row.source_id) {
+      return `/fulfillment-orders/${row.source_id}`
+    } else if (row.source_type === 'customer_order_reservation' && row.source_id) {
+      return `/fulfillment-orders/${row.source_id}`
     }
     return null
   }

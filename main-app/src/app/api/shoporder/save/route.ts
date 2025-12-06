@@ -263,6 +263,213 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ============================================
+    // DUAL WRITE: Create customer_order and customer_order_items
+    // ============================================
+    if (!isUpdate) {
+      try {
+        // Fetch VAT rates for price calculations
+        const { data: vatRates, error: vatError } = await supabaseServer
+          .from('vat')
+          .select('id, kulcs')
+          .is('deleted_at', null)
+
+        if (vatError) {
+          console.error('[CUSTOMER ORDER] Error fetching VAT rates:', vatError)
+        }
+
+        const vatMap = new Map((vatRates || []).map(v => [v.id, v.kulcs]))
+
+        // Create customer_order
+        const { data: customerOrderData, error: customerOrderError } = await supabaseServer
+          .from('customer_orders')
+          .insert({
+            worker_id: body.worker_id,
+            customer_name: body.customer_name,
+            customer_email: body.customer_email || null,
+            customer_mobile: body.customer_mobile || null,
+            customer_discount: parseFloat(body.customer_discount) || 0,
+            billing_name: body.billing_name || null,
+            billing_country: body.billing_country || null,
+            billing_city: body.billing_city || null,
+            billing_postal_code: body.billing_postal_code || null,
+            billing_street: body.billing_street || null,
+            billing_house_number: body.billing_house_number || null,
+            billing_tax_number: body.billing_tax_number || null,
+            billing_company_reg_number: body.billing_company_reg_number || null,
+            discount_percentage: parseFloat(body.customer_discount) || 0,
+            discount_amount: 0, // Will be calculated below
+            migrated_from_shop_order_id: orderData.id,
+            status: 'open'
+          })
+          .select('id')
+          .single()
+
+        if (customerOrderError || !customerOrderData) {
+          console.error('[CUSTOMER ORDER] Error creating customer_order:', customerOrderError)
+          // Don't fail the request, just log the error
+        } else {
+          // Create customer_order_items for all products
+          const customerOrderItems = []
+          let subtotalNet = 0
+          let totalVat = 0
+          let totalGross = 0
+
+          for (let i = 0; i < body.products.length; i++) {
+            const product = body.products[i]
+            const insertedItem = insertedItems?.[i]
+
+            if (!insertedItem) continue
+
+            // Fetch partner_id based on product type
+            let partnerId: string | null = null
+            
+            if (insertedItem.accessory_id) {
+              // Get partner_id from accessories
+              const { data: accessory, error: accessoryError } = await supabaseServer
+                .from('accessories')
+                .select('partners_id')
+                .eq('id', insertedItem.accessory_id)
+                .single()
+              
+              if (accessoryError) {
+                console.error(`[CUSTOMER ORDER] Error fetching accessory partner_id for ${insertedItem.accessory_id}:`, accessoryError)
+              } else {
+                partnerId = accessory?.partners_id || null
+                console.log(`[CUSTOMER ORDER] Fetched partner_id from accessory: ${partnerId}`)
+              }
+            } else if (insertedItem.material_id) {
+              // Get partner_id from materials
+              const { data: material, error: materialError } = await supabaseServer
+                .from('materials')
+                .select('partners_id')
+                .eq('id', insertedItem.material_id)
+                .single()
+              
+              if (materialError) {
+                console.error(`[CUSTOMER ORDER] Error fetching material partner_id for ${insertedItem.material_id}:`, materialError)
+                // Fallback to shop_order_items.partner_id if material query fails
+                partnerId = insertedItem.partner_id || product.partners_id || null
+                console.log(`[CUSTOMER ORDER] Using fallback partner_id from shop_order_item: ${partnerId}`)
+              } else {
+                partnerId = material?.partners_id || null
+                // If material doesn't have partners_id, fallback to shop_order_items.partner_id
+                if (!partnerId) {
+                  partnerId = insertedItem.partner_id || product.partners_id || null
+                  console.log(`[CUSTOMER ORDER] Material has no partners_id, using fallback from shop_order_item: ${partnerId}`)
+                } else {
+                  console.log(`[CUSTOMER ORDER] Fetched partner_id from material ${insertedItem.material_id}: ${partnerId}`)
+                }
+              }
+            } else if (insertedItem.linear_material_id) {
+              // Get partner_id from linear_materials
+              const { data: linearMaterial, error: linearMaterialError } = await supabaseServer
+                .from('linear_materials')
+                .select('partners_id')
+                .eq('id', insertedItem.linear_material_id)
+                .single()
+              
+              if (linearMaterialError) {
+                console.error(`[CUSTOMER ORDER] Error fetching linear_material partner_id for ${insertedItem.linear_material_id}:`, linearMaterialError)
+                // Fallback to shop_order_items.partner_id if linear_material query fails
+                partnerId = insertedItem.partner_id || product.partners_id || null
+                console.log(`[CUSTOMER ORDER] Using fallback partner_id from shop_order_item: ${partnerId}`)
+              } else {
+                partnerId = linearMaterial?.partners_id || null
+                // If linear_material doesn't have partners_id, fallback to shop_order_items.partner_id
+                if (!partnerId) {
+                  partnerId = insertedItem.partner_id || product.partners_id || null
+                  console.log(`[CUSTOMER ORDER] Linear material has no partners_id, using fallback from shop_order_item: ${partnerId}`)
+                } else {
+                  console.log(`[CUSTOMER ORDER] Fetched partner_id from linear_material: ${partnerId}`)
+                }
+              }
+            } else {
+              // For hand-written items (no FK), get partner_id from shop_order_items
+              // This was already saved when creating shop_order_items
+              partnerId = insertedItem.partner_id || product.partners_id || null
+              console.log(`[CUSTOMER ORDER] Using partner_id from shop_order_item or product: ${partnerId}`)
+            }
+
+            // Calculate prices
+            const basePrice = product.base_price || 0
+            const multiplier = product.multiplier || 1.38
+            const netPrice = Math.round(basePrice * multiplier)
+            const vatPercent = vatMap.get(product.vat_id) || 0
+            const grossPrice = Math.round(netPrice * (1 + vatPercent / 100))
+            const quantity = product.quantity || 0
+
+            const itemTotalNet = netPrice * quantity
+            const itemTotalGross = grossPrice * quantity
+            const itemTotalVat = itemTotalGross - itemTotalNet
+
+            subtotalNet += itemTotalNet
+            totalVat += itemTotalVat
+            totalGross += itemTotalGross
+
+            const customerOrderItem = {
+              order_id: customerOrderData.id,
+              shop_order_item_id: insertedItem.id,
+              item_type: 'product',
+              product_type: insertedItem.product_type || null,
+              accessory_id: insertedItem.accessory_id || null,
+              material_id: insertedItem.material_id || null,
+              linear_material_id: insertedItem.linear_material_id || null,
+              feetype_id: null,
+              product_name: product.name,
+              sku: product.sku || null,
+              quantity: quantity,
+              unit_price_net: netPrice,
+              unit_price_gross: grossPrice,
+              vat_id: product.vat_id || null,
+              currency_id: product.currency_id || null,
+              units_id: product.units_id || null,
+              partner_id: partnerId,
+              total_net: Math.round(itemTotalNet),
+              total_vat: Math.round(itemTotalVat),
+              total_gross: Math.round(itemTotalGross),
+              status: 'open',
+              purchase_order_item_id: null
+            }
+            
+            console.log(`[CUSTOMER ORDER] Creating customer_order_item for ${product.name} (${insertedItem.product_type}): partner_id=${partnerId}`)
+            
+            customerOrderItems.push(customerOrderItem)
+          }
+
+          // Calculate discount amount
+          const discountPercentage = parseFloat(body.customer_discount) || 0
+          const discountAmount = Math.round((totalGross * discountPercentage) / 100)
+          const totalGrossAfterDiscount = totalGross - discountAmount
+
+          // Insert customer_order_items
+          if (customerOrderItems.length > 0) {
+            const { error: itemsError } = await supabaseServer
+              .from('customer_order_items')
+              .insert(customerOrderItems)
+
+            if (itemsError) {
+              console.error('[CUSTOMER ORDER] Error creating customer_order_items:', itemsError)
+            } else {
+              // Update customer_order with calculated totals
+              await supabaseServer
+                .from('customer_orders')
+                .update({
+                  subtotal_net: Math.round(subtotalNet),
+                  total_vat: Math.round(totalVat),
+                  total_gross: Math.round(totalGrossAfterDiscount),
+                  discount_amount: discountAmount
+                })
+                .eq('id', customerOrderData.id)
+            }
+          }
+        }
+      } catch (error) {
+        // Don't fail the request if customer_order creation fails
+        console.error('[CUSTOMER ORDER] Error in dual write:', error)
+      }
+    }
+
     return NextResponse.json({ 
       success: true, 
       order_number: orderNumber,
