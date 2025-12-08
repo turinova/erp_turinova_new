@@ -4051,8 +4051,8 @@ export async function getShipmentById(id: string) {
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
           accessories:accessory_id (name, sku, barcode, base_price, multiplier),
-          materials:material_id (name),
-          linear_materials:linear_material_id (name)
+          materials:material_id (name, base_price, multiplier, length_mm, width_mm),
+          linear_materials:linear_material_id (name, base_price, multiplier, length)
         )
       `)
       .eq('shipment_id', id)
@@ -4102,6 +4102,8 @@ export async function getShipmentById(id: string) {
         sku,
         barcode,
         accessory_id: poi?.accessory_id || null,
+        material_id: poi?.material_id || null,
+        linear_material_id: poi?.linear_material_id || null,
         product_type: poi?.product_type || null,
         quantity_received: receivedQty,
         target_quantity: targetQty,
@@ -4112,8 +4114,11 @@ export async function getShipmentById(id: string) {
         currency_id: poi?.currency_id,
         units_id: poi?.units_id,
         note: si.note,
-        base_price: poi?.accessories?.base_price || null,
-        multiplier: poi?.accessories?.multiplier || null
+        base_price: poi?.accessories?.base_price || poi?.materials?.base_price || poi?.linear_materials?.base_price || null,
+        multiplier: poi?.accessories?.multiplier || poi?.materials?.multiplier || poi?.linear_materials?.multiplier || null,
+        material_length_mm: poi?.materials?.length_mm || null,
+        material_width_mm: poi?.materials?.width_mm || null,
+        linear_material_length: poi?.linear_materials?.length || null
       }
     })
 

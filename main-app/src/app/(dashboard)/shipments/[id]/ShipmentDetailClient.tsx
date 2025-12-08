@@ -43,6 +43,9 @@ interface ShipmentItem {
   note?: string
   base_price?: number | null
   multiplier?: number | null
+  material_length_mm?: number | null
+  material_width_mm?: number | null
+  linear_material_length?: number | null
 }
 
 interface ShipmentHeader {
@@ -101,7 +104,7 @@ export default function ShipmentDetailClient({
   const [updateBasePriceModalOpen, setUpdateBasePriceModalOpen] = useState(false)
   const [itemForBasePriceUpdate, setItemForBasePriceUpdate] = useState<ShipmentItem | null>(null)
   const [updatingBasePrice, setUpdatingBasePrice] = useState(false)
-  const [currentProductData, setCurrentProductData] = useState<{ base_price: number; multiplier: number } | null>(null)
+  const [currentProductData, setCurrentProductData] = useState<{ base_price: number; multiplier: number; material_length_mm?: number; material_width_mm?: number; linear_material_length?: number } | null>(null)
   const [confirmUpdateBasePriceOpen, setConfirmUpdateBasePriceOpen] = useState(false)
   const [newSellingPrice, setNewSellingPrice] = useState<number | null>(null)
   const [calculatedNewBasePrice, setCalculatedNewBasePrice] = useState<number | null>(null)
@@ -124,6 +127,26 @@ export default function ShipmentDetailClient({
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [productSearchResults, setProductSearchResults] = useState<any[]>([])
   const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+
+  // Debug: Log items data when it changes
+  useEffect(() => {
+    if (items.length > 0 && header?.status === 'received') {
+      const materialsItems = items.filter(item => item.product_type === 'material' || item.product_type === 'linear_material')
+      if (materialsItems.length > 0) {
+        console.log('[ShipmentDetail] Materials/Linear Materials items:', materialsItems.map(item => ({
+          product_type: item.product_type,
+          product_name: item.product_name,
+          material_id: item.material_id,
+          linear_material_id: item.linear_material_id,
+          base_price: item.base_price,
+          material_length_mm: item.material_length_mm,
+          material_width_mm: item.material_width_mm,
+          linear_material_length: item.linear_material_length,
+          net_price: item.net_price
+        })))
+      }
+    }
+  }, [items, header?.status])
 
   // Only fetch if we don't have initial data
   useEffect(() => {
@@ -944,10 +967,24 @@ export default function ShipmentDetailClient({
       }
 
       const productData = await response.json()
-      setCurrentProductData({
+      
+      // Store product data with dimensions
+      const productDataWithDims = {
         base_price: productData.base_price || 0,
-        multiplier: productData.multiplier || 1.38
-      })
+        multiplier: productData.multiplier || 1.38,
+        material_length_mm: productData.length_mm || item.material_length_mm || null,
+        material_width_mm: productData.width_mm || item.material_width_mm || null,
+        linear_material_length: productData.length || item.linear_material_length || null
+      }
+      setCurrentProductData(productDataWithDims)
+
+      // Calculate effective base_price for initial calculation
+      let effectiveBasePrice = productData.base_price || 0
+      if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
+        effectiveBasePrice = productData.base_price * (productDataWithDims.material_length_mm * productDataWithDims.material_width_mm / 1000000)
+      } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
+        effectiveBasePrice = productData.base_price * (productDataWithDims.linear_material_length / 1000)
+      }
 
       // Calculate initial new selling price from PO net_price
       const vatPercent = vatRates.get(item.vat_id) || 0
@@ -955,7 +992,17 @@ export default function ShipmentDetailClient({
         (item.net_price * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
       ) * 10
       setNewSellingPrice(initialNewSellingPrice)
-      setCalculatedNewBasePrice(item.net_price)
+      
+      // For materials/linear_materials, we need to convert PO net_price back to per-unit base_price
+      if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
+        const areaM2 = (productDataWithDims.material_length_mm * productDataWithDims.material_width_mm) / 1000000
+        setCalculatedNewBasePrice(Math.round(item.net_price / areaM2))
+      } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
+        const lengthM = productDataWithDims.linear_material_length / 1000
+        setCalculatedNewBasePrice(Math.round(item.net_price / lengthM))
+      } else {
+        setCalculatedNewBasePrice(item.net_price)
+      }
 
       setUpdateBasePriceModalOpen(true)
     } catch (error: any) {
@@ -973,8 +1020,24 @@ export default function ShipmentDetailClient({
     if (newSellingPrice !== null && currentProductData && itemForBasePriceUpdate) {
       const vatPercent = vatRates.get(itemForBasePriceUpdate.vat_id) || 0
       // Calculate backwards: base_price = selling_price / (multiplier * (1 + VAT%))
-      const calculatedBasePrice = newSellingPrice / (currentProductData.multiplier * (1 + vatPercent / 100))
-      setCalculatedNewBasePrice(Math.round(calculatedBasePrice))
+      // This gives us the effective base_price (for whole board/length)
+      const calculatedEffectiveBasePrice = newSellingPrice / (currentProductData.multiplier * (1 + vatPercent / 100))
+      
+      // For materials and linear_materials, we need to convert back to per-unit base_price
+      if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
+        // Convert from whole board price to per m² price
+        const areaM2 = (currentProductData.material_length_mm * currentProductData.material_width_mm) / 1000000
+        const perM2BasePrice = calculatedEffectiveBasePrice / areaM2
+        setCalculatedNewBasePrice(Math.round(perM2BasePrice))
+      } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
+        // Convert from whole length price to per m price
+        const lengthM = currentProductData.linear_material_length / 1000
+        const perMBasePrice = calculatedEffectiveBasePrice / lengthM
+        setCalculatedNewBasePrice(Math.round(perMBasePrice))
+      } else {
+        // For accessories, use as-is
+        setCalculatedNewBasePrice(Math.round(calculatedEffectiveBasePrice))
+      }
     }
   }, [newSellingPrice, currentProductData, itemForBasePriceUpdate, vatRates])
 
@@ -2090,8 +2153,39 @@ export default function ShipmentDetailClient({
                       </TableCell>
                       {header.status === 'received' && (
                         <TableCell align="right">
-                          {item.base_price && item.base_price > 0 ? (() => {
-                            const percentage = ((item.net_price - item.base_price) / item.base_price) * 100
+                          {(() => {
+                            // Check if we have base_price
+                            if (!item.base_price || item.base_price <= 0) {
+                              return '-'
+                            }
+                            
+                            // Calculate effective base_price based on product type
+                            let effectiveBasePrice = item.base_price
+                            
+                            if (item.product_type === 'material') {
+                              if (item.material_length_mm && item.material_width_mm) {
+                                // Materials: base_price is per m², net_price is for whole board
+                                effectiveBasePrice = item.base_price * (item.material_length_mm * item.material_width_mm / 1000000)
+                              } else {
+                                // Missing dimensions, can't calculate
+                                return '-'
+                              }
+                            } else if (item.product_type === 'linear_material') {
+                              if (item.linear_material_length) {
+                                // Linear materials: base_price is per m, net_price is for whole length
+                                effectiveBasePrice = item.base_price * (item.linear_material_length / 1000)
+                              } else {
+                                // Missing length, can't calculate
+                                return '-'
+                              }
+                            }
+                            // For accessories, base_price is already the effective price
+                            
+                            if (effectiveBasePrice <= 0) {
+                              return '-'
+                            }
+                            
+                            const percentage = ((item.net_price - effectiveBasePrice) / effectiveBasePrice) * 100
                             const formattedPercentage = percentage > 0 
                               ? `+${percentage.toFixed(1)}%` 
                               : percentage < 0 
@@ -2108,7 +2202,7 @@ export default function ShipmentDetailClient({
                                 {formattedPercentage}
                               </Typography>
                             )
-                          })() : '-'}
+                          })()}
                         </TableCell>
                       )}
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.net_total)} Ft</TableCell>
@@ -2141,16 +2235,23 @@ export default function ShipmentDetailClient({
                               >
                                 <PrintIcon fontSize="small" />
                               </IconButton>
-                              {(item.accessory_id || item.material_id || item.linear_material_id) && (
-                                <IconButton 
-                                  size="small" 
-                                  onClick={() => handleOpenUpdateBasePriceModal(item)}
-                                  color="primary"
-                                  title="Base price frissítése"
-                                >
-                                  <PriceCheckIcon fontSize="small" />
-                                </IconButton>
-                              )}
+                              {(() => {
+                                // Show button if item has FK (accessory_id, material_id, or linear_material_id)
+                                const hasFK = !!(item.accessory_id || item.material_id || item.linear_material_id)
+                                
+                                if (!hasFK) return null
+                                
+                                return (
+                                  <IconButton 
+                                    size="small" 
+                                    onClick={() => handleOpenUpdateBasePriceModal(item)}
+                                    color="primary"
+                                    title="Nettó beszerzési ár frissítése"
+                                  >
+                                    <PriceCheckIcon fontSize="small" />
+                                  </IconButton>
+                                )
+                              })()}
                             </>
                           )}
                           <IconButton 
@@ -2963,7 +3064,16 @@ export default function ShipmentDetailClient({
                           Beszerzési nettó ár:
                         </Typography>
                         <Typography variant="body1" fontWeight="bold">
-                          {new Intl.NumberFormat('hu-HU').format(currentProductData.base_price)} Ft
+                          {(() => {
+                            // Calculate effective base_price for display
+                            let effectiveBasePrice = currentProductData.base_price
+                            if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
+                              effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
+                            } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
+                              effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
+                            }
+                            return new Intl.NumberFormat('hu-HU').format(effectiveBasePrice)
+                          })()} Ft
                         </Typography>
                       </Box>
                       <Box>
@@ -2980,7 +3090,15 @@ export default function ShipmentDetailClient({
                         </Typography>
                         <Typography variant="body1" fontWeight="bold">
                           {new Intl.NumberFormat('hu-HU').format(
-                            currentProductData.base_price * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                            (() => {
+                              let effectiveBasePrice = currentProductData.base_price
+                              if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
+                                effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
+                              } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
+                                effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
+                              }
+                              return effectiveBasePrice * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                            })()
                           )} Ft
                         </Typography>
                       </Box>
@@ -2992,7 +3110,15 @@ export default function ShipmentDetailClient({
                         <Typography variant="h6" color="error.main" fontWeight="bold">
                           {new Intl.NumberFormat('hu-HU').format(
                             Math.ceil(
-                              (currentProductData.base_price * currentProductData.multiplier * (1 + (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100)) / 10
+                              (() => {
+                                let effectiveBasePrice = currentProductData.base_price
+                                if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
+                                  effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
+                                } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
+                                  effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
+                                }
+                                return (effectiveBasePrice * currentProductData.multiplier * (1 + (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100)) / 10
+                              })()
                             ) * 10
                           )} Ft
                         </Typography>
@@ -3013,7 +3139,22 @@ export default function ShipmentDetailClient({
                           Beszerzési nettó ár (PO nettó egységár):
                         </Typography>
                         <Typography variant="body1" fontWeight="bold" color="primary.main">
-                          {new Intl.NumberFormat('hu-HU').format(calculatedNewBasePrice || itemForBasePriceUpdate.net_price)} Ft
+                          {new Intl.NumberFormat('hu-HU').format(
+                            (() => {
+                              // Calculate effective base_price for display
+                              let effectiveBasePrice = calculatedNewBasePrice || itemForBasePriceUpdate.net_price
+                              if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm && calculatedNewBasePrice) {
+                                // calculatedNewBasePrice is per m², convert to whole board
+                                const areaM2 = (currentProductData.material_length_mm * currentProductData.material_width_mm) / 1000000
+                                effectiveBasePrice = calculatedNewBasePrice * areaM2
+                              } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length && calculatedNewBasePrice) {
+                                // calculatedNewBasePrice is per m, convert to whole length
+                                const lengthM = currentProductData.linear_material_length / 1000
+                                effectiveBasePrice = calculatedNewBasePrice * lengthM
+                              }
+                              return effectiveBasePrice
+                            })()
+                          )} Ft
                         </Typography>
                       </Box>
                       <Box>
@@ -3030,7 +3171,17 @@ export default function ShipmentDetailClient({
                         </Typography>
                         <Typography variant="body1" fontWeight="bold">
                           {new Intl.NumberFormat('hu-HU').format(
-                            (calculatedNewBasePrice || itemForBasePriceUpdate.net_price) * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                            (() => {
+                              let effectiveBasePrice = calculatedNewBasePrice || itemForBasePriceUpdate.net_price
+                              if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm && calculatedNewBasePrice) {
+                                const areaM2 = (currentProductData.material_length_mm * currentProductData.material_width_mm) / 1000000
+                                effectiveBasePrice = calculatedNewBasePrice * areaM2
+                              } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length && calculatedNewBasePrice) {
+                                const lengthM = currentProductData.linear_material_length / 1000
+                                effectiveBasePrice = calculatedNewBasePrice * lengthM
+                              }
+                              return effectiveBasePrice * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                            })()
                           )} Ft
                         </Typography>
                       </Box>

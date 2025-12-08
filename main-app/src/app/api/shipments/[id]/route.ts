@@ -39,8 +39,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
           accessories:accessory_id (name, sku, barcode, base_price, multiplier),
-          materials:material_id (name, base_price, multiplier),
-          linear_materials:linear_material_id (name, base_price, multiplier)
+          materials:material_id (name, base_price, multiplier, length_mm, width_mm),
+          linear_materials:linear_material_id (name, base_price, multiplier, length)
         )
       `)
       .eq('shipment_id', id)
@@ -103,7 +103,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         units_id: poi?.units_id,
         note: si.note,
         base_price: poi?.accessories?.base_price || poi?.materials?.base_price || poi?.linear_materials?.base_price || null,
-        multiplier: poi?.accessories?.multiplier || poi?.materials?.multiplier || poi?.linear_materials?.multiplier || null
+        multiplier: poi?.accessories?.multiplier || poi?.materials?.multiplier || poi?.linear_materials?.multiplier || null,
+        material_length_mm: poi?.materials?.length_mm || null,
+        material_width_mm: poi?.materials?.width_mm || null,
+        linear_material_length: poi?.linear_materials?.length || null
       }
     })
 
