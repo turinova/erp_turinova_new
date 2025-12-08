@@ -902,7 +902,7 @@ export default function ShipmentDetailClient({
     // - Termék név: 5.3mm
     // - SKU: 3.0mm
     // - Price: 8.3mm
-    // - Barcode: 8.3mm
+    // - Barcode: 10.375mm (increased by 25% from 8.3mm)
     // Total: 25mm
     // No padding, no margin, no gaps
     
@@ -914,7 +914,7 @@ export default function ShipmentDetailClient({
     if (fields.showName) gridRows.push('5.3mm')
     if (fields.showSku && item.sku) gridRows.push('3.0mm')
     if (fields.showPrice) gridRows.push('8.3mm')
-    if (fields.showBarcode && item.barcode) gridRows.push('8.3mm')
+    if (fields.showBarcode && item.barcode) gridRows.push('10.375mm') // Increased by 25%
     
     return (
       <div
@@ -1016,7 +1016,7 @@ export default function ShipmentDetailClient({
           </div>
         )}
 
-        {/* Section 3: Price - 8.3mm */}
+        {/* Section 3: Price - 8.3mm - Flush to bottom (on top of barcode) */}
         {fields.showPrice && (
           <div
             style={{
@@ -1024,7 +1024,7 @@ export default function ShipmentDetailClient({
               height: '100%',
               alignSelf: 'stretch',
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'flex-end',
               justifyContent: 'center',
               overflow: 'hidden',
               padding: 0,
@@ -1044,7 +1044,7 @@ export default function ShipmentDetailClient({
                 width: '100%',
                 height: '100%',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 justifyContent: 'center',
                 overflow: 'hidden'
               }}
@@ -1054,7 +1054,7 @@ export default function ShipmentDetailClient({
           </div>
         )}
 
-        {/* Section 4: Barcode - 8.3mm - Flush to bottom */}
+        {/* Section 4: Barcode - 10.375mm (increased by 25%) - Flush to bottom */}
         {fields.showBarcode && item.barcode && (
           <div
             style={{
@@ -1086,7 +1086,7 @@ export default function ShipmentDetailClient({
                 value={item.barcode}
                 format="CODE128"
                 width={2.5}
-                height={32}
+                height={50}
                 fontSize={10}
                 displayValue={false}
                 margin={0}
@@ -1355,7 +1355,7 @@ export default function ShipmentDetailClient({
             overflow: hidden !important;
           }
           
-          /* SVG barcode - force to bottom with no spacing */
+          /* SVG barcode - force to fill container height with no spacing */
           #label-print-container svg {
             margin: 0 !important;
             padding: 0 !important;
@@ -1363,9 +1363,10 @@ export default function ShipmentDetailClient({
             vertical-align: bottom !important;
             align-self: flex-end !important;
             width: 100% !important;
-            height: auto !important;
+            height: 100% !important;
             max-height: 100% !important;
             overflow: visible !important;
+            object-fit: fill !important;
           }
           
           /* All SVG children */
@@ -2504,7 +2505,7 @@ export default function ShipmentDetailClient({
                         if (labelFields.showName) rows.push('40px') // 5.3mm * 2x
                         if (labelFields.showSku && itemToPrint.sku) rows.push('22.68px') // 3.0mm * 2x
                         if (labelFields.showPrice) rows.push('62.74px') // 8.3mm * 2x
-                        if (labelFields.showBarcode && itemToPrint.barcode) rows.push('62.74px') // 8.3mm * 2x
+                        if (labelFields.showBarcode && itemToPrint.barcode) rows.push('78.425px') // 10.375mm * 2x (increased by 25%)
                         return rows.join(' ')
                       })(),
                       gridTemplateColumns: '100%',
@@ -2602,7 +2603,7 @@ export default function ShipmentDetailClient({
                       </div>
                     )}
 
-                    {/* Section 3: Price - 8.3mm * 2x = 16.6mm = 62.74px */}
+                    {/* Section 3: Price - 8.3mm * 2x = 16.6mm = 62.74px - Flush to bottom (on top of barcode) */}
                     {labelFields.showPrice && (
                       <div
                         style={{
@@ -2610,7 +2611,7 @@ export default function ShipmentDetailClient({
                           height: '100%',
                           alignSelf: 'stretch',
                           display: 'flex',
-                          alignItems: 'center',
+                          alignItems: 'flex-end',
                           justifyContent: 'center',
                           overflow: 'hidden',
                           padding: 0,
@@ -2630,7 +2631,7 @@ export default function ShipmentDetailClient({
                             width: '100%',
                             height: '100%',
                             display: 'flex',
-                            alignItems: 'center',
+                            alignItems: 'flex-end',
                             justifyContent: 'center',
                             overflow: 'hidden'
                           }}
@@ -2640,7 +2641,7 @@ export default function ShipmentDetailClient({
                       </div>
                     )}
 
-                    {/* Section 4: Barcode - 8.3mm * 2x = 16.6mm = 62.74px - Flush to bottom */}
+                    {/* Section 4: Barcode - 10.375mm * 2x = 20.75mm = 78.425px (increased by 25%) - Flush to bottom */}
                     {labelFields.showBarcode && itemToPrint.barcode && (
                       <div
                         style={{
@@ -2672,7 +2673,7 @@ export default function ShipmentDetailClient({
                             value={itemToPrint.barcode}
                             format="CODE128"
                             width={2.5}
-                            height={50}
+                            height={62.5}
                             fontSize={10}
                             displayValue={false}
                             margin={0}

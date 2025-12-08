@@ -27,7 +27,8 @@ import {
   FormatAlignJustify as AlignJustifyIcon,
   TableChart as TableIcon,
   Draw as SignatureIcon,
-  Description as TemplateIcon
+  Description as TemplateIcon,
+  DeleteSweep as DeleteSweepIcon
 } from '@mui/icons-material'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
@@ -69,7 +70,8 @@ const EditorToolbar = ({
   onInsertSignature,
   hasSignature,
   onInsertTemplate,
-  hasTemplate
+  hasTemplate,
+  onRemoveSKUs
 }: { 
   editor: Editor | null
   onInsertTable: () => void
@@ -77,6 +79,7 @@ const EditorToolbar = ({
   hasSignature: boolean
   onInsertTemplate: () => void
   hasTemplate: boolean
+  onRemoveSKUs: () => void
 }) => {
   if (!editor) {
     return null
@@ -241,6 +244,20 @@ const EditorToolbar = ({
           </IconButton>
         </>
       )}
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+      <IconButton
+        size="small"
+        onClick={onRemoveSKUs}
+        color="primary"
+        sx={{ 
+          border: 1, 
+          borderColor: 'primary.main',
+          borderRadius: 1
+        }}
+        title="SKU eltávolítása a tételekből"
+      >
+        <DeleteSweepIcon fontSize="small" />
+      </IconButton>
     </Box>
   )
 }
@@ -389,10 +406,11 @@ export default function EmailComposeModal({
             const productName = item.description || '-'
             
             // Include SKU only for accessories (not for materials or linear_materials)
+            // Make list number, quantity and unit bold by default
             if (item.product_type === 'accessory' && item.accessories?.sku) {
-              listHTML += `${index + 1}. ${productName} - ${item.accessories.sku} - ${item.quantity} - ${unitName}<br>`
+              listHTML += `<strong>${index + 1}.</strong> ${productName} - ${item.accessories.sku} - <strong>${item.quantity} - ${unitName}</strong><br>`
             } else {
-              listHTML += `${index + 1}. ${productName} - ${item.quantity} - ${unitName}<br>`
+              listHTML += `<strong>${index + 1}.</strong> ${productName} - <strong>${item.quantity} - ${unitName}</strong><br>`
             }
           })
           content += listHTML + '<br>'
@@ -495,10 +513,11 @@ export default function EmailComposeModal({
       const productName = item.description || '-'
       
       // Include SKU only for accessories (not for materials or linear_materials)
+      // Make list number, quantity and unit bold by default
       if (item.product_type === 'accessory' && item.accessories?.sku) {
-        listHTML += `${index + 1}. ${productName} - ${item.accessories.sku} - ${item.quantity} - ${unitName}<br>`
+        listHTML += `<strong>${index + 1}.</strong> ${productName} - ${item.accessories.sku} - <strong>${item.quantity} - ${unitName}</strong><br>`
       } else {
-        listHTML += `${index + 1}. ${productName} - ${item.quantity} - ${unitName}<br>`
+        listHTML += `<strong>${index + 1}.</strong> ${productName} - <strong>${item.quantity} - ${unitName}</strong><br>`
       }
     })
 
@@ -527,6 +546,57 @@ export default function EmailComposeModal({
     // Insert signature HTML at cursor position
     editor.chain().focus().insertContent(signature).run()
     toast.success('Aláírás beszúrva')
+  }
+
+  const handleRemoveSKUs = () => {
+    if (!editor) {
+      return
+    }
+
+    // Get current HTML content
+    const currentHTML = editor.getHTML()
+    
+    // Pattern to match: number. Product Name - SKU - Quantity - Unit<br>
+    // Format from code: `<strong>${index + 1}.</strong> ${productName} - ${item.accessories.sku} - <strong>${item.quantity} - ${unitName}</strong><br>`
+    // We want to remove the SKU part (the second segment between dashes)
+    // Note: List number and quantity/unit may be wrapped in <strong> tags
+    
+    // Strategy: Match lines that have the pattern with 4 segments where:
+    // - Segment 1: List number (may be in <strong> tags) and product name
+    // - Segment 2: SKU (what we want to remove)
+    // - Segment 3: Quantity and unit (may be wrapped in <strong> tags together)
+    
+    // Regex pattern to handle both with and without <strong> tags:
+    // (<strong>)?(\d+)\.(</strong>)?\s* - matches list number (optional bold: "<strong>1.</strong>" or "1.")
+    // (.*?) - matches product name (non-greedy, stops at first " - ")
+    // \s*-\s* - matches " - " separator
+    // (.*?) - matches SKU (non-greedy, stops at next " - ")
+    // \s*-\s* - matches " - " separator
+    // (<strong>)? - optional opening <strong> tag for quantity/unit
+    // (\d+(?:[.,]\d+)?\s*-\s*[^<]+) - matches "quantity - unit" (may include spaces)
+    // (</strong>)? - optional closing </strong> tag
+    const pattern = /(<strong>)?(\d+)\.(<\/strong>)?\s*(.*?)\s*-\s*(.*?)\s*-\s*(<strong>)?(\d+(?:[.,]\d+)?\s*-\s*[^<]+)(<\/strong>)?/g
+    
+    // Replace: keep list number (with bold if present) + product name, skip SKU, keep quantity and unit with bold tags
+    const newHTML = currentHTML.replace(pattern, (match, p1, p2, p3, p4, p5, p6, p7, p8) => {
+      // p1 = "<strong>" or undefined (for list number)
+      // p2 = "1" (list number)
+      // p3 = "</strong>" or undefined (for list number)
+      // p4 = "Product Name"
+      // p5 = "SKU" (we skip this)
+      // p6 = "<strong>" or undefined (for quantity/unit)
+      // p7 = "Quantity - Unit" (e.g., "12 - db")
+      // p8 = "</strong>" or undefined (for quantity/unit)
+      const listBoldOpen = p1 || ''
+      const listBoldClose = p3 || ''
+      const qtyBoldOpen = p6 || ''
+      const qtyBoldClose = p8 || ''
+      return `${listBoldOpen}${p2}.${listBoldClose} ${p4} - ${qtyBoldOpen}${p7}${qtyBoldClose}`
+    })
+    
+    // Update editor content
+    editor.commands.setContent(newHTML)
+    toast.success('SKU-k eltávolítva')
   }
 
   return (
@@ -589,6 +659,7 @@ export default function EmailComposeModal({
               hasSignature={!!signature}
               onInsertTemplate={handleInsertTemplate}
               hasTemplate={!!partnerTemplate}
+              onRemoveSKUs={handleRemoveSKUs}
             />
             <Box
               sx={{
