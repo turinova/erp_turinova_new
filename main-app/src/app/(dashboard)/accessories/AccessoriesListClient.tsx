@@ -370,6 +370,13 @@ export default function AccessoriesListClient({
   }, [accessoryToPrint])
 
   // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
+  // Fixed-height vertical sections using CSS Grid:
+  // - Termék név: 5.3mm
+  // - SKU: 3.0mm
+  // - Price: 8.3mm
+  // - Barcode: 10.375mm (increased by 25% from 8.3mm)
+  // Total: 25mm
+  // No padding, no margin, no gaps
   const PrintLabel = ({ accessory, fields, price, productName }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string }) => {
     const text = productName || accessory.name || 'N/A'
     const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
@@ -379,7 +386,7 @@ export default function AccessoriesListClient({
     if (fields.showName) gridRows.push('5.3mm')
     if (fields.showSku && accessory.sku) gridRows.push('3.0mm')
     if (fields.showPrice) gridRows.push('8.3mm')
-    if (fields.showBarcode && accessory.barcode) gridRows.push('8.3mm')
+    if (fields.showBarcode && accessory.barcode) gridRows.push('10.375mm') // Increased by 25%
     
     return (
       <div
@@ -481,7 +488,7 @@ export default function AccessoriesListClient({
           </div>
         )}
 
-        {/* Section 3: Price - 8.3mm */}
+        {/* Section 3: Price - 8.3mm - Flush to bottom (on top of barcode) */}
         {fields.showPrice && (
           <div
             style={{
@@ -489,7 +496,7 @@ export default function AccessoriesListClient({
               height: '100%',
               alignSelf: 'stretch',
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'flex-end',
               justifyContent: 'center',
               overflow: 'hidden',
               padding: 0,
@@ -509,7 +516,7 @@ export default function AccessoriesListClient({
                 width: '100%',
                 height: '100%',
                 display: 'flex',
-                alignItems: 'center',
+                alignItems: 'flex-end',
                 justifyContent: 'center',
                 overflow: 'hidden'
               }}
@@ -519,7 +526,7 @@ export default function AccessoriesListClient({
           </div>
         )}
 
-        {/* Section 4: Barcode - 8.3mm - Flush to bottom */}
+        {/* Section 4: Barcode - 10.375mm (increased by 25%) - Flush to bottom */}
         {fields.showBarcode && accessory.barcode && (
           <div
             style={{
@@ -551,7 +558,7 @@ export default function AccessoriesListClient({
                 value={accessory.barcode}
                 format="CODE128"
                 width={2.5}
-                height={32}
+                height={50}
                 fontSize={10}
                 displayValue={false}
                 margin={0}
@@ -776,10 +783,18 @@ export default function AccessoriesListClient({
             flex-grow: 0 !important;
           }
           
-          /* SVG barcode - align to bottom */
+          /* SVG barcode - force to fill container height with no spacing */
           #label-print-container svg {
+            margin: 0 !important;
+            padding: 0 !important;
+            display: block !important;
             vertical-align: bottom !important;
             align-self: flex-end !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            overflow: visible !important;
+            object-fit: fill !important;
           }
           
           /* Barcode container - align to bottom */
