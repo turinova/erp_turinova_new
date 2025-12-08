@@ -404,6 +404,22 @@ export default function ShipmentDetailClient({
     })
   }
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Scanners often send US keyboard codes but browser interprets as Hungarian layout
+  const normalizeBarcode = (input: string): string => {
+    // Map incorrect characters to correct ones
+    const charMap: Record<string, string> = {
+      'ü': '-',  // Scanner sends - but browser interprets as ü
+      'ö': '0',  // Scanner sends 0 but browser interprets as ö
+      // Add more mappings as needed if other characters are affected
+    }
+    
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
   // Handle barcode input change (debounced for scanner)
   const handleBarcodeInputChange = (value: string) => {
     // Don't process barcode input when modal is open
@@ -411,7 +427,9 @@ export default function ShipmentDetailClient({
       return
     }
     
-    setBarcodeInput(value)
+    // Normalize the input to fix keyboard layout issues
+    const normalizedValue = normalizeBarcode(value)
+    setBarcodeInput(normalizedValue)
 
     // Clear previous timeout
     if (scanTimeoutRef.current) {
@@ -421,7 +439,7 @@ export default function ShipmentDetailClient({
 
     // Set new timeout - trigger scan when input stops changing for 100ms
     scanTimeoutRef.current = setTimeout(() => {
-      const trimmedValue = value.trim()
+      const trimmedValue = normalizedValue.trim()
       if (trimmedValue.length > 0 && !isScanningRef.current && header?.status === 'draft' && !receiveConfirmOpen) {
         handleBarcodeScan(trimmedValue)
       }
@@ -436,7 +454,8 @@ export default function ShipmentDetailClient({
       return
     }
 
-    const trimmedBarcode = barcode.trim()
+    // Normalize barcode again (in case it wasn't normalized in input handler)
+    const normalizedBarcode = normalizeBarcode(barcode.trim())
 
     // Prevent multiple scans while one is in progress
     if (isScanningRef.current) {
@@ -454,8 +473,8 @@ export default function ShipmentDetailClient({
     isScanningRef.current = true
 
     try {
-      // Fetch accessory by barcode
-      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}`)
+      // Fetch accessory by barcode (using normalized barcode)
+      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(normalizedBarcode)}`)
       
       if (!response.ok) {
         const data = await response.json()
@@ -1593,9 +1612,10 @@ export default function ShipmentDetailClient({
                 clearTimeout(scanTimeoutRef.current)
                 scanTimeoutRef.current = null
               }
-              const trimmedValue = barcodeInput.trim()
-              if (trimmedValue.length > 0 && !isScanningRef.current) {
-                handleBarcodeScan(trimmedValue)
+              // Normalize barcode before scanning (fix keyboard layout issues)
+              const normalizedValue = normalizeBarcode(barcodeInput.trim())
+              if (normalizedValue.length > 0 && !isScanningRef.current) {
+                handleBarcodeScan(normalizedValue)
               }
             }
           }}
