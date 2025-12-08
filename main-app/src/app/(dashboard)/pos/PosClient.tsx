@@ -486,6 +486,19 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     }
   }, [debouncedSearchTerm])
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0'
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
   // Handle barcode input change (debounced for scanner - optimized to 100ms)
   const handleBarcodeInputChange = (value: string) => {
     // Check if we're in a critical editing field FIRST (before any processing)
@@ -513,7 +526,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       // Otherwise, allow barcode scanning to continue
     }
 
-    setBarcodeInput(value)
+    const normalizedValue = normalizeBarcode(value)
+    setBarcodeInput(normalizedValue)
 
     // Clear previous timeout
     if (scanTimeoutRef.current) {
@@ -524,7 +538,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     // Set new timeout - trigger scan when input stops changing for 100ms (optimized from 300ms)
     // Barcode scanners typically send characters very quickly, so we wait a bit
     scanTimeoutRef.current = setTimeout(() => {
-      const trimmedValue = value.trim()
+      const trimmedValue = normalizedValue.trim()
       // Double-check active element before scanning
       const currentActiveElement = document.activeElement
       const stillInCriticalField = 
@@ -594,10 +608,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       return
     }
 
-    const trimmedBarcode = barcode.trim()
+    const normalizedBarcode = normalizeBarcode(barcode.trim())
 
     // Check cache first
-    const cached = barcodeCacheRef.current.get(trimmedBarcode)
+    const cached = barcodeCacheRef.current.get(normalizedBarcode)
     const now = Date.now()
     if (cached && (now - cached.timestamp) < CACHE_TTL) {
       // Cache hit - use cached data
@@ -621,10 +635,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     // This prevents accidental double-scans from the same barcode scanner input
     if (
       lastScannedBarcodeRef.current &&
-      lastScannedBarcodeRef.current.barcode === trimmedBarcode &&
+      lastScannedBarcodeRef.current.barcode === normalizedBarcode &&
       now - lastScannedBarcodeRef.current.timestamp < 200
     ) {
-      console.log('Duplicate scan ignored (too fast):', trimmedBarcode)
+      console.log('Duplicate scan ignored (too fast):', normalizedBarcode)
       setBarcodeInput('')
       refocusBarcodeInput()
       return
@@ -650,14 +664,14 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
     // Mark as scanning
     isScanningRef.current = true
-    lastScannedBarcodeRef.current = { barcode: trimmedBarcode, timestamp: now }
+    lastScannedBarcodeRef.current = { barcode: normalizedBarcode, timestamp: now }
 
     // Create new AbortController for this request
     const abortController = new AbortController()
     scanAbortControllerRef.current = abortController
 
     try {
-      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}`, {
+      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(normalizedBarcode)}`, {
         signal: abortController.signal
       })
 
@@ -695,7 +709,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
           barcodeCacheRef.current.delete(firstKey)
         }
       }
-      barcodeCacheRef.current.set(trimmedBarcode, { data: product, timestamp: now })
+      barcodeCacheRef.current.set(normalizedBarcode, { data: product, timestamp: now })
 
       // Add to cart and get the item ID that was added/updated
       const addedItemId = handleAddToCart(product)
@@ -1226,9 +1240,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                   scanTimeoutRef.current = null
                 }
                 // Trigger scan immediately
-                const trimmedValue = barcodeInput.trim()
-                if (trimmedValue.length > 0 && !isScanningRef.current) {
-                  handleBarcodeScan(trimmedValue)
+                const normalizedValue = normalizeBarcode(barcodeInput.trim())
+                if (normalizedValue.length > 0 && !isScanningRef.current) {
+                  handleBarcodeScan(normalizedValue)
                 }
               }
             }}
