@@ -108,6 +108,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           .eq('id', upd.accessory_id)
           .single()
 
+        // Get PO item to fetch product type and IDs
+        const { data: poItem } = await supabaseServer
+          .from('purchase_order_items')
+          .select('product_type, accessory_id, material_id, linear_material_id, barcode')
+          .eq('id', newShipmentItem.purchase_order_item_id)
+          .single()
+
         // Return the created item details
         return NextResponse.json({ 
           success: true,
@@ -116,6 +123,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
             purchase_order_item_id: newShipmentItem.purchase_order_item_id,
             product_name: accessory?.name || 'Unknown',
             sku: accessory?.sku || '',
+            barcode: poItem?.barcode || null,
+            accessory_id: poItem?.accessory_id || null,
+            material_id: poItem?.material_id || null,
+            linear_material_id: poItem?.linear_material_id || null,
+            product_type: poItem?.product_type || null,
             quantity_received: newShipmentItem.quantity_received,
             target_quantity: Number(upd.quantity_received), // Matches PO item quantity
             net_price: Math.round(Number(upd.net_price) || 0),

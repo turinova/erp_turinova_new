@@ -39,8 +39,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           id, description, quantity, net_price, vat_id, currency_id, units_id,
           product_type, accessory_id, material_id, linear_material_id,
           accessories:accessory_id (name, sku, barcode, base_price, multiplier),
-          materials:material_id (name),
-          linear_materials:linear_material_id (name)
+          materials:material_id (name, base_price, multiplier),
+          linear_materials:linear_material_id (name, base_price, multiplier)
         )
       `)
       .eq('shipment_id', id)
@@ -90,6 +90,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         sku,
         barcode,
         accessory_id: poi?.accessory_id || null,
+        material_id: poi?.material_id || null,
+        linear_material_id: poi?.linear_material_id || null,
         product_type: poi?.product_type || null,
         quantity_received: receivedQty,
         target_quantity: targetQty,
@@ -100,8 +102,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         currency_id: poi?.currency_id,
         units_id: poi?.units_id,
         note: si.note,
-        base_price: poi?.accessories?.base_price || null,
-        multiplier: poi?.accessories?.multiplier || null
+        base_price: poi?.accessories?.base_price || poi?.materials?.base_price || poi?.linear_materials?.base_price || null,
+        multiplier: poi?.accessories?.multiplier || poi?.materials?.multiplier || poi?.linear_materials?.multiplier || null
       }
     })
 

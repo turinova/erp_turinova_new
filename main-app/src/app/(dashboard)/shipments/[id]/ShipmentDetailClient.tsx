@@ -4,13 +4,13 @@ import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import {
-  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel, Tooltip
+  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel, Tooltip, Alert
 } from '@mui/material'
 import dynamic from 'next/dynamic'
 
 // Dynamic import for Barcode to avoid SSR issues
 const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon, Print as PrintIcon, Add as AddIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, AddCircle as AddCircleIcon, RemoveCircle as RemoveCircleIcon, Check as CheckIcon, Print as PrintIcon, Add as AddIcon, PriceChange as PriceCheckIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -29,6 +29,8 @@ interface ShipmentItem {
   sku: string
   barcode: string | null
   accessory_id: string | null
+  material_id: string | null
+  linear_material_id: string | null
   product_type: string | null
   quantity_received: number
   target_quantity: number
@@ -96,6 +98,13 @@ export default function ShipmentDetailClient({
   const [itemForBarcode, setItemForBarcode] = useState<ShipmentItem | null>(null)
   const [barcodeInputValue, setBarcodeInputValue] = useState('')
   const [savingBarcode, setSavingBarcode] = useState(false)
+  const [updateBasePriceModalOpen, setUpdateBasePriceModalOpen] = useState(false)
+  const [itemForBasePriceUpdate, setItemForBasePriceUpdate] = useState<ShipmentItem | null>(null)
+  const [updatingBasePrice, setUpdatingBasePrice] = useState(false)
+  const [currentProductData, setCurrentProductData] = useState<{ base_price: number; multiplier: number } | null>(null)
+  const [confirmUpdateBasePriceOpen, setConfirmUpdateBasePriceOpen] = useState(false)
+  const [newSellingPrice, setNewSellingPrice] = useState<number | null>(null)
+  const [calculatedNewBasePrice, setCalculatedNewBasePrice] = useState<number | null>(null)
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
@@ -731,6 +740,8 @@ export default function ShipmentDetailClient({
         sku: data.item.sku,
         barcode: data.item.barcode || null,
         accessory_id: data.item.accessory_id || null,
+        material_id: (data.item as any).material_id || null,
+        linear_material_id: (data.item as any).linear_material_id || null,
         product_type: data.item.product_type || null,
         quantity_received: data.item.quantity_received,
         target_quantity: data.item.target_quantity,
@@ -891,6 +902,121 @@ export default function ShipmentDetailClient({
       }
     } catch (error) {
       console.error('Error refreshing items:', error)
+    }
+  }
+
+  const handleOpenUpdateBasePriceModal = async (item: ShipmentItem) => {
+    // Only allow for items with FK (not free-typed)
+    if (!item.accessory_id && !item.material_id && !item.linear_material_id) {
+      toast.error('Csak adatbázisból származó tételeknél frissíthető a base_price')
+      return
+    }
+
+    if (!item.product_type) {
+      toast.error('Terméktípus hiányzik')
+      return
+    }
+
+    setItemForBasePriceUpdate(item)
+
+    // Fetch current product data (base_price and multiplier)
+    try {
+      let tableName: string
+      let productId: string
+      
+      if (item.product_type === 'accessory' && item.accessory_id) {
+        tableName = 'accessories'
+        productId = item.accessory_id
+      } else if (item.product_type === 'material' && item.material_id) {
+        tableName = 'materials'
+        productId = item.material_id
+      } else if (item.product_type === 'linear_material' && item.linear_material_id) {
+        tableName = 'linear_materials'
+        productId = item.linear_material_id
+      } else {
+        toast.error('Termék ID hiányzik')
+        return
+      }
+
+      const response = await fetch(`/api/${tableName}/${productId}`)
+      if (!response.ok) {
+        throw new Error('Hiba a termék adatok lekérdezésekor')
+      }
+
+      const productData = await response.json()
+      setCurrentProductData({
+        base_price: productData.base_price || 0,
+        multiplier: productData.multiplier || 1.38
+      })
+
+      // Calculate initial new selling price from PO net_price
+      const vatPercent = vatRates.get(item.vat_id) || 0
+      const initialNewSellingPrice = Math.ceil(
+        (item.net_price * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
+      ) * 10
+      setNewSellingPrice(initialNewSellingPrice)
+      setCalculatedNewBasePrice(item.net_price)
+
+      setUpdateBasePriceModalOpen(true)
+    } catch (error: any) {
+      console.error('Error fetching product data:', error)
+      toast.error(error.message || 'Hiba a termék adatok lekérdezésekor')
+    }
+  }
+
+  const handleConfirmUpdateBasePrice = () => {
+    setConfirmUpdateBasePriceOpen(true)
+  }
+
+  // Calculate new base_price when newSellingPrice changes
+  useEffect(() => {
+    if (newSellingPrice !== null && currentProductData && itemForBasePriceUpdate) {
+      const vatPercent = vatRates.get(itemForBasePriceUpdate.vat_id) || 0
+      // Calculate backwards: base_price = selling_price / (multiplier * (1 + VAT%))
+      const calculatedBasePrice = newSellingPrice / (currentProductData.multiplier * (1 + vatPercent / 100))
+      setCalculatedNewBasePrice(Math.round(calculatedBasePrice))
+    }
+  }, [newSellingPrice, currentProductData, itemForBasePriceUpdate, vatRates])
+
+  const handleUpdateBasePrice = async () => {
+    if (!itemForBasePriceUpdate || !currentProductData || calculatedNewBasePrice === null) {
+      return
+    }
+
+    setConfirmUpdateBasePriceOpen(false)
+    setUpdatingBasePrice(true)
+    try {
+      const response = await fetch('/api/products/update-base-price', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          product_type: itemForBasePriceUpdate.product_type,
+          product_id: itemForBasePriceUpdate.accessory_id || itemForBasePriceUpdate.material_id || itemForBasePriceUpdate.linear_material_id,
+          new_base_price: calculatedNewBasePrice // Use calculated base_price from new selling price
+        })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Hiba a base_price frissítésekor')
+      }
+
+      toast.success('Base_price sikeresen frissítve')
+      setUpdateBasePriceModalOpen(false)
+      setItemForBasePriceUpdate(null)
+      setCurrentProductData(null)
+      setNewSellingPrice(null)
+      setCalculatedNewBasePrice(null)
+      
+      // Refresh items to get updated base_price
+      await refreshItems()
+    } catch (error: any) {
+      console.error('Error updating base_price:', error)
+      toast.error(error.message || 'Hiba a base_price frissítésekor')
+    } finally {
+      setUpdatingBasePrice(false)
     }
   }
 
@@ -1775,6 +1901,9 @@ export default function ShipmentDetailClient({
                     <TableCell align="right">Szállított mennyiség</TableCell>
                     <TableCell align="right">Cél mennyiség</TableCell>
                     <TableCell align="right">Nettó egységár</TableCell>
+                    {header.status === 'received' && (
+                      <TableCell align="right">Ár változás</TableCell>
+                    )}
                     <TableCell align="right">Nettó összesen</TableCell>
                     <TableCell align="right">Bruttó összesen</TableCell>
                     <TableCell align="center">Vonalkód</TableCell>
@@ -1784,7 +1913,7 @@ export default function ShipmentDetailClient({
                 <TableBody>
                   {items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} align="center">
+                      <TableCell colSpan={header.status === 'received' ? 10 : 9} align="center">
                         Nincs tétel
                       </TableCell>
                     </TableRow>
@@ -1959,6 +2088,29 @@ export default function ShipmentDetailClient({
                           disabled={header.status === 'received' || header.status === 'cancelled'}
                         />
                       </TableCell>
+                      {header.status === 'received' && (
+                        <TableCell align="right">
+                          {item.base_price && item.base_price > 0 ? (() => {
+                            const percentage = ((item.net_price - item.base_price) / item.base_price) * 100
+                            const formattedPercentage = percentage > 0 
+                              ? `+${percentage.toFixed(1)}%` 
+                              : percentage < 0 
+                                ? `${percentage.toFixed(1)}%` 
+                                : '0%'
+                            return (
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: percentage > 0 ? 'error.main' : percentage < 0 ? 'success.main' : 'text.secondary',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                {formattedPercentage}
+                              </Typography>
+                            )
+                          })() : '-'}
+                        </TableCell>
+                      )}
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.net_total)} Ft</TableCell>
                       <TableCell align="right">{new Intl.NumberFormat('hu-HU').format(item.gross_total)} Ft</TableCell>
                       <TableCell align="center">
@@ -1981,13 +2133,25 @@ export default function ShipmentDetailClient({
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.5 }}>
                           {header.status === 'received' && (
-                            <IconButton 
-                              size="small" 
-                              onClick={() => handleOpenPrintLabel(item)}
-                              color="primary"
-                            >
-                              <PrintIcon fontSize="small" />
-                            </IconButton>
+                            <>
+                              <IconButton 
+                                size="small" 
+                                onClick={() => handleOpenPrintLabel(item)}
+                                color="primary"
+                              >
+                                <PrintIcon fontSize="small" />
+                              </IconButton>
+                              {(item.accessory_id || item.material_id || item.linear_material_id) && (
+                                <IconButton 
+                                  size="small" 
+                                  onClick={() => handleOpenUpdateBasePriceModal(item)}
+                                  color="primary"
+                                  title="Base price frissítése"
+                                >
+                                  <PriceCheckIcon fontSize="small" />
+                                </IconButton>
+                              )}
+                            </>
                           )}
                           <IconButton 
                             size="small" 
@@ -2763,6 +2927,193 @@ export default function ShipmentDetailClient({
             startIcon={savingBarcode ? <CircularProgress size={18} /> : <SaveIcon />}
           >
             {savingBarcode ? 'Mentés...' : 'Mentés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Update Base Price Modal */}
+      <Dialog
+        open={updateBasePriceModalOpen}
+        onClose={() => {
+          setUpdateBasePriceModalOpen(false)
+          setItemForBasePriceUpdate(null)
+          setCurrentProductData(null)
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Nettó beszerzési ár frissítése</DialogTitle>
+        <DialogContent>
+          {itemForBasePriceUpdate && currentProductData && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
+                Termék: {itemForBasePriceUpdate.product_name}
+              </Typography>
+              
+              <Grid container spacing={3}>
+                {/* Current Price Section */}
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+                      Jelenlegi Ár
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Beszerzési nettó ár:
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          {new Intl.NumberFormat('hu-HU').format(currentProductData.base_price)} Ft
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Árrés(Nettó):
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          {currentProductData.multiplier.toFixed(2)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          ÁFA ({vatRates.get(itemForBasePriceUpdate.vat_id) || 0}%):
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          {new Intl.NumberFormat('hu-HU').format(
+                            currentProductData.base_price * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                          )} Ft
+                        </Typography>
+                      </Box>
+                      <Divider />
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Jelenlegi Eladási Ár:
+                        </Typography>
+                        <Typography variant="h6" color="error.main" fontWeight="bold">
+                          {new Intl.NumberFormat('hu-HU').format(
+                            Math.ceil(
+                              (currentProductData.base_price * currentProductData.multiplier * (1 + (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100)) / 10
+                            ) * 10
+                          )} Ft
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </Paper>
+                </Grid>
+
+                {/* New Price Section */}
+                <Grid item xs={12} md={6}>
+                  <Paper sx={{ p: 2, border: '1px solid', borderColor: 'primary.main', bgcolor: 'primary.lighter' }}>
+                    <Typography variant="subtitle2" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+                      Új Ár (PO nettó egységár alapján)
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Beszerzési nettó ár (PO nettó egységár):
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold" color="primary.main">
+                          {new Intl.NumberFormat('hu-HU').format(calculatedNewBasePrice || itemForBasePriceUpdate.net_price)} Ft
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Árrés(Nettó):
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          {currentProductData.multiplier.toFixed(2)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          ÁFA ({vatRates.get(itemForBasePriceUpdate.vat_id) || 0}%):
+                        </Typography>
+                        <Typography variant="body1" fontWeight="bold">
+                          {new Intl.NumberFormat('hu-HU').format(
+                            (calculatedNewBasePrice || itemForBasePriceUpdate.net_price) * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                          )} Ft
+                        </Typography>
+                      </Box>
+                      <Divider />
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" gutterBottom>
+                          Új Eladási Ár:
+                        </Typography>
+                        <TextField
+                          type="number"
+                          size="small"
+                          value={newSellingPrice || ''}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? null : Number(e.target.value)
+                            setNewSellingPrice(val)
+                          }}
+                          inputProps={{ min: 0, step: 10 }}
+                          sx={{ mt: 1 }}
+                          fullWidth
+                          helperText="Az ár automatikusan 10-re kerekítve lesz"
+                        />
+                      </Box>
+                    </Stack>
+                  </Paper>
+                </Grid>
+              </Grid>
+
+              <Alert severity="warning" sx={{ mt: 3 }}>
+                <Typography variant="body2">
+                  A nettó beszerzési ár frissítése megváltoztatja a termék jelenlegi eladási árát. Ez a művelet nem vonható vissza.
+                </Typography>
+              </Alert>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setUpdateBasePriceModalOpen(false)
+              setItemForBasePriceUpdate(null)
+              setCurrentProductData(null)
+              setNewSellingPrice(null)
+              setCalculatedNewBasePrice(null)
+            }}
+            disabled={updatingBasePrice}
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handleConfirmUpdateBasePrice}
+            variant="contained"
+            color="primary"
+            disabled={updatingBasePrice || newSellingPrice === null || newSellingPrice <= 0 || calculatedNewBasePrice === null}
+            startIcon={<PriceCheckIcon />}
+          >
+            Nettó beszerzési ár frissítése
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm Update Base Price Dialog */}
+      <Dialog
+        open={confirmUpdateBasePriceOpen}
+        onClose={() => setConfirmUpdateBasePriceOpen(false)}
+      >
+        <DialogTitle>Nettó beszerzési ár frissítés megerősítése</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Biztosan frissíteni szeretnéd a nettó beszerzési árat? Ez megváltoztatja a termék jelenlegi eladási árát. Ez a művelet nem vonható vissza.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmUpdateBasePriceOpen(false)} disabled={updatingBasePrice}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleUpdateBasePrice}
+            variant="contained"
+            color="primary"
+            disabled={updatingBasePrice}
+            startIcon={updatingBasePrice ? <CircularProgress size={18} /> : <PriceCheckIcon />}
+          >
+            {updatingBasePrice ? 'Frissítés...' : 'Megerősítés'}
           </Button>
         </DialogActions>
       </Dialog>
