@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabaseServer } from '@/lib/supabase-server'
+import { supabase } from '@/lib/supabase'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -9,36 +9,93 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
 
-    const { data, error } = await supabaseServer
+    console.log(`Fetching linear material ${id}`)
+
+    // Fetch linear material from linear_materials table with pricing data
+    const { data: linearMaterialData, error } = await supabase
       .from('linear_materials')
       .select(`
-        *,
-        brands (name),
-        currencies (name),
-        vat (name, kulcs)
+        id,
+        name,
+        width,
+        length,
+        thickness,
+        type,
+        on_stock,
+        active,
+        image_url,
+        brand_id,
+        base_price,
+        multiplier,
+        price_per_m,
+        partners_id,
+        units_id,
+        currency_id,
+        vat_id,
+        created_at,
+        updated_at,
+        brands(id, name),
+        currencies(id, name),
+        vat(id, name, kulcs)
       `)
       .eq('id', id)
-      .is('deleted_at', null)
       .single()
 
     if (error) {
+      console.error('Supabase error:', error)
+      
+      if (error.code === 'PGRST116' || error.message.includes('No rows found')) {
+        return NextResponse.json({ error: 'Linear material not found' }, { status: 404 })
+      }
+      
+      return NextResponse.json({ error: 'Failed to fetch linear material' }, { status: 500 })
+    }
+
+    if (!linearMaterialData) {
       return NextResponse.json({ error: 'Linear material not found' }, { status: 404 })
     }
 
-    // Fetch machine code
-    const { data: machineData } = await supabaseServer
+    // Fetch machine code from machine_linear_material_map
+    const { data: machineData } = await supabase
       .from('machine_linear_material_map')
       .select('machine_code')
       .eq('linear_material_id', id)
       .eq('machine_type', 'Korpus')
       .single()
 
-    return NextResponse.json({
-      ...data,
-      machine_code: machineData?.machine_code || ''
-    })
+    // Transform the data to match the expected format
+    const transformedData = {
+      id: linearMaterialData.id,
+      name: linearMaterialData.name || `Linear Material ${linearMaterialData.id}`,
+      width: linearMaterialData.width || 0,
+      length: linearMaterialData.length || 0,
+      thickness: linearMaterialData.thickness || 0,
+      type: linearMaterialData.type || '',
+      on_stock: linearMaterialData.on_stock !== undefined ? Boolean(linearMaterialData.on_stock) : true,
+      active: linearMaterialData.active !== undefined ? Boolean(linearMaterialData.active) : true,
+      image_url: linearMaterialData.image_url || null,
+      brand_id: linearMaterialData.brand_id || '',
+      brand_name: linearMaterialData.brands?.name || 'Unknown',
+      machine_code: machineData?.machine_code || '',
+      // Pricing fields
+      base_price: linearMaterialData.base_price || 0,
+      multiplier: linearMaterialData.multiplier || 1.38,
+      price_per_m: linearMaterialData.price_per_m || 0,
+      partners_id: linearMaterialData.partners_id || null,
+      units_id: linearMaterialData.units_id || null,
+      currency_id: linearMaterialData.currency_id || null,
+      vat_id: linearMaterialData.vat_id || null,
+      currencies: linearMaterialData.currencies || null,
+      vat: linearMaterialData.vat || null,
+      created_at: linearMaterialData.created_at,
+      updated_at: linearMaterialData.updated_at
+    }
+
+    console.log(`Linear material fetched successfully: ${transformedData.name}`)
+    return NextResponse.json(transformedData)
+
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error fetching linear material:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -50,7 +107,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json()
 
     // Get current data for price history
-    const { data: currentData } = await supabaseServer
+    const { data: currentData } = await supabase
       .from('linear_materials')
       .select('price_per_m, currency_id, vat_id')
       .eq('id', id)
@@ -76,7 +133,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updated_at: new Date().toISOString()
     }
 
-    const { data, error } = await supabaseServer
+    const { data, error } = await supabase
       .from('linear_materials')
       .update(updateData)
       .eq('id', id)
@@ -90,7 +147,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Update machine code
     if (body.machine_code !== undefined) {
-      const { data: existing } = await supabaseServer
+      const { data: existing } = await supabase
         .from('machine_linear_material_map')
         .select('id')
         .eq('linear_material_id', id)
@@ -98,13 +155,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .single()
 
       if (existing) {
-        await supabaseServer
+        await supabase
           .from('machine_linear_material_map')
           .update({ machine_code: body.machine_code })
           .eq('linear_material_id', id)
           .eq('machine_type', 'Korpus')
       } else {
-        await supabaseServer
+        await supabase
           .from('machine_linear_material_map')
           .insert({
             linear_material_id: id,
@@ -164,7 +221,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         
         console.log('Inserting price history:', historyData)
         
-        const { error: historyError } = await supabaseServer
+        const { error: historyError } = await supabase
           .from('linear_material_price_history')
           .insert(historyData)
         
@@ -188,7 +245,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
 
-    const { error } = await supabaseServer
+    const { error } = await supabase
       .from('linear_materials')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)

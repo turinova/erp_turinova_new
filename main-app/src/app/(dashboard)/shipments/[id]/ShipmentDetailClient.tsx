@@ -954,7 +954,7 @@ export default function ShipmentDetailClient({
         tableName = 'materials'
         productId = item.material_id
       } else if (item.product_type === 'linear_material' && item.linear_material_id) {
-        tableName = 'linear_materials'
+        tableName = 'linear-materials' // API route uses hyphen, not underscore
         productId = item.linear_material_id
       } else {
         toast.error('Termék ID hiányzik')
@@ -963,7 +963,16 @@ export default function ShipmentDetailClient({
 
       const response = await fetch(`/api/${tableName}/${productId}`)
       if (!response.ok) {
-        throw new Error('Hiba a termék adatok lekérdezésekor')
+        const errorText = await response.text()
+        console.error(`[UpdateBasePrice] API error (${response.status}):`, errorText)
+        throw new Error(`Hiba a termék adatok lekérdezésekor: ${response.status} ${response.statusText}`)
+      }
+
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await response.text()
+        console.error(`[UpdateBasePrice] Non-JSON response:`, text.substring(0, 200))
+        throw new Error('A szerver nem JSON választ adott vissza')
       }
 
       const productData = await response.json()
