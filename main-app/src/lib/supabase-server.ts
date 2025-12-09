@@ -4653,6 +4653,19 @@ export async function getStockMovementsWithPagination(
       }
     }
 
+    // Fetch quotes
+    const quoteIds = sourceIdsByType.get('quote') || []
+    const { data: quotes } = quoteIds.length > 0
+      ? await supabaseServer
+          .from('quotes')
+          .select('id, quote_number, order_number')
+          .in('id', quoteIds)
+      : { data: [] }
+    const quoteMap = new Map((quotes || []).map((q: any) => [
+      q.id, 
+      q.order_number || q.quote_number || q.id.substring(0, 8) + '...'
+    ]))
+
     // Transform and filter data
     let stockMovements = (data || []).map((sm: any) => {
       let productName = ''
@@ -4677,6 +4690,8 @@ export async function getStockMovementsWithPagination(
       } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
         const reservationInfo = reservationOrderMap.get(sm.source_id)
         sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'quote' && sm.source_id) {
+        sourceReference = quoteMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
         // Customer order deletion - display special label
         sourceReference = 'Ügyfél rendelés törlés'
@@ -5092,6 +5107,19 @@ export async function getStockMovementsByMaterial(
       }
     }
 
+    // Fetch quotes
+    const quoteIds = sourceIdsByType.get('quote') || []
+    const { data: quotes } = quoteIds.length > 0
+      ? await supabaseServer
+          .from('quotes')
+          .select('id, quote_number, order_number')
+          .in('id', quoteIds)
+      : { data: [] }
+    const quoteMap = new Map((quotes || []).map((q: any) => [
+      q.id, 
+      q.order_number || q.quote_number || q.id.substring(0, 8) + '...'
+    ]))
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       const productName = sm.materials?.name || ''
@@ -5107,6 +5135,8 @@ export async function getStockMovementsByMaterial(
       } else if (sm.source_type === 'customer_order_reservation' && sm.source_id) {
         const reservationInfo = reservationOrderMap.get(sm.source_id)
         sourceReference = reservationInfo?.orderNumber || sm.source_id
+      } else if (sm.source_type === 'quote' && sm.source_id) {
+        sourceReference = quoteMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
         // Customer order deletion - display special label
         sourceReference = 'Ügyfél rendelés törlés'

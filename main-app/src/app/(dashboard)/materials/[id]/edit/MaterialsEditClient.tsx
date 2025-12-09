@@ -415,6 +415,8 @@ export default function MaterialsEditClient({
       return `/fulfillment-orders/${row.source_id}`
     } else if (row.source_type === 'customer_order_reservation' && row.source_id) {
       return `/fulfillment-orders/${row.source_id}`
+    } else if (row.source_type === 'quote' && row.source_id) {
+      return `/orders/${row.source_id}`
     }
     return null
   }

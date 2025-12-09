@@ -93,6 +93,19 @@ export async function GET(request: NextRequest) {
       : { data: [] }
     const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
 
+    // Fetch quotes
+    const quoteIds = sourceIdsByType.get('quote') || []
+    const { data: quotes } = quoteIds.length > 0
+      ? await supabaseServer
+          .from('quotes')
+          .select('id, quote_number, order_number')
+          .in('id', quoteIds)
+      : { data: [] }
+    const quoteMap = new Map((quotes || []).map((q: any) => [
+      q.id, 
+      q.order_number || q.quote_number || q.id.substring(0, 8) + '...'
+    ]))
+
     // Transform data
     const stockMovements = (data || []).map((sm: any) => {
       // Get product name and SKU based on product_type
@@ -116,6 +129,8 @@ export async function GET(request: NextRequest) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
         sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'quote' && sm.source_id) {
+        sourceReference = quoteMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
       }
