@@ -63,8 +63,8 @@ interface CustomerOrderItem {
   linear_material_id: string | null
   purchase_order_item_id: string | null
   accessories?: { name: string; sku: string; partners_id: string; base_price: number } | null
-  materials?: { name: string; base_price: number } | null
-  linear_materials?: { name: string; base_price: number } | null
+  materials?: { name: string; base_price: number; length_mm?: number; width_mm?: number } | null
+  linear_materials?: { name: string; base_price: number; length?: number } | null
 }
 
 interface Partner {
@@ -270,6 +270,26 @@ export default function CustomerOrderItemsClient({
       return item.accessories.sku
     }
     return item.sku || '-'
+  }
+
+  const getPurchasePrice = (item: CustomerOrderItem): number | null => {
+    if (item.material_id && item.materials) {
+      // For materials: base_price * length_mm * width_mm / 1000000 (convert mm² to m²)
+      if (item.materials.length_mm && item.materials.width_mm) {
+        return Math.round(item.materials.base_price * item.materials.length_mm * item.materials.width_mm / 1000000)
+      }
+      return item.materials.base_price
+    } else if (item.linear_material_id && item.linear_materials) {
+      // For linear_materials: base_price * length / 1000 (convert mm to meters)
+      if (item.linear_materials.length) {
+        return Math.round(item.linear_materials.base_price * item.linear_materials.length / 1000)
+      }
+      return item.linear_materials.base_price
+    } else if (item.accessory_id && item.accessories) {
+      // For accessories: just use base_price
+      return item.accessories.base_price
+    }
+    return null
   }
 
   const getStatusInfo = (status: string) => {
@@ -611,13 +631,10 @@ export default function CustomerOrderItemsClient({
                     </TableCell>
                     <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>
                       <Typography variant="body2" fontWeight="bold" color="primary.main">
-                        {item.accessories?.base_price 
-                          ? formatCurrency(item.accessories.base_price)
-                          : item.materials?.base_price
-                          ? formatCurrency(item.materials.base_price)
-                          : item.linear_materials?.base_price
-                          ? formatCurrency(item.linear_materials.base_price)
-                          : '-'}
+                        {(() => {
+                          const purchasePrice = getPurchasePrice(item)
+                          return purchasePrice !== null ? formatCurrency(purchasePrice) : '-'
+                        })()}
                       </Typography>
                     </TableCell>
                     <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>

@@ -321,75 +321,9 @@ export async function POST(request: NextRequest) {
 
             if (!insertedItem) continue
 
-            // Fetch partner_id based on product type
-            let partnerId: string | null = null
-            
-            if (insertedItem.accessory_id) {
-              // Get partner_id from accessories
-              const { data: accessory, error: accessoryError } = await supabaseServer
-                .from('accessories')
-                .select('partners_id')
-                .eq('id', insertedItem.accessory_id)
-                .single()
-              
-              if (accessoryError) {
-                console.error(`[CUSTOMER ORDER] Error fetching accessory partner_id for ${insertedItem.accessory_id}:`, accessoryError)
-              } else {
-                partnerId = accessory?.partners_id || null
-                console.log(`[CUSTOMER ORDER] Fetched partner_id from accessory: ${partnerId}`)
-              }
-            } else if (insertedItem.material_id) {
-              // Get partner_id from materials
-              const { data: material, error: materialError } = await supabaseServer
-                .from('materials')
-                .select('partners_id')
-                .eq('id', insertedItem.material_id)
-                .single()
-              
-              if (materialError) {
-                console.error(`[CUSTOMER ORDER] Error fetching material partner_id for ${insertedItem.material_id}:`, materialError)
-                // Fallback to shop_order_items.partner_id if material query fails
-                partnerId = insertedItem.partner_id || product.partners_id || null
-                console.log(`[CUSTOMER ORDER] Using fallback partner_id from shop_order_item: ${partnerId}`)
-              } else {
-                partnerId = material?.partners_id || null
-                // If material doesn't have partners_id, fallback to shop_order_items.partner_id
-                if (!partnerId) {
-                  partnerId = insertedItem.partner_id || product.partners_id || null
-                  console.log(`[CUSTOMER ORDER] Material has no partners_id, using fallback from shop_order_item: ${partnerId}`)
-                } else {
-                  console.log(`[CUSTOMER ORDER] Fetched partner_id from material ${insertedItem.material_id}: ${partnerId}`)
-                }
-              }
-            } else if (insertedItem.linear_material_id) {
-              // Get partner_id from linear_materials
-              const { data: linearMaterial, error: linearMaterialError } = await supabaseServer
-                .from('linear_materials')
-                .select('partners_id')
-                .eq('id', insertedItem.linear_material_id)
-                .single()
-              
-              if (linearMaterialError) {
-                console.error(`[CUSTOMER ORDER] Error fetching linear_material partner_id for ${insertedItem.linear_material_id}:`, linearMaterialError)
-                // Fallback to shop_order_items.partner_id if linear_material query fails
-                partnerId = insertedItem.partner_id || product.partners_id || null
-                console.log(`[CUSTOMER ORDER] Using fallback partner_id from shop_order_item: ${partnerId}`)
-              } else {
-                partnerId = linearMaterial?.partners_id || null
-                // If linear_material doesn't have partners_id, fallback to shop_order_items.partner_id
-                if (!partnerId) {
-                  partnerId = insertedItem.partner_id || product.partners_id || null
-                  console.log(`[CUSTOMER ORDER] Linear material has no partners_id, using fallback from shop_order_item: ${partnerId}`)
-                } else {
-                  console.log(`[CUSTOMER ORDER] Fetched partner_id from linear_material: ${partnerId}`)
-                }
-              }
-            } else {
-              // For hand-written items (no FK), get partner_id from shop_order_items
-              // This was already saved when creating shop_order_items
-              partnerId = insertedItem.partner_id || product.partners_id || null
-              console.log(`[CUSTOMER ORDER] Using partner_id from shop_order_item or product: ${partnerId}`)
-            }
+            // Use partner_id directly from shop_order_items (same as how it was saved there)
+            // This ensures consistency and uses the value that was selected on the shop order page
+            const partnerId = insertedItem.partner_id || product.partners_id || null
 
             // Calculate prices
             const basePrice = product.base_price || 0
@@ -407,11 +341,24 @@ export async function POST(request: NextRequest) {
             totalVat += itemTotalVat
             totalGross += itemTotalGross
 
+            // Determine product_type from FKs if insertedItem.product_type is wrong or missing
+            // This ensures customer_order_items have correct product_type even if shop_order_items.product_type is incorrect
+            let finalProductType = insertedItem.product_type
+            if (!finalProductType || finalProductType === 'accessory') {
+              if (insertedItem.material_id) {
+                finalProductType = 'material'
+              } else if (insertedItem.linear_material_id) {
+                finalProductType = 'linear_material'
+              } else if (insertedItem.accessory_id) {
+                finalProductType = 'accessory'
+              }
+            }
+
             const customerOrderItem = {
               order_id: customerOrderData.id,
               shop_order_item_id: insertedItem.id,
               item_type: 'product',
-              product_type: insertedItem.product_type || null,
+              product_type: finalProductType || null, // Use derived product_type
               accessory_id: insertedItem.accessory_id || null,
               material_id: insertedItem.material_id || null,
               linear_material_id: insertedItem.linear_material_id || null,

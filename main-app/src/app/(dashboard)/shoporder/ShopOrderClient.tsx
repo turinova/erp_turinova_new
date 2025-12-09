@@ -1083,7 +1083,7 @@ export default function ShopOrderClient({
       megjegyzes: accessoryData.megjegyzes,
       brand_name: accessoryData.brand_name,
       dimensions: accessoryData.dimensions,
-      source: selectedAccessory?.source || 'accessories',
+      source: selectedAccessory?.source || accessoryData.pending_source || 'accessories', // FIX: Use pending_source as fallback
       accessory_id: accessoryId,
       material_id: materialId,
       linear_material_id: linearMaterialId

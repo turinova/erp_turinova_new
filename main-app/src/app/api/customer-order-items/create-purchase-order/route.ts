@@ -51,10 +51,10 @@ export async function POST(request: NextRequest) {
       .select(`
         id, product_name, sku, quantity, unit_price_net, unit_price_gross, status,
         product_type, accessory_id, material_id, linear_material_id,
-        vat_id, currency_id, units_id, order_id, shop_order_item_id,
+        vat_id, currency_id, units_id, order_id, shop_order_item_id, partner_id,
         accessories:accessory_id(name, sku, partners_id, units_id, base_price),
-        materials:material_id(name, units_id, base_price),
-        linear_materials:linear_material_id(name, units_id, base_price)
+        materials:material_id(name, units_id, base_price, partners_id, length_mm, width_mm),
+        linear_materials:linear_material_id(name, units_id, base_price, partners_id, length)
       `)
       .in('id', customer_order_item_ids)
       .is('deleted_at', null)
@@ -65,10 +65,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Hiba a tételek lekérdezésekor' }, { status: 500 })
     }
 
-    // 3. Validate same partner (from accessories)
+    // 3. Validate same partner (from customer_order_items.partner_id or from related product tables)
+    // Priority: 1. customer_order_items.partner_id, 2. accessories.partners_id, 3. materials.partners_id, 4. linear_materials.partners_id
     const partnerIds = [...new Set(
       customerOrderItems
-        .map(item => item.accessories?.partners_id)
+        .map(item => {
+          return item.partner_id || 
+                 item.accessories?.partners_id || 
+                 item.materials?.partners_id || 
+                 item.linear_materials?.partners_id
+        })
         .filter(Boolean)
     )]
     
@@ -124,14 +130,30 @@ export async function POST(request: NextRequest) {
           customerItem.linear_materials?.units_id || 
           null
         
-        // Get base_price from the related product table (cost price, not selling price)
-        const basePrice = customerItem.accessories?.base_price || 
-          customerItem.materials?.base_price || 
-          customerItem.linear_materials?.base_price || 
-          null
+        // Calculate purchase price based on product type (same as frontend calculation)
+        let purchasePrice: number | null = null
         
-        if (!basePrice) {
-          console.error(`[CREATE PO] No base_price found for item ${customerItem.id}`)
+        if (customerItem.material_id && customerItem.materials) {
+          // For materials: base_price * length_mm * width_mm / 1000000 (convert mm² to m²)
+          if (customerItem.materials.length_mm && customerItem.materials.width_mm) {
+            purchasePrice = Math.round(customerItem.materials.base_price * customerItem.materials.length_mm * customerItem.materials.width_mm / 1000000)
+          } else {
+            purchasePrice = customerItem.materials.base_price
+          }
+        } else if (customerItem.linear_material_id && customerItem.linear_materials) {
+          // For linear_materials: base_price * length / 1000 (convert mm to meters)
+          if (customerItem.linear_materials.length) {
+            purchasePrice = Math.round(customerItem.linear_materials.base_price * customerItem.linear_materials.length / 1000)
+          } else {
+            purchasePrice = customerItem.linear_materials.base_price
+          }
+        } else if (customerItem.accessory_id && customerItem.accessories) {
+          // For accessories: just use base_price
+          purchasePrice = customerItem.accessories.base_price
+        }
+        
+        if (!purchasePrice) {
+          console.error(`[CREATE PO] No purchase price found for item ${customerItem.id}`)
           return NextResponse.json({ 
             error: `Nem található beszerzési ár a termékhez: ${customerItem.product_name}` 
           }, { status: 400 })
@@ -144,7 +166,7 @@ export async function POST(request: NextRequest) {
           material_id: customerItem.material_id,
           linear_material_id: customerItem.linear_material_id,
           quantity: customerItem.quantity,
-          net_price: Math.round(basePrice), // Use base_price (cost), not unit_price_net (selling price)
+          net_price: purchasePrice, // Use calculated purchase price
           vat_id: customerItem.vat_id,
           currency_id: customerItem.currency_id,
           units_id: unitsId,

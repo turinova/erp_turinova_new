@@ -2813,8 +2813,8 @@ export async function getAllCustomerOrderItems(page: number = 1, limit: number =
           units_id,
           base_price
         ),
-        materials:material_id(name, units_id, base_price),
-        linear_materials:linear_material_id(name, units_id, base_price)
+        materials:material_id(name, units_id, base_price, length_mm, width_mm),
+        linear_materials:linear_material_id(name, units_id, base_price, length)
       `, { count: 'exact' })
       .eq('item_type', 'product')
       .is('customer_orders.deleted_at', null)
