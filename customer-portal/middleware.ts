@@ -41,17 +41,6 @@ export async function middleware(req: NextRequest) {
   const publicRoutes = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/terms-and-conditions', '/privacy-policy', '/cookie-policy']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
   
-  // Skip authentication for public routes - return immediately
-  if (isPublicRoute) {
-    console.log('Middleware - Public route, allowing access:', req.nextUrl.pathname)
-    return NextResponse.next() // Return fresh response without auth checks
-  }
-  
-  // Allow /home for authenticated users (will check below)
-  const protectedRoutes = ['/home']
-  const isProtectedRoute = protectedRoutes.some(route => req.nextUrl.pathname.startsWith(route))
-
-  // Enable authentication for all other routes
   // Customer portal specific Supabase credentials (no custom storageKey - use default)
   const supabaseUrl = 'https://oatbbtbkerxogzvwicxx.supabase.co'
   const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hdGJidGJrZXJ4b2d6dndpY3h4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5NTI1OTIsImV4cCI6MjA3NjUyODU5Mn0.-FWyh76bc2QrFGx13FllP2Vhhk6XvpY1rAm4bOU5Ipc'
@@ -107,16 +96,23 @@ export async function middleware(req: NextRequest) {
   console.log('Middleware - Path:', req.nextUrl.pathname, 'Valid Session:', hasValidSession, 'User:', session?.user?.email)
   console.log('Middleware - Cookies:', req.cookies.getAll().map(c => c.name).join(', '))
 
+  // IMPORTANT: Check if authenticated user is trying to access /login or /register BEFORE skipping public routes
+  // This prevents authenticated users from accessing the login/register pages
+  if (hasValidSession && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/register')) {
+    console.log('Middleware - Authenticated user trying to access auth page, redirecting to /home')
+    return NextResponse.redirect(new URL('/home', req.url))
+  }
+
+  // Skip authentication for public routes (only if user is NOT authenticated)
+  if (isPublicRoute && !hasValidSession) {
+    console.log('Middleware - Public route (unauthenticated), allowing access:', req.nextUrl.pathname)
+    return NextResponse.next()
+  }
+
   // If user is not signed in and the current path is not /login or /register, redirect to /login
   if (!hasValidSession && req.nextUrl.pathname !== '/login' && req.nextUrl.pathname !== '/register') {
     console.log('Middleware - Redirecting to login (no valid session)')
     return NextResponse.redirect(new URL('/login', req.url))
-  }
-
-  // If user is signed in and the current path is /login or /register, redirect to /home
-  if (hasValidSession && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/register')) {
-    console.log('Middleware - Redirecting to home (user signed in)')
-    return NextResponse.redirect(new URL('/home', req.url))
   }
 
   return response

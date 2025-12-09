@@ -41,13 +41,7 @@ export async function middleware(req: NextRequest) {
   const publicRoutes = ['/', '/login']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
   
-  // Skip authentication for public routes
-  if (isPublicRoute) {
-    console.log('Middleware - Public route:', req.nextUrl.pathname)
-    return response
-  }
-
-  // Enable authentication for all other routes
+  // Create supabase client for authentication check (needed before public route check)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -95,15 +89,30 @@ export async function middleware(req: NextRequest) {
   console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
   console.log('Middleware - Cookies:', req.cookies.getAll().map(c => c.name).join(', '))
 
+  // IMPORTANT: Check if authenticated user is trying to access /login BEFORE skipping public routes
+  // This prevents authenticated users from accessing the login page
+  if (session && session.user && req.nextUrl.pathname === '/login') {
+    console.log('Middleware - Authenticated user trying to access /login, redirecting to first permitted page')
+    const firstPage = await getFirstPermittedPage(session.user.id)
+    console.log('Middleware - Redirecting authenticated user from /login to:', firstPage)
+    return NextResponse.redirect(new URL(firstPage, req.url))
+  }
+
+  // Skip authentication for public routes (only if user is NOT authenticated)
+  if (isPublicRoute && !session) {
+    console.log('Middleware - Public route (unauthenticated):', req.nextUrl.pathname)
+    return response
+  }
+
   // If user is not signed in and the current path is not /login, redirect to /login
   if (!session && req.nextUrl.pathname !== '/login') {
     console.log('Middleware - Redirecting to login (no session)')
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // If user is signed in and the current path is /login or /, redirect to first permitted page
-  if (session && (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/')) {
-    console.log('Middleware - User signed in, finding first permitted page')
+  // If user is signed in and the current path is /, redirect to first permitted page
+  if (session && req.nextUrl.pathname === '/') {
+    console.log('Middleware - User signed in on root, finding first permitted page')
     const firstPage = await getFirstPermittedPage(session.user.id)
     console.log('Middleware - Redirecting to:', firstPage)
     return NextResponse.redirect(new URL(firstPage, req.url))
