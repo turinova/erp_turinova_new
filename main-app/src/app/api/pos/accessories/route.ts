@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
               net_price,
               image_url,
               deleted_at,
+              units_id,
               vat (
                 id,
                 kulcs
@@ -80,6 +81,11 @@ export async function GET(request: NextRequest) {
               currencies (
                 id,
                 name
+              ),
+              units:units_id (
+                id,
+                name,
+                shortform
               )
             `)
             .in('id', accessoryIdsWithStock)
@@ -284,18 +290,36 @@ export async function GET(request: NextRequest) {
         result.sku = product.sku || ''
         result.accessory_id = item.accessory_id
         result.image_url = product.image_url || null // Accessories now have image_url column
+        // Add unit information
+        if (product.units && Array.isArray(product.units) && product.units.length > 0) {
+          result.unit_name = product.units[0].name
+          result.unit_shortform = product.units[0].shortform
+        } else if (product.units && !Array.isArray(product.units)) {
+          result.unit_name = product.units.name
+          result.unit_shortform = product.units.shortform
+        }
       } else if (item.product_type === 'material') {
         result.material_id = item.material_id
         result.length_mm = product.length_mm
         result.width_mm = product.width_mm
         result.thickness_mm = product.thickness_mm
         result.image_url = product.image_url || null // Materials have image_url
+        // Add unit price fields for display (per m²)
+        result.base_price = product.base_price || 0
+        result.multiplier = product.multiplier || 1.38
+        result.vat_percent = vatPercent
+        result.unit_price_per_sqm = product.base_price * product.multiplier * (1 + vatPercent / 100)
       } else if (item.product_type === 'linear_material') {
         result.linear_material_id = item.linear_material_id
         result.length = product.length
         result.width = product.width
         result.thickness = product.thickness
         result.image_url = product.image_url || null // Linear materials have image_url
+        // Add unit price fields for display (per m)
+        result.base_price = product.base_price || 0
+        result.multiplier = product.multiplier || 1.38
+        result.vat_percent = vatPercent
+        result.unit_price_per_m = product.base_price * product.multiplier * (1 + vatPercent / 100)
       }
 
       return result

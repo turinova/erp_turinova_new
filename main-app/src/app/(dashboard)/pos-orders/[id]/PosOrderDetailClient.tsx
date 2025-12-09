@@ -117,6 +117,12 @@ interface PosOrderItem {
   length?: number
   width?: number
   thickness?: number
+  // Unit information (for accessories)
+  unit?: {
+    id: string
+    name: string
+    shortform?: string | null
+  }
 }
 
 interface PosPayment {
@@ -387,25 +393,38 @@ export default function PosOrderDetailClient({
     const unitPriceNet = newUnitPriceNet !== undefined ? newUnitPriceNet : item.unit_price_net
     const unitPriceGross = newUnitPriceGross !== undefined ? newUnitPriceGross : item.unit_price_gross
     
-    const totalNet = unitPriceNet * quantity
-    const totalGross = unitPriceGross * quantity
-    const totalVat = totalGross - totalNet
+    // Round unit prices to avoid decimal precision issues
+    const roundedUnitPriceNet = Math.round(unitPriceNet)
+    const roundedUnitPriceGross = Math.round(unitPriceGross)
+    
+    // Calculate totals with proper rounding
+    const totalNet = Math.round(roundedUnitPriceNet * quantity)
+    const totalGross = Math.round(roundedUnitPriceGross * quantity)
+    
+    // Calculate VAT from net price using VAT rate to avoid rounding errors
+    const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+    const totalVat = Math.round(totalNet * vatRate / 100)
+    
+    // Ensure totalGross = totalNet + totalVat (adjust if needed due to rounding)
+    const adjustedTotalGross = totalNet + totalVat
     
     return {
       ...item,
       quantity,
-      unit_price_net: unitPriceNet,
-      unit_price_gross: unitPriceGross,
+      unit_price_net: roundedUnitPriceNet,
+      unit_price_gross: roundedUnitPriceGross,
       total_net: totalNet,
       total_vat: totalVat,
-      total_gross: totalGross
+      total_gross: adjustedTotalGross
     }
   }
 
   // Update item quantity
   const handleItemQuantityChange = (itemId: string, newQuantity: number) => {
+    // Round to 2 decimal places
+    const roundedQuantity = Math.round(newQuantity * 100) / 100
     setItems(prevItems => prevItems.map(item => 
-      item.id === itemId ? recalculateItem(item, newQuantity) : item
+      item.id === itemId ? recalculateItem(item, roundedQuantity) : item
     ))
   }
 
@@ -494,7 +513,29 @@ export default function PosOrderDetailClient({
 
     const vatRate = vatRates.find(v => v.id === selectedProduct.vat_id) || vatRates[0]
     const vatPercent = vatRate?.kulcs || 0
-    const grossPrice = Math.round(selectedProduct.gross_price)
+    
+    // For materials and linear_materials, use unit prices (per m² or per m)
+    // For accessories, use whole piece prices
+    let unitGrossPrice = selectedProduct.gross_price
+    let unitNetPrice = selectedProduct.net_price
+    
+    if (selectedProduct.product_type === 'material' && selectedProduct.unit_price_per_sqm) {
+      unitGrossPrice = selectedProduct.unit_price_per_sqm
+      // Calculate unit net price from unit gross price
+      unitNetPrice = unitGrossPrice / (1 + vatPercent / 100)
+    } else if (selectedProduct.product_type === 'linear_material' && selectedProduct.unit_price_per_m) {
+      unitGrossPrice = selectedProduct.unit_price_per_m
+      // Calculate unit net price from unit gross price
+      unitNetPrice = unitGrossPrice / (1 + vatPercent / 100)
+    }
+    
+    // Round both net and gross prices consistently
+    const roundedNetPrice = Math.round(unitNetPrice)
+    const roundedGrossPrice = Math.round(unitGrossPrice)
+    
+    // Calculate VAT from net price to ensure consistency
+    const vatAmount = Math.round(roundedNetPrice * vatPercent / 100)
+    const adjustedGrossPrice = roundedNetPrice + vatAmount
 
     const newProduct: PosOrderItem = {
       id: `temp-${Date.now()}`,
@@ -507,13 +548,13 @@ export default function PosOrderDetailClient({
       product_name: selectedProduct.name,
       sku: selectedProduct.sku || null,
       quantity: 1,
-      unit_price_net: selectedProduct.net_price,
-      unit_price_gross: grossPrice,
+      unit_price_net: roundedNetPrice,
+      unit_price_gross: adjustedGrossPrice,
       vat_id: selectedProduct.vat_id,
       currency_id: selectedProduct.currency_id,
-      total_net: selectedProduct.net_price,
-      total_vat: grossPrice - selectedProduct.net_price,
-      total_gross: grossPrice,
+      total_net: roundedNetPrice,
+      total_vat: vatAmount,
+      total_gross: adjustedGrossPrice,
       // Material dimensions
       length_mm: selectedProduct.length_mm,
       width_mm: selectedProduct.width_mm,
@@ -1183,6 +1224,7 @@ export default function PosOrderDetailClient({
                     <TableCell>Név</TableCell>
                     <TableCell>SKU</TableCell>
                     <TableCell align="right">Mennyiség</TableCell>
+                    <TableCell align="center">Egység</TableCell>
                     <TableCell align="right">Nettó egységár</TableCell>
                     <TableCell align="right">Bruttó egységár</TableCell>
                     <TableCell align="right">ÁFA</TableCell>
@@ -1224,11 +1266,17 @@ export default function PosOrderDetailClient({
                           value={item.quantity}
                           size="small"
                           sx={{ width: 80 }}
+                          inputProps={{ step: 0.01, min: 0.01 }}
                           onChange={(e) => {
                             const newQty = parseFloat(e.target.value) || 0
                             handleItemQuantityChange(item.id, newQty)
                           }}
                         />
+                      </TableCell>
+                      <TableCell align="center">
+                        {item.product_type === 'material' ? 'm²' :
+                         item.product_type === 'linear_material' ? 'm' :
+                         item.unit?.shortform || item.unit?.name || '-'}
                       </TableCell>
                       <TableCell align="right">{formatCurrency(item.unit_price_net)}</TableCell>
                       <TableCell align="right">
@@ -1262,7 +1310,7 @@ export default function PosOrderDetailClient({
                   ))}
                   {addingProduct && (
                     <TableRow>
-                      <TableCell colSpan={8}>
+                      <TableCell colSpan={9}>
                         <Autocomplete
                           fullWidth
                           size="small"

@@ -76,16 +76,23 @@ interface ProductItem {
   image_url?: string | null
   // Accessory fields
   accessory_id?: string
+  unit_name?: string
+  unit_shortform?: string
   // Material fields
   material_id?: string
   length_mm?: number
   width_mm?: number
   thickness_mm?: number
+  base_price?: number
+  multiplier?: number
+  vat_percent?: number
+  unit_price_per_sqm?: number
   // Linear material fields
   linear_material_id?: string
   length?: number
   width?: number
   thickness?: number
+  unit_price_per_m?: number
 }
 
 // Helper function to round up to nearest 10
@@ -115,6 +122,9 @@ interface CartItem {
   length?: number
   width?: number
   thickness?: number
+  // Unit information (for accessories)
+  unit_name?: string
+  unit_shortform?: string
 }
 
 interface FeeType {
@@ -170,6 +180,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
+  const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({})
   const [fees, setFees] = useState<FeeItem[]>([])
   const [discount, setDiscount] = useState<DiscountItem | null>(null)
   const [feeTypes, setFeeTypes] = useState<FeeType[]>([])
@@ -763,20 +774,36 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       existingItem = cartItems.find(item => item.product_type === 'linear_material' && item.linear_material_id === product.linear_material_id)
     }
 
-    const roundedPrice = roundUpToNearest10(product.gross_price)
+    // Use unit price for materials and linear_materials, whole piece price for accessories
+    let priceToUse = product.gross_price
+    let netPriceToUse = product.net_price
+    
+    if (product.product_type === 'material' && product.unit_price_per_sqm) {
+      priceToUse = product.unit_price_per_sqm
+      // Calculate unit net price from unit gross price using VAT rate
+      const vatPercent = product.vat_percent || 0
+      netPriceToUse = priceToUse / (1 + vatPercent / 100)
+    } else if (product.product_type === 'linear_material' && product.unit_price_per_m) {
+      priceToUse = product.unit_price_per_m
+      // Calculate unit net price from unit gross price using VAT rate
+      const vatPercent = product.vat_percent || 0
+      netPriceToUse = priceToUse / (1 + vatPercent / 100)
+    }
+    const roundedPrice = roundUpToNearest10(priceToUse)
+    const roundedNetPrice = Math.round(netPriceToUse)
     
     if (existingItem) {
-      // Increment quantity
+      // Increment quantity by 1.00
       setCartItems(prev =>
         prev.map(item =>
           item.id === existingItem!.id
-            ? { ...item, quantity: item.quantity + 1, gross_price: roundedPrice }
+            ? { ...item, quantity: item.quantity + 1.00, gross_price: roundedPrice, net_price: roundedNetPrice }
             : item
         )
       )
       return existingItem.id
     } else {
-      // Add new item
+      // Add new item with quantity 1.00
       const newItem: CartItem = {
         id: Date.now().toString(),
         product_type: product.product_type,
@@ -785,9 +812,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         linear_material_id: product.linear_material_id,
         name: product.name,
         sku: product.sku,
-        quantity: 1,
+        quantity: 1.00,
         gross_price: roundedPrice,
-        net_price: product.net_price,
+        net_price: roundedNetPrice,  // Use calculated unit net price for materials/linear_materials
         currency_name: product.currency_name,
         vat_id: product.vat_id,
         currency_id: product.currency_id,
@@ -798,7 +825,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         // Linear material dimensions
         length: product.length,
         width: product.width,
-        thickness: product.thickness
+        thickness: product.thickness,
+        // Unit information (for accessories)
+        unit_name: product.unit_name,
+        unit_shortform: product.unit_shortform
       }
       setCartItems(prev => [...prev, newItem])
       return newItem.id
@@ -816,21 +846,38 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   }
 
   // Update quantity
-  const handleQuantityChange = (itemId: string, newQuantity: number) => {
-    if (newQuantity <= 0) {
+  const handleQuantityChange = (itemId: string, newQuantity: number | string, skipRemove: boolean = false) => {
+    // Allow empty/invalid values while user is typing (don't remove item)
+    if (newQuantity === '' || newQuantity === null || newQuantity === undefined) {
+      return
+    }
+    const numValue = typeof newQuantity === 'string' ? parseFloat(newQuantity) : newQuantity
+    if (isNaN(numValue)) {
+      return
+    }
+    // Only remove if explicitly set to 0 or negative, and not skipping removal (for typing)
+    if (numValue <= 0 && !skipRemove) {
       handleRemoveFromCart(itemId)
       return
     }
+    // If skipping removal (while typing) and value is 0 or negative, don't update quantity
+    // This allows typing "0" without updating the quantity, so user can type "0.5"
+    if (numValue <= 0 && skipRemove) {
+      return
+    }
+    // Round to 2 decimal places
+    const roundedQuantity = Math.round(numValue * 100) / 100
     setCartItems(prev =>
       prev.map(item =>
-        item.id === itemId ? { ...item, quantity: newQuantity } : item
+        item.id === itemId ? { ...item, quantity: roundedQuantity } : item
       )
     )
   }
 
-  // Calculate részösszeg for each item
+  // Calculate részösszeg for each item, rounded to nearest 5
   const getItemSubtotal = (item: CartItem) => {
-    return item.gross_price * item.quantity
+    const subtotal = item.gross_price * item.quantity
+    return Math.round(subtotal / 5) * 5
   }
 
   // Fetch fee types
@@ -1541,12 +1588,24 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                     fontWeight: product.quantity_on_hand < 0 ? 'bold' : 'normal'
                                   }}
                                 >
-                                  {product.quantity_on_hand} db
+                                  {product.quantity_on_hand} {
+                                    product.product_type === 'material' ? 'm²' :
+                                    product.product_type === 'linear_material' ? 'm' :
+                                    'db'
+                                  }
                                 </Typography>
                               </TableCell>
                             <TableCell align="right">
                               <Typography variant="subtitle2" color="primary" fontWeight="bold">
-                                {roundedPrice.toLocaleString('hu-HU')} {product.currency_name}
+                                {(() => {
+                                  let displayPrice = roundedPrice
+                                  if (product.product_type === 'material' && product.unit_price_per_sqm) {
+                                    displayPrice = Math.round(product.unit_price_per_sqm)
+                                  } else if (product.product_type === 'linear_material' && product.unit_price_per_m) {
+                                    displayPrice = Math.round(product.unit_price_per_m)
+                                  }
+                                  return displayPrice.toLocaleString('hu-HU')
+                                })()} {product.currency_name}
                               </Typography>
                             </TableCell>
                           </TableRow>
@@ -1633,6 +1692,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       <TableRow>
                         <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }} align="center">Mennyiség</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold' }} align="center">Egység</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }} align="right">Bruttó Részösszeg</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }} align="center" width={60}></TableCell>
                       </TableRow>
@@ -1681,8 +1741,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               <IconButton
                                 size="small"
                                 color="primary"
-                                onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                                disabled={item.quantity <= 1}
+                                onClick={() => handleQuantityChange(item.id, item.quantity - 1.00)}
+                                disabled={item.quantity <= 0.01}
                                 sx={{ 
                                   width: 32, 
                                   height: 32,
@@ -1696,12 +1756,60 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               <TextField
                                 type="number"
                                 size="small"
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  handleQuantityChange(item.id, parseInt(e.target.value) || 0)
-                                }
+                                value={quantityInputs[item.id] !== undefined ? quantityInputs[item.id] : item.quantity.toString()}
+                                onChange={(e) => {
+                                  const inputValue = e.target.value
+                                  // Update local input state to allow empty values and "0"
+                                  setQuantityInputs(prev => ({ ...prev, [item.id]: inputValue }))
+                                  // Pass the raw input value to handleQuantityChange with skipRemove=true
+                                  // This allows typing "0" without removing the item
+                                  handleQuantityChange(item.id, inputValue, true)
+                                }}
+                                onBlur={(e) => {
+                                  // On blur, validate and apply the final value
+                                  const inputValue = e.target.value
+                                  const numValue = parseFloat(inputValue)
+                                  
+                                  if (inputValue === '' || isNaN(numValue)) {
+                                    // If empty or invalid, restore to current quantity
+                                    const currentItem = cartItems.find(i => i.id === item.id)
+                                    if (currentItem && currentItem.quantity > 0) {
+                                      // Keep current value
+                                      setQuantityInputs(prev => {
+                                        const newState = { ...prev }
+                                        delete newState[item.id]
+                                        return newState
+                                      })
+                                    } else {
+                                      // Set to minimum
+                                      handleQuantityChange(item.id, 0.01, false)
+                                      setQuantityInputs(prev => {
+                                        const newState = { ...prev }
+                                        delete newState[item.id]
+                                        return newState
+                                      })
+                                    }
+                                  } else if (numValue <= 0) {
+                                    // If 0 or negative on blur, remove the item
+                                    handleRemoveFromCart(item.id)
+                                    setQuantityInputs(prev => {
+                                      const newState = { ...prev }
+                                      delete newState[item.id]
+                                      return newState
+                                    })
+                                  } else {
+                                    // Valid value, update and clear local state
+                                    handleQuantityChange(item.id, numValue, false)
+                                    setQuantityInputs(prev => {
+                                      const newState = { ...prev }
+                                      delete newState[item.id]
+                                      return newState
+                                    })
+                                  }
+                                }}
                                 inputProps={{
-                                  min: 1,
+                                  min: 0.01,
+                                  step: 0.01,
                                   style: { textAlign: 'center', width: '50px', padding: '4px' }
                                 }}
                                 sx={{
@@ -1731,7 +1839,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               <IconButton
                                 size="small"
                                 color="primary"
-                                onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
+                                onClick={() => handleQuantityChange(item.id, item.quantity + 1.00)}
                                 sx={{ width: 32, height: 32 }}
                               >
                                 <AddIcon fontSize="small" />
@@ -1739,7 +1847,14 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             </Box>
                           </TableCell>
 
-                          {/* Column 3: Bruttó Részösszeg */}
+                          {/* Column 3: Egység */}
+                          <TableCell align="center">
+                            {item.product_type === 'material' ? 'm²' :
+                             item.product_type === 'linear_material' ? 'm' :
+                             item.unit_shortform || item.unit_name || '-'}
+                          </TableCell>
+
+                          {/* Column 4: Bruttó Részösszeg */}
                           <TableCell align="right">
                             <Typography variant="subtitle2" fontWeight="bold" color="primary">
                               {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
@@ -2125,6 +2240,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       <TableRow>
                         <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
                         <TableCell align="center" sx={{ fontWeight: 'bold' }}>Mennyiség</TableCell>
+                        <TableCell align="center" sx={{ fontWeight: 'bold' }}>Egység</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 'bold' }}>Egységár</TableCell>
                         <TableCell align="right" sx={{ fontWeight: 'bold' }}>Részösszeg</TableCell>
                       </TableRow>
@@ -2140,7 +2256,14 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               {item.sku}
                             </Typography>
                           </TableCell>
-                          <TableCell align="center">{item.quantity}</TableCell>
+                          <TableCell align="center">
+                            {item.quantity.toFixed(2)}
+                          </TableCell>
+                          <TableCell align="center">
+                            {item.product_type === 'material' ? 'm²' :
+                             item.product_type === 'linear_material' ? 'm' :
+                             item.unit_shortform || item.unit_name || '-'}
+                          </TableCell>
                           <TableCell align="right">
                             {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
                           </TableCell>
@@ -2412,6 +2535,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                   <TableRow>
                     <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
                     <TableCell align="center" sx={{ fontWeight: 'bold' }}>Mennyiség</TableCell>
+                    <TableCell align="center" sx={{ fontWeight: 'bold' }}>Egység</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold' }}>Egységár</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 'bold' }}>Részösszeg</TableCell>
                   </TableRow>
@@ -2427,7 +2551,12 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           {item.sku}
                         </Typography>
                       </TableCell>
-                      <TableCell align="center">{item.quantity}</TableCell>
+                      <TableCell align="center">{item.quantity.toFixed(2)}</TableCell>
+                      <TableCell align="center">
+                        {item.product_type === 'material' ? 'm²' :
+                         item.product_type === 'linear_material' ? 'm' :
+                         item.unit_shortform || item.unit_name || '-'}
+                      </TableCell>
                       <TableCell align="right">
                         {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
                       </TableCell>

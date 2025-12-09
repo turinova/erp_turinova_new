@@ -5658,6 +5658,14 @@ export async function getPosOrderById(id: string) {
           length,
           width,
           thickness
+        ),
+        accessories:accessory_id (
+          units_id,
+          units:units_id (
+            id,
+            name,
+            shortform
+          )
         )
       `)
       .eq('pos_order_id', id)
@@ -5708,9 +5716,27 @@ export async function getPosOrderById(id: string) {
         normalizedItem.thickness = item.linear_materials.thickness
       }
       
+      // Flatten units from accessories
+      if (item.accessories && Array.isArray(item.accessories) && item.accessories.length > 0) {
+        const accessory = item.accessories[0]
+        if (accessory.units && Array.isArray(accessory.units) && accessory.units.length > 0) {
+          normalizedItem.unit = accessory.units[0]
+        } else if (accessory.units && !Array.isArray(accessory.units)) {
+          normalizedItem.unit = accessory.units
+        }
+      } else if (item.accessories && !Array.isArray(item.accessories)) {
+        // Single object (not array)
+        if (item.accessories.units && Array.isArray(item.accessories.units) && item.accessories.units.length > 0) {
+          normalizedItem.unit = item.accessories.units[0]
+        } else if (item.accessories.units && !Array.isArray(item.accessories.units)) {
+          normalizedItem.unit = item.accessories.units
+        }
+      }
+      
       // Remove nested objects
       delete normalizedItem.materials
       delete normalizedItem.linear_materials
+      delete normalizedItem.accessories
       
       return normalizedItem
     })
