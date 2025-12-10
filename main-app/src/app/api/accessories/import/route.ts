@@ -150,48 +150,90 @@ export async function POST(request: NextRequest) {
     const parseTime = Date.now() - startTime
     console.log(`[Import] Parsed ${data.length} rows in ${parseTime}ms - ${recordsToUpsert.length} new, ${recordsToUpdate.length} updates, ${errorCount} errors`)
     
-    // Step 2: Batch insert new records in chunks of 500
+    // Step 2: Batch insert new records with parallel processing
     if (recordsToUpsert.length > 0) {
-      const chunkSize = 500
+      const chunkSize = 1000  // Increase chunk size for better performance
       const insertChunks = Math.ceil(recordsToUpsert.length / chunkSize)
       
-      for (let i = 0; i < insertChunks; i++) {
-        const chunk = recordsToUpsert.slice(i * chunkSize, (i + 1) * chunkSize)
-        const { error: insertError } = await supabaseServer
-          .from('accessories')
-          .insert(chunk)
+      // Process chunks in parallel (max 3 concurrent to avoid overwhelming DB)
+      const maxConcurrent = 3
+      for (let i = 0; i < insertChunks; i += maxConcurrent) {
+        const chunkBatch = []
+        for (let j = 0; j < maxConcurrent && (i + j) < insertChunks; j++) {
+          const chunkIndex = i + j
+          const chunk = recordsToUpsert.slice(
+            chunkIndex * chunkSize, 
+            (chunkIndex + 1) * chunkSize
+          )
+          chunkBatch.push(
+            supabaseServer
+              .from('accessories')
+              .insert(chunk)
+              .then(({ error }) => {
+                if (error) {
+                  console.error(`[Import] Error inserting chunk ${chunkIndex + 1}:`, error)
+                  return { success: false, chunkIndex: chunkIndex + 1, error, count: chunk.length }
+                }
+                console.log(`[Import] Inserted chunk ${chunkIndex + 1}/${insertChunks} (${chunk.length} records)`)
+                return { success: true, chunkIndex: chunkIndex + 1, count: chunk.length }
+              })
+          )
+        }
         
-        if (insertError) {
-          console.error(`[Import] Error inserting chunk ${i + 1}:`, insertError)
-          errorCount += chunk.length
-          errors.push(`Batch insert chunk ${i + 1} failed: ${insertError.message}`)
-        } else {
-          successCount += chunk.length
-          console.log(`[Import] Inserted chunk ${i + 1}/${insertChunks} (${chunk.length} records)`)
+        const results = await Promise.all(chunkBatch)
+        
+        // Process results
+        for (const result of results) {
+          if (result.success) {
+            successCount += result.count
+          } else {
+            errorCount += result.count
+            errors.push(`Batch insert chunk ${result.chunkIndex} failed: ${result.error.message}`)
+          }
         }
       }
     }
     
-    // Step 3: Batch update existing records in chunks of 500
+    // Step 3: Batch update existing records with parallel processing
     if (recordsToUpdate.length > 0) {
-      const chunkSize = 500
+      const chunkSize = 1000  // Increase chunk size for better performance
       const updateChunks = Math.ceil(recordsToUpdate.length / chunkSize)
       
-      for (let i = 0; i < updateChunks; i++) {
-        const chunk = recordsToUpdate.slice(i * chunkSize, (i + 1) * chunkSize)
+      // Process chunks in parallel (max 3 concurrent to avoid overwhelming DB)
+      const maxConcurrent = 3
+      for (let i = 0; i < updateChunks; i += maxConcurrent) {
+        const chunkBatch = []
+        for (let j = 0; j < maxConcurrent && (i + j) < updateChunks; j++) {
+          const chunkIndex = i + j
+          const chunk = recordsToUpdate.slice(
+            chunkIndex * chunkSize, 
+            (chunkIndex + 1) * chunkSize
+          )
+          chunkBatch.push(
+            supabaseServer
+              .from('accessories')
+              .upsert(chunk, { onConflict: 'id' })
+              .then(({ error }) => {
+                if (error) {
+                  console.error(`[Import] Error updating chunk ${chunkIndex + 1}:`, error)
+                  return { success: false, chunkIndex: chunkIndex + 1, error, count: chunk.length }
+                }
+                console.log(`[Import] Updated chunk ${chunkIndex + 1}/${updateChunks} (${chunk.length} records)`)
+                return { success: true, chunkIndex: chunkIndex + 1, count: chunk.length }
+              })
+          )
+        }
         
-        // Upsert with conflict resolution on id
-        const { error: updateError } = await supabaseServer
-          .from('accessories')
-          .upsert(chunk, { onConflict: 'id' })
+        const results = await Promise.all(chunkBatch)
         
-        if (updateError) {
-          console.error(`[Import] Error updating chunk ${i + 1}:`, updateError)
-          errorCount += chunk.length
-          errors.push(`Batch update chunk ${i + 1} failed: ${updateError.message}`)
-        } else {
-          successCount += chunk.length
-          console.log(`[Import] Updated chunk ${i + 1}/${updateChunks} (${chunk.length} records)`)
+        // Process results
+        for (const result of results) {
+          if (result.success) {
+            successCount += result.count
+          } else {
+            errorCount += result.count
+            errors.push(`Batch update chunk ${result.chunkIndex} failed: ${result.error.message}`)
+          }
         }
       }
     }
