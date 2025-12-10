@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit
     const sanitizedSearch = search.replace(/"/g, '\\"')
-    const orFilter = `name.ilike."%${sanitizedSearch}%",sku.ilike."%${sanitizedSearch}%"`
+    const orFilter = `name.ilike."%${sanitizedSearch}%",sku.ilike."%${sanitizedSearch}%",barcode.ilike."%${sanitizedSearch}%"`
 
     // Get total count for search
     const { count } = await supabaseServer
@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         id, 
         name, 
         sku, 
+        barcode,
         base_price,
         multiplier,
         net_price, 
@@ -74,6 +75,7 @@ export async function GET(request: NextRequest) {
       id: accessory.id,
       name: accessory.name,
       sku: accessory.sku,
+      barcode: accessory.barcode,
       base_price: accessory.base_price,
       multiplier: accessory.multiplier,
       net_price: accessory.net_price,

@@ -147,6 +147,25 @@ export default function AccessoriesListClient({
     return () => clearTimeout(searchTimeout)
   }, [searchTerm, currentPageSize])
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0'
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
+  // Handle search input change with barcode normalization
+  const handleSearchChange = (value: string) => {
+    const normalized = normalizeBarcode(value)
+    setSearchTerm(normalized)
+  }
+
   // Use search results if searching, otherwise use regular accessories
   const filteredAccessories = searchTerm && searchTerm.length >= 2 ? searchResults : accessories
 
@@ -1194,9 +1213,9 @@ export default function AccessoriesListClient({
       
       <TextField
         fullWidth
-        placeholder="Keresés név vagy SKU szerint..."
+        placeholder="Keresés név, SKU vagy vonalkód szerint..."
         value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+        onChange={(e) => handleSearchChange(e.target.value)}
         sx={{ mt: 2, mb: 2 }}
         InputProps={{
           startAdornment: (
