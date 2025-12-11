@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -187,6 +187,62 @@ export default function FulfillmentOrderDetailClient({
   const [order, setOrder] = useState<CustomerOrder>(initialOrder)
   const [items, setItems] = useState<CustomerOrderItem[]>(initialItems)
   const [payments, setPayments] = useState<CustomerOrderPayment[]>(initialPayments)
+
+  // Search products for adding new item (immediate add)
+  useEffect(() => {
+    if (productSearchAbortControllerRef.current) {
+      productSearchAbortControllerRef.current.abort()
+    }
+
+    const term = productSearchTerm.trim()
+    if (term.length < 2) {
+      setProductSearchResults([])
+      setIsSearchingProducts(false)
+      return
+    }
+
+    const abortController = new AbortController()
+    productSearchAbortControllerRef.current = abortController
+    setIsSearchingProducts(true)
+
+    const t = setTimeout(() => {
+      fetch(`/api/pos/accessories?search=${encodeURIComponent(term)}`, { signal: abortController.signal })
+        .then(res => {
+          if (!res.ok) return []
+          return res.json()
+        })
+        .then(data => {
+          if (abortController.signal.aborted) return
+          if (Array.isArray(data)) {
+            setProductSearchResults(data)
+          } else {
+            setProductSearchResults([])
+          }
+          setIsSearchingProducts(false)
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return
+          console.error('Error searching products:', err)
+          setProductSearchResults([])
+          setIsSearchingProducts(false)
+        })
+    }, 300)
+
+    return () => {
+      clearTimeout(t)
+      if (productSearchAbortControllerRef.current) {
+        productSearchAbortControllerRef.current.abort()
+        productSearchAbortControllerRef.current = null
+      }
+    }
+  }, [productSearchTerm])
+
+  // Product picker state (add item)
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const productSearchAbortControllerRef = useRef<AbortController | null>(null)
   const initialActivePayments = initialPayments.filter(p => !p.deleted_at)
   const initialActiveTotalPaid = initialActivePayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
   const [totalPaid, setTotalPaid] = useState(initialActiveTotalPaid)
@@ -399,6 +455,85 @@ export default function FulfillmentOrderDetailClient({
       if (item.id !== itemId) return item
       return recalculateItem(item, undefined, newPrice)
     }))
+  }
+
+  // Start adding product
+  const handleAddProductClick = () => {
+    setAddingProduct(true)
+    setProductSearchTerm('')
+    setProductSearchResults([])
+  }
+
+  // Handle product select from autocomplete (immediate add)
+  const handleProductSelect = async (selectedProduct: any) => {
+    if (!selectedProduct) return
+    if (order.status !== 'open') {
+      toast.warning('Csak nyitott rendeléshez adható tétel.')
+      return
+    }
+
+    try {
+      const vatPercent = selectedProduct.vat_percent || 0
+      const vatMultiplier = 1 + vatPercent / 100
+
+      let unitGross = selectedProduct.gross_price || 0
+      if (selectedProduct.product_type === 'material' && selectedProduct.unit_price_per_sqm) {
+        unitGross = selectedProduct.unit_price_per_sqm
+      } else if (selectedProduct.product_type === 'linear_material' && selectedProduct.unit_price_per_m) {
+        unitGross = selectedProduct.unit_price_per_m
+      }
+
+      const roundedUnitGross = Math.round(unitGross)
+      const unitNet = Math.round(roundedUnitGross / vatMultiplier)
+      const quantity = 1
+      const totalGross = Math.round(roundedUnitGross * quantity)
+      const totalNet = Math.round(unitNet * quantity)
+      const totalVat = totalGross - totalNet
+
+      const payload = {
+        product_type: selectedProduct.product_type || 'accessory',
+        accessory_id: selectedProduct.accessory_id || null,
+        material_id: selectedProduct.material_id || null,
+        linear_material_id: selectedProduct.linear_material_id || null,
+        product_name: selectedProduct.name,
+        sku: selectedProduct.sku || null,
+        quantity,
+        unit_price_gross: roundedUnitGross,
+        vat_id: selectedProduct.vat_id,
+        currency_id: selectedProduct.currency_id,
+        units_id: selectedProduct.units_id || null,
+        partner_id: selectedProduct.partners_id || selectedProduct.partner_id || null,
+        // Client-side preview values (server will recalc)
+        unit_price_net: unitNet,
+        total_net: totalNet,
+        total_vat: totalVat,
+        total_gross: totalGross
+      }
+
+      const res = await fetch(`/api/customer-orders/${order.id}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || 'Hiba a tétel hozzáadásakor')
+      }
+
+      const data = await res.json()
+      if (data?.item) {
+        setItems(prev => [...prev, data.item])
+        toast.success('Tétel hozzáadva')
+      }
+    } catch (err: any) {
+      console.error('Error adding item:', err)
+      toast.error(err?.message || 'Hiba a tétel hozzáadásakor')
+    } finally {
+      setAddingProduct(false)
+      setProductSearchTerm('')
+      setProductSearchResults([])
+    }
   }
 
   // Soft delete item (allowed in any status, with proper stock movement reversal)
@@ -1023,9 +1158,20 @@ export default function FulfillmentOrderDetailClient({
         {/* Tételek */}
         <Card>
           <CardContent>
-            <Typography variant="h6" gutterBottom>
-              Tételek
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+              <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
+                Tételek
+              </Typography>
+              <Button
+                startIcon={<AddIcon />}
+                variant="outlined"
+                size="small"
+                onClick={handleAddProductClick}
+                disabled={order.status !== 'open' || addingProduct}
+              >
+                Tételek hozzáadása
+              </Button>
+            </Box>
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -1110,6 +1256,81 @@ export default function FulfillmentOrderDetailClient({
                       </TableRow>
                     )
                   })}
+                  {addingProduct && (
+                    <TableRow>
+                      <TableCell colSpan={9}>
+                        <Autocomplete
+                          fullWidth
+                          size="small"
+                          options={productSearchResults}
+                          getOptionLabel={(option) => option.name || ''}
+                          filterOptions={(options) => options} // server-side filtering
+                          loading={isSearchingProducts}
+                          inputValue={productSearchTerm}
+                          onInputChange={(_, newValue) => setProductSearchTerm(newValue)}
+                          onChange={(_, newValue) => {
+                            if (newValue) {
+                              handleProductSelect(newValue)
+                            }
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              placeholder="Keresés termék név vagy SKU szerint..."
+                              size="small"
+                              InputProps={{
+                                ...params.InputProps,
+                                endAdornment: (
+                                  <>
+                                    {isSearchingProducts ? <CircularProgress size={20} /> : null}
+                                    {params.InputProps.endAdornment}
+                                  </>
+                                )
+                              }}
+                            />
+                          )}
+                          renderOption={(props, option) => {
+                            const { key, ...other } = props as any
+                            const typeLabel = option.product_type === 'material'
+                              ? 'Bútorlap'
+                              : option.product_type === 'linear_material'
+                                ? 'Szálas termék'
+                                : 'Kellék'
+                            const typeColor = option.product_type === 'material'
+                              ? 'secondary'
+                              : option.product_type === 'linear_material'
+                                ? 'success'
+                                : 'primary'
+                            return (
+                              <Box component="li" key={key} {...other}>
+                                <Box sx={{ flex: 1 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                    <Typography variant="body2">{option.name}</Typography>
+                                    <Chip label={typeLabel} size="small" color={typeColor as any} />
+                                  </Box>
+                                  {option.sku && option.product_type === 'accessory' && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      SKU: {option.sku}
+                                    </Typography>
+                                  )}
+                                  {option.product_type === 'material' && option.length_mm && option.width_mm && option.thickness_mm && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {option.length_mm}×{option.width_mm}×{option.thickness_mm} mm
+                                    </Typography>
+                                  )}
+                                  {option.product_type === 'linear_material' && option.length && option.width && option.thickness && (
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      {option.length}×{option.width}×{option.thickness} mm
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </Box>
+                            )
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {items.filter(item => item.item_type === 'fee').map(item => (
                     <TableRow key={item.id}>
                       <TableCell>
