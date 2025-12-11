@@ -51,6 +51,7 @@ import { usePermissions } from '@/contexts/PermissionContext'
 import ImageUpload from '@/components/ImageUpload'
 import MediaLibraryModal from '@/components/MediaLibraryModal'
 import { formatPriceWithCurrency, calculateFullBoardCost, calculateSquareMeters, calculateGrossPrice } from '@/utils/priceFormatters'
+import { Delete as DeleteIcon } from '@mui/icons-material'
 
 interface Material {
   id: string
@@ -158,6 +159,21 @@ interface MaterialsEditClientProps {
     stock_value: number
     last_movement_at: string | null
   } | null
+  initialAccessories: any[]
+  initialMaterialAccessories: {
+    material_id: string
+    accessory_id: string
+    created_at: string
+    updated_at: string
+    accessory: {
+      id: string
+      name: string
+      sku: string
+      base_price: number
+      partners_id?: string | null
+      partner_name?: string
+    }
+  }[]
 }
 
 export default function MaterialsEditClient({ 
@@ -172,7 +188,9 @@ export default function MaterialsEditClient({
   stockMovementsTotalCount = 0,
   stockMovementsTotalPages = 0,
   stockMovementsCurrentPage = 1,
-  currentStock = null
+  currentStock = null,
+  initialAccessories = [],
+  initialMaterialAccessories = []
 }: MaterialsEditClientProps) {
   const router = useRouter()
   
@@ -199,6 +217,9 @@ export default function MaterialsEditClient({
   const [stockMovementsPage, setStockMovementsPage] = useState(stockMovementsCurrentPage)
   const [stockMovementsTotal, setStockMovementsTotal] = useState(stockMovementsTotalCount)
   const [stockMovementsPages, setStockMovementsPages] = useState(stockMovementsTotalPages)
+  const [materialAccessories, setMaterialAccessories] = useState(initialMaterialAccessories)
+  const [selectedAccessory, setSelectedAccessory] = useState<any | null>(null)
+  const [isSavingAccessory, setIsSavingAccessory] = useState(false)
   const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
   
   // Ensure client-side only rendering for media library button
@@ -442,6 +463,62 @@ export default function MaterialsEditClient({
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount)
+  }
+
+  // Fetch linked accessories (material_accessories)
+  const fetchMaterialAccessories = async () => {
+    try {
+      const res = await fetch(`/api/materials/${initialMaterial.id}/accessories`)
+      if (res.ok) {
+        const data = await res.json()
+        setMaterialAccessories(data || [])
+      }
+    } catch (error) {
+      console.error('Error fetching material accessories:', error)
+    }
+  }
+
+  const handleAddAccessory = async () => {
+    if (!selectedAccessory?.id) return
+    setIsSavingAccessory(true)
+    try {
+      const res = await fetch(`/api/materials/${initialMaterial.id}/accessories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessory_id: selectedAccessory.id })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Hiba történt az élzáró hozzáadásakor')
+      } else {
+        await fetchMaterialAccessories()
+        setSelectedAccessory(null)
+        toast.success('Élzáró hozzáadva')
+      }
+    } catch (error) {
+      console.error('Error adding accessory:', error)
+      toast.error('Hiba történt az élzáró hozzáadásakor')
+    } finally {
+      setIsSavingAccessory(false)
+    }
+  }
+
+  const handleDeleteAccessory = async (accessoryId: string) => {
+    try {
+      const res = await fetch(`/api/materials/${initialMaterial.id}/accessories/${accessoryId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error || 'Hiba történt a törlés során')
+        return
+      }
+      setMaterialAccessories(prev => prev.filter((item: any) => item.accessory_id !== accessoryId))
+      toast.success('Élzáró eltávolítva')
+    } catch (error) {
+      console.error('Error deleting accessory:', error)
+      toast.error('Hiba történt a törlés során')
+    }
   }
 
   // Refresh inventory data
@@ -846,6 +923,74 @@ export default function MaterialsEditClient({
                   />
                 </Grid>
               </Grid>
+            </CardContent>
+          </Card>
+
+          {/* Élzáró anyagok Card */}
+          <Card sx={{ mt: 4 }}>
+            <CardHeader title="Élzáró anyagok" />
+            <CardContent>
+              <Grid container spacing={2} alignItems="center">
+                <Grid item xs={12} sm={8} md={6}>
+                  <Autocomplete
+                    options={initialAccessories}
+                    getOptionLabel={(option: any) => option?.name ? `${option.name}${option.sku ? ` (${option.sku})` : ''}` : ''}
+                    value={selectedAccessory}
+                    onChange={(_, newValue) => setSelectedAccessory(newValue)}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Élzáró kiválasztása" placeholder="Keresés név vagy SKU alapján" />
+                    )}
+                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                  />
+                </Grid>
+                <Grid item>
+                  <Button
+                    variant="contained"
+                    onClick={handleAddAccessory}
+                    disabled={!selectedAccessory || isSavingAccessory}
+                  >
+                    Hozzáadás
+                  </Button>
+                </Grid>
+              </Grid>
+
+              <TableContainer component={Paper} sx={{ mt: 3 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Partner</TableCell>
+                      <TableCell>Név</TableCell>
+                      <TableCell>SKU</TableCell>
+                      <TableCell>Beszerzési ár</TableCell>
+                      <TableCell align="right">Művelet</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {materialAccessories.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5}>
+                          <Typography variant="body2" color="text.secondary">Nincs élzáró kapcsolva.</Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {materialAccessories.map((item: any) => (
+                      <TableRow key={item.accessory_id}>
+                        <TableCell>{item.accessory?.partner_name || '-'}</TableCell>
+                        <TableCell>{item.accessory?.name || '-'}</TableCell>
+                        <TableCell>{item.accessory?.sku || '-'}</TableCell>
+                        <TableCell>{item.accessory?.base_price !== undefined ? formatPriceWithCurrency(item.accessory.base_price) : '-'}</TableCell>
+                        <TableCell align="right">
+                          <Tooltip title="Törlés">
+                            <IconButton color="error" onClick={() => handleDeleteAccessory(item.accessory_id)}>
+                              <DeleteIcon />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </CardContent>
           </Card>
 

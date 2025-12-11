@@ -16,9 +16,13 @@ import {
   Paper, 
   Chip, 
   CircularProgress,
-  InputAdornment
+  InputAdornment,
+  IconButton,
+  Popover,
+  Tooltip,
+  TableSizeType
 } from '@mui/material'
-import { Home as HomeIcon, Search as SearchIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Search as SearchIcon, Info as InfoIcon } from '@mui/icons-material'
 
 interface Material {
   id: string
@@ -31,6 +35,12 @@ interface Material {
   vat_id: string
   brands: { name: string } | null
   vat: { kulcs: number }
+  accessories?: {
+    id: string
+    name: string
+    sku: string
+    partner_name: string
+  }[]
 }
 
 interface LinearMaterial {
@@ -45,6 +55,12 @@ interface LinearMaterial {
   type: string
   brands: { name: string } | null
   vat: { kulcs: number }
+  accessories?: {
+    id: string
+    name: string
+    sku: string
+    partner_name: string
+  }[]
 }
 
 interface SearchResults {
@@ -123,6 +139,18 @@ export default function SearchClient() {
     return combined
   }, [results])
 
+  // Popover state for accessories
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
+  const [accessoryRows, setAccessoryRows] = useState<{ id: string; name: string; sku: string; partner_name: string }[]>([])
+  const handleOpenAccessories = (event: React.MouseEvent<HTMLElement>, accessories: any[] = []) => {
+    setAccessoryRows(accessories || [])
+    setAnchorEl(event.currentTarget)
+  }
+  const handleCloseAccessories = () => {
+    setAnchorEl(null)
+    setAccessoryRows([])
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
@@ -177,6 +205,7 @@ export default function SearchClient() {
                   <strong>Nm ár</strong>
                 </TableCell>
                 <TableCell><strong>Egész ár</strong></TableCell>
+                <TableCell align="center"><strong>Élzárók</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -185,7 +214,16 @@ export default function SearchClient() {
                 return (
                   <TableRow key={`${item.isLinear ? 'linear' : 'material'}-${item.id}`}>
                     <TableCell>{item.brands?.name || '-'}</TableCell>
-                    <TableCell>{item.name}</TableCell>
+                    <TableCell>
+                      <Link
+                        href={item.isLinear ? `/linear-materials/${item.id}/edit` : `/materials/${item.id}/edit`}
+                        underline="hover"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {item.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>
                       <Chip 
                         label={item.isLinear ? item.type : "Bútorlap"} 
@@ -225,6 +263,18 @@ export default function SearchClient() {
                     <TableCell>
                       {formatPrice(prices.egeszAr)}
                     </TableCell>
+                    <TableCell align="center">
+                      {(item.accessories && item.accessories.length > 0) ? (
+                        <Tooltip title="Kapcsolt élzárók megtekintése">
+                          <IconButton size="small" onClick={(e) => handleOpenAccessories(e, item.accessories)}>
+                            <InfoIcon fontSize="small" />
+                            <Chip label={item.accessories.length} size="small" sx={{ ml: 0.5 }} />
+                          </IconButton>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">-</Typography>
+                      )}
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -232,6 +282,42 @@ export default function SearchClient() {
           </Table>
         </TableContainer>
       )}
+
+      <Popover
+        open={Boolean(anchorEl)}
+        anchorEl={anchorEl}
+        onClose={handleCloseAccessories}
+        anchorOrigin={{
+          vertical: 'bottom',
+          horizontal: 'left',
+        }}
+      >
+        <Box sx={{ p: 2, maxWidth: 420 }}>
+          <Typography variant="subtitle1" gutterBottom>Kapcsolt élzárók</Typography>
+          {accessoryRows.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">Nincs élzáró.</Typography>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Partner</TableCell>
+                  <TableCell>Név</TableCell>
+                  <TableCell>SKU</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {accessoryRows.map((acc) => (
+                  <TableRow key={acc.id || acc.sku}>
+                    <TableCell>{acc.partner_name || '-'}</TableCell>
+                    <TableCell>{acc.name}</TableCell>
+                    <TableCell>{acc.sku}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </Box>
+      </Popover>
 
       {hasSearched && allResults.length === 0 && !isLoading && (
         <Typography variant="body1" color="text.secondary" sx={{ textAlign: 'center', mt: 3 }}>

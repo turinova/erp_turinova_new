@@ -3,11 +3,11 @@
 import React, { useState, useEffect } from 'react'
 import type { SyntheticEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Breadcrumbs, Link, Grid, Button, TextField, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Divider, Tab, Chip, Pagination } from '@mui/material'
+import { Box, Typography, Breadcrumbs, Link, Grid, Button, TextField, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Divider, Tab, Chip, Pagination, Autocomplete, IconButton } from '@mui/material'
 import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
-import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
+import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
@@ -62,6 +62,30 @@ interface StockMovementRow {
   note: string
 }
 
+interface Accessory {
+  id: string
+  name: string
+  sku: string
+  base_price: number
+  partners_id?: string | null
+  partner_name?: string
+}
+
+interface LinearMaterialAccessory {
+  linear_material_id: string
+  accessory_id: string
+  created_at: string
+  updated_at: string
+  accessory: {
+    id: string
+    name: string
+    sku: string
+    base_price: number
+    partners_id?: string | null
+    partner_name?: string
+  }
+}
+
 interface LinearMaterialEditClientProps {
   initialLinearMaterial: LinearMaterial
   brands: Brand[]
@@ -79,6 +103,8 @@ interface LinearMaterialEditClientProps {
     stock_value: number
     last_movement_at: string | null
   } | null
+  initialAccessories?: Accessory[]
+  initialLinearMaterialAccessories?: LinearMaterialAccessory[]
 }
 
 export default function LinearMaterialEditClient({ 
@@ -93,7 +119,9 @@ export default function LinearMaterialEditClient({
   stockMovementsTotalCount = 0,
   stockMovementsTotalPages = 0,
   stockMovementsCurrentPage = 1,
-  currentStock = null
+  currentStock = null,
+  initialAccessories = [],
+  initialLinearMaterialAccessories = []
 }: LinearMaterialEditClientProps) {
   const router = useRouter()
   
@@ -108,6 +136,12 @@ export default function LinearMaterialEditClient({
   const [stockMovementsPage, setStockMovementsPage] = useState(stockMovementsCurrentPage)
   const [stockMovementsTotal, setStockMovementsTotal] = useState(stockMovementsTotalCount)
   const [stockMovementsPages, setStockMovementsPages] = useState(stockMovementsTotalPages)
+  
+  // Accessories state
+  const [accessories] = useState<Accessory[]>(initialAccessories)
+  const [materialAccessories, setMaterialAccessories] = useState<LinearMaterialAccessory[]>(initialLinearMaterialAccessories)
+  const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null)
+  const [isAddingAccessory, setIsAddingAccessory] = useState(false)
   
   // Calculate price_per_m from base_price and multiplier
   const calculatedPricePerM = React.useMemo(() => {
@@ -200,6 +234,77 @@ export default function LinearMaterialEditClient({
     handleInputChange('image_url', imageUrl)
     toast.success(`Kép kiválasztva: ${filename}`)
   }
+
+  // Handle adding accessory
+  const handleAddAccessory = async () => {
+    if (!selectedAccessory) {
+      toast.error('Kérem válasszon kiegészítőt!')
+      return
+    }
+
+    // Check if already added
+    const alreadyAdded = materialAccessories.some(
+      ma => ma.accessory_id === selectedAccessory.id
+    )
+    if (alreadyAdded) {
+      toast.error('Ez a kiegészítő már hozzá van adva!')
+      return
+    }
+
+    setIsAddingAccessory(true)
+    try {
+      const response = await fetch(`/api/linear-materials/${initialLinearMaterial.id}/accessories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessory_id: selectedAccessory.id })
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to add accessory')
+      }
+
+      // Refresh accessories list
+      const accessoriesResponse = await fetch(`/api/linear-materials/${initialLinearMaterial.id}/accessories`)
+      if (accessoriesResponse.ok) {
+        const data = await accessoriesResponse.json()
+        setMaterialAccessories(data)
+      }
+
+      setSelectedAccessory(null)
+      toast.success('Kiegészítő hozzáadva!')
+    } catch (error: any) {
+      console.error('Error adding accessory:', error)
+      toast.error(error.message || 'Hiba történt a kiegészítő hozzáadása során')
+    } finally {
+      setIsAddingAccessory(false)
+    }
+  }
+
+  // Handle removing accessory
+  const handleRemoveAccessory = async (accessoryId: string) => {
+    try {
+      const response = await fetch(`/api/linear-materials/${initialLinearMaterial.id}/accessories/${accessoryId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to remove accessory')
+      }
+
+      // Remove from local state immediately
+      setMaterialAccessories(prev => prev.filter(ma => ma.accessory_id !== accessoryId))
+      toast.success('Kiegészítő eltávolítva!')
+    } catch (error) {
+      console.error('Error removing accessory:', error)
+      toast.error('Hiba történt a kiegészítő eltávolítása során')
+    }
+  }
+
+  // Filter out already added accessories from the autocomplete
+  const availableAccessories = accessories.filter(
+    acc => !materialAccessories.some(ma => ma.accessory_id === acc.id)
+  )
 
   const validate = () => {
     const newErrors: any = {}
@@ -383,6 +488,78 @@ export default function LinearMaterialEditClient({
                   <TextField fullWidth required label="Gépkód" value={machineCode} onChange={(e) => setMachineCode(e.target.value)} error={!!errors.machine_code} helperText={errors.machine_code} />
                 </Grid>
               </Grid>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Élzáró anyagok */}
+        <Grid item xs={12}>
+          <Card>
+            <CardHeader title="Élzáró anyagok" />
+            <CardContent>
+              <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
+                <Grid item xs={12} sm={8} md={6}>
+                  <Autocomplete
+                    options={availableAccessories}
+                    getOptionLabel={(option) => `${option.name} (${option.sku})`}
+                    value={selectedAccessory}
+                    onChange={(_, newValue) => setSelectedAccessory(newValue)}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Kiegészítő kiválasztása" />
+                    )}
+                  />
+                </Grid>
+                <Grid item>
+                  <Button
+                    variant="contained"
+                    onClick={handleAddAccessory}
+                    disabled={!selectedAccessory || isAddingAccessory}
+                  >
+                    {isAddingAccessory ? 'Hozzáadás...' : 'Hozzáadás'}
+                  </Button>
+                </Grid>
+              </Grid>
+
+              {materialAccessories.length > 0 ? (
+                <TableContainer component={Paper}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Partner</TableCell>
+                        <TableCell>Név</TableCell>
+                        <TableCell>SKU</TableCell>
+                        <TableCell align="right">Beszerzési ár</TableCell>
+                        <TableCell align="right">Művelet</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {materialAccessories.map((ma) => (
+                        <TableRow key={ma.accessory_id}>
+                          <TableCell>{ma.accessory.partner_name || '-'}</TableCell>
+                          <TableCell>{ma.accessory.name}</TableCell>
+                          <TableCell>{ma.accessory.sku}</TableCell>
+                          <TableCell align="right">
+                            {formatCurrency(ma.accessory.base_price)}
+                          </TableCell>
+                          <TableCell align="right">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => handleRemoveAccessory(ma.accessory_id)}
+                            >
+                              <DeleteIcon />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Nincs élzáró kapcsolva.
+                </Typography>
+              )}
             </CardContent>
           </Card>
         </Grid>

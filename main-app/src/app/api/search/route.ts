@@ -27,6 +27,19 @@ export async function GET(request: NextRequest) {
           thickness_mm,
           price_per_sqm,
           vat_id,
+          material_accessories!left (
+            accessory_id,
+            accessories (
+              id,
+              name,
+              sku,
+              base_price,
+              partners (
+                id,
+                name
+              )
+            )
+          ),
           brands (name),
           vat (kulcs)
         `)
@@ -46,6 +59,19 @@ export async function GET(request: NextRequest) {
           price_per_m,
           vat_id,
           type,
+          linear_material_accessories!left (
+            accessory_id,
+            accessories (
+              id,
+              name,
+              sku,
+              base_price,
+              partners (
+                id,
+                name
+              )
+            )
+          ),
           brands (name),
           vat (kulcs)
         `)
@@ -69,10 +95,33 @@ export async function GET(request: NextRequest) {
     
     console.log(`Found ${materials?.length || 0} materials and ${linearMaterials?.length || 0} linear materials`)
     
+    // Normalize accessories structure
+    const normalizedMaterials = (materials || []).map((m: any) => ({
+      ...m,
+      accessories: (m.material_accessories || []).map((ma: any) => ({
+        id: ma.accessories?.id,
+        name: ma.accessories?.name,
+        sku: ma.accessories?.sku,
+        partner_name: ma.accessories?.partners?.name || '',
+        base_price: ma.accessories?.base_price
+      }))
+    }))
+
+    const normalizedLinearMaterials = (linearMaterials || []).map((lm: any) => ({
+      ...lm,
+      accessories: (lm.linear_material_accessories || []).map((lma: any) => ({
+        id: lma.accessories?.id,
+        name: lma.accessories?.name,
+        sku: lma.accessories?.sku,
+        partner_name: lma.accessories?.partners?.name || '',
+        base_price: lma.accessories?.base_price
+      }))
+    }))
+
     // Add cache control headers for dynamic search results
     const response = NextResponse.json({
-      materials: materials || [], 
-      linearMaterials: linearMaterials || [] 
+      materials: normalizedMaterials, 
+      linearMaterials: normalizedLinearMaterials 
     })
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     response.headers.set('Pragma', 'no-cache')

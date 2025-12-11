@@ -10,7 +10,9 @@ import {
   getAllPartners,
   getAllUnits,
   getStockMovementsByMaterial,
-  getMaterialCurrentStock
+  getMaterialCurrentStock,
+  getAllAccessories,
+  getMaterialAccessories
 } from '@/lib/supabase-server'
 import MaterialsEditClient from './MaterialsEditClient'
 
@@ -74,7 +76,19 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
   const resolvedParams = await params
   
   // Fetch all data on the server for SSR (prevents hydration issues)
-  const [material, brands, currencies, vatRates, priceHistory, partners, units, stockMovementsData, currentStock] = await Promise.all([
+  const [
+    material, 
+    brands, 
+    currencies, 
+    vatRates, 
+    priceHistory, 
+    partners, 
+    units, 
+    stockMovementsData, 
+    currentStock,
+    allAccessories,
+    materialAccessories
+  ] = await Promise.all([
     getMaterialById(resolvedParams.id),
     getAllBrandsForMaterials(),
     getAllCurrencies(),
@@ -83,7 +97,9 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
     getAllPartners(),
     getAllUnits(),
     getStockMovementsByMaterial(resolvedParams.id, 1, 50), // Fetch first page with 50 items
-    getMaterialCurrentStock(resolvedParams.id)
+    getMaterialCurrentStock(resolvedParams.id),
+    getAllAccessories(),
+    getMaterialAccessories(resolvedParams.id)
   ])
   
   if (!material) {
@@ -108,6 +124,8 @@ export default async function MaterialsEditPage({ params }: MaterialsEditPagePro
       stockMovementsTotalPages={stockMovementsData.totalPages}
       stockMovementsCurrentPage={stockMovementsData.currentPage}
       currentStock={currentStock}
+      initialAccessories={allAccessories}
+      initialMaterialAccessories={materialAccessories}
     />
   )
 }

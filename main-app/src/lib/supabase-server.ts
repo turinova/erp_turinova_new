@@ -2237,6 +2237,99 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
   }
 }
 
+// Get accessories linked to a material (material_accessories junction)
+export async function getMaterialAccessories(materialId: string) {
+  const { data, error } = await supabaseServer
+    .from('material_accessories')
+    .select(`
+      material_id,
+      accessory_id,
+      created_at,
+      updated_at,
+      deleted_at,
+      accessories (
+        id,
+        name,
+        sku,
+        base_price,
+        partners_id,
+        partners (
+          id,
+          name
+        )
+      )
+    `)
+    .eq('material_id', materialId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching material accessories:', error)
+    return []
+  }
+
+  return (data || []).map((row: any) => ({
+    material_id: row.material_id,
+    accessory_id: row.accessory_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    accessory: {
+      id: row.accessories?.id,
+      name: row.accessories?.name,
+      sku: row.accessories?.sku,
+      base_price: row.accessories?.base_price,
+      partners_id: row.accessories?.partners_id,
+      partner_name: row.accessories?.partners?.name || ''
+    }
+  }))
+}
+
+export async function getLinearMaterialAccessories(linearMaterialId: string) {
+  const { data, error } = await supabaseServer
+    .from('linear_material_accessories')
+    .select(`
+      linear_material_id,
+      accessory_id,
+      created_at,
+      updated_at,
+      deleted_at,
+      accessories (
+        id,
+        name,
+        sku,
+        base_price,
+        partners_id,
+        partners (
+          id,
+          name
+        )
+      )
+    `)
+    .eq('linear_material_id', linearMaterialId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error('Error fetching linear material accessories:', error)
+    return []
+  }
+
+  return (data || []).map((row: any) => ({
+    linear_material_id: row.linear_material_id,
+    accessory_id: row.accessory_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    accessory: {
+      id: row.accessories?.id,
+      name: row.accessories?.name,
+      sku: row.accessories?.sku,
+      base_price: row.accessories?.base_price,
+      partners_id: row.accessories?.partners_id,
+      partner_name: row.accessories?.partners?.name || ''
+    }
+  }))
+}
+
 export async function getAccessoryById(id: string) {
   const { data, error } = await supabaseServer
     .from('accessories')
