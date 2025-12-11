@@ -372,6 +372,7 @@ export async function POST(request: NextRequest) {
               currency_id: product.currency_id || null,
               units_id: product.units_id || null,
               partner_id: partnerId,
+              megjegyzes: product.megjegyzes || null,
               total_net: Math.round(itemTotalNet),
               total_vat: Math.round(itemTotalVat),
               total_gross: Math.round(itemTotalGross),

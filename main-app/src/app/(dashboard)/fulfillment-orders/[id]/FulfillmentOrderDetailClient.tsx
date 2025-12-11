@@ -40,7 +40,7 @@ import {
   Alert
 } from '@mui/material'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, CheckCircle as CheckCircleIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, CheckCircle as CheckCircleIcon, Info as InfoIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 interface Customer {
@@ -112,6 +112,9 @@ interface CustomerOrderItem {
   total_gross: number
   status: string
   purchase_order_item_id: string | null
+  partner_id: string | null
+  partners?: { id: string; name: string } | null
+  megjegyzes?: string | null
 }
 
 interface CustomerOrderPayment {
@@ -150,6 +153,11 @@ interface CustomerOrder {
   sms_sent_at: string | null
 }
 
+interface Partner {
+  id: string
+  name: string
+}
+
 interface FulfillmentOrderDetailClientProps {
   id: string
   initialOrder: CustomerOrder
@@ -163,6 +171,7 @@ interface FulfillmentOrderDetailClientProps {
   initialUnits: Unit[]
   initialWorkers: Worker[]
   initialFeeTypes: FeeType[]
+  initialPartners: Partner[]
 }
 
 export default function FulfillmentOrderDetailClient({
@@ -177,7 +186,8 @@ export default function FulfillmentOrderDetailClient({
   initialCurrencies,
   initialUnits,
   initialWorkers,
-  initialFeeTypes
+  initialFeeTypes,
+  initialPartners
 }: FulfillmentOrderDetailClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -187,6 +197,17 @@ export default function FulfillmentOrderDetailClient({
   const [order, setOrder] = useState<CustomerOrder>(initialOrder)
   const [items, setItems] = useState<CustomerOrderItem[]>(initialItems)
   const [payments, setPayments] = useState<CustomerOrderPayment[]>(initialPayments)
+
+  // Product picker state (add item)
+  const [addingProduct, setAddingProduct] = useState(false)
+  const [productSearchTerm, setProductSearchTerm] = useState('')
+  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
+  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
+  const productSearchAbortControllerRef = useRef<AbortController | null>(null)
+
+  // Note editing state
+  const [editingNoteItemId, setEditingNoteItemId] = useState<string | null>(null)
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({})
 
   // Search products for adding new item (immediate add)
   useEffect(() => {
@@ -206,18 +227,47 @@ export default function FulfillmentOrderDetailClient({
     setIsSearchingProducts(true)
 
     const t = setTimeout(() => {
-      fetch(`/api/pos/accessories?search=${encodeURIComponent(term)}`, { signal: abortController.signal })
+      fetch(`/api/shoporder/search?q=${encodeURIComponent(term)}`, { signal: abortController.signal })
         .then(res => {
-          if (!res.ok) return []
+          if (!res.ok) return { materials: [], linearMaterials: [], accessories: [] }
           return res.json()
         })
         .then(data => {
           if (abortController.signal.aborted) return
-          if (Array.isArray(data)) {
-            setProductSearchResults(data)
-          } else {
-            setProductSearchResults([])
-          }
+
+          const allResults = [
+            ...(data.materials || []),
+            ...(data.linearMaterials || []),
+            ...(data.accessories || [])
+          ]
+
+          const mapped = allResults.map((item: any) => {
+            let product_type: 'accessory' | 'material' | 'linear_material' = 'accessory'
+            let accessory_id: string | null = null
+            let material_id: string | null = null
+            let linear_material_id: string | null = null
+
+            if (item.source === 'materials') {
+              product_type = 'material'
+              material_id = item.id
+            } else if (item.source === 'linear_materials') {
+              product_type = 'linear_material'
+              linear_material_id = item.id
+            } else {
+              product_type = 'accessory'
+              accessory_id = item.id
+            }
+
+            return {
+              ...item,
+              product_type,
+              accessory_id,
+              material_id,
+              linear_material_id
+            }
+          })
+
+          setProductSearchResults(mapped)
           setIsSearchingProducts(false)
         })
         .catch(err => {
@@ -236,13 +286,6 @@ export default function FulfillmentOrderDetailClient({
       }
     }
   }, [productSearchTerm])
-
-  // Product picker state (add item)
-  const [addingProduct, setAddingProduct] = useState(false)
-  const [productSearchTerm, setProductSearchTerm] = useState('')
-  const [productSearchResults, setProductSearchResults] = useState<any[]>([])
-  const [isSearchingProducts, setIsSearchingProducts] = useState(false)
-  const productSearchAbortControllerRef = useRef<AbortController | null>(null)
   const initialActivePayments = initialPayments.filter(p => !p.deleted_at)
   const initialActiveTotalPaid = initialActivePayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
   const [totalPaid, setTotalPaid] = useState(initialActiveTotalPaid)
@@ -295,6 +338,7 @@ export default function FulfillmentOrderDetailClient({
   const [units] = useState<Unit[]>(initialUnits)
   const [workers] = useState<Worker[]>(initialWorkers)
   const [feeTypes] = useState<FeeType[]>(initialFeeTypes)
+  const [partners] = useState<Partner[]>(initialPartners)
 
   // Worker state
   const [workerId] = useState(initialOrder.worker_id)
@@ -357,8 +401,14 @@ export default function FulfillmentOrderDetailClient({
   }, [items, discountAmount])
 
   // Handle customer selection
-  const handleCustomerChange = (event: React.SyntheticEvent, newValue: Customer | null) => {
-    if (newValue) {
+  const handleCustomerChange = (event: React.SyntheticEvent, newValue: string | Customer | null, reason?: string) => {
+    if (typeof newValue === 'string') {
+      // User typed a new customer name
+      setSelectedCustomer(null)
+      setCustomerName(newValue)
+      return
+    }
+    if (newValue && typeof newValue === 'object') {
       setSelectedCustomer(newValue)
       setCustomerName(newValue.name)
       setCustomerEmail(newValue.email || '')
@@ -457,6 +507,100 @@ export default function FulfillmentOrderDetailClient({
     }))
   }
 
+  // Update item partner (only if status is 'open')
+  const handlePartnerChange = async (itemId: string, newPartnerId: string) => {
+    const item = items.find(i => i.id === itemId)
+    if (!item || item.status !== 'open') {
+      toast.warning('Csak nyitott státuszú tételek módosíthatók')
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/customer-order-items/${itemId}/partner`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partner_id: newPartnerId || null })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || 'Hiba a beszállító frissítésekor')
+      }
+
+      // Update local state
+      setItems(prevItems => prevItems.map(item => 
+        item.id === itemId 
+          ? { ...item, partner_id: newPartnerId || null, partners: newPartnerId ? partners.find(p => p.id === newPartnerId) || null : null }
+          : item
+      ))
+
+      toast.success('Beszállító frissítve')
+    } catch (err: any) {
+      console.error('Error updating partner:', err)
+      toast.error(err?.message || 'Hiba a beszállító frissítésekor')
+    }
+  }
+
+  // Handle note icon click - open editor
+  const handleNoteIconClick = (itemId: string) => {
+    const item = items.find(i => i.id === itemId)
+    if (item) {
+      setEditingNoteItemId(itemId)
+      setNoteDrafts(prev => ({
+        ...prev,
+        [itemId]: item.megjegyzes || ''
+      }))
+    }
+  }
+
+  // Handle note save
+  const handleNoteSave = async (itemId: string) => {
+    const item = items.find(i => i.id === itemId)
+    if (!item || item.status !== 'open') {
+      toast.warning('Csak nyitott státuszú tételek módosíthatók')
+      setEditingNoteItemId(null)
+      return
+    }
+
+    const noteText = noteDrafts[itemId] || ''
+
+    try {
+      const res = await fetch(`/api/customer-order-items/${itemId}/note`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ megjegyzes: noteText.trim() || null })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data?.error || 'Hiba a megjegyzés frissítésekor')
+      }
+
+      // Update local state
+      setItems(prevItems => prevItems.map(item => 
+        item.id === itemId 
+          ? { ...item, megjegyzes: noteText.trim() || null }
+          : item
+      ))
+
+      setEditingNoteItemId(null)
+      toast.success('Megjegyzés frissítve')
+    } catch (err: any) {
+      console.error('Error updating note:', err)
+      toast.error(err?.message || 'Hiba a megjegyzés frissítésekor')
+    }
+  }
+
+  // Handle note cancel
+  const handleNoteCancel = (itemId: string) => {
+    setEditingNoteItemId(null)
+    setNoteDrafts(prev => {
+      const newDrafts = { ...prev }
+      delete newDrafts[itemId]
+      return newDrafts
+    })
+  }
+
   // Start adding product
   const handleAddProductClick = () => {
     setAddingProduct(true)
@@ -475,16 +619,12 @@ export default function FulfillmentOrderDetailClient({
     try {
       const vatPercent = selectedProduct.vat_percent || 0
       const vatMultiplier = 1 + vatPercent / 100
+      const base = selectedProduct.base_price || 0
+      const mult = selectedProduct.multiplier || 1.38
 
-      let unitGross = selectedProduct.gross_price || 0
-      if (selectedProduct.product_type === 'material' && selectedProduct.unit_price_per_sqm) {
-        unitGross = selectedProduct.unit_price_per_sqm
-      } else if (selectedProduct.product_type === 'linear_material' && selectedProduct.unit_price_per_m) {
-        unitGross = selectedProduct.unit_price_per_m
-      }
-
-      const roundedUnitGross = Math.round(unitGross)
-      const unitNet = Math.round(roundedUnitGross / vatMultiplier)
+      // Whole-item pricing (matches shoporder behavior)
+      const unitNet = Math.round(base * mult)
+      const roundedUnitGross = Math.round(unitNet * vatMultiplier)
       const quantity = 1
       const totalGross = Math.round(roundedUnitGross * quantity)
       const totalNet = Math.round(unitNet * quantity)
@@ -814,7 +954,7 @@ export default function FulfillmentOrderDetailClient({
 
       <Stack spacing={3}>
         {/* Two column layout: 60-40 */}
-        <Grid container spacing={3}>
+        <Grid container spacing={3} alignItems="flex-start">
           {/* Left column: 60% - Alap adatok */}
           <Grid item xs={12} md={7}>
             <Stack spacing={3}>
@@ -1152,30 +1292,20 @@ export default function FulfillmentOrderDetailClient({
               </Card>
             </Stack>
           </Grid>
-        </Grid>
 
-        {/* Full width cards */}
-        {/* Tételek */}
-        <Card>
+          {/* Full width cards */}
+          {/* Tételek */}
+          <Grid item xs={12}>
+            <Card>
           <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>
-                Tételek
-              </Typography>
-              <Button
-                startIcon={<AddIcon />}
-                variant="outlined"
-                size="small"
-                onClick={handleAddProductClick}
-                disabled={order.status !== 'open' || addingProduct}
-              >
-                Tételek hozzáadása
-              </Button>
-            </Box>
-            <TableContainer>
-              <Table size="small">
+            <Typography variant="h6" gutterBottom>
+              Tételek
+            </Typography>
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" sx={{ minWidth: 1200 }}>
                 <TableHead>
                   <TableRow>
+                    <TableCell>Beszállító</TableCell>
                     <TableCell>Név</TableCell>
                     <TableCell>SKU</TableCell>
                     <TableCell>Státusz</TableCell>
@@ -1184,6 +1314,7 @@ export default function FulfillmentOrderDetailClient({
                     <TableCell align="right">Bruttó egységár</TableCell>
                     <TableCell align="right">ÁFA</TableCell>
                     <TableCell align="right">Bruttó részösszeg</TableCell>
+                    <TableCell>Megjegyzés</TableCell>
                     <TableCell>Művelet</TableCell>
                   </TableRow>
                 </TableHead>
@@ -1191,8 +1322,37 @@ export default function FulfillmentOrderDetailClient({
                   {items.filter(item => item.item_type === 'product').map(item => {
                     const canEdit = item.status === 'open'
                     const statusInfo = getStatusInfo(item.status)
+                    const currentPartner = partners.find(p => p.id === item.partner_id)
                     return (
-                      <TableRow key={item.id}>
+                      <React.Fragment key={item.id}>
+                        <TableRow>
+                        <TableCell>
+                          <Select
+                            value={item.partner_id || ''}
+                            onChange={(e) => handlePartnerChange(item.id, e.target.value)}
+                            disabled={!canEdit}
+                            size="small"
+                            displayEmpty
+                            sx={{ minWidth: 150 }}
+                            MenuProps={{
+                              PaperProps: {
+                                style: {
+                                  maxHeight: 300,
+                                  width: 250,
+                                },
+                              },
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>-</em>
+                            </MenuItem>
+                            {partners.map((partner) => (
+                              <MenuItem key={partner.id} value={partner.id}>
+                                {partner.name}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </TableCell>
                         <TableCell>
                           <Typography variant="body2">{item.product_name}</Typography>
                           {item.product_type === 'accessory' && item.sku && (
@@ -1240,6 +1400,20 @@ export default function FulfillmentOrderDetailClient({
                         <TableCell align="right">{formatCurrency(item.total_vat)}</TableCell>
                         <TableCell align="right">{formatCurrency(item.total_gross)}</TableCell>
                         <TableCell>
+                          <Tooltip title={item.megjegyzes || 'Kattintson a megjegyzés hozzáadásához'} arrow placement="top">
+                            <IconButton
+                              size="small"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleNoteIconClick(item.id)
+                              }}
+                              sx={{ p: 0.5 }}
+                            >
+                              <InfoIcon fontSize="small" color="primary" />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
                           <Tooltip title="Tétel törlése">
                               <IconButton
                                 size="small"
@@ -1254,11 +1428,46 @@ export default function FulfillmentOrderDetailClient({
                           </Tooltip>
                         </TableCell>
                       </TableRow>
+                      {editingNoteItemId === item.id && (
+                        <TableRow>
+                          <TableCell colSpan={11} sx={{ py: 2, bgcolor: 'grey.50' }}>
+                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                              <TextField
+                                fullWidth
+                                multiline
+                                rows={3}
+                                size="small"
+                                label="Megjegyzés"
+                                value={noteDrafts[item.id] || ''}
+                                onChange={(e) => setNoteDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                placeholder="Adja meg a megjegyzést..."
+                              />
+                              <Button
+                                variant="contained"
+                                size="small"
+                                onClick={() => handleNoteSave(item.id)}
+                                sx={{ mt: 0.5 }}
+                              >
+                                Mentés
+                              </Button>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={() => handleNoteCancel(item.id)}
+                                sx={{ mt: 0.5 }}
+                              >
+                                Mégse
+                              </Button>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      </React.Fragment>
                     )
                   })}
                   {addingProduct && (
                     <TableRow>
-                      <TableCell colSpan={9}>
+                      <TableCell colSpan={11}>
                         <Autocomplete
                           fullWidth
                           size="small"
@@ -1290,49 +1499,51 @@ export default function FulfillmentOrderDetailClient({
                             />
                           )}
                           renderOption={(props, option) => {
-                            const { key, ...other } = props as any
+                            const { key, ...otherProps } = props
                             const typeLabel = option.product_type === 'material'
                               ? 'Bútorlap'
                               : option.product_type === 'linear_material'
                                 ? 'Szálas termék'
                                 : 'Kellék'
-                            const typeColor = option.product_type === 'material'
-                              ? 'secondary'
-                              : option.product_type === 'linear_material'
-                                ? 'success'
-                                : 'primary'
+                            const dimensions = option.dimensions
+                              || (option.product_type === 'material' && option.length_mm && option.width_mm && option.thickness_mm
+                                ? `${option.length_mm}×${option.width_mm}×${option.thickness_mm} mm`
+                                : undefined)
+                              || (option.product_type === 'linear_material' && option.length && option.width && option.thickness
+                                ? `${option.length}×${option.width}×${option.thickness} mm`
+                                : undefined)
                             return (
-                              <Box component="li" key={key} {...other}>
-                                <Box sx={{ flex: 1 }}>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-                                    <Typography variant="body2">{option.name}</Typography>
-                                    <Chip label={typeLabel} size="small" color={typeColor as any} />
-                                  </Box>
-                                  {option.sku && option.product_type === 'accessory' && (
+                              <Box component="li" key={key} {...otherProps}>
+                                <Box>
+                                  <Typography variant="body2" fontWeight="bold">
+                                    {option.name}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {`SKU: ${option.sku || '-'} | Típus: ${typeLabel}`}
+                                  </Typography>
+                                  {option.brand_name && (
                                     <Typography variant="caption" color="text.secondary" display="block">
-                                      SKU: {option.sku}
+                                      Márka: {option.brand_name}
                                     </Typography>
                                   )}
-                                  {option.product_type === 'material' && option.length_mm && option.width_mm && option.thickness_mm && (
+                                  {dimensions && (
                                     <Typography variant="caption" color="text.secondary" display="block">
-                                      {option.length_mm}×{option.width_mm}×{option.thickness_mm} mm
-                                    </Typography>
-                                  )}
-                                  {option.product_type === 'linear_material' && option.length && option.width && option.thickness && (
-                                    <Typography variant="caption" color="text.secondary" display="block">
-                                      {option.length}×{option.width}×{option.thickness} mm
+                                      Méret: {dimensions}
                                     </Typography>
                                   )}
                                 </Box>
                               </Box>
                             )
                           }}
+                          noOptionsText="Nincs találat"
+                          open={productSearchTerm.trim().length >= 2}
                         />
                       </TableCell>
                     </TableRow>
                   )}
                   {items.filter(item => item.item_type === 'fee').map(item => (
                     <TableRow key={item.id}>
+                      <TableCell>-</TableCell>
                       <TableCell>
                         <Typography variant="body2">{item.product_name}</Typography>
                       </TableCell>
@@ -1343,16 +1554,30 @@ export default function FulfillmentOrderDetailClient({
                       <TableCell align="right">{formatCurrency(item.unit_price_gross)}</TableCell>
                       <TableCell align="right">{formatCurrency(item.total_vat)}</TableCell>
                       <TableCell align="right">{formatCurrency(item.total_gross)}</TableCell>
+                      <TableCell>-</TableCell>
+                      <TableCell>-</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             </TableContainer>
+            <Button
+              startIcon={<AddIcon />}
+              variant="outlined"
+              size="small"
+              sx={{ mt: 2 }}
+              onClick={handleAddProductClick}
+              disabled={order.status !== 'open' || addingProduct}
+            >
+              Tétel hozzáadása
+            </Button>
           </CardContent>
-        </Card>
+            </Card>
+          </Grid>
 
-        {/* Summary */}
-        <Card>
+          {/* Summary */}
+          <Grid item xs={12}>
+            <Card>
           <CardContent>
             <Typography variant="h6" gutterBottom>
               Összesítés
@@ -1477,7 +1702,9 @@ export default function FulfillmentOrderDetailClient({
               </Grid>
             </Grid>
           </CardContent>
-        </Card>
+            </Card>
+          </Grid>
+        </Grid>
 
       </Stack>
 

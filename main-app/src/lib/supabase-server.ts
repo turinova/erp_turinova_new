@@ -3362,7 +3362,13 @@ export async function getCustomerOrderById(id: string) {
         total_vat,
         total_gross,
         status,
-        purchase_order_item_id
+        purchase_order_item_id,
+        partner_id,
+        megjegyzes,
+        partners:partner_id (
+          id,
+          name
+        )
       `)
       .eq('order_id', id)
       .is('deleted_at', null)
@@ -3387,6 +3393,14 @@ export async function getCustomerOrderById(id: string) {
     const totalPaid = activePayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0)
     const balance = Number(order.total_gross || 0) - totalPaid
 
+    // Normalize items to include partner data and megjegyzes
+    const normalizedItems = (items || []).map((item: any) => ({
+      ...item,
+      partner_id: item.partner_id || null,
+      partners: item.partners || null,
+      megjegyzes: item.megjegyzes || null
+    }))
+
     logTiming('Customer Order By ID Fetch', startTime, 'success')
     return {
       order: {
@@ -3394,7 +3408,7 @@ export async function getCustomerOrderById(id: string) {
         worker_nickname: order.workers?.nickname || '',
         worker_color: order.workers?.color || '#1976d2'
       },
-      items: items || [],
+      items: normalizedItems,
       payments: payments || [],
       total_paid: totalPaid,
       balance: balance

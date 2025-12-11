@@ -113,6 +113,56 @@ export async function POST(
       return NextResponse.json({ error: 'Hiba a tétel hozzáadásakor' }, { status: 500 })
     }
 
+    // Recalculate customer_order totals
+    const { data: allItems } = await supabaseServer
+      .from('customer_order_items')
+      .select('total_net, total_vat, total_gross, item_type')
+      .eq('order_id', id)
+      .is('deleted_at', null)
+
+    if (allItems) {
+      const products = allItems.filter(item => item.item_type === 'product')
+      const fees = allItems.filter(item => item.item_type === 'fee')
+      
+      const itemsNet = products.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
+      const itemsVat = products.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
+      const itemsGross = products.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+      
+      const feesNet = fees.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
+      const feesVat = fees.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
+      const feesGross = fees.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+      
+      const totalNetBeforeDiscount = itemsNet + feesNet
+      const totalVatBeforeDiscount = itemsVat + feesVat
+      const totalGrossBeforeDiscount = itemsGross + feesGross
+      
+      // Get discount from order
+      const { data: orderData } = await supabaseServer
+        .from('customer_orders')
+        .select('discount_amount')
+        .eq('id', id)
+        .single()
+      
+      const discountAmount = Number(orderData?.discount_amount || 0)
+      const totalGrossAfterDiscount = totalGrossBeforeDiscount - discountAmount
+      
+      // Calculate net and VAT after discount proportionally
+      const discountRatio = totalGrossBeforeDiscount > 0 ? discountAmount / totalGrossBeforeDiscount : 0
+      const totalNetAfterDiscount = totalNetBeforeDiscount * (1 - discountRatio)
+      const totalVatAfterDiscount = totalVatBeforeDiscount * (1 - discountRatio)
+      
+      // Update customer_order totals
+      await supabaseServer
+        .from('customer_orders')
+        .update({
+          subtotal_net: Math.round(totalNetAfterDiscount),
+          total_vat: Math.round(totalVatAfterDiscount),
+          total_gross: Math.round(totalGrossAfterDiscount),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+    }
+
     return NextResponse.json({ item: inserted })
   } catch (error) {
     console.error('Error in POST /api/customer-orders/[id]/items:', error)
