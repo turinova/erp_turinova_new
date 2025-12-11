@@ -271,7 +271,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     return fixedItems
   }
 
-  // Load cart from session storage on mount
+  // Load cart from session storage on mount (NON-BLOCKING for performance)
   useEffect(() => {
     const loadCartFromStorage = async () => {
       try {
@@ -280,11 +280,23 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         const savedDiscount = sessionStorage.getItem('pos_discount')
         const savedWorkerId = sessionStorage.getItem('pos_selected_worker_id')
         
+        // Load cart items immediately (non-blocking) for instant page load
         if (savedCartItems) {
           const parsedItems: CartItem[] = JSON.parse(savedCartItems)
-          // Validate and fix items that might be missing vat_id or currency_id
-          const validatedItems = await validateAndFixCartItems(parsedItems)
-          setCartItems(validatedItems)
+          // Set cart items immediately so page is interactive
+          setCartItems(parsedItems)
+          
+          // Validate and fix items in the background (non-blocking)
+          // This ensures page loads fast while validation happens async
+          validateAndFixCartItems(parsedItems).then((validatedItems) => {
+            // Only update if items changed (to avoid unnecessary re-renders)
+            if (JSON.stringify(validatedItems) !== JSON.stringify(parsedItems)) {
+              setCartItems(validatedItems)
+            }
+          }).catch((error) => {
+            console.error('Error validating cart items:', error)
+            // Cart items are already loaded, so page remains functional
+          })
         }
         
         if (savedFees) {

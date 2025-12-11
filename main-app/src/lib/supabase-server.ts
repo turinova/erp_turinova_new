@@ -882,6 +882,8 @@ export async function getCustomerById(id: string) {
 export async function getAllCustomers() {
   const startTime = performance.now()
   
+  // Fetch all customers with explicit limit to ensure we get all records
+  // PostgREST default limit is 1000, so we set a high limit for large datasets
   const { data, error } = await supabaseServer
     .from('customers')
     .select(`
@@ -904,6 +906,7 @@ export async function getAllCustomers() {
     `)
     .is('deleted_at', null)
     .order('name', { ascending: true })
+    .limit(10000) // High limit to ensure we get all customers (adjust if you have more)
 
   const queryTime = performance.now()
   logTiming('Customers DB Query', startTime, `fetched ${data?.length || 0} records`)
@@ -2397,11 +2400,13 @@ export async function getAccessoryById(id: string) {
 export async function getAllWorkers() {
   const startTime = performance.now()
   
+  // Fetch all workers with explicit limit to ensure we get all records
   const { data, error } = await supabaseServer
     .from('workers')
     .select('id, name, nickname, mobile, color, created_at, updated_at')
     .is('deleted_at', null)
     .order('name', { ascending: true })
+    .limit(1000) // High limit to ensure we get all workers (adjust if you have more)
 
   const queryTime = performance.now()
   logTiming('Workers DB Query', startTime, `fetched ${data?.length || 0} records`)
