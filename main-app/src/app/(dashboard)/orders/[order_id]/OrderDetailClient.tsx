@@ -10,7 +10,6 @@ import QuoteDetailClient from '../../quotes/[quote_id]/QuoteDetailClient'
 interface OrderDetailClientProps {
   initialQuoteData: any
   feeTypes: any[]
-  accessories: any[]
   vatRates: any[]
   currencies: any[]
   units: any[]

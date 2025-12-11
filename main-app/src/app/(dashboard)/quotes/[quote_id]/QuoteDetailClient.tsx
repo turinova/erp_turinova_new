@@ -300,7 +300,7 @@ interface EdgeMaterialBreakdown {
 interface QuoteDetailClientProps {
   initialQuoteData: QuoteData
   feeTypes: FeeType[]
-  accessories: Accessory[]
+  accessories?: Accessory[] // Optional - not used, AddAccessoryModal uses server-side search
   vatRates: VatRate[]
   currencies: Currency[]
   units: Unit[]
@@ -333,7 +333,7 @@ function sanitizeBarcodeForCODE128(barcode: string): string {
 export default function QuoteDetailClient({ 
   initialQuoteData,
   feeTypes,
-  accessories,
+  accessories = [], // Default to empty array if not provided
   vatRates,
   currencies,
   units,

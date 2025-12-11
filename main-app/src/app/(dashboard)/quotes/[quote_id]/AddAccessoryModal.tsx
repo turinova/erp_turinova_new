@@ -67,7 +67,7 @@ interface AddAccessoryModalProps {
   onClose: () => void
   quoteId: string
   onSuccess: () => void
-  accessories: Accessory[]
+  accessories?: Accessory[] // Optional - not used, modal uses server-side search
   vatRates: VatRate[]
   currencies: Currency[]
   units: Unit[]
