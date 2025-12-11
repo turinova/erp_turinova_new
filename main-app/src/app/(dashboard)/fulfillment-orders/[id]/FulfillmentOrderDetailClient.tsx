@@ -1354,12 +1354,9 @@ export default function FulfillmentOrderDetailClient({
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Typography variant="body2">{item.product_name}</Typography>
-                          {item.product_type === 'accessory' && item.sku && (
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              SKU: {item.sku}
-                            </Typography>
-                          )}
+                          <Typography variant="body2">
+                            {item.product_name?.replace(/\s*\([^)]*\)\s*$/, '') || item.product_name}
+                          </Typography>
                         </TableCell>
                         <TableCell>{item.product_type === 'accessory' ? (item.sku || '-') : '-'}</TableCell>
                         <TableCell>
