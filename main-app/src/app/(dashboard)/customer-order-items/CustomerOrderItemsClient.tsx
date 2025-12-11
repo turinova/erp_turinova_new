@@ -28,7 +28,8 @@ import {
   Search as SearchIcon, 
   Home as HomeIcon,
   AddShoppingCart as CreatePOIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Info as InfoIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import CreatePurchaseOrderModal from './CreatePurchaseOrderModal'
@@ -38,6 +39,7 @@ interface CustomerOrderItem {
   product_name: string
   sku: string
   quantity: number
+  megjegyzes?: string | null
   status: string
   created_at: string
   updated_at: string
@@ -556,6 +558,7 @@ export default function CustomerOrderItemsClient({
               <TableCell><strong>Termék neve</strong></TableCell>
               <TableCell><strong>SKU</strong></TableCell>
               <TableCell align="right"><strong>Mennyiség</strong></TableCell>
+              <TableCell><strong>Megjegyzés</strong></TableCell>
               <TableCell align="right"><strong>Beszerzési ár</strong></TableCell>
               <TableCell align="right"><strong>Bruttó egységár</strong></TableCell>
               <TableCell align="right"><strong>Bruttó összesen</strong></TableCell>
@@ -628,6 +631,15 @@ export default function CustomerOrderItemsClient({
                       <Typography variant="body2">
                         {item.quantity}
                       </Typography>
+                    </TableCell>
+                    <TableCell onClick={() => handleRowClick(item.order_id)}>
+                      {item.megjegyzes ? (
+                        <Tooltip title={item.megjegyzes} arrow placement="top">
+                          <InfoIcon fontSize="small" color="primary" />
+                        </Tooltip>
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell align="right" onClick={() => handleRowClick(item.order_id)}>
                       <Typography variant="body2" fontWeight="bold" color="primary.main">

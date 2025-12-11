@@ -2881,6 +2881,7 @@ export async function getAllCustomerOrderItems(page: number = 1, limit: number =
         material_id,
         linear_material_id,
         purchase_order_item_id,
+      megjegyzes,
         vat_id,
         currency_id,
         units_id,
@@ -3121,6 +3122,7 @@ export async function getAllCustomerOrderItems(page: number = 1, limit: number =
         material_id: item.material_id,
         linear_material_id: item.linear_material_id,
         purchase_order_item_id: item.purchase_order_item_id,
+        megjegyzes: item.megjegyzes || null,
         accessories: item.accessories || null,
         materials: item.materials || null,
         linear_materials: item.linear_materials || null
