@@ -3,7 +3,6 @@ import type { Metadata } from 'next'
 import { 
   getQuoteById, 
   getAllFeeTypes, 
-  getAllAccessories,
   getAllVatRates,
   getAllCurrencies,
   getAllUnits,
@@ -30,11 +29,10 @@ export default async function QuoteDetailPage({ params }: PageProps) {
   const resolvedParams = await params
   const quoteId = resolvedParams.quote_id
   
-  // Fetch all data in parallel for SSR
-  const [quoteData, feeTypes, accessories, vatRates, currencies, units, partners, machines, edgeMaterialsBreakdown] = await Promise.all([
+  // Fetch all data in parallel for SSR (optimized - removed getAllAccessories as it's not used)
+  const [quoteData, feeTypes, vatRates, currencies, units, partners, machines, edgeMaterialsBreakdown] = await Promise.all([
     getQuoteById(quoteId),
     getAllFeeTypes(),
-    getAllAccessories(),
     getAllVatRates(),
     getAllCurrencies(),
     getAllUnits(),
@@ -58,7 +56,6 @@ export default async function QuoteDetailPage({ params }: PageProps) {
     <QuoteDetailClient 
       initialQuoteData={quoteData}
       feeTypes={feeTypes}
-      accessories={accessories}
       vatRates={vatRates}
       currencies={currencies}
       units={units}
