@@ -292,7 +292,7 @@ export default function SearchClient() {
           horizontal: 'left',
         }}
       >
-        <Box sx={{ p: 2, maxWidth: 420 }}>
+        <Box sx={{ p: 2, maxWidth: 420, maxHeight: 260, overflowY: 'auto' }}>
           <Typography variant="subtitle1" gutterBottom>Kapcsolt élzárók</Typography>
           {accessoryRows.length === 0 ? (
             <Typography variant="body2" color="text.secondary">Nincs élzáró.</Typography>

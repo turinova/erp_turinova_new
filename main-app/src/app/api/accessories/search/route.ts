@@ -8,12 +8,12 @@ export async function GET(request: NextRequest) {
     const search = rawSearch.trim()
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '100', 10)
+    const offset = (page - 1) * limit
     
     if (!search || search.length < 2) {
       return NextResponse.json({ accessories: [], totalCount: 0, totalPages: 0, currentPage: 1 })
     }
 
-    const offset = (page - 1) * limit
     const sanitizedSearch = search.replace(/"/g, '\\"')
     const orFilter = `name.ilike."%${sanitizedSearch}%",sku.ilike."%${sanitizedSearch}%",barcode.ilike."%${sanitizedSearch}%"`
 

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import type { SyntheticEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { Box, Typography, Breadcrumbs, Link, Grid, Button, TextField, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Divider, Tab, Chip, Pagination, Autocomplete, IconButton } from '@mui/material'
+import { Box, Typography, Breadcrumbs, Link, Grid, Button, TextField, FormControl, InputLabel, Select, MenuItem, Switch, FormControlLabel, Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Divider, Tab, Chip, Pagination, Autocomplete, IconButton, CircularProgress } from '@mui/material'
 import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
@@ -142,6 +142,9 @@ export default function LinearMaterialEditClient({
   const [materialAccessories, setMaterialAccessories] = useState<LinearMaterialAccessory[]>(initialLinearMaterialAccessories)
   const [selectedAccessory, setSelectedAccessory] = useState<Accessory | null>(null)
   const [isAddingAccessory, setIsAddingAccessory] = useState(false)
+  const [accessorySearchTerm, setAccessorySearchTerm] = useState('')
+  const [accessoryOptions, setAccessoryOptions] = useState<Accessory[]>([])
+  const [isAccessorySearching, setIsAccessorySearching] = useState(false)
   
   // Calculate price_per_m from base_price and multiplier
   const calculatedPricePerM = React.useMemo(() => {
@@ -234,6 +237,43 @@ export default function LinearMaterialEditClient({
     handleInputChange('image_url', imageUrl)
     toast.success(`Kép kiválasztva: ${filename}`)
   }
+
+  // Async search accessories (server-side) to avoid preload limits
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const runSearch = async () => {
+      if (!accessorySearchTerm || accessorySearchTerm.trim().length < 3) {
+        setAccessoryOptions([])
+        return
+      }
+      setIsAccessorySearching(true)
+      try {
+        const res = await fetch(`/api/accessories/search?q=${encodeURIComponent(accessorySearchTerm)}&limit=100`, {
+          signal: controller.signal
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const existingIds = new Set(materialAccessories.map(ma => ma.accessory_id))
+          setAccessoryOptions((data.accessories || []).filter((acc: any) => !existingIds.has(acc.id)))
+        } else {
+          setAccessoryOptions([])
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+        console.error('Accessory search error:', error)
+        setAccessoryOptions([])
+      } finally {
+        if (!controller.signal.aborted) setIsAccessorySearching(false)
+      }
+    }
+
+    const t = setTimeout(runSearch, 300)
+    return () => {
+      controller.abort()
+      clearTimeout(t)
+    }
+  }, [accessorySearchTerm, materialAccessories])
 
   // Handle adding accessory
   const handleAddAccessory = async () => {
@@ -500,13 +540,30 @@ export default function LinearMaterialEditClient({
               <Grid container spacing={2} alignItems="center" sx={{ mb: 2 }}>
                 <Grid item xs={12} sm={8} md={6}>
                   <Autocomplete
-                    options={availableAccessories}
-                    getOptionLabel={(option) => `${option.name} (${option.sku})`}
+                    options={accessoryOptions}
+                    loading={isAccessorySearching}
+                    getOptionLabel={(option) => option?.name ? `${option.name}${option.sku ? ` (${option.sku})` : ''}` : ''}
                     value={selectedAccessory}
                     onChange={(_, newValue) => setSelectedAccessory(newValue)}
+                    inputValue={accessorySearchTerm}
+                    onInputChange={(_, newInput) => setAccessorySearchTerm(newInput)}
                     renderInput={(params) => (
-                      <TextField {...params} label="Kiegészítő kiválasztása" />
+                      <TextField
+                        {...params}
+                        label="Kiegészítő kiválasztása"
+                        placeholder="Keresés név vagy SKU alapján"
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {isAccessorySearching ? <CircularProgress color="inherit" size={18} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
                     )}
+                    isOptionEqualToValue={(opt, val) => opt.id === val.id}
                   />
                 </Grid>
                 <Grid item>
