@@ -745,8 +745,12 @@ export default function LinearMaterialEditClient({
                       <TableHead>
                         <TableRow>
                           <TableCell>Dátum</TableCell>
+                          <TableCell align="right">Régi beszerzési ár</TableCell>
+                          <TableCell align="right">Régi szorzó</TableCell>
                           <TableCell align="right">Régi nettó</TableCell>
                           <TableCell align="right">Régi bruttó</TableCell>
+                          <TableCell align="right">Új beszerzési ár</TableCell>
+                          <TableCell align="right">Új szorzó</TableCell>
                           <TableCell align="right">Új nettó</TableCell>
                           <TableCell align="right">Új bruttó</TableCell>
                           <TableCell align="right">Változás</TableCell>
@@ -778,6 +782,22 @@ export default function LinearMaterialEditClient({
                               </TableCell>
                               <TableCell align="right" sx={{ bgcolor: 'error.lighter', borderLeft: '3px solid', borderLeftColor: 'error.main' }}>
                                 <Typography variant="body2" color="error.dark">
+                                  {h.old_base_price !== null && h.old_base_price !== undefined 
+                                    ? `${h.old_base_price.toLocaleString('hu-HU')} ${h.old_currency?.name || ''}`
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                                <Typography variant="body2" color="error.dark">
+                                  {h.old_multiplier !== null && h.old_multiplier !== undefined 
+                                    ? h.old_multiplier.toFixed(2)
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                                <Typography variant="body2" color="error.dark">
                                   {formatPrice(h.old_price, h.old_currency?.name || '')}
                                 </Typography>
                               </TableCell>
@@ -785,8 +805,29 @@ export default function LinearMaterialEditClient({
                                 <Typography variant="body2" fontWeight="medium" color="error.dark">
                                   {formatPrice(oldGross, h.old_currency?.name || '')}
                                 </Typography>
+                                {h.old_vat && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    ({h.old_vat.kulcs}% ÁFA)
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell align="right" sx={{ bgcolor: 'success.lighter', borderLeft: '3px solid', borderLeftColor: 'success.main' }}>
+                                <Typography variant="body2" color="success.dark">
+                                  {h.new_base_price !== null && h.new_base_price !== undefined 
+                                    ? `${h.new_base_price.toLocaleString('hu-HU')} ${h.new_currency?.name || ''}`
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                                <Typography variant="body2" color="success.dark">
+                                  {h.new_multiplier !== null && h.new_multiplier !== undefined 
+                                    ? h.new_multiplier.toFixed(2)
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
                                 <Typography variant="body2" color="success.dark">
                                   {formatPrice(h.new_price, h.new_currency?.name || '')}
                                 </Typography>
@@ -795,6 +836,11 @@ export default function LinearMaterialEditClient({
                                 <Typography variant="body2" fontWeight="medium" color="success.dark">
                                   {formatPrice(newGross, h.new_currency?.name || '')}
                                 </Typography>
+                                {h.new_vat && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    ({h.new_vat.kulcs}% ÁFA)
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell align="right">
                                 <Box>
@@ -821,6 +867,11 @@ export default function LinearMaterialEditClient({
                                 <Typography variant="body2">
                                   {h.changed_by_user?.email || 'Rendszer'}
                                 </Typography>
+                                {h.source_type && h.source_type !== 'edit_page' && (
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    {h.source_type === 'shipment' ? 'Szállítmány' : h.source_type === 'excel_import' ? 'Excel import' : h.source_type}
+                                  </Typography>
+                                )}
                               </TableCell>
                             </TableRow>
                           )

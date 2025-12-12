@@ -126,7 +126,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // FIRST: Get current material to check if price changed
     const { data: currentMaterial } = await supabase
       .from('materials')
-      .select('price_per_sqm')
+      .select('base_price, multiplier, price_per_sqm, currency_id, vat_id')
       .eq('id', id)
       .single()
     
@@ -254,24 +254,44 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
-    // Track price history if price changed
-    if (currentMaterial && body.price_per_sqm !== undefined && currentMaterial.price_per_sqm !== body.price_per_sqm) {
-      console.log(`Price changed from ${currentMaterial.price_per_sqm} to ${body.price_per_sqm}, logging to history`)
-      
-      const { error: historyError } = await supabase
-        .from('material_price_history')
-        .insert({
+    // Track price history if any price-related field changed
+    if (currentMaterial) {
+      const basePriceChanged = currentMaterial.base_price !== body.base_price
+      const multiplierChanged = currentMaterial.multiplier !== body.multiplier
+      const pricePerSqmChanged = currentMaterial.price_per_sqm !== body.price_per_sqm
+      const currencyChanged = currentMaterial.currency_id !== body.currency_id
+      const vatChanged = currentMaterial.vat_id !== body.vat_id
+
+      if (basePriceChanged || multiplierChanged || pricePerSqmChanged || currencyChanged || vatChanged) {
+        console.log(`Material price changed, logging to history`)
+        
+        const historyData = {
           material_id: id,
+          old_base_price: currentMaterial.base_price,
+          new_base_price: body.base_price,
+          old_multiplier: currentMaterial.multiplier,
+          new_multiplier: body.multiplier,
           old_price_per_sqm: currentMaterial.price_per_sqm,
           new_price_per_sqm: body.price_per_sqm,
-          changed_by: user?.id || null
-        })
-      
-      if (historyError) {
-        console.error('Error logging price history:', historyError)
-        // Don't fail the update if history logging fails
-      } else {
-        console.log('Price history logged successfully')
+          old_currency_id: currentMaterial.currency_id,
+          new_currency_id: body.currency_id,
+          old_vat_id: currentMaterial.vat_id,
+          new_vat_id: body.vat_id,
+          changed_by: user?.id || null,
+          source_type: 'edit_page',
+          source_reference: null
+        }
+        
+        const { error: historyError } = await supabase
+          .from('material_price_history')
+          .insert(historyData)
+        
+        if (historyError) {
+          console.error('Error logging material price history:', historyError)
+          // Don't fail the update if history logging fails
+        } else {
+          console.log('Material price history logged successfully')
+        }
       }
     }
 

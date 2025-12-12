@@ -101,10 +101,25 @@ interface VAT {
 
 interface PriceHistory {
   id: string
+  old_base_price?: number | null
+  new_base_price?: number | null
+  old_multiplier?: number | null
+  new_multiplier?: number | null
   old_price_per_sqm: number
   new_price_per_sqm: number
+  old_currency_id?: string | null
+  new_currency_id?: string | null
+  old_vat_id?: string | null
+  new_vat_id?: string | null
+  old_currency?: { name: string } | null
+  new_currency?: { name: string } | null
+  old_vat?: { kulcs: number } | null
+  new_vat?: { kulcs: number } | null
   changed_at: string
   changed_by: string | null
+  changed_by_user?: string | null
+  source_type?: string | null
+  source_reference?: string | null
 }
 
 interface Brand {
@@ -225,6 +240,11 @@ export default function MaterialsEditClient({
   const [isAccessorySearching, setIsAccessorySearching] = useState(false)
   const [loadingPriceHistory, setLoadingPriceHistory] = useState(false)
   
+  // Helper function to format price with currency (for price history)
+  const formatPriceWithCurrencyName = (price: number, currencyName: string) => {
+    return `${price.toLocaleString('hu-HU', { maximumFractionDigits: 0 })} ${currencyName}`
+  }
+  
   // Ensure client-side only rendering for media library button
   useEffect(() => {
     setMounted(true)
@@ -273,6 +293,12 @@ export default function MaterialsEditClient({
     const selectedVat = vatRates.find(v => v.id === formData.vat_id)
     return selectedVat?.kulcs || 0
   }, [vatRates, formData.vat_id])
+
+  // Get current currency name
+  const currentCurrencyName = React.useMemo(() => {
+    const selectedCurrency = initialCurrencies.find(c => c.id === formData.currency_id)
+    return selectedCurrency?.name || 'Ft'
+  }, [initialCurrencies, formData.currency_id])
   
   // Calculate prices in real-time
   const squareMeters = React.useMemo(() => {
@@ -1204,8 +1230,12 @@ export default function MaterialsEditClient({
                       <TableHead>
                         <TableRow>
                           <TableCell>Dátum</TableCell>
+                          <TableCell align="right">Régi beszerzési ár</TableCell>
+                          <TableCell align="right">Régi szorzó</TableCell>
                           <TableCell align="right">Régi nettó</TableCell>
                           <TableCell align="right">Régi bruttó</TableCell>
+                          <TableCell align="right">Új beszerzési ár</TableCell>
+                          <TableCell align="right">Új szorzó</TableCell>
                           <TableCell align="right">Új nettó</TableCell>
                           <TableCell align="right">Új bruttó</TableCell>
                           <TableCell align="right">Változás</TableCell>
@@ -1219,10 +1249,18 @@ export default function MaterialsEditClient({
                             ? ((netDiff / history.old_price_per_sqm) * 100).toFixed(1)
                             : '0'
                           
-                          // Calculate gross prices with current VAT
-                          const oldGross = calculateGrossPrice(history.old_price_per_sqm, currentVatPercent)
-                          const newGross = calculateGrossPrice(history.new_price_per_sqm, currentVatPercent)
+                          // Use historical VAT rates if available, otherwise fall back to current
+                          const oldVatPercent = history.old_vat?.kulcs || currentVatPercent
+                          const newVatPercent = history.new_vat?.kulcs || currentVatPercent
+                          
+                          // Calculate gross prices with historical VAT
+                          const oldGross = calculateGrossPrice(history.old_price_per_sqm, oldVatPercent)
+                          const newGross = calculateGrossPrice(history.new_price_per_sqm, newVatPercent)
                           const grossDiff = newGross - oldGross
+                          
+                          // Get currency names
+                          const oldCurrencyName = history.old_currency?.name || currentCurrencyName
+                          const newCurrencyName = history.new_currency?.name || currentCurrencyName
                           
                           return (
                             <TableRow key={history.id}>
@@ -1237,23 +1275,65 @@ export default function MaterialsEditClient({
                               </TableCell>
                               <TableCell align="right" sx={{ bgcolor: 'error.lighter', borderLeft: '3px solid', borderLeftColor: 'error.main' }}>
                                 <Typography variant="body2" color="error.dark">
-                                  {formatPriceWithCurrency(history.old_price_per_sqm)}
+                                  {history.old_base_price !== null && history.old_base_price !== undefined 
+                                    ? `${history.old_base_price.toLocaleString('hu-HU')} ${oldCurrencyName}`
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                                <Typography variant="body2" color="error.dark">
+                                  {history.old_multiplier !== null && history.old_multiplier !== undefined 
+                                    ? history.old_multiplier.toFixed(2)
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                                <Typography variant="body2" color="error.dark">
+                                  {formatPriceWithCurrencyName(history.old_price_per_sqm, oldCurrencyName)}
                                 </Typography>
                               </TableCell>
                               <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
                                 <Typography variant="body2" fontWeight="medium" color="error.dark">
-                                  {formatPriceWithCurrency(oldGross)}
+                                  {formatPriceWithCurrencyName(oldGross, oldCurrencyName)}
                                 </Typography>
+                                {history.old_vat && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    ({history.old_vat.kulcs}% ÁFA)
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell align="right" sx={{ bgcolor: 'success.lighter', borderLeft: '3px solid', borderLeftColor: 'success.main' }}>
                                 <Typography variant="body2" color="success.dark">
-                                  {formatPriceWithCurrency(history.new_price_per_sqm)}
+                                  {history.new_base_price !== null && history.new_base_price !== undefined 
+                                    ? `${history.new_base_price.toLocaleString('hu-HU')} ${newCurrencyName}`
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                                <Typography variant="body2" color="success.dark">
+                                  {history.new_multiplier !== null && history.new_multiplier !== undefined 
+                                    ? history.new_multiplier.toFixed(2)
+                                    : '-'
+                                  }
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                                <Typography variant="body2" color="success.dark">
+                                  {formatPriceWithCurrencyName(history.new_price_per_sqm, newCurrencyName)}
                                 </Typography>
                               </TableCell>
                               <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
                                 <Typography variant="body2" fontWeight="medium" color="success.dark">
-                                  {formatPriceWithCurrency(newGross)}
+                                  {formatPriceWithCurrencyName(newGross, newCurrencyName)}
                                 </Typography>
+                                {history.new_vat && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    ({history.new_vat.kulcs}% ÁFA)
+                                  </Typography>
+                                )}
                               </TableCell>
                               <TableCell align="right">
                                 <Box>
@@ -1262,14 +1342,14 @@ export default function MaterialsEditClient({
                                     color={netDiff >= 0 ? 'error.main' : 'success.main'}
                                     fontWeight="medium"
                                   >
-                                    Nettó: {netDiff >= 0 ? '+' : ''}{formatPriceWithCurrency(netDiff)}
+                                    Nettó: {netDiff >= 0 ? '+' : ''}{formatPriceWithCurrencyName(netDiff, newCurrencyName)}
                                   </Typography>
                                   <Typography 
                                     variant="body2" 
                                     color={grossDiff >= 0 ? 'error.main' : 'success.main'}
                                     fontWeight="bold"
                                   >
-                                    Bruttó: {grossDiff >= 0 ? '+' : ''}{formatPriceWithCurrency(grossDiff)}
+                                    Bruttó: {grossDiff >= 0 ? '+' : ''}{formatPriceWithCurrencyName(grossDiff, newCurrencyName)}
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary">
                                     ({netDiff >= 0 ? '+' : ''}{netChangePercent}%)
@@ -1280,6 +1360,11 @@ export default function MaterialsEditClient({
                                 <Typography variant="body2">
                                   {history.changed_by_user || 'Rendszer'}
                                 </Typography>
+                                {history.source_type && history.source_type !== 'edit_page' && (
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    {history.source_type === 'shipment' ? 'Szállítmány' : history.source_type === 'excel_import' ? 'Excel import' : history.source_type}
+                                  </Typography>
+                                )}
                               </TableCell>
                             </TableRow>
                           )

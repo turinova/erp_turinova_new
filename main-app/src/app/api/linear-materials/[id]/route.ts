@@ -109,7 +109,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     // Get current data for price history
     const { data: currentData } = await supabase
       .from('linear_materials')
-      .select('price_per_m, currency_id, vat_id')
+      .select('base_price, multiplier, price_per_m, currency_id, vat_id')
       .eq('id', id)
       .single()
 
@@ -173,12 +173,14 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Track price history (only if price/currency/vat changed AND not first save)
     if (currentData) {
+      const basePriceChanged = currentData.base_price !== updateData.base_price
+      const multiplierChanged = currentData.multiplier !== updateData.multiplier
       const priceChanged = currentData.price_per_m !== updateData.price_per_m
       const currencyChanged = currentData.currency_id !== updateData.currency_id
       const vatChanged = currentData.vat_id !== updateData.vat_id
 
-      if (priceChanged || currencyChanged || vatChanged) {
-        console.log(`Price changed from ${currentData.price_per_m} to ${updateData.price_per_m}, logging to history`)
+      if (basePriceChanged || multiplierChanged || priceChanged || currencyChanged || vatChanged) {
+        console.log(`Linear material price changed, logging to history`)
         
         // Create supabase client with cookies to get authenticated user
         const cookieStore = await cookies()
@@ -209,6 +211,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         
         const historyData = {
           linear_material_id: id,
+          old_base_price: currentData.base_price,
+          new_base_price: updateData.base_price,
+          old_multiplier: currentData.multiplier,
+          new_multiplier: updateData.multiplier,
           old_price: currentData.price_per_m,
           new_price: updateData.price_per_m,
           old_currency_id: currentData.currency_id,
@@ -216,7 +222,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           old_vat_id: currentData.vat_id,
           new_vat_id: updateData.vat_id,
           changed_by: user?.id || null,
-          changed_at: new Date().toISOString()
+          changed_at: new Date().toISOString(),
+          source_type: 'edit_page',
+          source_reference: null
         }
         
         console.log('Inserting price history:', historyData)

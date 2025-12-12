@@ -808,7 +808,27 @@ export async function getMaterialPriceHistory(materialId: string) {
   
   const { data, error } = await supabaseServer
     .from('material_price_history')
-    .select('id, old_price_per_sqm, new_price_per_sqm, changed_at, changed_by')
+    .select(`
+      id,
+      old_base_price,
+      new_base_price,
+      old_multiplier,
+      new_multiplier,
+      old_price_per_sqm,
+      new_price_per_sqm,
+      old_currency_id,
+      new_currency_id,
+      old_vat_id,
+      new_vat_id,
+      changed_at,
+      changed_by,
+      source_type,
+      source_reference,
+      old_currency:old_currency_id(name),
+      new_currency:new_currency_id(name),
+      old_vat:old_vat_id(kulcs),
+      new_vat:new_vat_id(kulcs)
+    `)
     .eq('material_id', materialId)
     .order('changed_at', { ascending: false })
     .limit(10)
@@ -842,6 +862,68 @@ export async function getMaterialPriceHistory(materialId: string) {
   }))
 
   logTiming('Price History Total', startTime, `returned ${enrichedData?.length || 0} records`)
+  return enrichedData || []
+}
+
+export async function getAccessoryPriceHistory(accessoryId: string) {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('accessory_price_history')
+    .select(`
+      id,
+      old_base_price,
+      new_base_price,
+      old_multiplier,
+      new_multiplier,
+      old_net_price,
+      new_net_price,
+      old_currency_id,
+      new_currency_id,
+      old_vat_id,
+      new_vat_id,
+      changed_at,
+      changed_by,
+      source_type,
+      source_reference,
+      old_currency:old_currency_id(name),
+      new_currency:new_currency_id(name),
+      old_vat:old_vat_id(kulcs),
+      new_vat:new_vat_id(kulcs)
+    `)
+    .eq('accessory_id', accessoryId)
+    .order('changed_at', { ascending: false })
+    .limit(10)
+
+  const queryTime = performance.now()
+  logTiming('Accessory Price History DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching accessory price history:', error)
+    return []
+  }
+
+  // Enrich with user emails using admin API
+  const enrichedData = await Promise.all((data || []).map(async (h: any) => {
+    let userEmail = null
+    if (h.changed_by) {
+      try {
+        const { data: userData } = await supabaseServer.auth.admin.getUserById(h.changed_by)
+        if (userData?.user) {
+          userEmail = userData.user.email
+        }
+      } catch (err) {
+        console.error('Error fetching user for accessory price history:', err)
+      }
+    }
+    
+    return {
+      ...h,
+      changed_by_user: userEmail
+    }
+  }))
+
+  logTiming('Accessory Price History Total', startTime, `returned ${enrichedData?.length || 0} records`)
   return enrichedData || []
 }
 

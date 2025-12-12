@@ -108,6 +108,7 @@ export default function ShipmentDetailClient({
   const [confirmUpdateBasePriceOpen, setConfirmUpdateBasePriceOpen] = useState(false)
   const [newSellingPrice, setNewSellingPrice] = useState<number | null>(null)
   const [calculatedNewBasePrice, setCalculatedNewBasePrice] = useState<number | null>(null)
+  const [calculatedNewMultiplier, setCalculatedNewMultiplier] = useState<number | null>(null)
   const [header, setHeader] = useState<ShipmentHeader | null>(initialHeader)
   const [items, setItems] = useState<ShipmentItem[]>(initialItems)
   const [vatRates, setVatRates] = useState<Map<string, number>>(initialVatRates)
@@ -995,22 +996,51 @@ export default function ShipmentDetailClient({
         effectiveBasePrice = productData.base_price * (productDataWithDims.linear_material_length / 1000)
       }
 
-      // Calculate initial new selling price from PO net_price
+      // Set base_price from PO net_price (this stays fixed)
+      let initialBasePrice: number
+      if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
+        const areaM2 = (productDataWithDims.material_length_mm * productDataWithDims.material_width_mm) / 1000000
+        initialBasePrice = Math.round(item.net_price / areaM2)
+      } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
+        const lengthM = productDataWithDims.linear_material_length / 1000
+        initialBasePrice = Math.round(item.net_price / lengthM)
+      } else {
+        initialBasePrice = item.net_price
+      }
+      setCalculatedNewBasePrice(initialBasePrice)
+      
+      // Calculate initial new selling price from PO net_price and current multiplier
       const vatPercent = vatRates.get(item.vat_id) || 0
+      let effectiveNetPrice = item.net_price
+      if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
+        // Already per board, use as-is
+        effectiveNetPrice = item.net_price
+      } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
+        // Already per length, use as-is
+        effectiveNetPrice = item.net_price
+      }
       const initialNewSellingPrice = Math.ceil(
-        (item.net_price * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
+        (effectiveNetPrice * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
       ) * 10
       setNewSellingPrice(initialNewSellingPrice)
       
-      // For materials/linear_materials, we need to convert PO net_price back to per-unit base_price
+      // Calculate initial multiplier from initial selling price
+      const netSellingPrice = initialNewSellingPrice / (1 + vatPercent / 100)
       if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
         const areaM2 = (productDataWithDims.material_length_mm * productDataWithDims.material_width_mm) / 1000000
-        setCalculatedNewBasePrice(Math.round(item.net_price / areaM2))
+        const grossPerM2 = initialNewSellingPrice / areaM2
+        const netPerM2 = grossPerM2 / (1 + vatPercent / 100)
+        const initialMultiplier = netPerM2 / initialBasePrice
+        setCalculatedNewMultiplier(parseFloat(initialMultiplier.toFixed(2)))
       } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
         const lengthM = productDataWithDims.linear_material_length / 1000
-        setCalculatedNewBasePrice(Math.round(item.net_price / lengthM))
+        const grossPerM = initialNewSellingPrice / lengthM
+        const netPerM = grossPerM / (1 + vatPercent / 100)
+        const initialMultiplier = netPerM / initialBasePrice
+        setCalculatedNewMultiplier(parseFloat(initialMultiplier.toFixed(2)))
       } else {
-        setCalculatedNewBasePrice(item.net_price)
+        const initialMultiplier = netSellingPrice / initialBasePrice
+        setCalculatedNewMultiplier(parseFloat(initialMultiplier.toFixed(2)))
       }
 
       setUpdateBasePriceModalOpen(true)
@@ -1024,34 +1054,41 @@ export default function ShipmentDetailClient({
     setConfirmUpdateBasePriceOpen(true)
   }
 
-  // Calculate new base_price when newSellingPrice changes
+  // Calculate new multiplier when newSellingPrice changes (base_price stays fixed)
   useEffect(() => {
-    if (newSellingPrice !== null && currentProductData && itemForBasePriceUpdate) {
+    if (newSellingPrice !== null && calculatedNewBasePrice !== null && currentProductData && itemForBasePriceUpdate) {
       const vatPercent = vatRates.get(itemForBasePriceUpdate.vat_id) || 0
-      // Calculate backwards: base_price = selling_price / (multiplier * (1 + VAT%))
-      // This gives us the effective base_price (for whole board/length)
-      const calculatedEffectiveBasePrice = newSellingPrice / (currentProductData.multiplier * (1 + vatPercent / 100))
       
-      // For materials and linear_materials, we need to convert back to per-unit base_price
+      // Calculate net selling price from gross
+      const netSellingPrice = newSellingPrice / (1 + vatPercent / 100)
+      
+      // For materials and linear_materials, we need to convert to per-unit prices
       if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
-        // Convert from whole board price to per m² price
+        // Convert gross selling price to per m²
         const areaM2 = (currentProductData.material_length_mm * currentProductData.material_width_mm) / 1000000
-        const perM2BasePrice = calculatedEffectiveBasePrice / areaM2
-        setCalculatedNewBasePrice(Math.round(perM2BasePrice))
+        const grossPerM2 = newSellingPrice / areaM2
+        const netPerM2 = grossPerM2 / (1 + vatPercent / 100)
+        // base_price is per m², so multiplier = net_per_m2 / base_price_per_m2
+        const newMultiplier = netPerM2 / calculatedNewBasePrice
+        setCalculatedNewMultiplier(parseFloat(newMultiplier.toFixed(2)))
       } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
-        // Convert from whole length price to per m price
+        // Convert gross selling price to per m
         const lengthM = currentProductData.linear_material_length / 1000
-        const perMBasePrice = calculatedEffectiveBasePrice / lengthM
-        setCalculatedNewBasePrice(Math.round(perMBasePrice))
+        const grossPerM = newSellingPrice / lengthM
+        const netPerM = grossPerM / (1 + vatPercent / 100)
+        // base_price is per m, so multiplier = net_per_m / base_price_per_m
+        const newMultiplier = netPerM / calculatedNewBasePrice
+        setCalculatedNewMultiplier(parseFloat(newMultiplier.toFixed(2)))
       } else {
-        // For accessories, use as-is
-        setCalculatedNewBasePrice(Math.round(calculatedEffectiveBasePrice))
+        // For accessories: multiplier = net_selling_price / base_price
+        const newMultiplier = netSellingPrice / calculatedNewBasePrice
+        setCalculatedNewMultiplier(parseFloat(newMultiplier.toFixed(2)))
       }
     }
-  }, [newSellingPrice, currentProductData, itemForBasePriceUpdate, vatRates])
+  }, [newSellingPrice, calculatedNewBasePrice, currentProductData, itemForBasePriceUpdate, vatRates])
 
   const handleUpdateBasePrice = async () => {
-    if (!itemForBasePriceUpdate || !currentProductData || calculatedNewBasePrice === null) {
+    if (!itemForBasePriceUpdate || !currentProductData || calculatedNewBasePrice === null || calculatedNewMultiplier === null) {
       return
     }
 
@@ -1066,7 +1103,9 @@ export default function ShipmentDetailClient({
         body: JSON.stringify({
           product_type: itemForBasePriceUpdate.product_type,
           product_id: itemForBasePriceUpdate.accessory_id || itemForBasePriceUpdate.material_id || itemForBasePriceUpdate.linear_material_id,
-          new_base_price: calculatedNewBasePrice // Use calculated base_price from new selling price
+          new_base_price: calculatedNewBasePrice, // Fixed purchase net price
+          new_multiplier: calculatedNewMultiplier, // Calculated from new selling price
+          shipment_id: id // Pass shipment ID for price history tracking
         })
       })
 
@@ -1081,6 +1120,7 @@ export default function ShipmentDetailClient({
       setCurrentProductData(null)
       setNewSellingPrice(null)
       setCalculatedNewBasePrice(null)
+      setCalculatedNewMultiplier(null)
       
       // Refresh items to get updated base_price
       await refreshItems()
@@ -3170,8 +3210,8 @@ export default function ShipmentDetailClient({
                         <Typography variant="caption" color="text.secondary">
                           Árrés(Nettó):
                         </Typography>
-                        <Typography variant="body1" fontWeight="bold">
-                          {currentProductData.multiplier.toFixed(2)}
+                        <Typography variant="body1" fontWeight="bold" color="primary.main">
+                          {calculatedNewMultiplier !== null ? calculatedNewMultiplier.toFixed(2) : currentProductData.multiplier.toFixed(2)}
                         </Typography>
                       </Box>
                       <Box>
@@ -3189,7 +3229,8 @@ export default function ShipmentDetailClient({
                                 const lengthM = currentProductData.linear_material_length / 1000
                                 effectiveBasePrice = calculatedNewBasePrice * lengthM
                               }
-                              return effectiveBasePrice * currentProductData.multiplier * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
+                              const multiplierToUse = calculatedNewMultiplier !== null ? calculatedNewMultiplier : currentProductData.multiplier
+                              return effectiveBasePrice * multiplierToUse * (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100
                             })()
                           )} Ft
                         </Typography>
@@ -3234,6 +3275,7 @@ export default function ShipmentDetailClient({
               setCurrentProductData(null)
               setNewSellingPrice(null)
               setCalculatedNewBasePrice(null)
+              setCalculatedNewMultiplier(null)
             }}
             disabled={updatingBasePrice}
           >
@@ -3243,7 +3285,7 @@ export default function ShipmentDetailClient({
             onClick={handleConfirmUpdateBasePrice}
             variant="contained"
             color="primary"
-            disabled={updatingBasePrice || newSellingPrice === null || newSellingPrice <= 0 || calculatedNewBasePrice === null}
+            disabled={updatingBasePrice || newSellingPrice === null || newSellingPrice <= 0 || calculatedNewBasePrice === null || calculatedNewMultiplier === null}
             startIcon={<PriceCheckIcon />}
           >
             Nettó beszerzési ár frissítése

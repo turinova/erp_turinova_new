@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -95,6 +97,35 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // Calculate net_price from base_price and multiplier
     const net_price = Math.round(base_price * multiplier)
 
+    // FIRST: Get current accessory to check if price changed
+    const { data: currentAccessory } = await supabaseServer
+      .from('accessories')
+      .select('base_price, multiplier, net_price, currency_id, vat_id')
+      .eq('id', id)
+      .single()
+
+    // Get authenticated user for price history tracking
+    const cookieStore = await cookies()
+    const supabaseWithAuth = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
+          }
+        }
+      }
+    )
+    
+    const { data: { user } } = await supabaseWithAuth.auth.getUser()
+    console.log('Current user for accessory price history:', user?.id, user?.email)
+
     console.log(`Updating accessory ${id}`)
 
     const { data, error } = await supabaseServer
@@ -159,6 +190,47 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
       
       return NextResponse.json({ error: 'Failed to update accessory' }, { status: 500 })
+    }
+
+    // Track price history if any price-related field changed
+    if (currentAccessory) {
+      const basePriceChanged = currentAccessory.base_price !== Math.round(base_price)
+      const multiplierChanged = currentAccessory.multiplier !== parseFloat(multiplier.toFixed(2))
+      const netPriceChanged = currentAccessory.net_price !== net_price
+      const currencyChanged = currentAccessory.currency_id !== currency_id
+      const vatChanged = currentAccessory.vat_id !== vat_id
+
+      if (basePriceChanged || multiplierChanged || netPriceChanged || currencyChanged || vatChanged) {
+        console.log(`Accessory price changed, logging to history`)
+        
+        const historyData = {
+          accessory_id: id,
+          old_base_price: currentAccessory.base_price,
+          new_base_price: Math.round(base_price),
+          old_multiplier: currentAccessory.multiplier,
+          new_multiplier: parseFloat(multiplier.toFixed(2)),
+          old_net_price: currentAccessory.net_price,
+          new_net_price: net_price,
+          old_currency_id: currentAccessory.currency_id,
+          new_currency_id: currency_id,
+          old_vat_id: currentAccessory.vat_id,
+          new_vat_id: vat_id,
+          changed_by: user?.id || null,
+          source_type: 'edit_page',
+          source_reference: null
+        }
+        
+        const { error: historyError } = await supabaseServer
+          .from('accessory_price_history')
+          .insert(historyData)
+        
+        if (historyError) {
+          console.error('Error logging accessory price history:', historyError)
+          // Don't fail the update if history logging fails
+        } else {
+          console.log('Accessory price history logged successfully')
+        }
+      }
     }
 
     // Transform the data to include calculated fields

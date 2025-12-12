@@ -39,6 +39,10 @@ export default async function LinearMaterialEditPage({ params }: { params: Promi
     .from('linear_material_price_history')
     .select(`
       id,
+      old_base_price,
+      new_base_price,
+      old_multiplier,
+      new_multiplier,
       old_price,
       new_price,
       changed_at,
@@ -46,7 +50,9 @@ export default async function LinearMaterialEditPage({ params }: { params: Promi
       old_currency_id,
       new_currency_id,
       old_vat_id,
-      new_vat_id
+      new_vat_id,
+      source_type,
+      source_reference
     `)
     .eq('linear_material_id', id)
     .order('changed_at', { ascending: false })

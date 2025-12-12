@@ -95,12 +95,36 @@ interface StockMovementRow {
   note: string
 }
 
+interface PriceHistory {
+  id: string
+  old_base_price?: number | null
+  new_base_price?: number | null
+  old_multiplier?: number | null
+  new_multiplier?: number | null
+  old_net_price?: number | null
+  new_net_price?: number | null
+  old_currency_id?: string | null
+  new_currency_id?: string | null
+  old_vat_id?: string | null
+  new_vat_id?: string | null
+  old_currency?: { name: string } | null
+  new_currency?: { name: string } | null
+  old_vat?: { kulcs: number } | null
+  new_vat?: { kulcs: number } | null
+  changed_at: string
+  changed_by: string | null
+  changed_by_user?: string | null
+  source_type?: string | null
+  source_reference?: string | null
+}
+
 interface AccessoryFormClientProps {
   initialData?: AccessoryFormData
   vatRates: VatRate[]
   currencies: Currency[]
   units: Unit[]
   partners: Partner[]
+  initialPriceHistory?: PriceHistory[]
   initialStockMovements?: StockMovementRow[]
   stockMovementsTotalCount?: number
   stockMovementsTotalPages?: number
@@ -118,6 +142,7 @@ export default function AccessoryFormClient({
   currencies, 
   units, 
   partners,
+  initialPriceHistory = [],
   initialStockMovements = [],
   stockMovementsTotalCount = 0,
   stockMovementsTotalPages = 0,
@@ -129,6 +154,7 @@ export default function AccessoryFormClient({
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [activeTab, setActiveTab] = useState('1')
+  const [priceHistory, setPriceHistory] = useState<PriceHistory[]>(initialPriceHistory)
   const [stockMovements, setStockMovements] = useState<StockMovementRow[]>(initialStockMovements)
   const [stockMovementsPage, setStockMovementsPage] = useState(stockMovementsCurrentPage)
   const [stockMovementsTotal, setStockMovementsTotal] = useState(stockMovementsTotalCount)
@@ -696,6 +722,168 @@ export default function AccessoryFormClient({
               </Grid>
             </CardContent>
           </Card>
+
+          {/* Card 4: Ár történet */}
+          {initialData?.id && priceHistory.length > 0 && (
+            <Card>
+              <CardHeader title="Ár történet" />
+              <CardContent>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Dátum</TableCell>
+                        <TableCell align="right">Régi beszerzési ár</TableCell>
+                        <TableCell align="right">Régi szorzó</TableCell>
+                        <TableCell align="right">Régi nettó</TableCell>
+                        <TableCell align="right">Régi bruttó</TableCell>
+                        <TableCell align="right">Új beszerzési ár</TableCell>
+                        <TableCell align="right">Új szorzó</TableCell>
+                        <TableCell align="right">Új nettó</TableCell>
+                        <TableCell align="right">Új bruttó</TableCell>
+                        <TableCell align="right">Változás</TableCell>
+                        <TableCell>Módosító</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {priceHistory.map((h) => {
+                        const oldNetPrice = h.old_net_price || 0
+                        const newNetPrice = h.new_net_price || 0
+                        const netDiff = newNetPrice - oldNetPrice
+                        const netChangePercent = oldNetPrice > 0 
+                          ? ((netDiff / oldNetPrice) * 100).toFixed(1)
+                          : '0'
+                        
+                        // Use historical VAT rates if available
+                        const oldVatPercent = h.old_vat?.kulcs || (vatRates.find(v => v.id === formData.vat_id)?.kulcs || 27)
+                        const newVatPercent = h.new_vat?.kulcs || (vatRates.find(v => v.id === formData.vat_id)?.kulcs || 27)
+                        
+                        // Calculate gross prices with historical VAT
+                        const oldGross = oldNetPrice + (oldNetPrice * oldVatPercent / 100)
+                        const newGross = newNetPrice + (newNetPrice * newVatPercent / 100)
+                        const grossDiff = newGross - oldGross
+                        
+                        // Get currency names
+                        const oldCurrencyName = h.old_currency?.name || currencies.find(c => c.id === formData.currency_id)?.name || 'Ft'
+                        const newCurrencyName = h.new_currency?.name || currencies.find(c => c.id === formData.currency_id)?.name || 'Ft'
+                        
+                        const formatPriceWithCurrency = (price: number, currencyName: string) => {
+                          return `${price.toLocaleString('hu-HU', { maximumFractionDigits: 0 })} ${currencyName}`
+                        }
+                        
+                        return (
+                          <TableRow key={h.id}>
+                            <TableCell>
+                              {new Date(h.changed_at).toLocaleString('hu-HU', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'error.lighter', borderLeft: '3px solid', borderLeftColor: 'error.main' }}>
+                              <Typography variant="body2" color="error.dark">
+                                {h.old_base_price !== null && h.old_base_price !== undefined 
+                                  ? `${h.old_base_price.toLocaleString('hu-HU')} ${oldCurrencyName}`
+                                  : '-'
+                                }
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                              <Typography variant="body2" color="error.dark">
+                                {h.old_multiplier !== null && h.old_multiplier !== undefined 
+                                  ? h.old_multiplier.toFixed(2)
+                                  : '-'
+                                }
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                              <Typography variant="body2" color="error.dark">
+                                {formatPriceWithCurrency(oldNetPrice, oldCurrencyName)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
+                              <Typography variant="body2" fontWeight="medium" color="error.dark">
+                                {formatPriceWithCurrency(oldGross, oldCurrencyName)}
+                              </Typography>
+                              {h.old_vat && (
+                                <Typography variant="caption" color="text.secondary">
+                                  ({h.old_vat.kulcs}% ÁFA)
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'success.lighter', borderLeft: '3px solid', borderLeftColor: 'success.main' }}>
+                              <Typography variant="body2" color="success.dark">
+                                {h.new_base_price !== null && h.new_base_price !== undefined 
+                                  ? `${h.new_base_price.toLocaleString('hu-HU')} ${newCurrencyName}`
+                                  : '-'
+                                }
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                              <Typography variant="body2" color="success.dark">
+                                {h.new_multiplier !== null && h.new_multiplier !== undefined 
+                                  ? h.new_multiplier.toFixed(2)
+                                  : '-'
+                                }
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                              <Typography variant="body2" color="success.dark">
+                                {formatPriceWithCurrency(newNetPrice, newCurrencyName)}
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
+                              <Typography variant="body2" fontWeight="medium" color="success.dark">
+                                {formatPriceWithCurrency(newGross, newCurrencyName)}
+                              </Typography>
+                              {h.new_vat && (
+                                <Typography variant="caption" color="text.secondary">
+                                  ({h.new_vat.kulcs}% ÁFA)
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              <Box>
+                                <Typography 
+                                  variant="body2" 
+                                  color={netDiff >= 0 ? 'error.main' : 'success.main'}
+                                  fontWeight="medium"
+                                >
+                                  Nettó: {netDiff >= 0 ? '+' : ''}{formatPriceWithCurrency(netDiff, newCurrencyName)}
+                                </Typography>
+                                <Typography 
+                                  variant="body2" 
+                                  color={grossDiff >= 0 ? 'error.main' : 'success.main'}
+                                  fontWeight="bold"
+                                >
+                                  Bruttó: {grossDiff >= 0 ? '+' : ''}{formatPriceWithCurrency(grossDiff, newCurrencyName)}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  ({netDiff >= 0 ? '+' : ''}{netChangePercent}%)
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Typography variant="body2">
+                                {h.changed_by_user || 'Rendszer'}
+                              </Typography>
+                              {h.source_type && h.source_type !== 'edit_page' && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {h.source_type === 'shipment' ? 'Szállítmány' : h.source_type === 'excel_import' ? 'Excel import' : h.source_type}
+                                </Typography>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Actions */}
           <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', pt: 2 }}>
