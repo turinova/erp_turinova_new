@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Typography from '@mui/material/Typography'
 import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
@@ -7,6 +8,9 @@ import Grid from '@mui/material/Grid'
 import Box from '@mui/material/Box'
 import Link from 'next/link'
 import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Button from '@mui/material/Button'
+import CircularProgress from '@mui/material/CircularProgress'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import Accordion from '@mui/material/Accordion'
@@ -24,6 +28,7 @@ import LanguageIcon from '@mui/icons-material/Language'
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd'
 import BusinessIcon from '@mui/icons-material/Business'
 import Paper from '@mui/material/Paper'
+import { toast } from 'react-toastify'
 
 interface TenantCompanyInfo {
   name?: string | null
@@ -57,6 +62,51 @@ export default function HomeClient({
   finishedCount,
   companyInfo = null
 }: HomeClientProps) {
+  const [suggestionText, setSuggestionText] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    // Validation
+    if (suggestionText.trim().length < 50) {
+      toast.error('A javaslat szövege legalább 50 karakter hosszú kell legyen!')
+      return
+    }
+
+    setIsSubmitting(true)
+    
+    try {
+      const response = await fetch('/api/suggestions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: suggestionText.trim().substring(0, 100), // Use first 100 chars as title
+          suggestion_text: suggestionText.trim(),
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit suggestion')
+      }
+
+      // Success
+      toast.success('Javaslatod sikeresen elküldve!')
+      
+      // Reset form
+      setSuggestionText('')
+    } catch (error) {
+      console.error('[Home] Error submitting suggestion:', error)
+      toast.error('Hiba történt a javaslat elküldése során. Kérjük, próbáld újra!')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <div className='flex flex-col gap-6'>
       <Grid container spacing={6} alignItems='stretch'>
@@ -174,6 +224,61 @@ export default function HomeClient({
             </Card>
           </Grid>
         )}
+      </Grid>
+
+      {/* Suggestion Form Card */}
+      <Grid container spacing={6}>
+        <Grid item xs={12}>
+          <Card
+            sx={{
+              borderLeft: theme => `6px solid ${theme.palette.info.main}`,
+              bgcolor: theme => `${theme.palette.info.light}15`
+            }}
+          >
+            <CardContent>
+              <Typography variant='h6' className='font-bold' sx={{ mb: 2, color: 'info.main' }}>
+                Javaslat küldése
+              </Typography>
+              <Typography 
+                variant='body1' 
+                sx={{ 
+                  mb: 3, 
+                  fontWeight: 600,
+                  color: 'text.primary'
+                }}
+              >
+                Kérlek írd meg, hogy milyen funkciók lennének még hasznosak számodra a rendszerben, illetve azt is, hogy a jelenlegi funkciók közül melyik még számodra nehezen használható és javításra szorul:
+              </Typography>
+              <form onSubmit={handleSubmit}>
+                <Stack spacing={3}>
+                  <TextField
+                    label='Javaslat'
+                    value={suggestionText}
+                    onChange={(e) => setSuggestionText(e.target.value)}
+                    required
+                    multiline
+                    rows={4}
+                    fullWidth
+                    disabled={isSubmitting}
+                    helperText={`Minimum 50 karakter (${suggestionText.length} / 50)`}
+                    error={suggestionText.length > 0 && suggestionText.length < 50}
+                  />
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <Button
+                      type='submit'
+                      variant='contained'
+                      color='info'
+                      disabled={isSubmitting || suggestionText.trim().length < 50}
+                      startIcon={isSubmitting ? <CircularProgress size={20} sx={{ color: 'inherit' }} /> : null}
+                    >
+                      {isSubmitting ? 'Küldés...' : 'Javaslat küldése'}
+                    </Button>
+                  </Box>
+                </Stack>
+              </form>
+            </CardContent>
+          </Card>
+        </Grid>
       </Grid>
 
       {/* Quick Stats Grid */}
