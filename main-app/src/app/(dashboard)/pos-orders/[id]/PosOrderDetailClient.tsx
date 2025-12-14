@@ -312,6 +312,7 @@ export default function PosOrderDetailClient({
   // Taxpayer validation state
   const [taxpayerValidating, setTaxpayerValidating] = useState(false)
   const [taxpayerValidationError, setTaxpayerValidationError] = useState<string | null>(null)
+  const [taxNumberFieldInteracted, setTaxNumberFieldInteracted] = useState(false)
   const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0)
 
   // Invoice modal state
@@ -570,6 +571,11 @@ export default function PosOrderDetailClient({
   const taxpayerAbortControllerRef = useRef<AbortController | null>(null)
   
   useEffect(() => {
+    // Only validate if the field has been interacted with (focused or changed)
+    if (!taxNumberFieldInteracted) {
+      return
+    }
+
     // Clean up previous request
     if (taxpayerAbortControllerRef.current) {
       taxpayerAbortControllerRef.current.abort()
@@ -659,7 +665,7 @@ export default function PosOrderDetailClient({
         taxpayerAbortControllerRef.current = null
       }
     }
-  }, [debouncedTaxNumber])
+  }, [debouncedTaxNumber, taxNumberFieldInteracted])
 
   // Handle product selection
   const handleProductSelect = (selectedProduct: any) => {
@@ -1002,10 +1008,47 @@ export default function PosOrderDetailClient({
         throw new Error(data?.error || 'Hiba a mentés során')
       }
 
+      // Update order state immediately without page reload
+      // This allows invoice button to validate immediately after save
+      if (data.order) {
+        setOrder(prevOrder => ({
+          ...prevOrder,
+          ...data.order,
+          billing_name: billingName || null,
+          billing_country: billingCountry || null,
+          billing_city: billingCity || null,
+          billing_postal_code: billingPostalCode || null,
+          billing_street: billingStreet || null,
+          billing_house_number: billingHouseNumber || null,
+          billing_tax_number: billingTaxNumber || null,
+          billing_company_reg_number: billingCompanyRegNumber || null,
+          customer_name: customerName || null,
+          customer_email: customerEmail || null,
+          customer_mobile: customerMobile || null,
+          discount_percentage: discountPercentage || 0,
+          discount_amount: discountAmount || 0
+        }))
+      } else {
+        // Fallback: update order state with current form values
+        setOrder(prevOrder => ({
+          ...prevOrder,
+          billing_name: billingName || null,
+          billing_country: billingCountry || null,
+          billing_city: billingCity || null,
+          billing_postal_code: billingPostalCode || null,
+          billing_street: billingStreet || null,
+          billing_house_number: billingHouseNumber || null,
+          billing_tax_number: billingTaxNumber || null,
+          billing_company_reg_number: billingCompanyRegNumber || null,
+          customer_name: customerName || null,
+          customer_email: customerEmail || null,
+          customer_mobile: customerMobile || null,
+          discount_percentage: discountPercentage || 0,
+          discount_amount: discountAmount || 0
+        }))
+      }
+
       toast.success('Mentés sikeres')
-      
-      // Refresh page data
-      router.refresh()
     } catch (error: any) {
       console.error('Error saving POS order:', error)
       toast.error(error.message || 'Hiba a mentés során')
@@ -1040,7 +1083,7 @@ export default function PosOrderDetailClient({
             color="primary"
             startIcon={<ReceiptIcon />}
             onClick={() => setInvoiceModalOpen(true)}
-            disabled={!order.billing_name || !order.billing_city || !order.billing_postal_code || !order.billing_street}
+            disabled={!billingName || !billingCity || !billingPostalCode || !billingStreet}
           >
             Számlázás
           </Button>
@@ -1192,7 +1235,11 @@ export default function PosOrderDetailClient({
                         fullWidth
                         label="Adószám"
                         value={billingTaxNumber}
-                        onChange={(e) => setBillingTaxNumber(e.target.value)}
+                        onChange={(e) => {
+                          setTaxNumberFieldInteracted(true)
+                          setBillingTaxNumber(e.target.value)
+                        }}
+                        onFocus={() => setTaxNumberFieldInteracted(true)}
                         size="small"
                         error={!!taxpayerValidationError}
                         helperText={

@@ -153,9 +153,10 @@ export default function InvoiceModal({
   }
 
   // Create template proforma invoice (once per modal session)
+  // Note: Tax number (adószám) is not required - individual customers may not have one
   const createTemplateProforma = useCallback(async (): Promise<string | null> => {
     if (!order.billing_name || !order.billing_city || !order.billing_postal_code || !order.billing_street) {
-      setPreviewError('A számlázási adatok hiányoznak')
+      setPreviewError('A számlázási adatok hiányoznak (név, város, irányítószám, utca)')
       return null
     }
 

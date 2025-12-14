@@ -203,7 +203,9 @@ function buildTemplateProformaXml(
     <cim>${escapeXml(order.billing_street && order.billing_house_number ? `${order.billing_street} ${order.billing_house_number}` : '')}</cim>
     <email>${escapeXml(order.customer_email || '')}</email>
     <sendEmail>false</sendEmail>
-    <adoszam>${escapeXml(order.billing_tax_number || '')}</adoszam>
+    ${order.billing_tax_number && order.billing_tax_number.trim() 
+      ? `<adoszam>${escapeXml(order.billing_tax_number)}</adoszam>` 
+      : '<adoalany>-1</adoalany>'}
   </vevo>
   <tetelek>
     ${itemsXml}
@@ -302,11 +304,12 @@ export async function POST(
       vatRatesMap.set(vat.id, vat.kulcs)
     })
 
-    // Validate that supplier and buyer tax numbers are different
-    // Szamlazz.hu doesn't allow the same tax number for supplier and buyer
+    // Validate that supplier and buyer tax numbers are different (only if both are provided)
+    // Note: Individual customers may not have tax numbers, so this check is optional
     const supplierTaxNumber = tenantCompany.tax_number?.trim().replace(/\s+/g, '') || ''
     const buyerTaxNumber = orderData.billing_tax_number?.trim().replace(/\s+/g, '') || ''
     
+    // Only validate if both tax numbers are provided and they are the same
     if (supplierTaxNumber && buyerTaxNumber && supplierTaxNumber === buyerTaxNumber) {
       return NextResponse.json(
         { 
