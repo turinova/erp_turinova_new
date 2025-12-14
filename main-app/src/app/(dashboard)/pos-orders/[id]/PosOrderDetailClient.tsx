@@ -281,7 +281,7 @@ export default function PosOrderDetailClient({
   const [billingCompanyRegNumber, setBillingCompanyRegNumber] = useState(initialOrder.billing_company_reg_number || '')
 
   // References (declare first)
-  const [customers] = useState<Customer[]>(initialCustomers)
+  const [customers, setCustomers] = useState<Customer[]>(initialCustomers)
   const [vatRates] = useState<VatRate[]>(initialVatRates)
   const [currencies] = useState<Currency[]>(initialCurrencies)
   const [units] = useState<Unit[]>(initialUnits)
@@ -428,10 +428,11 @@ export default function PosOrderDetailClient({
 
   // Format currency
   const formatCurrency = (amount: number) => {
+    const roundedAmount = Math.round(amount)
     return new Intl.NumberFormat('hu-HU', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(amount) + ' Ft'
+    }).format(roundedAmount) + ' Ft'
   }
 
   // Format date and time
@@ -913,6 +914,73 @@ export default function PosOrderDetailClient({
   const handleSave = async () => {
     setSaving(true)
     try {
+      // Create customer if name is provided and customer doesn't exist
+      if (customerName && customerName.trim() && !selectedCustomer) {
+        try {
+          // Check if customer with same name already exists
+          const existingCustomer = customers.find(c => c.name.toLowerCase().trim() === customerName.toLowerCase().trim())
+          
+          if (existingCustomer) {
+            // Customer already exists, use it
+            setSelectedCustomer(existingCustomer)
+            setCustomerName(existingCustomer.name)
+            setCustomerEmail(existingCustomer.email || '')
+            setCustomerMobile(existingCustomer.mobile || '')
+            setBillingName(existingCustomer.billing_name || '')
+            setBillingCountry(existingCustomer.billing_country || 'Magyarország')
+            setBillingCity(existingCustomer.billing_city || '')
+            setBillingPostalCode(existingCustomer.billing_postal_code || '')
+            setBillingStreet(existingCustomer.billing_street || '')
+            setBillingHouseNumber(existingCustomer.billing_house_number || '')
+            setBillingTaxNumber(existingCustomer.billing_tax_number || '')
+            setBillingCompanyRegNumber(existingCustomer.billing_company_reg_number || '')
+          } else {
+            // Create new customer
+            const customerRes = await fetch('/api/customers', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: customerName.trim(),
+                email: customerEmail || null,
+                mobile: customerMobile || null,
+                billing_name: billingName || null,
+                billing_country: billingCountry || 'Magyarország',
+                billing_city: billingCity || null,
+                billing_postal_code: billingPostalCode || null,
+                billing_street: billingStreet || null,
+                billing_house_number: billingHouseNumber || null,
+                billing_tax_number: billingTaxNumber || null,
+                billing_company_reg_number: billingCompanyRegNumber || null,
+                discount_percent: 0
+              })
+            })
+            
+            if (customerRes.ok) {
+              const response = await customerRes.json()
+              const newCustomer = response.data || response // Handle both response formats
+              
+              if (newCustomer && newCustomer.id) {
+                // Add new customer to the customers list
+                setCustomers(prev => [...prev, newCustomer])
+                // Set as selected customer
+                setSelectedCustomer(newCustomer)
+                toast.success('Új ügyfél létrehozva')
+              } else {
+                console.error('Invalid customer response:', response)
+                toast.warning('Ügyfél létrehozva, de nem sikerült hozzáadni a listához.')
+              }
+            } else {
+              const errorData = await customerRes.json().catch(() => ({ error: 'Ismeretlen hiba' }))
+              console.error('Failed to create customer:', errorData)
+              toast.warning(`Ügyfél létrehozása sikertelen: ${errorData.error || errorData.message || 'Ismeretlen hiba'}. A rendelés mentése folytatódik.`)
+            }
+          }
+        } catch (customerError: any) {
+          console.error('Error creating customer:', customerError)
+          toast.warning(`Hiba történt az ügyfél létrehozása során: ${customerError.message || 'Ismeretlen hiba'}. A rendelés mentése folytatódik.`)
+        }
+      }
+
       // Build customer_data object
       const customerData = {
         customer_name: customerName || null,
@@ -1111,7 +1179,8 @@ export default function PosOrderDetailClient({
                     Alap adatok - Ügyfél
                   </Typography>
                   <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
+                    {/* First row: Just customer name (full width) */}
+                    <Grid item xs={12}>
                       <Autocomplete
                         fullWidth
                         size="small"
@@ -1147,7 +1216,8 @@ export default function PosOrderDetailClient({
                         )}
                       />
                     </Grid>
-                    <Grid item xs={12} md={3}>
+                    {/* Second row: Email and Mobile side by side */}
+                    <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
                         label="E-mail"
@@ -1156,7 +1226,7 @@ export default function PosOrderDetailClient({
                         size="small"
                       />
                     </Grid>
-                    <Grid item xs={12} md={3}>
+                    <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
                         label="Telefonszám"
@@ -1197,18 +1267,18 @@ export default function PosOrderDetailClient({
                     <Grid item xs={12} md={3}>
                       <TextField
                         fullWidth
-                        label="Város"
-                        value={billingCity}
-                        onChange={(e) => setBillingCity(e.target.value)}
+                        label="Irányítószám"
+                        value={billingPostalCode}
+                        onChange={(e) => setBillingPostalCode(e.target.value)}
                         size="small"
                       />
                     </Grid>
                     <Grid item xs={12} md={3}>
                       <TextField
                         fullWidth
-                        label="Irányítószám"
-                        value={billingPostalCode}
-                        onChange={(e) => setBillingPostalCode(e.target.value)}
+                        label="Város"
+                        value={billingCity}
+                        onChange={(e) => setBillingCity(e.target.value)}
                         size="small"
                       />
                     </Grid>
@@ -1360,7 +1430,7 @@ export default function PosOrderDetailClient({
                                     pr: 2
                                   }}
                                 >
-                                  {formatCurrency(payment.amount)}
+                                  {formatCurrency(Math.round(payment.amount))}
                                 </TableCell>
                                 <TableCell 
                                   padding="none" 

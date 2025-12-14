@@ -110,12 +110,9 @@ export default function InvoiceModal({
   // Invoice settings
   const [invoiceType] = useState('normal') // Always normal invoice
   const [paymentMethod, setPaymentMethod] = useState('cash') // cash, bank_transfer, card
-  const [dueDate, setDueDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0] // Default today
-  })
-  const [fulfillmentDate, setFulfillmentDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0] // Default today
-  })
+  // Initialize dates as empty to prevent hydration mismatch - will be set in useEffect
+  const [dueDate, setDueDate] = useState<string>('')
+  const [fulfillmentDate, setFulfillmentDate] = useState<string>('')
   const [comment, setComment] = useState('')
   const [language, setLanguage] = useState('hu')
   const [sendEmail, setSendEmail] = useState(!!order.customer_email)
@@ -127,6 +124,13 @@ export default function InvoiceModal({
   const [templateInvoiceNumber, setTemplateInvoiceNumber] = useState<string | null>(null) // Single template invoice number
   const [pdfLoaded, setPdfLoaded] = useState(false) // Track when PDF embed has actually loaded
   const templateInvoiceNumberRef = useRef<string | null>(null) // Ref to track template invoice number for cleanup
+
+  // Initialize dates only on client side to prevent hydration mismatch
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0]
+    setDueDate(prev => prev || today)
+    setFulfillmentDate(prev => prev || today)
+  }, []) // Only run once on mount
 
   // Get VAT rates map
   const vatRatesMap = useMemo(() => {
@@ -536,7 +540,7 @@ export default function InvoiceModal({
                 fullWidth
                 label="Fizetési határidő"
                 type="date"
-                value={dueDate}
+                value={dueDate || ''}
                 onChange={(e) => setDueDate(e.target.value)}
                 size="small"
                 InputLabelProps={{
@@ -548,7 +552,7 @@ export default function InvoiceModal({
                 fullWidth
                 label="Teljesítési dátum"
                 type="date"
-                value={fulfillmentDate}
+                value={fulfillmentDate || ''}
                 onChange={(e) => setFulfillmentDate(e.target.value)}
                 size="small"
                 InputLabelProps={{
