@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { suggestion_text, title } = body
+    const { suggestion_text, title, rating } = body
 
     // Validation
     if (!suggestion_text) {
@@ -34,6 +34,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!rating || typeof rating !== 'number' || rating < 1 || rating > 5) {
+      return NextResponse.json(
+        { error: 'Rating is required and must be between 1 and 5' },
+        { status: 400 }
+      )
+    }
+
     // Use provided title or generate from first 100 chars of suggestion text
     const trimmedText = suggestion_text.trim()
     const suggestionTitle = title?.trim() || trimmedText.substring(0, 100)
@@ -44,7 +51,8 @@ export async function POST(request: NextRequest) {
       .insert({
         portal_customer_id: user.id,
         title: suggestionTitle,
-        suggestion_text: trimmedText
+        suggestion_text: trimmedText,
+        rating: rating
       })
       .select()
       .single()

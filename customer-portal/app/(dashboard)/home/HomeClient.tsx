@@ -11,6 +11,7 @@ import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
+import Rating from '@mui/material/Rating'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import Accordion from '@mui/material/Accordion'
@@ -63,7 +64,18 @@ export default function HomeClient({
   companyInfo = null
 }: HomeClientProps) {
   const [suggestionText, setSuggestionText] = useState('')
+  const [rating, setRating] = useState<number | null>(null)
+  const [ratingHover, setRatingHover] = useState<number>(-1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Hungarian labels for rating hover feedback
+  const ratingLabels: { [index: string]: string } = {
+    1: 'Nagyon elégedetlen',
+    2: 'Elégedetlen',
+    3: 'Semleges',
+    4: 'Elégedett',
+    5: 'Nagyon elégedett'
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -71,6 +83,11 @@ export default function HomeClient({
     // Validation
     if (suggestionText.trim().length < 50) {
       toast.error('A javaslat szövege legalább 50 karakter hosszú kell legyen!')
+      return
+    }
+
+    if (!rating || rating === 0) {
+      toast.error('Kérjük, add meg az értékelést!')
       return
     }
 
@@ -85,6 +102,7 @@ export default function HomeClient({
         body: JSON.stringify({
           title: suggestionText.trim().substring(0, 100), // Use first 100 chars as title
           suggestion_text: suggestionText.trim(),
+          rating: rating,
         }),
       })
 
@@ -99,6 +117,8 @@ export default function HomeClient({
       
       // Reset form
       setSuggestionText('')
+      setRating(null)
+      setRatingHover(-1)
     } catch (error) {
       console.error('[Home] Error submitting suggestion:', error)
       toast.error('Hiba történt a javaslat elküldése során. Kérjük, próbáld újra!')
@@ -239,18 +259,43 @@ export default function HomeClient({
               <Typography variant='h6' className='font-bold' sx={{ mb: 2, color: 'info.main' }}>
                 Javaslat küldése
               </Typography>
-              <Typography 
-                variant='body1' 
-                sx={{ 
-                  mb: 3, 
-                  fontWeight: 600,
-                  color: 'text.primary'
-                }}
-              >
-                Kérlek írd meg, hogy milyen funkciók lennének még hasznosak számodra a rendszerben, illetve azt is, hogy a jelenlegi funkciók közül melyik még számodra nehezen használható és javításra szorul:
-              </Typography>
               <form onSubmit={handleSubmit}>
                 <Stack spacing={3}>
+                  <Box>
+                    <Typography 
+                      variant='body1' 
+                      sx={{ 
+                        mb: 2, 
+                        fontWeight: 600,
+                        color: 'text.primary'
+                      }}
+                    >
+                      Mennyire vagy elégedett a jelenlegi rendszerrel? <span style={{ color: 'red' }}>*</span>
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Rating
+                        value={rating}
+                        onChange={(event, newValue) => setRating(newValue)}
+                        onChangeActive={(event, newHover) => setRatingHover(newHover)}
+                        disabled={isSubmitting}
+                        size='large'
+                      />
+                      {rating !== null && (
+                        <Typography color='text.primary' sx={{ minWidth: 150 }}>
+                          {ratingLabels[ratingHover !== -1 ? ratingHover : rating] || ''}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Typography 
+                    variant='body1' 
+                    sx={{ 
+                      fontWeight: 600,
+                      color: 'text.primary'
+                    }}
+                  >
+                    Kérlek írd meg, hogy milyen funkciók lennének még hasznosak számodra a rendszerben, illetve azt is, hogy a jelenlegi funkciók közül melyik még számodra nehezen használható és javításra szorul:
+                  </Typography>
                   <TextField
                     label='Javaslat'
                     value={suggestionText}
@@ -268,7 +313,7 @@ export default function HomeClient({
                       type='submit'
                       variant='contained'
                       color='info'
-                      disabled={isSubmitting || suggestionText.trim().length < 50}
+                      disabled={isSubmitting || suggestionText.trim().length < 50 || !rating || rating === 0}
                       startIcon={isSubmitting ? <CircularProgress size={20} sx={{ color: 'inherit' }} /> : null}
                     >
                       {isSubmitting ? 'Küldés...' : 'Javaslat küldése'}
