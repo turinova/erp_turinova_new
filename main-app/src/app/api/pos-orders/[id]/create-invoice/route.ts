@@ -80,6 +80,7 @@ function buildInvoiceXml(
   // 2. afaErtek = nettoErtek × afakulcs / 100 (MUST match exactly)
   // 3. bruttoErtek = nettoErtek + afaErtek (MUST match exactly)
   // We MUST recalculate from unit price and quantity, not use stored totals
+  // Note: This may result in slight differences from UI due to rounding, but it's required for API validation
   const itemsXml = items.map((item) => {
     const vatRate = vatRatesMap.get(item.vat_id) || 0
     const mennyiseg = Number(item.quantity)
@@ -106,6 +107,63 @@ function buildInvoiceXml(
         <bruttoErtek>${bruttoErtek}</bruttoErtek>
       </tetel>`
   }).join('')
+
+  // Add discount item if discount exists
+  // The discount_amount is applied to gross total, so we need to split it into net and VAT
+  let discountXml = ''
+  const discountAmount = Number(order.discount_amount) || 0
+  if (discountAmount > 0) {
+    // Calculate the gross total before discount
+    const grossBeforeDiscount = Number(order.subtotal_net) + Number(order.total_vat)
+    
+    // Find the most appropriate VAT rate from items (use the one with highest gross total)
+    // This ensures we use a standard VAT rate that szamlazz.hu accepts
+    let discountVatRate = 27 // Default to 27% (most common in Hungary)
+    if (items.length > 0) {
+      // Group items by VAT rate and calculate total gross for each
+      const vatTotals = new Map<number, number>()
+      items.forEach((item) => {
+        const vatRate = vatRatesMap.get(item.vat_id) || 0
+        const itemGross = Number(item.quantity) * Number(item.unit_price_gross)
+        const currentTotal = vatTotals.get(vatRate) || 0
+        vatTotals.set(vatRate, currentTotal + itemGross)
+      })
+      
+      // Find the VAT rate with the highest total gross
+      let maxGross = 0
+      vatTotals.forEach((gross, rate) => {
+        if (gross > maxGross) {
+          maxGross = gross
+          discountVatRate = rate
+        }
+      })
+    }
+    
+    // Calculate discount amounts using the selected VAT rate
+    // Since discount is applied to gross, we need to calculate net: gross / (1 + vat_rate/100)
+    // We need to ensure discountNet + discountVat = discountAmount exactly (no rounding errors)
+    const discountNetPrecise = discountAmount / (1 + discountVatRate / 100)
+    const discountNet = Math.round(discountNetPrecise * 100) / 100
+    const discountVat = discountAmount - discountNet // Calculate VAT to ensure exact total (discountNet + discountVat = discountAmount)
+    const discountBrutto = -discountAmount // Negative for discount
+    
+    // Build discount item name
+    const discountName = order.discount_percentage && order.discount_percentage > 0
+      ? `Kedvezmény (${order.discount_percentage}%)`
+      : 'Kedvezmény'
+    
+    discountXml = `
+      <tetel>
+        <megnevezes>${escapeXml(discountName)}</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${-discountNet}</nettoEgysegar>
+        <afakulcs>${discountVatRate}</afakulcs>
+        <nettoErtek>${-discountNet}</nettoErtek>
+        <afaErtek>${-discountVat}</afaErtek>
+        <bruttoErtek>${discountBrutto}</bruttoErtek>
+      </tetel>`
+  }
 
   // Build XML
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -147,6 +205,7 @@ function buildInvoiceXml(
   </vevo>
   <tetelek>
     ${itemsXml}
+    ${discountXml}
   </tetelek>
 </xmlszamla>`
 

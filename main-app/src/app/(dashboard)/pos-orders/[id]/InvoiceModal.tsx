@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -108,12 +108,10 @@ export default function InvoiceModal({
   const [error, setError] = useState<string | null>(null)
   
   // Invoice settings
-  const [invoiceType, setInvoiceType] = useState('normal') // normal, simplified, proforma
+  const [invoiceType] = useState('normal') // Always normal invoice
   const [paymentMethod, setPaymentMethod] = useState('cash') // cash, bank_transfer, card
   const [dueDate, setDueDate] = useState<string>(() => {
-    const date = new Date()
-    date.setDate(date.getDate() + 8) // Default 8 days from now
-    return date.toISOString().split('T')[0]
+    return new Date().toISOString().split('T')[0] // Default today
   })
   const [fulfillmentDate, setFulfillmentDate] = useState<string>(() => {
     return new Date().toISOString().split('T')[0] // Default today
@@ -127,6 +125,8 @@ export default function InvoiceModal({
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [templateInvoiceNumber, setTemplateInvoiceNumber] = useState<string | null>(null) // Single template invoice number
+  const [pdfLoaded, setPdfLoaded] = useState(false) // Track when PDF embed has actually loaded
+  const templateInvoiceNumberRef = useRef<string | null>(null) // Ref to track template invoice number for cleanup
 
   // Get VAT rates map
   const vatRatesMap = useMemo(() => {
@@ -207,6 +207,9 @@ export default function InvoiceModal({
       }
 
       if (data.pdf) {
+        // Reset PDF loaded state when setting new URL
+        setPdfLoaded(false)
+        
         // Cleanup old blob URL
         setPreviewPdfUrl((prev) => {
           if (prev) {
@@ -319,38 +322,54 @@ export default function InvoiceModal({
         return null
       })
       setPreviewError(null)
+      setPdfLoaded(false)
     }
   }, [open])
 
-  // Create template invoice once when modal opens
+  // Update ref when templateInvoiceNumber changes
+  useEffect(() => {
+    templateInvoiceNumberRef.current = templateInvoiceNumber
+  }, [templateInvoiceNumber])
+
+  // Regenerate preview when settings change (with debounce)
   useEffect(() => {
     if (!open || !order.billing_name || !order.billing_city || !order.billing_postal_code || !order.billing_street) {
       return
     }
 
-    // Only create template if we don't have one yet
-    if (templateInvoiceNumber) {
-      return
-    }
-
     let cancelled = false
 
-    const createTemplate = async () => {
+    const regeneratePreview = async () => {
+      // Delete existing template proforma first
+      const currentTemplateNumber = templateInvoiceNumberRef.current
+      if (currentTemplateNumber) {
+        await deleteTemplateProforma(currentTemplateNumber)
+        setTemplateInvoiceNumber(null)
+        setPreviewPdfUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev.split('#')[0])
+          }
+          return null
+        })
+        setPdfLoaded(false)
+      }
+
       setPreviewLoading(true)
       setPreviewError(null)
 
       try {
+        // Create new template proforma with updated settings
         const invoiceNumber = await createTemplateProforma()
         if (cancelled || !invoiceNumber) return
 
         setTemplateInvoiceNumber(invoiceNumber)
 
-        // Query PDF of the template invoice
+        // Query PDF of the new template invoice
         await queryInvoicePdf(invoiceNumber)
       } catch (err: any) {
         if (cancelled) return
-        console.error('Error creating template:', err)
-        setPreviewError(err.message || 'Nem sikerült létrehozni a template számlát')
+        console.error('Error regenerating preview:', err)
+        setPreviewError(err.message || 'Nem sikerült újra létrehozni az előnézetet')
       } finally {
         if (!cancelled) {
           setPreviewLoading(false)
@@ -358,12 +377,29 @@ export default function InvoiceModal({
       }
     }
 
-    createTemplate()
+    // Debounce the regeneration to avoid too many API calls
+    const timeoutId = setTimeout(() => {
+      regeneratePreview()
+    }, 500) // 500ms delay
 
     return () => {
       cancelled = true
+      clearTimeout(timeoutId)
     }
-  }, [open, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, templateInvoiceNumber, createTemplateProforma, queryInvoicePdf])
+  }, [open, paymentMethod, dueDate, fulfillmentDate, comment, language, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, createTemplateProforma, queryInvoicePdf, deleteTemplateProforma])
+
+  // Timeout fallback to clear loading state if PDF embed doesn't fire onLoad
+  useEffect(() => {
+    if (previewPdfUrl && !pdfLoaded && !previewError) {
+      const timeout = setTimeout(() => {
+        // If PDF hasn't loaded after 5 seconds, assume it's loaded or clear loading
+        setPdfLoaded(true)
+        setPreviewLoading(false)
+      }, 5000)
+
+      return () => clearTimeout(timeout)
+    }
+  }, [previewPdfUrl, pdfLoaded, previewError])
 
   const handleCreateInvoice = async () => {
     // Validation
@@ -472,16 +508,13 @@ export default function InvoiceModal({
                 Beállítások
               </Typography>
 
-              <FormControl fullWidth size="small">
-                <InputLabel>S számla típusa</InputLabel>
+              <FormControl fullWidth size="small" disabled>
+                <InputLabel>Számla típusa</InputLabel>
                 <Select
                   value={invoiceType}
-                  onChange={(e) => setInvoiceType(e.target.value)}
                   label="Számla típusa"
                 >
                   <MenuItem value="normal">Normál számla</MenuItem>
-                  <MenuItem value="simplified">Egyszerűsített számla</MenuItem>
-                  <MenuItem value="proforma">Díjszámítás</MenuItem>
                 </Select>
               </FormControl>
 
@@ -574,7 +607,7 @@ export default function InvoiceModal({
               </Box>
               
               <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>
-                {previewLoading && (
+                {(previewLoading || (previewPdfUrl && !pdfLoaded)) && (
                   <Box sx={{ 
                     position: 'absolute', 
                     top: 0, 
@@ -608,6 +641,15 @@ export default function InvoiceModal({
                   <embed
                     src={previewPdfUrl}
                     type="application/pdf"
+                    onLoad={() => {
+                      setPdfLoaded(true)
+                      setPreviewLoading(false)
+                    }}
+                    onError={() => {
+                      setPreviewError('Hiba történt a PDF betöltése során')
+                      setPreviewLoading(false)
+                      setPdfLoaded(false)
+                    }}
                     style={{
                       width: '100%',
                       height: '100%',
@@ -615,7 +657,9 @@ export default function InvoiceModal({
                       display: 'block',
                       position: 'absolute',
                       top: 0,
-                      left: 0
+                      left: 0,
+                      opacity: pdfLoaded ? 1 : 0,
+                      transition: 'opacity 0.3s ease-in-out'
                     }}
                     title="Invoice Preview"
                   />

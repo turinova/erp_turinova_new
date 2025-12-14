@@ -37,7 +37,8 @@ import {
   TextField,
   Typography,
   Autocomplete,
-  Tooltip
+  Tooltip,
+  InputAdornment
 } from '@mui/material'
 import NextLink from 'next/link'
 import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon } from '@mui/icons-material'
@@ -307,6 +308,10 @@ export default function PosOrderDetailClient({
   // Payment modal state
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [newPaymentType, setNewPaymentType] = useState<'cash' | 'card'>('cash')
+
+  // Taxpayer validation state
+  const [taxpayerValidating, setTaxpayerValidating] = useState(false)
+  const [taxpayerValidationError, setTaxpayerValidationError] = useState<string | null>(null)
   const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0)
 
   // Invoice modal state
@@ -314,17 +319,45 @@ export default function PosOrderDetailClient({
   const [tenantCompany] = useState<TenantCompany | null>(initialTenantCompany)
 
   // Calculate summary from items
+  // IMPORTANT: Recalculate VAT from net to match invoice calculation (szamlazz.hu validation)
+  // This ensures the page total matches the invoice preview total
   const summary = useMemo(() => {
     const products = items.filter(item => item.item_type === 'product')
     const fees = items.filter(item => item.item_type === 'fee')
     
-    const itemsNet = products.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
-    const itemsVat = products.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
-    const itemsGross = products.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+    // Recalculate totals with VAT recalculation to match invoice
+    // Use stored net, but recalculate VAT from net to match invoice calculation
+    let itemsNet = 0
+    let itemsVat = 0
+    let itemsGross = 0
     
-    const feesNet = fees.reduce((sum, item) => sum + Number(item.total_net || 0), 0)
-    const feesVat = fees.reduce((sum, item) => sum + Number(item.total_vat || 0), 0)
-    const feesGross = fees.reduce((sum, item) => sum + Number(item.total_gross || 0), 0)
+    products.forEach(item => {
+      const net = Math.round(Number(item.total_net || 0))
+      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+      // Recalculate VAT from net (matching invoice calculation)
+      const vat = Math.round(net * vatRate / 100)
+      const gross = net + vat
+      
+      itemsNet += net
+      itemsVat += vat
+      itemsGross += gross
+    })
+    
+    let feesNet = 0
+    let feesVat = 0
+    let feesGross = 0
+    
+    fees.forEach(item => {
+      const net = Math.round(Number(item.total_net || 0))
+      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+      // Recalculate VAT from net (matching invoice calculation)
+      const vat = Math.round(net * vatRate / 100)
+      const gross = net + vat
+      
+      feesNet += net
+      feesVat += vat
+      feesGross += gross
+    })
     
     // Totals before discount
     const totalNetBeforeDiscount = itemsNet + feesNet
@@ -336,9 +369,12 @@ export default function PosOrderDetailClient({
     const totalGrossAfterDiscount = totalGrossBeforeDiscount - discountAmountValue
     
     // Calculate net and VAT after discount proportionally
+    // Round to integers to match invoice calculation and avoid decimal discrepancies
     const discountRatio = totalGrossBeforeDiscount > 0 ? discountAmountValue / totalGrossBeforeDiscount : 0
-    const totalNetAfterDiscount = totalNetBeforeDiscount * (1 - discountRatio)
-    const totalVatAfterDiscount = totalVatBeforeDiscount * (1 - discountRatio)
+    const totalNetAfterDiscount = Math.round(totalNetBeforeDiscount * (1 - discountRatio))
+    const totalVatAfterDiscount = Math.round(totalVatBeforeDiscount * (1 - discountRatio))
+    // Ensure totalGrossAfterDiscount = totalNetAfterDiscount + totalVatAfterDiscount (consistency check)
+    const adjustedTotalGrossAfterDiscount = totalNetAfterDiscount + totalVatAfterDiscount
     
     return {
       itemsNet,
@@ -352,9 +388,9 @@ export default function PosOrderDetailClient({
       totalGrossBeforeDiscount,
       totalNetAfterDiscount,
       totalVatAfterDiscount,
-      totalGrossAfterDiscount
+      totalGrossAfterDiscount: adjustedTotalGrossAfterDiscount
     }
-  }, [items, discountAmount])
+  }, [items, discountAmount, vatRates])
 
   // Handle customer selection
   const handleCustomerChange = (event: React.SyntheticEvent, newValue: Customer | null) => {
@@ -477,6 +513,7 @@ export default function PosOrderDetailClient({
 
   // Debounced search term for products
   const debouncedProductSearchTerm = useDebounce(productSearchTerm, 300)
+  const debouncedTaxNumber = useDebounce(billingTaxNumber, 800) // Longer delay for taxpayer queries
   const productSearchAbortControllerRef = useRef<AbortController | null>(null)
 
   // Search products when search term changes
@@ -528,6 +565,101 @@ export default function PosOrderDetailClient({
       }
     }
   }, [debouncedProductSearchTerm])
+
+  // Query taxpayer data when tax number changes
+  const taxpayerAbortControllerRef = useRef<AbortController | null>(null)
+  
+  useEffect(() => {
+    // Clean up previous request
+    if (taxpayerAbortControllerRef.current) {
+      taxpayerAbortControllerRef.current.abort()
+    }
+
+    // Only query if tax number is valid format (Hungarian: 8 digits + hyphen + 1-2 digits)
+    const cleanTaxNumber = debouncedTaxNumber.trim().replace(/\s+/g, '')
+    const taxNumberPattern = /^\d{8}-\d{1,2}-\d{2}$/
+    
+    if (cleanTaxNumber && taxNumberPattern.test(cleanTaxNumber)) {
+      setTaxpayerValidating(true)
+      setTaxpayerValidationError(null)
+      
+      const abortController = new AbortController()
+      taxpayerAbortControllerRef.current = abortController
+
+      fetch('/api/taxpayer/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taxNumber: cleanTaxNumber }),
+        signal: abortController.signal
+      })
+        .then(res => {
+          if (abortController.signal.aborted) return null
+          return res.json()
+        })
+        .then(data => {
+          if (abortController.signal.aborted) return
+          
+          console.log('Taxpayer query response data:', data)
+          
+          if (data.success && data.taxpayer) {
+            // Auto-fill billing fields with taxpayer data
+            const taxpayer = data.taxpayer
+            console.log('Auto-filling billing fields with:', taxpayer)
+            
+            if (taxpayer.name) {
+              setBillingName(taxpayer.name)
+              console.log('Set billing name to:', taxpayer.name)
+            }
+            if (taxpayer.postalCode) {
+              setBillingPostalCode(taxpayer.postalCode)
+              console.log('Set postal code to:', taxpayer.postalCode)
+            }
+            if (taxpayer.city) {
+              setBillingCity(taxpayer.city)
+              console.log('Set city to:', taxpayer.city)
+            }
+            if (taxpayer.street) {
+              setBillingStreet(taxpayer.street)
+              console.log('Set street to:', taxpayer.street)
+            }
+            if (taxpayer.houseNumber) {
+              setBillingHouseNumber(taxpayer.houseNumber)
+              console.log('Set house number to:', taxpayer.houseNumber)
+            }
+            // Country is always "Magyarország" - don't prefill it
+            setTaxpayerValidationError(null)
+            toast.success('Adószám ellenőrizve és számlázási adatok automatikusan kitöltve')
+          } else {
+            console.error('Taxpayer query failed:', data.error)
+            setTaxpayerValidationError(data.error || 'Az adószám nem található')
+          }
+          setTaxpayerValidating(false)
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return
+          console.error('Error querying taxpayer:', err)
+          if (!abortController.signal.aborted) {
+            setTaxpayerValidationError('Hiba történt az adószám ellenőrzése során')
+            setTaxpayerValidating(false)
+          }
+        })
+    } else if (cleanTaxNumber.length > 0) {
+      // Invalid format
+      setTaxpayerValidationError('Érvénytelen adószám formátum')
+      setTaxpayerValidating(false)
+    } else {
+      // Empty, clear errors
+      setTaxpayerValidationError(null)
+      setTaxpayerValidating(false)
+    }
+
+    return () => {
+      if (taxpayerAbortControllerRef.current) {
+        taxpayerAbortControllerRef.current.abort()
+        taxpayerAbortControllerRef.current = null
+      }
+    }
+  }, [debouncedTaxNumber])
 
   // Handle product selection
   const handleProductSelect = (selectedProduct: any) => {
@@ -1062,6 +1194,20 @@ export default function PosOrderDetailClient({
                         value={billingTaxNumber}
                         onChange={(e) => setBillingTaxNumber(e.target.value)}
                         size="small"
+                        error={!!taxpayerValidationError}
+                        helperText={
+                          taxpayerValidating 
+                            ? 'Ellenőrzés...' 
+                            : taxpayerValidationError || 'Adószám megadása után automatikusan ellenőrizve és kitöltve lesznek a számlázási adatok'
+                        }
+                        InputProps={{
+                          endAdornment: taxpayerValidating ? (
+                            <InputAdornment position="end">
+                              <CircularProgress size={20} />
+                            </InputAdornment>
+                          ) : null
+                        }}
+                        placeholder="12345678-1-23"
                       />
                     </Grid>
                     <Grid item xs={12} md={6}>

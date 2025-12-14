@@ -49,6 +49,7 @@
     "date-fns": "^4.1.0",
     "dotenv-cli": "^10.0.0",
     "exceljs": "^4.4.0",
+    "fast-xml-parser": "^5.3.3",
     "html2canvas": "^1.4.1",
     "jose": "^6.1.0",
     "jspdf": "^3.0.4",

@@ -95,9 +95,9 @@ interface ProductItem {
   unit_price_per_m?: number
 }
 
-// Helper function to round up to nearest 10
-const roundUpToNearest10 = (value: number): number => {
-  return Math.ceil(value / 10) * 10
+// Helper function to round to nearest 5
+const roundPrice = (value: number): number => {
+  return Math.round(value / 5) * 5
 }
 
 interface CartItem {
@@ -801,7 +801,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       const vatPercent = product.vat_percent || 0
       netPriceToUse = priceToUse / (1 + vatPercent / 100)
     }
-    const roundedPrice = roundUpToNearest10(priceToUse)
+    const roundedPrice = Math.round(priceToUse / 5) * 5
     const roundedNetPrice = Math.round(netPriceToUse)
     
     if (existingItem) {
@@ -915,7 +915,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       return
     }
     const firstFeeType = feeTypes[0]
-    const roundedPrice = roundUpToNearest10(firstFeeType.gross_price)
+    const roundedPrice = roundPrice(firstFeeType.gross_price)
     const newFee: FeeItem = {
       id: Date.now().toString(),
       feetype_id: firstFeeType.id,
@@ -952,7 +952,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const handleFeeTypeChange = (feeId: string, feeTypeId: string) => {
     const selectedFeeType = feeTypes.find(ft => ft.id === feeTypeId)
     if (selectedFeeType) {
-      const roundedPrice = roundUpToNearest10(selectedFeeType.gross_price)
+      const roundedPrice = roundPrice(selectedFeeType.gross_price)
       setFees(prev =>
         prev.map(fee =>
           fee.id === feeId
@@ -1458,7 +1458,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     </TableHead>
                     <TableBody>
                       {searchResults.map((product) => {
-                        const roundedPrice = roundUpToNearest10(product.gross_price)
+                        const roundedPrice = roundPrice(product.gross_price)
                         const getTypeLabel = () => {
                           switch (product.product_type) {
                             case 'accessory':
