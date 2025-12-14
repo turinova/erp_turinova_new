@@ -30,15 +30,23 @@ interface ChartData {
   weekEnd?: string
 }
 
-export default function WeeklyCuttingChart() {
+interface WeeklyCuttingChartProps {
+  initialData?: ChartData & { weekStart?: string; weekEnd?: string }
+}
+
+export default function WeeklyCuttingChart({ initialData }: WeeklyCuttingChartProps) {
   const theme = useTheme()
-  const [chartData, setChartData] = useState<ChartData | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [chartData, setChartData] = useState<ChartData | null>(initialData || null)
+  const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<string | null>(null)
   const [weekOffset, setWeekOffset] = useState(0) // 0 = current week, -1 = previous week, +1 = next week
 
   useEffect(() => {
-    fetchChartData(weekOffset)
+    // Only fetch if weekOffset changed from initial (0) or if no initial data
+    if (weekOffset !== 0 || !initialData) {
+      fetchChartData(weekOffset)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekOffset])
 
   const fetchChartData = async (offset: number) => {

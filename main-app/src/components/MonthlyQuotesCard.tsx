@@ -36,15 +36,23 @@ interface QuotesSummaryData {
   endDate?: string
 }
 
-export default function MonthlyQuotesCard() {
-  const [data, setData] = useState<QuotesSummaryData | null>(null)
-  const [loading, setLoading] = useState(true)
+interface MonthlyQuotesCardProps {
+  initialData?: QuotesSummaryData
+}
+
+export default function MonthlyQuotesCard({ initialData }: MonthlyQuotesCardProps) {
+  const [data, setData] = useState<QuotesSummaryData | null>(initialData || null)
+  const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<string | null>(null)
-  const [range, setRange] = useState<TimeRange>('month')
-  const [offset, setOffset] = useState(0)
+  const [range, setRange] = useState<TimeRange>(initialData?.range || 'month')
+  const [offset, setOffset] = useState(initialData?.offset || 0)
 
   useEffect(() => {
-    fetchData(range, offset)
+    // Only fetch if range/offset changed from initial values
+    if (range !== initialData?.range || offset !== initialData?.offset) {
+      fetchData(range, offset)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, offset])
 
   const fetchData = async (selectedRange: TimeRange, selectedOffset: number) => {

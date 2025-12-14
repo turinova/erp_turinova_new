@@ -719,6 +719,7 @@ export async function getCustomerPortalDraftQuotes() {
     .eq('status', 'draft')
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
+    .limit(50) // Add limit for better performance
 
   const queryTime = performance.now()
   logTiming('Customer Portal Quotes DB Query', startTime, `fetched ${data?.length || 0} records`)
