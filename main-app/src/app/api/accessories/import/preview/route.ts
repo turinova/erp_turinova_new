@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       .from('accessories')
       .select('*', { count: 'exact', head: true })
       .is('deleted_at', null)
-    
+
     let allExistingAccessories: any[] = []
     const chunkSize = 1000
     const chunks = Math.ceil((totalExisting || 0) / chunkSize)

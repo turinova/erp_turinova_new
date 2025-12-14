@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getPosOrderById, getAllCustomers, getAllVatRates, getAllCurrencies, getAllUnits, getAllWorkers, getAllFeeTypes } from '@/lib/supabase-server'
+import { getPosOrderById, getAllCustomers, getAllVatRates, getAllCurrencies, getAllUnits, getAllWorkers, getAllFeeTypes, getTenantCompany } from '@/lib/supabase-server'
 import PosOrderDetailClient from './PosOrderDetailClient'
 
 function PosOrderDetailSkeleton() {
@@ -34,14 +34,15 @@ export default async function PosOrderDetailPage({ params }: { params: Promise<{
   const startTime = performance.now()
 
   // Fetch all required data on the server
-  const [posOrderData, customers, vatRates, currencies, units, workers, feeTypes] = await Promise.all([
+  const [posOrderData, customers, vatRates, currencies, units, workers, feeTypes, tenantCompany] = await Promise.all([
     getPosOrderById(id),
     getAllCustomers(),
     getAllVatRates(),
     getAllCurrencies(),
     getAllUnits(),
     getAllWorkers(),
-    getAllFeeTypes()
+    getAllFeeTypes(),
+    getTenantCompany()
   ])
 
   const totalTime = performance.now()
@@ -75,6 +76,7 @@ export default async function PosOrderDetailPage({ params }: { params: Promise<{
         initialUnits={units}
         initialWorkers={workers}
         initialFeeTypes={feeTypes}
+        initialTenantCompany={tenantCompany}
       />
     </Suspense>
   )

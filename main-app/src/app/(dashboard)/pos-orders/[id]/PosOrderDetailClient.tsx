@@ -40,8 +40,9 @@ import {
   Tooltip
 } from '@mui/material'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import InvoiceModal from './InvoiceModal'
 
 interface Customer {
   id: string
@@ -160,6 +161,21 @@ interface PosOrder {
   created_at: string
 }
 
+interface TenantCompany {
+  id: string
+  name: string
+  country: string | null
+  postal_code: string | null
+  city: string | null
+  address: string | null
+  phone_number: string | null
+  email: string | null
+  website: string | null
+  tax_number: string | null
+  company_registration_number: string | null
+  vat_id: string | null
+}
+
 interface PosOrderDetailClientProps {
   id: string
   initialOrder: PosOrder
@@ -173,6 +189,7 @@ interface PosOrderDetailClientProps {
   initialUnits: Unit[]
   initialWorkers: Worker[]
   initialFeeTypes: FeeType[]
+  initialTenantCompany: TenantCompany | null
 }
 
 export default function PosOrderDetailClient({
@@ -187,7 +204,8 @@ export default function PosOrderDetailClient({
   initialCurrencies,
   initialUnits,
   initialWorkers,
-  initialFeeTypes
+  initialFeeTypes,
+  initialTenantCompany
 }: PosOrderDetailClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -290,6 +308,10 @@ export default function PosOrderDetailClient({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [newPaymentType, setNewPaymentType] = useState<'cash' | 'card'>('cash')
   const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0)
+
+  // Invoice modal state
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  const [tenantCompany] = useState<TenantCompany | null>(initialTenantCompany)
 
   // Calculate summary from items
   const summary = useMemo(() => {
@@ -880,14 +902,25 @@ export default function PosOrderDetailClient({
         <Typography variant="h4">
           POS rendelés: {order.pos_order_number}
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Mentés...' : 'Mentés'}
-        </Button>
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<ReceiptIcon />}
+            onClick={() => setInvoiceModalOpen(true)}
+            disabled={!order.billing_name || !order.billing_city || !order.billing_postal_code || !order.billing_street}
+          >
+            Számlázás
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Mentés...' : 'Mentés'}
+          </Button>
+        </Stack>
       </Box>
 
       <Stack spacing={3}>
@@ -1706,6 +1739,16 @@ export default function PosOrderDetailClient({
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Invoice Modal */}
+      <InvoiceModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        order={order}
+        items={items}
+        tenantCompany={tenantCompany}
+        vatRates={vatRates}
+      />
     </Box>
   )
 }
