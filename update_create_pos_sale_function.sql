@@ -84,6 +84,7 @@ BEGIN
   -- Step 5: Insert pos_order
   INSERT INTO public.pos_orders (
     worker_id,
+    customer_id,
     customer_name,
     customer_email,
     customer_mobile,
@@ -103,6 +104,7 @@ BEGIN
     status
   ) VALUES (
     p_worker_id,
+    CASE WHEN NULLIF(p_customer->>'id', '') IS NOT NULL THEN (p_customer->>'id')::uuid ELSE NULL END,
     NULLIF(p_customer->>'name', ''),
     NULLIF(p_customer->>'email', ''),
     NULLIF(p_customer->>'mobile', ''),

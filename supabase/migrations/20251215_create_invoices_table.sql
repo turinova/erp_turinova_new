@@ -27,7 +27,7 @@ create table if not exists public.invoices (
   provider text not null default 'szamlazz_hu',
   provider_invoice_number text,
   provider_invoice_id text,
-  invoice_type text not null, -- szamla | elojegyszamla | dijbekero | sztorno | szallitolevel
+  invoice_type text not null, -- szamla | elolegszamla | dijbekero | sztorno | szallitolevel
   related_order_type text not null, -- pos_order | customer_order | quote
   related_order_id uuid,
   related_order_number text,

@@ -118,6 +118,17 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     ]
   },
   {
+    label: 'Pénzügy',
+    icon: 'ri-money-dollar-circle-line',
+    iconColor: '#27AE60', // Green for finance
+    children: [
+      {
+        label: 'Kimenő számlák',
+        href: '/invoices'
+      }
+    ]
+  },
+  {
     label: 'Törzsadatok',
     icon: 'ri-database-2-line',
     iconColor: '#2ECC71', // Green for master data

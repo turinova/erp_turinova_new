@@ -37,6 +37,7 @@ interface CreateTemplateProformaRequest {
   fulfillmentDate?: string
   comment: string
   language: string
+  advanceAmount?: number // Advance invoice amount (gross)
 }
 
 // Helper function to escape XML
@@ -56,7 +57,9 @@ function buildTemplateProformaXml(
   items: any[],
   tenantCompany: any,
   vatRatesMap: Map<string, number>,
-  settings: CreateTemplateProformaRequest
+  settings: CreateTemplateProformaRequest,
+  existingAdvanceInvoice?: { provider_invoice_number: string; gross_total: number } | null,
+  existingProformaInvoice?: { provider_invoice_number: string } | null
 ): string {
   // Map payment method
   const paymentMethodMap: Record<string, string> = {
@@ -75,11 +78,46 @@ function buildTemplateProformaXml(
   // This ensures each regeneration creates a new unique template
   const orderNumber = `${order.pos_order_number}-TEMPLATE-${Date.now()}`
 
+  // Check if this is an advance invoice
+  const isAdvanceInvoice = settings.invoiceType === 'advance'
+  const advanceAmount = settings.advanceAmount || 0
+
   // Build items XML
   // IMPORTANT: szamlazz.hu validates that afaErtek = nettoErtek × afakulcs / 100 (exactly)
   // We use stored nettoErtek from database, but recalculate afaErtek to ensure validation passes
   // Then bruttoErtek = nettoErtek + afaErtek
-  const itemsXml = items.map((item) => {
+  let itemsXml = ''
+  
+  if (isAdvanceInvoice && advanceAmount > 0) {
+    // For advance invoice, create single item with advance amount
+    // Use default VAT rate (27% or highest from items)
+    let advanceVatRate = 27 // Default to 27% (most common in Hungary)
+    if (items.length > 0) {
+      // Find highest VAT rate from items
+      const rates = items.map(item => vatRatesMap.get(item.vat_id) || 0)
+      advanceVatRate = Math.max(...rates, 27)
+    }
+    
+    // Calculate net from gross: net = gross / (1 + vat/100)
+    const advanceNetPrecise = advanceAmount / (1 + advanceVatRate / 100)
+    const advanceNet = Math.round(advanceNetPrecise * 100) / 100
+    const advanceVat = advanceAmount - advanceNet // Calculate VAT to ensure exact total
+    const advanceBrutto = advanceAmount
+    
+    itemsXml = `
+      <tetel>
+        <megnevezes>Előleg</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${advanceNet}</nettoEgysegar>
+        <afakulcs>${advanceVatRate}</afakulcs>
+        <nettoErtek>${advanceNet}</nettoErtek>
+        <afaErtek>${advanceVat}</afaErtek>
+        <bruttoErtek>${advanceBrutto}</bruttoErtek>
+      </tetel>`
+  } else {
+    // Normal invoice - use existing items
+    itemsXml = items.map((item) => {
     const vatRate = vatRatesMap.get(item.vat_id) || 0
     const mennyiseg = Number(item.quantity)
     
@@ -107,12 +145,43 @@ function buildTemplateProformaXml(
         <afaErtek>${afaErtek}</afaErtek>
         <bruttoErtek>${bruttoErtek}</bruttoErtek>
       </tetel>`
-  }).join('')
+    }).join('')
+  }
 
-  // Add discount item if discount exists
+  // Add advance deduction item if there's an existing advance invoice (for final invoice preview)
+  let advanceDeductionXml = ''
+  if (existingAdvanceInvoice && !isAdvanceInvoice) {
+    const advanceGross = existingAdvanceInvoice.gross_total
+    // Use the same VAT rate calculation as advance invoice (27% or highest from items)
+    let advanceVatRate = 27
+    if (items.length > 0) {
+      const rates = items.map(item => vatRatesMap.get(item.vat_id) || 0)
+      advanceVatRate = Math.max(...rates, 27)
+    }
+    
+    // Calculate net from gross: net = gross / (1 + vat/100)
+    const advanceNetPrecise = advanceGross / (1 + advanceVatRate / 100)
+    const advanceNet = Math.round(advanceNetPrecise * 100) / 100
+    const advanceVat = advanceGross - advanceNet // Calculate VAT to ensure exact total
+    
+    // Add negative item for advance already invoiced
+    advanceDeductionXml = `
+      <tetel>
+        <megnevezes>Előleg a termék vásárlásra (${escapeXml(existingAdvanceInvoice.provider_invoice_number)} alapján)</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${-advanceNet}</nettoEgysegar>
+        <afakulcs>${advanceVatRate}</afakulcs>
+        <nettoErtek>${-advanceNet}</nettoErtek>
+        <afaErtek>${-advanceVat}</afaErtek>
+        <bruttoErtek>${-advanceGross}</bruttoErtek>
+      </tetel>`
+  }
+
+  // Add discount item if discount exists (only for normal invoices, not advance)
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
-  if (discountAmount > 0) {
+  if (!isAdvanceInvoice && discountAmount > 0) {
     // Find the most appropriate VAT rate from items (use the one with highest gross total)
     // This ensures we use a standard VAT rate that szamlazz.hu accepts
     let discountVatRate = 27 // Default to 27% (most common in Hungary)
@@ -189,6 +258,8 @@ function buildTemplateProformaXml(
     <arfolyam>1</arfolyam>
     <rendelesSzam>${escapeXml(orderNumber)}</rendelesSzam>
     <dijbekero>true</dijbekero>
+    <!-- Note: dijbekeroSzamlaszam is not added here because this is a preview proforma (dijbekero=true) -->
+    <!-- The reference will be added when creating the actual normal invoice -->
   </fejlec>
   <elado>
     <bank>${escapeXml(tenantCompany?.name || '')}</bank>
@@ -209,6 +280,7 @@ function buildTemplateProformaXml(
   </vevo>
   <tetelek>
     ${itemsXml}
+    ${advanceDeductionXml}
     ${discountXml}
   </tetelek>
 </xmlszamla>`
@@ -304,6 +376,55 @@ export async function POST(
       vatRatesMap.set(vat.id, vat.kulcs)
     })
 
+    // Check if there's an existing advance invoice for this order (for final invoice preview)
+    const isAdvanceInvoiceRequest = body.invoiceType === 'advance'
+    const isProformaInvoiceRequest = body.invoiceType === 'proforma'
+    let existingAdvanceInvoice: { provider_invoice_number: string; gross_total: number } | null = null
+    let existingProformaInvoice: { provider_invoice_number: string } | null = null
+    
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
+      // Check for advance invoice
+      const { data: advanceInvoiceData, error: advanceError } = await supabaseAdmin
+        .from('invoices')
+        .select('provider_invoice_number, gross_total')
+        .eq('related_order_type', 'pos_order')
+        .eq('related_order_id', id)
+        .eq('invoice_type', 'elolegszamla')
+        .eq('provider', 'szamlazz_hu')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (!advanceError && advanceInvoiceData) {
+        existingAdvanceInvoice = {
+          provider_invoice_number: advanceInvoiceData.provider_invoice_number || '',
+          gross_total: Number(advanceInvoiceData.gross_total || 0)
+        }
+        console.log('Template proforma: Found existing advance invoice:', existingAdvanceInvoice)
+      }
+      
+      // Check for proforma invoice
+      const { data: proformaInvoiceData, error: proformaError } = await supabaseAdmin
+        .from('invoices')
+        .select('provider_invoice_number')
+        .eq('related_order_type', 'pos_order')
+        .eq('related_order_id', id)
+        .eq('invoice_type', 'dijbekero')
+        .eq('provider', 'szamlazz_hu')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (!proformaError && proformaInvoiceData) {
+        existingProformaInvoice = {
+          provider_invoice_number: proformaInvoiceData.provider_invoice_number || ''
+        }
+        console.log('Template proforma: Found existing proforma invoice:', existingProformaInvoice)
+      } else {
+        console.log('Template proforma: No existing proforma invoice found. Error:', proformaError, 'Data:', proformaInvoiceData)
+      }
+    }
+
     // Validate that supplier and buyer tax numbers are different (only if both are provided)
     // Note: Individual customers may not have tax numbers, so this check is optional
     const supplierTaxNumber = tenantCompany.tax_number?.trim().replace(/\s+/g, '') || ''
@@ -325,7 +446,9 @@ export async function POST(
       itemsData || [],
       tenantCompany,
       vatRatesMap,
-      body
+      body,
+      existingAdvanceInvoice,
+      existingProformaInvoice
     )
 
     // Send request to szamlazz.hu
@@ -474,11 +597,14 @@ export async function POST(
       )
     }
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       invoiceNumber: finalInvoiceNumber,
+      proformaInvoiceNumber: existingProformaInvoice?.provider_invoice_number || null,
       message: 'Template proforma számla sikeresen létrehozva'
-    })
+    }
+    console.log('Template proforma API response:', responseData)
+    return NextResponse.json(responseData)
 
   } catch (error: any) {
     console.error('Error creating template proforma invoice:', error)

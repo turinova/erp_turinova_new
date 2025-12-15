@@ -108,8 +108,9 @@ export default function InvoiceModal({
   const [error, setError] = useState<string | null>(null)
   
   // Invoice settings
-  const [invoiceType] = useState('normal') // Always normal invoice
+  const [invoiceType, setInvoiceType] = useState('normal') // normal | advance
   const [paymentMethod, setPaymentMethod] = useState('cash') // cash, bank_transfer, card
+  const [advanceAmount, setAdvanceAmount] = useState<number>(0)
   // Initialize dates as empty to prevent hydration mismatch - will be set in useEffect
   const [dueDate, setDueDate] = useState<string>('')
   const [fulfillmentDate, setFulfillmentDate] = useState<string>('')
@@ -122,6 +123,7 @@ export default function InvoiceModal({
   const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [templateInvoiceNumber, setTemplateInvoiceNumber] = useState<string | null>(null) // Single template invoice number
+  const [existingProformaInvoiceNumber, setExistingProformaInvoiceNumber] = useState<string | null>(null) // Existing proforma invoice number for title
   const [pdfLoaded, setPdfLoaded] = useState(false) // Track when PDF embed has actually loaded
   const templateInvoiceNumberRef = useRef<string | null>(null) // Ref to track template invoice number for cleanup
 
@@ -131,6 +133,14 @@ export default function InvoiceModal({
     setDueDate(prev => prev || today)
     setFulfillmentDate(prev => prev || today)
   }, []) // Only run once on mount
+
+  // Clear existing proforma invoice number when modal opens or invoice type changes
+  useEffect(() => {
+    if (open) {
+      setExistingProformaInvoiceNumber(null)
+      setTemplateInvoiceNumber(null)
+    }
+  }, [open, invoiceType])
 
   // Get VAT rates map
   const vatRatesMap = useMemo(() => {
@@ -176,7 +186,8 @@ export default function InvoiceModal({
           dueDate,
           fulfillmentDate,
           comment,
-          language
+          language,
+          advanceAmount: invoiceType === 'advance' ? advanceAmount : undefined
         })
       })
 
@@ -186,13 +197,22 @@ export default function InvoiceModal({
         throw new Error(data.error || 'Hiba a template proforma számla létrehozása során')
       }
 
+      // Store existing proforma invoice number if returned
+      if (data.proformaInvoiceNumber) {
+        console.log('Template proforma: Received proforma invoice number:', data.proformaInvoiceNumber)
+        setExistingProformaInvoiceNumber(data.proformaInvoiceNumber)
+      } else {
+        console.log('Template proforma: No proforma invoice number returned')
+        setExistingProformaInvoiceNumber(null)
+      }
+
       return data.invoiceNumber || null
     } catch (err: any) {
       console.error('Error creating template proforma:', err)
       setPreviewError(err.message || 'Nem sikerült létrehozni a template proforma számlát')
       return null
     }
-  }, [order.id, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, invoiceType, paymentMethod, dueDate, fulfillmentDate, comment, language])
+  }, [order.id, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, invoiceType, paymentMethod, dueDate, fulfillmentDate, comment, language, advanceAmount])
 
   // Query PDF of existing invoice
   const queryInvoicePdf = useCallback(async (invoiceNumber: string): Promise<string | null> => {
@@ -417,6 +437,11 @@ export default function InvoiceModal({
       setError('A számlázási cím (város, irányítószám, utca) kötelező!')
       return
     }
+    
+    if (invoiceType === 'advance' && (!advanceAmount || advanceAmount <= 0)) {
+      setError('Előleg számla esetén az előleg összegének megadása kötelező')
+      return
+    }
 
     setError(null)
     setLoading(true)
@@ -440,7 +465,8 @@ export default function InvoiceModal({
           fulfillmentDate,
           comment,
           language,
-          sendEmail
+          sendEmail,
+          advanceAmount: invoiceType === 'advance' ? advanceAmount : undefined
         })
       })
 
@@ -513,15 +539,31 @@ export default function InvoiceModal({
                 Beállítások
               </Typography>
 
-              <FormControl fullWidth size="small" disabled>
+              <FormControl fullWidth size="small">
                 <InputLabel>Számla típusa</InputLabel>
                 <Select
                   value={invoiceType}
+                  onChange={(e) => setInvoiceType(e.target.value)}
                   label="Számla típusa"
                 >
                   <MenuItem value="normal">Normál számla</MenuItem>
+                  <MenuItem value="advance">Előleg számla</MenuItem>
+                  <MenuItem value="proforma">Díjbekérő</MenuItem>
                 </Select>
               </FormControl>
+
+              {invoiceType === 'advance' && (
+                <TextField
+                  fullWidth
+                  label="Előleg összege (Ft)"
+                  type="number"
+                  value={advanceAmount}
+                  onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
+                  size="small"
+                  inputProps={{ min: 0, step: 1 }}
+                  helperText="Adja meg az előleg összegét bruttó értékben"
+                />
+              )}
 
               <FormControl fullWidth size="small">
                 <InputLabel>Fizetési mód</InputLabel>
@@ -604,10 +646,13 @@ export default function InvoiceModal({
             <Paper sx={{ p: 0, height: 'calc(90vh - 140px)', display: 'flex', flexDirection: 'column' }}>
               <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
                 <Typography variant="h6">
-                  {templateInvoiceNumber 
-                    ? `ELŐNÉZET (SZÁMLA A ${templateInvoiceNumber} DÍJBEKÉRŐ ALAPJÁN)`
-                    : 'Előnézet'
-                  }
+                  {(() => {
+                    console.log('Preview title render:', { existingProformaInvoiceNumber, invoiceType, templateInvoiceNumber })
+                    if (existingProformaInvoiceNumber && invoiceType === 'normal') {
+                      return `ELŐNÉZET (SZÁMLA A ${existingProformaInvoiceNumber} DÍJBEKÉRŐ ALAPJÁN)`
+                    }
+                    return 'Előnézet'
+                  })()}
                 </Typography>
               </Box>
               

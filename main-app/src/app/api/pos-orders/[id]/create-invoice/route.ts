@@ -27,6 +27,7 @@ interface InvoiceRequest {
   language: string
   sendEmail: boolean
   preview?: boolean // If true, use temporary order number for preview
+  advanceAmount?: number // Advance invoice amount (gross)
 }
 
 // Helper function to escape XML
@@ -46,7 +47,9 @@ function buildInvoiceXml(
   items: any[],
   tenantCompany: any,
   vatRatesMap: Map<string, number>,
-  settings: InvoiceRequest
+  settings: InvoiceRequest,
+  existingAdvanceInvoice?: { provider_invoice_number: string; gross_total: number } | null,
+  existingProformaInvoice?: { provider_invoice_number: string } | null
 ): string {
   // Map payment method
   const paymentMethodMap: Record<string, string> = {
@@ -74,6 +77,10 @@ function buildInvoiceXml(
     ? `${order.pos_order_number}-PREVIEW-${Date.now()}`
     : order.pos_order_number
 
+  // Check if this is an advance invoice
+  const isAdvanceInvoice = settings.invoiceType === 'advance'
+  const advanceAmount = settings.advanceAmount || 0
+
   // Build items XML
   // IMPORTANT: szamlazz.hu validates calculations EXACTLY:
   // 1. nettoErtek = mennyiseg × nettoEgysegar (MUST match exactly)
@@ -81,38 +88,113 @@ function buildInvoiceXml(
   // 3. bruttoErtek = nettoErtek + afaErtek (MUST match exactly)
   // We MUST recalculate from unit price and quantity, not use stored totals
   // Note: This may result in slight differences from UI due to rounding, but it's required for API validation
-  const itemsXml = items.map((item) => {
-    const vatRate = vatRatesMap.get(item.vat_id) || 0
-    const mennyiseg = Number(item.quantity)
-    const nettoEgysegar = Number(item.unit_price_net)
+  let itemsXml = ''
+  
+  if (isAdvanceInvoice && advanceAmount > 0) {
+    // For advance invoice, create single item with advance amount
+    // Use default VAT rate (27% or highest from items)
+    let advanceVatRate = 27 // Default to 27% (most common in Hungary)
+    if (items.length > 0) {
+      // Find highest VAT rate from items
+      const rates = items.map(item => vatRatesMap.get(item.vat_id) || 0)
+      advanceVatRate = Math.max(...rates, 27)
+    }
     
-    // Calculate nettoErtek = quantity × unit price (exactly as API expects)
-    const nettoErtek = mennyiseg * nettoEgysegar
+    // Calculate net from gross: net = gross / (1 + vat/100)
+    // We need to ensure calculations match exactly
+    const advanceNetPrecise = advanceAmount / (1 + advanceVatRate / 100)
+    const advanceNet = Math.round(advanceNetPrecise * 100) / 100
+    const advanceVat = advanceAmount - advanceNet // Calculate VAT to ensure exact total
+    const advanceBrutto = advanceAmount
     
-    // Calculate afaErtek = nettoErtek × vatRate / 100 (exactly as API expects)
-    const afaErtek = (nettoErtek * vatRate) / 100
-    
-    // Calculate bruttoErtek = nettoErtek + afaErtek (exactly as API expects)
-    const bruttoErtek = nettoErtek + afaErtek
-    
-    return `
+    itemsXml = `
       <tetel>
-        <megnevezes>${escapeXml(item.product_name)}</megnevezes>
-        <mennyiseg>${mennyiseg}</mennyiseg>
-        <mennyisegiEgyseg>${item.product_type === 'material' ? 'm²' : item.product_type === 'linear_material' ? 'm' : 'db'}</mennyisegiEgyseg>
-        <nettoEgysegar>${nettoEgysegar}</nettoEgysegar>
-        <afakulcs>${vatRate}</afakulcs>
-        <nettoErtek>${nettoErtek}</nettoErtek>
-        <afaErtek>${afaErtek}</afaErtek>
-        <bruttoErtek>${bruttoErtek}</bruttoErtek>
+        <megnevezes>Előleg</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${advanceNet}</nettoEgysegar>
+        <afakulcs>${advanceVatRate}</afakulcs>
+        <nettoErtek>${advanceNet}</nettoErtek>
+        <afaErtek>${advanceVat}</afaErtek>
+        <bruttoErtek>${advanceBrutto}</bruttoErtek>
       </tetel>`
-  }).join('')
+  } else {
+    // Normal invoice - use existing items
+    itemsXml = items.map((item) => {
+      const vatRate = vatRatesMap.get(item.vat_id) || 0
+      const mennyiseg = Number(item.quantity)
+      const nettoEgysegar = Number(item.unit_price_net)
+      
+      // Calculate nettoErtek = quantity × unit price (exactly as API expects)
+      const nettoErtek = mennyiseg * nettoEgysegar
+      
+      // Calculate afaErtek = nettoErtek × vatRate / 100 (exactly as API expects)
+      const afaErtek = (nettoErtek * vatRate) / 100
+      
+      // Calculate bruttoErtek = nettoErtek + afaErtek (exactly as API expects)
+      const bruttoErtek = nettoErtek + afaErtek
+      
+      return `
+        <tetel>
+          <megnevezes>${escapeXml(item.product_name)}</megnevezes>
+          <mennyiseg>${mennyiseg}</mennyiseg>
+          <mennyisegiEgyseg>${item.product_type === 'material' ? 'm²' : item.product_type === 'linear_material' ? 'm' : 'db'}</mennyisegiEgyseg>
+          <nettoEgysegar>${nettoEgysegar}</nettoEgysegar>
+          <afakulcs>${vatRate}</afakulcs>
+          <nettoErtek>${nettoErtek}</nettoErtek>
+          <afaErtek>${afaErtek}</afaErtek>
+          <bruttoErtek>${bruttoErtek}</bruttoErtek>
+        </tetel>`
+    }).join('')
+  }
 
-  // Add discount item if discount exists
+  // Add advance deduction item if there's an existing advance invoice (for final invoice)
+  let advanceDeductionXml = ''
+  if (existingAdvanceInvoice && !isAdvanceInvoice) {
+    console.log('Building advance deduction XML for:', existingAdvanceInvoice)
+    const advanceGross = existingAdvanceInvoice.gross_total
+    // Use the same VAT rate calculation as advance invoice (27% or highest from items)
+    let advanceVatRate = 27
+    if (items.length > 0) {
+      const rates = items.map(item => vatRatesMap.get(item.vat_id) || 0)
+      advanceVatRate = Math.max(...rates, 27)
+    }
+    
+    // Calculate net from gross: net = gross / (1 + vat/100)
+    const advanceNetPrecise = advanceGross / (1 + advanceVatRate / 100)
+    const advanceNet = Math.round(advanceNetPrecise * 100) / 100
+    const advanceVat = advanceGross - advanceNet // Calculate VAT to ensure exact total
+    
+    console.log('Advance deduction calculation:', {
+      advanceGross,
+      advanceVatRate,
+      advanceNet,
+      advanceVat
+    })
+    
+    // Add negative item for advance already invoiced
+    // Format: "Előleg a termék vásárlásra (INVOICE_NUMBER alapján)"
+    advanceDeductionXml = `
+      <tetel>
+        <megnevezes>Előleg a termék vásárlásra (${escapeXml(existingAdvanceInvoice.provider_invoice_number)} alapján)</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${-advanceNet}</nettoEgysegar>
+        <afakulcs>${advanceVatRate}</afakulcs>
+        <nettoErtek>${-advanceNet}</nettoErtek>
+        <afaErtek>${-advanceVat}</afaErtek>
+        <bruttoErtek>${-advanceGross}</bruttoErtek>
+      </tetel>`
+    console.log('Advance deduction XML generated:', advanceDeductionXml.substring(0, 200))
+  } else {
+    console.log('No advance deduction - existingAdvanceInvoice:', existingAdvanceInvoice, 'isAdvanceInvoice:', isAdvanceInvoice)
+  }
+
+  // Add discount item if discount exists (only for normal invoices, not advance)
   // The discount_amount is applied to gross total, so we need to split it into net and VAT
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
-  if (discountAmount > 0) {
+  if (!isAdvanceInvoice && discountAmount > 0) {
     // Calculate the gross total before discount
     const grossBeforeDiscount = Number(order.subtotal_net) + Number(order.total_vat)
     
@@ -186,7 +268,11 @@ function buildInvoiceXml(
     <arfolyamBank>MNB</arfolyamBank>
     <arfolyam>1</arfolyam>
     <rendelesSzam>${escapeXml(orderNumber)}</rendelesSzam>
+    ${isAdvanceInvoice ? '<elolegszamla>true</elolegszamla>' : ''}
+    ${existingAdvanceInvoice && !isAdvanceInvoice ? '<vegszamla>true</vegszamla>' : ''}
+    ${existingAdvanceInvoice && !isAdvanceInvoice ? `<elolegSzamlaszam>${escapeXml(existingAdvanceInvoice.provider_invoice_number)}</elolegSzamlaszam>` : ''}
     ${settings.invoiceType === 'proforma' ? '<dijbekero>true</dijbekero>' : ''}
+    ${existingProformaInvoice && settings.invoiceType === 'normal' ? `<dijbekeroSzamlaszam>${escapeXml(existingProformaInvoice.provider_invoice_number)}</dijbekeroSzamlaszam>` : ''}
   </fejlec>
   <elado>
     <bank>${escapeXml(tenantCompany?.name || '')}</bank>
@@ -205,6 +291,7 @@ function buildInvoiceXml(
   </vevo>
   <tetelek>
     ${itemsXml}
+    ${advanceDeductionXml}
     ${discountXml}
   </tetelek>
 </xmlszamla>`
@@ -314,30 +401,118 @@ export async function POST(
       )
     }
 
-    const totalPaid = (payments || [])
-      .filter(p => !p.deleted_at)
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0)
-    const totalDue = Number(orderData.total_gross || 0)
+    // For advance invoices and proforma invoices, skip the "fully paid" check
+    // For normal invoices, ensure order is fully paid
+    const isAdvanceInvoiceRequest = body.invoiceType === 'advance'
+    const isProformaInvoiceRequest = body.invoiceType === 'proforma'
+    
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
+      const totalPaid = (payments || [])
+        .filter(p => !p.deleted_at)
+        .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+      const totalDue = Number(orderData.total_gross || 0)
 
-    // Allow 1 Ft tolerance for rounding differences
-    const remaining = totalDue - totalPaid
-    const tolerance = 1
+      // Allow 1 Ft tolerance for rounding differences
+      const remaining = totalDue - totalPaid
+      const tolerance = 1
 
-    if (remaining > tolerance) {
-      return NextResponse.json(
-        { error: 'Csak teljesen kifizetett rendeléshez hozható létre számla' },
-        { status: 400 }
-      )
+      if (remaining > tolerance) {
+        return NextResponse.json(
+          { error: 'Csak teljesen kifizetett rendeléshez hozható létre számla' },
+          { status: 400 }
+        )
+      }
+    }
+    
+    // Validate advance amount if it's an advance invoice
+    if (isAdvanceInvoiceRequest) {
+      if (!body.advanceAmount || body.advanceAmount <= 0) {
+        return NextResponse.json(
+          { error: 'Előleg számla esetén az előleg összegének megadása kötelező' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Check if there's an existing advance invoice for this order (for final invoice)
+    let existingAdvanceInvoice: { provider_invoice_number: string; gross_total: number } | null = null
+    // Check if there's an existing proforma invoice for this order (for normal invoice)
+    let existingProformaInvoice: { provider_invoice_number: string } | null = null
+    let proformaInvoiceData: { id: string; provider_invoice_number: string | null } | null = null // Store full proforma invoice data for later update
+    
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
+      // Check for advance invoice
+      const { data: advanceInvoiceData, error: advanceError } = await supabaseAdmin
+        .from('invoices')
+        .select('provider_invoice_number, gross_total')
+        .eq('related_order_type', 'pos_order')
+        .eq('related_order_id', id)
+        .eq('invoice_type', 'elolegszamla')
+        .eq('provider', 'szamlazz_hu')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      console.log('Advance invoice query for order:', id, {
+        advanceInvoiceData,
+        advanceError,
+        found: !!advanceInvoiceData
+      })
+      
+      if (!advanceError && advanceInvoiceData) {
+        existingAdvanceInvoice = {
+          provider_invoice_number: advanceInvoiceData.provider_invoice_number || '',
+          gross_total: Number(advanceInvoiceData.gross_total || 0)
+        }
+        console.log('Found existing advance invoice:', existingAdvanceInvoice)
+      } else if (advanceError) {
+        console.error('Error querying advance invoice:', advanceError)
+      } else {
+        console.log('No advance invoice found for order:', id)
+      }
+      
+      // Check for proforma invoice
+      const { data: proformaData, error: proformaError } = await supabaseAdmin
+        .from('invoices')
+        .select('id, provider_invoice_number')
+        .eq('related_order_type', 'pos_order')
+        .eq('related_order_id', id)
+        .eq('invoice_type', 'dijbekero')
+        .eq('provider', 'szamlazz_hu')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      
+      if (!proformaError && proformaData) {
+        proformaInvoiceData = proformaData // Store full data for later update
+        existingProformaInvoice = {
+          provider_invoice_number: proformaData.provider_invoice_number || ''
+        }
+        console.log('Found existing proforma invoice:', existingProformaInvoice)
+      }
     }
 
     // Build XML request
+    console.log('Building invoice XML with existingAdvanceInvoice:', existingAdvanceInvoice, 'existingProformaInvoice:', existingProformaInvoice)
+    console.log('Invoice request body:', { invoiceType: body.invoiceType, isAdvanceInvoiceRequest, isProformaInvoiceRequest })
     const xmlRequest = buildInvoiceXml(
       orderData,
       itemsData || [],
       tenantCompany,
       vatRatesMap,
-      body
+      body,
+      existingAdvanceInvoice,
+      existingProformaInvoice
     )
+    console.log('Generated XML length:', xmlRequest.length)
+    console.log('XML contains vegszamla:', xmlRequest.includes('vegszamla'))
+    console.log('XML contains elolegSzamlaszam:', xmlRequest.includes('elolegSzamlaszam'))
+    console.log('XML contains advance deduction:', xmlRequest.includes('Előleg levonása'))
+    // Log a snippet of the tetelek section to verify structure
+    const tetelekMatch = xmlRequest.match(/<tetelek>([\s\S]*?)<\/tetelek>/)
+    if (tetelekMatch) {
+      console.log('Tetelek section preview:', tetelekMatch[1].substring(0, 500))
+    }
 
     // Send request to szamlazz.hu as multipart/form-data with XML file
     // According to documentation: https://docs.szamlazz.hu/agent/generating_invoice/request
@@ -517,11 +692,26 @@ export async function POST(
       console.warn('Internal number RPC failed; relying on DB default:', e)
     }
 
+    // For advance invoices, use advance amount
+    // For final invoices (with existing advance), use order total minus advance amount
+    // For normal invoices, use order total
+    let invoiceGrossTotal: number | null = null
+    if (isAdvanceInvoiceRequest && body.advanceAmount) {
+      invoiceGrossTotal = body.advanceAmount
+    } else if (existingAdvanceInvoice) {
+      // Final invoice: remaining amount after advance
+      const orderTotal = Number(orderData.total_gross || 0)
+      const advanceTotal = existingAdvanceInvoice.gross_total
+      invoiceGrossTotal = orderTotal - advanceTotal
+    } else {
+      invoiceGrossTotal = orderData.total_gross || null
+    }
+
     const invoiceRow: any = {
       provider: 'szamlazz_hu',
       provider_invoice_number: finalInvoiceNumber,
       provider_invoice_id: finalInvoiceNumber,
-      invoice_type: 'szamla',
+      invoice_type: isAdvanceInvoiceRequest ? 'elolegszamla' : isProformaInvoiceRequest ? 'dijbekero' : 'szamla', // Use appropriate invoice type
       related_order_type: 'pos_order',
       related_order_id: id,
       related_order_number: orderData.pos_order_number,
@@ -529,8 +719,8 @@ export async function POST(
       customer_id: resolvedCustomerId,
       payment_due_date: body.dueDate || null,
       fulfillment_date: body.fulfillmentDate || body.dueDate || null,
-      gross_total: orderData.total_gross || null,
-      payment_status: 'fizetve',
+      gross_total: invoiceGrossTotal,
+      payment_status: isProformaInvoiceRequest ? 'fizetesre_var' : 'fizetve', // Proforma invoices are not paid yet
       is_storno_of_invoice_id: null,
       pdf_url: finalInvoiceNumber
         ? `/api/invoices/pdf?number=${encodeURIComponent(finalInvoiceNumber)}&provider=szamlazz_hu`
@@ -557,6 +747,21 @@ export async function POST(
         },
         { status: 500 }
       )
+    }
+
+    // If this is a normal invoice created based on a proforma invoice, update the proforma invoice's payment status to "fizetve"
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest && existingProformaInvoice && proformaInvoiceData?.id) {
+      const { error: updateProformaError } = await supabaseAdmin
+        .from('invoices')
+        .update({ payment_status: 'fizetve' })
+        .eq('id', proformaInvoiceData.id)
+      
+      if (updateProformaError) {
+        console.error('Failed to update proforma invoice payment status:', updateProformaError)
+        // Don't fail the whole request, just log the error
+      } else {
+        console.log('Successfully updated proforma invoice payment status to "fizetve" for invoice:', proformaInvoiceData.id)
+      }
     }
 
     return NextResponse.json({

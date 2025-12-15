@@ -96,6 +96,7 @@ BEGIN
   -- Step 5: Update pos_orders
   UPDATE public.pos_orders
   SET
+    customer_id = CASE WHEN NULLIF(p_customer_data->>'customer_id', '') IS NOT NULL THEN (p_customer_data->>'customer_id')::uuid ELSE NULL END,
     customer_name = NULLIF(p_customer_data->>'customer_name', ''),
     customer_email = NULLIF(p_customer_data->>'customer_email', ''),
     customer_mobile = NULLIF(p_customer_data->>'customer_mobile', ''),

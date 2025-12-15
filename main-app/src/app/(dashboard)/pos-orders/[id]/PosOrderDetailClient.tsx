@@ -1260,8 +1260,9 @@ export default function PosOrderDetailClient({
                   !billingName ||
                   !billingCity ||
                   !billingPostalCode ||
-                  !billingStreet ||
-                  balance > 1
+                  !billingStreet
+                  // Note: balance check is handled in API based on invoice type
+                  // Proforma and advance invoices don't require full payment
                 }
               >
                 Számlázás
@@ -2113,12 +2114,24 @@ export default function PosOrderDetailClient({
                             label={
                               inv.invoice_type === 'szamla'
                                 ? 'Számla'
+                                : inv.invoice_type === 'elolegszamla'
+                                ? 'Előleg számla'
+                                : inv.invoice_type === 'dijbekero'
+                                ? 'Díjbekérő'
                                 : inv.invoice_type === 'sztorno'
                                 ? 'Sztornó'
                                 : inv.invoice_type
                             }
                             size="small"
-                            color={inv.invoice_type === 'sztorno' ? 'error' : 'primary'}
+                            color={
+                              inv.invoice_type === 'sztorno' 
+                                ? 'error' 
+                                : inv.invoice_type === 'elolegszamla' 
+                                ? 'warning' 
+                                : inv.invoice_type === 'dijbekero'
+                                ? 'info'
+                                : 'primary'
+                            }
                             variant="outlined"
                           />
                         ) : (
