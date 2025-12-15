@@ -441,9 +441,98 @@ export async function POST(
       )
     }
 
+    // Resolve customer_id: prefer stored customer_id; if missing, try to match existing customer by tax number/email/name
+    let resolvedCustomerId: string | null = orderData.customer_id || null
+    if (!resolvedCustomerId) {
+      const orFilters: string[] = []
+      if (orderData.billing_tax_number) {
+        orFilters.push(`billing_tax_number.eq.${orderData.billing_tax_number}`)
+      }
+      if (orderData.customer_email) {
+        orFilters.push(`email.eq.${orderData.customer_email}`)
+      }
+      if (orderData.customer_name) {
+        // Avoid commas or special chars in OR filter; use ilike with escaped value if needed
+        const safeName = orderData.customer_name.replace(/,/g, '\\,')
+        orFilters.push(`name.ilike.${safeName}`)
+      }
+      if (orFilters.length > 0) {
+        const { data: customerMatch, error: customerErr } = await supabaseAdmin
+          .from('customers')
+          .select('id')
+          .or(orFilters.join(','))
+          .limit(1)
+          .maybeSingle()
+        if (!customerErr && customerMatch?.id) {
+          resolvedCustomerId = customerMatch.id as string
+        }
+      }
+    }
+
+    // Persist invoice record (basic fields)
+    // If persistence fails, surface the error so we can fix DB issues instead of silently succeeding
+    // We still already created the invoice at the provider, so include provider number in the error for manual recovery
+    // Note: internal_number uses RPC for eager allocation but DB default will generate if RPC fails
+    //       (helps avoid gaps when provider succeeded but RPC did not)
+    let internalNumber: string | null = null
+    try {
+      const { data: internalRes, error: internalErr } = await supabaseAdmin
+        .rpc('next_internal_invoice_number')
+      if (!internalErr && internalRes) {
+        internalNumber = internalRes as string
+      } else if (internalErr) {
+        console.warn('Internal number RPC returned error; relying on DB default:', internalErr)
+      }
+    } catch (e) {
+      console.warn('Internal number RPC failed; relying on DB default:', e)
+    }
+
+    const invoiceRow: any = {
+      provider: 'szamlazz_hu',
+      provider_invoice_number: finalInvoiceNumber,
+      provider_invoice_id: finalInvoiceNumber,
+      invoice_type: 'szamla',
+      related_order_type: 'pos_order',
+      related_order_id: id,
+      related_order_number: orderData.pos_order_number,
+      customer_name: orderData.billing_name || orderData.customer_name || '',
+      customer_id: resolvedCustomerId,
+      payment_due_date: body.dueDate || null,
+      fulfillment_date: body.fulfillmentDate || body.dueDate || null,
+      gross_total: orderData.total_gross || null,
+      payment_status: 'fizetesre_var',
+      is_storno_of_invoice_id: null,
+      pdf_url: finalInvoiceNumber
+        ? `/api/invoices/pdf?number=${encodeURIComponent(finalInvoiceNumber)}&provider=szamlazz_hu`
+        : null
+    }
+
+    if (internalNumber) {
+      invoiceRow.internal_number = internalNumber
+    }
+
+    const { error: insertError, data: insertData } = await supabaseAdmin
+      .from('invoices')
+      .insert([invoiceRow])
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error('Failed to persist invoice record:', insertError, { invoiceRow })
+      return NextResponse.json(
+        {
+          error: 'Számla létrejött a szolgáltatónál, de nem sikerült menteni az adatbázisba',
+          providerInvoiceNumber: finalInvoiceNumber,
+          details: insertError.message
+        },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
       invoiceNumber: finalInvoiceNumber,
+      invoice: insertData || null,
       message: 'Számla sikeresen létrehozva'
     })
 
