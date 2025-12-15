@@ -5825,6 +5825,7 @@ export async function getPosOrderById(id: string) {
         id,
         pos_order_number,
         worker_id,
+        customer_id,
         customer_name,
         customer_email,
         customer_mobile,

@@ -1,9 +1,10 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDebounce } from '@/hooks/useDebounce'
 import {
+  Autocomplete,
   Box,
   Breadcrumbs,
   Button,
@@ -12,22 +13,24 @@ import {
   Chip,
   CircularProgress,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
+  FormControlLabel,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   Link,
   MenuItem,
   Paper,
   Radio,
   RadioGroup,
-  FormControlLabel,
   Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -35,13 +38,14 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Typography,
-  Autocomplete,
   Tooltip,
-  InputAdornment
+  Typography
 } from '@mui/material'
+import TabPanel from '@mui/lab/TabPanel'
+import TabContext from '@mui/lab/TabContext'
+import CustomTabList from '@core/components/mui/TabList'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon, PictureAsPdf as PictureAsPdfIcon, Undo as UndoIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import InvoiceModal from './InvoiceModal'
 
@@ -142,6 +146,7 @@ interface PosOrder {
   worker_id: string
   worker_nickname: string
   worker_color: string
+  customer_id?: string | null
   customer_name: string | null
   customer_email: string | null
   customer_mobile: string | null
@@ -160,6 +165,20 @@ interface PosOrder {
   total_gross: number
   status: string
   created_at: string
+}
+
+interface InvoiceRow {
+  id: string
+  internal_number: string
+  provider_invoice_number: string | null
+  invoice_type: string
+  payment_due_date: string | null
+  fulfillment_date: string | null
+  gross_total: number | null
+  payment_status: string | null
+  pdf_url: string | null
+  is_storno_of_invoice_id: string | null
+  created_at?: string
 }
 
 interface TenantCompany {
@@ -263,6 +282,7 @@ export default function PosOrderDetailClient({
   }, [])
   
   const [balance, setBalance] = useState(initialSummary.totalGrossAfterDiscount - initialActiveTotalPaid)
+  const balanceWithTolerance = Math.max(0, balance > 1 ? balance : 0)
 
   // Customer state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
@@ -319,6 +339,82 @@ export default function PosOrderDetailClient({
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
   const [tenantCompany] = useState<TenantCompany | null>(initialTenantCompany)
 
+  // Invoices tab state handlers
+  const loadInvoices = useCallback(async () => {
+    setInvoicesLoading(true)
+    try {
+      const res = await fetch(`/api/pos-orders/${id}/invoices`)
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Hiba a számlák lekérdezésekor')
+      }
+      setInvoices(Array.isArray(data.invoices) ? data.invoices : [])
+    } catch (err: any) {
+      console.error('Error loading invoices:', err)
+      toast.error(err.message || 'Hiba a számlák lekérdezésekor')
+    } finally {
+      setInvoicesLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    loadInvoices()
+  }, [loadInvoices])
+
+  const handleOpenStornoDialog = (invoice: InvoiceRow) => {
+    setStornoTarget(invoice)
+    setStornoDialogOpen(true)
+  }
+
+  const handleCloseStornoDialog = () => {
+    setStornoDialogOpen(false)
+    setStornoTarget(null)
+  }
+
+  const handleConfirmStorno = async () => {
+    if (!stornoTarget?.provider_invoice_number) {
+      toast.error('Hiányzik a számlaszám a sztornóhoz')
+      return
+    }
+    try {
+      setInvoicesLoading(true)
+      const res = await fetch(`/api/pos-orders/${id}/storno-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerInvoiceNumber: stornoTarget.provider_invoice_number })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error || 'Hiba a sztornó számla létrehozásakor')
+      }
+      toast.success(`Sztornó számla létrehozva: ${data.invoiceNumber || 'N/A'}`)
+      handleCloseStornoDialog()
+      await loadInvoices()
+    } catch (err: any) {
+      console.error('Error creating storno invoice:', err)
+      toast.error(err.message || 'Hiba a sztornó számla létrehozásakor')
+    } finally {
+      setInvoicesLoading(false)
+    }
+  }
+
+  const handleOpenInvoicePdf = (invoice: InvoiceRow) => {
+    if (invoice.pdf_url) {
+      window.open(invoice.pdf_url, '_blank', 'noopener')
+    } else {
+      toast.info('Nincs PDF elérési út ehhez a számlához')
+    }
+  }
+
+  // Tabs
+  const [tabValue, setTabValue] = useState('edit')
+
+  // Invoices tab state
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [stornoDialogOpen, setStornoDialogOpen] = useState(false)
+  const [stornoTarget, setStornoTarget] = useState<InvoiceRow | null>(null)
+
   // Calculate summary from items
   // IMPORTANT: Recalculate VAT from net to match invoice calculation (szamlazz.hu validation)
   // This ensures the page total matches the invoice preview total
@@ -367,15 +463,14 @@ export default function PosOrderDetailClient({
     
     // Apply discount to gross total
     const discountAmountValue = Number(discountAmount) || 0
-    const totalGrossAfterDiscount = totalGrossBeforeDiscount - discountAmountValue
+    const grossAfterDiscountRaw = totalGrossBeforeDiscount - discountAmountValue
+    const totalGrossAfterDiscount = Math.round(grossAfterDiscountRaw)
     
-    // Calculate net and VAT after discount proportionally
-    // Round to integers to match invoice calculation and avoid decimal discrepancies
+    // Calculate net after discount proportionally (rounded)
     const discountRatio = totalGrossBeforeDiscount > 0 ? discountAmountValue / totalGrossBeforeDiscount : 0
     const totalNetAfterDiscount = Math.round(totalNetBeforeDiscount * (1 - discountRatio))
-    const totalVatAfterDiscount = Math.round(totalVatBeforeDiscount * (1 - discountRatio))
-    // Ensure totalGrossAfterDiscount = totalNetAfterDiscount + totalVatAfterDiscount (consistency check)
-    const adjustedTotalGrossAfterDiscount = totalNetAfterDiscount + totalVatAfterDiscount
+    // Derive VAT so that net + vat matches the rounded gross (avoids off-by-one display)
+    const totalVatAfterDiscount = totalGrossAfterDiscount - totalNetAfterDiscount
     
     return {
       itemsNet,
@@ -389,7 +484,7 @@ export default function PosOrderDetailClient({
       totalGrossBeforeDiscount,
       totalNetAfterDiscount,
       totalVatAfterDiscount,
-      totalGrossAfterDiscount: adjustedTotalGrossAfterDiscount
+      totalGrossAfterDiscount
     }
   }, [items, discountAmount, vatRates])
 
@@ -983,6 +1078,7 @@ export default function PosOrderDetailClient({
 
       // Build customer_data object
       const customerData = {
+        customer_id: selectedCustomer?.id || null,
         customer_name: customerName || null,
         customer_email: customerEmail || null,
         customer_mobile: customerMobile || null,
@@ -1126,35 +1222,50 @@ export default function PosOrderDetailClient({
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Breadcrumbs sx={{ mb: 2 }}>
-        <Link component={NextLink} href="/home" underline="hover" color="inherit">
-          <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-          Kezdőlap
-        </Link>
-        <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
-          Értékesítés
-        </Link>
-        <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
-          Rendelések
-        </Link>
-        <Typography color="text.primary">{order.pos_order_number}</Typography>
-      </Breadcrumbs>
+    <TabContext value={tabValue}>
+      <Box sx={{ p: 3 }}>
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link component={NextLink} href="/home" underline="hover" color="inherit">
+            <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+            Kezdőlap
+          </Link>
+          <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
+            Értékesítés
+          </Link>
+          <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
+            Rendelések
+          </Link>
+          <Typography color="text.primary">{order.pos_order_number}</Typography>
+        </Breadcrumbs>
 
+        <Box sx={{ mb: 3 }}>
+          <CustomTabList pill="true" onChange={(_e, val) => setTabValue(val)} aria-label="pos order tabs">
+            <Tab label="Szerkesztés" value="edit" />
+            <Tab label="Számlák" value="invoices" />
+          </CustomTabList>
+        </Box>
+
+        <TabPanel value="edit" sx={{ p: 0, pt: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">
           POS rendelés: {order.pos_order_number}
         </Typography>
         <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<ReceiptIcon />}
-            onClick={() => setInvoiceModalOpen(true)}
-            disabled={!billingName || !billingCity || !billingPostalCode || !billingStreet}
-          >
-            Számlázás
-          </Button>
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<ReceiptIcon />}
+                onClick={() => setInvoiceModalOpen(true)}
+                disabled={
+                  !billingName ||
+                  !billingCity ||
+                  !billingPostalCode ||
+                  !billingStreet ||
+                  balance > 1
+                }
+              >
+                Számlázás
+              </Button>
           <Button
             variant="contained"
             startIcon={<SaveIcon />}
@@ -1959,6 +2070,126 @@ export default function PosOrderDetailClient({
 
       </Stack>
 
+        </TabPanel>
+
+        <TabPanel value="invoices" sx={{ p: 0, pt: 3 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6">Számlák</Typography>
+          </Stack>
+
+          {invoicesLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : invoices.length === 0 ? (
+            <Box sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Nincs számla ehhez a rendeléshez.
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Számla azonosító</TableCell>
+                    <TableCell>Számla ID</TableCell>
+                    <TableCell>Számla típusa</TableCell>
+                    <TableCell>Fizetési határidő</TableCell>
+                    <TableCell>Teljesítési dátum</TableCell>
+                    <TableCell>Bruttó összeg</TableCell>
+                    <TableCell>Fizetési állapot</TableCell>
+                    <TableCell align="right">Műveletek</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {invoices.map(inv => (
+                    <TableRow key={inv.id}>
+                      <TableCell>{inv.internal_number}</TableCell>
+                      <TableCell>{inv.provider_invoice_number || '-'}</TableCell>
+                      <TableCell sx={{ textTransform: 'capitalize' }}>
+                        {inv.invoice_type ? (
+                          <Chip
+                            label={
+                              inv.invoice_type === 'szamla'
+                                ? 'Számla'
+                                : inv.invoice_type === 'sztorno'
+                                ? 'Sztornó'
+                                : inv.invoice_type
+                            }
+                            size="small"
+                            color={inv.invoice_type === 'sztorno' ? 'error' : 'primary'}
+                            variant="outlined"
+                          />
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell>{inv.payment_due_date || '-'}</TableCell>
+                      <TableCell>{inv.fulfillment_date || '-'}</TableCell>
+                      <TableCell>{inv.gross_total != null ? formatCurrency(Number(inv.gross_total)) : '-'}</TableCell>
+                      <TableCell>
+                        {inv.payment_status ? (
+                          <Chip
+                            label={
+                              inv.payment_status === 'nem_lesz_fizetve'
+                                ? 'Nem lesz fizetve'
+                                : inv.payment_status === 'fizetve'
+                                ? 'Fizetve'
+                                : inv.payment_status === 'fizetesre_var'
+                                ? 'Fizetésre vár'
+                                : inv.payment_status
+                            }
+                            size="small"
+                            color={
+                              inv.payment_status === 'fizetve'
+                                ? 'success'
+                                : inv.payment_status === 'fizetesre_var'
+                                ? 'warning'
+                                : 'default'
+                            }
+                            variant="outlined"
+                          />
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Stack direction="row" spacing={1} justifyContent="flex-end">
+                          <Tooltip title="Sztornó számla">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                disabled={inv.invoice_type === 'sztorno'}
+                                onClick={() => handleOpenStornoDialog(inv)}
+                              >
+                                <UndoIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title="PDF megnyitás">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleOpenInvoicePdf(inv)}
+                                disabled={!inv.pdf_url}
+                              >
+                                <PictureAsPdfIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Stack>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </TabPanel>
+
       {/* Payment Modal */}
       <Dialog open={paymentModalOpen} onClose={() => setPaymentModalOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Fizetés hozzáadása</DialogTitle>
@@ -2012,7 +2243,27 @@ export default function PosOrderDetailClient({
         tenantCompany={tenantCompany}
         vatRates={vatRates}
       />
+      
+      {/* Sztornó megerősítés */}
+      <Dialog open={stornoDialogOpen} onClose={handleCloseStornoDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Sztornó számla</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Biztosan létrehozod a sztornó számlát a következő számlához?
+          </Typography>
+          <Typography sx={{ mt: 1 }} fontWeight="bold">
+            {stornoTarget?.provider_invoice_number || '-'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseStornoDialog}>Mégse</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmStorno}>
+            Sztornó létrehozása
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
+    </TabContext>
   )
 }
 

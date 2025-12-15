@@ -300,6 +300,36 @@ export async function POST(
       vatRatesMap.set(vat.id, vat.kulcs)
     })
 
+    // Fetch payments to ensure order is fully paid
+    const { data: payments, error: paymentsError } = await supabaseAdmin
+      .from('pos_payments')
+      .select('amount, deleted_at')
+      .eq('pos_order_id', id)
+
+    if (paymentsError) {
+      console.error('Error fetching POS payments for invoice creation:', paymentsError)
+      return NextResponse.json(
+        { error: 'Hiba a fizetések lekérdezésekor' },
+        { status: 500 }
+      )
+    }
+
+    const totalPaid = (payments || [])
+      .filter(p => !p.deleted_at)
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0)
+    const totalDue = Number(orderData.total_gross || 0)
+
+    // Allow 1 Ft tolerance for rounding differences
+    const remaining = totalDue - totalPaid
+    const tolerance = 1
+
+    if (remaining > tolerance) {
+      return NextResponse.json(
+        { error: 'Csak teljesen kifizetett rendeléshez hozható létre számla' },
+        { status: 400 }
+      )
+    }
+
     // Build XML request
     const xmlRequest = buildInvoiceXml(
       orderData,
@@ -500,7 +530,7 @@ export async function POST(
       payment_due_date: body.dueDate || null,
       fulfillment_date: body.fulfillmentDate || body.dueDate || null,
       gross_total: orderData.total_gross || null,
-      payment_status: 'fizetesre_var',
+      payment_status: 'fizetve',
       is_storno_of_invoice_id: null,
       pdf_url: finalInvoiceNumber
         ? `/api/invoices/pdf?number=${encodeURIComponent(finalInvoiceNumber)}&provider=szamlazz_hu`
