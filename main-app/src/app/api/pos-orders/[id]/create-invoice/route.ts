@@ -28,6 +28,7 @@ interface InvoiceRequest {
   sendEmail: boolean
   preview?: boolean // If true, use temporary order number for preview
   advanceAmount?: number // Advance invoice amount (gross)
+  proformaAmount?: number // Proforma invoice amount (gross), if partial
 }
 
 // Helper function to escape XML
@@ -77,9 +78,15 @@ function buildInvoiceXml(
     ? `${order.pos_order_number}-PREVIEW-${Date.now()}`
     : order.pos_order_number
 
-  // Check if this is an advance invoice
+  // Check if this is an advance invoice or proforma with amount
   const isAdvanceInvoice = settings.invoiceType === 'advance'
-  const advanceAmount = settings.advanceAmount || 0
+  // Improved type conversion: handle undefined, null, and invalid values properly
+  const proformaAmountNum = settings.proformaAmount != null 
+    ? Number(settings.proformaAmount) 
+    : 0
+  const isProformaWithAmount = settings.invoiceType === 'proforma' && !isNaN(proformaAmountNum) && proformaAmountNum > 0
+  const advanceAmount = Number(settings.advanceAmount) || 0
+  const proformaAmount = proformaAmountNum
 
   // Build items XML
   // IMPORTANT: szamlazz.hu validates calculations EXACTLY:
@@ -118,8 +125,35 @@ function buildInvoiceXml(
         <afaErtek>${advanceVat}</afaErtek>
         <bruttoErtek>${advanceBrutto}</bruttoErtek>
       </tetel>`
+  } else if (isProformaWithAmount && proformaAmount > 0) {
+    // For proforma invoice with partial amount, create single item with proforma amount
+    // Use default VAT rate (27% or highest from items)
+    let proformaVatRate = 27 // Default to 27% (most common in Hungary)
+    if (items.length > 0) {
+      // Find highest VAT rate from items
+      const rates = items.map(item => vatRatesMap.get(item.vat_id) || 0)
+      proformaVatRate = Math.max(...rates, 27)
+    }
+    
+    // Calculate net from gross: net = gross / (1 + vat/100)
+    const proformaNetPrecise = proformaAmount / (1 + proformaVatRate / 100)
+    const proformaNet = Math.round(proformaNetPrecise * 100) / 100
+    const proformaVat = proformaAmount - proformaNet // Calculate VAT to ensure exact total
+    const proformaBrutto = proformaAmount
+    
+    itemsXml = `
+      <tetel>
+        <megnevezes>Előleg</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${proformaNet}</nettoEgysegar>
+        <afakulcs>${proformaVatRate}</afakulcs>
+        <nettoErtek>${proformaNet}</nettoErtek>
+        <afaErtek>${proformaVat}</afaErtek>
+        <bruttoErtek>${proformaBrutto}</bruttoErtek>
+      </tetel>`
   } else {
-    // Normal invoice - use existing items
+    // Normal invoice or full proforma - use existing items
     itemsXml = items.map((item) => {
       const vatRate = vatRatesMap.get(item.vat_id) || 0
       const mennyiseg = Number(item.quantity)
@@ -149,8 +183,17 @@ function buildInvoiceXml(
   }
 
   // Add advance deduction item if there's an existing advance invoice (for final invoice)
+  // Don't add for advance invoices or proforma with amount
   let advanceDeductionXml = ''
-  if (existingAdvanceInvoice && !isAdvanceInvoice) {
+  const shouldCreateFinalInvoice = existingAdvanceInvoice && !isAdvanceInvoice && !isProformaWithAmount && settings.invoiceType !== 'proforma' && settings.invoiceType !== 'advance'
+  console.log('buildInvoiceXml - Final invoice check:', {
+    existingAdvanceInvoice: !!existingAdvanceInvoice,
+    isAdvanceInvoice,
+    isProformaWithAmount,
+    invoiceType: settings.invoiceType,
+    shouldCreateFinalInvoice
+  })
+  if (shouldCreateFinalInvoice) {
     console.log('Building advance deduction XML for:', existingAdvanceInvoice)
     const advanceGross = existingAdvanceInvoice.gross_total
     // Use the same VAT rate calculation as advance invoice (27% or highest from items)
@@ -190,11 +233,11 @@ function buildInvoiceXml(
     console.log('No advance deduction - existingAdvanceInvoice:', existingAdvanceInvoice, 'isAdvanceInvoice:', isAdvanceInvoice)
   }
 
-  // Add discount item if discount exists (only for normal invoices, not advance)
+  // Add discount item if discount exists (only for normal invoices, not advance or proforma with amount)
   // The discount_amount is applied to gross total, so we need to split it into net and VAT
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
-  if (!isAdvanceInvoice && discountAmount > 0) {
+  if (!isAdvanceInvoice && !isProformaWithAmount && discountAmount > 0) {
     // Calculate the gross total before discount
     const grossBeforeDiscount = Number(order.subtotal_net) + Number(order.total_vat)
     
@@ -268,11 +311,11 @@ function buildInvoiceXml(
     <arfolyamBank>MNB</arfolyamBank>
     <arfolyam>1</arfolyam>
     <rendelesSzam>${escapeXml(orderNumber)}</rendelesSzam>
-    ${isAdvanceInvoice ? '<elolegszamla>true</elolegszamla>' : ''}
-    ${existingAdvanceInvoice && !isAdvanceInvoice ? '<vegszamla>true</vegszamla>' : ''}
-    ${existingAdvanceInvoice && !isAdvanceInvoice ? `<elolegSzamlaszam>${escapeXml(existingAdvanceInvoice.provider_invoice_number)}</elolegSzamlaszam>` : ''}
     ${settings.invoiceType === 'proforma' ? '<dijbekero>true</dijbekero>' : ''}
-    ${existingProformaInvoice && settings.invoiceType === 'normal' ? `<dijbekeroSzamlaszam>${escapeXml(existingProformaInvoice.provider_invoice_number)}</dijbekeroSzamlaszam>` : ''}
+    ${existingProformaInvoice && settings.invoiceType === 'normal' && !existingAdvanceInvoice && !isAdvanceInvoice ? `<dijbekeroSzamlaszam>${escapeXml(existingProformaInvoice.provider_invoice_number)}</dijbekeroSzamlaszam>` : ''}
+    ${isAdvanceInvoice ? '<elolegszamla>true</elolegszamla>' : ''}
+    ${existingAdvanceInvoice && !isAdvanceInvoice && !isProformaWithAmount && settings.invoiceType !== 'proforma' && settings.invoiceType !== 'advance' ? '<vegszamla>true</vegszamla>' : ''}
+    ${existingAdvanceInvoice && !isAdvanceInvoice && !isProformaWithAmount && settings.invoiceType !== 'proforma' && settings.invoiceType !== 'advance' ? `<elolegSzamlaszam>${escapeXml(existingAdvanceInvoice.provider_invoice_number)}</elolegSzamlaszam>` : ''}
   </fejlec>
   <elado>
     <bank>${escapeXml(tenantCompany?.name || '')}</bank>
@@ -403,8 +446,8 @@ export async function POST(
 
     // For advance invoices and proforma invoices, skip the "fully paid" check
     // For normal invoices, ensure order is fully paid
-    const isAdvanceInvoiceRequest = body.invoiceType === 'advance'
-    const isProformaInvoiceRequest = body.invoiceType === 'proforma'
+    let isAdvanceInvoiceRequest = body.invoiceType === 'advance'
+    let isProformaInvoiceRequest = body.invoiceType === 'proforma'
     
     if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
       const totalPaid = (payments || [])
@@ -434,14 +477,27 @@ export async function POST(
       }
     }
 
+    // Store the original invoice type BEFORE any conversions
+    const originalInvoiceType = body.invoiceType
+    
     // Check if there's an existing advance invoice for this order (for final invoice)
     let existingAdvanceInvoice: { provider_invoice_number: string; gross_total: number } | null = null
-    // Check if there's an existing proforma invoice for this order (for normal invoice)
+    // Check if there's an existing proforma invoice for this order (for advance or normal invoice)
     let existingProformaInvoice: { provider_invoice_number: string } | null = null
     let proformaInvoiceData: { id: string; provider_invoice_number: string | null } | null = null // Store full proforma invoice data for later update
     
-    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
-      // Check for advance invoice
+    // FIRST: Check for advance invoice if this is a normal invoice request
+    // This must happen BEFORE proforma conversion, because if there's an advance invoice,
+    // we want to create a final invoice, not convert to advance based on proforma
+    const isNormalInvoiceRequest = originalInvoiceType === 'normal' || (originalInvoiceType !== 'advance' && originalInvoiceType !== 'proforma')
+    
+    if (isNormalInvoiceRequest && !isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
+      console.log('Checking for existing advance invoice to create final invoice. Original request:', {
+        originalInvoiceType,
+        isAdvanceInvoiceRequest,
+        isProformaInvoiceRequest,
+        isNormalInvoiceRequest
+      })
       const { data: advanceInvoiceData, error: advanceError } = await supabaseAdmin
         .from('invoices')
         .select('provider_invoice_number, gross_total')
@@ -456,7 +512,13 @@ export async function POST(
       console.log('Advance invoice query for order:', id, {
         advanceInvoiceData,
         advanceError,
-        found: !!advanceInvoiceData
+        found: !!advanceInvoiceData,
+        queryConditions: {
+          related_order_type: 'pos_order',
+          related_order_id: id,
+          invoice_type: 'elolegszamla',
+          provider: 'szamlazz_hu'
+        }
       })
       
       if (!advanceError && advanceInvoiceData) {
@@ -464,17 +526,27 @@ export async function POST(
           provider_invoice_number: advanceInvoiceData.provider_invoice_number || '',
           gross_total: Number(advanceInvoiceData.gross_total || 0)
         }
-        console.log('Found existing advance invoice:', existingAdvanceInvoice)
+        console.log('Found existing advance invoice for final invoice:', existingAdvanceInvoice)
       } else if (advanceError) {
         console.error('Error querying advance invoice:', advanceError)
       } else {
-        console.log('No advance invoice found for order:', id)
+        console.log('No advance invoice found for order:', id, '- will create normal invoice')
       }
-      
-      // Check for proforma invoice
+    } else {
+      console.log('Skipping advance invoice check because:', {
+        originalInvoiceType,
+        isAdvanceInvoiceRequest,
+        isProformaInvoiceRequest,
+        isNormalInvoiceRequest
+      })
+    }
+    
+    // SECOND: Check for proforma invoice (needed for advance invoice or normal invoice)
+    // Only convert to advance invoice if there's NO existing advance invoice
+    if (isAdvanceInvoiceRequest || (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest)) {
       const { data: proformaData, error: proformaError } = await supabaseAdmin
         .from('invoices')
-        .select('id, provider_invoice_number')
+        .select('id, provider_invoice_number, gross_total')
         .eq('related_order_type', 'pos_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'dijbekero')
@@ -488,7 +560,26 @@ export async function POST(
         existingProformaInvoice = {
           provider_invoice_number: proformaData.provider_invoice_number || ''
         }
-        console.log('Found existing proforma invoice:', existingProformaInvoice)
+        console.log('Found existing proforma invoice:', existingProformaInvoice, 'gross_total:', proformaData.gross_total)
+        
+        // If there's a proforma with partial amount and user is creating a "normal" invoice,
+        // AND there's NO existing advance invoice, automatically convert it to an advance invoice using the proforma amount
+        if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest && !existingAdvanceInvoice && proformaData.gross_total) {
+          const proformaGrossTotal = Number(proformaData.gross_total)
+          const orderTotal = Number(orderData.total_gross || 0)
+          
+          // If proforma amount is less than order total, it's a partial proforma
+          // In this case, create an advance invoice instead of a normal invoice
+          if (proformaGrossTotal < orderTotal) {
+            console.log('Proforma has partial amount, converting normal invoice to advance invoice')
+            // Override invoice type to advance and use proforma amount
+            body.invoiceType = 'advance'
+            body.advanceAmount = proformaGrossTotal
+            isAdvanceInvoiceRequest = true
+            isProformaInvoiceRequest = false
+            console.log('Converted to advance invoice with amount:', proformaGrossTotal)
+          }
+        }
       }
     }
 
@@ -694,10 +785,12 @@ export async function POST(
 
     // For advance invoices, use advance amount
     // For final invoices (with existing advance), use order total minus advance amount
-    // For normal invoices, use order total
+    // Calculate invoice gross total
     let invoiceGrossTotal: number | null = null
     if (isAdvanceInvoiceRequest && body.advanceAmount) {
       invoiceGrossTotal = body.advanceAmount
+    } else if (isProformaInvoiceRequest && body.proformaAmount && body.proformaAmount > 0) {
+      invoiceGrossTotal = body.proformaAmount
     } else if (existingAdvanceInvoice) {
       // Final invoice: remaining amount after advance
       const orderTotal = Number(orderData.total_gross || 0)

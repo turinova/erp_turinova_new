@@ -77,7 +77,86 @@ export async function POST(
       )
     }
 
-    // Build storno XML
+    // If the invoice is a díjbekérő (proforma), delete it instead of creating a storno
+    if (originalInvoice.invoice_type === 'dijbekero') {
+      console.log('Deleting proforma invoice instead of creating storno:', body.providerInvoiceNumber)
+      
+      // Build delete XML for proforma invoice
+      const deleteXml = `<?xml version="1.0" encoding="UTF-8"?>
+<xmlszamladbkdel xmlns="http://www.szamlazz.hu/xmlszamladbkdel" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamladbkdel http://www.szamlazz.hu/docs/xsds/szamladbkdel/xmlszamladbkdel.xsd">
+  <beallitasok>
+    <szamlaagentkulcs>${escapeXml(SZAMLAZZ_AGENT_KEY)}</szamlaagentkulcs>
+  </beallitasok>
+  <fejlec>
+    <szamlaszam>${escapeXml(body.providerInvoiceNumber)}</szamlaszam>
+  </fejlec>
+</xmlszamladbkdel>`
+
+      const formData = new FormData()
+      const xmlBlob = new Blob([deleteXml], { type: 'application/xml; charset=utf-8' })
+      formData.append('action-szamla_agent_dijbekero_torlese', xmlBlob, 'delete.xml')
+
+      const response = await fetch(SZAMLAZZ_API_URL, { method: 'POST', body: formData })
+      const responseText = await response.text()
+
+      console.log('Delete Proforma Invoice - Response:', responseText.substring(0, 500))
+
+      // Check for success in XML response
+      const successMatch = responseText.match(/<sikeres>([^<]+)<\/sikeres>/i)
+      const isSuccessful = successMatch && successMatch[1].toLowerCase() === 'true'
+
+      if (!isSuccessful) {
+        // Check for errors
+        const errorCodeMatch = responseText.match(/<hibakod>([^<]+)<\/hibakod>/i)
+        const errorMessageMatch = responseText.match(/<hibauzenet>([^<]+)<\/hibauzenet>/i)
+        
+        const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown'
+        const errorMessage = errorMessageMatch ? errorMessageMatch[1] : 'Ismeretlen hiba'
+        
+        // Error code 335 means "Nincs ilyen díjbekérő" (No such proforma invoice)
+        // This is acceptable - the invoice is already gone
+        if (errorCode === '335') {
+          console.log(`Proforma invoice ${body.providerInvoiceNumber} already deleted (error 335) - treating as success`)
+        } else {
+          console.error('Delete Proforma Invoice - Error:', {
+            code: errorCode,
+            message: errorMessage,
+            response: responseText.substring(0, 500)
+          })
+          return NextResponse.json(
+            { 
+              error: `Szamlazz.hu hiba${errorCode ? ` (${errorCode})` : ''}: ${errorMessage}`,
+            },
+            { status: 400 }
+          )
+        }
+      }
+
+      // Delete the invoice record from database
+      const { error: deleteErr } = await supabaseAdmin
+        .from('invoices')
+        .delete()
+        .eq('id', originalInvoice.id)
+
+      if (deleteErr) {
+        console.error('Failed to delete proforma invoice from database:', deleteErr)
+        return NextResponse.json(
+          {
+            error: 'Díjbekérő törölve a szolgáltatónál, de nem sikerült törölni az adatbázisból',
+            details: deleteErr.message
+          },
+          { status: 500 }
+        )
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Díjbekérő sikeresen törölve',
+        deleted: true
+      })
+    }
+
+    // Build storno XML for regular invoices
     // Fetch order to get buyer email (optional)
     let buyerEmail: string | null = null
     const { data: orderData } = await supabaseAdmin

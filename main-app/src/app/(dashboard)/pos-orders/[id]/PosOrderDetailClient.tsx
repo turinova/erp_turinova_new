@@ -385,14 +385,21 @@ export default function PosOrderDetailClient({
       })
       const data = await res.json()
       if (!res.ok || !data.success) {
-        throw new Error(data?.error || 'Hiba a sztornó számla létrehozásakor')
+        throw new Error(data?.error || 'Hiba a művelet során')
       }
-      toast.success(`Sztornó számla létrehozva: ${data.invoiceNumber || 'N/A'}`)
+      
+      // Check if it was a delete (for proforma) or storno creation
+      if (data.deleted) {
+        toast.success(data.message || 'Díjbekérő sikeresen törölve')
+      } else {
+        toast.success(`Sztornó számla létrehozva: ${data.invoiceNumber || 'N/A'}`)
+      }
+      
       handleCloseStornoDialog()
       await loadInvoices()
     } catch (err: any) {
       console.error('Error creating storno invoice:', err)
-      toast.error(err.message || 'Hiba a sztornó számla létrehozásakor')
+      toast.error(err.message || 'Hiba a művelet során')
     } finally {
       setInvoicesLoading(false)
     }
@@ -2257,12 +2264,16 @@ export default function PosOrderDetailClient({
         vatRates={vatRates}
       />
       
-      {/* Sztornó megerősítés */}
+      {/* Sztornó megerősítés / Díjbekérő törlés */}
       <Dialog open={stornoDialogOpen} onClose={handleCloseStornoDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Sztornó számla</DialogTitle>
+        <DialogTitle>
+          {stornoTarget?.invoice_type === 'dijbekero' ? 'Díjbekérő törlése' : 'Sztornó számla'}
+        </DialogTitle>
         <DialogContent>
           <Typography>
-            Biztosan létrehozod a sztornó számlát a következő számlához?
+            {stornoTarget?.invoice_type === 'dijbekero' 
+              ? 'Biztosan törölni szeretnéd ezt a díjbekérőt?'
+              : 'Biztosan létrehozod a sztornó számlát a következő számlához?'}
           </Typography>
           <Typography sx={{ mt: 1 }} fontWeight="bold">
             {stornoTarget?.provider_invoice_number || '-'}
@@ -2271,7 +2282,7 @@ export default function PosOrderDetailClient({
         <DialogActions>
           <Button onClick={handleCloseStornoDialog}>Mégse</Button>
           <Button color="error" variant="contained" onClick={handleConfirmStorno}>
-            Sztornó létrehozása
+            {stornoTarget?.invoice_type === 'dijbekero' ? 'Törlés' : 'Sztornó létrehozása'}
           </Button>
         </DialogActions>
       </Dialog>

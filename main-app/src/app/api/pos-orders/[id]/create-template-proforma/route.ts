@@ -38,6 +38,7 @@ interface CreateTemplateProformaRequest {
   comment: string
   language: string
   advanceAmount?: number // Advance invoice amount (gross)
+  proformaAmount?: number // Proforma invoice amount (gross), if partial
 }
 
 // Helper function to escape XML
@@ -59,7 +60,7 @@ function buildTemplateProformaXml(
   vatRatesMap: Map<string, number>,
   settings: CreateTemplateProformaRequest,
   existingAdvanceInvoice?: { provider_invoice_number: string; gross_total: number } | null,
-  existingProformaInvoice?: { provider_invoice_number: string } | null
+  existingProformaInvoice?: { provider_invoice_number: string; gross_total: number } | null
 ): string {
   // Map payment method
   const paymentMethodMap: Record<string, string> = {
@@ -74,13 +75,54 @@ function buildTemplateProformaXml(
   const dueDate = settings.dueDate || new Date().toISOString().split('T')[0]
   const fulfillmentDate = settings.fulfillmentDate || invoiceDate
   
-  // Use a unique template order number with timestamp to avoid duplicates
+  // Use original order number when referencing an advance invoice, so Számlázz.hu can match it
+  // Számlázz.hu validates advance invoice references by matching both invoice number and order number
+  // Otherwise, use a unique template order number with timestamp to avoid duplicates
   // This ensures each regeneration creates a new unique template
-  const orderNumber = `${order.pos_order_number}-TEMPLATE-${Date.now()}`
+  const hasValidAdvanceInvoice = existingAdvanceInvoice && existingAdvanceInvoice.provider_invoice_number && existingAdvanceInvoice.provider_invoice_number.trim()
+  const orderNumber = hasValidAdvanceInvoice 
+    ? order.pos_order_number 
+    : `${order.pos_order_number}-TEMPLATE-${Date.now()}`
 
-  // Check if this is an advance invoice
+  // Check if this is an advance invoice or proforma with amount
   const isAdvanceInvoice = settings.invoiceType === 'advance'
-  const advanceAmount = settings.advanceAmount || 0
+  // Improved type conversion: handle undefined, null, and invalid values properly
+  // Convert proformaAmount to number, handling string, number, null, undefined
+  let proformaAmountNum = 0
+  if (settings.proformaAmount != null && settings.proformaAmount !== '') {
+    // Handle both string and number types
+    const parsed = typeof settings.proformaAmount === 'string' 
+      ? parseFloat(settings.proformaAmount.replace(/[^\d.-]/g, '')) 
+      : Number(settings.proformaAmount)
+    if (!isNaN(parsed) && parsed > 0 && isFinite(parsed)) {
+      proformaAmountNum = parsed
+    }
+  }
+  
+  // Check if proforma with amount - must be proforma type AND have amount > 0
+  // IMPORTANT: For partial proforma, we want to show only 1 "Előleg" item like advance invoice
+  const isProformaWithAmount = settings.invoiceType === 'proforma' && proformaAmountNum > 0
+  
+  console.log('buildTemplateProformaXml - Amount check:', {
+    invoiceType: settings.invoiceType,
+    proformaAmount: settings.proformaAmount,
+    proformaAmountNum,
+    isProformaWithAmount,
+    willUseSingleItem: isProformaWithAmount
+  })
+  const advanceAmount = typeof settings.advanceAmount === 'string'
+    ? parseFloat(settings.advanceAmount.replace(/[^\d.-]/g, '')) || 0
+    : Number(settings.advanceAmount) || 0
+  const proformaAmount = proformaAmountNum
+  
+  console.log('buildTemplateProformaXml - Invoice type check:', {
+    invoiceType: settings.invoiceType,
+    proformaAmountFromSettings: settings.proformaAmount,
+    proformaAmountNum,
+    isProformaWithAmount,
+    isAdvanceInvoice,
+    advanceAmount
+  })
 
   // Build items XML
   // IMPORTANT: szamlazz.hu validates that afaErtek = nettoErtek × afakulcs / 100 (exactly)
@@ -115,8 +157,51 @@ function buildTemplateProformaXml(
         <afaErtek>${advanceVat}</afaErtek>
         <bruttoErtek>${advanceBrutto}</bruttoErtek>
       </tetel>`
+  } else if (isProformaWithAmount) {
+    // For proforma invoice with partial amount, create single item with proforma amount
+    console.log('Creating proforma with amount:', {
+      proformaAmount,
+      proformaAmountNum,
+      invoiceType: settings.invoiceType,
+      isProformaWithAmount,
+      proformaAmountFromSettings: settings.proformaAmount
+    })
+    // Use default VAT rate (27% or highest from items)
+    let proformaVatRate = 27 // Default to 27% (most common in Hungary)
+    if (items.length > 0) {
+      // Find highest VAT rate from items
+      const rates = items.map(item => vatRatesMap.get(item.vat_id) || 0)
+      proformaVatRate = Math.max(...rates, 27)
+    }
+    
+    // Calculate net from gross: net = gross / (1 + vat/100)
+    // IMPORTANT: Számlázz.hu validates that afaErtek = nettoErtek × afakulcs / 100 EXACTLY
+    // So we must calculate net first, then VAT from net using the exact formula
+    const proformaNetPrecise = proformaAmount / (1 + proformaVatRate / 100)
+    const proformaNet = Math.round(proformaNetPrecise * 100) / 100
+    // Calculate VAT from net using Számlázz.hu's exact formula: afaErtek = nettoErtek × afakulcs / 100
+    const proformaVat = (proformaNet * proformaVatRate) / 100
+    // Round VAT to 2 decimals
+    const proformaVatRounded = Math.round(proformaVat * 100) / 100
+    // Gross should be net + VAT (this ensures exact match with Számlázz.hu validation)
+    const proformaBrutto = proformaNet + proformaVatRounded
+    
+    console.log('Proforma calculation:', { proformaAmount, proformaVatRate, proformaNet, proformaVat, proformaBrutto })
+    
+    itemsXml = `
+      <tetel>
+        <megnevezes>Előleg</megnevezes>
+        <mennyiseg>1</mennyiseg>
+        <mennyisegiEgyseg>db</mennyisegiEgyseg>
+        <nettoEgysegar>${proformaNet}</nettoEgysegar>
+        <afakulcs>${proformaVatRate}</afakulcs>
+        <nettoErtek>${proformaNet}</nettoErtek>
+        <afaErtek>${proformaVatRounded}</afaErtek>
+        <bruttoErtek>${proformaBrutto}</bruttoErtek>
+      </tetel>`
   } else {
-    // Normal invoice - use existing items
+    // Normal invoice or full proforma - use existing items
+    console.log('Using full items for invoice. invoiceType:', settings.invoiceType, 'proformaAmount:', settings.proformaAmount, 'isProformaWithAmount:', isProformaWithAmount, 'proformaAmountNum:', proformaAmountNum)
     itemsXml = items.map((item) => {
     const vatRate = vatRatesMap.get(item.vat_id) || 0
     const mennyiseg = Number(item.quantity)
@@ -149,8 +234,10 @@ function buildTemplateProformaXml(
   }
 
   // Add advance deduction item if there's an existing advance invoice (for final invoice preview)
+  // Don't add for advance invoices, proforma invoices, or proforma with amount
   let advanceDeductionXml = ''
-  if (existingAdvanceInvoice && !isAdvanceInvoice) {
+  const isNormalInvoiceForFinal = settings.invoiceType === 'normal' && !isAdvanceInvoice && !isProformaWithAmount
+  if (existingAdvanceInvoice && isNormalInvoiceForFinal) {
     const advanceGross = existingAdvanceInvoice.gross_total
     // Use the same VAT rate calculation as advance invoice (27% or highest from items)
     let advanceVatRate = 27
@@ -178,10 +265,10 @@ function buildTemplateProformaXml(
       </tetel>`
   }
 
-  // Add discount item if discount exists (only for normal invoices, not advance)
+  // Add discount item if discount exists (only for normal invoices, not advance or proforma with amount)
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
-  if (!isAdvanceInvoice && discountAmount > 0) {
+  if (isNormalInvoiceForFinal && discountAmount > 0) {
     // Find the most appropriate VAT rate from items (use the one with highest gross total)
     // This ensures we use a standard VAT rate that szamlazz.hu accepts
     let discountVatRate = 27 // Default to 27% (most common in Hungary)
@@ -242,8 +329,8 @@ function buildTemplateProformaXml(
   <beallitasok>
     <szamlaagentkulcs>${escapeXml(SZAMLAZZ_AGENT_KEY)}</szamlaagentkulcs>
     <eszamla>false</eszamla>
-    <szamlaLetoltes>false</szamlaLetoltes>
-    <valaszVerzio>1</valaszVerzio>
+    <szamlaLetoltes>true</szamlaLetoltes>
+    <valaszVerzio>2</valaszVerzio>
     <aggregator></aggregator>
   </beallitasok>
   <fejlec>
@@ -257,9 +344,12 @@ function buildTemplateProformaXml(
     <arfolyamBank>MNB</arfolyamBank>
     <arfolyam>1</arfolyam>
     <rendelesSzam>${escapeXml(orderNumber)}</rendelesSzam>
-    <dijbekero>true</dijbekero>
-    <!-- Note: dijbekeroSzamlaszam is not added here because this is a preview proforma (dijbekero=true) -->
-    <!-- The reference will be added when creating the actual normal invoice -->
+    ${settings.invoiceType === 'proforma' ? '<dijbekero>true</dijbekero>' : ''}
+    ${existingProformaInvoice && (isAdvanceInvoice || (settings.invoiceType === 'normal' && !existingAdvanceInvoice && !isAdvanceInvoice)) ? `<dijbekeroSzamlaszam>${escapeXml(existingProformaInvoice.provider_invoice_number)}</dijbekeroSzamlaszam>` : ''}
+    ${isAdvanceInvoice ? '<elolegszamla>true</elolegszamla>' : ''}
+    ${existingAdvanceInvoice && isNormalInvoiceForFinal ? '<vegszamla>true</vegszamla>' : ''}
+    ${existingAdvanceInvoice && isNormalInvoiceForFinal ? `<elolegSzamlaszam>${escapeXml(existingAdvanceInvoice.provider_invoice_number)}</elolegSzamlaszam>` : ''}
+    <elonezetpdf>true</elonezetpdf>
   </fejlec>
   <elado>
     <bank>${escapeXml(tenantCompany?.name || '')}</bank>
@@ -295,6 +385,14 @@ export async function POST(
   try {
     const { id } = await params
     const body: CreateTemplateProformaRequest = await request.json()
+    
+    console.log('Create template proforma - Received request:', {
+      invoiceType: body.invoiceType,
+      proformaAmount: body.proformaAmount,
+      proformaAmountType: typeof body.proformaAmount,
+      advanceAmount: body.advanceAmount,
+      advanceAmountType: typeof body.advanceAmount
+    })
 
     // Fetch POS order
     const { data: orderData, error: orderError } = await supabaseAdmin
@@ -377,13 +475,35 @@ export async function POST(
     })
 
     // Check if there's an existing advance invoice for this order (for final invoice preview)
-    const isAdvanceInvoiceRequest = body.invoiceType === 'advance'
+    let isAdvanceInvoiceRequest = body.invoiceType === 'advance'
     const isProformaInvoiceRequest = body.invoiceType === 'proforma'
     let existingAdvanceInvoice: { provider_invoice_number: string; gross_total: number } | null = null
-    let existingProformaInvoice: { provider_invoice_number: string } | null = null
+    let existingProformaInvoice: { provider_invoice_number: string; gross_total: number } | null = null
     
+    // Always check for proforma invoice (needed for advance invoice preview or normal invoice preview)
+    const { data: proformaInvoiceData, error: proformaError } = await supabaseAdmin
+      .from('invoices')
+      .select('provider_invoice_number, gross_total')
+      .eq('related_order_type', 'pos_order')
+      .eq('related_order_id', id)
+      .eq('invoice_type', 'dijbekero')
+      .eq('provider', 'szamlazz_hu')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    
+    if (!proformaError && proformaInvoiceData) {
+      existingProformaInvoice = {
+        provider_invoice_number: proformaInvoiceData.provider_invoice_number || '',
+        gross_total: Number(proformaInvoiceData.gross_total || 0)
+      }
+      console.log('Template proforma: Found existing proforma invoice:', existingProformaInvoice)
+    }
+    
+    // Check for advance invoice (needed for final invoice preview)
+    // This must happen BEFORE partial proforma conversion, because if there's an advance invoice,
+    // we want to create a final invoice preview, not convert to advance based on partial proforma
     if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
-      // Check for advance invoice
       const { data: advanceInvoiceData, error: advanceError } = await supabaseAdmin
         .from('invoices')
         .select('provider_invoice_number, gross_total')
@@ -400,28 +520,24 @@ export async function POST(
           provider_invoice_number: advanceInvoiceData.provider_invoice_number || '',
           gross_total: Number(advanceInvoiceData.gross_total || 0)
         }
-        console.log('Template proforma: Found existing advance invoice:', existingAdvanceInvoice)
+        console.log('Template proforma: Found existing advance invoice for final invoice preview:', existingAdvanceInvoice)
       }
+    }
+    
+    // If creating normal invoice and there's a partial proforma, AND NO existing advance invoice,
+    // treat it as advance invoice preview
+    // IMPORTANT: Only convert to advance if there's NO existing advance invoice
+    // If there's an advance invoice, we want to create a final invoice preview instead
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest && !existingAdvanceInvoice && existingProformaInvoice) {
+      const proformaGrossTotal = existingProformaInvoice.gross_total
+      const orderTotal = Number(orderData.total_gross || 0)
       
-      // Check for proforma invoice
-      const { data: proformaInvoiceData, error: proformaError } = await supabaseAdmin
-        .from('invoices')
-        .select('provider_invoice_number')
-        .eq('related_order_type', 'pos_order')
-        .eq('related_order_id', id)
-        .eq('invoice_type', 'dijbekero')
-        .eq('provider', 'szamlazz_hu')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-      
-      if (!proformaError && proformaInvoiceData) {
-        existingProformaInvoice = {
-          provider_invoice_number: proformaInvoiceData.provider_invoice_number || ''
-        }
-        console.log('Template proforma: Found existing proforma invoice:', existingProformaInvoice)
-      } else {
-        console.log('Template proforma: No existing proforma invoice found. Error:', proformaError, 'Data:', proformaInvoiceData)
+      // If proforma has partial amount, show advance invoice preview
+      if (proformaGrossTotal < orderTotal) {
+        console.log('Template proforma: Partial proforma detected (no advance invoice), converting to advance invoice preview')
+        body.invoiceType = 'advance'
+        body.advanceAmount = proformaGrossTotal
+        isAdvanceInvoiceRequest = true
       }
     }
 
@@ -441,6 +557,17 @@ export async function POST(
     }
 
     // Build XML request
+    console.log('Building template proforma XML with settings:', {
+      invoiceType: body.invoiceType,
+      originalInvoiceType: body.invoiceType,
+      proformaAmount: body.proformaAmount,
+      advanceAmount: body.advanceAmount,
+      isAdvanceInvoiceRequest,
+      isProformaInvoiceRequest,
+      existingAdvanceInvoice: existingAdvanceInvoice ? { number: existingAdvanceInvoice.provider_invoice_number, total: existingAdvanceInvoice.gross_total } : null,
+      existingProformaInvoice: existingProformaInvoice ? { number: existingProformaInvoice.provider_invoice_number, total: existingProformaInvoice.gross_total } : null,
+      willCreateFinalInvoice: !!existingAdvanceInvoice && body.invoiceType === 'normal' && !isAdvanceInvoiceRequest && !isProformaInvoiceRequest
+    })
     const xmlRequest = buildTemplateProformaXml(
       orderData,
       itemsData || [],
@@ -450,6 +577,22 @@ export async function POST(
       existingAdvanceInvoice,
       existingProformaInvoice
     )
+    console.log('Generated XML length:', xmlRequest.length)
+    console.log('XML contains vegszamla:', xmlRequest.includes('vegszamla'))
+    console.log('XML contains elolegSzamlaszam:', xmlRequest.includes('elolegSzamlaszam'))
+    console.log('XML contains advance deduction:', xmlRequest.includes('Előleg a termék vásárlásra'))
+    
+    // Log a snippet of the XML to verify structure (especially for partial proforma or final invoice)
+    if ((body.invoiceType === 'proforma' && body.proformaAmount) || (existingAdvanceInvoice && body.invoiceType === 'normal')) {
+      const tetelekMatch = xmlRequest.match(/<tetelek>([\s\S]*?)<\/tetelek>/)
+      if (tetelekMatch) {
+        console.log('Preview XML - Tetelek section:', tetelekMatch[1].substring(0, 500))
+      }
+      const fejlecMatch = xmlRequest.match(/<fejlec>([\s\S]*?)<\/fejlec>/)
+      if (fejlecMatch) {
+        console.log('Preview XML - Fejlec section:', fejlecMatch[1].substring(0, 500))
+      }
+    }
 
     // Send request to szamlazz.hu
     const apiUrl = SZAMLAZZ_API_URL
@@ -573,38 +716,110 @@ export async function POST(
       )
     }
     
-    // Parse invoice number from headers or XML
-    let finalInvoiceNumber = invoiceNumber
-    if (!finalInvoiceNumber && parsedResponse) {
-      const invoiceNum = parsedResponse.xmlszamlavalasz?.szamlaszam || 
-                        parsedResponse.szamlaszam ||
-                        null
-      if (invoiceNum) {
-        finalInvoiceNumber = typeof invoiceNum === 'string' ? invoiceNum : invoiceNum['#text'] || null
+    // Check content type - with elonezetpdf, response can be PDF or XML with base64 PDF
+    const contentType = response.headers.get('content-type') || ''
+    const isPdf = contentType.includes('application/pdf') || contentType.includes('pdf')
+    
+    // Helper function to get value from parsed XML
+    const getValue = (obj: any, paths: string[]): string | null => {
+      for (const path of paths) {
+        const keys = path.split('.')
+        let current: any = obj
+        for (const key of keys) {
+          if (current && typeof current === 'object' && key in current) {
+            current = current[key]
+          } else {
+            current = null
+            break
+          }
+        }
+        if (current && typeof current === 'string') {
+          return current.trim()
+        }
+        if (current && typeof current === 'object' && '#text' in current) {
+          return String(current['#text'] || '').trim()
+        }
+      }
+      return null
+    }
+    
+    // Handle PDF response (direct PDF from elonezetpdf)
+    if (isPdf) {
+      try {
+        const arrayBuffer = await response.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        const base64 = buffer.toString('base64')
+        
+        console.log('Template proforma - PDF received directly from elonezetpdf, size:', buffer.length, 'bytes')
+        
+        return NextResponse.json({
+          success: true,
+          pdf: base64,
+          mimeType: 'application/pdf',
+          invoiceNumber: null, // No invoice number for preview (elonezetpdf doesn't create invoice)
+          proformaInvoiceNumber: existingProformaInvoice?.provider_invoice_number || null,
+          advanceInvoiceNumber: existingAdvanceInvoice?.provider_invoice_number || null,
+          message: 'Előnézet PDF sikeresen létrehozva'
+        })
+      } catch (err) {
+        console.error('Template proforma - Error reading PDF response:', err)
+        return NextResponse.json(
+          { error: 'Hiba a PDF válasz feldolgozása során' },
+          { status: 500 }
+        )
       }
     }
     
-    // Fallback to regex if XML parsing didn't find it
-    if (!finalInvoiceNumber && responseText) {
-      const invoiceNumberMatch = responseText.match(/<szamlaszam[^>]*>([^<]+)<\/szamlaszam>/i)
-      finalInvoiceNumber = invoiceNumberMatch ? invoiceNumberMatch[1].trim() : null
+    // Handle XML response (may contain base64 PDF with valaszVerzio=2)
+    if (parsedResponse) {
+      // Check for PDF in XML (valaszVerzio=2 returns PDF as base64 in XML)
+      const pdfBase64 = getValue(parsedResponse, [
+        'xmlszamlavalasz.pdf',
+        'xmlszamlavalasz.pdfTartalom',
+        'pdf',
+        'pdfTartalom'
+      ])
+      
+      if (pdfBase64) {
+        console.log('Template proforma - PDF found in XML response')
+        return NextResponse.json({
+          success: true,
+          pdf: pdfBase64,
+          mimeType: 'application/pdf',
+          invoiceNumber: null, // No invoice number for preview
+          proformaInvoiceNumber: existingProformaInvoice?.provider_invoice_number || null,
+          advanceInvoiceNumber: existingAdvanceInvoice?.provider_invoice_number || null,
+          message: 'Előnézet PDF sikeresen létrehozva'
+        })
+      }
     }
-
-    if (!finalInvoiceNumber) {
-      return NextResponse.json(
-        { error: 'Számlaszám nem található a válaszban' },
-        { status: 500 }
-      )
+    
+    // Fallback: Check for PDF in response text using regex
+    if (responseText) {
+      const pdfMatch = responseText.match(/<pdf[^>]*>([^<]+)<\/pdf>/i) || 
+                       responseText.match(/<pdfTartalom[^>]*>([^<]+)<\/pdfTartalom>/i)
+      if (pdfMatch && pdfMatch[1]) {
+        console.log('Template proforma - PDF found in response text')
+        return NextResponse.json({
+          success: true,
+          pdf: pdfMatch[1].trim(),
+          mimeType: 'application/pdf',
+          invoiceNumber: null,
+          proformaInvoiceNumber: existingProformaInvoice?.provider_invoice_number || null,
+          advanceInvoiceNumber: existingAdvanceInvoice?.provider_invoice_number || null,
+          message: 'Előnézet PDF sikeresen létrehozva'
+        })
+      }
     }
-
-    const responseData = {
-      success: true,
-      invoiceNumber: finalInvoiceNumber,
-      proformaInvoiceNumber: existingProformaInvoice?.provider_invoice_number || null,
-      message: 'Template proforma számla sikeresen létrehozva'
-    }
-    console.log('Template proforma API response:', responseData)
-    return NextResponse.json(responseData)
+    
+    // If no PDF found, return error
+    return NextResponse.json(
+      { 
+        error: 'Előnézet PDF nem található a válaszban',
+        details: responseText.substring(0, 500)
+      },
+      { status: 500 }
+    )
 
   } catch (error: any) {
     console.error('Error creating template proforma invoice:', error)

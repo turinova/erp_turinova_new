@@ -108,9 +108,10 @@ export default function InvoiceModal({
   const [error, setError] = useState<string | null>(null)
   
   // Invoice settings
-  const [invoiceType, setInvoiceType] = useState('normal') // normal | advance
+  const [invoiceType, setInvoiceType] = useState('normal') // normal | advance | proforma
   const [paymentMethod, setPaymentMethod] = useState('cash') // cash, bank_transfer, card
   const [advanceAmount, setAdvanceAmount] = useState<number>(0)
+  const [proformaAmount, setProformaAmount] = useState<number>(0) // For partial proforma invoices
   // Initialize dates as empty to prevent hydration mismatch - will be set in useEffect
   const [dueDate, setDueDate] = useState<string>('')
   const [fulfillmentDate, setFulfillmentDate] = useState<string>('')
@@ -124,6 +125,7 @@ export default function InvoiceModal({
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [templateInvoiceNumber, setTemplateInvoiceNumber] = useState<string | null>(null) // Single template invoice number
   const [existingProformaInvoiceNumber, setExistingProformaInvoiceNumber] = useState<string | null>(null) // Existing proforma invoice number for title
+  const [existingAdvanceInvoiceNumber, setExistingAdvanceInvoiceNumber] = useState<string | null>(null) // Existing advance invoice number for title
   const [pdfLoaded, setPdfLoaded] = useState(false) // Track when PDF embed has actually loaded
   const templateInvoiceNumberRef = useRef<string | null>(null) // Ref to track template invoice number for cleanup
 
@@ -134,11 +136,19 @@ export default function InvoiceModal({
     setFulfillmentDate(prev => prev || today)
   }, []) // Only run once on mount
 
-  // Clear existing proforma invoice number when modal opens or invoice type changes
+  // Clear existing invoice numbers when modal opens or invoice type changes
   useEffect(() => {
     if (open) {
       setExistingProformaInvoiceNumber(null)
+      setExistingAdvanceInvoiceNumber(null)
       setTemplateInvoiceNumber(null)
+      // Reset amounts when switching invoice types
+      if (invoiceType !== 'advance') {
+        setAdvanceAmount(0)
+      }
+      if (invoiceType !== 'proforma') {
+        setProformaAmount(0)
+      }
     }
   }, [open, invoiceType])
 
@@ -187,7 +197,8 @@ export default function InvoiceModal({
           fulfillmentDate,
           comment,
           language,
-          advanceAmount: invoiceType === 'advance' ? advanceAmount : undefined
+          advanceAmount: invoiceType === 'advance' ? advanceAmount : undefined,
+          proformaAmount: invoiceType === 'proforma' ? (proformaAmount > 0 ? proformaAmount : undefined) : undefined
         })
       })
 
@@ -197,13 +208,46 @@ export default function InvoiceModal({
         throw new Error(data.error || 'Hiba a template proforma számla létrehozása során')
       }
 
-      // Store existing proforma invoice number if returned
+      // Store existing proforma and advance invoice numbers if returned
       if (data.proformaInvoiceNumber) {
         console.log('Template proforma: Received proforma invoice number:', data.proformaInvoiceNumber)
         setExistingProformaInvoiceNumber(data.proformaInvoiceNumber)
       } else {
         console.log('Template proforma: No proforma invoice number returned')
         setExistingProformaInvoiceNumber(null)
+      }
+      
+      if (data.advanceInvoiceNumber) {
+        console.log('Template proforma: Received advance invoice number:', data.advanceInvoiceNumber)
+        setExistingAdvanceInvoiceNumber(data.advanceInvoiceNumber)
+      } else {
+        setExistingAdvanceInvoiceNumber(null)
+      }
+
+      // If PDF is returned directly (elonezetpdf), handle it immediately
+      if (data.pdf) {
+        // Reset PDF loaded state when setting new URL
+        setPdfLoaded(false)
+        
+        // Cleanup old blob URL
+        setPreviewPdfUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev.split('#')[0])
+          }
+          return null
+        })
+        
+        // Create blob URL from base64
+        const binaryString = atob(data.pdf)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        const blob = new Blob([bytes], { type: data.mimeType || 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        setPreviewPdfUrl(url)
+        setPreviewLoading(false)
+        return null // No invoice number needed when PDF is returned directly
       }
 
       return data.invoiceNumber || null
@@ -303,12 +347,21 @@ export default function InvoiceModal({
       
       const data = await response.json()
       if (!response.ok || !data.success) {
-        console.error(`Failed to delete template proforma invoice ${invoiceNumber}:`, data.error)
+        // Check if error is about invoice not existing (error 335) - this is acceptable
+        const errorMessage = data.error || ''
+        if (errorMessage.includes('335') || errorMessage.includes('Nincs ilyen díjbekérő')) {
+          // Invoice already deleted or doesn't exist - this is fine, goal achieved
+          console.log(`Template proforma invoice ${invoiceNumber} already deleted or doesn't exist - treating as success`)
+        } else {
+          // Other errors - log but don't throw (non-critical)
+          console.warn(`Failed to delete template proforma invoice ${invoiceNumber}:`, data.error)
+        }
       } else {
         console.log(`Template proforma invoice ${invoiceNumber} deleted successfully`)
       }
     } catch (err) {
-      console.error(`Error deleting template proforma invoice ${invoiceNumber}:`, err)
+      // Network or other errors - log but don't throw (non-critical for template cleanup)
+      console.warn(`Error deleting template proforma invoice ${invoiceNumber}:`, err)
     }
   }, [order.id])
 
@@ -365,40 +418,28 @@ export default function InvoiceModal({
     let cancelled = false
 
     const regeneratePreview = async () => {
-      // Delete existing template proforma first
-      const currentTemplateNumber = templateInvoiceNumberRef.current
-      if (currentTemplateNumber) {
-        await deleteTemplateProforma(currentTemplateNumber)
-        setTemplateInvoiceNumber(null)
-        setPreviewPdfUrl((prev) => {
-          if (prev) {
-            URL.revokeObjectURL(prev.split('#')[0])
-          }
-          return null
-        })
-        setPdfLoaded(false)
-      }
+      // Clear existing preview (no need to delete since elonezetpdf doesn't create invoices)
+      setTemplateInvoiceNumber(null)
+      setPreviewPdfUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev.split('#')[0])
+        }
+        return null
+      })
+      setPdfLoaded(false)
 
       setPreviewLoading(true)
       setPreviewError(null)
 
       try {
-        // Create new template proforma with updated settings
-        const invoiceNumber = await createTemplateProforma()
-        if (cancelled || !invoiceNumber) return
-
-        setTemplateInvoiceNumber(invoiceNumber)
-
-        // Query PDF of the new template invoice
-        await queryInvoicePdf(invoiceNumber)
+        // Create template proforma with elonezetpdf - PDF returned directly
+        await createTemplateProforma()
+        // PDF is handled in createTemplateProforma callback
       } catch (err: any) {
         if (cancelled) return
         console.error('Error regenerating preview:', err)
         setPreviewError(err.message || 'Nem sikerült újra létrehozni az előnézetet')
-      } finally {
-        if (!cancelled) {
-          setPreviewLoading(false)
-        }
+        setPreviewLoading(false)
       }
     }
 
@@ -411,7 +452,7 @@ export default function InvoiceModal({
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [open, paymentMethod, dueDate, fulfillmentDate, comment, language, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, createTemplateProforma, queryInvoicePdf, deleteTemplateProforma])
+  }, [open, paymentMethod, dueDate, fulfillmentDate, comment, language, invoiceType, advanceAmount, proformaAmount, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, createTemplateProforma, queryInvoicePdf, deleteTemplateProforma])
 
   // Timeout fallback to clear loading state if PDF embed doesn't fire onLoad
   useEffect(() => {
@@ -443,6 +484,11 @@ export default function InvoiceModal({
       return
     }
 
+    if (invoiceType === 'proforma' && proformaAmount < 0) {
+      setError('A díjbekérő összege nem lehet negatív')
+      return
+    }
+
     setError(null)
     setLoading(true)
 
@@ -466,11 +512,25 @@ export default function InvoiceModal({
           comment,
           language,
           sendEmail,
-          advanceAmount: invoiceType === 'advance' ? advanceAmount : undefined
+          advanceAmount: invoiceType === 'advance' ? advanceAmount : undefined,
+          proformaAmount: invoiceType === 'proforma' ? (proformaAmount > 0 ? proformaAmount : undefined) : undefined
         })
       })
 
-      const data = await response.json()
+      // Check if response exists and is ok before trying to parse JSON
+      if (!response) {
+        throw new Error('Nem sikerült kapcsolódni a szerverhez. Kérjük, próbálja újra.')
+      }
+
+      let data
+      try {
+        data = await response.json()
+      } catch (jsonError) {
+        // If JSON parsing fails, try to get text response
+        const textResponse = await response.text()
+        console.error('Failed to parse JSON response:', textResponse)
+        throw new Error(`Szerver hiba: ${response.status} ${response.statusText}`)
+      }
 
       if (!response.ok || !data.success) {
         const errorMsg = data.error || 'Hiba történt a számla létrehozása során'
@@ -493,7 +553,12 @@ export default function InvoiceModal({
       onClose()
     } catch (err: any) {
       console.error('Error creating invoice:', err)
-      setError(err.message || 'Ismeretlen hiba történt')
+      // Handle network errors specifically
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        setError('Hálózati hiba történt. Kérjük, ellenőrizze az internetkapcsolatot és próbálja újra.')
+      } else {
+        setError(err.message || 'Ismeretlen hiba történt')
+      }
       toast.error('Hiba a számla létrehozása során!')
     } finally {
       setLoading(false)
@@ -562,6 +627,19 @@ export default function InvoiceModal({
                   size="small"
                   inputProps={{ min: 0, step: 1 }}
                   helperText="Adja meg az előleg összegét bruttó értékben"
+                />
+              )}
+
+              {invoiceType === 'proforma' && (
+                <TextField
+                  fullWidth
+                  label="Díjbekérő összege (Ft)"
+                  type="number"
+                  value={proformaAmount}
+                  onChange={(e) => setProformaAmount(parseFloat(e.target.value) || 0)}
+                  size="small"
+                  inputProps={{ min: 0, step: 1 }}
+                  helperText="Hagyja üresen a teljes összeghez, vagy adja meg a részösszeget bruttó értékben"
                 />
               )}
 
@@ -647,9 +725,18 @@ export default function InvoiceModal({
               <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
                 <Typography variant="h6">
                   {(() => {
-                    console.log('Preview title render:', { existingProformaInvoiceNumber, invoiceType, templateInvoiceNumber })
-                    if (existingProformaInvoiceNumber && invoiceType === 'normal') {
+                    console.log('Preview title render:', { existingProformaInvoiceNumber, existingAdvanceInvoiceNumber, invoiceType, templateInvoiceNumber })
+                    // Show relationships in preview title
+                    if (existingAdvanceInvoiceNumber && invoiceType === 'normal') {
+                      return `ELŐNÉZET (VÉGSZÁMLA A ${existingAdvanceInvoiceNumber} ELŐLEGSZÁMLA ALAPJÁN)`
+                    } else if (existingProformaInvoiceNumber && invoiceType === 'advance') {
+                      return `ELŐNÉZET (ELŐLEGSZÁMLA A ${existingProformaInvoiceNumber} DÍJBEKÉRŐ ALAPJÁN)`
+                    } else if (existingProformaInvoiceNumber && invoiceType === 'normal' && !existingAdvanceInvoiceNumber) {
                       return `ELŐNÉZET (SZÁMLA A ${existingProformaInvoiceNumber} DÍJBEKÉRŐ ALAPJÁN)`
+                    } else if (invoiceType === 'proforma') {
+                      return 'ELŐNÉZET (DÍJBEKÉRŐ)'
+                    } else if (invoiceType === 'advance') {
+                      return 'ELŐNÉZET (ELŐLEGSZÁMLA)'
                     }
                     return 'Előnézet'
                   })()}

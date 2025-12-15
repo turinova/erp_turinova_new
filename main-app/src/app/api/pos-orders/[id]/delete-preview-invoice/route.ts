@@ -79,6 +79,16 @@ export async function POST(
       const errorCode = errorCodeMatch ? errorCodeMatch[1] : 'Unknown'
       const errorMessage = errorMessageMatch ? errorMessageMatch[1] : 'Ismeretlen hiba'
       
+      // Error code 335 means "Nincs ilyen díjbekérő" (No such proforma invoice)
+      // This is acceptable - the invoice is already gone, which is what we want
+      if (errorCode === '335') {
+        console.log(`Template proforma invoice ${body.invoiceNumber} already deleted or doesn't exist (error 335) - treating as success`)
+        return NextResponse.json({
+          success: true,
+          message: 'Preview számla már törölve volt vagy nem létezett'
+        })
+      }
+      
       console.error('Delete Preview Invoice - Error:', {
         code: errorCode,
         message: errorMessage,
