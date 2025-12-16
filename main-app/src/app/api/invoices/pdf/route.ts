@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
     // Reference: https://docs.szamlazz.hu/hu/agent/querying_pdf/xsd and response notes
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamlapdf xmlns="http://www.szamlazz.hu/xmlszamlapdf" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamlapdf https://www.szamlazz.hu/szamla/docs/xsds/agentpdf/xmlszamlapdf.xsd">
-  <szamlaagentkulcs>${SZAMLAZZ_AGENT_KEY}</szamlaagentkulcs>
-  <szamlaszam>${number}</szamlaszam>
+    <szamlaagentkulcs>${SZAMLAZZ_AGENT_KEY}</szamlaagentkulcs>
+    <szamlaszam>${number}</szamlaszam>
   <valaszVerzio>1</valaszVerzio>
 </xmlszamlapdf>`
 
@@ -47,14 +47,14 @@ export async function GET(request: NextRequest) {
 
     const contentType = response.headers.get('content-type') || ''
     if (contentType.includes('pdf')) {
-      const pdfBuffer = Buffer.from(await response.arrayBuffer())
-      return new NextResponse(pdfBuffer, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="${number}.pdf"`
-        }
-      })
+    const pdfBuffer = Buffer.from(await response.arrayBuffer())
+    return new NextResponse(pdfBuffer, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${number}.pdf"`
+      }
+    })
     }
 
     // If not PDF, try to read text/XML and return error details

@@ -1165,20 +1165,20 @@ export default function FulfillmentOrderDetailClient({
 
   return (
     <TabContext value={tabValue}>
-      <Box sx={{ p: 3 }}>
-        <Breadcrumbs sx={{ mb: 2 }}>
-          <Link component={NextLink} href="/home" underline="hover" color="inherit">
-            <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-            Kezdőlap
-          </Link>
-          <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
-            Értékesítés
-          </Link>
-          <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
-            Ügyfél rendelések
-          </Link>
-          <Typography color="text.primary">{order.order_number}</Typography>
-        </Breadcrumbs>
+    <Box sx={{ p: 3 }}>
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <Link component={NextLink} href="/home" underline="hover" color="inherit">
+          <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+          Kezdőlap
+        </Link>
+        <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
+          Értékesítés
+        </Link>
+        <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
+          Ügyfél rendelések
+        </Link>
+        <Typography color="text.primary">{order.order_number}</Typography>
+      </Breadcrumbs>
 
         <Box sx={{ mb: 3 }}>
           <CustomTabList pill="true" onChange={(_e, val) => setTabValue(val)} aria-label="fulfillment order tabs">
@@ -1188,10 +1188,10 @@ export default function FulfillmentOrderDetailClient({
         </Box>
 
         <TabPanel value="edit" sx={{ p: 0, pt: 3 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-            <Typography variant="h4">
-              Ügyfél rendelés: {order.order_number}
-            </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">
+          Ügyfél rendelés: {order.order_number}
+        </Typography>
             <Stack direction="row" spacing={2}>
               <Button
                 variant="outlined"
@@ -1210,18 +1210,18 @@ export default function FulfillmentOrderDetailClient({
               >
                 Számlázás
               </Button>
-              <Button
-                variant="contained"
-                startIcon={<SaveIcon />}
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? 'Mentés...' : 'Mentés'}
-              </Button>
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving ? 'Mentés...' : 'Mentés'}
+        </Button>
             </Stack>
-          </Box>
+      </Box>
 
-          <Stack spacing={3}>
+      <Stack spacing={3}>
         {/* Two column layout: 60-40 */}
         <Grid container spacing={3} alignItems="flex-start">
           {/* Left column: 60% - Alap adatok */}
@@ -2108,7 +2108,7 @@ export default function FulfillmentOrderDetailClient({
           {invoicesLoading ? (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4 }}>
               <CircularProgress />
-            </Box>
+    </Box>
           ) : invoices.length === 0 ? (
             <Box sx={{ p: 2 }}>
               <Typography variant="body2" color="text.secondary">

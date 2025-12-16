@@ -60,6 +60,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Ügyfél rendelések',
         href: '/fulfillment-orders'
+      },
+      {
+        label: 'Ügyfél ajánlatok',
+        href: '/client-offers'
       }
     ]
   },

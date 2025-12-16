@@ -6062,3 +6062,250 @@ export async function getPosOrderById(id: string) {
     return null
   }
 }
+
+// ============================================================================
+// CLIENT OFFERS FUNCTIONS (Separate feature - do not modify existing functions)
+// ============================================================================
+
+// Fetch all client offers with pagination for client-offers page
+export async function getClientOffersWithPagination(page: number = 1, limit: number = 50, search: string = '', status: string = '') {
+  if (!checkSupabaseConfig()) return { offers: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+
+  const startTime = performance.now()
+  const offset = (page - 1) * limit
+
+  try {
+    console.log(`[SSR] Fetching client offers page ${page}, limit ${limit}, search: "${search}", status: "${status}"`)
+
+    // If search is provided, find matching offer IDs by customer_name
+    let allMatchingOfferIds: string[] = []
+    if (search && search.trim().length >= 2) {
+      const searchTerm = search.trim()
+      
+      // Find offers matching customer_name
+      const { data: customerMatches } = await supabaseServer
+        .from('client_offers')
+        .select('id')
+        .ilike('customer_name', `%${searchTerm}%`)
+        .is('deleted_at', null)
+      
+      const customerIds = customerMatches?.map(o => o.id) || []
+      allMatchingOfferIds = [...new Set(customerIds)]
+    }
+
+    // Build the main query
+    let query = supabaseServer
+      .from('client_offers')
+      .select(`
+        id,
+        offer_number,
+        customer_id,
+        worker_id,
+        customer_name,
+        total_gross,
+        status,
+        created_at,
+        created_by,
+        workers(nickname, color)
+      `, { count: 'exact' })
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    // Apply status filter
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    // Apply search filter - if we have matching IDs, filter by them
+    if (search && search.trim().length >= 2 && allMatchingOfferIds.length > 0) {
+      query = query.in('id', allMatchingOfferIds)
+    } else if (search && search.trim().length >= 2 && allMatchingOfferIds.length === 0) {
+      // No matches found, return empty result
+      return { offers: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    const { data, error, count } = await query
+      .range(offset, offset + limit - 1)
+
+    logTiming('Client Offers DB Query', startTime, `Found ${data?.length || 0} offers`)
+
+    if (error) {
+      console.error('[SSR] Error fetching client offers:', error)
+      return { offers: [], totalCount: 0, totalPages: 0, currentPage: 1 }
+    }
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    // Fetch created_by user info
+    const createdByUserIds = [...new Set(data?.map(o => o.created_by).filter(Boolean) || [])]
+    let createdByUsers: Record<string, { email?: string, full_name?: string }> = {}
+    
+    if (createdByUserIds.length > 0) {
+      const { data: users } = await supabaseServer
+        .from('users')
+        .select('id, email, full_name')
+        .in('id', createdByUserIds)
+      
+      if (users) {
+        users.forEach(user => {
+          createdByUsers[user.id] = {
+            email: user.email || '',
+            full_name: user.full_name || ''
+          }
+        })
+      }
+    }
+
+    // Transform the data
+    const offers = data?.map(offer => {
+      const creator = createdByUsers[offer.created_by] || {}
+      return {
+        id: offer.id,
+        offer_number: offer.offer_number || '',
+        customer_name: offer.customer_name || '',
+        total_gross: Number(offer.total_gross) || 0,
+        status: offer.status,
+        created_at: offer.created_at,
+        created_by_email: creator.email || '',
+        created_by_name: creator.full_name || '',
+        worker_nickname: offer.workers?.nickname || '',
+        worker_color: offer.workers?.color || '#1976d2'
+      }
+    }) || []
+
+    // Fetch status counts for filter chips
+    const { data: allOffers } = await supabaseServer
+      .from('client_offers')
+      .select('status')
+      .is('deleted_at', null)
+    
+    const statusCounts = {
+      all: allOffers?.length || 0,
+      draft: allOffers?.filter(o => o.status === 'draft').length || 0,
+      sent: allOffers?.filter(o => o.status === 'sent').length || 0,
+      accepted: allOffers?.filter(o => o.status === 'accepted').length || 0,
+      rejected: allOffers?.filter(o => o.status === 'rejected').length || 0
+    }
+
+    logTiming('Client Offers Total', startTime, `Transformed ${offers.length} offers`)
+    console.log(`[SSR] Client offers fetched successfully: ${offers.length} offers, total: ${totalCount}`)
+
+    return {
+      offers,
+      totalCount,
+      totalPages,
+      currentPage: page,
+      limit,
+      statusCounts
+    }
+
+  } catch (error) {
+    console.error('[SSR] Error fetching client offers:', error)
+    logTiming('Client Offers Fetch Error', startTime)
+    return { 
+      offers: [], 
+      totalCount: 0, 
+      totalPages: 0, 
+      currentPage: 1,
+      statusCounts: {
+        all: 0,
+        draft: 0,
+        sent: 0,
+        accepted: 0,
+        rejected: 0
+      }
+    }
+  }
+}
+
+// Get client offer by ID with items
+export async function getClientOfferById(id: string) {
+  if (!checkSupabaseConfig()) return null
+
+  const startTime = performance.now()
+
+  try {
+    // Fetch offer with related data
+    const { data: offer, error: offerError } = await supabaseServer
+      .from('client_offers')
+      .select(`
+        id,
+        offer_number,
+        customer_id,
+        worker_id,
+        customer_name,
+        customer_email,
+        customer_mobile,
+        billing_name,
+        billing_country,
+        billing_city,
+        billing_postal_code,
+        billing_street,
+        billing_house_number,
+        billing_tax_number,
+        billing_company_reg_number,
+        subtotal_net,
+        total_vat,
+        total_gross,
+        discount_percentage,
+        discount_amount,
+        status,
+        notes,
+        created_at,
+        updated_at,
+        workers(nickname, color)
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (offerError || !offer) {
+      console.error('[SSR] Error fetching client offer:', offerError)
+      return null
+    }
+
+    // Fetch items
+    const { data: items, error: itemsError } = await supabaseServer
+      .from('client_offers_items')
+      .select(`
+        id,
+        item_type,
+        material_id,
+        accessory_id,
+        linear_material_id,
+        fee_type_id,
+        product_name,
+        sku,
+        unit,
+        quantity,
+        unit_price_net,
+        unit_price_gross,
+        vat_id,
+        vat_percentage,
+        total_net,
+        total_vat,
+        total_gross,
+        notes,
+        sort_order
+      `)
+      .eq('client_offer_id', id)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
+
+    if (itemsError) {
+      console.error('[SSR] Error fetching client offer items:', itemsError)
+    }
+
+    logTiming('Client Offer By ID Total', startTime, `Fetched offer with ${items?.length || 0} items`)
+
+    return {
+      offer,
+      items: items || []
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching client offer by ID:', error)
+    logTiming('Client Offer By ID Error', startTime)
+    return null
+  }
+}

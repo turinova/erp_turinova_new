@@ -1231,20 +1231,20 @@ export default function PosOrderDetailClient({
 
   return (
     <TabContext value={tabValue}>
-      <Box sx={{ p: 3 }}>
-        <Breadcrumbs sx={{ mb: 2 }}>
-          <Link component={NextLink} href="/home" underline="hover" color="inherit">
-            <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-            Kezdőlap
-          </Link>
-          <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
-            Értékesítés
-          </Link>
-          <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
-            Rendelések
-          </Link>
-          <Typography color="text.primary">{order.pos_order_number}</Typography>
-        </Breadcrumbs>
+    <Box sx={{ p: 3 }}>
+      <Breadcrumbs sx={{ mb: 2 }}>
+        <Link component={NextLink} href="/home" underline="hover" color="inherit">
+          <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+          Kezdőlap
+        </Link>
+        <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
+          Értékesítés
+        </Link>
+        <Link component={NextLink} href="/pos-orders" underline="hover" color="inherit">
+          Rendelések
+        </Link>
+        <Typography color="text.primary">{order.pos_order_number}</Typography>
+      </Breadcrumbs>
 
         <Box sx={{ mb: 3 }}>
           <CustomTabList pill="true" onChange={(_e, val) => setTabValue(val)} aria-label="pos order tabs">
@@ -1259,11 +1259,11 @@ export default function PosOrderDetailClient({
           POS rendelés: {order.pos_order_number}
         </Typography>
         <Stack direction="row" spacing={2}>
-              <Button
-                variant="outlined"
-                color="primary"
-                startIcon={<ReceiptIcon />}
-                onClick={() => setInvoiceModalOpen(true)}
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<ReceiptIcon />}
+            onClick={() => setInvoiceModalOpen(true)}
                 disabled={
                   !order.customer_name ||
                   !order.billing_name ||
@@ -1276,9 +1276,9 @@ export default function PosOrderDetailClient({
                   // Proforma and advance invoices don't require full payment
                   // Button is only enabled when all required billing fields are saved
                 }
-              >
-                Számlázás
-              </Button>
+          >
+            Számlázás
+          </Button>
           <Button
             variant="contained"
             startIcon={<SaveIcon />}

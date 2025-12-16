@@ -160,32 +160,32 @@ function buildInvoiceXml(
   } else {
     // Normal invoice or full proforma - use existing items
     itemsXml = items.map((item) => {
-      const vatRate = vatRatesMap.get(item.vat_id) || 0
-      const mennyiseg = Number(item.quantity)
-      const nettoEgysegar = Number(item.unit_price_net)
-      
+    const vatRate = vatRatesMap.get(item.vat_id) || 0
+    const mennyiseg = Number(item.quantity)
+    const nettoEgysegar = Number(item.unit_price_net)
+    
       // Calculate nettoErtek = quantity × unit price, round to integer
       // Round to integers (whole forints) for Számlázz.hu compliance
       const nettoErtek = Math.round(mennyiseg * nettoEgysegar)
-      
+    
       // Calculate afaErtek = nettoErtek × vatRate / 100, round to integer
       const afaErtek = Math.round(nettoErtek * vatRate / 100)
-      
+    
       // Calculate bruttoErtek = nettoErtek + afaErtek (sum of integers)
-      const bruttoErtek = nettoErtek + afaErtek
-      
-      return `
-        <tetel>
-          <megnevezes>${escapeXml(item.product_name)}</megnevezes>
-          <mennyiseg>${mennyiseg}</mennyiseg>
-          <mennyisegiEgyseg>${item.product_type === 'material' ? 'm²' : item.product_type === 'linear_material' ? 'm' : 'db'}</mennyisegiEgyseg>
-          <nettoEgysegar>${nettoEgysegar}</nettoEgysegar>
-          <afakulcs>${vatRate}</afakulcs>
-          <nettoErtek>${nettoErtek}</nettoErtek>
-          <afaErtek>${afaErtek}</afaErtek>
-          <bruttoErtek>${bruttoErtek}</bruttoErtek>
-        </tetel>`
-    }).join('')
+    const bruttoErtek = nettoErtek + afaErtek
+    
+    return `
+      <tetel>
+        <megnevezes>${escapeXml(item.product_name)}</megnevezes>
+        <mennyiseg>${mennyiseg}</mennyiseg>
+        <mennyisegiEgyseg>${item.product_type === 'material' ? 'm²' : item.product_type === 'linear_material' ? 'm' : 'db'}</mennyisegiEgyseg>
+        <nettoEgysegar>${nettoEgysegar}</nettoEgysegar>
+        <afakulcs>${vatRate}</afakulcs>
+        <nettoErtek>${nettoErtek}</nettoErtek>
+        <afaErtek>${afaErtek}</afaErtek>
+        <bruttoErtek>${bruttoErtek}</bruttoErtek>
+      </tetel>`
+  }).join('')
   }
 
   // Add advance deduction item if there's an existing advance invoice (for final invoice)
@@ -888,17 +888,17 @@ export async function POST(
     // Note: internal_number uses RPC for eager allocation but DB default will generate if RPC fails
     //       (helps avoid gaps when provider succeeded but RPC did not)
     let internalNumber: string | null = null
-    try {
-      const { data: internalRes, error: internalErr } = await supabaseAdmin
-        .rpc('next_internal_invoice_number')
-      if (!internalErr && internalRes) {
-        internalNumber = internalRes as string
+      try {
+        const { data: internalRes, error: internalErr } = await supabaseAdmin
+          .rpc('next_internal_invoice_number')
+        if (!internalErr && internalRes) {
+          internalNumber = internalRes as string
       } else if (internalErr) {
         console.warn('Internal number RPC returned error; relying on DB default:', internalErr)
+        }
+      } catch (e) {
+        console.warn('Internal number RPC failed; relying on DB default:', e)
       }
-    } catch (e) {
-      console.warn('Internal number RPC failed; relying on DB default:', e)
-    }
 
     // For advance invoices, use advance amount
     // For final invoices (with existing advance), use order total minus advance amount
@@ -917,29 +917,29 @@ export async function POST(
       invoiceGrossTotal = orderData.total_gross || null
     }
 
-    const invoiceRow: any = {
-      provider: 'szamlazz_hu',
-      provider_invoice_number: finalInvoiceNumber,
-      provider_invoice_id: finalInvoiceNumber,
+      const invoiceRow: any = {
+        provider: 'szamlazz_hu',
+        provider_invoice_number: finalInvoiceNumber,
+        provider_invoice_id: finalInvoiceNumber,
       invoice_type: isAdvanceInvoiceRequest ? 'elolegszamla' : isProformaInvoiceRequest ? 'dijbekero' : 'szamla', // Use appropriate invoice type
-      related_order_type: 'pos_order',
-      related_order_id: id,
-      related_order_number: orderData.pos_order_number,
-      customer_name: orderData.billing_name || orderData.customer_name || '',
+        related_order_type: 'pos_order',
+        related_order_id: id,
+        related_order_number: orderData.pos_order_number,
+        customer_name: orderData.billing_name || orderData.customer_name || '',
       customer_id: resolvedCustomerId,
-      payment_due_date: body.dueDate || null,
-      fulfillment_date: body.fulfillmentDate || body.dueDate || null,
+        payment_due_date: body.dueDate || null,
+        fulfillment_date: body.fulfillmentDate || body.dueDate || null,
       gross_total: invoiceGrossTotal,
       payment_status: isProformaInvoiceRequest ? 'fizetesre_var' : 'fizetve', // Proforma invoices are not paid yet
-      is_storno_of_invoice_id: null,
-      pdf_url: finalInvoiceNumber
-        ? `/api/invoices/pdf?number=${encodeURIComponent(finalInvoiceNumber)}&provider=szamlazz_hu`
-        : null
-    }
+        is_storno_of_invoice_id: null,
+        pdf_url: finalInvoiceNumber
+          ? `/api/invoices/pdf?number=${encodeURIComponent(finalInvoiceNumber)}&provider=szamlazz_hu`
+          : null
+      }
 
-    if (internalNumber) {
-      invoiceRow.internal_number = internalNumber
-    }
+      if (internalNumber) {
+        invoiceRow.internal_number = internalNumber
+      }
 
     const { error: insertError, data: insertData } = await supabaseAdmin
       .from('invoices')

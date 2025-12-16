@@ -458,7 +458,7 @@ export default function InvoiceModal({
       })
       // Don't clear preview error if there's an existing final invoice - it will be set by the check
       if (!hasExistingFinalInvoice) {
-        setPreviewError(null)
+      setPreviewError(null)
       }
       setPdfLoaded(false)
     }
@@ -492,14 +492,14 @@ export default function InvoiceModal({
 
     const regeneratePreview = async () => {
       // Clear existing preview (no need to delete since elonezetpdf doesn't create invoices)
-      setTemplateInvoiceNumber(null)
-      setPreviewPdfUrl((prev) => {
-        if (prev) {
-          URL.revokeObjectURL(prev.split('#')[0])
-        }
-        return null
-      })
-      setPdfLoaded(false)
+        setTemplateInvoiceNumber(null)
+        setPreviewPdfUrl((prev) => {
+          if (prev) {
+            URL.revokeObjectURL(prev.split('#')[0])
+          }
+          return null
+        })
+        setPdfLoaded(false)
 
       setPreviewLoading(true)
       setPreviewError(null)
@@ -512,7 +512,7 @@ export default function InvoiceModal({
         if (cancelled) return
         console.error('Error regenerating preview:', err)
         setPreviewError(err.message || 'Nem sikerült újra létrehozni az előnézetet')
-        setPreviewLoading(false)
+          setPreviewLoading(false)
       }
     }
 
@@ -648,7 +648,7 @@ export default function InvoiceModal({
       if (err.name === 'TypeError' && err.message.includes('fetch')) {
         setError('Hálózati hiba történt. Kérjük, ellenőrizze az internetkapcsolatot és próbálja újra.')
       } else {
-        setError(err.message || 'Ismeretlen hiba történt')
+      setError(err.message || 'Ismeretlen hiba történt')
       }
       toast.error('Hiba a számla létrehozása során!')
     } finally {

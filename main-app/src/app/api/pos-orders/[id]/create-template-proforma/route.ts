@@ -230,7 +230,7 @@ function buildTemplateProformaXml(
         <afaErtek>${afaErtek}</afaErtek>
         <bruttoErtek>${bruttoErtek}</bruttoErtek>
       </tetel>`
-    }).join('')
+  }).join('')
   }
 
   // Add advance deduction item if there's an existing advance invoice (for final invoice preview)
@@ -839,11 +839,11 @@ export async function POST(
         })
       } catch (err) {
         console.error('Template proforma - Error reading PDF response:', err)
-        return NextResponse.json(
+      return NextResponse.json(
           { error: 'Hiba a PDF válasz feldolgozása során' },
-          { status: 500 }
-        )
-      }
+        { status: 500 }
+      )
+    }
     }
     
     // Handle XML response (may contain base64 PDF with valaszVerzio=2)
@@ -876,15 +876,15 @@ export async function POST(
                        responseText.match(/<pdfTartalom[^>]*>([^<]+)<\/pdfTartalom>/i)
       if (pdfMatch && pdfMatch[1]) {
         console.log('Template proforma - PDF found in response text')
-        return NextResponse.json({
-          success: true,
+    return NextResponse.json({
+      success: true,
           pdf: pdfMatch[1].trim(),
           mimeType: 'application/pdf',
           invoiceNumber: null,
           proformaInvoiceNumber: existingProformaInvoice?.provider_invoice_number || null,
           advanceInvoiceNumber: existingAdvanceInvoice?.provider_invoice_number || null,
           message: 'Előnézet PDF sikeresen létrehozva'
-        })
+    })
       }
     }
     
