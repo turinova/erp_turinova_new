@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useDebounce } from '@/hooks/useDebounce'
 import {
   Box,
   Breadcrumbs,
@@ -18,6 +19,7 @@ import {
   FormControl,
   Grid,
   IconButton,
+  InputAdornment,
   InputLabel,
   Link,
   MenuItem,
@@ -27,6 +29,7 @@ import {
   FormControlLabel,
   Select,
   Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
@@ -39,8 +42,12 @@ import {
   Tooltip,
   Alert
 } from '@mui/material'
+import TabPanel from '@mui/lab/TabPanel'
+import TabContext from '@mui/lab/TabContext'
+import CustomTabList from '@core/components/mui/TabList'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, CheckCircle as CheckCircleIcon, Info as InfoIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, CheckCircle as CheckCircleIcon, Info as InfoIcon, Receipt as ReceiptIcon, PictureAsPdf as PictureAsPdfIcon, Undo as UndoIcon } from '@mui/icons-material'
+import InvoiceModal from './InvoiceModal'
 import { toast } from 'react-toastify'
 
 interface Customer {
@@ -158,6 +165,21 @@ interface Partner {
   name: string
 }
 
+interface TenantCompany {
+  id: string
+  name: string
+  country: string | null
+  postal_code: string | null
+  city: string | null
+  address: string | null
+  phone_number: string | null
+  email: string | null
+  website: string | null
+  tax_number: string | null
+  company_registration_number: string | null
+  vat_id: string | null
+}
+
 interface FulfillmentOrderDetailClientProps {
   id: string
   initialOrder: CustomerOrder
@@ -172,6 +194,7 @@ interface FulfillmentOrderDetailClientProps {
   initialWorkers: Worker[]
   initialFeeTypes: FeeType[]
   initialPartners: Partner[]
+  initialTenantCompany: TenantCompany | null
 }
 
 export default function FulfillmentOrderDetailClient({
@@ -187,11 +210,24 @@ export default function FulfillmentOrderDetailClient({
   initialUnits,
   initialWorkers,
   initialFeeTypes,
-  initialPartners
+  initialPartners,
+  initialTenantCompany
 }: FulfillmentOrderDetailClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Tabs
+  const [tabValue, setTabValue] = useState('edit')
+  
+  // Invoice modal state
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
+  
+  // Invoices tab state
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [stornoDialogOpen, setStornoDialogOpen] = useState(false)
+  const [stornoTarget, setStornoTarget] = useState<any | null>(null)
 
   // Order state
   const [order, setOrder] = useState<CustomerOrder>(initialOrder)
@@ -331,6 +367,13 @@ export default function FulfillmentOrderDetailClient({
   const [billingTaxNumber, setBillingTaxNumber] = useState(initialOrder.billing_tax_number || '')
   const [billingCompanyRegNumber, setBillingCompanyRegNumber] = useState(initialOrder.billing_company_reg_number || '')
 
+  // Debounced search term for products
+  const debouncedProductSearchTerm = useDebounce(productSearchTerm, 300)
+  const debouncedTaxNumber = useDebounce(billingTaxNumber, 800) // Longer delay for taxpayer queries
+  
+  // Query taxpayer data when tax number changes
+  const taxpayerAbortControllerRef = useRef<AbortController | null>(null)
+
   // References
   const [customers] = useState<Customer[]>(initialCustomers)
   const [vatRates] = useState<VatRate[]>(initialVatRates)
@@ -339,6 +382,7 @@ export default function FulfillmentOrderDetailClient({
   const [workers] = useState<Worker[]>(initialWorkers)
   const [feeTypes] = useState<FeeType[]>(initialFeeTypes)
   const [partners] = useState<Partner[]>(initialPartners)
+  const [tenantCompany] = useState<TenantCompany | null>(initialTenantCompany)
 
   // Worker state
   const [workerId] = useState(initialOrder.worker_id)
@@ -352,6 +396,11 @@ export default function FulfillmentOrderDetailClient({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [newPaymentType, setNewPaymentType] = useState<'cash' | 'card'>('cash')
   const [newPaymentAmount, setNewPaymentAmount] = useState<number>(0)
+
+  // Taxpayer validation state
+  const [taxpayerValidating, setTaxpayerValidating] = useState(false)
+  const [taxpayerValidationError, setTaxpayerValidationError] = useState<string | null>(null)
+  const [taxNumberFieldInteracted, setTaxNumberFieldInteracted] = useState(false)
 
   // Delete item modal state
   const [deleteItemModalOpen, setDeleteItemModalOpen] = useState(false)
@@ -436,6 +485,104 @@ export default function FulfillmentOrderDetailClient({
       setBillingCompanyRegNumber('')
     }
   }
+
+  // Query taxpayer data when tax number changes
+  useEffect(() => {
+    // Only validate if the field has been interacted with (focused or changed)
+    if (!taxNumberFieldInteracted) {
+      return
+    }
+
+    // Clean up previous request
+    if (taxpayerAbortControllerRef.current) {
+      taxpayerAbortControllerRef.current.abort()
+    }
+
+    // Only query if tax number is valid format (Hungarian: 8 digits + hyphen + 1-2 digits)
+    const cleanTaxNumber = debouncedTaxNumber.trim().replace(/\s+/g, '')
+    const taxNumberPattern = /^\d{8}-\d{1,2}-\d{2}$/
+    
+    if (cleanTaxNumber && taxNumberPattern.test(cleanTaxNumber)) {
+      setTaxpayerValidating(true)
+      setTaxpayerValidationError(null)
+      
+      const abortController = new AbortController()
+      taxpayerAbortControllerRef.current = abortController
+
+      fetch('/api/taxpayer/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taxNumber: cleanTaxNumber }),
+        signal: abortController.signal
+      })
+        .then(res => {
+          if (abortController.signal.aborted) return null
+          return res.json()
+        })
+        .then(data => {
+          if (abortController.signal.aborted) return
+          
+          console.log('Taxpayer query response data:', data)
+          
+          if (data.success && data.taxpayer) {
+            // Auto-fill billing fields with taxpayer data
+            const taxpayer = data.taxpayer
+            console.log('Auto-filling billing fields with:', taxpayer)
+            
+            if (taxpayer.name) {
+              setBillingName(taxpayer.name)
+              console.log('Set billing name to:', taxpayer.name)
+            }
+            if (taxpayer.postalCode) {
+              setBillingPostalCode(taxpayer.postalCode)
+              console.log('Set postal code to:', taxpayer.postalCode)
+            }
+            if (taxpayer.city) {
+              setBillingCity(taxpayer.city)
+              console.log('Set city to:', taxpayer.city)
+            }
+            if (taxpayer.street) {
+              setBillingStreet(taxpayer.street)
+              console.log('Set street to:', taxpayer.street)
+            }
+            if (taxpayer.houseNumber) {
+              setBillingHouseNumber(taxpayer.houseNumber)
+              console.log('Set house number to:', taxpayer.houseNumber)
+            }
+            // Country is always "Magyarország" - don't prefill it
+            setTaxpayerValidationError(null)
+            toast.success('Adószám ellenőrizve és számlázási adatok automatikusan kitöltve')
+          } else {
+            console.error('Taxpayer query failed:', data.error)
+            setTaxpayerValidationError(data.error || 'Az adószám nem található')
+          }
+          setTaxpayerValidating(false)
+        })
+        .catch(err => {
+          if (err.name === 'AbortError') return
+          console.error('Error querying taxpayer:', err)
+          if (!abortController.signal.aborted) {
+            setTaxpayerValidationError('Hiba történt az adószám ellenőrzése során')
+            setTaxpayerValidating(false)
+          }
+        })
+    } else if (cleanTaxNumber.length > 0) {
+      // Invalid format
+      setTaxpayerValidationError('Érvénytelen adószám formátum')
+      setTaxpayerValidating(false)
+    } else {
+      // Empty, clear errors
+      setTaxpayerValidationError(null)
+      setTaxpayerValidating(false)
+    }
+
+    return () => {
+      if (taxpayerAbortControllerRef.current) {
+        taxpayerAbortControllerRef.current.abort()
+        taxpayerAbortControllerRef.current = null
+      }
+    }
+  }, [debouncedTaxNumber, taxNumberFieldInteracted])
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -890,6 +1037,24 @@ export default function FulfillmentOrderDetailClient({
 
       toast.success('Mentés sikeres')
       
+      // Update order state with saved data (same as POS orders)
+      setOrder(prevOrder => ({
+        ...prevOrder,
+        customer_name: customerName || null,
+        customer_email: customerEmail || null,
+        customer_mobile: customerMobile || null,
+        billing_name: billingName || null,
+        billing_country: billingCountry || null,
+        billing_city: billingCity || null,
+        billing_postal_code: billingPostalCode || null,
+        billing_street: billingStreet || null,
+        billing_house_number: billingHouseNumber || null,
+        billing_tax_number: billingTaxNumber || null,
+        billing_company_reg_number: billingCompanyRegNumber || null,
+        discount_percentage: discountPercentage || 0,
+        discount_amount: discountAmount || 0
+      }))
+      
       // Refresh page data
       router.refresh()
     } catch (error: any) {
@@ -922,37 +1087,141 @@ export default function FulfillmentOrderDetailClient({
     }
   }
 
+  // Invoices tab handlers
+  const loadInvoices = async () => {
+    setInvoicesLoading(true)
+    try {
+      const res = await fetch(`/api/customer-orders/${id}/invoices`)
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || 'Hiba a számlák lekérdezésekor')
+      }
+      setInvoices(Array.isArray(data.invoices) ? data.invoices : [])
+    } catch (err: any) {
+      console.error('Error loading invoices:', err)
+      toast.error(err.message || 'Hiba a számlák lekérdezésekor')
+    } finally {
+      setInvoicesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (tabValue === 'invoices') {
+      loadInvoices()
+    }
+  }, [tabValue, id])
+
+  // Reload invoices when invoice modal closes
+  useEffect(() => {
+    if (!invoiceModalOpen && tabValue === 'invoices') {
+      loadInvoices()
+    }
+  }, [invoiceModalOpen, tabValue])
+
+  const handleOpenStornoDialog = (invoice: any) => {
+    setStornoTarget(invoice)
+    setStornoDialogOpen(true)
+  }
+
+  const handleCloseStornoDialog = () => {
+    setStornoDialogOpen(false)
+    setStornoTarget(null)
+  }
+
+  const handleConfirmStorno = async () => {
+    if (!stornoTarget?.provider_invoice_number) {
+      toast.error('Hiányzik a számlaszám a sztornóhoz')
+      return
+    }
+    try {
+      setInvoicesLoading(true)
+      const res = await fetch(`/api/customer-orders/${id}/storno-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerInvoiceNumber: stornoTarget.provider_invoice_number })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Hiba a művelet során')
+      }
+      toast.success(stornoTarget.invoice_type === 'dijbekero' ? 'Díjbekérő sikeresen törölve' : 'Sztornó számla sikeresen létrehozva')
+      handleCloseStornoDialog()
+      await loadInvoices()
+    } catch (err: any) {
+      console.error('Error creating storno invoice:', err)
+      toast.error(err.message || 'Hiba a művelet során')
+    } finally {
+      setInvoicesLoading(false)
+    }
+  }
+
+  const handleOpenInvoicePdf = (invoice: any) => {
+    if (invoice.pdf_url) {
+      window.open(invoice.pdf_url, '_blank', 'noopener')
+    } else {
+      toast.info('Nincs PDF elérési út ehhez a számlához')
+    }
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Breadcrumbs sx={{ mb: 2 }}>
-        <Link component={NextLink} href="/home" underline="hover" color="inherit">
-          <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
-          Kezdőlap
-        </Link>
-        <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
-          Értékesítés
-        </Link>
-        <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
-          Ügyfél rendelések
-        </Link>
-        <Typography color="text.primary">{order.order_number}</Typography>
-      </Breadcrumbs>
+    <TabContext value={tabValue}>
+      <Box sx={{ p: 3 }}>
+        <Breadcrumbs sx={{ mb: 2 }}>
+          <Link component={NextLink} href="/home" underline="hover" color="inherit">
+            <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
+            Kezdőlap
+          </Link>
+          <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
+            Értékesítés
+          </Link>
+          <Link component={NextLink} href="/fulfillment-orders" underline="hover" color="inherit">
+            Ügyfél rendelések
+          </Link>
+          <Typography color="text.primary">{order.order_number}</Typography>
+        </Breadcrumbs>
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">
-          Ügyfél rendelés: {order.order_number}
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Mentés...' : 'Mentés'}
-        </Button>
-      </Box>
+        <Box sx={{ mb: 3 }}>
+          <CustomTabList pill="true" onChange={(_e, val) => setTabValue(val)} aria-label="fulfillment order tabs">
+            <Tab label="Szerkesztés" value="edit" />
+            <Tab label="Számlák" value="invoices" />
+          </CustomTabList>
+        </Box>
 
-      <Stack spacing={3}>
+        <TabPanel value="edit" sx={{ p: 0, pt: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h4">
+              Ügyfél rendelés: {order.order_number}
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<ReceiptIcon />}
+                onClick={() => setInvoiceModalOpen(true)}
+                disabled={
+                  !order.customer_name ||
+                  !order.billing_name ||
+                  !order.billing_country ||
+                  !order.billing_postal_code ||
+                  !order.billing_city ||
+                  !order.billing_street ||
+                  !order.billing_house_number
+                }
+              >
+                Számlázás
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? 'Mentés...' : 'Mentés'}
+              </Button>
+            </Stack>
+          </Box>
+
+          <Stack spacing={3}>
         {/* Two column layout: 60-40 */}
         <Grid container spacing={3} alignItems="flex-start">
           {/* Left column: 60% - Alap adatok */}
@@ -1088,8 +1357,26 @@ export default function FulfillmentOrderDetailClient({
                         fullWidth
                         label="Adószám"
                         value={billingTaxNumber}
-                        onChange={(e) => setBillingTaxNumber(e.target.value)}
+                        onChange={(e) => {
+                          setTaxNumberFieldInteracted(true)
+                          setBillingTaxNumber(e.target.value)
+                        }}
+                        onFocus={() => setTaxNumberFieldInteracted(true)}
                         size="small"
+                        error={!!taxpayerValidationError}
+                        helperText={
+                          taxpayerValidating 
+                            ? 'Ellenőrzés...' 
+                            : taxpayerValidationError || 'Adószám megadása után automatikusan ellenőrizve és kitöltve lesznek a számlázási adatok'
+                        }
+                        InputProps={{
+                          endAdornment: taxpayerValidating ? (
+                            <InputAdornment position="end">
+                              <CircularProgress size={20} />
+                            </InputAdornment>
+                          ) : null
+                        }}
+                        placeholder="12345678-1-23"
                       />
                     </Grid>
                     <Grid item xs={12} md={6}>
@@ -1811,7 +2098,191 @@ export default function FulfillmentOrderDetailClient({
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+        </TabPanel>
+
+        <TabPanel value="invoices" sx={{ p: 0, pt: 3 }}>
+          <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+            <Typography variant="h6">Számlák</Typography>
+          </Stack>
+
+          {invoicesLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : invoices.length === 0 ? (
+            <Box sx={{ p: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                Nincs számla ehhez a rendeléshez.
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Számla azonosító</TableCell>
+                    <TableCell>Számla ID</TableCell>
+                    <TableCell>Számla típusa</TableCell>
+                    <TableCell>Fizetési határidő</TableCell>
+                    <TableCell>Teljesítési dátum</TableCell>
+                    <TableCell>Bruttó összeg</TableCell>
+                    <TableCell>Fizetési állapot</TableCell>
+                    <TableCell align="right">Műveletek</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {invoices.map((inv: any) => {
+                    const isDeleted = !!inv.deleted_at
+                    return (
+                      <TableRow 
+                        key={inv.id}
+                        sx={{
+                          opacity: isDeleted ? 0.6 : 1,
+                          textDecoration: isDeleted ? 'line-through' : 'none'
+                        }}
+                      >
+                        <TableCell>{inv.internal_number}</TableCell>
+                        <TableCell>{inv.provider_invoice_number || '-'}</TableCell>
+                        <TableCell sx={{ textTransform: 'capitalize' }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            {inv.invoice_type ? (
+                              <Chip
+                                label={
+                                  inv.invoice_type === 'szamla'
+                                    ? 'Számla'
+                                    : inv.invoice_type === 'elolegszamla'
+                                    ? 'Előleg számla'
+                                    : inv.invoice_type === 'dijbekero'
+                                    ? 'Díjbekérő'
+                                    : inv.invoice_type === 'sztorno'
+                                    ? 'Sztornó'
+                                    : inv.invoice_type
+                                }
+                                size="small"
+                                color={
+                                  inv.invoice_type === 'sztorno' 
+                                    ? 'error' 
+                                    : inv.invoice_type === 'elolegszamla' 
+                                    ? 'warning' 
+                                    : inv.invoice_type === 'dijbekero'
+                                    ? 'info'
+                                    : 'primary'
+                                }
+                                variant="outlined"
+                              />
+                            ) : (
+                              '-'
+                            )}
+                            {isDeleted && (
+                              <Chip
+                                label="Törölve"
+                                size="small"
+                                color="error"
+                                variant="filled"
+                              />
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell>{inv.payment_due_date || '-'}</TableCell>
+                        <TableCell>{inv.fulfillment_date || '-'}</TableCell>
+                        <TableCell>{inv.gross_total != null ? formatCurrency(Number(inv.gross_total)) : '-'}</TableCell>
+                        <TableCell>
+                          {inv.payment_status ? (
+                            <Chip
+                              label={
+                                inv.payment_status === 'nem_lesz_fizetve'
+                                  ? 'Nem lesz fizetve'
+                                  : inv.payment_status === 'fizetve'
+                                  ? 'Fizetve'
+                                  : inv.payment_status === 'fizetesre_var'
+                                  ? 'Fizetésre vár'
+                                  : inv.payment_status
+                              }
+                              size="small"
+                              color={
+                                inv.payment_status === 'fizetve'
+                                  ? 'success'
+                                  : inv.payment_status === 'fizetesre_var'
+                                  ? 'warning'
+                                  : 'default'
+                              }
+                              variant="outlined"
+                            />
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            <Tooltip title="Sztornó számla">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  disabled={inv.invoice_type === 'sztorno' || isDeleted}
+                                  onClick={() => handleOpenStornoDialog(inv)}
+                                >
+                                  <UndoIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="PDF megnyitás">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleOpenInvoicePdf(inv)}
+                                  disabled={!inv.pdf_url || isDeleted}
+                                >
+                                  <PictureAsPdfIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </TabPanel>
+
+      {/* Invoice Modal */}
+      <InvoiceModal
+        open={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        order={order}
+        items={items}
+        tenantCompany={tenantCompany}
+        vatRates={vatRates}
+      />
+      
+      {/* Sztornó megerősítés / Díjbekérő törlés */}
+      <Dialog open={stornoDialogOpen} onClose={handleCloseStornoDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {stornoTarget?.invoice_type === 'dijbekero' ? 'Díjbekérő törlése' : 'Sztornó számla'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography>
+            {stornoTarget?.invoice_type === 'dijbekero' 
+              ? 'Biztosan törölni szeretnéd ezt a díjbekérőt?'
+              : 'Biztosan létrehozod a sztornó számlát a következő számlához?'}
+          </Typography>
+          <Typography sx={{ mt: 1 }} fontWeight="bold">
+            {stornoTarget?.provider_invoice_number || '-'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseStornoDialog}>Mégse</Button>
+          <Button color="error" variant="contained" onClick={handleConfirmStorno}>
+            {stornoTarget?.invoice_type === 'dijbekero' ? 'Törlés' : 'Sztornó létrehozása'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      </Box>
+    </TabContext>
   )
 }
 

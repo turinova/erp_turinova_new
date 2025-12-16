@@ -160,7 +160,7 @@ export async function POST(
     // Fetch order to get buyer email (optional)
     let buyerEmail: string | null = null
     const { data: orderData } = await supabaseAdmin
-      .from('pos_orders')
+      .from('customer_orders')
       .select('customer_email')
       .eq('id', id)
       .limit(1)
@@ -221,7 +221,7 @@ export async function POST(
       provider_invoice_number: finalInvoiceNumber,
       provider_invoice_id: finalInvoiceNumber,
       invoice_type: 'sztorno',
-      related_order_type: 'pos_order',
+      related_order_type: 'customer_order',
       related_order_id: id,
       related_order_number: originalInvoice.related_order_number,
       customer_name: originalInvoice.customer_name || '',
@@ -271,5 +271,4 @@ export async function POST(
     )
   }
 }
-
 

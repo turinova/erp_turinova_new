@@ -81,8 +81,8 @@ function buildTemplateProformaXml(
   // This ensures each regeneration creates a new unique template
   const hasValidAdvanceInvoice = existingAdvanceInvoice && existingAdvanceInvoice.provider_invoice_number && existingAdvanceInvoice.provider_invoice_number.trim()
   const orderNumber = hasValidAdvanceInvoice 
-    ? order.pos_order_number 
-    : `${order.pos_order_number}-TEMPLATE-${Date.now()}`
+    ? order.order_number 
+    : `${order.order_number}-TEMPLATE-${Date.now()}`
 
   // Check if this is an advance invoice or proforma with amount
   const isAdvanceInvoice = settings.invoiceType === 'advance'
@@ -397,23 +397,23 @@ export async function POST(
       advanceAmountType: typeof body.advanceAmount
     })
 
-    // Fetch POS order
+    // Fetch customer order
     const { data: orderData, error: orderError } = await supabaseAdmin
-      .from('pos_orders')
+      .from('customer_orders')
       .select('*')
       .eq('id', id)
       .single()
 
     if (orderError || !orderData) {
       return NextResponse.json(
-        { error: 'POS rendelés nem található' },
+        { error: 'Ügyfél rendelés nem található' },
         { status: 404 }
       )
     }
 
     // Fetch order items
     const { data: itemsData, error: itemsError } = await supabaseAdmin
-      .from('pos_order_items')
+      .from('customer_order_items')
       .select(`
         id,
         item_type,
@@ -433,11 +433,11 @@ export async function POST(
         total_vat,
         total_gross
       `)
-      .eq('pos_order_id', id)
+      .eq('order_id', id)
       .is('deleted_at', null)
 
     if (itemsError) {
-      console.error('Error fetching POS order items:', itemsError)
+      console.error('Error fetching customer order items:', itemsError)
       return NextResponse.json(
         { error: `Hiba a tételek lekérdezése során: ${itemsError.message}` },
         { status: 500 }
@@ -490,7 +490,7 @@ export async function POST(
       const { data: advanceInvoiceCheck, error: advanceCheckError } = await supabaseAdmin
         .from('invoices')
         .select('id')
-        .eq('related_order_type', 'pos_order')
+        .eq('related_order_type', 'customer_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'elolegszamla')
         .eq('provider', 'szamlazz_hu')
@@ -502,7 +502,7 @@ export async function POST(
         const { data: existingFinalInvoice, error: finalInvoiceError } = await supabaseAdmin
           .from('invoices')
           .select('id, is_storno_of_invoice_id')
-          .eq('related_order_type', 'pos_order')
+          .eq('related_order_type', 'customer_order')
           .eq('related_order_id', id)
           .eq('invoice_type', 'szamla')
           .eq('provider', 'szamlazz_hu')
@@ -516,7 +516,7 @@ export async function POST(
           const { data: stornoInvoice, error: stornoError } = await supabaseAdmin
             .from('invoices')
             .select('id')
-            .eq('related_order_type', 'pos_order')
+            .eq('related_order_type', 'customer_order')
             .eq('related_order_id', id)
             .eq('invoice_type', 'sztorno')
             .eq('is_storno_of_invoice_id', existingFinalInvoice.id)
@@ -539,7 +539,7 @@ export async function POST(
     const { data: proformaInvoiceData, error: proformaError } = await supabaseAdmin
       .from('invoices')
       .select('provider_invoice_number, gross_total')
-      .eq('related_order_type', 'pos_order')
+      .eq('related_order_type', 'customer_order')
       .eq('related_order_id', id)
       .eq('invoice_type', 'dijbekero')
       .eq('provider', 'szamlazz_hu')
@@ -564,7 +564,7 @@ export async function POST(
       const { data: advanceInvoiceData, error: advanceError } = await supabaseAdmin
         .from('invoices')
         .select('id, provider_invoice_number, gross_total')
-        .eq('related_order_type', 'pos_order')
+        .eq('related_order_type', 'customer_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'elolegszamla')
         .eq('provider', 'szamlazz_hu')
@@ -578,7 +578,7 @@ export async function POST(
         const { data: stornoCheck, error: stornoCheckError } = await supabaseAdmin
           .from('invoices')
           .select('id')
-          .eq('related_order_type', 'pos_order')
+          .eq('related_order_type', 'customer_order')
           .eq('related_order_id', id)
           .eq('invoice_type', 'sztorno')
           .eq('is_storno_of_invoice_id', advanceInvoiceData.id)
@@ -905,5 +905,4 @@ export async function POST(
     )
   }
 }
-
 

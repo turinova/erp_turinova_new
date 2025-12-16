@@ -143,7 +143,7 @@ export default function InvoiceModal({
   useEffect(() => {
     if (open) {
       // Check for existing végszámla (final invoice) that references an advance invoice
-      fetch(`/api/pos-orders/${order.id}/invoices`)
+      fetch(`/api/customer-orders/${order.id}/invoices`)
         .then(res => res.json())
         .then(data => {
           const invoices = data.invoices || []
@@ -242,7 +242,7 @@ export default function InvoiceModal({
     }
 
     try {
-      const response = await fetch(`/api/pos-orders/${order.id}/create-template-proforma`, {
+      const response = await fetch(`/api/customer-orders/${order.id}/create-template-proforma`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -318,7 +318,7 @@ export default function InvoiceModal({
   // Query PDF of existing invoice
   const queryInvoicePdf = useCallback(async (invoiceNumber: string): Promise<string | null> => {
     try {
-      const response = await fetch(`/api/pos-orders/${order.id}/query-invoice-pdf`, {
+      const response = await fetch(`/api/customer-orders/${order.id}/query-invoice-pdf`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -394,7 +394,7 @@ export default function InvoiceModal({
     if (!invoiceNumber) return
 
     try {
-      const response = await fetch(`/api/pos-orders/${order.id}/delete-preview-invoice`, {
+      const response = await fetch(`/api/customer-orders/${order.id}/delete-preview-invoice`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -590,7 +590,7 @@ export default function InvoiceModal({
     }
 
     try {
-      const response = await fetch(`/api/pos-orders/${order.id}/create-invoice`, {
+      const response = await fetch(`/api/customer-orders/${order.id}/create-invoice`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

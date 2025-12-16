@@ -325,18 +325,31 @@ export async function POST(request: NextRequest) {
             // This ensures consistency and uses the value that was selected on the shop order page
             const partnerId = insertedItem.partner_id || product.partners_id || null
 
-            // Calculate prices
+            // Calculate prices for customer_order_items
+            // IMPORTANT: Use item-level rounding to match Számlázz.hu requirements
+            // This ensures consistency with invoice creation (same as POS orders fix)
             const basePrice = product.base_price || 0
             const multiplier = product.multiplier || 1.38
-            const netPrice = Math.round(basePrice * multiplier)
             const vatPercent = vatMap.get(product.vat_id) || 0
-            const grossPrice = Math.round(netPrice * (1 + vatPercent / 100))
             const quantity = product.quantity || 0
 
-            const itemTotalNet = netPrice * quantity
-            const itemTotalGross = grossPrice * quantity
-            const itemTotalVat = itemTotalGross - itemTotalNet
+            // Calculate unit prices (keep as decimals for calculation, round for storage)
+            const unitPriceNet = basePrice * multiplier
+            const unitPriceGross = unitPriceNet * (1 + vatPercent / 100)
 
+            // Calculate item totals with item-level rounding (Számlázz.hu requirement)
+            // 1. Round itemTotalNet = quantity × unit_price_net
+            const itemTotalNet = Math.round(unitPriceNet * quantity)
+            // 2. Round itemTotalVat = itemTotalNet × vatRate / 100
+            const itemTotalVat = Math.round(itemTotalNet * vatPercent / 100)
+            // 3. Calculate itemTotalGross = itemTotalNet + itemTotalVat (sum of rounded values)
+            const itemTotalGross = itemTotalNet + itemTotalVat
+
+            // Store rounded unit prices for display/storage
+            const netPrice = Math.round(unitPriceNet)
+            const grossPrice = Math.round(unitPriceGross)
+
+            // Accumulate totals (already rounded at item level)
             subtotalNet += itemTotalNet
             totalVat += itemTotalVat
             totalGross += itemTotalGross
@@ -385,10 +398,16 @@ export async function POST(request: NextRequest) {
             customerOrderItems.push(customerOrderItem)
           }
 
-          // Calculate discount amount
+          // Calculate discount amount (round to integer)
           const discountPercentage = parseFloat(body.customer_discount) || 0
           const discountAmount = Math.round((totalGross * discountPercentage) / 100)
-          const totalGrossAfterDiscount = totalGross - discountAmount
+          const totalGrossAfterDiscount = Math.round(totalGross - discountAmount)
+
+          // Recalculate net and VAT after discount proportionally (rounded)
+          // This matches the POS orders discount calculation logic
+          const discountRatio = totalGross > 0 ? discountAmount / totalGross : 0
+          const totalNetAfterDiscount = Math.round(subtotalNet * (1 - discountRatio))
+          const totalVatAfterDiscount = Math.round(totalVat * (1 - discountRatio))
 
           // Insert customer_order_items
           if (customerOrderItems.length > 0) {
@@ -403,9 +422,9 @@ export async function POST(request: NextRequest) {
               await supabaseServer
                 .from('customer_orders')
                 .update({
-                  subtotal_net: Math.round(subtotalNet),
-                  total_vat: Math.round(totalVat),
-                  total_gross: Math.round(totalGrossAfterDiscount),
+                  subtotal_net: totalNetAfterDiscount,
+                  total_vat: totalVatAfterDiscount,
+                  total_gross: totalGrossAfterDiscount,
                   discount_amount: discountAmount
                 })
                 .eq('id', customerOrderData.id)

@@ -52,6 +52,7 @@ interface InvoiceRow {
   related_order_number: string | null
   customer_id: string | null
   customer_name: string | null
+  deleted_at: string | null
   created_at?: string
 }
 
@@ -277,39 +278,56 @@ export default function InvoicesClient({
                 </TableRow>
               ) : invoices.map(inv => {
                 const orderLink = getOrderLink(inv)
+                const isDeleted = !!inv.deleted_at
                 return (
-                  <TableRow key={inv.id}>
+                  <TableRow 
+                    key={inv.id}
+                    sx={{
+                      opacity: isDeleted ? 0.6 : 1,
+                      textDecoration: isDeleted ? 'line-through' : 'none'
+                    }}
+                  >
                     <TableCell>{inv.internal_number}</TableCell>
                     <TableCell>{inv.provider_invoice_number || '-'}</TableCell>
-                    <TableCell>
-                      {inv.invoice_type ? (
-                        <Chip
-                          label={
-                            inv.invoice_type === 'szamla'
-                              ? 'Számla'
-                              : inv.invoice_type === 'elolegszamla'
-                              ? 'Előleg számla'
-                              : inv.invoice_type === 'dijbekero'
-                              ? 'Díjbekérő'
-                              : inv.invoice_type === 'sztorno'
-                              ? 'Sztornó'
-                              : inv.invoice_type
-                          }
-                          size="small"
-                          color={
-                            inv.invoice_type === 'sztorno' 
-                              ? 'error' 
-                              : inv.invoice_type === 'elolegszamla' 
-                              ? 'warning' 
-                              : inv.invoice_type === 'dijbekero'
-                              ? 'info'
-                              : 'primary'
-                          }
-                          variant="outlined"
-                        />
-                      ) : (
-                        '-'
-                      )}
+                    <TableCell sx={{ textTransform: 'capitalize' }}>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {inv.invoice_type ? (
+                          <Chip
+                            label={
+                              inv.invoice_type === 'szamla'
+                                ? 'Számla'
+                                : inv.invoice_type === 'elolegszamla'
+                                ? 'Előleg számla'
+                                : inv.invoice_type === 'dijbekero'
+                                ? 'Díjbekérő'
+                                : inv.invoice_type === 'sztorno'
+                                ? 'Sztornó'
+                                : inv.invoice_type
+                            }
+                            size="small"
+                            color={
+                              inv.invoice_type === 'sztorno' 
+                                ? 'error' 
+                                : inv.invoice_type === 'elolegszamla' 
+                                ? 'warning' 
+                                : inv.invoice_type === 'dijbekero'
+                                ? 'info'
+                                : 'primary'
+                            }
+                            variant="outlined"
+                          />
+                        ) : (
+                          '-'
+                        )}
+                        {isDeleted && (
+                          <Chip
+                            label="Törölve"
+                            size="small"
+                            color="error"
+                            variant="filled"
+                          />
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>{inv.customer_name || '-'}</TableCell>
                     <TableCell>
@@ -359,7 +377,7 @@ export default function InvoicesClient({
                             <IconButton
                               size="small"
                               color="error"
-                              disabled={inv.invoice_type === 'sztorno'}
+                              disabled={inv.invoice_type === 'sztorno' || isDeleted}
                               onClick={() => handleOpenStornoDialog(inv)}
                             >
                               <UndoIcon fontSize="small" />
@@ -372,7 +390,7 @@ export default function InvoicesClient({
                               size="small"
                               color="primary"
                               onClick={() => handleOpenInvoicePdf(inv)}
-                              disabled={!inv.pdf_url}
+                              disabled={!inv.pdf_url || isDeleted}
                             >
                               <PictureAsPdfIcon fontSize="small" />
                             </IconButton>

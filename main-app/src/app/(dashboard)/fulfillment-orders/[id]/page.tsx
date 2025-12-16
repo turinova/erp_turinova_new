@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getCustomerOrderById, getAllCustomers, getAllVatRates, getAllCurrencies, getAllUnits, getAllWorkers, getAllFeeTypes, getAllPartners } from '@/lib/supabase-server'
+import { getCustomerOrderById, getAllCustomers, getAllVatRates, getAllCurrencies, getAllUnits, getAllWorkers, getAllFeeTypes, getAllPartners, getTenantCompany } from '@/lib/supabase-server'
 import FulfillmentOrderDetailClient from './FulfillmentOrderDetailClient'
 
 function FulfillmentOrderDetailSkeleton() {
@@ -34,7 +34,7 @@ export default async function FulfillmentOrderDetailPage({ params }: { params: P
   const startTime = performance.now()
 
   // Fetch all required data on the server
-  const [customerOrderData, customers, vatRates, currencies, units, workers, feeTypes, partners] = await Promise.all([
+  const [customerOrderData, customers, vatRates, currencies, units, workers, feeTypes, partners, tenantCompany] = await Promise.all([
     getCustomerOrderById(id),
     getAllCustomers(),
     getAllVatRates(),
@@ -42,7 +42,8 @@ export default async function FulfillmentOrderDetailPage({ params }: { params: P
     getAllUnits(),
     getAllWorkers(),
     getAllFeeTypes(),
-    getAllPartners()
+    getAllPartners(),
+    getTenantCompany()
   ])
 
   const totalTime = performance.now()
@@ -77,6 +78,7 @@ export default async function FulfillmentOrderDetailPage({ params }: { params: P
         initialWorkers={workers}
         initialFeeTypes={feeTypes}
         initialPartners={partners}
+        initialTenantCompany={tenantCompany}
       />
     </Suspense>
   )

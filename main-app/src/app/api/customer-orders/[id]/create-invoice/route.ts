@@ -75,8 +75,8 @@ function buildInvoiceXml(
   
   // Use temporary order number for preview to avoid duplicate invoice errors
   const orderNumber = settings.preview 
-    ? `${order.pos_order_number}-PREVIEW-${Date.now()}`
-    : order.pos_order_number
+    ? `${order.order_number}-PREVIEW-${Date.now()}`
+    : order.order_number
 
   // Check if this is an advance invoice or proforma with amount
   const isAdvanceInvoice = settings.invoiceType === 'advance'
@@ -361,23 +361,23 @@ export async function POST(
     const { id } = await params
     const body: InvoiceRequest = await request.json()
 
-    // Fetch POS order
+    // Fetch customer order
     const { data: orderData, error: orderError } = await supabaseAdmin
-      .from('pos_orders')
+      .from('customer_orders')
       .select('*')
       .eq('id', id)
       .single()
 
     if (orderError || !orderData) {
       return NextResponse.json(
-        { error: 'POS rendelés nem található' },
+        { error: 'Ügyfél rendelés nem található' },
         { status: 404 }
       )
     }
 
     // Fetch order items
     const { data: itemsData, error: itemsError } = await supabaseAdmin
-      .from('pos_order_items')
+      .from('customer_order_items')
       .select(`
         id,
         item_type,
@@ -397,11 +397,11 @@ export async function POST(
         total_vat,
         total_gross
       `)
-      .eq('pos_order_id', id)
+      .eq('order_id', id)
       .is('deleted_at', null)
 
     if (itemsError) {
-      console.error('Error fetching POS order items:', itemsError)
+      console.error('Error fetching customer order items:', itemsError)
       return NextResponse.json(
         { error: `Hiba a tételek lekérdezése során: ${itemsError.message}` },
         { status: 500 }
@@ -443,12 +443,12 @@ export async function POST(
 
     // Fetch payments to ensure order is fully paid
     const { data: payments, error: paymentsError } = await supabaseAdmin
-      .from('pos_payments')
+      .from('customer_order_payments')
       .select('amount, deleted_at')
-      .eq('pos_order_id', id)
+      .eq('customer_order_id', id)
 
     if (paymentsError) {
-      console.error('Error fetching POS payments for invoice creation:', paymentsError)
+      console.error('Error fetching customer order payments for invoice creation:', paymentsError)
       return NextResponse.json(
         { error: 'Hiba a fizetések lekérdezésekor' },
         { status: 500 }
@@ -466,7 +466,7 @@ export async function POST(
       const { data: proformaCheck, error: proformaCheckError } = await supabaseAdmin
         .from('invoices')
         .select('gross_total')
-        .eq('related_order_type', 'pos_order')
+        .eq('related_order_type', 'customer_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'dijbekero')
         .eq('provider', 'szamlazz_hu')
@@ -543,7 +543,7 @@ export async function POST(
       const { data: advanceInvoiceCheck, error: advanceCheckError } = await supabaseAdmin
         .from('invoices')
         .select('id')
-        .eq('related_order_type', 'pos_order')
+        .eq('related_order_type', 'customer_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'elolegszamla')
         .eq('provider', 'szamlazz_hu')
@@ -555,7 +555,7 @@ export async function POST(
         const { data: existingFinalInvoice, error: finalInvoiceError } = await supabaseAdmin
           .from('invoices')
           .select('id, is_storno_of_invoice_id')
-          .eq('related_order_type', 'pos_order')
+          .eq('related_order_type', 'customer_order')
           .eq('related_order_id', id)
           .eq('invoice_type', 'szamla')
           .eq('provider', 'szamlazz_hu')
@@ -569,7 +569,7 @@ export async function POST(
           const { data: stornoInvoice, error: stornoError } = await supabaseAdmin
             .from('invoices')
             .select('id')
-            .eq('related_order_type', 'pos_order')
+            .eq('related_order_type', 'customer_order')
             .eq('related_order_id', id)
             .eq('invoice_type', 'sztorno')
             .eq('is_storno_of_invoice_id', existingFinalInvoice.id)
@@ -599,7 +599,7 @@ export async function POST(
       const { data: advanceInvoiceData, error: advanceError } = await supabaseAdmin
         .from('invoices')
         .select('id, provider_invoice_number, gross_total')
-        .eq('related_order_type', 'pos_order')
+        .eq('related_order_type', 'customer_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'elolegszamla')
         .eq('provider', 'szamlazz_hu')
@@ -613,7 +613,7 @@ export async function POST(
         advanceError,
         found: !!advanceInvoiceData,
         queryConditions: {
-          related_order_type: 'pos_order',
+          related_order_type: 'customer_order',
           related_order_id: id,
           invoice_type: 'elolegszamla',
           provider: 'szamlazz_hu'
@@ -625,7 +625,7 @@ export async function POST(
         const { data: stornoCheck, error: stornoCheckError } = await supabaseAdmin
           .from('invoices')
           .select('id')
-          .eq('related_order_type', 'pos_order')
+          .eq('related_order_type', 'customer_order')
           .eq('related_order_id', id)
           .eq('invoice_type', 'sztorno')
           .eq('is_storno_of_invoice_id', advanceInvoiceData.id)
@@ -664,7 +664,7 @@ export async function POST(
       const { data: proformaData, error: proformaError } = await supabaseAdmin
         .from('invoices')
         .select('id, provider_invoice_number, gross_total')
-        .eq('related_order_type', 'pos_order')
+        .eq('related_order_type', 'customer_order')
         .eq('related_order_id', id)
         .eq('invoice_type', 'dijbekero')
         .eq('provider', 'szamlazz_hu')
@@ -854,33 +854,8 @@ export async function POST(
       )
     }
 
-    // Resolve customer_id: prefer stored customer_id; if missing, try to match existing customer by tax number/email/name
-    let resolvedCustomerId: string | null = orderData.customer_id || null
-    if (!resolvedCustomerId) {
-      const orFilters: string[] = []
-      if (orderData.billing_tax_number) {
-        orFilters.push(`billing_tax_number.eq.${orderData.billing_tax_number}`)
-      }
-      if (orderData.customer_email) {
-        orFilters.push(`email.eq.${orderData.customer_email}`)
-      }
-      if (orderData.customer_name) {
-        // Avoid commas or special chars in OR filter; use ilike with escaped value if needed
-        const safeName = orderData.customer_name.replace(/,/g, '\\,')
-        orFilters.push(`name.ilike.${safeName}`)
-      }
-      if (orFilters.length > 0) {
-        const { data: customerMatch, error: customerErr } = await supabaseAdmin
-          .from('customers')
-          .select('id')
-          .or(orFilters.join(','))
-          .limit(1)
-          .maybeSingle()
-        if (!customerErr && customerMatch?.id) {
-          resolvedCustomerId = customerMatch.id as string
-        }
-      }
-    }
+    // For customer_orders, we don't have customer_id field, so leave it null
+    // (user confirmed it's not necessary)
 
     // Persist invoice record (basic fields)
     // If persistence fails, surface the error so we can fix DB issues instead of silently succeeding
@@ -922,11 +897,11 @@ export async function POST(
       provider_invoice_number: finalInvoiceNumber,
       provider_invoice_id: finalInvoiceNumber,
       invoice_type: isAdvanceInvoiceRequest ? 'elolegszamla' : isProformaInvoiceRequest ? 'dijbekero' : 'szamla', // Use appropriate invoice type
-      related_order_type: 'pos_order',
+      related_order_type: 'customer_order',
       related_order_id: id,
-      related_order_number: orderData.pos_order_number,
+      related_order_number: orderData.order_number,
       customer_name: orderData.billing_name || orderData.customer_name || '',
-      customer_id: resolvedCustomerId,
+      customer_id: null, // customer_orders doesn't have customer_id field
       payment_due_date: body.dueDate || null,
       fulfillment_date: body.fulfillmentDate || body.dueDate || null,
       gross_total: invoiceGrossTotal,
@@ -989,3 +964,4 @@ export async function POST(
     )
   }
 }
+

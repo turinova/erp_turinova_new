@@ -178,6 +178,7 @@ interface InvoiceRow {
   payment_status: string | null
   pdf_url: string | null
   is_storno_of_invoice_id: string | null
+  deleted_at: string | null
   created_at?: string
 }
 
@@ -2115,99 +2116,118 @@ export default function PosOrderDetailClient({
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {invoices.map(inv => (
-                    <TableRow key={inv.id}>
-                      <TableCell>{inv.internal_number}</TableCell>
-                      <TableCell>{inv.provider_invoice_number || '-'}</TableCell>
-                      <TableCell sx={{ textTransform: 'capitalize' }}>
-                        {inv.invoice_type ? (
-                          <Chip
-                            label={
-                              inv.invoice_type === 'szamla'
-                                ? 'Számla'
-                                : inv.invoice_type === 'elolegszamla'
-                                ? 'Előleg számla'
-                                : inv.invoice_type === 'dijbekero'
-                                ? 'Díjbekérő'
-                                : inv.invoice_type === 'sztorno'
-                                ? 'Sztornó'
-                                : inv.invoice_type
-                            }
-                            size="small"
-                            color={
-                              inv.invoice_type === 'sztorno' 
-                                ? 'error' 
-                                : inv.invoice_type === 'elolegszamla' 
-                                ? 'warning' 
-                                : inv.invoice_type === 'dijbekero'
-                                ? 'info'
-                                : 'primary'
-                            }
-                            variant="outlined"
-                          />
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell>{inv.payment_due_date || '-'}</TableCell>
-                      <TableCell>{inv.fulfillment_date || '-'}</TableCell>
-                      <TableCell>{inv.gross_total != null ? formatCurrency(Number(inv.gross_total)) : '-'}</TableCell>
-                      <TableCell>
-                        {inv.payment_status ? (
-                          <Chip
-                            label={
-                              inv.payment_status === 'nem_lesz_fizetve'
-                                ? 'Nem lesz fizetve'
-                                : inv.payment_status === 'fizetve'
-                                ? 'Fizetve'
-                                : inv.payment_status === 'fizetesre_var'
-                                ? 'Fizetésre vár'
-                                : inv.payment_status
-                            }
-                            size="small"
-                            color={
-                              inv.payment_status === 'fizetve'
-                                ? 'success'
-                                : inv.payment_status === 'fizetesre_var'
-                                ? 'warning'
-                                : 'default'
-                            }
-                            variant="outlined"
-                          />
-                        ) : (
-                          '-'
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <Stack direction="row" spacing={1} justifyContent="flex-end">
-                          <Tooltip title="Sztornó számla">
-                            <span>
-                              <IconButton
+                  {invoices.map(inv => {
+                    const isDeleted = !!inv.deleted_at
+                    return (
+                      <TableRow 
+                        key={inv.id}
+                        sx={{
+                          opacity: isDeleted ? 0.6 : 1,
+                          textDecoration: isDeleted ? 'line-through' : 'none'
+                        }}
+                      >
+                        <TableCell>{inv.internal_number}</TableCell>
+                        <TableCell>{inv.provider_invoice_number || '-'}</TableCell>
+                        <TableCell sx={{ textTransform: 'capitalize' }}>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            {inv.invoice_type ? (
+                              <Chip
+                                label={
+                                  inv.invoice_type === 'szamla'
+                                    ? 'Számla'
+                                    : inv.invoice_type === 'elolegszamla'
+                                    ? 'Előleg számla'
+                                    : inv.invoice_type === 'dijbekero'
+                                    ? 'Díjbekérő'
+                                    : inv.invoice_type === 'sztorno'
+                                    ? 'Sztornó'
+                                    : inv.invoice_type
+                                }
+                                size="small"
+                                color={
+                                  inv.invoice_type === 'sztorno' 
+                                    ? 'error' 
+                                    : inv.invoice_type === 'elolegszamla' 
+                                    ? 'warning' 
+                                    : inv.invoice_type === 'dijbekero'
+                                    ? 'info'
+                                    : 'primary'
+                                }
+                                variant="outlined"
+                              />
+                            ) : (
+                              '-'
+                            )}
+                            {isDeleted && (
+                              <Chip
+                                label="Törölve"
                                 size="small"
                                 color="error"
-                                disabled={inv.invoice_type === 'sztorno'}
-                                onClick={() => handleOpenStornoDialog(inv)}
-                              >
-                                <UndoIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                          <Tooltip title="PDF megnyitás">
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => handleOpenInvoicePdf(inv)}
-                                disabled={!inv.pdf_url}
-                              >
-                                <PictureAsPdfIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        </Stack>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                                variant="filled"
+                              />
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell>{inv.payment_due_date || '-'}</TableCell>
+                        <TableCell>{inv.fulfillment_date || '-'}</TableCell>
+                        <TableCell>{inv.gross_total != null ? formatCurrency(Number(inv.gross_total)) : '-'}</TableCell>
+                        <TableCell>
+                          {inv.payment_status ? (
+                            <Chip
+                              label={
+                                inv.payment_status === 'nem_lesz_fizetve'
+                                  ? 'Nem lesz fizetve'
+                                  : inv.payment_status === 'fizetve'
+                                  ? 'Fizetve'
+                                  : inv.payment_status === 'fizetesre_var'
+                                  ? 'Fizetésre vár'
+                                  : inv.payment_status
+                              }
+                              size="small"
+                              color={
+                                inv.payment_status === 'fizetve'
+                                  ? 'success'
+                                  : inv.payment_status === 'fizetesre_var'
+                                  ? 'warning'
+                                  : 'default'
+                              }
+                              variant="outlined"
+                            />
+                          ) : (
+                            '-'
+                          )}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            <Tooltip title="Sztornó számla">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  disabled={inv.invoice_type === 'sztorno' || isDeleted}
+                                  onClick={() => handleOpenStornoDialog(inv)}
+                                >
+                                  <UndoIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title="PDF megnyitás">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleOpenInvoicePdf(inv)}
+                                  disabled={!inv.pdf_url || isDeleted}
+                                >
+                                  <PictureAsPdfIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
