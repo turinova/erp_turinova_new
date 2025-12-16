@@ -112,6 +112,8 @@ export default function InvoiceModal({
   const [paymentMethod, setPaymentMethod] = useState('cash') // cash, bank_transfer, card
   const [advanceAmount, setAdvanceAmount] = useState<number>(0)
   const [proformaAmount, setProformaAmount] = useState<number>(0) // For partial proforma invoices
+  const [advanceAmountError, setAdvanceAmountError] = useState<string | null>(null)
+  const [proformaAmountError, setProformaAmountError] = useState<string | null>(null)
   // Initialize dates as empty to prevent hydration mismatch - will be set in useEffect
   const [dueDate, setDueDate] = useState<string>('')
   const [fulfillmentDate, setFulfillmentDate] = useState<string>('')
@@ -128,6 +130,7 @@ export default function InvoiceModal({
   const [existingAdvanceInvoiceNumber, setExistingAdvanceInvoiceNumber] = useState<string | null>(null) // Existing advance invoice number for title
   const [pdfLoaded, setPdfLoaded] = useState(false) // Track when PDF embed has actually loaded
   const templateInvoiceNumberRef = useRef<string | null>(null) // Ref to track template invoice number for cleanup
+  const [hasExistingFinalInvoice, setHasExistingFinalInvoice] = useState(false) // Track if there's an existing végszámla
 
   // Initialize dates only on client side to prevent hydration mismatch
   useEffect(() => {
@@ -135,6 +138,58 @@ export default function InvoiceModal({
     setDueDate(prev => prev || today)
     setFulfillmentDate(prev => prev || today)
   }, []) // Only run once on mount
+
+  // Check for existing végszámla when modal opens
+  useEffect(() => {
+    if (open) {
+      // Check for existing végszámla (final invoice) that references an advance invoice
+      fetch(`/api/pos-orders/${order.id}/invoices`)
+        .then(res => res.json())
+        .then(data => {
+          const invoices = data.invoices || []
+          
+          // Check if there's an advance invoice
+          const hasAdvanceInvoice = invoices.some((inv: any) => inv.invoice_type === 'elolegszamla')
+          
+          // Check if there's a végszámla (normal invoice) that's not stornoed
+          const hasFinalInvoice = invoices.some((inv: any) => 
+            inv.invoice_type === 'szamla' && 
+            !inv.is_storno_of_invoice_id && // Not a storno itself
+            hasAdvanceInvoice // And there's an advance invoice
+          )
+          
+          // Check if the final invoice has been stornoed
+          const finalInvoiceStornoed = invoices.some((inv: any) => 
+            inv.invoice_type === 'sztorno' && 
+            invoices.some((orig: any) => 
+              orig.invoice_type === 'szamla' && 
+              orig.id === inv.is_storno_of_invoice_id &&
+              hasAdvanceInvoice
+            )
+          )
+          
+          // Set flag if there's a final invoice that hasn't been stornoed
+          setHasExistingFinalInvoice(hasFinalInvoice && !finalInvoiceStornoed)
+          
+          if (hasFinalInvoice && !finalInvoiceStornoed) {
+            const errorMessage = 'Már létezik végszámla ehhez a rendeléshez. Kérjük, először sztornózza a végszámlát, ha új számlát szeretne létrehozni.'
+            setError(errorMessage)
+            setPreviewError(errorMessage) // Also set preview error so it shows in preview area
+          } else {
+            // Clear preview error if no final invoice exists
+            if (hasExistingFinalInvoice) {
+              setPreviewError(null)
+            }
+          }
+        })
+        .catch(err => {
+          console.error('Error checking for existing final invoice:', err)
+        })
+    } else {
+      // Reset when modal closes
+      setHasExistingFinalInvoice(false)
+    }
+  }, [open, order.id])
 
   // Clear existing invoice numbers when modal opens or invoice type changes
   useEffect(() => {
@@ -145,9 +200,11 @@ export default function InvoiceModal({
       // Reset amounts when switching invoice types
       if (invoiceType !== 'advance') {
         setAdvanceAmount(0)
+        setAdvanceAmountError(null)
       }
       if (invoiceType !== 'proforma') {
         setProformaAmount(0)
+        setProformaAmountError(null)
       }
     }
   }, [open, invoiceType])
@@ -256,7 +313,7 @@ export default function InvoiceModal({
       setPreviewError(err.message || 'Nem sikerült létrehozni a template proforma számlát')
       return null
     }
-  }, [order.id, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, invoiceType, paymentMethod, dueDate, fulfillmentDate, comment, language, advanceAmount])
+  }, [order.id, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, invoiceType, paymentMethod, dueDate, fulfillmentDate, comment, language, advanceAmount, proformaAmount])
 
   // Query PDF of existing invoice
   const queryInvoicePdf = useCallback(async (invoiceNumber: string): Promise<string | null> => {
@@ -389,7 +446,7 @@ export default function InvoiceModal({
     }
   }, [open, templateInvoiceNumber, deleteTemplateProforma])
 
-  // Clear preview state when modal opens
+  // Clear preview state when modal opens (but preserve error if hasExistingFinalInvoice)
   useEffect(() => {
     if (open) {
       setTemplateInvoiceNumber(null)
@@ -399,10 +456,13 @@ export default function InvoiceModal({
         }
         return null
       })
-      setPreviewError(null)
+      // Don't clear preview error if there's an existing final invoice - it will be set by the check
+      if (!hasExistingFinalInvoice) {
+        setPreviewError(null)
+      }
       setPdfLoaded(false)
     }
-  }, [open])
+  }, [open, hasExistingFinalInvoice])
 
   // Update ref when templateInvoiceNumber changes
   useEffect(() => {
@@ -412,6 +472,19 @@ export default function InvoiceModal({
   // Regenerate preview when settings change (with debounce)
   useEffect(() => {
     if (!open || !order.billing_name || !order.billing_city || !order.billing_postal_code || !order.billing_street) {
+      return
+    }
+
+    // Don't generate preview if there's an existing final invoice
+    if (hasExistingFinalInvoice) {
+      setPreviewPdfUrl((prev) => {
+        if (prev) {
+          URL.revokeObjectURL(prev.split('#')[0])
+        }
+        return null
+      })
+      setPreviewLoading(false)
+      setPreviewError('Már létezik végszámla ehhez a rendeléshez. Kérjük, először sztornózza a végszámlát, ha új számlát szeretne létrehozni.')
       return
     }
 
@@ -452,7 +525,7 @@ export default function InvoiceModal({
       cancelled = true
       clearTimeout(timeoutId)
     }
-  }, [open, paymentMethod, dueDate, fulfillmentDate, comment, language, invoiceType, advanceAmount, proformaAmount, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, createTemplateProforma, queryInvoicePdf, deleteTemplateProforma])
+  }, [open, paymentMethod, dueDate, fulfillmentDate, comment, language, invoiceType, advanceAmount, proformaAmount, order.billing_name, order.billing_city, order.billing_postal_code, order.billing_street, createTemplateProforma, queryInvoicePdf, deleteTemplateProforma, hasExistingFinalInvoice])
 
   // Timeout fallback to clear loading state if PDF embed doesn't fire onLoad
   useEffect(() => {
@@ -484,9 +557,27 @@ export default function InvoiceModal({
       return
     }
 
+    // Validate advance amount doesn't exceed total
+    if (invoiceType === 'advance' && advanceAmount > 0) {
+      const totalGross = Number(order.total_gross) || 0
+      if (advanceAmount > totalGross) {
+        setError(`Az előleg összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
+        return
+      }
+    }
+
     if (invoiceType === 'proforma' && proformaAmount < 0) {
       setError('A díjbekérő összege nem lehet negatív')
       return
+    }
+
+    // Validate proforma amount doesn't exceed total
+    if (invoiceType === 'proforma' && proformaAmount > 0) {
+      const totalGross = Number(order.total_gross) || 0
+      if (proformaAmount > totalGross) {
+        setError(`A díjbekérő összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
+        return
+      }
     }
 
     setError(null)
@@ -623,10 +714,20 @@ export default function InvoiceModal({
                   label="Előleg összege (Ft)"
                   type="number"
                   value={advanceAmount}
-                  onChange={(e) => setAdvanceAmount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0
+                    setAdvanceAmount(value)
+                    const totalGross = Number(order.total_gross) || 0
+                    if (value > totalGross) {
+                      setAdvanceAmountError(`Az előleg összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
+                    } else {
+                      setAdvanceAmountError(null)
+                    }
+                  }}
                   size="small"
                   inputProps={{ min: 0, step: 1 }}
-                  helperText="Adja meg az előleg összegét bruttó értékben"
+                  error={!!advanceAmountError}
+                  helperText={advanceAmountError || "Adja meg az előleg összegét bruttó értékben"}
                 />
               )}
 
@@ -636,10 +737,20 @@ export default function InvoiceModal({
                   label="Díjbekérő összege (Ft)"
                   type="number"
                   value={proformaAmount}
-                  onChange={(e) => setProformaAmount(parseFloat(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0
+                    setProformaAmount(value)
+                    const totalGross = Number(order.total_gross) || 0
+                    if (value > totalGross) {
+                      setProformaAmountError(`A díjbekérő összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
+                    } else {
+                      setProformaAmountError(null)
+                    }
+                  }}
                   size="small"
                   inputProps={{ min: 0, step: 1 }}
-                  helperText="Hagyja üresen a teljes összeghez, vagy adja meg a részösszeget bruttó értékben"
+                  error={!!proformaAmountError}
+                  helperText={proformaAmountError || "Hagyja üresen a teljes összeghez, vagy adja meg a részösszeget bruttó értékben"}
                 />
               )}
 
@@ -767,14 +878,26 @@ export default function InvoiceModal({
                 )}
 
                 {previewError && (
-                  <Box sx={{ p: 3 }}>
-                    <Alert severity="warning" onClose={() => setPreviewError(null)}>
+                  <Box sx={{ 
+                    p: 3, 
+                    position: 'absolute', 
+                    top: 0, 
+                    left: 0, 
+                    right: 0, 
+                    bottom: 0, 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    zIndex: 2,
+                    bgcolor: 'background.paper'
+                  }}>
+                    <Alert severity="error" sx={{ maxWidth: '80%' }}>
                       {previewError}
                     </Alert>
                   </Box>
                 )}
 
-                {previewPdfUrl ? (
+                {previewPdfUrl && !previewError ? (
                   <embed
                     src={previewPdfUrl}
                     type="application/pdf"
@@ -822,7 +945,7 @@ export default function InvoiceModal({
         <Button
           onClick={handleCreateInvoice}
           variant="contained"
-          disabled={loading}
+          disabled={loading || !!advanceAmountError || !!proformaAmountError || hasExistingFinalInvoice}
           startIcon={loading ? <CircularProgress size={20} /> : <ReceiptIcon />}
         >
           {loading ? 'Számla létrehozása...' : 'Számla létrehozása'}

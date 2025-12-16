@@ -140,11 +140,14 @@ function buildTemplateProformaXml(
       advanceVatRate = Math.max(...rates, 27)
     }
     
-    // Calculate net from gross: net = gross / (1 + vat/100)
-    const advanceNetPrecise = advanceAmount / (1 + advanceVatRate / 100)
-    const advanceNet = Math.round(advanceNetPrecise * 100) / 100
-    const advanceVat = advanceAmount - advanceNet // Calculate VAT to ensure exact total
-    const advanceBrutto = advanceAmount
+    // GROSS-based rounding (B2C) - user enters gross amount, we calculate VAT and net
+    // Round gross to integer first (per Számlázz.hu: "Round the gross, round the VAT, then net = gross - VAT")
+    const advanceBrutto = Math.round(advanceAmount) // Round gross to integer
+    // Calculate VAT from gross: VAT = gross / (100 + VAT_rate) × VAT_rate
+    const advanceVatPrecise = advanceBrutto / (100 + advanceVatRate) * advanceVatRate
+    const advanceVat = Math.round(advanceVatPrecise) // Round VAT to integer
+    // Calculate net: net = gross - VAT (both integers, result is integer)
+    const advanceNet = advanceBrutto - advanceVat
     
     itemsXml = `
       <tetel>
@@ -174,17 +177,14 @@ function buildTemplateProformaXml(
       proformaVatRate = Math.max(...rates, 27)
     }
     
-    // Calculate net from gross: net = gross / (1 + vat/100)
-    // IMPORTANT: Számlázz.hu validates that afaErtek = nettoErtek × afakulcs / 100 EXACTLY
-    // So we must calculate net first, then VAT from net using the exact formula
-    const proformaNetPrecise = proformaAmount / (1 + proformaVatRate / 100)
-    const proformaNet = Math.round(proformaNetPrecise * 100) / 100
-    // Calculate VAT from net using Számlázz.hu's exact formula: afaErtek = nettoErtek × afakulcs / 100
-    const proformaVat = (proformaNet * proformaVatRate) / 100
-    // Round VAT to 2 decimals
-    const proformaVatRounded = Math.round(proformaVat * 100) / 100
-    // Gross should be net + VAT (this ensures exact match with Számlázz.hu validation)
-    const proformaBrutto = proformaNet + proformaVatRounded
+    // GROSS-based rounding (B2C) - user enters gross amount, we calculate VAT and net
+    // Round gross to integer first (per Számlázz.hu: "Round the gross, round the VAT, then net = gross - VAT")
+    const proformaBrutto = Math.round(proformaAmount) // Round gross to integer
+    // Calculate VAT from gross: VAT = gross / (100 + VAT_rate) × VAT_rate
+    const proformaVatPrecise = proformaBrutto / (100 + proformaVatRate) * proformaVatRate
+    const proformaVat = Math.round(proformaVatPrecise) // Round VAT to integer
+    // Calculate net: net = gross - VAT (both integers, result is integer)
+    const proformaNet = proformaBrutto - proformaVat
     
     console.log('Proforma calculation:', { proformaAmount, proformaVatRate, proformaNet, proformaVat, proformaBrutto })
     
@@ -196,7 +196,7 @@ function buildTemplateProformaXml(
         <nettoEgysegar>${proformaNet}</nettoEgysegar>
         <afakulcs>${proformaVatRate}</afakulcs>
         <nettoErtek>${proformaNet}</nettoErtek>
-        <afaErtek>${proformaVatRounded}</afaErtek>
+        <afaErtek>${proformaVat}</afaErtek>
         <bruttoErtek>${proformaBrutto}</bruttoErtek>
       </tetel>`
   } else {
@@ -246,10 +246,14 @@ function buildTemplateProformaXml(
       advanceVatRate = Math.max(...rates, 27)
     }
     
-    // Calculate net from gross: net = gross / (1 + vat/100)
-    const advanceNetPrecise = advanceGross / (1 + advanceVatRate / 100)
-    const advanceNet = Math.round(advanceNetPrecise * 100) / 100
-    const advanceVat = advanceGross - advanceNet // Calculate VAT to ensure exact total
+    // GROSS-based rounding (B2C) - advanceGross is from existing advance invoice
+    // Round gross to integer first (per Számlázz.hu: "Round the gross, round the VAT, then net = gross - VAT")
+    const advanceBrutto = Math.round(advanceGross) // Round gross to integer
+    // Calculate VAT from gross: VAT = gross / (100 + VAT_rate) × VAT_rate
+    const advanceVatPrecise = advanceBrutto / (100 + advanceVatRate) * advanceVatRate
+    const advanceVat = Math.round(advanceVatPrecise) // Round VAT to integer
+    // Calculate net: net = gross - VAT (both integers, result is integer)
+    const advanceNet = advanceBrutto - advanceVat
     
     // Add negative item for advance already invoiced
     advanceDeductionXml = `
@@ -261,7 +265,7 @@ function buildTemplateProformaXml(
         <afakulcs>${advanceVatRate}</afakulcs>
         <nettoErtek>${-advanceNet}</nettoErtek>
         <afaErtek>${-advanceVat}</afaErtek>
-        <bruttoErtek>${-advanceGross}</bruttoErtek>
+        <bruttoErtek>${-advanceBrutto}</bruttoErtek>
       </tetel>`
   }
 
@@ -340,7 +344,7 @@ function buildTemplateProformaXml(
     <fizmod>${paymentMethod}</fizmod>
     <penznem>Ft</penznem>
     <szamlaNyelve>${settings.language.toLowerCase()}</szamlaNyelve>
-    <megjegyzes>${escapeXml(settings.comment || `Rendelés: ${order.pos_order_number} - ELŐNÉZET`)}</megjegyzes>
+    <megjegyzes>${escapeXml(settings.comment || '')}</megjegyzes>
     <arfolyamBank>MNB</arfolyamBank>
     <arfolyam>1</arfolyam>
     <rendelesSzam>${escapeXml(orderNumber)}</rendelesSzam>
@@ -352,7 +356,6 @@ function buildTemplateProformaXml(
     <elonezetpdf>true</elonezetpdf>
   </fejlec>
   <elado>
-    <bank>${escapeXml(tenantCompany?.name || '')}</bank>
     ${tenantCompany?.email ? `<emailReplyto>${escapeXml(tenantCompany.email)}</emailReplyto>` : ''}
     <emailTargy>${escapeXml(`Számla - ${orderNumber}`)}</emailTargy>
     <emailSzoveg>${escapeXml('Tisztelettel küldjük számláját.')}</emailSzoveg>
@@ -479,6 +482,58 @@ export async function POST(
     const isProformaInvoiceRequest = body.invoiceType === 'proforma'
     let existingAdvanceInvoice: { provider_invoice_number: string; gross_total: number } | null = null
     let existingProformaInvoice: { provider_invoice_number: string; gross_total: number } | null = null
+    
+    // Check for existing végszámla (final invoice) before proceeding
+    // This prevents the error "A hivatkozott előlegszámla nem beazonosítható"
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest) {
+      // First check if there's an advance invoice
+      const { data: advanceInvoiceCheck, error: advanceCheckError } = await supabaseAdmin
+        .from('invoices')
+        .select('id')
+        .eq('related_order_type', 'pos_order')
+        .eq('related_order_id', id)
+        .eq('invoice_type', 'elolegszamla')
+        .eq('provider', 'szamlazz_hu')
+        .limit(1)
+        .maybeSingle()
+      
+      // If there's an advance invoice, check if there's already a végszámla
+      if (!advanceCheckError && advanceInvoiceCheck) {
+        const { data: existingFinalInvoice, error: finalInvoiceError } = await supabaseAdmin
+          .from('invoices')
+          .select('id, is_storno_of_invoice_id')
+          .eq('related_order_type', 'pos_order')
+          .eq('related_order_id', id)
+          .eq('invoice_type', 'szamla')
+          .eq('provider', 'szamlazz_hu')
+          .is('is_storno_of_invoice_id', null) // Not stornoed
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (!finalInvoiceError && existingFinalInvoice) {
+          // Check if this final invoice has been stornoed
+          const { data: stornoInvoice, error: stornoError } = await supabaseAdmin
+            .from('invoices')
+            .select('id')
+            .eq('related_order_type', 'pos_order')
+            .eq('related_order_id', id)
+            .eq('invoice_type', 'sztorno')
+            .eq('is_storno_of_invoice_id', existingFinalInvoice.id)
+            .eq('provider', 'szamlazz_hu')
+            .limit(1)
+            .maybeSingle()
+          
+          // If there's a final invoice that hasn't been stornoed, return error
+          if (!stornoError && !stornoInvoice) {
+            return NextResponse.json(
+              { error: 'Már létezik végszámla ehhez a rendeléshez. Kérjük, először sztornózza a végszámlát, ha új számlát szeretne létrehozni.' },
+              { status: 400 }
+            )
+          }
+        }
+      }
+    }
     
     // Always check for proforma invoice (needed for advance invoice preview or normal invoice preview)
     const { data: proformaInvoiceData, error: proformaError } = await supabaseAdmin

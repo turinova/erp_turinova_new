@@ -1264,12 +1264,16 @@ export default function PosOrderDetailClient({
                 startIcon={<ReceiptIcon />}
                 onClick={() => setInvoiceModalOpen(true)}
                 disabled={
-                  !billingName ||
-                  !billingCity ||
-                  !billingPostalCode ||
-                  !billingStreet
+                  !order.customer_name ||
+                  !order.billing_name ||
+                  !order.billing_country ||
+                  !order.billing_postal_code ||
+                  !order.billing_city ||
+                  !order.billing_street ||
+                  !order.billing_house_number
                   // Note: balance check is handled in API based on invoice type
                   // Proforma and advance invoices don't require full payment
+                  // Button is only enabled when all required billing fields are saved
                 }
               >
                 Számlázás

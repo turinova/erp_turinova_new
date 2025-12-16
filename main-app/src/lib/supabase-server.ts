@@ -5771,9 +5771,11 @@ export async function getPosOrdersWithPagination(page: number = 1, limit: number
     const orders = data?.map(order => {
       const totalPaid = paymentTotals[order.id] || 0
       const totalGross = Number(order.total_gross) || 0
+      const tolerance = 1.0 // 1 Ft tolerance for rounding differences
       
       let payment_status: 'paid' | 'partial' | 'unpaid'
-      if (totalPaid >= totalGross) {
+      if (totalPaid >= totalGross - tolerance) {
+        // Consider "paid" if within 1 Ft of total (handles rounding differences)
         payment_status = 'paid'
       } else if (totalPaid > 0) {
         payment_status = 'partial'
