@@ -23,11 +23,18 @@ import {
   MenuItem,
   FormControl,
   Stack,
-  Button
+  Button,
+  Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material'
 import NextLink from 'next/link'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon } from '@mui/icons-material'
+import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { usePagePermission } from '@/hooks/usePagePermission'
+import { toast } from 'react-toastify'
 
 interface ClientOffer {
   id: string
@@ -85,6 +92,9 @@ export default function ClientOffersClient({
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [clientPage, setClientPage] = useState(currentPage)
   const [loading, setLoading] = useState(false)
+  const [selectedOffers, setSelectedOffers] = useState<string[]>([])
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -146,6 +156,56 @@ export default function ClientOffersClient({
   // Handle row click (navigate to detail page)
   const handleRowClick = (offerId: string) => {
     router.push(`/client-offers/${offerId}`)
+  }
+
+  // Handle checkbox selection
+  const handleSelectAll = () => {
+    if (selectedOffers.length === offers.length && offers.length > 0) {
+      setSelectedOffers([])
+    } else {
+      setSelectedOffers(offers.map(o => o.id))
+    }
+  }
+
+  const handleSelectOffer = (offerId: string, event: React.MouseEvent) => {
+    event.stopPropagation() // Prevent row click
+    if (selectedOffers.includes(offerId)) {
+      setSelectedOffers(selectedOffers.filter(id => id !== offerId))
+    } else {
+      setSelectedOffers([...selectedOffers, offerId])
+    }
+  }
+
+  // Handle delete
+  const handleDeleteClick = () => {
+    if (selectedOffers.length === 0) return
+    setDeleteModalOpen(true)
+  }
+
+  const handleDeleteConfirm = async () => {
+    setDeleteModalOpen(false)
+    setIsDeleting(true)
+    try {
+      const res = await fetch('/api/client-offers/bulk-delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offer_ids: selectedOffers })
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Hiba a törlés során')
+      }
+
+      toast.success(`${selectedOffers.length} ajánlat törölve`)
+      router.refresh()
+      setSelectedOffers([])
+    } catch (error: any) {
+      console.error('Error deleting offers:', error)
+      toast.error(error.message || 'Hiba történt a törlés során')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   // Format currency
@@ -215,14 +275,27 @@ export default function ClientOffersClient({
         <Typography variant="h4">
           Ügyfél ajánlatok
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => router.push('/client-offers/new')}
-        >
-          Új ajánlat készítése
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {selectedOffers.length > 0 && (
+            <Button
+              variant="contained"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={handleDeleteClick}
+              disabled={isDeleting}
+            >
+              Törlés ({selectedOffers.length})
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => router.push('/client-offers/new')}
+          >
+            Új ajánlat készítése
+          </Button>
+        </Box>
       </Box>
 
       {/* Status Filter Chips */}
@@ -338,6 +411,13 @@ export default function ClientOffersClient({
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    checked={selectedOffers.length === offers.length && offers.length > 0}
+                    indeterminate={selectedOffers.length > 0 && selectedOffers.length < offers.length}
+                    onChange={handleSelectAll}
+                  />
+                </TableCell>
                 <TableCell>Ajánlat szám</TableCell>
                 <TableCell>Ügyfél</TableCell>
                 <TableCell align="right">Bruttó összesen</TableCell>
@@ -350,19 +430,27 @@ export default function ClientOffersClient({
             <TableBody>
               {offers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
+                  <TableCell colSpan={8} align="center">
                     Nincs megjeleníthető ajánlat.
                   </TableCell>
                 </TableRow>
               ) : offers.map(offer => {
                 const statusInfo = getStatusInfo(offer.status)
+                const isSelected = selectedOffers.includes(offer.id)
                 return (
                   <TableRow
                     key={offer.id}
                     hover
                     onClick={() => handleRowClick(offer.id)}
                     sx={{ cursor: 'pointer' }}
+                    selected={isSelected}
                   >
+                    <TableCell padding="checkbox" onClick={(e) => handleSelectOffer(offer.id, e)}>
+                      <Checkbox
+                        checked={isSelected}
+                        onChange={() => {}} // Handled by onClick on TableCell
+                      />
+                    </TableCell>
                     <TableCell><strong>{offer.offer_number}</strong></TableCell>
                     <TableCell>{offer.customer_name}</TableCell>
                     <TableCell align="right">{formatCurrency(offer.total_gross)}</TableCell>
@@ -438,6 +526,29 @@ export default function ClientOffersClient({
           showLastButton
         />
       </Box>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+      >
+        <DialogTitle>Törlés megerősítése</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Biztosan törölni szeretné a kiválasztott {selectedOffers.length} ajánlatot?
+            <br />
+            <strong>Ez a művelet nem visszavonható.</strong>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteModalOpen(false)}>
+            Mégse
+          </Button>
+          <Button onClick={handleDeleteConfirm} color="error" variant="contained" autoFocus>
+            Törlés
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

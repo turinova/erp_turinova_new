@@ -31,7 +31,7 @@ import {
   Typography
 } from '@mui/material'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 interface Customer {
@@ -126,6 +126,21 @@ interface ClientOffer {
   updated_at: string
 }
 
+interface TenantCompany {
+  id: string
+  name: string
+  country: string | null
+  postal_code: string | null
+  city: string | null
+  address: string | null
+  phone_number: string | null
+  email: string | null
+  website: string | null
+  tax_number: string | null
+  company_registration_number: string | null
+  vat_id: string | null
+}
+
 interface ClientOfferDetailClientProps {
   id: string | null
   initialOffer: ClientOffer | null
@@ -135,6 +150,7 @@ interface ClientOfferDetailClientProps {
   initialUnits: Unit[]
   initialWorkers: Worker[]
   initialFeeTypes: FeeType[]
+  initialTenantCompany: TenantCompany | null
 }
 
 export default function ClientOfferDetailClient({
@@ -145,7 +161,8 @@ export default function ClientOfferDetailClient({
   initialVatRates,
   initialUnits,
   initialWorkers,
-  initialFeeTypes
+  initialFeeTypes,
+  initialTenantCompany
 }: ClientOfferDetailClientProps) {
   const router = useRouter()
   const isNew = id === null
@@ -159,6 +176,7 @@ export default function ClientOfferDetailClient({
   const [units] = useState<Unit[]>(initialUnits)
   const [workers] = useState<Worker[]>(initialWorkers)
   const [feeTypes] = useState<FeeType[]>(initialFeeTypes)
+  const [tenantCompany] = useState<TenantCompany | null>(initialTenantCompany)
 
   // Customer state
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
@@ -437,16 +455,6 @@ export default function ClientOfferDetailClient({
       })
         .then(res => {
           if (abortController.signal.aborted) return null
-          // Handle 404 as validation error (taxpayer not found), not network error
-          if (!res.ok) {
-            return res.json().then(data => {
-              // Return error object instead of throwing, so we can handle it in the next then()
-              return { success: false, error: data?.error || 'Hiba az adószám ellenőrzése során' }
-            }).catch(() => {
-              // If JSON parsing fails, return error object
-              return { success: false, error: 'Hiba az adószám ellenőrzése során' }
-            })
-          }
           return res.json()
         })
         .then(data => {
@@ -475,9 +483,22 @@ export default function ClientOfferDetailClient({
               setBillingStreet(taxpayer.street)
               console.log('Set street to:', taxpayer.street)
             }
-            if (taxpayer.houseNumber) {
-              setBillingHouseNumber(taxpayer.houseNumber)
-              console.log('Set house number to:', taxpayer.houseNumber)
+            // Handle house number - check if it's in the street field (e.g., "STREET 10")
+            let houseNumber = taxpayer.houseNumber
+            if (!houseNumber && taxpayer.street) {
+              // Try to extract house number from street (format: "STREET 10" or "STREET 10/A")
+              const streetMatch = taxpayer.street.match(/\s+(\d+[A-Za-z]?\/?[A-Za-z]?)$/)
+              if (streetMatch && streetMatch[1]) {
+                houseNumber = streetMatch[1]
+                // Remove house number from street
+                const streetWithoutNumber = taxpayer.street.replace(/\s+\d+[A-Za-z]?\/?[A-Za-z]?$/, '').trim()
+                setBillingStreet(streetWithoutNumber)
+                console.log('Extracted house number from street:', houseNumber, 'Updated street to:', streetWithoutNumber)
+              }
+            }
+            if (houseNumber) {
+              setBillingHouseNumber(houseNumber)
+              console.log('Set house number to:', houseNumber)
             }
             // Country is always "Magyarország" - don't prefill it
             setTaxpayerValidationError(null)
@@ -728,10 +749,360 @@ export default function ClientOfferDetailClient({
     }))
   }
 
+  // Handle PDF generation using MUI tables and html2canvas
+  const handleGeneratePdf = async () => {
+    if (!offer || !tenantCompany) {
+      toast.error('Az ajánlat és a cégadatok szükségesek a PDF generálásához')
+      return
+    }
+
+    try {
+      // Dynamically import libraries (client-side only to avoid SSR issues)
+      const { jsPDF } = await import('jspdf')
+      const html2canvas = (await import('html2canvas')).default
+      const { createRoot } = await import('react-dom/client')
+
+      // Format date as YYYY.MM.DD. (Hungarian format)
+      const formatDatePdf = (dateString: string) => {
+        const date = new Date(dateString)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${year}.${month}.${day}.`
+      }
+
+      // Format currency for PDF (Hungarian format with space as thousand separator)
+      const formatCurrencyPdf = (amount: number) => {
+        return new Intl.NumberFormat('hu-HU', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        }).format(amount)
+      }
+
+      // Helper to get unit display (matching UI logic)
+      const getUnitDisplay = (item: ClientOfferItem) => {
+        if (item.item_type === 'material') return 'm²'
+        if (item.item_type === 'linear_material') return 'm'
+        return item.unit || 'db'
+      }
+
+      // Create a hidden container for PDF rendering - Compact for A4
+      const printContainer = document.createElement('div')
+      printContainer.id = 'pdf-print-container'
+      printContainer.style.position = 'absolute'
+      printContainer.style.left = '-9999px'
+      printContainer.style.top = '0'
+      printContainer.style.width = '210mm' // A4 width
+      printContainer.style.padding = '8mm'
+      printContainer.style.backgroundColor = '#ffffff'
+      printContainer.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+      printContainer.style.fontSize = '11px'
+      document.body.appendChild(printContainer)
+
+      // Render the PDF content using React
+      const root = createRoot(printContainer)
+      
+      root.render(
+        <Box sx={{ width: '100%', backgroundColor: 'white', color: '#212121', fontSize: '11px' }}>
+          {/* Header Section - Compact */}
+          <Box sx={{ mb: 1.5, pb: 1, borderBottom: '1px solid #e0e0e0' }}>
+            <Grid container spacing={1}>
+              {/* Left Column: Tenant Company Details */}
+              <Grid item xs={6}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: '#1976d2', fontSize: '14px' }}>
+                  {tenantCompany.name || ''}
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                  <Typography variant="body2" sx={{ color: '#616161', fontSize: '10px' }}>
+                    {tenantCompany.postal_code || ''} {tenantCompany.city || ''}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#616161', fontSize: '10px' }}>
+                    {tenantCompany.address || ''}
+                  </Typography>
+                  {tenantCompany.tax_number && (
+                    <Typography variant="body2" sx={{ color: '#616161', fontSize: '10px' }}>
+                      Adószám: {tenantCompany.tax_number}
+                    </Typography>
+                  )}
+                  {tenantCompany.vat_id && (
+                    <Typography variant="body2" sx={{ color: '#616161', fontSize: '10px' }}>
+                      HU{tenantCompany.vat_id}
+                    </Typography>
+                  )}
+                </Box>
+              </Grid>
+
+              {/* Right Column: Ajánlat Details */}
+              <Grid item xs={6}>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.25, color: '#1976d2', fontSize: '16px' }}>
+                    AJÁNLAT
+                  </Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.25, color: '#424242', fontSize: '12px' }}>
+                    {offer.offer_number}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#757575', fontSize: '10px' }}>
+                    {formatDatePdf(offer.created_at)}
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+
+          {/* Customer Section - Compact */}
+          <Box sx={{ mb: 1.5 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5, color: '#424242', fontSize: '11px' }}>
+              Vevő adatok
+            </Typography>
+            <Box sx={{ pl: 0.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.25, color: '#212121', fontSize: '10px' }}>
+                {billingName || customerName || ''}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#616161', mb: 0.25, fontSize: '10px' }}>
+                {[
+                  billingPostalCode || '',
+                  billingCity || '',
+                  billingStreet || '',
+                  billingHouseNumber || ''
+                ].filter(Boolean).join(' ')}
+              </Typography>
+              {billingTaxNumber && (
+                <Typography variant="body2" sx={{ color: '#616161', fontSize: '10px' }}>
+                  Adószám: {billingTaxNumber}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+
+          {/* Items Table - Compact for A4 */}
+          <TableContainer sx={{ mb: 1.5 }}>
+            <Table size="small" sx={{ 
+              borderCollapse: 'separate',
+              borderSpacing: 0,
+              '& .MuiTableCell-root': { 
+                padding: '4px 6px',
+                fontSize: '10px',
+                borderBottom: '1px solid #e0e0e0',
+                lineHeight: '1.2'
+              }
+            }}>
+              <TableHead>
+                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                  <TableCell sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', fontSize: '10px', padding: '6px' }}>Megnevezés</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', whiteSpace: 'nowrap', fontSize: '10px', padding: '6px' }}>Menny.</TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', fontSize: '10px', padding: '6px' }}>Egység</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', whiteSpace: 'nowrap', fontSize: '10px', padding: '6px' }}>Nettó egységár</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', whiteSpace: 'nowrap', fontSize: '10px', padding: '6px' }}>ÁFA</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', whiteSpace: 'nowrap', fontSize: '10px', padding: '6px' }}>Áfaérték</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', borderTop: '1px solid #1976d2', borderBottom: '1px solid #1976d2', whiteSpace: 'nowrap', fontSize: '10px', padding: '6px' }}>Bruttó részösszeg</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {items.map((item, index) => {
+                  const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+                  const unitDisplay = getUnitDisplay(item)
+                  return (
+                    <TableRow 
+                      key={item.id}
+                      sx={{ 
+                        backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa'
+                      }}
+                    >
+                      <TableCell sx={{ color: '#212121', fontSize: '10px' }}>
+                        <Box sx={{ fontSize: '10px', fontWeight: 500 }}>
+                          {item.product_name || ''}
+                        </Box>
+                        {item.sku && (
+                          <Box sx={{ fontSize: '9px', color: '#757575', mt: 0.25 }}>
+                            SKU: {item.sku}
+                          </Box>
+                        )}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#424242', whiteSpace: 'nowrap', fontSize: '10px' }}>
+                        {item.quantity}
+                      </TableCell>
+                      <TableCell align="center" sx={{ color: '#616161', whiteSpace: 'nowrap', fontSize: '10px' }}>
+                        {unitDisplay}
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#424242', whiteSpace: 'nowrap', fontSize: '10px' }}>
+                        {formatCurrencyPdf(item.unit_price_net)} Ft
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#616161', whiteSpace: 'nowrap', fontSize: '10px' }}>
+                        {vatRate}%
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#424242', whiteSpace: 'nowrap', fontSize: '10px' }}>
+                        {formatCurrencyPdf(item.total_vat)} Ft
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#212121', fontWeight: 500, whiteSpace: 'nowrap', fontSize: '10px' }}>
+                        {formatCurrencyPdf(item.total_gross)} Ft
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          {/* Summary Table - Compact */}
+          <Box sx={{ mt: 1.5, mb: 1 }}>
+            <TableContainer>
+              <Table size="small" sx={{ 
+                borderCollapse: 'separate',
+                borderSpacing: 0,
+                '& .MuiTableCell-root': { 
+                  padding: '4px 8px',
+                  fontSize: '10px',
+                  borderBottom: '1px solid #e0e0e0',
+                  lineHeight: '1.2'
+                }
+              }}>
+                <TableBody>
+                  {/* VAT Breakdown Rows */}
+                  {Array.from(
+                    items.reduce((acc, item) => {
+                      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+                      const existing = acc.get(vatRate) || { net: 0, vat: 0 }
+                      acc.set(vatRate, {
+                        net: existing.net + item.total_net,
+                        vat: existing.vat + item.total_vat
+                      })
+                      return acc
+                    }, new Map<number, { net: number; vat: number }>())
+                  ).map(([rate, values]) => (
+                    <TableRow key={`vat-${rate}`}>
+                      <TableCell colSpan={6} sx={{ color: '#616161', borderBottom: '1px solid #e0e0e0' }}>
+                        Áfa {rate}%:
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#424242', fontWeight: 500, whiteSpace: 'nowrap', borderBottom: '1px solid #e0e0e0' }}>
+                        {formatCurrencyPdf(values.vat)} Ft
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  
+                  {/* Subtotal before discount */}
+                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell colSpan={6} sx={{ fontWeight: 600, color: '#424242', borderTop: '2px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>
+                      Nettó összesen:
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', whiteSpace: 'nowrap', borderTop: '2px solid #e0e0e0', borderBottom: '1px solid #e0e0e0' }}>
+                      {formatCurrencyPdf(summary.totalNetBeforeDiscount)} Ft
+                    </TableCell>
+                  </TableRow>
+                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell colSpan={6} sx={{ fontWeight: 600, color: '#424242', borderBottom: '1px solid #e0e0e0' }}>
+                      Áfa összesen:
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', whiteSpace: 'nowrap', borderBottom: '1px solid #e0e0e0' }}>
+                      {formatCurrencyPdf(summary.totalVatBeforeDiscount)} Ft
+                    </TableCell>
+                  </TableRow>
+                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell colSpan={6} sx={{ fontWeight: 600, color: '#424242', borderBottom: '2px solid #e0e0e0' }}>
+                      Bruttó összesen:
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600, color: '#424242', whiteSpace: 'nowrap', borderBottom: '2px solid #e0e0e0' }}>
+                      {formatCurrencyPdf(summary.totalGrossBeforeDiscount)} Ft
+                    </TableCell>
+                  </TableRow>
+                  
+                  {/* Discount row (if there's a discount) */}
+                  {(Number(discountAmount) || 0) > 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} sx={{ color: '#d32f2f', borderBottom: '1px solid #e0e0e0' }}>
+                        Kedvezmény{Number(discountPercentage) > 0 ? ` (${Number(discountPercentage)}%)` : ''}:
+                      </TableCell>
+                      <TableCell align="right" sx={{ color: '#d32f2f', fontWeight: 500, whiteSpace: 'nowrap', borderBottom: '1px solid #e0e0e0' }}>
+                        -{formatCurrencyPdf(Number(discountAmount))} Ft
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  
+                  {/* Final totals after discount - Highlighted */}
+                  <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
+                    <TableCell colSpan={6} sx={{ fontWeight: 700, color: '#1976d2', fontSize: '11px', borderTop: '2px solid #1976d2', borderBottom: '1px solid #1976d2', padding: '6px 8px' }}>
+                      Nettó összesen:
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#1976d2', fontSize: '11px', whiteSpace: 'nowrap', borderTop: '2px solid #1976d2', borderBottom: '1px solid #1976d2', padding: '6px 8px' }}>
+                      {formatCurrencyPdf(summary.totalNetAfterDiscount)} Ft
+                    </TableCell>
+                  </TableRow>
+                  <TableRow sx={{ backgroundColor: '#e3f2fd' }}>
+                    <TableCell colSpan={6} sx={{ fontWeight: 700, color: '#1976d2', fontSize: '11px', borderBottom: '1px solid #1976d2', padding: '6px 8px' }}>
+                      Áfa összesen:
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#1976d2', fontSize: '11px', whiteSpace: 'nowrap', borderBottom: '1px solid #1976d2', padding: '6px 8px' }}>
+                      {formatCurrencyPdf(summary.totalVatAfterDiscount)} Ft
+                    </TableCell>
+                  </TableRow>
+                  <TableRow sx={{ backgroundColor: '#1976d2' }}>
+                    <TableCell colSpan={6} sx={{ fontWeight: 700, color: '#ffffff', fontSize: '12px', borderBottom: 'none', padding: '8px' }}>
+                      Bruttó összesen:
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 700, color: '#ffffff', fontSize: '12px', whiteSpace: 'nowrap', borderBottom: 'none', padding: '8px' }}>
+                      {formatCurrencyPdf(summary.totalGrossAfterDiscount)} Ft
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        </Box>
+      )
+
+      // Wait for React to render
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Convert to canvas with high quality settings
+      const canvas = await html2canvas(printContainer, {
+        scale: 3, // Increased from 2 to 3 for higher quality
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        width: printContainer.scrollWidth,
+        height: printContainer.scrollHeight,
+        windowWidth: printContainer.scrollWidth,
+        windowHeight: printContainer.scrollHeight,
+        allowTaint: false,
+        removeContainer: false
+      })
+
+      // Convert canvas to PDF
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      const imgWidth = 210 // A4 width in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      // Add image to PDF
+      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight)
+
+      // Save PDF
+      pdf.save(`Ajanlat-${offer.offer_number}.pdf`)
+
+      // Cleanup
+      root.unmount()
+      document.body.removeChild(printContainer)
+
+      toast.success('PDF sikeresen generálva és letöltve')
+    } catch (error: any) {
+      console.error('Error generating PDF:', error)
+      toast.error('Hiba történt a PDF generálása során: ' + (error.message || 'Ismeretlen hiba'))
+    }
+  }
+
   // Handle save
   const handleSave = async () => {
     if (!customerName || !customerName.trim()) {
       toast.error('Ügyfél neve kötelező')
+      return
+    }
+
+    if (!workerId) {
+      toast.error('Dolgozó kiválasztása kötelező')
       return
     }
 
@@ -954,14 +1325,27 @@ export default function ClientOfferDetailClient({
         <Typography variant="h4">
           {isNew ? 'Új ajánlat' : `Ajánlat: ${offer?.offer_number || ''}`}
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<SaveIcon />}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Mentés...' : 'Mentés'}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          {!isNew && offer && (
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleGeneratePdf}
+              disabled={!tenantCompany}
+            >
+              PDF generálás
+            </Button>
+          )}
+          <Button
+            variant="contained"
+            startIcon={<SaveIcon />}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Mentés...' : 'Mentés'}
+          </Button>
+        </Box>
       </Box>
 
       <Stack spacing={3}>
@@ -1201,15 +1585,17 @@ export default function ClientOfferDetailClient({
                       </FormControl>
                     </Grid>
                     <Grid item xs={12} md={4}>
-                      <FormControl fullWidth size="small">
+                      <FormControl fullWidth size="small" required>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                          <strong>Dolgozó:</strong>
+                          <strong>Dolgozó: *</strong>
                         </Typography>
                         <Select
                           value={workerId}
                           onChange={(e) => setWorkerId(e.target.value)}
+                          error={!workerId}
+                          required
                         >
-                          <MenuItem value="">Nincs</MenuItem>
+                          <MenuItem value="">Válasszon dolgozót</MenuItem>
                           {workers.map(worker => (
                             <MenuItem key={worker.id} value={worker.id}>
                               {worker.nickname || worker.name}

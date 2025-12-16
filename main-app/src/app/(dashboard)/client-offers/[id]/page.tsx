@@ -1,6 +1,6 @@
 import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
-import { getClientOfferById, getAllCustomers, getAllVatRates, getAllUnits, getAllWorkers, getAllFeeTypes } from '@/lib/supabase-server'
+import { getClientOfferById, getAllCustomers, getAllVatRates, getAllUnits, getAllWorkers, getAllFeeTypes, getTenantCompany } from '@/lib/supabase-server'
 import ClientOfferDetailClient from './ClientOfferDetailClient'
 
 function ClientOfferDetailSkeleton() {
@@ -44,13 +44,14 @@ export default async function ClientOfferDetailPage({ params }: { params: Promis
   const isNew = id === 'new'
 
   // Fetch all required data on the server
-  const [offerData, customers, vatRates, units, workers, feeTypes] = await Promise.all([
+  const [offerData, customers, vatRates, units, workers, feeTypes, tenantCompany] = await Promise.all([
     isNew ? Promise.resolve(null) : getClientOfferById(id),
     getAllCustomers(),
     getAllVatRates(),
     getAllUnits(),
     getAllWorkers(),
-    getAllFeeTypes()
+    getAllFeeTypes(),
+    getTenantCompany()
   ])
 
   const totalTime = performance.now()
@@ -80,6 +81,7 @@ export default async function ClientOfferDetailPage({ params }: { params: Promis
         initialUnits={units}
         initialWorkers={workers}
         initialFeeTypes={feeTypes}
+        initialTenantCompany={tenantCompany}
       />
     </Suspense>
   )
