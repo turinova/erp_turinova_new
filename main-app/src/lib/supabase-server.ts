@@ -3337,6 +3337,32 @@ export async function getCustomerOrdersWithPagination(page: number = 1, limit: n
       }
     }
 
+    // Fetch last invoice type for each order
+    let lastInvoiceTypes: Record<string, string> = {}
+    
+    if (orderIds.length > 0) {
+      // Fetch all invoices for these orders, ordered by created_at descending
+      const { data: allInvoices } = await supabaseServer
+        .from('invoices')
+        .select('related_order_id, invoice_type, created_at')
+        .eq('provider', 'szamlazz_hu')
+        .eq('related_order_type', 'customer_order')
+        .in('related_order_id', orderIds)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+      
+      // Get the most recent invoice per order (first occurrence for each order_id)
+      if (allInvoices) {
+        const seenOrderIds = new Set<string>()
+        for (const invoice of allInvoices) {
+          if (!seenOrderIds.has(invoice.related_order_id)) {
+            lastInvoiceTypes[invoice.related_order_id] = invoice.invoice_type
+            seenOrderIds.add(invoice.related_order_id)
+          }
+        }
+      }
+    }
+
     // Transform the data and calculate payment_status
     const orders = data?.map(order => {
       const totalPaid = paymentTotals[order.id] || 0
@@ -3361,7 +3387,8 @@ export async function getCustomerOrdersWithPagination(page: number = 1, limit: n
         created_at: order.created_at,
         sms_sent_at: order.sms_sent_at || null,
         worker_nickname: order.workers?.nickname || '',
-        worker_color: order.workers?.color || '#1976d2'
+        worker_color: order.workers?.color || '#1976d2',
+        last_invoice_type: lastInvoiceTypes[order.id] || null
       }
     }) || []
 
@@ -5767,6 +5794,32 @@ export async function getPosOrdersWithPagination(page: number = 1, limit: number
       }
     }
 
+    // Fetch last invoice type for each order
+    let lastInvoiceTypes: Record<string, string> = {}
+    
+    if (orderIds.length > 0) {
+      // Fetch all invoices for these orders, ordered by created_at descending
+      const { data: allInvoices } = await supabaseServer
+        .from('invoices')
+        .select('related_order_id, invoice_type, created_at')
+        .eq('provider', 'szamlazz_hu')
+        .eq('related_order_type', 'pos_order')
+        .in('related_order_id', orderIds)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+      
+      // Get the most recent invoice per order (first occurrence for each order_id)
+      if (allInvoices) {
+        const seenOrderIds = new Set<string>()
+        for (const invoice of allInvoices) {
+          if (!seenOrderIds.has(invoice.related_order_id)) {
+            lastInvoiceTypes[invoice.related_order_id] = invoice.invoice_type
+            seenOrderIds.add(invoice.related_order_id)
+          }
+        }
+      }
+    }
+
     // Transform the data and calculate payment_status
     const orders = data?.map(order => {
       const totalPaid = paymentTotals[order.id] || 0
@@ -5792,7 +5845,8 @@ export async function getPosOrdersWithPagination(page: number = 1, limit: number
         payment_status: payment_status,
         created_at: order.created_at,
         worker_nickname: order.workers?.nickname || '',
-        worker_color: order.workers?.color || '#1976d2'
+        worker_color: order.workers?.color || '#1976d2',
+        last_invoice_type: lastInvoiceTypes[order.id] || null
       }
     }) || []
 

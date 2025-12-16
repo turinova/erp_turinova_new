@@ -62,7 +62,15 @@ interface InvoicesClientProps {
   totalPages: number
   currentPage: number
   initialSearchTerm: string
+  initialInvoiceTypeFilter?: string
   initialPageSize?: number
+  invoiceTypeCounts?: {
+    all: number
+    szamla: number
+    elolegszamla: number
+    dijbekero: number
+    sztorno: number
+  }
 }
 
 export default function InvoicesClient({
@@ -71,13 +79,22 @@ export default function InvoicesClient({
   totalPages,
   currentPage,
   initialSearchTerm,
-  initialPageSize = 50
+  initialInvoiceTypeFilter = 'all',
+  initialPageSize = 50,
+  invoiceTypeCounts = {
+    all: 0,
+    szamla: 0,
+    elolegszamla: 0,
+    dijbekero: 0,
+    sztorno: 0
+  }
 }: InvoicesClientProps) {
   const router = useRouter()
   const { hasAccess, loading: permissionLoading } = usePagePermission('/invoices')
   
   const [invoices, setInvoices] = useState<InvoiceRow[]>(initialInvoices)
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm || '')
+  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState(initialInvoiceTypeFilter || 'all')
   const [mounted, setMounted] = useState(false)
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [clientPage, setClientPage] = useState(currentPage)
@@ -99,11 +116,14 @@ export default function InvoicesClient({
       if (searchTerm.trim()) {
         params.set('search', searchTerm.trim())
       }
+      if (invoiceTypeFilter && invoiceTypeFilter !== 'all') {
+        params.set('invoiceType', invoiceTypeFilter)
+      }
       router.push(`/invoices?${params.toString()}`)
     }, 500) // 500ms debounce
 
     return () => clearTimeout(timeoutId)
-  }, [searchTerm, mounted, router])
+  }, [searchTerm, invoiceTypeFilter, mounted, router])
 
   // Update invoices when initialInvoices prop changes (from server-side search)
   useEffect(() => {
@@ -111,12 +131,16 @@ export default function InvoicesClient({
     setClientPage(currentPage)
   }, [initialInvoices, currentPage])
 
+
   // Handle page change
   const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
     const params = new URLSearchParams()
     params.set('page', value.toString())
     if (searchTerm.trim()) {
       params.set('search', searchTerm.trim())
+    }
+    if (invoiceTypeFilter && invoiceTypeFilter !== 'all') {
+      params.set('invoiceType', invoiceTypeFilter)
     }
     router.push(`/invoices?${params.toString()}`)
   }
@@ -129,6 +153,9 @@ export default function InvoicesClient({
     params.set('limit', event.target.value.toString())
     if (searchTerm.trim()) {
       params.set('search', searchTerm.trim())
+    }
+    if (invoiceTypeFilter && invoiceTypeFilter !== 'all') {
+      params.set('invoiceType', invoiceTypeFilter)
     }
     router.push(`/invoices?${params.toString()}`)
   }
@@ -229,6 +256,92 @@ export default function InvoicesClient({
       <Typography variant="h4" sx={{ mb: 3 }}>
         Kimenő számlák
       </Typography>
+
+      {/* Invoice Type Filter Chips */}
+      <Box sx={{ mb: 2, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Typography variant="body2" sx={{ mr: 1, fontWeight: 500 }}>
+          Szűrés:
+        </Typography>
+        <Chip
+          label={`Összes (${invoiceTypeCounts.all})`}
+          onClick={() => {
+            setInvoiceTypeFilter('all')
+            const params = new URLSearchParams()
+            params.set('page', '1')
+            if (searchTerm.trim()) {
+              params.set('search', searchTerm.trim())
+            }
+            router.push(`/invoices?${params.toString()}`)
+          }}
+          color={invoiceTypeFilter === 'all' ? 'primary' : 'default'}
+          variant={invoiceTypeFilter === 'all' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label={`Számla (${invoiceTypeCounts.szamla})`}
+          onClick={() => {
+            setInvoiceTypeFilter('szamla')
+            const params = new URLSearchParams()
+            params.set('page', '1')
+            params.set('invoiceType', 'szamla')
+            if (searchTerm.trim()) {
+              params.set('search', searchTerm.trim())
+            }
+            router.push(`/invoices?${params.toString()}`)
+          }}
+          color={invoiceTypeFilter === 'szamla' ? 'primary' : 'default'}
+          variant={invoiceTypeFilter === 'szamla' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label={`Előleg számla (${invoiceTypeCounts.elolegszamla})`}
+          onClick={() => {
+            setInvoiceTypeFilter('elolegszamla')
+            const params = new URLSearchParams()
+            params.set('page', '1')
+            params.set('invoiceType', 'elolegszamla')
+            if (searchTerm.trim()) {
+              params.set('search', searchTerm.trim())
+            }
+            router.push(`/invoices?${params.toString()}`)
+          }}
+          color={invoiceTypeFilter === 'elolegszamla' ? 'warning' : 'default'}
+          variant={invoiceTypeFilter === 'elolegszamla' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label={`Díjbekérő (${invoiceTypeCounts.dijbekero})`}
+          onClick={() => {
+            setInvoiceTypeFilter('dijbekero')
+            const params = new URLSearchParams()
+            params.set('page', '1')
+            params.set('invoiceType', 'dijbekero')
+            if (searchTerm.trim()) {
+              params.set('search', searchTerm.trim())
+            }
+            router.push(`/invoices?${params.toString()}`)
+          }}
+          color={invoiceTypeFilter === 'dijbekero' ? 'info' : 'default'}
+          variant={invoiceTypeFilter === 'dijbekero' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+        <Chip
+          label={`Sztornó (${invoiceTypeCounts.sztorno})`}
+          onClick={() => {
+            setInvoiceTypeFilter('sztorno')
+            const params = new URLSearchParams()
+            params.set('page', '1')
+            params.set('invoiceType', 'sztorno')
+            if (searchTerm.trim()) {
+              params.set('search', searchTerm.trim())
+            }
+            router.push(`/invoices?${params.toString()}`)
+          }}
+          color={invoiceTypeFilter === 'sztorno' ? 'error' : 'default'}
+          variant={invoiceTypeFilter === 'sztorno' ? 'filled' : 'outlined'}
+          sx={{ cursor: 'pointer' }}
+        />
+      </Box>
 
       {/* Search */}
       <Stack direction="row" spacing={2} sx={{ mb: 2 }} alignItems="center">

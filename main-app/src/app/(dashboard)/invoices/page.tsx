@@ -12,6 +12,7 @@ interface PageProps {
     page?: string
     search?: string
     limit?: string
+    invoiceType?: string
   }>
 }
 
@@ -20,6 +21,7 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
   const page = parseInt(resolvedParams.page || '1', 10)
   const limit = parseInt(resolvedParams.limit || '50', 10)
   const searchTerm = resolvedParams.search || ''
+  const invoiceTypeFilter = resolvedParams.invoiceType || ''
   
   const offset = (page - 1) * limit
 
@@ -30,6 +32,11 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
       .select('*', { count: 'exact' })
       .eq('provider', 'szamlazz_hu')
       .order('created_at', { ascending: false })
+
+    // Apply invoice type filter
+    if (invoiceTypeFilter && invoiceTypeFilter !== 'all') {
+      query = query.eq('invoice_type', invoiceTypeFilter)
+    }
 
     // Apply search filter
     if (searchTerm && searchTerm.trim().length >= 2) {
@@ -61,13 +68,55 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
           totalPages={0}
           currentPage={1}
           initialSearchTerm={searchTerm}
+          initialInvoiceTypeFilter={invoiceTypeFilter}
           initialPageSize={limit}
+          invoiceTypeCounts={{
+            all: 0,
+            szamla: 0,
+            elolegszamla: 0,
+            dijbekero: 0,
+            sztorno: 0
+          }}
         />
       )
     }
 
     const totalCount = count || 0
     const totalPages = Math.ceil(totalCount / limit)
+
+    // Fetch counts for each invoice type (without search filter, but with provider filter)
+    const [szamlaCount, elolegszamlaCount, dijbekeroCount, sztornoCount] = await Promise.all([
+      supabaseServer
+        .from('invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('provider', 'szamlazz_hu')
+        .eq('invoice_type', 'szamla')
+        .then(({ count }) => count || 0),
+      supabaseServer
+        .from('invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('provider', 'szamlazz_hu')
+        .eq('invoice_type', 'elolegszamla')
+        .then(({ count }) => count || 0),
+      supabaseServer
+        .from('invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('provider', 'szamlazz_hu')
+        .eq('invoice_type', 'dijbekero')
+        .then(({ count }) => count || 0),
+      supabaseServer
+        .from('invoices')
+        .select('*', { count: 'exact', head: true })
+        .eq('provider', 'szamlazz_hu')
+        .eq('invoice_type', 'sztorno')
+        .then(({ count }) => count || 0)
+    ])
+
+    const allCount = await supabaseServer
+      .from('invoices')
+      .select('*', { count: 'exact', head: true })
+      .eq('provider', 'szamlazz_hu')
+      .then(({ count }) => count || 0)
 
     return (
       <InvoicesClient 
@@ -76,7 +125,15 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
         totalPages={totalPages}
         currentPage={page}
         initialSearchTerm={searchTerm}
+        initialInvoiceTypeFilter={invoiceTypeFilter}
         initialPageSize={limit}
+        invoiceTypeCounts={{
+          all: allCount,
+          szamla: szamlaCount,
+          elolegszamla: elolegszamlaCount,
+          dijbekero: dijbekeroCount,
+          sztorno: sztornoCount
+        }}
       />
     )
   } catch (error) {
@@ -88,7 +145,15 @@ export default async function InvoicesPage({ searchParams }: PageProps) {
         totalPages={0}
         currentPage={1}
         initialSearchTerm={searchTerm}
+        initialInvoiceTypeFilter={invoiceTypeFilter}
         initialPageSize={limit}
+        invoiceTypeCounts={{
+          all: 0,
+          szamla: 0,
+          elolegszamla: 0,
+          dijbekero: 0,
+          sztorno: 0
+        }}
       />
     )
   }

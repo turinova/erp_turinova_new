@@ -49,6 +49,7 @@ interface CustomerOrder {
   sms_sent_at: string | null
   worker_nickname: string
   worker_color: string
+  last_invoice_type?: string | null
 }
 
 interface FulfillmentOrdersClientProps {
@@ -453,6 +454,24 @@ export default function FulfillmentOrdersClient({
     }
   }
 
+  // Get invoice type chip info
+  const getInvoiceTypeChip = (invoiceType: string | null | undefined) => {
+    if (!invoiceType) return null
+    
+    switch (invoiceType) {
+      case 'szamla':
+        return { label: 'Számla', color: 'primary' as const }
+      case 'elolegszamla':
+        return { label: 'Előleg számla', color: 'warning' as const }
+      case 'dijbekero':
+        return { label: 'Díjbekérő', color: 'info' as const }
+      case 'sztorno':
+        return { label: 'Sztornó', color: 'error' as const }
+      default:
+        return { label: invoiceType, color: 'default' as const }
+    }
+  }
+
   if (permissionLoading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -669,6 +688,7 @@ export default function FulfillmentOrdersClient({
                 <TableCell align="right">Bruttó összesen</TableCell>
                 <TableCell>Státusz</TableCell>
                 <TableCell>Fizetési státusz</TableCell>
+                <TableCell>Számla</TableCell>
                 <TableCell>Dátum</TableCell>
                 <TableCell>Dolgozó</TableCell>
                 <TableCell>SMS értesítés</TableCell>
@@ -677,13 +697,14 @@ export default function FulfillmentOrdersClient({
             <TableBody>
               {orders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} align="center">
+                  <TableCell colSpan={10} align="center">
                     Nincs megjeleníthető rendelés.
                   </TableCell>
                 </TableRow>
               ) : orders.map(order => {
                 const statusInfo = getStatusInfo(order.status)
                 const paymentStatusInfo = getPaymentStatusInfo(order.payment_status)
+                const invoiceTypeInfo = getInvoiceTypeChip(order.last_invoice_type)
                 const isSelected = selectedOrders.includes(order.id)
                 return (
                   <TableRow
@@ -715,6 +736,18 @@ export default function FulfillmentOrdersClient({
                         size="small"
                         color={paymentStatusInfo.color}
                       />
+                    </TableCell>
+                    <TableCell>
+                      {invoiceTypeInfo ? (
+                        <Chip 
+                          label={invoiceTypeInfo.label} 
+                          size="small"
+                          color={invoiceTypeInfo.color}
+                          variant="outlined"
+                        />
+                      ) : (
+                        '-'
+                      )}
                     </TableCell>
                     <TableCell>{formatDateTime(order.created_at)}</TableCell>
                     <TableCell>
