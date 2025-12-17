@@ -20,6 +20,8 @@ interface ClientOffer {
   id: string
   offer_number: string
   customer_name: string
+  customer_email: string | null
+  customer_mobile: string | null
   billing_name: string | null
   billing_country: string | null
   billing_city: string | null
@@ -159,23 +161,23 @@ export default function generateOfferPdfHtml({
 
   const beforeDiscountRows = (Number(discountAmount) || 0) > 0 ? `
     <tr class="summary-row">
-      <td colspan="4" style="border-top: 2px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">Nettó összesen:</td>
-      <td class="text-right nowrap" style="border-top: 2px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">${formatCurrencyPdf(summary.totalNetBeforeDiscount)} Ft</td>
+      <td colspan="4" style="border-top: 2px solid #000000; border-bottom: 1px solid #000000;">Nettó összesen:</td>
+      <td class="text-right nowrap" style="border-top: 2px solid #000000; border-bottom: 1px solid #000000;">${formatCurrencyPdf(summary.totalNetBeforeDiscount)} Ft</td>
     </tr>
     <tr class="summary-row">
-      <td colspan="4" style="border-bottom: 1px solid #e0e0e0;">Áfa összesen:</td>
-      <td class="text-right nowrap" style="border-bottom: 1px solid #e0e0e0;">${formatCurrencyPdf(summary.totalVatBeforeDiscount)} Ft</td>
+      <td colspan="4" style="border-bottom: 1px solid #000000;">Áfa összesen:</td>
+      <td class="text-right nowrap" style="border-bottom: 1px solid #000000;">${formatCurrencyPdf(summary.totalVatBeforeDiscount)} Ft</td>
     </tr>
     <tr class="summary-row">
-      <td colspan="4" style="border-bottom: 2px solid #e0e0e0;">Bruttó összesen:</td>
-      <td class="text-right nowrap" style="border-bottom: 2px solid #e0e0e0;">${formatCurrencyPdf(summary.totalGrossBeforeDiscount)} Ft</td>
+      <td colspan="4" style="border-bottom: 2px solid #000000;">Bruttó összesen:</td>
+      <td class="text-right nowrap" style="border-bottom: 2px solid #000000;">${formatCurrencyPdf(summary.totalGrossBeforeDiscount)} Ft</td>
     </tr>
   ` : ''
 
   const discountRow = (Number(discountAmount) || 0) > 0 ? `
     <tr class="discount-row">
-      <td colspan="4" style="border-bottom: 1px solid #e0e0e0;">Kedvezmény${Number(discountPercentage) > 0 ? ` (${Number(discountPercentage)}%)` : ''}:</td>
-      <td class="text-right nowrap" style="border-bottom: 1px solid #e0e0e0; font-weight: 500;">-${formatCurrencyPdf(Number(discountAmount))} Ft</td>
+      <td colspan="4" style="border-bottom: 1px solid #000000;">Kedvezmény${Number(discountPercentage) > 0 ? ` (${Number(discountPercentage)}%)` : ''}:</td>
+      <td class="text-right nowrap" style="border-bottom: 1px solid #000000; font-weight: 500;">-${formatCurrencyPdf(Number(discountAmount))} Ft</td>
     </tr>
   ` : ''
 
@@ -215,7 +217,7 @@ export default function generateOfferPdfHtml({
       .header {
         margin-bottom: 1.5em;
         padding-bottom: 1em;
-        border-bottom: 1px solid #e0e0e0;
+        border-bottom: 1px solid #000000;
       }
       .header-row {
         display: flex;
@@ -249,7 +251,7 @@ export default function generateOfferPdfHtml({
       }
       .offer-date {
         font-size: 10px;
-        color: #757575;
+        color: #000000;
       }
       .two-column {
         display: flex;
@@ -261,8 +263,8 @@ export default function generateOfferPdfHtml({
       }
       .column-title {
         font-size: 11px;
-        font-weight: 600;
-        color: #424242;
+        font-weight: 700;
+        color: #000000;
         margin-bottom: 0.5em;
       }
       .column-content {
@@ -274,10 +276,10 @@ export default function generateOfferPdfHtml({
       }
       .column-item-bold {
         font-weight: 500;
-        color: #212121;
+        color: #000000;
       }
       .column-item-gray {
-        color: #616161;
+        color: #000000;
       }
       table {
         width: 100%;
@@ -288,17 +290,17 @@ export default function generateOfferPdfHtml({
       th, td {
         padding: 4px 6px;
         text-align: left;
-        border-bottom: 1px solid #e0e0e0;
+        border-bottom: 1px solid #000000;
       }
       th {
-        font-weight: 600;
-        color: #424242;
+        font-weight: 700;
+        color: #000000;
         background-color: #f5f5f5;
-        border-top: 1px solid #212121;
+        border-top: 1px solid #000000;
         padding: 6px;
       }
       td {
-        color: #212121;
+        color: #000000;
       }
       .text-right {
         text-align: right;
@@ -349,7 +351,7 @@ export default function generateOfferPdfHtml({
       .notes-section {
         margin-top: 1.5em;
         padding-top: 1em;
-        border-top: 1px solid #e0e0e0;
+        border-top: 1px solid #000000;
       }
       .notes-title {
         font-size: 10px;
@@ -365,9 +367,9 @@ export default function generateOfferPdfHtml({
       .footer {
         margin-top: auto;
         padding-top: 1em;
-        border-top: 1px solid #e0e0e0;
+        border-top: 1px solid #000000;
         font-size: 8px;
-        color: #757575;
+        color: #000000;
         flex-shrink: 0;
         display: flex;
         justify-content: space-between;
@@ -422,6 +424,8 @@ export default function generateOfferPdfHtml({
             offer.billing_street || '',
             offer.billing_house_number || ''
           ].filter(Boolean).join(' '))}</div>
+          ${offer.customer_email ? `<div class="column-item column-item-gray">E-mail: ${escapeHtml(offer.customer_email)}</div>` : ''}
+          ${offer.customer_mobile ? `<div class="column-item column-item-gray">Telefon: ${escapeHtml(offer.customer_mobile)}</div>` : ''}
           ${offer.billing_tax_number ? `<div class="column-item column-item-gray">Adószám: ${escapeHtml(offer.billing_tax_number)}</div>` : ''}
         </div>
       </div>
