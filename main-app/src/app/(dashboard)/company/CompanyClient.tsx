@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from 'react'
 
-import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress } from '@mui/material'
-import { Home as HomeIcon, Save as SaveIcon } from '@mui/icons-material'
+import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, CircularProgress, Avatar, LinearProgress } from '@mui/material'
+import { Home as HomeIcon, Save as SaveIcon, CloudUpload as CloudUploadIcon, Delete as DeleteIcon, Image as ImageIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
 import { invalidateApiCache } from '@/hooks/useApiCache'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabase'
 
 interface TenantCompany {
   id: string
@@ -23,6 +24,7 @@ interface TenantCompany {
   tax_number: string
   company_registration_number: string
   vat_id: string
+  logo_url: string | null
   created_at: string
   updated_at: string
 }
@@ -42,6 +44,9 @@ export default function CompanyClient({ initialCompany }: CompanyClientProps) {
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
   const [formData, setFormData] = useState<TenantCompany | null>(initialCompany)
+  const [logoUploading, setLogoUploading] = useState(false)
+  const [logoUploadProgress, setLogoUploadProgress] = useState(0)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // Update form data when initial company data changes
   useEffect(() => {
@@ -165,6 +170,153 @@ export default function CompanyClient({ initialCompany }: CompanyClientProps) {
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }))
       }
+    }
+  }
+
+  const handleLogoUpload = async (file: File) => {
+    if (!formData) return
+
+    // Validate file type
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+      toast.error('Csak JPEG, PNG vagy WebP formátumú képek engedélyezettek.', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+      return
+    }
+
+    // Validate file size (2MB limit)
+    if (file.size > 2097152) {
+      toast.error('A logo mérete maximum 2 MB lehet.', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+      return
+    }
+
+    // Validate dimensions (1100x250 px recommended)
+    const img = new Image()
+    const imageUrl = URL.createObjectURL(file)
+    
+    img.onload = async () => {
+      URL.revokeObjectURL(imageUrl)
+      
+      if (img.width !== 1100 || img.height !== 250) {
+        toast.warning(`Ajánlott méret: 1100x250 px. Jelenlegi méret: ${img.width}x${img.height} px`, {
+          position: "top-right",
+          autoClose: 5000,
+        })
+      }
+
+      setLogoUploading(true)
+      setLogoUploadProgress(0)
+
+      try {
+        // Check authentication
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          throw new Error('Nem vagy bejelentkezve. Kérjük, jelentkezz be újra.')
+        }
+
+        // Delete old logo if exists
+        if (formData.logo_url) {
+          try {
+            // Extract file path from URL
+            const urlParts = formData.logo_url.split('/storage/v1/object/public/tenant-company-logos/')
+            if (urlParts.length > 1) {
+              const oldFilePath = urlParts[1]
+              await supabase.storage
+                .from('tenant-company-logos')
+                .remove([oldFilePath])
+            }
+          } catch (deleteError) {
+            console.warn('Could not delete old logo:', deleteError)
+            // Continue with upload even if delete fails
+          }
+        }
+
+        // Upload new logo (single file, overwrite)
+        const filePath = 'logo.png'
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('tenant-company-logos')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: true // Overwrite existing file
+          })
+
+        if (uploadError) {
+          throw uploadError
+        }
+
+        setLogoUploadProgress(100)
+
+        // Get the public URL
+        const { data: { publicUrl } } = supabase.storage
+          .from('tenant-company-logos')
+          .getPublicUrl(filePath)
+
+        // Update form data with new logo URL
+        setFormData(prev => prev ? { ...prev, logo_url: publicUrl } : null)
+
+        toast.success('Logo sikeresen feltöltve!', {
+          position: "top-right",
+          autoClose: 3000,
+        })
+      } catch (error) {
+        console.error('Logo upload error:', error)
+        toast.error(`Hiba történt a logo feltöltése során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`, {
+          position: "top-right",
+          autoClose: 5000,
+        })
+      } finally {
+        setLogoUploading(false)
+        setLogoUploadProgress(0)
+      }
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(imageUrl)
+      toast.error('Hiba történt a kép betöltése során.', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+    }
+
+    img.src = imageUrl
+  }
+
+  const handleLogoDelete = async () => {
+    if (!formData || !formData.logo_url) return
+
+    try {
+      // Extract file path from URL
+      const urlParts = formData.logo_url.split('/storage/v1/object/public/tenant-company-logos/')
+      if (urlParts.length > 1) {
+        const filePath = urlParts[1]
+        const { error: deleteError } = await supabase.storage
+          .from('tenant-company-logos')
+          .remove([filePath])
+
+        if (deleteError) {
+          throw deleteError
+        }
+      }
+
+      // Update form data to remove logo URL
+      setFormData(prev => prev ? { ...prev, logo_url: null } : null)
+
+      toast.success('Logo sikeresen törölve!', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+    } catch (error) {
+      console.error('Logo delete error:', error)
+      toast.error(`Hiba történt a logo törlése során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`, {
+        position: "top-right",
+        autoClose: 5000,
+      })
     }
   }
 
@@ -466,6 +618,85 @@ export default function CompanyClient({ initialCompany }: CompanyClientProps) {
               value={formData.vat_id || ''}
               onChange={(e) => handleInputChange('vat_id', e.target.value)}
             />
+          </Grid>
+
+          {/* Logo Upload */}
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
+              Cég logo
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+          </Grid>
+
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
+              {formData.logo_url && (
+                <Box sx={{ mb: 2 }}>
+                  <Avatar
+                    src={formData.logo_url}
+                    alt="Cég logo"
+                    variant="rounded"
+                    sx={{
+                      width: 220,
+                      height: 50,
+                      bgcolor: 'grey.200',
+                    }}
+                  />
+                </Box>
+              )}
+              
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      handleLogoUpload(file)
+                    }
+                    // Reset input
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = ''
+                    }
+                  }}
+                />
+                <Button
+                  variant="outlined"
+                  startIcon={<CloudUploadIcon />}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={logoUploading}
+                >
+                  {logoUploading ? 'Feltöltés...' : formData.logo_url ? 'Logo cseréje' : 'Logo feltöltése'}
+                </Button>
+                
+                {formData.logo_url && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={handleLogoDelete}
+                    disabled={logoUploading}
+                  >
+                    Logo törlése
+                  </Button>
+                )}
+              </Box>
+
+              {logoUploading && (
+                <Box sx={{ width: '100%', maxWidth: 400 }}>
+                  <LinearProgress variant="determinate" value={logoUploadProgress} />
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {logoUploadProgress}% feltöltve
+                  </Typography>
+                </Box>
+              )}
+
+              <Typography variant="caption" color="text.secondary">
+                Ajánlott méret: 1100x250 px. Maximum fájlméret: 2 MB. Engedélyezett formátumok: JPEG, PNG, WebP.
+              </Typography>
+            </Box>
           </Grid>
 
           {/* Metadata */}

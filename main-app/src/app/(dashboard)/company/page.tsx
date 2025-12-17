@@ -20,6 +20,7 @@ interface TenantCompany {
   tax_number: string
   company_registration_number: string
   vat_id: string
+  logo_url: string | null
   created_at: string
   updated_at: string
 }

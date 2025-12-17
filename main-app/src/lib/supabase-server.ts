@@ -1502,6 +1502,7 @@ export async function getAllCompanies() {
       tax_number,
       company_registration_number,
       vat_id,
+      logo_url,
       created_at,
       updated_at
     `)
@@ -1526,7 +1527,7 @@ export async function getTenantCompany() {
   
   const { data, error } = await supabaseServer
     .from('tenant_company')
-    .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id')
+    .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, logo_url')
     .is('deleted_at', null)
     .limit(1)
     .single()

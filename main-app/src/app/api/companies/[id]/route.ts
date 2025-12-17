@@ -11,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     
     const { data: company, error } = await supabase
       .from('tenant_company')
-      .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, created_at, updated_at')
+      .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, logo_url, created_at, updated_at')
       .eq('id', id)
       .is('deleted_at', null)
       .single()
@@ -82,10 +82,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         tax_number: companyData.tax_number,
         company_registration_number: companyData.company_registration_number,
         vat_id: companyData.vat_id,
+        logo_url: companyData.logo_url,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, created_at, updated_at')
+      .select('id, name, country, postal_code, city, address, phone_number, email, website, tax_number, company_registration_number, vat_id, logo_url, created_at, updated_at')
       .single()
     
     if (error) {

@@ -135,6 +135,7 @@ return NextResponse.json(
         tax_number: companyData.tax_number,
         company_registration_number: companyData.company_registration_number,
         vat_id: companyData.vat_id,
+        logo_url: companyData.logo_url,
         updated_at: new Date().toISOString()
       })
       .eq('id', companyData.id)
