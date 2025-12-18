@@ -21,7 +21,8 @@ import {
   CardContent,
   Chip,
   IconButton,
-  Tooltip
+  Tooltip,
+  CircularProgress
 } from '@mui/material'
 
 // Dynamic import for Barcode to avoid SSR issues
@@ -349,6 +350,7 @@ export default function QuoteDetailClient({
   
   const [quoteData, setQuoteData] = useState<QuoteData>(initialQuoteData)
   const [isLoading, setIsLoading] = useState(false)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
   const [addFeeModalOpen, setAddFeeModalOpen] = useState(false)
   const [addAccessoryModalOpen, setAddAccessoryModalOpen] = useState(false)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
@@ -422,6 +424,7 @@ export default function QuoteDetailClient({
       return
     }
 
+    setIsGeneratingPdf(true)
     try {
       // Call server-side PDF generation API
       const response = await fetch(`/api/quotes/${quoteData.id}/pdf`)
@@ -448,6 +451,8 @@ export default function QuoteDetailClient({
     } catch (error: any) {
       console.error('Error generating PDF:', error)
       toast.error('Hiba történt a PDF generálása során: ' + (error.message || 'Ismeretlen hiba'))
+    } finally {
+      setIsGeneratingPdf(false)
     }
   }
 
@@ -1309,11 +1314,12 @@ export default function QuoteDetailClient({
                 <Button
                   variant="outlined"
                   color="info"
-                  startIcon={<PictureAsPdfIcon />}
+                  startIcon={isGeneratingPdf ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
                   onClick={handleGeneratePdf}
+                  disabled={isGeneratingPdf}
                   fullWidth
                 >
-                  PDF generálás
+                  {isGeneratingPdf ? 'PDF generálása...' : 'PDF generálás'}
                 </Button>
 
                 <Divider />

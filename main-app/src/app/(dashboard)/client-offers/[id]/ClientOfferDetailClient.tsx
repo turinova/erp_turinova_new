@@ -167,6 +167,7 @@ export default function ClientOfferDetailClient({
   const router = useRouter()
   const isNew = id === null
   const [saving, setSaving] = useState(false)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   // Offer state
   const [offer, setOffer] = useState<ClientOffer | null>(initialOffer)
@@ -756,6 +757,7 @@ export default function ClientOfferDetailClient({
       return
     }
 
+    setIsGeneratingPdf(true)
     try {
       // Call server-side PDF generation API
       const response = await fetch(`/api/client-offers/${id}/pdf`)
@@ -782,6 +784,8 @@ export default function ClientOfferDetailClient({
     } catch (error: any) {
       console.error('Error generating PDF:', error)
       toast.error('Hiba történt a PDF generálása során: ' + (error.message || 'Ismeretlen hiba'))
+    } finally {
+      setIsGeneratingPdf(false)
     }
   }
 
@@ -1021,11 +1025,11 @@ export default function ClientOfferDetailClient({
             <Button
               variant="outlined"
               color="primary"
-              startIcon={<PictureAsPdfIcon />}
+              startIcon={isGeneratingPdf ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
               onClick={handleGeneratePdf}
-              disabled={!tenantCompany}
+              disabled={!tenantCompany || isGeneratingPdf}
             >
-              PDF generálás
+              {isGeneratingPdf ? 'PDF generálása...' : 'PDF generálás'}
             </Button>
           )}
           <Button
