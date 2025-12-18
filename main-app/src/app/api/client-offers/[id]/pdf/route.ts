@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
+import { createClient } from '@supabase/supabase-js'
 import { getClientOfferById, getTenantCompany, getAllVatRates } from '@/lib/supabase-server'
 import generateOfferPdfHtml from '../pdf-template'
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 // Dynamic imports based on environment
 const isProduction = process.env.VERCEL || process.env.NODE_ENV === 'production'
@@ -64,9 +69,62 @@ export async function GET(
 
     const { offer, items } = offerData
 
+    // Fetch dimensions for materials and linear_materials
+    const materialIds = items.filter(item => item.item_type === 'material' && item.material_id).map(item => item.material_id!)
+    const linearMaterialIds = items.filter(item => item.item_type === 'linear_material' && item.linear_material_id).map(item => item.linear_material_id!)
+
+    const [materialsData, linearMaterialsData] = await Promise.all([
+      materialIds.length > 0
+        ? supabase
+            .from('materials')
+            .select('id, length_mm, width_mm, thickness_mm')
+            .in('id', materialIds)
+        : Promise.resolve({ data: [] }),
+      linearMaterialIds.length > 0
+        ? supabase
+            .from('linear_materials')
+            .select('id, length, width, thickness')
+            .in('id', linearMaterialIds)
+        : Promise.resolve({ data: [] })
+    ])
+
+    // Create maps for quick lookup
+    const materialsMap = new Map(
+      (materialsData.data || []).map(m => [m.id, { length_mm: m.length_mm, width_mm: m.width_mm, thickness_mm: m.thickness_mm }])
+    )
+    const linearMaterialsMap = new Map(
+      (linearMaterialsData.data || []).map(lm => [lm.id, { length: lm.length, width: lm.width, thickness: lm.thickness }])
+    )
+
+    // Enrich items with dimensions
+    const enrichedItems = items.map(item => {
+      if (item.item_type === 'material' && item.material_id) {
+        const materialData = materialsMap.get(item.material_id)
+        if (materialData) {
+          return {
+            ...item,
+            length_mm: materialData.length_mm,
+            width_mm: materialData.width_mm,
+            thickness_mm: materialData.thickness_mm
+          }
+        }
+      } else if (item.item_type === 'linear_material' && item.linear_material_id) {
+        const linearMaterialData = linearMaterialsMap.get(item.linear_material_id)
+        if (linearMaterialData) {
+          return {
+            ...item,
+            length: linearMaterialData.length,
+            width: linearMaterialData.width,
+            thickness: linearMaterialData.thickness
+          }
+        }
+      }
+      return item
+    })
+
     // Calculate summary (matching client-side logic)
-    const products = items.filter(item => ['product', 'material', 'accessory', 'linear_material'].includes(item.item_type))
-    const fees = items.filter(item => item.item_type === 'fee')
+    const products = enrichedItems.filter(item => ['product', 'material', 'accessory', 'linear_material'].includes(item.item_type))
+    const fees = enrichedItems.filter(item => item.item_type === 'fee')
     
     let itemsNet = 0
     let itemsVat = 0
@@ -147,7 +205,7 @@ export async function GET(
     // Generate HTML while Puppeteer imports are loading for better performance
     const fullHtml = generateOfferPdfHtml({
       offer,
-      items,
+      items: enrichedItems,
       tenantCompany,
       vatRates,
       summary,

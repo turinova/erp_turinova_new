@@ -50,6 +50,7 @@ interface Quote {
     material_name: string
     board_length_mm: number
     board_width_mm: number
+    thickness_mm: number
     charged_sqm: number | null
     waste_multi: number
     boards_used: number
@@ -243,13 +244,16 @@ export default function generateQuotePdfHtml({
     // Calculate unit price (gross per m²)
     const unitPriceGross = totalArea > 0 ? pricing.material_gross / totalArea : 0
     
+    const dimensions = `${pricing.board_length_mm}×${pricing.board_width_mm}×${pricing.thickness_mm} mm`
+    
     return `
       <tr>
         <td>
           <div style="font-weight: 500;">${escapeHtml(materialName)}</div>
+          <div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${dimensions}</div>
         </td>
         <td>
-          <span class="chip">Bútorlap</span>
+          <span class="chip">Laptermék</span>
         </td>
         <td class="text-right nowrap">${quantityDisplay}</td>
         <td class="text-right nowrap">${formatCurrencyPdf(Math.round(unitPriceGross))} Ft</td>

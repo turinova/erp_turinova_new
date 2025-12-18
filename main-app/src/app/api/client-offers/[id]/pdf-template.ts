@@ -14,6 +14,15 @@ interface ClientOfferItem {
   total_net: number
   total_vat: number
   total_gross: number
+  material_id: string | null
+  linear_material_id: string | null
+  // Dimensions (populated from materials/linear_materials tables)
+  length_mm?: number | null
+  width_mm?: number | null
+  thickness_mm?: number | null
+  length?: number | null
+  width?: number | null
+  thickness?: number | null
 }
 
 interface ClientOffer {
@@ -107,7 +116,7 @@ const getTypeLabel = (item: ClientOfferItem) => {
     case 'accessory':
       return 'Kellék'
     case 'material':
-      return 'Bútorlap'
+      return 'Laptermék'
     case 'linear_material':
       return 'Szálas termék'
     case 'fee':
@@ -143,11 +152,22 @@ export default function generateOfferPdfHtml({
     const unitDisplay = getUnitDisplay(item)
     const typeLabel = getTypeLabel(item)
     const quantityWithUnit = `${item.quantity} ${escapeHtml(unitDisplay)}`
+    
+    // Display dimensions for materials and linear_materials, SKU for others
+    let detailText = ''
+    if (item.item_type === 'material' && item.length_mm && item.width_mm && item.thickness_mm) {
+      detailText = `${item.length_mm}×${item.width_mm}×${item.thickness_mm} mm`
+    } else if (item.item_type === 'linear_material' && item.length && item.width && item.thickness) {
+      detailText = `${item.length}×${item.width}×${item.thickness} mm`
+    } else if (item.sku) {
+      detailText = `SKU: ${escapeHtml(item.sku)}`
+    }
+    
     return `
       <tr>
         <td>
           <div style="font-weight: 500;">${escapeHtml(item.product_name || '')}</div>
-          ${item.sku ? `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">SKU: ${escapeHtml(item.sku)}</div>` : ''}
+          ${detailText ? `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${detailText}</div>` : ''}
         </td>
         <td>
           <span class="chip">${escapeHtml(typeLabel)}</span>
