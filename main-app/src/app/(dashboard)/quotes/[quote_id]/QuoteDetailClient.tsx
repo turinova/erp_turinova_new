@@ -34,7 +34,8 @@ import {
   FileDownload as ExportIcon,
   Payment as PaymentIcon,
   ShoppingCart as OrderIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  PictureAsPdf as PictureAsPdfIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
@@ -412,6 +413,42 @@ export default function QuoteDetailClient({
         }
       })
     }, 100)
+  }
+
+  // Handle PDF generation via server-side Puppeteer
+  const handleGeneratePdf = async () => {
+    if (!quoteData || !quoteData.id) {
+      toast.error('Az árajánlat szükséges a PDF generálásához')
+      return
+    }
+
+    try {
+      // Call server-side PDF generation API
+      const response = await fetch(`/api/quotes/${quoteData.id}/pdf`)
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Ismeretlen hiba' }))
+        throw new Error(errorData.error || 'Hiba történt a PDF generálása során')
+      }
+
+      // Get PDF blob
+      const blob = await response.blob()
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Arajanlat-${quoteData.quote_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      toast.success('PDF sikeresen generálva és letöltve')
+    } catch (error: any) {
+      console.error('Error generating PDF:', error)
+      toast.error('Hiba történt a PDF generálása során: ' + (error.message || 'Ismeretlen hiba'))
+    }
   }
 
   // Handle export Excel
@@ -1272,11 +1309,11 @@ export default function QuoteDetailClient({
                 <Button
                   variant="outlined"
                   color="info"
-                  startIcon={<PrintIcon />}
-                  onClick={handlePrint}
+                  startIcon={<PictureAsPdfIcon />}
+                  onClick={handleGeneratePdf}
                   fullWidth
                 >
-                  Nyomtatás
+                  PDF generálás
                 </Button>
 
                 <Divider />
