@@ -144,6 +144,7 @@ export async function GET(
     ])
 
     // Generate HTML string directly (no React rendering)
+    // Generate HTML while Puppeteer imports are loading for better performance
     const fullHtml = generateOfferPdfHtml({
       offer,
       items,
@@ -156,7 +157,7 @@ export async function GET(
       turinovaLogoBase64
     })
 
-    // Launch Puppeteer
+    // Launch Puppeteer with performance optimizations
     // In production (Vercel), use puppeteer-core with @sparticuz/chromium
     // In development, use puppeteer (includes bundled Chromium)
     let browser
@@ -167,7 +168,33 @@ export async function GET(
       const chromium = await import('@sparticuz/chromium')
       
       browser = await puppeteerCore.default.launch({
-        args: chromium.default.args,
+        args: [
+          ...chromium.default.args,
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-ipc-flooding-protection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-sync',
+          '--disable-translate',
+          '--metrics-recording-only',
+          '--mute-audio',
+          '--no-first-run',
+          '--safebrowsing-disable-auto-update',
+          '--enable-automation',
+          '--password-store=basic',
+          '--use-mock-keychain',
+        ],
         defaultViewport: chromium.default.defaultViewport,
         executablePath: await chromium.default.executablePath(),
         headless: chromium.default.headless,
@@ -178,28 +205,44 @@ export async function GET(
       
       browser = await puppeteer.default.launch({
         headless: true,
+        args: [
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-extensions',
+          '--no-sandbox',
+        ],
       })
     }
 
     const page = await browser.newPage()
     
+    // Disable unnecessary features for better performance
+    // No JavaScript needed for static PDF generation
+    await page.setJavaScriptEnabled(false)
+    
+    // Block all network requests (images are already base64 embedded)
+    await page.setRequestInterception(true)
+    page.on('request', (req) => {
+      req.abort()
+    })
+    
     // Set content and wait for rendering
     // Using 'domcontentloaded' instead of 'networkidle0' for better performance
-    // Then explicitly wait for fonts and give images time to render
+    // System fonts don't need loading wait, and images are base64 embedded
     await page.setContent(fullHtml, {
       waitUntil: 'domcontentloaded'
     })
     
-    // Wait for fonts to load (important for PDF quality)
-    await page.evaluateHandle('document.fonts.ready')
-    
-    // Small delay for images to render (much faster than networkidle0)
-    await new Promise(resolve => setTimeout(resolve, 100))
+    // Small delay for images to render (reduced from 100ms since images are base64)
+    await new Promise(resolve => setTimeout(resolve, 50))
 
-    // Generate PDF with vector text
+    // Generate PDF with optimized settings for better performance
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
+      preferCSSPageSize: false, // Faster - don't use CSS page size
+      displayHeaderFooter: false, // No header/footer needed
+      scale: 1, // Don't scale
       margin: {
         top: '8mm',
         right: '4mm',
