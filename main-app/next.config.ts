@@ -201,20 +201,37 @@ const nextConfig: NextConfig = {
     'chrome-aws-lambda',
   ],
   
-  // Webpack configuration to disable source maps
+  // Webpack configuration to disable source maps and prevent Puppeteer analysis
   webpack: (config, { dev, isServer }) => {
     if (dev) {
       config.devtool = false
     }
     
-    // Exclude puppeteer from client bundle (extra safety)
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        'puppeteer': false,
-        'puppeteer-core': false,
-        '@sparticuz/chromium': false,
+    // CRITICAL: Exclude Puppeteer from ALL bundles (client AND server)
+    // This prevents Next.js from analyzing these massive packages during build
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      'puppeteer': false,
+      'puppeteer-core': false,
+      '@sparticuz/chromium': false,
+      'chrome-aws-lambda': false,
+    }
+    
+    // CRITICAL: Mark Puppeteer as external for server-side builds
+    // This tells webpack to NOT bundle or analyze these packages at all
+    if (isServer) {
+      if (!config.externals) {
+        config.externals = []
+      } else if (!Array.isArray(config.externals)) {
+        config.externals = [config.externals]
       }
+      
+      config.externals.push({
+        'puppeteer': 'commonjs puppeteer',
+        'puppeteer-core': 'commonjs puppeteer-core',
+        '@sparticuz/chromium': 'commonjs @sparticuz/chromium',
+        'chrome-aws-lambda': 'commonjs chrome-aws-lambda',
+      })
     }
     
     return config
