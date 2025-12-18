@@ -191,11 +191,32 @@ const nextConfig: NextConfig = {
     // optimizePackageImports: ['@mui/material', '@mui/icons-material'], // Disabled - might cause MUI issues
   },
   
+  // CRITICAL: Exclude Puppeteer/Chromium from server component bundling
+  // These packages are ONLY used in API routes and should never be bundled or analyzed
+  // Without this, Next.js tries to analyze these massive packages on every page load
+  serverComponentsExternalPackages: [
+    'puppeteer',
+    'puppeteer-core',
+    '@sparticuz/chromium',
+    'chrome-aws-lambda',
+  ],
+  
   // Webpack configuration to disable source maps
-  webpack: (config, { dev }) => {
+  webpack: (config, { dev, isServer }) => {
     if (dev) {
       config.devtool = false
     }
+    
+    // Exclude puppeteer from client bundle (extra safety)
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        'puppeteer': false,
+        'puppeteer-core': false,
+        '@sparticuz/chromium': false,
+      }
+    }
+    
     return config
   },
   
