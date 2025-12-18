@@ -312,6 +312,139 @@ export async function getCompanyPaymentMethods(companyCredentials: CompanyCreden
 }
 
 /**
+ * Get VAT rates from the company's database
+ * Used for PDF generation
+ */
+export async function getCompanyVatRates(companyCredentials: CompanyCredentials) {
+  const { supabase_url, supabase_anon_key } = companyCredentials
+  
+  const companySupabase = createSupabaseClient(supabase_url, supabase_anon_key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'customer-portal-ssr',
+      },
+    },
+  })
+  
+  const { data, error } = await companySupabase
+    .from('vat')
+    .select('id, name, kulcs, created_at, updated_at')
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+  
+  if (error) {
+    console.error('[Company Data] VAT rates fetch error:', error)
+    return []
+  }
+  
+  return data || []
+}
+
+/**
+ * Get material machine codes by IDs from the company's database
+ * Used for PDF generation (cutting list)
+ */
+export async function getMaterialMachineCodes(
+  companyCredentials: CompanyCredentials,
+  materialIds: string[]
+): Promise<Map<string, string>> {
+  if (materialIds.length === 0) {
+    return new Map()
+  }
+  
+  const { supabase_url, supabase_anon_key } = companyCredentials
+  
+  const companySupabase = createSupabaseClient(supabase_url, supabase_anon_key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'customer-portal-ssr',
+      },
+    },
+  })
+  
+  const { data, error } = await companySupabase
+    .from('materials')
+    .select('id, machine_code, name')
+    .in('id', materialIds)
+    .is('deleted_at', null)
+  
+  if (error) {
+    console.error('[Company Data] Material machine codes fetch error:', error)
+    return new Map()
+  }
+  
+  const map = new Map<string, string>()
+  data?.forEach(material => {
+    // Use machine_code if available, otherwise fall back to material name
+    const code = material.machine_code || material.name || ''
+    if (code) {
+      map.set(material.id, code)
+    }
+  })
+  
+  return map
+}
+
+/**
+ * Get edge material codes by IDs from the company's database
+ * Used for PDF generation (cutting list)
+ * Edge code format: type-width/thickness-decor
+ */
+export async function getEdgeMaterialCodes(
+  companyCredentials: CompanyCredentials,
+  edgeMaterialIds: string[]
+): Promise<Map<string, string>> {
+  if (edgeMaterialIds.length === 0) {
+    return new Map()
+  }
+  
+  const { supabase_url, supabase_anon_key } = companyCredentials
+  
+  const companySupabase = createSupabaseClient(supabase_url, supabase_anon_key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    },
+    global: {
+      headers: {
+        'X-Client-Info': 'customer-portal-ssr',
+      },
+    },
+  })
+  
+  const { data, error } = await companySupabase
+    .from('edge_materials')
+    .select('id, type, width, thickness, decor')
+    .in('id', edgeMaterialIds)
+    .is('deleted_at', null)
+  
+  if (error) {
+    console.error('[Company Data] Edge material codes fetch error:', error)
+    return new Map()
+  }
+  
+  const map = new Map<string, string>()
+  data?.forEach(edge => {
+    // Format: type-width/thickness-decor
+    const code = `${edge.type}-${edge.width}/${edge.thickness}-${edge.decor}`
+    map.set(edge.id, code)
+  })
+  
+  return map
+}
+
+/**
  * Fetch all company data in parallel
  * EXACT main app pattern
  */

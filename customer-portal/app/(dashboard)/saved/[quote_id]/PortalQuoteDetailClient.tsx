@@ -35,7 +35,7 @@ import {
 import { 
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
-  Print as PrintIcon,
+  PictureAsPdf as PdfIcon,
   ShoppingCart as OrderIcon
 } from '@mui/icons-material'
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
@@ -192,6 +192,7 @@ export default function PortalQuoteDetailClient({
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false)
   const [commentModalOpen, setCommentModalOpen] = useState(false)
   const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('')
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -262,9 +263,65 @@ export default function PortalQuoteDetailClient({
     }
   }
 
-  // Handle print
-  const handlePrint = () => {
-    window.print()
+  // Handle PDF generation
+  const handleGeneratePdf = async () => {
+    setIsGeneratingPdf(true)
+    try {
+      console.log('[Customer Portal] Starting PDF generation for quote:', quoteData.id)
+      const response = await fetch(`/api/portal-quotes/${quoteData.id}/pdf`, {
+        method: 'GET',
+      })
+
+      console.log('[Customer Portal] PDF response status:', response.status)
+      console.log('[Customer Portal] PDF response headers:', Object.fromEntries(response.headers.entries()))
+
+      if (!response.ok) {
+        // Try to get error message from JSON response
+        let errorMessage = 'Failed to generate PDF'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+        } catch (e) {
+          // If response is not JSON, get text
+          const text = await response.text()
+          errorMessage = text || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
+      // Check content type
+      const contentType = response.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/pdf')) {
+        const text = await response.text()
+        console.error('[Customer Portal] Unexpected response type:', contentType, text)
+        throw new Error('A válasz nem PDF formátumú')
+      }
+
+      // Get PDF blob
+      const blob = await response.blob()
+      console.log('[Customer Portal] PDF blob size:', blob.size, 'bytes')
+      
+      if (blob.size === 0) {
+        throw new Error('A generált PDF üres')
+      }
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Arajanlat-${quoteData.quote_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      toast.success('PDF sikeresen generálva')
+    } catch (error) {
+      console.error('[Customer Portal] Error generating PDF:', error)
+      toast.error(`Hiba a PDF generálása során: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsGeneratingPdf(false)
+    }
   }
 
   // Handle submit quote
@@ -972,15 +1029,16 @@ export default function PortalQuoteDetailClient({
 
               <Divider sx={{ my: 2 }} />
 
-              {/* Print Button */}
+              {/* PDF Generation Button */}
               <Button
                 variant="outlined"
-                startIcon={<PrintIcon />}
-                onClick={handlePrint}
+                startIcon={<PdfIcon />}
+                onClick={handleGeneratePdf}
+                disabled={isGeneratingPdf}
                 fullWidth
                 sx={{ mb: 1 }}
               >
-                Nyomtatás
+                {isGeneratingPdf ? 'PDF generálása...' : 'PDF generálás'}
               </Button>
 
               {/* Submit Quote Button - Enabled for draft quotes */}
