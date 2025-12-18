@@ -62,11 +62,12 @@ export async function middleware(req: NextRequest) {
 
   // Try to get session with better error handling
   let session = null
+  const isDev = process.env.NODE_ENV === 'development'
   try {
     // First try to get session from cookies
     const { data: { session: sessionData }, error } = await supabase.auth.getSession()
     if (error) {
-      console.log('Middleware - Session error:', error.message)
+      if (isDev) console.log('Middleware - Session error:', error.message)
     } else {
       session = sessionData
     }
@@ -75,46 +76,48 @@ export async function middleware(req: NextRequest) {
     if (!session) {
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError) {
-        console.log('Middleware - User error:', userError.message)
+        if (isDev) console.log('Middleware - User error:', userError.message)
       } else if (user) {
-        console.log('Middleware - Found user without session:', user.email)
+        if (isDev) console.log('Middleware - Found user without session:', user.email)
         // Create a minimal session object
         session = { user }
       }
     }
   } catch (error) {
-    console.log('Middleware - Session exception:', error)
+    if (isDev) console.log('Middleware - Session exception:', error)
   }
 
-  console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
-  console.log('Middleware - Cookies:', req.cookies.getAll().map(c => c.name).join(', '))
+  if (isDev) {
+    console.log('Middleware - Path:', req.nextUrl.pathname, 'Session:', !!session, 'User:', session?.user?.email)
+    console.log('Middleware - Cookies:', req.cookies.getAll().map(c => c.name).join(', '))
+  }
 
   // IMPORTANT: Check if authenticated user is trying to access /login BEFORE skipping public routes
   // This prevents authenticated users from accessing the login page
   if (session && session.user && req.nextUrl.pathname === '/login') {
-    console.log('Middleware - Authenticated user trying to access /login, redirecting to first permitted page')
+    if (isDev) console.log('Middleware - Authenticated user trying to access /login, redirecting to first permitted page')
     const firstPage = await getFirstPermittedPage(session.user.id)
-    console.log('Middleware - Redirecting authenticated user from /login to:', firstPage)
+    if (isDev) console.log('Middleware - Redirecting authenticated user from /login to:', firstPage)
     return NextResponse.redirect(new URL(firstPage, req.url))
   }
 
   // Skip authentication for public routes (only if user is NOT authenticated)
   if (isPublicRoute && !session) {
-    console.log('Middleware - Public route (unauthenticated):', req.nextUrl.pathname)
+    if (isDev) console.log('Middleware - Public route (unauthenticated):', req.nextUrl.pathname)
     return response
   }
 
   // If user is not signed in and the current path is not /login, redirect to /login
   if (!session && req.nextUrl.pathname !== '/login') {
-    console.log('Middleware - Redirecting to login (no session)')
+    if (isDev) console.log('Middleware - Redirecting to login (no session)')
     return NextResponse.redirect(new URL('/login', req.url))
   }
 
   // If user is signed in and the current path is /, redirect to first permitted page
   if (session && req.nextUrl.pathname === '/') {
-    console.log('Middleware - User signed in on root, finding first permitted page')
+    if (isDev) console.log('Middleware - User signed in on root, finding first permitted page')
     const firstPage = await getFirstPermittedPage(session.user.id)
-    console.log('Middleware - Redirecting to:', firstPage)
+    if (isDev) console.log('Middleware - Redirecting to:', firstPage)
     return NextResponse.redirect(new URL(firstPage, req.url))
   }
 
@@ -124,15 +127,15 @@ export async function middleware(req: NextRequest) {
       const hasPermission = await hasPagePermission(session.user.id, req.nextUrl.pathname)
       
       if (!hasPermission) {
-        console.log('Middleware - Access denied for:', req.nextUrl.pathname, 'User:', session.user.email)
+        if (isDev) console.log('Middleware - Access denied for:', req.nextUrl.pathname, 'User:', session.user.email)
         const firstPage = await getFirstPermittedPage(session.user.id)
-        console.log('Middleware - Redirecting to first permitted page:', firstPage)
+        if (isDev) console.log('Middleware - Redirecting to first permitted page:', firstPage)
         return NextResponse.redirect(new URL(firstPage, req.url))
       }
       
-      console.log('Middleware - Access granted for:', req.nextUrl.pathname, 'User:', session.user.email)
+      if (isDev) console.log('Middleware - Access granted for:', req.nextUrl.pathname, 'User:', session.user.email)
     } catch (error) {
-      console.error('Middleware - Permission check error:', error)
+      if (isDev) console.error('Middleware - Permission check error:', error)
       // Fail-closed: redirect to first permitted page on permission check error
       const firstPage = await getFirstPermittedPage(session.user.id)
       return NextResponse.redirect(new URL(firstPage, req.url))
