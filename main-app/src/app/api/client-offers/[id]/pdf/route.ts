@@ -7,6 +7,35 @@ import generateOfferPdfHtml from '../pdf-template'
 // Dynamic imports based on environment
 const isProduction = process.env.VERCEL || process.env.NODE_ENV === 'production'
 
+// In-memory cache for static data (tenant company and VAT rates)
+// These rarely change, so caching improves performance significantly
+const cache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+async function getCachedTenantCompany() {
+  const key = 'tenant_company'
+  const cached = cache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data
+  }
+  const data = await getTenantCompany()
+  if (data) {
+    cache.set(key, { data, timestamp: Date.now() })
+  }
+  return data
+}
+
+async function getCachedVatRates() {
+  const key = 'vat_rates'
+  const cached = cache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data
+  }
+  const data = await getAllVatRates()
+  cache.set(key, { data, timestamp: Date.now() })
+  return data
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -18,19 +47,22 @@ export async function GET(
       return NextResponse.json({ error: 'Érvénytelen ajánlat azonosító' }, { status: 400 })
     }
 
-    // Fetch offer data
-    const offerData = await getClientOfferById(id)
+    // Parallelize database queries for better performance
+    const [offerData, tenantCompany, vatRates] = await Promise.all([
+      getClientOfferById(id),
+      getCachedTenantCompany(),
+      getCachedVatRates()
+    ])
+
     if (!offerData) {
       return NextResponse.json({ error: 'Ajánlat nem található' }, { status: 404 })
     }
 
-    const { offer, items } = offerData
-    const tenantCompany = await getTenantCompany()
-    const vatRates = await getAllVatRates()
-
     if (!tenantCompany) {
       return NextResponse.json({ error: 'Cégadatok nem találhatók' }, { status: 500 })
     }
+
+    const { offer, items } = offerData
 
     // Calculate summary (matching client-side logic)
     const products = items.filter(item => ['product', 'material', 'accessory', 'linear_material'].includes(item.item_type))
@@ -85,34 +117,31 @@ export async function GET(
       totalGrossAfterDiscount
     }
 
-    // Fetch tenant company logo from storage URL for header
-    let tenantCompanyLogoBase64 = ''
-    try {
-      if (tenantCompany.logo_url) {
-        // Fetch logo from Supabase storage URL
-        const logoResponse = await fetch(tenantCompany.logo_url)
-        if (logoResponse.ok) {
-          const logoBuffer = Buffer.from(await logoResponse.arrayBuffer())
-          tenantCompanyLogoBase64 = logoBuffer.toString('base64')
-        } else {
-          console.warn('Could not fetch tenant company logo from storage URL:', logoResponse.statusText)
-        }
-      }
-    } catch (error) {
-      console.warn('Could not load tenant company logo:', error)
-      // Continue without logo if file not found
-    }
-
-    // Always fetch Turinova logo from filesystem for footer
-    let turinovaLogoBase64 = ''
-    try {
-      const logoPath = join(process.cwd(), 'public', 'images', 'turinova-logo.png')
-      const logoBuffer = await readFile(logoPath)
-      turinovaLogoBase64 = logoBuffer.toString('base64')
-    } catch (error) {
-      console.warn('Could not load Turinova logo file:', error)
-      // Continue without logo if file not found
-    }
+    // Parallelize image fetching for better performance
+    const [tenantCompanyLogoBase64, turinovaLogoBase64] = await Promise.all([
+      // Fetch tenant company logo from storage URL for header
+      tenantCompany.logo_url
+        ? fetch(tenantCompany.logo_url)
+            .then(res => {
+              if (res.ok) {
+                return res.arrayBuffer()
+                  .then(buf => Buffer.from(buf).toString('base64'))
+              }
+              return ''
+            })
+            .catch(() => {
+              console.warn('Could not load tenant company logo')
+              return ''
+            })
+        : Promise.resolve(''),
+      // Always fetch Turinova logo from filesystem for footer
+      readFile(join(process.cwd(), 'public', 'images', 'turinova-logo.png'))
+        .then(buf => buf.toString('base64'))
+        .catch(() => {
+          console.warn('Could not load Turinova logo file')
+          return ''
+        })
+    ])
 
     // Generate HTML string directly (no React rendering)
     const fullHtml = generateOfferPdfHtml({
@@ -155,9 +184,17 @@ export async function GET(
     const page = await browser.newPage()
     
     // Set content and wait for rendering
+    // Using 'domcontentloaded' instead of 'networkidle0' for better performance
+    // Then explicitly wait for fonts and give images time to render
     await page.setContent(fullHtml, {
-      waitUntil: 'networkidle0'
+      waitUntil: 'domcontentloaded'
     })
+    
+    // Wait for fonts to load (important for PDF quality)
+    await page.evaluateHandle('document.fonts.ready')
+    
+    // Small delay for images to render (much faster than networkidle0)
+    await new Promise(resolve => setTimeout(resolve, 100))
 
     // Generate PDF with vector text
     const pdfBuffer = await page.pdf({
