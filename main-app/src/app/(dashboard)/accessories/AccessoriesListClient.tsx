@@ -92,6 +92,8 @@ export default function AccessoriesListClient({
   const [accessoryToPrint, setAccessoryToPrint] = useState<Accessory | null>(null)
   const [editableProductName, setEditableProductName] = useState<string>('')
   const [editableSellingPrice, setEditableSellingPrice] = useState<number | null>(null)
+  const [selectedUnitShortform, setSelectedUnitShortform] = useState<string>('')
+  const [units, setUnits] = useState<Array<{ id: string; name: string; shortform: string }>>([])
   const [labelFields, setLabelFields] = useState({
     showName: true,
     showSku: true,
@@ -366,6 +368,20 @@ export default function AccessoriesListClient({
       const calculatedPrice = Math.round(basePrice * multiplier * (1 + vatPercent / 100))
       setEditableSellingPrice(calculatedPrice)
       
+      // Initialize selected unit with accessory's unit shortform
+      setSelectedUnitShortform(fullAccessory.unit_shortform || '')
+      
+      // Fetch units for dropdown
+      try {
+        const unitsResponse = await fetch('/api/units')
+        if (unitsResponse.ok) {
+          const unitsData = await unitsResponse.json()
+          setUnits(unitsData || [])
+        }
+      } catch (error) {
+        console.error('Error fetching units:', error)
+      }
+      
       setLabelFields({
         showName: true,
         showSku: true,
@@ -403,9 +419,24 @@ export default function AccessoriesListClient({
   // - Barcode: 10.375mm (increased by 25% from 8.3mm)
   // Total: 25mm
   // No padding, no margin, no gaps
-  const PrintLabel = ({ accessory, fields, price, productName }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string }) => {
+  const PrintLabel = ({ accessory, fields, price, productName, unitShortform }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string, unitShortform: string }) => {
     const text = productName || accessory.name || 'N/A'
     const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
+    
+    // Calculate price text length and adjust font size accordingly
+    const priceText = `${new Intl.NumberFormat('hu-HU').format(price)} Ft / ${unitShortform || 'db'}`
+    const priceTextLength = priceText.length
+    // Scale font size based on text length: 6mm for short, down to 4mm for very long
+    let priceFontSize = '6mm'
+    if (priceTextLength > 20) {
+      priceFontSize = '4mm'
+    } else if (priceTextLength > 15) {
+      priceFontSize = '4.5mm'
+    } else if (priceTextLength > 12) {
+      priceFontSize = '5mm'
+    } else if (priceTextLength > 10) {
+      priceFontSize = '5.5mm'
+    }
     
     // Build grid template rows based on visible fields
     const gridRows: string[] = []
@@ -532,22 +563,24 @@ export default function AccessoriesListClient({
           >
             <div
               style={{
-                fontSize: '6mm',
+                fontSize: priceFontSize,
                 fontWeight: 'bold',
                 color: '#000000',
                 lineHeight: 1,
                 whiteSpace: 'nowrap',
                 margin: 0,
-                padding: 0,
+                padding: '0 1mm',
                 width: '100%',
                 height: '100%',
                 display: 'flex',
                 alignItems: 'flex-end',
                 justifyContent: 'center',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                boxSizing: 'border-box'
               }}
             >
-              {new Intl.NumberFormat('hu-HU').format(price)} Ft
+              {priceText}
             </div>
           </div>
         )}
@@ -842,6 +875,7 @@ export default function AccessoriesListClient({
             fields={labelFields}
             price={editableSellingPrice || currentSellingPrice || 0}
             productName={editableProductName}
+            unitShortform={selectedUnitShortform || accessoryToPrint?.unit_shortform || 'db'}
           />
         )
       }
@@ -1587,33 +1621,107 @@ export default function AccessoriesListClient({
                         Jelenlegi eladási ár
                       </Typography>
                       {editableSellingPrice !== null ? (
-                        <TextField
-                          type="number"
-                          value={editableSellingPrice}
-                          onChange={(e) => {
-                            const value = parseInt(e.target.value) || 0
-                            setEditableSellingPrice(value >= 0 ? value : 0)
-                          }}
-                          InputProps={{
-                            endAdornment: <InputAdornment position="end">Ft</InputAdornment>,
-                            sx: {
-                              fontSize: '1.5rem',
-                              fontWeight: 'bold',
-                              '& input': {
-                                textAlign: 'right',
-                                color: 'error.main',
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 2,
+                          flexWrap: 'wrap',
+                          width: '100%'
+                        }}>
+                          <TextField
+                            type="number"
+                            value={editableSellingPrice}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value) || 0
+                              setEditableSellingPrice(value >= 0 ? value : 0)
+                            }}
+                            InputProps={{
+                              endAdornment: <InputAdornment position="end">Ft</InputAdornment>,
+                              sx: {
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                '& input': {
+                                  textAlign: 'right',
+                                  color: 'error.main',
+                                  fontWeight: 'bold'
+                                }
+                              }
+                            }}
+                            sx={{
+                              width: '200px',
+                              flexShrink: 0,
+                              '& .MuiOutlinedInput-root': {
+                                fontSize: '1.5rem',
                                 fontWeight: 'bold'
                               }
-                            }
-                          }}
-                          sx={{
-                            width: '200px',
-                            '& .MuiOutlinedInput-root': {
-                              fontSize: '1.5rem',
-                              fontWeight: 'bold'
-                            }
-                          }}
-                        />
+                            }}
+                          />
+                          <Typography variant="h6" sx={{ color: 'text.secondary', flexShrink: 0 }}>/</Typography>
+                          <FormControl sx={{ minWidth: 120, flexShrink: 0 }}>
+                            <Select
+                              value={selectedUnitShortform}
+                              onChange={(e) => setSelectedUnitShortform(e.target.value)}
+                              displayEmpty
+                              sx={{
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {units.map((unit) => (
+                                <MenuItem key={unit.id} value={unit.shortform}>
+                                  {unit.shortform}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <Box
+                            sx={{
+                              flex: '1 1 auto',
+                              minWidth: 0,
+                              overflow: 'hidden',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-start',
+                              position: 'relative',
+                              maxWidth: '100%'
+                            }}
+                          >
+                            <Typography 
+                              variant="h4" 
+                              sx={{ 
+                                color: 'error.main', 
+                                fontWeight: 'bold',
+                                fontSize: '2rem',
+                                lineHeight: 1.2,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: '100%',
+                                width: '100%',
+                                // Scale down if container is too small
+                                transform: 'scale(1)',
+                                transformOrigin: 'left center',
+                                '@media (max-width: 1400px)': {
+                                  fontSize: '1.75rem'
+                                },
+                                '@media (max-width: 1200px)': {
+                                  fontSize: '1.5rem'
+                                },
+                                '@media (max-width: 1000px)': {
+                                  fontSize: '1.25rem'
+                                },
+                                '@media (max-width: 800px)': {
+                                  fontSize: '1rem'
+                                },
+                                '@media (max-width: 600px)': {
+                                  fontSize: '0.875rem'
+                                }
+                              }}
+                            >
+                              = {new Intl.NumberFormat('hu-HU').format(editableSellingPrice)} Ft / {selectedUnitShortform || 'db'}
+                            </Typography>
+                          </Box>
+                        </Box>
                       ) : (
                         <Typography
                           variant="body2"
@@ -1810,7 +1918,7 @@ export default function AccessoriesListClient({
                             overflow: 'hidden'
                           }}
                         >
-                          {new Intl.NumberFormat('hu-HU').format(editableSellingPrice || currentSellingPrice || 0)} Ft
+                          {new Intl.NumberFormat('hu-HU').format(editableSellingPrice || currentSellingPrice || 0)} Ft / {selectedUnitShortform || accessoryToPrint?.unit_shortform || 'db'}
                         </div>
                       </div>
                     )}
