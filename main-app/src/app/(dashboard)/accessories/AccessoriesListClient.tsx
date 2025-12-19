@@ -91,6 +91,7 @@ export default function AccessoriesListClient({
   const [printLabelOpen, setPrintLabelOpen] = useState(false)
   const [accessoryToPrint, setAccessoryToPrint] = useState<Accessory | null>(null)
   const [editableProductName, setEditableProductName] = useState<string>('')
+  const [editableSellingPrice, setEditableSellingPrice] = useState<number | null>(null)
   const [labelFields, setLabelFields] = useState({
     showName: true,
     showSku: true,
@@ -345,7 +346,7 @@ export default function AccessoriesListClient({
       return
     }
 
-    // Fetch full accessory details including barcode
+    // Fetch full accessory details including barcode, vat_percent, gross_price, etc.
     try {
       const response = await fetch(`/api/accessories/${accessoryId}`)
       if (!response.ok) {
@@ -353,18 +354,22 @@ export default function AccessoriesListClient({
       }
       const fullAccessory = await response.json()
       
-      // Update accessory with barcode
-      const accessoryWithBarcode: Accessory = {
-        ...accessory,
-        barcode: fullAccessory.barcode || null
-      }
+      // Use the full accessory data (includes vat_percent, gross_price, etc.)
+      // This ensures we have all the correct calculated fields
+      setAccessoryToPrint(fullAccessory)
+      setEditableProductName(fullAccessory.name)
       
-      setAccessoryToPrint(accessoryWithBarcode)
-      setEditableProductName(accessoryWithBarcode.name)
+      // Initialize editable selling price with calculated value
+      const basePrice = fullAccessory.base_price || 0
+      const multiplier = parseFloat(String(fullAccessory.multiplier)) || 1.38
+      const vatPercent = fullAccessory.vat_percent || 0
+      const calculatedPrice = Math.round(basePrice * multiplier * (1 + vatPercent / 100))
+      setEditableSellingPrice(calculatedPrice)
+      
       setLabelFields({
         showName: true,
         showSku: true,
-        showBarcode: !!accessoryWithBarcode.barcode,
+        showBarcode: !!fullAccessory.barcode,
         showPrice: true
       })
       setPrintAmount(1)
@@ -375,17 +380,19 @@ export default function AccessoriesListClient({
     }
   }
 
-  // Calculate current selling price: base_price * multiplier * (1 + vat_percent/100) rounded up to nearest 10
+  // Calculate current selling price: base_price * multiplier * (1 + vat_percent/100) rounded to nearest integer
   const currentSellingPrice = useMemo(() => {
     if (!accessoryToPrint) return null
     
     const basePrice = accessoryToPrint.base_price || 0
-    const multiplier = accessoryToPrint.multiplier || 1.38
+    const multiplier = parseFloat(String(accessoryToPrint.multiplier)) || 1.38 // Ensure multiplier is a number
     const vatPercent = accessoryToPrint.vat_percent || 0
     
+    // Calculate: base_price * multiplier * (1 + vat_percent/100)
     const price = basePrice * multiplier * (1 + vatPercent / 100)
-    // Round up to nearest 10
-    return Math.ceil(price / 10) * 10
+    
+    // Round to nearest integer (nearest 1)
+    return Math.round(price)
   }, [accessoryToPrint])
 
   // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
@@ -833,7 +840,7 @@ export default function AccessoriesListClient({
             key={i}
             accessory={accessoryToPrint}
             fields={labelFields}
-            price={currentSellingPrice || 0}
+            price={editableSellingPrice || currentSellingPrice || 0}
             productName={editableProductName}
           />
         )
@@ -1579,18 +1586,34 @@ export default function AccessoriesListClient({
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
                         Jelenlegi eladási ár
                       </Typography>
-                      {currentSellingPrice !== null ? (
-                        <Typography
-                          variant="h4"
-                          sx={{
-                            color: 'error.main',
-                            fontWeight: 'bold',
-                            fontSize: '2rem',
-                            lineHeight: 1.2
+                      {editableSellingPrice !== null ? (
+                        <TextField
+                          type="number"
+                          value={editableSellingPrice}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value) || 0
+                            setEditableSellingPrice(value >= 0 ? value : 0)
                           }}
-                        >
-                          {new Intl.NumberFormat('hu-HU').format(currentSellingPrice)} Ft
-                        </Typography>
+                          InputProps={{
+                            endAdornment: <InputAdornment position="end">Ft</InputAdornment>,
+                            sx: {
+                              fontSize: '1.5rem',
+                              fontWeight: 'bold',
+                              '& input': {
+                                textAlign: 'right',
+                                color: 'error.main',
+                                fontWeight: 'bold'
+                              }
+                            }
+                          }}
+                          sx={{
+                            width: '200px',
+                            '& .MuiOutlinedInput-root': {
+                              fontSize: '1.5rem',
+                              fontWeight: 'bold'
+                            }
+                          }}
+                        />
                       ) : (
                         <Typography
                           variant="body2"
@@ -1787,7 +1810,7 @@ export default function AccessoriesListClient({
                             overflow: 'hidden'
                           }}
                         >
-                          {new Intl.NumberFormat('hu-HU').format(currentSellingPrice || 0)} Ft
+                          {new Intl.NumberFormat('hu-HU').format(editableSellingPrice || currentSellingPrice || 0)} Ft
                         </div>
                       </div>
                     )}
