@@ -51,7 +51,10 @@ export async function hasPagePermission(
     const basePath = pagePath.split('/').slice(0, 2).join('/'); // e.g., /orders/123 -> /orders
     const checkPath = basePath.length > 1 ? basePath : pagePath; // If basePath is just '/', use original path
 
-    console.log(`Permission check: ${pagePath} -> ${checkPath}`)
+    // Only log in development to avoid performance impact in production
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Permission check: ${pagePath} -> ${checkPath}`)
+    }
 
     // If permissions are provided (from session cache), use them
     if (sessionPermissions) {

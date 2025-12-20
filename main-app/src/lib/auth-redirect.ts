@@ -13,22 +13,31 @@ import { UserPermission } from './permissions'
  */
 export async function getFirstPermittedPage(userId: string): Promise<string> {
   try {
-    console.log('[AUTH REDIRECT] Finding first permitted page for user:', userId)
+    // Only log in development to avoid performance impact in production
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[AUTH REDIRECT] Finding first permitted page for user:', userId)
+    }
     
     const permissions = await getUserPermissionsFromDB(userId)
     
-    console.log('[AUTH REDIRECT] User has', permissions.length, 'permissions loaded')
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[AUTH REDIRECT] User has', permissions.length, 'permissions loaded')
+    }
     
     // Find first page with can_access = true
     const firstAllowed = permissions.find(p => p.can_access === true)
     
     if (firstAllowed) {
-      console.log('[AUTH REDIRECT] Redirecting to first permitted page:', firstAllowed.page_path)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[AUTH REDIRECT] Redirecting to first permitted page:', firstAllowed.page_path)
+      }
       return firstAllowed.page_path
     }
     
     // No permissions found - redirect to login
-    console.log('[AUTH REDIRECT] No permissions found, redirecting to login')
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[AUTH REDIRECT] No permissions found, redirecting to login')
+    }
     return '/login'
     
   } catch (error) {
