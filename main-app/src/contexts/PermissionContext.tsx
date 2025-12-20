@@ -44,10 +44,30 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
       const user = session.user
 
-             // Get user permissions directly from Supabase instead of API route
-             const { data, error } = await supabase.rpc('get_user_permissions', {
-               user_uuid: user.id
-             })
+      // Add timeout to RPC call to prevent infinite loading
+      const PERMISSION_FETCH_TIMEOUT = 5000 // 5 seconds
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Permission fetch timeout')), PERMISSION_FETCH_TIMEOUT)
+      })
+      
+      // Get user permissions directly from Supabase instead of API route
+      const rpcPromise = supabase.rpc('get_user_permissions', {
+        user_uuid: user.id
+      })
+      
+      let data, error
+      try {
+        const result = await Promise.race([rpcPromise, timeoutPromise]) as any
+        data = result.data
+        error = result.error
+      } catch (timeoutError) {
+        console.error('Permission fetch timeout or error:', timeoutError)
+        // No permissions on timeout (fail-closed)
+        const defaultPermissions: UserPermission[] = []
+        setPermissions(defaultPermissions)
+        setLoading(false)
+        return
+      }
 
       if (error) {
         console.error('Error fetching user permissions:', error)
