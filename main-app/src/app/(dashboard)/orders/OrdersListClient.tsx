@@ -43,6 +43,7 @@ import PaymentConfirmationModal from '../scanner/PaymentConfirmationModal'
 import DeleteConfirmationModal from './DeleteConfirmationModal'
 import SmsConfirmationModal from '../scanner/SmsConfirmationModal'
 import StorageReminderModal from './StorageReminderModal'
+import { printOrderReceipt } from '@/lib/print-receipt'
 
 interface Machine {
   id: string
@@ -492,12 +493,80 @@ export default function OrdersListClient({
     }
   }
 
+  // Extract printing logic to separate function for reuse
+  const printReceiptForOrder = async (orderId: string, order: Order) => {
+    console.log('[Receipt Print] Attempting to print receipt for order:', order.order_number)
+    try {
+      // Fetch order quote data and tenant company data
+      console.log('[Receipt Print] Fetching data...')
+      const [quoteDataResponse, tenantCompanyResponse] = await Promise.all([
+        fetch(`/api/orders/${orderId}/quote-data`),
+        fetch('/api/tenant-company')
+      ])
+
+      console.log('[Receipt Print] Fetch responses:', {
+        quoteDataOk: quoteDataResponse.ok,
+        tenantCompanyOk: tenantCompanyResponse.ok
+      })
+
+      if (!quoteDataResponse.ok || !tenantCompanyResponse.ok) {
+        console.error('[Receipt Print] Failed to fetch data for printing:', {
+          quoteDataStatus: quoteDataResponse.status,
+          tenantCompanyStatus: tenantCompanyResponse.status
+        })
+        toast.error('Nem sikerült betölteni az adatokat a nyomtatáshoz')
+        return
+      }
+
+      const quoteData = await quoteDataResponse.json()
+      const tenantCompany = await tenantCompanyResponse.json()
+
+      console.log('[Receipt Print] Data fetched successfully:', {
+        pricingCount: quoteData.pricing?.length || 0,
+        tenantCompanyName: tenantCompany.name
+      })
+
+      // Print receipt
+      console.log('[Receipt Print] Calling printOrderReceipt...')
+      await printOrderReceipt({
+        tenantCompany: {
+          logo_url: tenantCompany.logo_url,
+          postal_code: tenantCompany.postal_code,
+          city: tenantCompany.city,
+          address: tenantCompany.address,
+          phone_number: tenantCompany.phone_number,
+          email: tenantCompany.email,
+          tax_number: tenantCompany.tax_number
+        },
+        orderNumber: order.order_number,
+        customerName: order.customer_name,
+        pricing: quoteData.pricing || []
+      })
+      console.log('[Receipt Print] printOrderReceipt completed')
+    } catch (error: any) {
+      console.error('[Receipt Print] Error printing receipt:', error)
+      // Show user-friendly error message
+      const errorMessage = error?.message || 'Hiba történt a nyomtatás során'
+      if (errorMessage.includes('not supported')) {
+        toast.warning('A böngésző nem támogatja a közvetlen USB nyomtatást. Kérjük, használja a Chrome vagy Edge böngészőt.')
+      } else if (errorMessage.includes('cancelled') || errorMessage.includes('Nincs nyomtató')) {
+        toast.info('Nyomtatás megszakítva vagy nincs nyomtató kiválasztva. A böngésző nyomtatási párbeszédablaka megnyílik.')
+      } else {
+        toast.error(errorMessage)
+      }
+    }
+  }
+
   // Handle finished button click (with payment confirmation)
-  const handleFinishedClick = () => {
+  const handleFinishedClick = async () => {
     if (selectedOrders.length === 0) {
       toast.warning('Válassz legalább egy megrendelést')
       return
     }
+
+    // IMPORTANT: Store order info BEFORE any async operations
+    const orderIdToPrint = selectedOrders.length === 1 ? selectedOrders[0] : null
+    const orderToPrint = orderIdToPrint ? orders.find(o => o.id === orderIdToPrint) : null
 
     // Get full order objects for selected IDs
     const selectedOrderObjects = orders.filter(order => selectedOrders.includes(order.id))
@@ -509,18 +578,49 @@ export default function OrdersListClient({
 
     // If no orders with balance, just update status directly
     if (ordersWithBalance.length === 0) {
-      handleBulkStatusUpdate('finished', false)
+      console.log('[Receipt Print] No balance - direct update:', {
+        selectedOrdersCount: selectedOrders.length,
+        orderIdToPrint,
+        orderToPrint: orderToPrint ? { id: orderToPrint.id, order_number: orderToPrint.order_number } : null
+      })
+      
+      await handleBulkStatusUpdate('finished', false)
+      
+      // Print receipt if exactly 1 order was selected (ALWAYS print when 1 order)
+      if (orderIdToPrint && orderToPrint) {
+        await printReceiptForOrder(orderIdToPrint, orderToPrint)
+      } else {
+        console.log('[Receipt Print] Skipping print - not exactly 1 order selected')
+      }
       return
     }
 
-    // Show payment confirmation modal
+    // Show payment confirmation modal (for orders with balance)
     setPaymentModalOpen(true)
   }
 
   // Handle payment confirmation response
   const handlePaymentConfirmation = async (createPayments: boolean) => {
     setPaymentModalOpen(false)
+    
+    // IMPORTANT: Store order info BEFORE status update
+    const orderIdToPrint = selectedOrders.length === 1 ? selectedOrders[0] : null
+    const orderToPrint = orderIdToPrint ? orders.find(o => o.id === orderIdToPrint) : null
+    
+    console.log('[Receipt Print] Starting payment confirmation:', {
+      selectedOrdersCount: selectedOrders.length,
+      orderIdToPrint,
+      orderToPrint: orderToPrint ? { id: orderToPrint.id, order_number: orderToPrint.order_number } : null
+    })
+    
     await handleBulkStatusUpdate('finished', createPayments)
+    
+    // Print receipt if exactly 1 order was selected (ALWAYS print when 1 order)
+    if (orderIdToPrint && orderToPrint) {
+      await printReceiptForOrder(orderIdToPrint, orderToPrint)
+    } else {
+      console.log('[Receipt Print] Skipping print - not exactly 1 order selected')
+    }
   }
 
   // Handle cancel button click (set to cancelled)
