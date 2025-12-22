@@ -2,6 +2,7 @@
  * ESC/POS command generator for 80mm thermal printer receipts
  */
 
+
 interface ReceiptData {
   tenantCompany: {
     name?: string
@@ -100,6 +101,15 @@ function lineFeed(lines: number = 1): string {
 function printDashedLine(): string {
   // Use paper width to ensure line doesn't wrap
   return '-'.repeat(PAPER_WIDTH_CHARS) + lineFeed()
+}
+
+/**
+ * Print horizontal line (thick/solid)
+ * Uses paper width to prevent wrapping
+ */
+function printThickLine(): string {
+  // Use underscore or equals for thick line
+  return '='.repeat(PAPER_WIDTH_CHARS) + lineFeed()
 }
 
 /**
@@ -294,8 +304,10 @@ function encodeToCP852(text: string): Uint8Array {
 
 /**
  * Generate ESC/POS commands for receipt
+ * @param data - Receipt data including tenant company info
+ * @returns Promise<Uint8Array> - ESC/POS command bytes
  */
-export function generateEscPosCommands(data: ReceiptData): Uint8Array {
+export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Array> {
   let commands = ''
 
   // Initialize printer
@@ -305,6 +317,28 @@ export function generateEscPosCommands(data: ReceiptData): Uint8Array {
   // Code page 2 = CP852 (Latin-2) - standard for most ESC/POS printers
   // If ő/ű still don't work, try: 18 (alternative CP852), 17 (CP1250), or 19 (CP858)
   commands += setCharacterCodePage(2)  // CP852 - Latin 2 (Hungarian support)
+
+  // Receipt title: "Átvételi elismervény" - Same size as company name (2x2)
+  commands += setAlignment(1)  // Center alignment
+  commands += lineFeed(1)
+  
+  // Top double separator line
+  commands += printThickLine()
+  
+  // Title text - Same size as company name (2x2) and bold, no wrapping
+  commands += setTextSize(2, 2)  // Double width and height (same as company name)
+  commands += setBold(true)
+  
+  // Full title text - no truncation, let it display fully
+  const titleText = 'Átvételi elismervény'
+  commands += printText(titleText)
+  commands += setBold(false)
+  commands += setTextSize(1, 1)  // Reset to normal size
+  commands += lineFeed(1)
+  
+  // Bottom double separator line
+  commands += printThickLine()
+  commands += lineFeed(2)
 
   // Center alignment for company name
   commands += setAlignment(1)
@@ -469,10 +503,18 @@ export function generateEscPosCommands(data: ReceiptData): Uint8Array {
     commands += printDashedLine()
   }
 
-  // Legal disclaimer (centered)
+  // Legal disclaimer (centered, with line breaks)
   commands += setAlignment(1)  // Center alignment
   commands += setTextSize(1, 1)
-  commands += printText('A megrendelő igazolja, hogy az árut mennyiségében és minőségében átvette. Az átvételkor látható hibákra vonatkozó reklamációt a későbbiekben nem áll módunkban elfogadni.')
+  commands += printText('A megrendelő igazolja, hogy az árut')
+  commands += lineFeed()
+  commands += printText('mennyiségben és minőségben')
+  commands += lineFeed()
+  commands += printText('hiánytalanul átvette.')
+  commands += lineFeed()
+  commands += printText('Az átvételt követően')
+  commands += lineFeed()
+  commands += printText('reklamációra nincs lehetőség.')
   commands += lineFeed(2)
 
   // Additional line

@@ -133,6 +133,44 @@ export default function OrderReceiptPrint({
         backgroundColor: '#fff'
       }}
     >
+      {/* Receipt Title - Same size as company name, with double separator lines */}
+      <Box
+        sx={{
+          textAlign: 'center',
+          marginBottom: '4mm'
+        }}
+      >
+        {/* Top double separator line */}
+        <Box
+          sx={{
+            borderTop: '2px solid #000',
+            marginBottom: '3mm'
+          }}
+        />
+        
+        <Typography
+          variant="h4"
+          sx={{
+            fontSize: '18px',
+            fontWeight: 'bold',
+            lineHeight: '1.2',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          Átvételi elismervény
+        </Typography>
+        
+        {/* Bottom double separator line */}
+        <Box
+          sx={{
+            borderTop: '2px solid #000',
+            marginTop: '3mm'
+          }}
+        />
+      </Box>
+
       {/* Company Name - Large, Centered, No Wrap */}
       {tenantCompany.name && (
         <Box
@@ -457,7 +495,7 @@ export default function OrderReceiptPrint({
         }}
       />
 
-      {/* Legal Disclaimer - Centered */}
+      {/* Legal Disclaimer - Centered, with line breaks */}
       <Box sx={{ marginBottom: '3mm', textAlign: 'center' }}>
         <Typography
           variant="body2"
@@ -467,7 +505,15 @@ export default function OrderReceiptPrint({
             textAlign: 'center'
           }}
         >
-          A megrendelő igazolja, hogy az árut mennyiségében és minőségében átvette. Az átvételkor látható hibákra vonatkozó reklamációt a későbbiekben nem áll módunkban elfogadni.
+          A megrendelő igazolja, hogy az árut
+          <br />
+          mennyiségben és minőségben
+          <br />
+          hiánytalanul átvette.
+          <br />
+          Az átvételt követően
+          <br />
+          reklamációra nincs lehetőség.
         </Typography>
       </Box>
 

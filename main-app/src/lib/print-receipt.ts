@@ -83,7 +83,7 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
   // Try WebUSB direct printing first
   try {
     console.log('[Print Receipt] Attempting WebUSB direct printing...')
-    const escPosCommands = generateEscPosCommands(data)
+    const escPosCommands = await generateEscPosCommands(data)
     await printReceiptViaWebUSB(escPosCommands)
     console.log('[Print Receipt] WebUSB printing successful')
     return // Success, exit early
