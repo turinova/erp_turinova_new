@@ -4,6 +4,7 @@
 
 interface ReceiptData {
   tenantCompany: {
+    name?: string
     logo_url?: string | null
     postal_code?: string
     city?: string
@@ -305,9 +306,32 @@ export function generateEscPosCommands(data: ReceiptData): Uint8Array {
   // If ő/ű still don't work, try: 18 (alternative CP852), 17 (CP1250), or 19 (CP858)
   commands += setCharacterCodePage(2)  // CP852 - Latin 2 (Hungarian support)
 
-  // Center alignment for logo area (if logo exists, we'll add space for it)
+  // Center alignment for company name
   commands += setAlignment(1)
-  commands += lineFeed(2)
+  commands += lineFeed(1)
+
+  // Company name in large text (double width and height), centered, no wrapping
+  if (data.tenantCompany.name) {
+    // Set text to double width and double height for large company name
+    commands += setTextSize(2, 2)  // Double width and height
+    commands += setBold(true)
+    
+    // Prevent wrapping by ensuring the name fits on one line
+    // For 80mm paper, we have ~48 characters at normal size, so ~24 at double width
+    // If name is too long, truncate it (better than wrapping)
+    const maxNameLength = 24  // Conservative for double-width text on 80mm paper
+    const companyName = data.tenantCompany.name.length > maxNameLength
+      ? data.tenantCompany.name.substring(0, maxNameLength - 3) + '...'
+      : data.tenantCompany.name
+    
+    commands += printText(companyName)
+    commands += setBold(false)
+    commands += setTextSize(1, 1)  // Reset to normal size
+    commands += lineFeed(2)
+  }
+
+  // Center alignment for company info
+  commands += setAlignment(1)
 
   // Company info (centered)
   commands += setTextSize(1, 1)
@@ -445,7 +469,8 @@ export function generateEscPosCommands(data: ReceiptData): Uint8Array {
     commands += printDashedLine()
   }
 
-  // Legal disclaimer
+  // Legal disclaimer (centered)
+  commands += setAlignment(1)  // Center alignment
   commands += setTextSize(1, 1)
   commands += printText('A megrendelő igazolja, hogy az árut mennyiségében és minőségében átvette. Az átvételkor látható hibákra vonatkozó reklamációt a későbbiekben nem áll módunkban elfogadni.')
   commands += lineFeed(2)

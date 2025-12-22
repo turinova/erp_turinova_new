@@ -5,6 +5,7 @@ import { Box, Typography } from '@mui/material'
 
 interface OrderReceiptPrintProps {
   tenantCompany: {
+    name?: string
     logo_url?: string | null
     postal_code?: string
     city?: string
@@ -52,7 +53,7 @@ export default function OrderReceiptPrint({
     // Divide charged_sqm by waste_multi to show net material quantity
     const displaySqm = chargedSqm / wasteMulti
     
-    return `${displaySqm.toFixed(2)} m² / ${boardsSold} db`
+    return `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
   }
 
   const getMaterialName = (pricingItem: typeof pricing[0]) => {
@@ -77,7 +78,7 @@ export default function OrderReceiptPrint({
               break
             case 'duplungolas':
               serviceName = 'Duplungolás'
-              unit = 'm²'
+              unit = 'm2'
               break
             case 'szogvagas':
               serviceName = 'Szögvágás'
@@ -122,8 +123,8 @@ export default function OrderReceiptPrint({
     <Box
       id="order-receipt-print-container"
       sx={{
-        width: '58mm',
-        maxWidth: '58mm',
+        width: '80mm',
+        maxWidth: '80mm',
         padding: '4mm',
         fontFamily: 'monospace',
         fontSize: '9px',
@@ -132,6 +133,33 @@ export default function OrderReceiptPrint({
         backgroundColor: '#fff'
       }}
     >
+      {/* Company Name - Large, Centered, No Wrap */}
+      {tenantCompany.name && (
+        <Box
+          sx={{
+            textAlign: 'center',
+            marginBottom: '4mm',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <Typography
+            variant="h4"
+            sx={{
+              fontSize: '18px',
+              fontWeight: 'bold',
+              lineHeight: '1.2',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {tenantCompany.name}
+          </Typography>
+        </Box>
+      )}
+
       {/* Logo */}
       {logoBase64 && (
         <Box
@@ -429,14 +457,14 @@ export default function OrderReceiptPrint({
         }}
       />
 
-      {/* Legal Disclaimer */}
-      <Box sx={{ marginBottom: '3mm' }}>
+      {/* Legal Disclaimer - Centered */}
+      <Box sx={{ marginBottom: '3mm', textAlign: 'center' }}>
         <Typography
           variant="body2"
           sx={{
             fontSize: '7px',
             lineHeight: '1.3',
-            textAlign: 'justify'
+            textAlign: 'center'
           }}
         >
           A megrendelő igazolja, hogy az árut mennyiségében és minőségében átvette. Az átvételkor látható hibákra vonatkozó reklamációt a későbbiekben nem áll módunkban elfogadni.

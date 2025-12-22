@@ -8,6 +8,7 @@ import { printReceiptViaWebUSB } from './webusb-printer'
 
 interface ReceiptData {
   tenantCompany: {
+    name?: string
     logo_url?: string | null
     postal_code?: string
     city?: string
