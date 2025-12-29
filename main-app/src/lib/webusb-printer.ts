@@ -87,7 +87,7 @@ export async function printToUsbPrinter(
   let usedConfiguration: number | null = null
   
   try {
-    console.log('[WebUSB] Opening device...', {
+    console.log('[WebUSB] Preparing to print to device...', {
       vendorId: device.vendorId.toString(16),
       productId: device.productId.toString(16),
       productName: device.productName,
@@ -95,33 +95,13 @@ export async function printToUsbPrinter(
       alreadyOpened: device.opened
     })
     
-    // Windows: Check if device is already open, if not try to open it
-    // On Windows, devices might be closed even if paired
-    try {
-      if (!device.opened) {
-        await device.open()
-        console.log('[WebUSB] Successfully opened device')
-      } else {
-        console.log('[WebUSB] Device is already open')
-      }
-    } catch (openError: any) {
-      // Windows: Device might be locked by Windows driver
-      if (openError.message.includes('access denied') || 
-          openError.message.includes('locked') ||
-          openError.message.includes('busy') ||
-          openError.message.includes('in use') ||
-          openError.message.includes('permission')) {
-        throw new Error(
-          'A nyomtató használatban van Windows illesztőprogram által.\n\n' +
-          'Windows megoldások:\n' +
-          '1. Zárja be a nyomtatókezelőt (Print Spooler szolgáltatás)\n' +
-          '2. Ellenőrizze, hogy nincs-e más program használatban a nyomtatót\n' +
-          '3. Próbálja meg újraindítani a Chrome böngészőt\n' +
-          '4. Válassza ki újra a nyomtatót a böngészőben'
-        )
-      }
-      throw openError
+    // Device should already be opened by printReceiptViaWebUSB
+    // But double-check and provide clear error if not
+    if (!device.opened) {
+      throw new Error('A nyomtató nincs megnyitva. Kérjük, próbálja meg újra.')
     }
+    
+    console.log('[WebUSB] Device is open and ready for printing')
 
     // Windows: Try to select configuration if needed
     // Some Windows drivers require explicit configuration selection
@@ -337,6 +317,12 @@ export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise
           // This will show the device picker, but user can select the same device
           console.log('[WebUSB] Requesting device access again (Windows may need this)...')
           device = await requestPrinterAccess()
+          // Newly requested device needs to be opened
+          if (device && !device.opened) {
+            console.log('[WebUSB] Opening newly requested device...')
+            await device.open()
+            console.log('[WebUSB] Successfully opened newly requested device')
+          }
         }
       } else {
         console.log('[WebUSB] Paired device is already open')
@@ -345,10 +331,33 @@ export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise
       // Request new device access
       console.log('[WebUSB] No paired printer found, requesting access...')
       device = await requestPrinterAccess()
+      // Newly requested device needs to be opened
+      if (device && !device.opened) {
+        console.log('[WebUSB] Opening newly requested device...')
+        try {
+          await device.open()
+          console.log('[WebUSB] Successfully opened newly requested device')
+        } catch (openError: any) {
+          console.error('[WebUSB] Failed to open newly requested device:', openError.message)
+          throw new Error(`Nem sikerült megnyitni a nyomtatót: ${openError.message}`)
+        }
+      }
     }
 
     if (!device) {
       throw new Error('Nincs nyomtató kiválasztva')
+    }
+
+    // Ensure device is open before printing
+    if (!device.opened) {
+      console.log('[WebUSB] Device is not open, attempting to open...')
+      try {
+        await device.open()
+        console.log('[WebUSB] Successfully opened device before printing')
+      } catch (openError: any) {
+        console.error('[WebUSB] Failed to open device before printing:', openError.message)
+        throw new Error(`Nem sikerült megnyitni a nyomtatót: ${openError.message}`)
+      }
     }
 
     // Print to device
@@ -363,8 +372,8 @@ export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise
         error.message.includes('busy') ||
         error.message.includes('already claimed')) {
       console.warn('[WebUSB] Device appears to be locked by Windows driver, error:', error.message)
-      // Don't throw - let it fall through to browser print with a warning
-      // The error will be caught by printOrderReceipt and fallback will happen
+      // Re-throw with more context
+      throw new Error(`Windows illesztőprogram zárolja a nyomtatót: ${error.message}`)
     }
     
     throw error
