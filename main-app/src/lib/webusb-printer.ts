@@ -76,76 +76,208 @@ export async function getPairedPrinter(): Promise<USBDevice[]> {
 
 /**
  * Connect to USB printer and send ESC/POS commands
+ * Windows-compatible: tries multiple interfaces and configurations
  */
 export async function printToUsbPrinter(
   device: USBDevice,
   escPosCommands: Uint8Array
 ): Promise<void> {
+  let claimedInterface: number | null = null
+  let usedConfiguration: number | null = null
+  
   try {
-    console.log('[WebUSB] Opening device...')
+    console.log('[WebUSB] Opening device...', {
+      vendorId: device.vendorId.toString(16),
+      productId: device.productId.toString(16),
+      productName: device.productName,
+      manufacturerName: device.manufacturerName
+    })
+    
     await device.open()
 
-    // Select configuration (most printers use configuration 1)
+    // Windows: Try to select configuration if needed
+    // Some Windows drivers require explicit configuration selection
     if (device.configuration === null) {
-      await device.selectConfiguration(1)
+      // Try configuration 1 first (most common)
+      try {
+        console.log('[WebUSB] Selecting configuration 1...')
+        await device.selectConfiguration(1)
+        usedConfiguration = 1
+      } catch (configError: any) {
+        console.warn('[WebUSB] Configuration 1 failed, trying to detect available configurations...', configError.message)
+        // On Windows, sometimes we need to let the device auto-select
+        // or try different configurations
+      }
+    } else {
+      usedConfiguration = device.configuration.configurationValue
+      console.log('[WebUSB] Using existing configuration:', usedConfiguration)
     }
 
-    // Claim interface (most ESC/POS printers use interface 0)
-    try {
-      await device.claimInterface(0)
-    } catch (error: any) {
-      // If interface is already claimed, try to release and reclaim
-      if (error.message.includes('already claimed')) {
-        await device.releaseInterface(0)
-        await device.claimInterface(0)
-      } else {
-        throw error
+    // Windows: Try multiple interfaces (not just interface 0)
+    // Some printers on Windows use interface 1 or 2
+    const maxInterfaces = device.configuration?.interfaces.length || 1
+    let endpoint: USBEndpoint | null = null
+    let interfaceNumber: number | null = null
+    
+    console.log('[WebUSB] Device has', maxInterfaces, 'interface(s), trying to find bulk out endpoint...')
+    
+    for (let i = 0; i < maxInterfaces; i++) {
+      try {
+        const interface_ = device.configuration!.interfaces[i]
+        const interfaceNum = interface_.interfaceNumber
+        
+        console.log(`[WebUSB] Trying interface ${interfaceNum}...`)
+        
+        // Try to claim this interface
+        try {
+          await device.claimInterface(interfaceNum)
+          claimedInterface = interfaceNum
+          console.log(`[WebUSB] Successfully claimed interface ${interfaceNum}`)
+        } catch (claimError: any) {
+          // Windows: Interface might be claimed by another driver
+          if (claimError.message.includes('already claimed') || 
+              claimError.message.includes('The requested interface is busy') ||
+              claimError.message.includes('busy')) {
+            console.warn(`[WebUSB] Interface ${interfaceNum} is already claimed, trying to release and reclaim...`)
+            try {
+              await device.releaseInterface(interfaceNum)
+              await device.claimInterface(interfaceNum)
+              claimedInterface = interfaceNum
+              console.log(`[WebUSB] Successfully reclaimed interface ${interfaceNum}`)
+            } catch (reclaimError: any) {
+              console.warn(`[WebUSB] Could not reclaim interface ${interfaceNum}:`, reclaimError.message)
+              continue // Try next interface
+            }
+          } else {
+            console.warn(`[WebUSB] Could not claim interface ${interfaceNum}:`, claimError.message)
+            continue // Try next interface
+          }
+        }
+
+        // Find bulk out endpoint in this interface
+        // Try all alternates (Windows might use different alternates)
+        for (const alternate of interface_.alternates) {
+          const bulkOutEndpoint = alternate.endpoints.find(
+            (ep: USBEndpoint) => ep.direction === 'out' && ep.type === 'bulk'
+          )
+          
+          if (bulkOutEndpoint) {
+            endpoint = bulkOutEndpoint
+            interfaceNumber = interfaceNum
+            console.log(`[WebUSB] Found bulk out endpoint on interface ${interfaceNum}, alternate ${alternate.alternateSetting}`)
+            break
+          }
+        }
+        
+        if (endpoint) {
+          break // Found endpoint, exit interface loop
+        } else {
+          // Release this interface if we didn't find an endpoint
+          try {
+            await device.releaseInterface(interfaceNum)
+            claimedInterface = null
+          } catch (releaseError) {
+            console.warn(`[WebUSB] Could not release interface ${interfaceNum}:`, releaseError)
+          }
+        }
+      } catch (interfaceError: any) {
+        console.warn(`[WebUSB] Error with interface ${i}:`, interfaceError.message)
+        continue
       }
     }
 
-    // Find the bulk out endpoint (for sending data to printer)
-    const interface_ = device.configuration!.interfaces[0]
-    const alternate = interface_.alternates[0]
-    const endpoint = alternate.endpoints.find(
-      (ep: USBEndpoint) => ep.direction === 'out' && ep.type === 'bulk'
-    )
-
-    if (!endpoint) {
-      throw new Error('Nem található kimeneti végpont a nyomtatóban')
+    if (!endpoint || interfaceNumber === null) {
+      throw new Error(
+        'Nem található kimeneti végpont a nyomtatóban.\n\n' +
+        'Windows: Ellenőrizze, hogy a nyomtató nincs-e használatban más program által.\n' +
+        'Próbálja meg bezárni a nyomtatókezelőt és újraindítani a böngészőt.'
+      )
     }
 
-    console.log('[WebUSB] Sending ESC/POS commands...', escPosCommands.length, 'bytes')
+    console.log('[WebUSB] Sending ESC/POS commands...', {
+      bytes: escPosCommands.length,
+      endpoint: endpoint.endpointNumber,
+      packetSize: endpoint.packetSize,
+      interface: interfaceNumber
+    })
 
-    // Send data in chunks (USB has packet size limits, typically 64 bytes)
-    const chunkSize = endpoint.packetSize || 64
+    // Send data in chunks (USB has packet size limits)
+    // Windows: Some printers need smaller chunks
+    const chunkSize = Math.min(endpoint.packetSize || 64, 64)
+    const totalChunks = Math.ceil(escPosCommands.length / chunkSize)
+    
     for (let i = 0; i < escPosCommands.length; i += chunkSize) {
       const chunk = escPosCommands.slice(i, i + chunkSize)
-      await device.transferOut(endpoint.endpointNumber, chunk)
+      const chunkNum = Math.floor(i / chunkSize) + 1
+      
+      try {
+        await device.transferOut(endpoint.endpointNumber, chunk)
+        if (chunkNum % 10 === 0 || chunkNum === totalChunks) {
+          console.log(`[WebUSB] Sent chunk ${chunkNum}/${totalChunks}`)
+        }
+      } catch (transferError: any) {
+        // Windows: Sometimes transfers fail, try to recover
+        if (transferError.message.includes('transfer') || transferError.message.includes('timeout')) {
+          console.warn(`[WebUSB] Transfer error on chunk ${chunkNum}, retrying...`, transferError.message)
+          // Wait a bit and retry
+          await new Promise(resolve => setTimeout(resolve, 100))
+          await device.transferOut(endpoint.endpointNumber, chunk)
+        } else {
+          throw transferError
+        }
+      }
     }
 
     console.log('[WebUSB] Print job sent successfully')
 
     // Release interface
-    await device.releaseInterface(0)
+    if (claimedInterface !== null) {
+      try {
+        await device.releaseInterface(claimedInterface)
+        console.log(`[WebUSB] Released interface ${claimedInterface}`)
+      } catch (releaseError) {
+        console.warn('[WebUSB] Could not release interface:', releaseError)
+      }
+    }
 
     // Close device
     await device.close()
-
     console.log('[WebUSB] Device closed')
   } catch (error: any) {
     console.error('[WebUSB] Error printing:', error)
     
+    // Windows-specific error messages
+    let errorMessage = error.message
+    if (error.message.includes('access denied') || error.message.includes('permission')) {
+      errorMessage = 
+        'Hozzáférés megtagadva a nyomtatóhoz.\n\n' +
+        'Windows megoldások:\n' +
+        '1. Zárja be a nyomtatókezelőt (Print Spooler)\n' +
+        '2. Ellenőrizze, hogy nincs-e más program használatban a nyomtatót\n' +
+        '3. Próbálja meg újraindítani a Chrome böngészőt\n' +
+        '4. Ellenőrizze a Windows eszközkezelőben, hogy a nyomtató nincs-e hibás állapotban'
+    } else if (error.message.includes('not found') || error.message.includes('disconnected')) {
+      errorMessage = 
+        'A nyomtató nem található vagy le van választva.\n\n' +
+        'Kérjük, ellenőrizze:\n' +
+        '1. A nyomtató csatlakoztatva van-e\n' +
+        '2. A USB kábel megfelelően csatlakoztatva van-e\n' +
+        '3. Próbálja meg kihúzni és újra bedugni a USB kábelt'
+    }
+    
     // Try to clean up
     try {
       if (device.opened) {
-        await device.releaseInterface(0).catch(() => {})
+        if (claimedInterface !== null) {
+          await device.releaseInterface(claimedInterface).catch(() => {})
+        }
         await device.close().catch(() => {})
       }
     } catch (cleanupError) {
       console.error('[WebUSB] Cleanup error:', cleanupError)
     }
 
-    throw new Error(`Nyomtatási hiba: ${error.message}`)
+    throw new Error(`Nyomtatási hiba: ${errorMessage}`)
   }
 }
 
