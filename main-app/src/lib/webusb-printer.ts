@@ -90,10 +90,37 @@ export async function printToUsbPrinter(
       vendorId: device.vendorId.toString(16),
       productId: device.productId.toString(16),
       productName: device.productName,
-      manufacturerName: device.manufacturerName
+      manufacturerName: device.manufacturerName,
+      alreadyOpened: device.opened
     })
     
-    await device.open()
+    // Windows: Check if device is already open, if not try to open it
+    // On Windows, devices might be closed even if paired
+    try {
+      if (!device.opened) {
+        await device.open()
+        console.log('[WebUSB] Successfully opened device')
+      } else {
+        console.log('[WebUSB] Device is already open')
+      }
+    } catch (openError: any) {
+      // Windows: Device might be locked by Windows driver
+      if (openError.message.includes('access denied') || 
+          openError.message.includes('locked') ||
+          openError.message.includes('busy') ||
+          openError.message.includes('in use') ||
+          openError.message.includes('permission')) {
+        throw new Error(
+          'A nyomtató használatban van Windows illesztőprogram által.\n\n' +
+          'Windows megoldások:\n' +
+          '1. Zárja be a nyomtatókezelőt (Print Spooler szolgáltatás)\n' +
+          '2. Ellenőrizze, hogy nincs-e más program használatban a nyomtatót\n' +
+          '3. Próbálja meg újraindítani a Chrome böngészőt\n' +
+          '4. Válassza ki újra a nyomtatót a böngészőben'
+        )
+      }
+      throw openError
+    }
 
     // Windows: Try to select configuration if needed
     // Some Windows drivers require explicit configuration selection
@@ -109,8 +136,8 @@ export async function printToUsbPrinter(
         // or try different configurations
       }
     } else {
-      usedConfiguration = device.configuration.configurationValue
-      console.log('[WebUSB] Using existing configuration:', usedConfiguration)
+      usedConfiguration = 1 // Default to configuration 1 if already set
+      console.log('[WebUSB] Using existing configuration')
     }
 
     // Windows: Try multiple interfaces (not just interface 0)
@@ -164,7 +191,7 @@ export async function printToUsbPrinter(
           if (bulkOutEndpoint) {
             endpoint = bulkOutEndpoint
             interfaceNumber = interfaceNum
-            console.log(`[WebUSB] Found bulk out endpoint on interface ${interfaceNum}, alternate ${alternate.alternateSetting}`)
+            console.log(`[WebUSB] Found bulk out endpoint on interface ${interfaceNum}`)
             break
           }
         }
@@ -295,6 +322,24 @@ export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise
       // Use the first paired device
       console.log('[WebUSB] Using paired printer:', pairedDevices[0].productName)
       device = pairedDevices[0]
+      
+      // Windows: Check if device is already opened, if not try to open it
+      // On Windows, paired devices might be closed and need to be reopened
+      if (!device.opened) {
+        try {
+          console.log('[WebUSB] Paired device is closed, attempting to open...')
+          await device.open()
+          console.log('[WebUSB] Successfully opened paired device')
+        } catch (openError: any) {
+          console.warn('[WebUSB] Could not open paired device, it may be locked by Windows driver:', openError.message)
+          // On Windows, if the device is locked, we might need to request it again
+          // This will show the device picker, but user can select the same device
+          console.log('[WebUSB] Requesting device access again (Windows may need this)...')
+          device = await requestPrinterAccess()
+        }
+      } else {
+        console.log('[WebUSB] Paired device is already open')
+      }
     } else {
       // Request new device access
       console.log('[WebUSB] No paired printer found, requesting access...')
@@ -309,6 +354,18 @@ export async function printReceiptViaWebUSB(escPosCommands: Uint8Array): Promise
     await printToUsbPrinter(device, escPosCommands)
   } catch (error: any) {
     console.error('[WebUSB] Print error:', error)
+    
+    // Windows-specific: If device is paired but locked, provide helpful message
+    if (error.message.includes('access denied') || 
+        error.message.includes('permission') ||
+        error.message.includes('locked') ||
+        error.message.includes('busy') ||
+        error.message.includes('already claimed')) {
+      console.warn('[WebUSB] Device appears to be locked by Windows driver, error:', error.message)
+      // Don't throw - let it fall through to browser print with a warning
+      // The error will be caught by printOrderReceipt and fallback will happen
+    }
+    
     throw error
   }
 }
