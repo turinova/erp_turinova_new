@@ -10,6 +10,7 @@ const COMMON_THERMAL_PRINTER_IDS = [
   { vendorId: 0x0483, productId: 0x5740 }, // STMicroelectronics (common for generic printers)
   { vendorId: 0x154f, productId: 0x154f }, // Bixolon
   { vendorId: 0x0519, productId: 0x0001 }, // Generic ESC/POS
+  { vendorId: 0x4b43, productId: 0x3830 }, // Caysn thermal printer
 ]
 
 /**
