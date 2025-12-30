@@ -294,6 +294,19 @@ export default function AccessoryFormClient({
     }
   }, [formData.net_price, formData.vat_id, vatRates])
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0'
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
   const handleInputChange = (field: keyof AccessoryFormData, value: string | number) => {
     setFormData(prev => ({
       ...prev,
@@ -507,7 +520,7 @@ export default function AccessoryFormClient({
                         fullWidth
                         label="Vonalkód"
                         value={formData.barcode || ''}
-                        onChange={(e) => handleInputChange('barcode', e.target.value)}
+                        onChange={(e) => handleInputChange('barcode', normalizeBarcode(e.target.value))}
                         disabled={loading}
                         helperText="Opcionális"
                         InputProps={{
