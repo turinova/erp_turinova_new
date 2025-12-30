@@ -86,19 +86,22 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
   try {
     console.log('[Print Receipt] Attempting WebUSB direct printing...')
     
-    // Generate commands for original copy
+    // Print first receipt (original copy)
+    console.log('[Print Receipt] Printing original copy...')
     const originalCommands = await generateEscPosCommands(data, 'original')
+    await printReceiptViaWebUSB(originalCommands)
+    console.log('[Print Receipt] Original copy printed successfully')
     
-    // Generate commands for customer copy
+    // Small delay to ensure first receipt is fully processed and cut
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // Print second receipt (customer copy)
+    console.log('[Print Receipt] Printing customer copy...')
     const customerCommands = await generateEscPosCommands(data, 'customer')
+    await printReceiptViaWebUSB(customerCommands)
+    console.log('[Print Receipt] Customer copy printed successfully')
     
-    // Combine both copies: original + cut + customer + cut
-    const combinedCommands = new Uint8Array(originalCommands.length + customerCommands.length)
-    combinedCommands.set(originalCommands, 0)
-    combinedCommands.set(customerCommands, originalCommands.length)
-    
-    await printReceiptViaWebUSB(combinedCommands)
-    console.log('[Print Receipt] WebUSB printing successful (both copies)')
+    console.log('[Print Receipt] WebUSB printing successful (both copies printed separately)')
     return // Success, exit early
   } catch (webusbError: any) {
     console.warn('[Print Receipt] WebUSB printing failed, falling back to browser print:', webusbError.message)

@@ -615,10 +615,8 @@ export async function generateEscPosCommands(data: ReceiptData, copyType: 'origi
     }
   }
 
-  // Cut paper (only cut after customer copy, not between copies)
-  if (copyType === 'customer') {
-    commands += cutPaper()
-  }
+  // Cut paper at the end of each receipt
+  commands += cutPaper()
 
   // Convert string to CP852 encoding for ESC/POS printer
   // CP852 includes Hungarian characters: é, á, í, ő, ü, ö, etc.
