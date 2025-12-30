@@ -269,11 +269,14 @@ export default function AccessoryFormClient({
   // Auto-calculate net_price when base_price or multiplier changes
   useEffect(() => {
     const calculatedNetPrice = Math.round(formData.base_price * formData.multiplier)
-    setFormData(prev => ({
-      ...prev,
-      net_price: calculatedNetPrice
-    }))
-  }, [formData.base_price, formData.multiplier])
+    // Only update if the value actually changed to prevent infinite loops
+    if (calculatedNetPrice !== formData.net_price) {
+      setFormData(prev => ({
+        ...prev,
+        net_price: calculatedNetPrice
+      }))
+    }
+  }, [formData.base_price, formData.multiplier, formData.net_price])
 
   // Calculate VAT and gross prices when net_price changes
   useEffect(() => {
@@ -282,14 +285,26 @@ export default function AccessoryFormClient({
       const vatAmount = (formData.net_price * selectedVat.kulcs) / 100
       const grossPrice = formData.net_price + vatAmount
       
-      setCalculatedPrices({
-        vat_amount: vatAmount,
-        gross_price: grossPrice
+      // Only update if values actually changed to prevent infinite loops
+      setCalculatedPrices(prev => {
+        if (prev.vat_amount === vatAmount && prev.gross_price === grossPrice) {
+          return prev // Return same reference if no change
+        }
+        return {
+          vat_amount: vatAmount,
+          gross_price: grossPrice
+        }
       })
     } else {
-      setCalculatedPrices({
-        vat_amount: 0,
-        gross_price: formData.net_price
+      // Only update if values actually changed to prevent infinite loops
+      setCalculatedPrices(prev => {
+        if (prev.vat_amount === 0 && prev.gross_price === formData.net_price) {
+          return prev // Return same reference if no change
+        }
+        return {
+          vat_amount: 0,
+          gross_price: formData.net_price
+        }
       })
     }
   }, [formData.net_price, formData.vat_id, vatRates])
