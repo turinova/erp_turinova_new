@@ -306,9 +306,10 @@ function encodeToCP852(text: string): Uint8Array {
 /**
  * Generate ESC/POS commands for receipt
  * @param data - Receipt data including tenant company info
+ * @param copyType - 'original' for original copy (with signatures), 'customer' for customer copy (without signatures)
  * @returns Promise<Uint8Array> - ESC/POS command bytes
  */
-export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Array> {
+export async function generateEscPosCommands(data: ReceiptData, copyType: 'original' | 'customer' = 'original'): Promise<Uint8Array> {
   let commands = ''
 
   // Initialize printer
@@ -321,7 +322,6 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
 
   // Receipt title: "Átvételi elismervény" - Same size as company name (2x2)
   commands += setAlignment(1)  // Center alignment
-  commands += lineFeed(1)
   
   // Top double separator line
   commands += printThickLine()
@@ -337,9 +337,18 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
   commands += setTextSize(1, 1)  // Reset to normal size
   commands += lineFeed(1)
   
+  // Add "Vevői példány" subheader for customer copy (same size as title, centered)
+  if (copyType === 'customer') {
+    commands += setTextSize(2, 2)  // Same size as title
+    commands += setBold(true)
+    commands += printText('Vevői példány')
+    commands += setBold(false)
+    commands += setTextSize(1, 1)  // Reset to normal size
+    commands += lineFeed(1)
+  }
+  
   // Bottom double separator line
   commands += printThickLine()
-  commands += lineFeed(2)
 
   // Center alignment for company name
   commands += setAlignment(1)
@@ -518,12 +527,14 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
   commands += printText('reklamációra nincs lehetőség.')
   commands += lineFeed(2)
 
-  // Additional line
-  commands += setAlignment(1)
-  commands += setBold(true)
-  commands += printText('Áru kizárólag ezen átvételi blokk bemutatásával adható ki.')
-  commands += setBold(false)
-  commands += lineFeed(2)
+  // Additional line (only for original copy)
+  if (copyType === 'original') {
+    commands += setAlignment(1)
+    commands += setBold(true)
+    commands += printText('Áru kizárólag ezen átvételi blokk bemutatásával adható ki.')
+    commands += setBold(false)
+    commands += lineFeed(2)
+  }
 
   // Print date and time
   const now = new Date()
@@ -540,20 +551,27 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
   commands += printText(`Nyomtatva: ${printDate} ${printTime}`)
   commands += lineFeed(2)
 
-  // Signature lines
-  commands += setAlignment(0)
-  commands += setTextSize(1, 1)
-  commands += printText('Ügyfél aláírása:')
-  commands += lineFeed(3)
-  commands += printDashedLine()
-  commands += lineFeed()
-  commands += printText('Átadó munkatárs neve:')
-  commands += lineFeed(3)
-  commands += printDashedLine()
+  // Signature lines (only for original copy)
+  if (copyType === 'original') {
+    commands += setAlignment(0)
+    commands += setTextSize(1, 1)
+    commands += printText('Ügyfél aláírása:')
+    commands += lineFeed(3)
+    commands += printDashedLine()
+    commands += lineFeed()
+    commands += printText('Átadó munkatárs neve:')
+    commands += lineFeed(3)
+    commands += printDashedLine()
+  }
   
-  // Barcode (if available) - 10mm spacing (approximately 4 line feeds)
+  // Barcode (if available) - 1 line feed spacing
   if (data.barcode && data.barcode.trim()) {
-    commands += lineFeed(4) // 10mm spacing
+    // For customer copy, add spacing before barcode (since signature section is removed)
+    if (copyType === 'customer') {
+      commands += lineFeed(1)
+    } else {
+      commands += lineFeed(1) // 1 line feed spacing
+    }
     
     // Center alignment for barcode
     commands += setAlignment(1) // Center
@@ -564,8 +582,8 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
     const barcodeText = data.barcode.trim()
     const barcodeBytes = new TextEncoder().encode(barcodeText)
     
-    // Set barcode height (50 dots = standard)
-    commands += GS + 'h' + String.fromCharCode(50)
+    // Set barcode height (100 dots = double size)
+    commands += GS + 'h' + String.fromCharCode(100)
     
     // Set barcode width (2 = narrow bar width)
     commands += GS + 'w' + String.fromCharCode(2)
@@ -590,11 +608,17 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
     commands += printText(barcodeText)
     commands += lineFeed(2)
   } else {
-    commands += lineFeed(3)
+    if (copyType === 'customer') {
+      commands += lineFeed(1)
+    } else {
+      commands += lineFeed(3)
+    }
   }
 
-  // Cut paper
-  commands += cutPaper()
+  // Cut paper (only cut after customer copy, not between copies)
+  if (copyType === 'customer') {
+    commands += cutPaper()
+  }
 
   // Convert string to CP852 encoding for ESC/POS printer
   // CP852 includes Hungarian characters: é, á, í, ő, ü, ö, etc.

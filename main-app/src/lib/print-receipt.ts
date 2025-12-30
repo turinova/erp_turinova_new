@@ -78,15 +78,27 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
   console.log('[Print Receipt] Starting printOrderReceipt with data:', {
     orderNumber: data.orderNumber,
     customerName: data.customerName,
-    pricingCount: data.pricing.length
+    pricingCount: data.pricing.length,
+    barcode: data.barcode || 'NO BARCODE'
   })
 
   // Try WebUSB direct printing first
   try {
     console.log('[Print Receipt] Attempting WebUSB direct printing...')
-    const escPosCommands = await generateEscPosCommands(data)
-    await printReceiptViaWebUSB(escPosCommands)
-    console.log('[Print Receipt] WebUSB printing successful')
+    
+    // Generate commands for original copy
+    const originalCommands = await generateEscPosCommands(data, 'original')
+    
+    // Generate commands for customer copy
+    const customerCommands = await generateEscPosCommands(data, 'customer')
+    
+    // Combine both copies: original + cut + customer + cut
+    const combinedCommands = new Uint8Array(originalCommands.length + customerCommands.length)
+    combinedCommands.set(originalCommands, 0)
+    combinedCommands.set(customerCommands, originalCommands.length)
+    
+    await printReceiptViaWebUSB(combinedCommands)
+    console.log('[Print Receipt] WebUSB printing successful (both copies)')
     return // Success, exit early
   } catch (webusbError: any) {
     console.warn('[Print Receipt] WebUSB printing failed, falling back to browser print:', webusbError.message)
@@ -258,16 +270,42 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
   const { default: OrderReceiptPrint } = await import('@/components/OrderReceiptPrint')
 
   console.log('[Print Receipt] Creating React root and rendering...')
+  console.log('[Print Receipt] Barcode value being passed:', data.barcode || 'NO BARCODE')
   const root = createRoot(printContainer)
+  
+  // Render both copies: original and customer
   root.render(
-    React.createElement(OrderReceiptPrint, {
-      tenantCompany: data.tenantCompany,
-      orderNumber: data.orderNumber,
-      customerName: data.customerName,
-      barcode: data.barcode || null,
-      pricing: data.pricing,
-      logoBase64: logoBase64
-    })
+    React.createElement('div', null,
+      // Original copy
+      React.createElement(OrderReceiptPrint, {
+        tenantCompany: data.tenantCompany,
+        orderNumber: data.orderNumber,
+        customerName: data.customerName,
+        barcode: data.barcode || null,
+        pricing: data.pricing,
+        logoBase64: logoBase64,
+        copyType: 'original'
+      }),
+      // Separator between copies (visual break in print preview)
+      React.createElement('div', {
+        key: 'separator',
+        style: {
+          borderTop: '2px dashed #000',
+          margin: '10mm 0',
+          width: '100%'
+        }
+      }),
+      // Customer copy
+      React.createElement(OrderReceiptPrint, {
+        tenantCompany: data.tenantCompany,
+        orderNumber: data.orderNumber,
+        customerName: data.customerName,
+        barcode: data.barcode || null,
+        pricing: data.pricing,
+        logoBase64: logoBase64,
+        copyType: 'customer'
+      })
+    )
   )
 
   // Wait for render to complete - increased timeout for React to fully render

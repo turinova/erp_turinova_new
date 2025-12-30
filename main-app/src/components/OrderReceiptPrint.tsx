@@ -1,11 +1,7 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Box, Typography } from '@mui/material'
-import dynamic from 'next/dynamic'
-
-// Dynamic import for Barcode to avoid SSR issues
-const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 
 interface OrderReceiptPrintProps {
   tenantCompany: {
@@ -41,6 +37,7 @@ interface OrderReceiptPrintProps {
     }>
   }>
   logoBase64?: string | null
+  copyType?: 'original' | 'customer'
 }
 
 export default function OrderReceiptPrint({
@@ -49,8 +46,24 @@ export default function OrderReceiptPrint({
   customerName,
   barcode,
   pricing,
-  logoBase64
+  logoBase64,
+  copyType = 'original'
 }: OrderReceiptPrintProps) {
+  // Debug logging
+  console.log('[OrderReceiptPrint] Component rendered with barcode:', barcode || 'NO BARCODE')
+  
+  // Load Barcode component dynamically
+  const [BarcodeComponent, setBarcodeComponent] = useState<any>(null)
+
+  useEffect(() => {
+    import('react-barcode').then((module) => {
+      console.log('[OrderReceiptPrint] Barcode component loaded successfully')
+      setBarcodeComponent(() => module.default)
+    }).catch((error) => {
+      console.error('[OrderReceiptPrint] Error loading barcode component:', error)
+    })
+  }, [])
+
   const formatQuantity = (pricingItem: typeof pricing[0]) => {
     const chargedSqm = pricingItem.charged_sqm || 0
     const boardsSold = pricingItem.boards_used || 0
@@ -142,15 +155,13 @@ export default function OrderReceiptPrint({
       {/* Receipt Title - Same size as company name, with double separator lines */}
       <Box
         sx={{
-          textAlign: 'center',
-          marginBottom: '4mm'
+          textAlign: 'center'
         }}
       >
         {/* Top double separator line */}
         <Box
           sx={{
-            borderTop: '2px solid #000',
-            marginBottom: '3mm'
+            borderTop: '2px solid #000'
           }}
         />
         
@@ -168,11 +179,28 @@ export default function OrderReceiptPrint({
           Átvételi elismervény
         </Typography>
         
+        {/* "Vevői példány" subheader for customer copy */}
+        {copyType === 'customer' && (
+          <Typography
+            variant="h4"
+            sx={{
+              fontSize: '18px',
+              fontWeight: 'bold',
+              lineHeight: '1.2',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              marginTop: '2mm'
+            }}
+          >
+            Vevői példány
+          </Typography>
+        )}
+        
         {/* Bottom double separator line */}
         <Box
           sx={{
-            borderTop: '2px solid #000',
-            marginTop: '3mm'
+            borderTop: '2px solid #000'
           }}
         />
       </Box>
@@ -523,20 +551,22 @@ export default function OrderReceiptPrint({
         </Typography>
       </Box>
 
-      {/* Additional line */}
-      <Box sx={{ marginBottom: '3mm' }}>
-        <Typography
-          variant="body2"
-          sx={{
-            fontSize: '7px',
-            lineHeight: '1.3',
-            textAlign: 'center',
-            fontWeight: 'bold'
-          }}
-        >
-          Áru kizárólag ezen átvételi blokk bemutatásával adható ki.
-        </Typography>
-      </Box>
+      {/* Additional line (only for original copy) */}
+      {copyType === 'original' && (
+        <Box sx={{ marginBottom: '3mm' }}>
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '7px',
+              lineHeight: '1.3',
+              textAlign: 'center',
+              fontWeight: 'bold'
+            }}
+          >
+            Áru kizárólag ezen átvételi blokk bemutatásával adható ki.
+          </Typography>
+        </Box>
+      )}
 
       {/* Print Date and Time */}
       <Box sx={{ marginBottom: '4mm', textAlign: 'center' }}>
@@ -551,50 +581,52 @@ export default function OrderReceiptPrint({
         </Typography>
       </Box>
 
-      {/* Signature Lines */}
-      <Box
-        sx={{
-          marginTop: '6mm',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8mm'
-        }}
-      >
-        <Box>
-          <Typography
-            variant="body2"
-            sx={{
-              fontSize: '8px',
-              marginBottom: '4mm',
-              borderBottom: '1px solid #000',
-              paddingBottom: '1px',
-              minHeight: '8mm'
-            }}
-          >
-            Ügyfél aláírása:
-          </Typography>
-        </Box>
-        <Box>
-          <Typography
-            variant="body2"
-            sx={{
-              fontSize: '8px',
-              marginBottom: '4mm',
-              borderBottom: '1px solid #000',
-              paddingBottom: '1px',
-              minHeight: '8mm'
-            }}
-          >
-            Átadó munkatárs neve:
-          </Typography>
-        </Box>
-      </Box>
-
-      {/* Barcode - 10mm spacing from signature line */}
-      {barcode && barcode.trim() && (
+      {/* Signature Lines (only for original copy) */}
+      {copyType === 'original' && (
         <Box
           sx={{
-            marginTop: '10mm',
+            marginTop: '6mm',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8mm'
+          }}
+        >
+          <Box>
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '8px',
+                marginBottom: '4mm',
+                borderBottom: '1px solid #000',
+                paddingBottom: '1px',
+                minHeight: '8mm'
+              }}
+            >
+              Ügyfél aláírása:
+            </Typography>
+          </Box>
+          <Box>
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '8px',
+                marginBottom: '4mm',
+                borderBottom: '1px solid #000',
+                paddingBottom: '1px',
+                minHeight: '8mm'
+              }}
+            >
+              Átadó munkatárs neve:
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
+      {/* Barcode - 1 line feed spacing from signature line */}
+      {barcode && barcode.trim() && BarcodeComponent && (
+        <Box
+          sx={{
+            marginTop: '2.5mm',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -602,15 +634,39 @@ export default function OrderReceiptPrint({
             width: '100%'
           }}
         >
-          <Barcode
+          <BarcodeComponent
             value={barcode.trim()}
             format="CODE128"
             width={2}
-            height={50}
+            height={100}
             displayValue={true}
             fontSize={10}
             margin={0}
           />
+        </Box>
+      )}
+      {/* Fallback if barcode component not loaded yet */}
+      {barcode && barcode.trim() && !BarcodeComponent && (
+        <Box
+          sx={{
+            marginTop: '2.5mm',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%'
+          }}
+        >
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '8px',
+              fontFamily: 'monospace',
+              letterSpacing: 2
+            }}
+          >
+            {barcode.trim()}
+          </Typography>
         </Box>
       )}
     </Box>
