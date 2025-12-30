@@ -19,6 +19,7 @@ interface ReceiptData {
   }
   orderNumber: string
   customerName: string
+  barcode?: string | null
   pricing: Array<{
     id: string
     material_name?: string
@@ -263,6 +264,7 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
       tenantCompany: data.tenantCompany,
       orderNumber: data.orderNumber,
       customerName: data.customerName,
+      barcode: data.barcode || null,
       pricing: data.pricing,
       logoBase64: logoBase64
     })

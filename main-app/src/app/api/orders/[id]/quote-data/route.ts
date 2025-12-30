@@ -25,7 +25,8 @@ export async function GET(
       quote_number: quoteData.quote_number,
       order_number: quoteData.order_number,
       customer: quoteData.customer,
-      pricing: quoteData.pricing || []
+      pricing: quoteData.pricing || [],
+      barcode: quoteData.barcode || null
     })
 
   } catch (error) {

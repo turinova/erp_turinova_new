@@ -2,6 +2,10 @@
 
 import React from 'react'
 import { Box, Typography } from '@mui/material'
+import dynamic from 'next/dynamic'
+
+// Dynamic import for Barcode to avoid SSR issues
+const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
 
 interface OrderReceiptPrintProps {
   tenantCompany: {
@@ -16,6 +20,7 @@ interface OrderReceiptPrintProps {
   }
   orderNumber: string
   customerName: string
+  barcode?: string | null
   pricing: Array<{
     id: string
     material_name?: string
@@ -42,6 +47,7 @@ export default function OrderReceiptPrint({
   tenantCompany,
   orderNumber,
   customerName,
+  barcode,
   pricing,
   logoBase64
 }: OrderReceiptPrintProps) {
@@ -583,6 +589,30 @@ export default function OrderReceiptPrint({
           </Typography>
         </Box>
       </Box>
+
+      {/* Barcode - 10mm spacing from signature line */}
+      {barcode && barcode.trim() && (
+        <Box
+          sx={{
+            marginTop: '10mm',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%'
+          }}
+        >
+          <Barcode
+            value={barcode.trim()}
+            format="CODE128"
+            width={2}
+            height={50}
+            displayValue={true}
+            fontSize={10}
+            margin={0}
+          />
+        </Box>
+      )}
     </Box>
   )
 }

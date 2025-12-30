@@ -16,6 +16,7 @@ interface ReceiptData {
   }
   orderNumber: string
   customerName: string
+  barcode?: string | null
   pricing: Array<{
     id: string
     material_name?: string
@@ -549,7 +550,48 @@ export async function generateEscPosCommands(data: ReceiptData): Promise<Uint8Ar
   commands += printText('Átadó munkatárs neve:')
   commands += lineFeed(3)
   commands += printDashedLine()
-  commands += lineFeed(3)
+  
+  // Barcode (if available) - 10mm spacing (approximately 4 line feeds)
+  if (data.barcode && data.barcode.trim()) {
+    commands += lineFeed(4) // 10mm spacing
+    
+    // Center alignment for barcode
+    commands += setAlignment(1) // Center
+    
+    // Print CODE128 barcode
+    // ESC/POS CODE128 barcode command: GS k 73 n d1...dk NUL
+    // 73 = CODE128 format, n = number of bytes, d1...dk = barcode data bytes
+    const barcodeText = data.barcode.trim()
+    const barcodeBytes = new TextEncoder().encode(barcodeText)
+    
+    // Set barcode height (50 dots = standard)
+    commands += GS + 'h' + String.fromCharCode(50)
+    
+    // Set barcode width (2 = narrow bar width)
+    commands += GS + 'w' + String.fromCharCode(2)
+    
+    // Set HRI (Human Readable Interpretation) position: 0 = none (we'll print it manually)
+    commands += GS + 'H' + String.fromCharCode(0)
+    
+    // Print CODE128 barcode: GS k 73 n d1...dk NUL
+    // GS = 0x1D, k = 0x6B, 73 = CODE128, n = number of bytes
+    commands += GS + String.fromCharCode(0x6B) + String.fromCharCode(73) + String.fromCharCode(barcodeBytes.length)
+    // Add barcode data bytes
+    for (let i = 0; i < barcodeBytes.length; i++) {
+      commands += String.fromCharCode(barcodeBytes[i])
+    }
+    commands += '\x00' // NUL terminator
+    
+    // Line feed after barcode
+    commands += lineFeed(1)
+    
+    // Print human-readable barcode text below (centered)
+    commands += setTextSize(1, 1)
+    commands += printText(barcodeText)
+    commands += lineFeed(2)
+  } else {
+    commands += lineFeed(3)
+  }
 
   // Cut paper
   commands += cutPaper()

@@ -602,6 +602,7 @@ export default function OrdersListClient({
         },
         orderNumber: order.order_number,
         customerName: order.customer_name,
+        barcode: quoteData.barcode || null,
         pricing: quoteData.pricing || []
       }, preRequestedUsbDevice)
       console.log('[Receipt Print] printOrderReceipt completed')
