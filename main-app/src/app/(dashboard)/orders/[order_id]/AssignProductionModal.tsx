@@ -104,6 +104,19 @@ export default function AssignProductionModal({
 
   const isEditMode = existingAssignment && existingAssignment.production_machine_id
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0'
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
   const handleSubmit = async () => {
     // Validation
     if (!machineId) {
@@ -245,7 +258,7 @@ export default function AssignProductionModal({
             fullWidth
             label="Vonalkód"
             value={barcode}
-            onChange={(e) => setBarcode(e.target.value)}
+            onChange={(e) => setBarcode(normalizeBarcode(e.target.value))}
             placeholder="Vonalkód beolvasása vagy megadása"
             required
             sx={{ mb: 2 }}

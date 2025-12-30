@@ -413,11 +413,25 @@ export default function OrdersListClient({
     }
   }
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0'
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
   // Handle barcode change
   const handleBarcodeChange = (orderId: string, value: string) => {
+    const normalizedValue = normalizeBarcode(value)
     setOrders(prevOrders =>
       prevOrders.map(order =>
-        order.id === orderId ? { ...order, barcode: value } : order
+        order.id === orderId ? { ...order, barcode: normalizedValue } : order
       )
     )
   }

@@ -68,10 +68,24 @@ export default function ScannerClient() {
     inputRef.current?.focus()
   }, [scannedOrders])
 
+  // Normalize barcode input (fix keyboard layout issues from scanner)
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0'
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
   // Detect barcode scan (wait for input to stop changing)
   const handleInputChange = (value: string) => {
-    console.log('Input changed:', value, 'Length:', value.length)
-    setBarcodeInput(value)
+    const normalizedValue = normalizeBarcode(value)
+    console.log('Input changed:', value, 'Normalized:', normalizedValue, 'Length:', normalizedValue.length)
+    setBarcodeInput(normalizedValue)
 
     // Clear previous timeout
     if (scanTimeoutRef.current) {
@@ -80,9 +94,9 @@ export default function ScannerClient() {
 
     // Set new timeout - trigger scan when input stops changing for 300ms
     scanTimeoutRef.current = setTimeout(() => {
-      console.log('Input stable, triggering scan for:', value)
-      if (value.trim().length > 0) {
-        handleBarcodeScan(value)
+      console.log('Input stable, triggering scan for:', normalizedValue)
+      if (normalizedValue.trim().length > 0) {
+        handleBarcodeScan(normalizedValue)
       }
     }, 300) // Wait 300ms after last character
   }
