@@ -102,6 +102,9 @@ interface CartItem {
   length?: number
   width?: number
   thickness?: number
+  // Per-item discount
+  discount_percentage?: number
+  discount_amount?: number
 }
 
 interface FeeType {
@@ -249,6 +252,7 @@ export default function POSPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customerSearchTerm, setCustomerSearchTerm] = useState('')
   const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
+  const [expandedDiscountItems, setExpandedDiscountItems] = useState<Set<string>>(new Set())
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
 
   // Barcode scanning refs
@@ -816,6 +820,61 @@ export default function POSPage() {
     )
   }
 
+  // Multiply quantity by a factor
+  const handleQuantityMultiply = (itemId: string, multiplier: number) => {
+    setCartItems(prev =>
+      prev.map(item => {
+        if (item.id !== itemId) return item
+        const newQuantity = item.quantity * multiplier
+        return { ...item, quantity: newQuantity }
+      })
+    )
+  }
+
+  // Toggle discount expansion for an item
+  const handleToggleDiscountExpansion = (itemId: string) => {
+    setExpandedDiscountItems(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId)
+      } else {
+        newSet.add(itemId)
+      }
+      return newSet
+    })
+  }
+
+  // Update item discount percentage
+  const handleItemDiscountChange = (itemId: string, delta: number) => {
+    setCartItems(prev =>
+      prev.map(item => {
+        if (item.id !== itemId) return item
+        
+        const currentDiscount = item.discount_percentage || 0
+        const newDiscount = Math.max(0, Math.min(100, currentDiscount + delta))
+        
+        return {
+          ...item,
+          discount_percentage: newDiscount === 0 ? undefined : newDiscount,
+          discount_amount: 0 // Clear discount_amount when using percentage
+        }
+      })
+    )
+  }
+
+  // Calculate item subtotal with discount
+  const getItemSubtotal = (item: CartItem): number => {
+    const baseSubtotal = item.quantity * item.gross_price
+    if (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) {
+      const discountAmount = (baseSubtotal * item.discount_percentage) / 100
+      return Math.round(baseSubtotal - discountAmount)
+    }
+    if (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0) {
+      return Math.round(baseSubtotal - (item.discount_amount * item.quantity))
+    }
+    return baseSubtotal
+  }
+
   // Search products (with debouncing and request cancellation)
   useEffect(() => {
     // Cancel previous search request
@@ -1020,7 +1079,7 @@ export default function POSPage() {
 
   // Calculate discount amount preview (for modal display)
   const discountAmountPreview = useMemo(() => {
-    const itemsTotal = cartItems.reduce((sum, item) => sum + (item.quantity * item.gross_price), 0)
+    const itemsTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
     const subtotal = itemsTotal + feesTotal
     return (subtotal * discountPercent) / 100
@@ -1039,7 +1098,7 @@ export default function POSPage() {
   // Calculate discount amount (recalculated when items/fees change)
   const discountAmount = useMemo(() => {
     if (!discount) return 0
-    const itemsTotal = cartItems.reduce((sum, item) => sum + (item.quantity * item.gross_price), 0)
+    const itemsTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
     const subtotal = itemsTotal + feesTotal
     return (subtotal * discount.percent) / 100
@@ -1047,7 +1106,7 @@ export default function POSPage() {
 
   // Calculate total in real-time
   const total = useMemo(() => {
-    const itemsTotal = cartItems.reduce((sum, item) => sum + (item.quantity * item.gross_price), 0)
+    const itemsTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
     const subtotal = itemsTotal + feesTotal
     return subtotal - discountAmount
@@ -1091,8 +1150,8 @@ export default function POSPage() {
         return
       }
 
-      // Calculate discount amount
-      const cartTotal = cartItems.reduce((sum, item) => sum + (item.quantity * item.gross_price), 0)
+      // Calculate discount amount (using discounted item subtotals)
+      const cartTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
       const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
       const subtotalBeforeDiscount = cartTotal + feesTotal
       const discountAmount = discount ? (subtotalBeforeDiscount * discount.percent) / 100 : 0
@@ -1109,7 +1168,9 @@ export default function POSPage() {
         unit_price_net: item.net_price,
         unit_price_gross: item.gross_price,
         vat_id: item.vat_id,
-        currency_id: item.currency_id
+        currency_id: item.currency_id,
+        discount_percentage: item.discount_percentage || 0,
+        discount_amount: item.discount_amount || 0
       }))
 
       // Validate fees
@@ -1462,72 +1523,205 @@ export default function POSPage() {
             ) : (
               <div className="space-y-2">
               {/* Cart Items */}
-              {cartItems.map((item) => (
-                <div
-                  key={item.id}
-                  className={`bg-white p-2.5 rounded-lg border-2 transition-all duration-300 ${
-                    highlightedCartItemId === item.id
-                      ? 'border-green-500 bg-green-50 shadow-md'
-                      : 'border-gray-200'
-                  }`}
-                >
-                  {/* Top Row: Product Name and SKU */}
-                  <div className="mb-2">
-                    <p className="font-semibold text-gray-900 text-sm break-words leading-tight">{item.name}</p>
-                    {item.sku && (
-                      <p className="text-xs text-gray-500 mt-0.5 break-words">SKU: {item.sku}</p>
-                    )}
-                  </div>
+              {cartItems.map((item) => {
+                const hasDiscount = (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) || (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0)
+                const isExpanded = expandedDiscountItems.has(item.id)
+                const originalSubtotal = item.quantity * item.gross_price
+                const discountedSubtotal = getItemSubtotal(item)
+                const discountPercent = item.discount_percentage || 0
 
-                  {/* Bottom Row: Controls and Pricing */}
-                  <div className="flex items-center justify-between gap-2">
-                    {/* Left: Unit Price */}
-                    <div className="flex-shrink-0">
-                      <p className="text-xs text-gray-600">
-                        {item.gross_price.toLocaleString('hu-HU')} Ft / db
-                      </p>
-                    </div>
-
-                    {/* Center: Quantity Controls */}
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleQuantityChange(item.id, item.quantity - 1)
-                        }}
-                        className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
-                        aria-label="Mennyiség csökkentése"
-                      >
-                        <MinusIcon />
-                      </button>
-                      <div className={`w-10 text-center font-semibold text-base ${
-                        highlightedCartItemId === item.id ? 'text-green-600' : 'text-gray-900'
-                      }`}>
-                        {item.quantity}
+                return (
+                  <div
+                    key={item.id}
+                    className={`bg-white p-2.5 rounded-lg border-2 transition-all duration-300 ${
+                      highlightedCartItemId === item.id
+                        ? 'border-green-500 bg-green-50 shadow-md'
+                        : 'border-gray-200'
+                    }`}
+                  >
+                    {/* Top Row: Product Name, SKU, and Discount Badge */}
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm break-words leading-tight">{item.name}</p>
+                        {item.sku && (
+                          <p className="text-xs text-gray-500 mt-0.5 break-words">SKU: {item.sku}</p>
+                        )}
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleQuantityChange(item.id, item.quantity + 1)
-                        }}
-                        className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
-                        aria-label="Mennyiség növelése"
-                      >
-                        <PlusIcon />
-                      </button>
+                      {/* Discount Badge - Clickable to expand */}
+                      {hasDiscount && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleToggleDiscountExpansion(item.id)
+                          }}
+                          className="px-2 py-1 text-xs font-semibold rounded bg-orange-100 text-orange-700 border border-orange-300 flex-shrink-0 active:bg-orange-200 transition-all"
+                        >
+                          {discountPercent}%
+                        </button>
+                      )}
                     </div>
 
-                    {/* Right: Subtotal */}
-                    <div className="flex-shrink-0">
-                      <div className="text-right">
-                        <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
-                          {(item.quantity * item.gross_price).toLocaleString('hu-HU')} Ft
+                    {/* Main Row: Controls and Pricing */}
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Left: Unit Price */}
+                      <div className="flex-shrink-0">
+                        <p className="text-xs text-gray-600">
+                          {item.gross_price.toLocaleString('hu-HU')} Ft / db
                         </p>
                       </div>
+
+                      {/* Center: Quantity Controls */}
+                      <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuantityChange(item.id, item.quantity - 1)
+                            }}
+                            className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
+                            aria-label="Mennyiség csökkentése"
+                          >
+                            <MinusIcon />
+                          </button>
+                          <div className={`w-10 text-center font-semibold text-base ${
+                            highlightedCartItemId === item.id ? 'text-green-600' : 'text-gray-900'
+                          }`}>
+                            {item.quantity}
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuantityChange(item.id, item.quantity + 1)
+                            }}
+                            className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
+                            aria-label="Mennyiség növelése"
+                          >
+                            <PlusIcon />
+                          </button>
+                        </div>
+                        {/* Multiplier Buttons */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuantityMultiply(item.id, 10)
+                            }}
+                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
+                            aria-label="Mennyiség ×10"
+                          >
+                            ×10
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuantityMultiply(item.id, 100)
+                            }}
+                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
+                            aria-label="Mennyiség ×100"
+                          >
+                            ×100
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuantityMultiply(item.id, 1000)
+                            }}
+                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
+                            aria-label="Mennyiség ×1000"
+                          >
+                            ×1000
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleQuantityChange(item.id, 1)
+                            }}
+                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-red-300 text-red-700 bg-red-50 active:bg-red-100 active:scale-95 transition-all touch-manipulation"
+                            aria-label="Mennyiség visszaállítása 1-re"
+                          >
+                            1
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Right: Subtotal */}
+                      <div className="flex-shrink-0">
+                        <div className="text-right">
+                          {hasDiscount ? (
+                            <div>
+                              <p className="text-xs text-gray-400 line-through whitespace-nowrap">
+                                {originalSubtotal.toLocaleString('hu-HU')} Ft
+                              </p>
+                              <p className="font-semibold text-orange-600 text-base whitespace-nowrap">
+                                {discountedSubtotal.toLocaleString('hu-HU')} Ft
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
+                              {originalSubtotal.toLocaleString('hu-HU')} Ft
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Expandable Discount Section */}
+                    {isExpanded && (
+                      <div className="mt-3 pt-3 border-t border-gray-200">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <p className="text-xs font-medium text-gray-700">Kedvezmény:</p>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemDiscountChange(item.id, -1)
+                              }}
+                              className="w-9 h-9 rounded-lg border-2 border-orange-300 text-orange-700 flex items-center justify-center active:bg-orange-100 active:scale-95 transition-all touch-manipulation"
+                              aria-label="Kedvezmény csökkentése"
+                            >
+                              <MinusIcon />
+                            </button>
+                            <div className="w-12 text-center font-semibold text-base text-orange-700">
+                              {discountPercent}%
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleItemDiscountChange(item.id, 1)
+                              }}
+                              className="w-9 h-9 rounded-lg border-2 border-orange-300 text-orange-700 flex items-center justify-center active:bg-orange-100 active:scale-95 transition-all touch-manipulation"
+                              aria-label="Kedvezmény növelése"
+                            >
+                              <PlusIcon />
+                            </button>
+                          </div>
+                        </div>
+                        {hasDiscount && (
+                          <div className="text-xs text-gray-600">
+                            <p>Eredeti: {originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                            <p className="text-orange-600 font-semibold">
+                              Kedvezményes: {discountedSubtotal.toLocaleString('hu-HU')} Ft
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Clickable area to expand discount if no discount badge is shown */}
+                    {!hasDiscount && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleToggleDiscountExpansion(item.id)
+                        }}
+                        className="mt-2 w-full text-xs text-gray-500 text-center py-1 rounded border border-gray-200 hover:bg-gray-50 active:bg-gray-100 transition-all"
+                      >
+                        Kedvezmény hozzáadása
+                      </button>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
 
               {/* Fees Section */}
               {fees.length > 0 && (
@@ -1746,6 +1940,11 @@ export default function POSPage() {
                   }
                   return null
                 }
+                const hasDiscount = (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) || (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0)
+                const originalSubtotal = item.quantity * item.gross_price
+                const discountedSubtotal = getItemSubtotal(item)
+                const discountPercent = item.discount_percentage || 0
+                
                 return (
                 <div key={item.id} className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100">
                   <div className="min-w-0 break-words">
@@ -1756,13 +1955,23 @@ export default function POSPage() {
                     {getDimensions() && (
                       <p className="text-xs text-gray-500 break-words">{getDimensions()}</p>
                     )}
+                    {hasDiscount && (
+                      <p className="text-xs text-orange-600 font-semibold break-words">Kedvezmény: {discountPercent}%</p>
+                    )}
                   </div>
                   <div className="text-center text-sm text-gray-900">{item.quantity}</div>
                   <div className="text-right text-sm text-gray-900">
                     {item.gross_price.toLocaleString('hu-HU')} Ft
                   </div>
-                  <div className="text-right text-sm font-semibold text-gray-900">
-                    {(item.quantity * item.gross_price).toLocaleString('hu-HU')} Ft
+                  <div className="text-right text-sm font-semibold">
+                    {hasDiscount ? (
+                      <div>
+                        <p className="text-xs text-gray-400 line-through">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                        <p className="text-orange-600">{discountedSubtotal.toLocaleString('hu-HU')} Ft</p>
+                      </div>
+                    ) : (
+                      <p className="text-gray-900">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                    )}
                   </div>
                 </div>
                 )
@@ -1891,6 +2100,11 @@ export default function POSPage() {
                   }
                   return null
                 }
+                const hasDiscount = (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) || (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0)
+                const originalSubtotal = item.quantity * item.gross_price
+                const discountedSubtotal = getItemSubtotal(item)
+                const discountPercent = item.discount_percentage || 0
+                
                 return (
                 <div key={item.id} className="grid grid-cols-[2fr_3rem_1fr_1fr] gap-2 py-2 border-b border-gray-100">
                   <div className="min-w-0 break-words">
@@ -1901,13 +2115,23 @@ export default function POSPage() {
                     {getDimensions() && (
                       <p className="text-xs text-gray-500 break-words">{getDimensions()}</p>
                     )}
+                    {hasDiscount && (
+                      <p className="text-xs text-orange-600 font-semibold break-words">Kedvezmény: {discountPercent}%</p>
+                    )}
                   </div>
                   <div className="text-center text-sm text-gray-900">{item.quantity}</div>
                   <div className="text-right text-sm text-gray-900">
                     {item.gross_price.toLocaleString('hu-HU')} Ft
                   </div>
-                  <div className="text-right text-sm font-semibold text-gray-900">
-                    {(item.quantity * item.gross_price).toLocaleString('hu-HU')} Ft
+                  <div className="text-right text-sm font-semibold">
+                    {hasDiscount ? (
+                      <div>
+                        <p className="text-xs text-gray-400 line-through">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                        <p className="text-orange-600">{discountedSubtotal.toLocaleString('hu-HU')} Ft</p>
+                      </div>
+                    ) : (
+                      <p className="text-gray-900">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                    )}
                   </div>
                 </div>
                 )

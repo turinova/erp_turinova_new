@@ -159,22 +159,21 @@ function buildInvoiceXml(
       </tetel>`
   } else {
     // Normal invoice or full proforma - use existing items
+    // IMPORTANT: Use stored total_net, total_vat, total_gross which already have per-item discounts applied
     itemsXml = items.map((item) => {
-    const vatRate = vatRatesMap.get(item.vat_id) || 0
-    const mennyiseg = Number(item.quantity)
-    const nettoEgysegar = Number(item.unit_price_net)
-    
-      // Calculate nettoErtek = quantity × unit price, round to integer
-      // Round to integers (whole forints) for Számlázz.hu compliance
-      const nettoErtek = Math.round(mennyiseg * nettoEgysegar)
-    
-      // Calculate afaErtek = nettoErtek × vatRate / 100, round to integer
-      const afaErtek = Math.round(nettoErtek * vatRate / 100)
-    
-      // Calculate bruttoErtek = nettoErtek + afaErtek (sum of integers)
-    const bruttoErtek = nettoErtek + afaErtek
-    
-    return `
+      const vatRate = vatRatesMap.get(item.vat_id) || 0
+      const mennyiseg = Number(item.quantity)
+      
+      // Use stored totals which already have per-item discounts applied
+      const nettoErtek = Math.round(Number(item.total_net) || 0)
+      const afaErtek = Math.round(Number(item.total_vat) || 0)
+      const bruttoErtek = Math.round(Number(item.total_gross) || 0)
+      
+      // Calculate unit prices from totals (for display in invoice)
+      // nettoEgysegar = total_net / quantity
+      const nettoEgysegar = mennyiseg > 0 ? Math.round(nettoErtek / mennyiseg) : 0
+      
+      return `
       <tetel>
         <megnevezes>${escapeXml(item.product_name)}</megnevezes>
         <mennyiseg>${mennyiseg}</mennyiseg>
@@ -256,10 +255,11 @@ function buildInvoiceXml(
     let discountVatRate = 27 // Default to 27% (most common in Hungary)
     if (items.length > 0) {
       // Group items by VAT rate and calculate total gross for each
+      // Use stored total_gross which already has per-item discounts applied
       const vatTotals = new Map<number, number>()
       items.forEach((item) => {
         const vatRate = vatRatesMap.get(item.vat_id) || 0
-        const itemGross = Number(item.quantity) * Number(item.unit_price_gross)
+        const itemGross = Math.round(Number(item.total_gross) || 0)
         const currentTotal = vatTotals.get(vatRate) || 0
         vatTotals.set(vatRate, currentTotal + itemGross)
       })
@@ -395,7 +395,9 @@ export async function POST(
         currency_id,
         total_net,
         total_vat,
-        total_gross
+        total_gross,
+        discount_percentage,
+        discount_amount
       `)
       .eq('pos_order_id', id)
       .is('deleted_at', null)

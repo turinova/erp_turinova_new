@@ -69,14 +69,19 @@ function buildInvoiceXml(
   const orderNumber = `${order.pos_order_number}-PREVIEW-${Date.now()}`
 
   // Build items XML
+  // IMPORTANT: Use stored total_net, total_vat, total_gross which already have per-item discounts applied
   const itemsXml = items.map((item) => {
     const vatRate = vatRatesMap.get(item.vat_id) || 0
     const mennyiseg = Number(item.quantity)
-    const nettoEgysegar = Number(item.unit_price_net)
     
-    const nettoErtek = mennyiseg * nettoEgysegar
-    const afaErtek = (nettoErtek * vatRate) / 100
-    const bruttoErtek = nettoErtek + afaErtek
+    // Use stored totals which already have per-item discounts applied
+    const nettoErtek = Math.round(Number(item.total_net) || 0)
+    const afaErtek = Math.round(Number(item.total_vat) || 0)
+    const bruttoErtek = Math.round(Number(item.total_gross) || 0)
+    
+    // Calculate unit prices from totals (for display in invoice)
+    // nettoEgysegar = total_net / quantity
+    const nettoEgysegar = mennyiseg > 0 ? Math.round(nettoErtek / mennyiseg) : 0
     
     return `
       <tetel>
@@ -103,7 +108,8 @@ function buildInvoiceXml(
       const vatTotals = new Map<number, number>()
       items.forEach((item) => {
         const vatRate = vatRatesMap.get(item.vat_id) || 0
-        const itemGross = Number(item.quantity) * Number(item.unit_price_gross)
+        // Use stored total_gross which already has per-item discounts applied
+        const itemGross = Math.round(Number(item.total_gross) || 0)
         const currentTotal = vatTotals.get(vatRate) || 0
         vatTotals.set(vatRate, currentTotal + itemGross)
       })
@@ -233,7 +239,9 @@ export async function POST(
         currency_id,
         total_net,
         total_vat,
-        total_gross
+        total_gross,
+        discount_percentage,
+        discount_amount
       `)
       .eq('pos_order_id', id)
       .is('deleted_at', null)

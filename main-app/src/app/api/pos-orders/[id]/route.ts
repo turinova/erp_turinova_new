@@ -67,6 +67,8 @@ export async function GET(
         total_net,
         total_vat,
         total_gross,
+        discount_percentage,
+        discount_amount,
         created_at,
         updated_at,
         materials:material_id (
@@ -116,6 +118,31 @@ export async function GET(
         transformed.length = item.linear_materials.length
         transformed.width = item.linear_materials.width
         transformed.thickness = item.linear_materials.thickness
+      }
+      
+      // Ensure discount fields are numbers (not null/undefined)
+      // Convert string values from database to numbers
+      const discountPercentage = item.discount_percentage !== null && item.discount_percentage !== undefined 
+        ? Number(item.discount_percentage) 
+        : 0
+      const discountAmount = item.discount_amount !== null && item.discount_amount !== undefined 
+        ? Number(item.discount_amount) 
+        : 0
+      
+      // If discount fields are both 0/null but there's a price difference, calculate discount
+      const originalSubtotal = (item.unit_price_gross || 0) * (item.quantity || 0)
+      const actualTotal = item.total_gross || 0
+      const priceDifference = originalSubtotal - actualTotal
+      
+      // Only calculate discount from price difference if BOTH discount fields are 0/null AND there's a price difference
+      if (discountPercentage === 0 && discountAmount === 0 && priceDifference > 0.01 && originalSubtotal > 0) {
+        // Calculate discount as amount (per unit)
+        transformed.discount_amount = priceDifference / (item.quantity || 1)
+        transformed.discount_percentage = 0
+      } else {
+        // Preserve existing discount values from database
+        transformed.discount_percentage = discountPercentage
+        transformed.discount_amount = discountAmount
       }
       
       // Remove nested objects

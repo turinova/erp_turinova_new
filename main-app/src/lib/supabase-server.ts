@@ -5934,6 +5934,8 @@ export async function getPosOrderById(id: string) {
         total_net,
         total_vat,
         total_gross,
+        discount_percentage,
+        discount_amount,
         materials:material_id (
           length_mm,
           width_mm,
@@ -6016,6 +6018,18 @@ export async function getPosOrderById(id: string) {
         } else if (item.accessories.units && !Array.isArray(item.accessories.units)) {
           normalizedItem.unit = item.accessories.units
         }
+      }
+      
+      // Ensure discount fields are numbers (convert from string if needed)
+      if (normalizedItem.discount_percentage !== undefined && normalizedItem.discount_percentage !== null) {
+        normalizedItem.discount_percentage = Number(normalizedItem.discount_percentage) || 0
+      } else {
+        normalizedItem.discount_percentage = 0
+      }
+      if (normalizedItem.discount_amount !== undefined && normalizedItem.discount_amount !== null) {
+        normalizedItem.discount_amount = Number(normalizedItem.discount_amount) || 0
+      } else {
+        normalizedItem.discount_amount = 0
       }
       
       // Remove nested objects

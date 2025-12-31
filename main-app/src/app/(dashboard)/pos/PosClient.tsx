@@ -27,7 +27,12 @@ import {
   DialogActions,
   Checkbox,
   FormControlLabel,
-  Chip
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -39,7 +44,9 @@ import {
   Remove as RemoveIcon,
   Close as CloseIcon,
   AttachMoney as CashIcon,
-  CreditCard as CardIcon
+  CreditCard as CardIcon,
+  KeyboardArrowDown as ExpandMoreIcon,
+  KeyboardArrowUp as ExpandLessIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { usePagePermission } from '@/hooks/usePagePermission'
@@ -114,6 +121,9 @@ interface CartItem {
   currency_name: string
   vat_id: string
   currency_id: string
+  // Per-item discount fields
+  discount_percentage?: number
+  discount_amount?: number
   // Material dimensions (for display)
   length_mm?: number
   width_mm?: number
@@ -194,6 +204,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const [imageModalOpen, setImageModalOpen] = useState(false)
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
   const [selectedImageName, setSelectedImageName] = useState<string>('')
+  // State for expanded cart item accordions
+  const [expandedCartItems, setExpandedCartItems] = useState<Set<string>>(new Set())
+  // State for discount input mode per item (percentage or amount)
+  const [itemDiscountMode, setItemDiscountMode] = useState<Record<string, 'percentage' | 'amount'>>({})
 
   // Helper function to fetch accessory data by ID
   const fetchAccessoryData = async (accessoryId: string): Promise<{ vat_id: string; currency_id: string } | null> => {
@@ -529,8 +543,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     const isCriticalField = 
       activeElement?.id === 'fee-price-input' ||
       activeElement?.id === 'discount-percentage-input' ||
+      activeElement?.id === 'item-gross-price-input' ||
+      activeElement?.id === 'item-discount-input' ||
       activeElement?.closest('[id="fee-price-input"]') ||
-      activeElement?.closest('[id="discount-percentage-input"]')
+      activeElement?.closest('[id="discount-percentage-input"]') ||
+      activeElement?.closest('[id="item-gross-price-input"]') ||
+      activeElement?.closest('[id="item-discount-input"]') ||
+      activeElement?.closest('[data-accordion-field="true"]')
     
     // If in critical field, ignore barcode input completely
     if (isCriticalField) {
@@ -567,8 +586,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       const stillInCriticalField = 
         currentActiveElement?.id === 'fee-price-input' ||
         currentActiveElement?.id === 'discount-percentage-input' ||
+        currentActiveElement?.id === 'item-gross-price-input' ||
+        currentActiveElement?.id === 'item-discount-input' ||
         currentActiveElement?.closest('[id="fee-price-input"]') ||
-        currentActiveElement?.closest('[id="discount-percentage-input"]')
+        currentActiveElement?.closest('[id="discount-percentage-input"]') ||
+        currentActiveElement?.closest('[id="item-gross-price-input"]') ||
+        currentActiveElement?.closest('[id="item-discount-input"]') ||
+        currentActiveElement?.closest('[data-accordion-field="true"]')
       
       if (trimmedValue.length > 0 && !isScanningRef.current && !isEditingField && !stillInCriticalField) {
         handleBarcodeScan(trimmedValue)
@@ -604,8 +628,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       const stillInCriticalField = 
         currentActiveElement?.id === 'fee-price-input' ||
         currentActiveElement?.id === 'discount-percentage-input' ||
+        currentActiveElement?.id === 'item-gross-price-input' ||
+        currentActiveElement?.id === 'item-discount-input' ||
         currentActiveElement?.closest('[id="fee-price-input"]') ||
-        currentActiveElement?.closest('[id="discount-percentage-input"]')
+        currentActiveElement?.closest('[id="discount-percentage-input"]') ||
+        currentActiveElement?.closest('[id="item-gross-price-input"]') ||
+        currentActiveElement?.closest('[id="item-discount-input"]') ||
+        currentActiveElement?.closest('[data-accordion-field="true"]')
       
       if (stillInCriticalField) return
       
@@ -623,8 +652,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     const isCriticalField = 
       activeElement?.id === 'fee-price-input' ||
       activeElement?.id === 'discount-percentage-input' ||
+      activeElement?.id === 'item-gross-price-input' ||
+      activeElement?.id === 'item-discount-input' ||
       activeElement?.closest('[id="fee-price-input"]') ||
-      activeElement?.closest('[id="discount-percentage-input"]')
+      activeElement?.closest('[id="discount-percentage-input"]') ||
+      activeElement?.closest('[id="item-gross-price-input"]') ||
+      activeElement?.closest('[id="item-discount-input"]') ||
+      activeElement?.closest('[data-accordion-field="true"]')
     
     if (!barcode || !barcode.trim() || (isEditingField && isCriticalField)) {
       refocusBarcodeInput()
@@ -886,10 +920,102 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     )
   }
 
+  // Toggle accordion for cart item
+  const handleToggleAccordion = (itemId: string) => {
+    setExpandedCartItems(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId)
+      } else {
+        newSet.add(itemId)
+      }
+      return newSet
+    })
+  }
+
+  // Update item discount percentage
+  const handleItemDiscountPercentageChange = (itemId: string, percentage: number) => {
+    setCartItems(prev =>
+      prev.map(item =>
+        item.id === itemId
+          ? {
+              ...item,
+              discount_percentage: percentage >= 0 && percentage <= 100 ? percentage : 0,
+              discount_amount: 0 // Clear amount when using percentage
+            }
+          : item
+      )
+    )
+    // Set discount mode to percentage
+    setItemDiscountMode(prev => ({ ...prev, [itemId]: 'percentage' }))
+  }
+
+  // Update item discount amount
+  const handleItemDiscountAmountChange = (itemId: string, amount: number) => {
+    setCartItems(prev =>
+      prev.map(item =>
+        item.id === itemId
+          ? {
+              ...item,
+              discount_amount: amount >= 0 ? amount : 0,
+              discount_percentage: 0 // Clear percentage when using amount
+            }
+          : item
+      )
+    )
+    // Set discount mode to amount
+    setItemDiscountMode(prev => ({ ...prev, [itemId]: 'amount' }))
+  }
+
+  // Update item gross price and recalculate net price and VAT
+  const handleItemGrossPriceChange = (itemId: string, newGrossPrice: number) => {
+    setCartItems(prev =>
+      prev.map(item => {
+        if (item.id === itemId) {
+          // Get VAT rate from the item's vat_id (we'll need to fetch it or store it)
+          // For now, calculate from existing net and gross
+          const vatRate = item.gross_price > 0 
+            ? ((item.gross_price - item.net_price) / item.net_price) * 100 
+            : 0
+          
+          // Calculate new net price from gross price
+          const newNetPrice = newGrossPrice / (1 + vatRate / 100)
+          
+          return {
+            ...item,
+            gross_price: newGrossPrice >= 0 ? newGrossPrice : 0,
+            net_price: newNetPrice >= 0 ? newNetPrice : 0
+          }
+        }
+        return item
+      })
+    )
+  }
+
+  // Get VAT rate for an item (calculate from net and gross)
+  const getItemVatRate = (item: CartItem): number => {
+    if (item.net_price > 0) {
+      return ((item.gross_price - item.net_price) / item.net_price) * 100
+    }
+    return 0
+  }
+
   // Calculate részösszeg for each item, rounded to nearest 5
+  // Accounts for per-item discounts
   const getItemSubtotal = (item: CartItem) => {
-    const subtotal = item.gross_price * item.quantity
-    return Math.round(subtotal / 5) * 5
+    // Calculate base subtotal before discount
+    const baseSubtotal = item.gross_price * item.quantity
+    
+    // Apply per-item discount
+    let discountAmount = 0
+    if (item.discount_percentage && item.discount_percentage > 0) {
+      discountAmount = (baseSubtotal * item.discount_percentage) / 100
+    } else if (item.discount_amount && item.discount_amount > 0) {
+      discountAmount = item.discount_amount * item.quantity // Discount amount is per unit
+    }
+    
+    const subtotalAfterDiscount = baseSubtotal - discountAmount
+    return Math.round(subtotalAfterDiscount / 5) * 5
   }
 
   // Fetch fee types
@@ -1106,7 +1232,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         unit_price_net: item.net_price,
         unit_price_gross: item.gross_price,
         vat_id: item.vat_id,
-        currency_id: item.currency_id
+        currency_id: item.currency_id,
+        discount_percentage: item.discount_percentage || 0,
+        discount_amount: item.discount_amount || 0
       }))
 
       // Validate fees have required fields
@@ -1261,8 +1389,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
               const isCriticalField = 
                 activeElement?.id === 'fee-price-input' ||
                 activeElement?.id === 'discount-percentage-input' ||
+                activeElement?.id === 'item-gross-price-input' ||
+                activeElement?.id === 'item-discount-input' ||
                 activeElement?.closest('[id="fee-price-input"]') ||
-                activeElement?.closest('[id="discount-percentage-input"]')
+                activeElement?.closest('[id="discount-percentage-input"]') ||
+                activeElement?.closest('[id="item-gross-price-input"]') ||
+                activeElement?.closest('[id="item-discount-input"]') ||
+                activeElement?.closest('[data-accordion-field="true"]')
               
               // If in critical field, ignore the input completely
               if (isCriticalField || isEditingField) {
@@ -1278,8 +1411,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
               const isCriticalField = 
                 activeElement?.id === 'fee-price-input' ||
                 activeElement?.id === 'discount-percentage-input' ||
+                activeElement?.id === 'item-gross-price-input' ||
+                activeElement?.id === 'item-discount-input' ||
                 activeElement?.closest('[id="fee-price-input"]') ||
-                activeElement?.closest('[id="discount-percentage-input"]')
+                activeElement?.closest('[id="discount-percentage-input"]') ||
+                activeElement?.closest('[id="item-gross-price-input"]') ||
+                activeElement?.closest('[id="item-discount-input"]') ||
+                activeElement?.closest('[data-accordion-field="true"]')
               
               // If in critical field, ignore all key events
               if (isCriticalField || isEditingField) {
@@ -1712,8 +1850,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     <TableBody>
                       {/* Cart Items */}
                       {cartItems.map((item) => (
+                        <React.Fragment key={item.id}>
                         <TableRow
-                          key={item.id}
                           sx={{
                             transition: 'border-color 0.3s ease-in-out',
                             ...(highlightedCartItemId === item.id && {
@@ -1868,22 +2006,200 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
                           {/* Column 4: Bruttó Részösszeg */}
                           <TableCell align="right">
-                            <Typography variant="subtitle2" fontWeight="bold" color="primary">
-                              {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
-                            </Typography>
+                            {((item.discount_percentage && item.discount_percentage > 0) || 
+                              (item.discount_amount && item.discount_amount > 0)) ? (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                                {/* Original price (crossed out) */}
+                                <Typography
+                                  variant="body2"
+                                  sx={{
+                                    textDecoration: 'line-through',
+                                    color: 'text.secondary',
+                                    fontSize: '0.75rem'
+                                  }}
+                                >
+                                  {(() => {
+                                    const originalSubtotal = item.gross_price * item.quantity
+                                    return `${Math.round(originalSubtotal / 5) * 5} ${item.currency_name}`
+                                  })()}
+                                </Typography>
+                                {/* Discounted price */}
+                                <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                                  {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                                {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                              </Typography>
+                            )}
                           </TableCell>
 
-                          {/* Column 4: Delete */}
+                          {/* Column 5: Expand/Collapse and Delete */}
                           <TableCell align="center">
-                            <IconButton
-                              color="error"
-                              size="small"
-                              onClick={() => handleRemoveFromCart(item.id)}
-                            >
-                              <DeleteIcon />
-                            </IconButton>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleToggleAccordion(item.id)
+                                }}
+                                sx={{ 
+                                  color: expandedCartItems.has(item.id) ? 'primary.main' : 'text.secondary',
+                                  transition: 'transform 0.2s',
+                                  transform: expandedCartItems.has(item.id) ? 'rotate(180deg)' : 'rotate(0deg)'
+                                }}
+                              >
+                                {expandedCartItems.has(item.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                              </IconButton>
+                              <IconButton
+                                color="error"
+                                size="small"
+                                onClick={() => handleRemoveFromCart(item.id)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Box>
                           </TableCell>
                         </TableRow>
+                        {/* Accordion row for discount fields */}
+                        {expandedCartItems.has(item.id) && (
+                          <TableRow>
+                            <TableCell colSpan={5} sx={{ py: 2, bgcolor: 'action.hover' }}>
+                              <Box sx={{ px: 2 }}>
+                                <Grid container spacing={2}>
+                                  {/* First Row: Nettó egységár, Bruttó egységár */}
+                                  <Grid item xs={12} sm={6}>
+                                    <TextField
+                                      label="Nettó egységár"
+                                      value={item.net_price.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                      disabled
+                                      fullWidth
+                                      size="small"
+                                      InputProps={{
+                                        endAdornment: <InputAdornment position="end">{item.currency_name}</InputAdornment>
+                                      }}
+                                    />
+                                  </Grid>
+                                  
+                                  <Grid item xs={12} sm={6}>
+                                    <TextField
+                                      id={`item-gross-price-input-${item.id}`}
+                                      data-accordion-field="true"
+                                      label="Bruttó egységár"
+                                      type="number"
+                                      value={item.gross_price}
+                                      onChange={(e) => {
+                                        const value = parseFloat(e.target.value)
+                                        if (!isNaN(value)) {
+                                          handleItemGrossPriceChange(item.id, value)
+                                        }
+                                      }}
+                                      onFocus={() => setIsEditingField(true)}
+                                      onBlur={() => {
+                                        setTimeout(() => {
+                                          setIsEditingField(false)
+                                          refocusBarcodeInput()
+                                        }, 100)
+                                      }}
+                                      fullWidth
+                                      size="small"
+                                      InputProps={{
+                                        endAdornment: <InputAdornment position="end">{item.currency_name}</InputAdornment>,
+                                        inputProps: { min: 0, step: 1 }
+                                      }}
+                                    />
+                                  </Grid>
+                                  
+                                  {/* Second Row: Kedvezmény input first, then switcher */}
+                                  <Grid item xs={12} sm={6}>
+                                    <TextField
+                                      id={`item-discount-input-${item.id}`}
+                                      data-accordion-field="true"
+                                      label="Kedvezmény"
+                                      type="number"
+                                      value={
+                                        itemDiscountMode[item.id] === 'amount'
+                                          ? (item.discount_amount && item.discount_amount > 0 ? item.discount_amount : '')
+                                          : (item.discount_percentage && item.discount_percentage > 0 ? item.discount_percentage : '')
+                                      }
+                                      onChange={(e) => {
+                                        const inputValue = e.target.value
+                                        // Allow empty string
+                                        if (inputValue === '') {
+                                          if (itemDiscountMode[item.id] === 'amount') {
+                                            handleItemDiscountAmountChange(item.id, 0)
+                                          } else {
+                                            handleItemDiscountPercentageChange(item.id, 0)
+                                          }
+                                          return
+                                        }
+                                        const value = parseFloat(inputValue)
+                                        if (!isNaN(value)) {
+                                          if (itemDiscountMode[item.id] === 'amount') {
+                                            handleItemDiscountAmountChange(item.id, value)
+                                          } else {
+                                            handleItemDiscountPercentageChange(item.id, value)
+                                          }
+                                        }
+                                      }}
+                                      onFocus={() => setIsEditingField(true)}
+                                      onBlur={() => {
+                                        setTimeout(() => {
+                                          setIsEditingField(false)
+                                          refocusBarcodeInput()
+                                        }, 100)
+                                      }}
+                                      fullWidth
+                                      size="small"
+                                      InputProps={{
+                                        endAdornment: (
+                                          <InputAdornment position="end">
+                                            {itemDiscountMode[item.id] === 'amount' ? item.currency_name : '%'}
+                                          </InputAdornment>
+                                        ),
+                                        inputProps: { 
+                                          min: 0, 
+                                          step: itemDiscountMode[item.id] === 'amount' ? 1 : 0.01,
+                                          max: itemDiscountMode[item.id] === 'percentage' ? 100 : undefined
+                                        }
+                                      }}
+                                    />
+                                  </Grid>
+                                  <Grid item xs={12} sm={6}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pt: 0.5 }}>
+                                      <ToggleButtonGroup
+                                        value={itemDiscountMode[item.id] || 'percentage'}
+                                        exclusive
+                                        onChange={(e, newMode) => {
+                                          if (newMode !== null) {
+                                            setItemDiscountMode(prev => ({ ...prev, [item.id]: newMode }))
+                                            // Clear discount when switching modes
+                                            if (newMode === 'percentage') {
+                                              handleItemDiscountPercentageChange(item.id, 0)
+                                            } else {
+                                              handleItemDiscountAmountChange(item.id, 0)
+                                            }
+                                          }
+                                        }}
+                                        size="small"
+                                        fullWidth
+                                      >
+                                        <ToggleButton value="percentage" sx={{ flex: 1 }}>
+                                          %
+                                        </ToggleButton>
+                                        <ToggleButton value="amount" sx={{ flex: 1 }}>
+                                          Összeg
+                                        </ToggleButton>
+                                      </ToggleButtonGroup>
+                                    </Box>
+                                  </Grid>
+                                </Grid>
+                              </Box>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        </React.Fragment>
                       ))}
 
                       {/* Fees Header Row */}
@@ -2280,7 +2596,31 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
                           </TableCell>
                           <TableCell align="right">
-                            {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                            {((item.discount_percentage && item.discount_percentage > 0) || 
+                              (item.discount_amount && item.discount_amount > 0)) ? (
+                              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                                <Typography
+                                  variant="caption"
+                                  sx={{
+                                    textDecoration: 'line-through',
+                                    color: 'text.secondary',
+                                    fontSize: '0.7rem'
+                                  }}
+                                >
+                                  {(() => {
+                                    const originalSubtotal = item.gross_price * item.quantity
+                                    return `${Math.round(originalSubtotal / 5) * 5} ${item.currency_name}`
+                                  })()}
+                                </Typography>
+                                <Typography variant="body2" fontWeight="bold" color="primary">
+                                  {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                                </Typography>
+                              </Box>
+                            ) : (
+                              <Typography variant="body2">
+                                {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                              </Typography>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -2573,7 +2913,31 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                         {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
                       </TableCell>
                       <TableCell align="right">
-                        {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                        {((item.discount_percentage && item.discount_percentage > 0) || 
+                          (item.discount_amount && item.discount_amount > 0)) ? (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                textDecoration: 'line-through',
+                                color: 'text.secondary',
+                                fontSize: '0.7rem'
+                              }}
+                            >
+                              {(() => {
+                                const originalSubtotal = item.gross_price * item.quantity
+                                return `${Math.round(originalSubtotal / 5) * 5} ${item.currency_name}`
+                              })()}
+                            </Typography>
+                            <Typography variant="body2" fontWeight="bold" color="primary">
+                              {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2">
+                            {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                          </Typography>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

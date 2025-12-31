@@ -39,13 +39,15 @@ import {
   TableRow,
   TextField,
   Tooltip,
-  Typography
+  Typography,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material'
 import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon, PictureAsPdf as PictureAsPdfIcon, Undo as UndoIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon, PictureAsPdf as PictureAsPdfIcon, Undo as UndoIcon, KeyboardArrowDown as ExpandMoreIcon, KeyboardArrowUp as ExpandLessIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import InvoiceModal from './InvoiceModal'
 
@@ -115,6 +117,9 @@ interface PosOrderItem {
   total_net: number
   total_vat: number
   total_gross: number
+  // Per-item discount fields
+  discount_percentage: number
+  discount_amount: number
   // Material dimensions (for display)
   length_mm?: number
   width_mm?: number
@@ -232,27 +237,86 @@ export default function PosOrderDetailClient({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // State for expanded item accordions
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
+
   // Order state
   const [order, setOrder] = useState<PosOrder>(initialOrder)
-  // Normalize items: set default product_type for backward compatibility with old records
+  // Normalize items: set default product_type and discount fields for backward compatibility with old records
   const normalizedInitialItems = initialItems.map(item => {
+    let normalized = { ...item }
+    
     if (item.item_type === 'product' && !item.product_type) {
       // Default to 'accessory' if product_type is null/undefined (backward compatibility)
       // Determine based on which ID is present
       if (item.accessory_id) {
-        return { ...item, product_type: 'accessory' as const }
+        normalized.product_type = 'accessory' as const
       } else if (item.material_id) {
-        return { ...item, product_type: 'material' as const }
+        normalized.product_type = 'material' as const
       } else if (item.linear_material_id) {
-        return { ...item, product_type: 'linear_material' as const }
+        normalized.product_type = 'linear_material' as const
       } else {
         // Fallback to accessory if no ID is present (shouldn't happen, but safe default)
-        return { ...item, product_type: 'accessory' as const }
+        normalized.product_type = 'accessory' as const
       }
     }
-    return item
+    
+    // Ensure discount fields exist (default to 0 if missing, but preserve actual values)
+    if (normalized.discount_percentage === undefined || normalized.discount_percentage === null) {
+      normalized.discount_percentage = 0
+    } else {
+      // Ensure it's a number and preserve actual value
+      const numValue = Number(normalized.discount_percentage)
+      normalized.discount_percentage = isNaN(numValue) ? 0 : numValue
+    }
+    if (normalized.discount_amount === undefined || normalized.discount_amount === null) {
+      normalized.discount_amount = 0
+    } else {
+      // Ensure it's a number and preserve actual value
+      const numValue = Number(normalized.discount_amount)
+      normalized.discount_amount = isNaN(numValue) ? 0 : numValue
+    }
+    
+    return normalized
   })
+  
+  // Debug: Log normalized items to check discount values
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('Normalized items with discounts:', normalizedInitialItems.map(item => ({
+      id: item.id,
+      name: item.product_name,
+      discount_percentage: item.discount_percentage,
+      discount_amount: item.discount_amount,
+      total_gross: item.total_gross,
+      unit_price_gross: item.unit_price_gross,
+      quantity: item.quantity
+    })))
+  }
+  
   const [items, setItems] = useState<PosOrderItem[]>(normalizedInitialItems)
+  
+  // State for discount input mode per item (percentage or amount)
+  // Initialize based on which discount field has a value (must be after normalizedInitialItems)
+  const [itemDiscountMode, setItemDiscountMode] = useState<Record<string, 'percentage' | 'amount'>>(() => {
+    const modeMap: Record<string, 'percentage' | 'amount'> = {}
+    normalizedInitialItems.forEach(item => {
+      // If item has discount_percentage > 0, use percentage mode
+      // If item has discount_amount > 0, use amount mode
+      // Otherwise default to percentage
+      const discountPct = item.discount_percentage !== undefined && item.discount_percentage !== null ? Number(item.discount_percentage) : 0
+      const discountAmt = item.discount_amount !== undefined && item.discount_amount !== null ? Number(item.discount_amount) : 0
+      
+      if (discountPct > 0) {
+        modeMap[item.id] = 'percentage'
+      } else if (discountAmt > 0) {
+        modeMap[item.id] = 'amount'
+      } else {
+        modeMap[item.id] = 'percentage' // default
+      }
+    })
+    return modeMap
+  })
+  
   const [payments, setPayments] = useState<PosPayment[]>(initialPayments)
   // Calculate initial total paid from active payments only
   const initialActivePayments = initialPayments.filter(p => !p.deleted_at)
@@ -424,24 +488,23 @@ export default function PosOrderDetailClient({
   const [stornoTarget, setStornoTarget] = useState<InvoiceRow | null>(null)
 
   // Calculate summary from items
-  // IMPORTANT: Recalculate VAT from net to match invoice calculation (szamlazz.hu validation)
-  // This ensures the page total matches the invoice preview total
+  // IMPORTANT: Use stored total_net, total_vat, total_gross directly from database
+  // This ensures the page total matches the invoice exactly (invoice uses stored totals)
   const summary = useMemo(() => {
     const products = items.filter(item => item.item_type === 'product')
     const fees = items.filter(item => item.item_type === 'fee')
     
-    // Recalculate totals with VAT recalculation to match invoice
-    // Use stored net, but recalculate VAT from net to match invoice calculation
+    // Use stored totals directly (already rounded correctly by database)
+    // This matches how the invoice generation works
     let itemsNet = 0
     let itemsVat = 0
     let itemsGross = 0
     
     products.forEach(item => {
+      // Use stored totals directly, no recalculation
       const net = Math.round(Number(item.total_net || 0))
-      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
-      // Recalculate VAT from net (matching invoice calculation)
-      const vat = Math.round(net * vatRate / 100)
-      const gross = net + vat
+      const vat = Math.round(Number(item.total_vat || 0))
+      const gross = Math.round(Number(item.total_gross || 0))
       
       itemsNet += net
       itemsVat += vat
@@ -453,11 +516,10 @@ export default function PosOrderDetailClient({
     let feesGross = 0
     
     fees.forEach(item => {
+      // Use stored totals directly, no recalculation
       const net = Math.round(Number(item.total_net || 0))
-      const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
-      // Recalculate VAT from net (matching invoice calculation)
-      const vat = Math.round(net * vatRate / 100)
-      const gross = net + vat
+      const vat = Math.round(Number(item.total_vat || 0))
+      const gross = Math.round(Number(item.total_gross || 0))
       
       feesNet += net
       feesVat += vat
@@ -494,7 +556,7 @@ export default function PosOrderDetailClient({
       totalVatAfterDiscount,
       totalGrossAfterDiscount
     }
-  }, [items, discountAmount, vatRates])
+  }, [items, discountAmount])
 
   // Handle customer selection
   const handleCustomerChange = (event: React.SyntheticEvent, newValue: Customer | null) => {
@@ -550,35 +612,66 @@ export default function PosOrderDetailClient({
     })
   }
 
-  // Recalculate item totals when quantity or price changes
-  const recalculateItem = (item: PosOrderItem, newQuantity?: number, newUnitPriceNet?: number, newUnitPriceGross?: number): PosOrderItem => {
+  // Recalculate item totals when quantity, price, or discount changes
+  const recalculateItem = (
+    item: PosOrderItem, 
+    newQuantity?: number, 
+    newUnitPriceNet?: number, 
+    newUnitPriceGross?: number,
+    newDiscountPercentage?: number,
+    newDiscountAmount?: number
+  ): PosOrderItem => {
     const quantity = newQuantity !== undefined ? newQuantity : item.quantity
     const unitPriceNet = newUnitPriceNet !== undefined ? newUnitPriceNet : item.unit_price_net
     const unitPriceGross = newUnitPriceGross !== undefined ? newUnitPriceGross : item.unit_price_gross
+    const discountPercentage = newDiscountPercentage !== undefined ? newDiscountPercentage : (item.discount_percentage || 0)
+    const discountAmount = newDiscountAmount !== undefined ? newDiscountAmount : (item.discount_amount || 0)
     
     // Round unit prices to avoid decimal precision issues
     const roundedUnitPriceNet = Math.round(unitPriceNet)
     const roundedUnitPriceGross = Math.round(unitPriceGross)
     
-    // Calculate totals with proper rounding
-    const totalNet = Math.round(roundedUnitPriceNet * quantity)
-    const totalGross = Math.round(roundedUnitPriceGross * quantity)
+    // Calculate totals BEFORE per-item discount
+    const totalNetBeforeDiscount = Math.round(roundedUnitPriceNet * quantity)
+    const totalGrossBeforeDiscount = Math.round(roundedUnitPriceGross * quantity)
     
-    // Calculate VAT from net price using VAT rate to avoid rounding errors
+    // Calculate VAT from net price using VAT rate
     const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
-    const totalVat = Math.round(totalNet * vatRate / 100)
+    const totalVatBeforeDiscount = Math.round(totalNetBeforeDiscount * vatRate / 100)
     
-    // Ensure totalGross = totalNet + totalVat (adjust if needed due to rounding)
-    const adjustedTotalGross = totalNet + totalVat
+    // Apply per-item discount
+    let itemDiscountValue = 0
+    if (discountAmount > 0) {
+      itemDiscountValue = discountAmount * quantity // Discount amount is per unit
+    } else if (discountPercentage > 0) {
+      itemDiscountValue = Math.round((totalGrossBeforeDiscount * discountPercentage) / 100)
+    }
+    
+    // Calculate totals AFTER per-item discount
+    const totalGrossAfterDiscount = Math.round(totalGrossBeforeDiscount - itemDiscountValue)
+    
+    // Recalculate VAT and net proportionally after discount
+    let totalVat = totalVatBeforeDiscount
+    let totalNet = totalNetBeforeDiscount
+    if (totalGrossAfterDiscount > 0 && totalGrossBeforeDiscount > 0) {
+      // Proportional reduction: maintain VAT ratio
+      totalVat = Math.round(totalVatBeforeDiscount * (totalGrossAfterDiscount / totalGrossBeforeDiscount))
+      totalNet = totalGrossAfterDiscount - totalVat
+    } else {
+      totalVat = 0
+      totalNet = 0
+    }
     
     return {
       ...item,
       quantity,
       unit_price_net: roundedUnitPriceNet,
       unit_price_gross: roundedUnitPriceGross,
+      discount_percentage: discountPercentage,
+      discount_amount: discountAmount,
       total_net: totalNet,
       total_vat: totalVat,
-      total_gross: adjustedTotalGross
+      total_gross: totalGrossAfterDiscount
     }
   }
 
@@ -588,6 +681,24 @@ export default function PosOrderDetailClient({
     const roundedQuantity = Math.round(newQuantity * 100) / 100
     setItems(prevItems => prevItems.map(item => 
       item.id === itemId ? recalculateItem(item, roundedQuantity) : item
+    ))
+  }
+
+  // Update item discount percentage
+  const handleItemDiscountPercentageChange = (itemId: string, percentage: number) => {
+    setItems(prevItems => prevItems.map(item =>
+      item.id === itemId
+        ? recalculateItem(item, undefined, undefined, undefined, percentage >= 0 && percentage <= 100 ? percentage : 0, 0)
+        : item
+    ))
+  }
+
+  // Update item discount amount
+  const handleItemDiscountAmountChange = (itemId: string, amount: number) => {
+    setItems(prevItems => prevItems.map(item =>
+      item.id === itemId
+        ? recalculateItem(item, undefined, undefined, undefined, 0, amount >= 0 ? amount : 0)
+        : item
     ))
   }
 
@@ -807,6 +918,8 @@ export default function PosOrderDetailClient({
       product_type: selectedProduct.product_type || 'accessory',
       accessory_id: selectedProduct.accessory_id || null,
       material_id: selectedProduct.material_id || null,
+      discount_percentage: 0,
+      discount_amount: 0,
       linear_material_id: selectedProduct.linear_material_id || null,
       feetype_id: null,
       product_name: selectedProduct.name,
@@ -830,6 +943,8 @@ export default function PosOrderDetailClient({
     }
 
     setItems(prevItems => [...prevItems, newProduct])
+    // Initialize discount mode for new product (default to percentage)
+    setItemDiscountMode(prev => ({ ...prev, [newProduct.id]: 'percentage' }))
     setAddingProduct(false)
     setProductSearchTerm('')
     setProductSearchResults([])
@@ -890,6 +1005,8 @@ export default function PosOrderDetailClient({
       id: `temp-${Date.now()}`,
       item_type: 'fee',
       accessory_id: null,
+      material_id: null,
+      linear_material_id: null,
       feetype_id: defaultFee.id,
       product_name: defaultFee.name,
       sku: null,
@@ -900,10 +1017,14 @@ export default function PosOrderDetailClient({
       currency_id: defaultFee.currency_id,
       total_net: defaultFee.net_price,
       total_vat: grossPrice - defaultFee.net_price,
-      total_gross: grossPrice
+      total_gross: grossPrice,
+      discount_percentage: 0,
+      discount_amount: 0
     }
     
     setItems(prevItems => [...prevItems, newFee])
+    // Initialize discount mode for new fee (default to percentage)
+    setItemDiscountMode(prev => ({ ...prev, [newFee.id]: 'percentage' }))
   }
 
   // Soft delete payment
@@ -1135,6 +1256,8 @@ export default function PosOrderDetailClient({
           unit_price_gross: item.unit_price_gross,
           vat_id: item.vat_id,
           currency_id: item.currency_id,
+          discount_percentage: item.discount_percentage || 0,
+          discount_amount: item.discount_amount || 0,
           deleted: false
         }
       })
@@ -1158,6 +1281,8 @@ export default function PosOrderDetailClient({
             unit_price_gross: deletedItem.unit_price_gross,
             vat_id: deletedItem.vat_id,
             currency_id: deletedItem.currency_id,
+            discount_percentage: deletedItem.discount_percentage || 0,
+            discount_amount: deletedItem.discount_amount || 0,
             deleted: true
           })
         }
@@ -1231,7 +1356,7 @@ export default function PosOrderDetailClient({
 
   return (
     <TabContext value={tabValue}>
-    <Box sx={{ p: 3 }}>
+      <Box sx={{ p: 3 }}>
       <Breadcrumbs sx={{ mb: 2 }}>
         <Link component={NextLink} href="/home" underline="hover" color="inherit">
           <HomeIcon sx={{ mr: 0.5 }} fontSize="inherit" />
@@ -1654,7 +1779,8 @@ export default function PosOrderDetailClient({
                 </TableHead>
                 <TableBody>
                   {items.filter(item => item.item_type === 'product').map(item => (
-                    <TableRow key={item.id}>
+                    <React.Fragment key={item.id}>
+                    <TableRow>
                       <TableCell>
                         <Typography variant="body2">{item.product_name}</Typography>
                         {item.product_type === 'accessory' && item.sku && (
@@ -1713,20 +1839,216 @@ export default function PosOrderDetailClient({
                         />
                       </TableCell>
                       <TableCell align="right">{formatCurrency(item.total_vat)}</TableCell>
-                      <TableCell align="right">{formatCurrency(item.total_gross)}</TableCell>
+                      <TableCell align="right">
+                        {(() => {
+                          // Replicate database rounding logic to accurately detect discounts
+                          // Database calculates: ROUND(net) + ROUND(ROUND(net) * vat / 100)
+                          const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
+                          
+                          // Step 1: Round net to integer (matching database: ROUND(quantity * unit_price_net))
+                          const totalNet = Math.round(item.unit_price_net * item.quantity)
+                          
+                          // Step 2: Round VAT to integer (matching database: ROUND(total_net * vat_rate / 100))
+                          const totalVat = Math.round(totalNet * vatRate / 100)
+                          
+                          // Step 3: Gross = Net + VAT (matching database: total_net + total_vat)
+                          const originalSubtotal = totalNet + totalVat
+                          
+                          // Check for discount: explicit discount fields OR difference > 1 Ft (tolerance for rounding)
+                          const hasDiscount = (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) || 
+                                            (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0) ||
+                                            (Math.abs(originalSubtotal - item.total_gross) > 1) // 1 Ft tolerance for rounding differences
+                          
+                          return hasDiscount ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                              {/* Original price (crossed out) - matching POS cart exactly */}
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  textDecoration: 'line-through',
+                                  color: 'text.secondary',
+                                  fontSize: '0.75rem'
+                                }}
+                              >
+                                {formatCurrency(originalSubtotal)}
+                              </Typography>
+                              {/* Discounted price - matching POS cart exactly */}
+                              <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                                {formatCurrency(item.total_gross)}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                              {formatCurrency(item.total_gross)}
+                            </Typography>
+                          )
+                        })()}
+                      </TableCell>
                       <TableCell>
-                        <IconButton 
-                          size="small" 
-                          color="error"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleRemoveItem(item.id)
-                          }}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExpandedItems(prev => {
+                                const newSet = new Set(prev)
+                                if (newSet.has(item.id)) {
+                                  newSet.delete(item.id)
+                                } else {
+                                  newSet.add(item.id)
+                                }
+                                return newSet
+                              })
+                            }}
+                            sx={{ 
+                              color: expandedItems.has(item.id) ? 'primary.main' : 'text.secondary',
+                              transition: 'transform 0.2s',
+                              transform: expandedItems.has(item.id) ? 'rotate(180deg)' : 'rotate(0deg)'
+                            }}
+                          >
+                            {expandedItems.has(item.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                          </IconButton>
+                          <IconButton 
+                            size="small" 
+                            color="error"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleRemoveItem(item.id)
+                            }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       </TableCell>
                     </TableRow>
+                    {/* Accordion row for discount fields */}
+                    {expandedItems.has(item.id) && (
+                      <TableRow>
+                        <TableCell colSpan={9} sx={{ py: 2, bgcolor: 'action.hover' }}>
+                          <Box sx={{ px: 2 }}>
+                            <Grid container spacing={2}>
+                              {/* First Row: Nettó egységár, Bruttó egységár */}
+                              <Grid item xs={12} sm={6}>
+                                <TextField
+                                  label="Nettó egységár"
+                                  value={item.unit_price_net.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                  disabled
+                                  fullWidth
+                                  size="small"
+                                  InputProps={{
+                                    endAdornment: <InputAdornment position="end">Ft</InputAdornment>
+                                  }}
+                                />
+                              </Grid>
+                              
+                              <Grid item xs={12} sm={6}>
+                                <TextField
+                                  label="Bruttó egységár"
+                                  type="number"
+                                  value={Math.round(item.unit_price_gross)}
+                                  onChange={(e) => {
+                                    const value = parseFloat(e.target.value)
+                                    if (!isNaN(value)) {
+                                      handleItemPriceGrossChange(item.id, value)
+                                    }
+                                  }}
+                                  fullWidth
+                                  size="small"
+                                  InputProps={{
+                                    endAdornment: <InputAdornment position="end">Ft</InputAdornment>,
+                                    inputProps: { min: 0, step: 1 }
+                                  }}
+                                />
+                              </Grid>
+                              
+                              {/* Second Row: Kedvezmény input first, then switcher */}
+                              <Grid item xs={12} sm={6}>
+                                <TextField
+                                  label="Kedvezmény"
+                                  type="number"
+                                  value={
+                                    (() => {
+                                      const mode = itemDiscountMode[item.id] || 'percentage'
+                                      const discountPct = item.discount_percentage !== undefined && item.discount_percentage !== null ? Number(item.discount_percentage) : 0
+                                      const discountAmt = item.discount_amount !== undefined && item.discount_amount !== null ? Number(item.discount_amount) : 0
+                                      
+                                      if (mode === 'amount') {
+                                        return discountAmt > 0 ? discountAmt : ''
+                                      } else {
+                                        return discountPct > 0 ? discountPct : ''
+                                      }
+                                    })()
+                                  }
+                                  onChange={(e) => {
+                                    const inputValue = e.target.value
+                                    // Allow empty string
+                                    if (inputValue === '') {
+                                      if (itemDiscountMode[item.id] === 'amount') {
+                                        handleItemDiscountAmountChange(item.id, 0)
+                                      } else {
+                                        handleItemDiscountPercentageChange(item.id, 0)
+                                      }
+                                      return
+                                    }
+                                    const value = parseFloat(inputValue)
+                                    if (!isNaN(value)) {
+                                      if (itemDiscountMode[item.id] === 'amount') {
+                                        handleItemDiscountAmountChange(item.id, value)
+                                      } else {
+                                        handleItemDiscountPercentageChange(item.id, value)
+                                      }
+                                    }
+                                  }}
+                                  fullWidth
+                                  size="small"
+                                  InputProps={{
+                                    endAdornment: (
+                                      <InputAdornment position="end">
+                                        {itemDiscountMode[item.id] === 'amount' ? 'Ft' : '%'}
+                                      </InputAdornment>
+                                    ),
+                                    inputProps: { 
+                                      min: 0, 
+                                      step: itemDiscountMode[item.id] === 'amount' ? 1 : 0.01,
+                                      max: itemDiscountMode[item.id] === 'percentage' ? 100 : undefined
+                                    }
+                                  }}
+                                />
+                              </Grid>
+                              <Grid item xs={12} sm={6}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pt: 0.5 }}>
+                                  <ToggleButtonGroup
+                                    value={itemDiscountMode[item.id] || 'percentage'}
+                                    exclusive
+                                    onChange={(e, newMode) => {
+                                      if (newMode !== null) {
+                                        setItemDiscountMode(prev => ({ ...prev, [item.id]: newMode }))
+                                        // Clear discount when switching modes
+                                        if (newMode === 'percentage') {
+                                          handleItemDiscountPercentageChange(item.id, 0)
+                                        } else {
+                                          handleItemDiscountAmountChange(item.id, 0)
+                                        }
+                                      }
+                                    }}
+                                    size="small"
+                                    fullWidth
+                                  >
+                                    <ToggleButton value="percentage" sx={{ flex: 1 }}>
+                                      %
+                                    </ToggleButton>
+                                    <ToggleButton value="amount" sx={{ flex: 1 }}>
+                                      Összeg
+                                    </ToggleButton>
+                                  </ToggleButtonGroup>
+                                </Box>
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    </React.Fragment>
                   ))}
                   {addingProduct && (
                     <TableRow>
