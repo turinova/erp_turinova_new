@@ -920,6 +920,24 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     )
   }
 
+  // Multiply quantity by a factor (supports decimals)
+  const handleQuantityMultiply = (itemId: string, multiplier: number) => {
+    setCartItems(prev =>
+      prev.map(item => {
+        if (item.id !== itemId) return item
+        const newQuantity = item.quantity * multiplier
+        const roundedQuantity = Math.round(newQuantity * 100) / 100
+        return { ...item, quantity: roundedQuantity }
+      })
+    )
+    // Clear the quantity input state for this item to show the new value
+    setQuantityInputs(prev => {
+      const newState = { ...prev }
+      delete newState[itemId]
+      return newState
+    })
+  }
+
   // Toggle accordion for cart item
   const handleToggleAccordion = (itemId: string) => {
     setExpandedCartItems(prev => {
@@ -1994,6 +2012,89 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               >
                                 <AddIcon fontSize="small" />
                               </IconButton>
+                            </Box>
+                            {/* Multiplier Buttons - Always visible below quantity controls */}
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mt: 0.5 }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleQuantityMultiply(item.id, 10)}
+                                sx={{
+                                  minWidth: 'auto',
+                                  px: 1,
+                                  py: 0.5,
+                                  fontSize: '0.75rem',
+                                  borderColor: '#60a5fa',
+                                  color: '#1e40af',
+                                  backgroundColor: '#dbeafe',
+                                  '&:hover': {
+                                    borderColor: '#3b82f6',
+                                    backgroundColor: '#bfdbfe'
+                                  }
+                                }}
+                              >
+                                ×10
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleQuantityMultiply(item.id, 100)}
+                                sx={{
+                                  minWidth: 'auto',
+                                  px: 1,
+                                  py: 0.5,
+                                  fontSize: '0.75rem',
+                                  borderColor: '#60a5fa',
+                                  color: '#1e40af',
+                                  backgroundColor: '#dbeafe',
+                                  '&:hover': {
+                                    borderColor: '#3b82f6',
+                                    backgroundColor: '#bfdbfe'
+                                  }
+                                }}
+                              >
+                                ×100
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleQuantityMultiply(item.id, 1000)}
+                                sx={{
+                                  minWidth: 'auto',
+                                  px: 1,
+                                  py: 0.5,
+                                  fontSize: '0.75rem',
+                                  borderColor: '#60a5fa',
+                                  color: '#1e40af',
+                                  backgroundColor: '#dbeafe',
+                                  '&:hover': {
+                                    borderColor: '#3b82f6',
+                                    backgroundColor: '#bfdbfe'
+                                  }
+                                }}
+                              >
+                                ×1000
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleQuantityChange(item.id, 1)}
+                                sx={{
+                                  minWidth: 'auto',
+                                  px: 1,
+                                  py: 0.5,
+                                  fontSize: '0.75rem',
+                                  borderColor: '#f87171',
+                                  color: '#991b1b',
+                                  backgroundColor: '#fee2e2',
+                                  '&:hover': {
+                                    borderColor: '#ef4444',
+                                    backgroundColor: '#fecaca'
+                                  }
+                                }}
+                              >
+                                1
+                              </Button>
                             </Box>
                           </TableCell>
 
