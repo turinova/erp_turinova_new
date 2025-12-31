@@ -1497,8 +1497,8 @@ export default function POSPage() {
                             Készlet: {product.quantity_on_hand} db
                           </p>
                         </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="font-semibold text-gray-900 text-lg">
+                        <div className="text-right flex-shrink min-w-0 max-w-[120px]">
+                          <p className="font-semibold text-gray-900 text-base truncate">
                             {roundedPrice.toLocaleString('hu-HU')} {product.currency_name}
                           </p>
                         </div>
@@ -1562,16 +1562,16 @@ export default function POSPage() {
                     </div>
 
                     {/* Main Row: Controls and Pricing */}
-                    <div className="flex items-center justify-between gap-2">
-                      {/* Left: Unit Price */}
-                      <div className="flex-shrink-0">
-                        <p className="text-xs text-gray-600">
+                    <div className="flex items-center justify-between gap-1">
+                      {/* Left: Unit Price - Allow shrinking */}
+                      <div className="flex-shrink min-w-0 max-w-[90px]">
+                        <p className="text-xs text-gray-600 truncate">
                           {item.gross_price.toLocaleString('hu-HU')} Ft / db
                         </p>
                       </div>
 
                       {/* Center: Quantity Controls */}
-                      <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+                      <div className="flex flex-col items-center gap-1 flex-shrink-0">
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={(e) => {
@@ -1599,14 +1599,14 @@ export default function POSPage() {
                             <PlusIcon />
                           </button>
                         </div>
-                        {/* Multiplier Buttons */}
-                        <div className="flex items-center gap-1">
+                        {/* Multiplier Buttons - More compact */}
+                        <div className="flex items-center gap-0.5">
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
                               handleQuantityMultiply(item.id, 10)
                             }}
-                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
+                            className="px-1.5 py-0.5 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség ×10"
                           >
                             ×10
@@ -1616,7 +1616,7 @@ export default function POSPage() {
                               e.stopPropagation()
                               handleQuantityMultiply(item.id, 100)
                             }}
-                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
+                            className="px-1.5 py-0.5 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség ×100"
                           >
                             ×100
@@ -1626,7 +1626,7 @@ export default function POSPage() {
                               e.stopPropagation()
                               handleQuantityMultiply(item.id, 1000)
                             }}
-                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
+                            className="px-1.5 py-0.5 text-xs font-semibold rounded border-2 border-blue-300 text-blue-700 bg-blue-50 active:bg-blue-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség ×1000"
                           >
                             ×1000
@@ -1636,7 +1636,7 @@ export default function POSPage() {
                               e.stopPropagation()
                               handleQuantityChange(item.id, 1)
                             }}
-                            className="px-2 py-1 text-xs font-semibold rounded border-2 border-red-300 text-red-700 bg-red-50 active:bg-red-100 active:scale-95 transition-all touch-manipulation"
+                            className="px-1.5 py-0.5 text-xs font-semibold rounded border-2 border-red-300 text-red-700 bg-red-50 active:bg-red-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség visszaállítása 1-re"
                           >
                             1
@@ -1644,20 +1644,20 @@ export default function POSPage() {
                         </div>
                       </div>
 
-                      {/* Right: Subtotal */}
-                      <div className="flex-shrink-0">
+                      {/* Right: Subtotal - Allow shrinking */}
+                      <div className="flex-shrink min-w-0 max-w-[110px]">
                         <div className="text-right">
                           {hasDiscount ? (
                             <div>
-                              <p className="text-xs text-gray-400 line-through whitespace-nowrap">
+                              <p className="text-xs text-gray-400 line-through truncate">
                                 {originalSubtotal.toLocaleString('hu-HU')} Ft
                               </p>
-                              <p className="font-semibold text-orange-600 text-base whitespace-nowrap">
+                              <p className="font-semibold text-orange-600 text-sm truncate">
                                 {discountedSubtotal.toLocaleString('hu-HU')} Ft
                               </p>
                             </div>
                           ) : (
-                            <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
+                            <p className="font-semibold text-gray-900 text-sm truncate">
                               {originalSubtotal.toLocaleString('hu-HU')} Ft
                             </p>
                           )}
@@ -1757,8 +1757,8 @@ export default function POSPage() {
                         </div>
 
                         {/* Right: Amount */}
-                        <div className="flex-shrink-0">
-                          <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
+                        <div className="flex-shrink min-w-0 max-w-[120px]">
+                          <p className="font-semibold text-gray-900 text-sm truncate">
                             {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
                           </p>
                         </div>
@@ -1800,8 +1800,8 @@ export default function POSPage() {
                       </div>
 
                       {/* Right: Amount */}
-                      <div className="flex-shrink-0">
-                        <p className="font-semibold text-gray-900 text-base whitespace-nowrap">
+                      <div className="flex-shrink min-w-0 max-w-[120px]">
+                        <p className="font-semibold text-gray-900 text-sm truncate">
                           -{discountAmount.toLocaleString('hu-HU')} Ft
                         </p>
                       </div>
