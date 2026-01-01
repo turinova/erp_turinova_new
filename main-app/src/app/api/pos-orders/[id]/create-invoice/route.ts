@@ -160,6 +160,7 @@ function buildInvoiceXml(
   } else {
     // Normal invoice or full proforma - use existing items
     // IMPORTANT: Use stored total_net, total_vat, total_gross which already have per-item discounts applied
+    // Számlázz.hu requirement: nettoErtek = mennyiseg × nettoEgysegar (must match exactly)
     itemsXml = items.map((item) => {
       const vatRate = vatRatesMap.get(item.vat_id) || 0
       const mennyiseg = Number(item.quantity)
@@ -169,9 +170,9 @@ function buildInvoiceXml(
       const afaErtek = Math.round(Number(item.total_vat) || 0)
       const bruttoErtek = Math.round(Number(item.total_gross) || 0)
       
-      // Calculate unit prices from totals (for display in invoice)
-      // nettoEgysegar = total_net / quantity
-      const nettoEgysegar = mennyiseg > 0 ? Math.round(nettoErtek / mennyiseg) : 0
+      // Calculate unit price exactly (no rounding) to ensure nettoErtek = mennyiseg × nettoEgysegar
+      // szamlazz.hu accepts decimal unit prices and validates: nettoErtek = mennyiseg × nettoEgysegar
+      const nettoEgysegar = mennyiseg > 0 ? nettoErtek / mennyiseg : 0
       
       return `
       <tetel>
