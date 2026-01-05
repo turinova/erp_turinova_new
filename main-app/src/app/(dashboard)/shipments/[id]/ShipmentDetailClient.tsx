@@ -1159,7 +1159,7 @@ export default function ShipmentDetailClient({
         style={{
           width: '33mm',
           height: '25mm',
-          border: '1px solid #000',
+          // border: '1px solid #000', // Removed - interferes with barcode scanning
           padding: 0,
           margin: 0,
           backgroundColor: 'white',
