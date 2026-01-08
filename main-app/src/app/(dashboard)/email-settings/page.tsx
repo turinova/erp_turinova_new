@@ -18,6 +18,9 @@ interface SMTPSetting {
   from_name: string
   signature_html: string | null
   is_active: boolean
+  imap_host: string
+  imap_port: number
+  imap_secure: boolean
   created_at: string
   updated_at: string
 }
@@ -42,13 +45,12 @@ function EmailSettingsSkeleton() {
 export default async function EmailSettingsPage() {
   const startTime = performance.now()
 
-  // Fetch SMTP settings
+  // Fetch all SMTP settings (not just active)
   const { data: smtpSettings, error } = await supabaseServer
     .from('smtp_settings')
-    .select('id, host, port, secure, "user", password, from_email, from_name, signature_html, is_active, created_at, updated_at')
-    .eq('is_active', true)
+    .select('id, host, port, secure, "user", password, from_email, from_name, signature_html, is_active, imap_host, imap_port, imap_secure, created_at, updated_at')
     .is('deleted_at', null)
-    .maybeSingle()
+    .order('created_at', { ascending: false })
 
   if (error) {
     console.error('Error fetching SMTP settings:', error)
@@ -62,7 +64,7 @@ export default async function EmailSettingsPage() {
   // Pass pre-loaded data to client component with Suspense boundary
   return (
     <Suspense fallback={<EmailSettingsSkeleton />}>
-      <EmailSettingsClient initialSettings={smtpSettings as SMTPSetting | null} />
+      <EmailSettingsClient initialSettings={smtpSettings as SMTPSetting[] || []} />
     </Suspense>
   )
 }

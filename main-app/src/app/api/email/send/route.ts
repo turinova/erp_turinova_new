@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { to, subject, html, po_id } = body
+    const { to, subject, html, po_id, smtp_setting_id } = body
 
     // Validation
     if (!to || !to.trim()) {
@@ -66,11 +66,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Send email
+    // Send email (with optional smtp_setting_id for account selection)
     const result = await sendEmail({
       to: to.trim(),
       subject: subject.trim(),
       html: html.trim(),
+      smtpSettingId: smtp_setting_id,
     })
 
     // Update purchase order email tracking if po_id is provided

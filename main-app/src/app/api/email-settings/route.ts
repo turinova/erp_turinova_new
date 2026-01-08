@@ -5,7 +5,7 @@ import { supabaseServer } from '@/lib/supabase-server'
 
 /**
  * GET /api/email-settings
- * Get active SMTP settings
+ * Get all SMTP settings (or active only if ?active=true)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -31,19 +31,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data, error } = await supabaseServer
+    // Check if only active accounts are requested
+    const { searchParams } = new URL(request.url)
+    const activeOnly = searchParams.get('active') === 'true'
+
+    let query = supabaseServer
       .from('smtp_settings')
-      .select('id, host, port, secure, "user", from_email, from_name, signature_html, is_active, created_at, updated_at')
-      .eq('is_active', true)
+      .select('id, host, port, secure, "user", from_email, from_name, signature_html, is_active, imap_host, imap_port, imap_secure, created_at, updated_at')
       .is('deleted_at', null)
-      .maybeSingle()
+      .order('created_at', { ascending: false })
+
+    if (activeOnly) {
+      query = query.eq('is_active', true)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       console.error('Error fetching SMTP settings:', error)
       return NextResponse.json({ error: 'Hiba a beállítások lekérdezésekor' }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    // Always return array (for both active only and all accounts)
+    return NextResponse.json(data || [])
   } catch (e) {
     console.error('Error in GET /api/email-settings', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -79,7 +89,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { host, port, secure, user: smtpUser, password, from_email, from_name, signature_html, is_active } = body
+    const { host, port, secure, user: smtpUser, password, from_email, from_name, signature_html, is_active, imap_host, imap_port, imap_secure } = body
 
     // Validation
     if (!host || !port || !smtpUser || !password || !from_email || !from_name) {
@@ -89,17 +99,34 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // IMAP validation (required)
+    if (!imap_host || !imap_port) {
+      return NextResponse.json(
+        { error: 'IMAP beállítások kötelezőek' },
+        { status: 400 }
+      )
+    }
+
+    // Check for duplicate email address
+    const { data: existing } = await supabaseServer
+      .from('smtp_settings')
+      .select('id')
+      .eq('from_email', from_email.trim())
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Ez az email cím már használatban van' },
+        { status: 400 }
+      )
+    }
+
     // Encrypt password (for now, store as-is, but should be encrypted in production)
     // TODO: Implement password encryption
     const encryptedPassword = password
 
-    // If setting as active, deactivate others first
-    if (is_active) {
-      await supabaseServer
-        .from('smtp_settings')
-        .update({ is_active: false })
-        .is('deleted_at', null)
-    }
+    // Note: Multiple accounts can be active simultaneously (removed auto-deactivation)
 
     const { data, error } = await supabaseServer
       .from('smtp_settings')
@@ -109,10 +136,13 @@ export async function POST(request: NextRequest) {
         secure: secure ?? true,
         "user": smtpUser,
         password: encryptedPassword,
-        from_email,
+        from_email: from_email.trim(),
         from_name,
         signature_html: signature_html || null,
-        is_active: is_active ?? true
+        is_active: is_active ?? true,
+        imap_host: imap_host || host, // Default to SMTP host if not provided
+        imap_port: parseInt(imap_port) || 993,
+        imap_secure: imap_secure ?? true
       })
       .select()
       .single()

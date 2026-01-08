@@ -12,7 +12,11 @@ import {
   Box,
   IconButton,
   Divider,
-  CircularProgress
+  CircularProgress,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material'
 import { 
   Close as CloseIcon, 
@@ -262,6 +266,13 @@ const EditorToolbar = ({
   )
 }
 
+interface SMTPSetting {
+  id: string
+  from_email: string
+  from_name: string
+  signature_html: string | null
+}
+
 export default function EmailComposeModal({
   open,
   onClose,
@@ -275,6 +286,8 @@ export default function EmailComposeModal({
   const [isSending, setIsSending] = useState(false)
   const [signature, setSignature] = useState<string | null>(null)
   const [partnerTemplate, setPartnerTemplate] = useState<string | null>(null)
+  const [smtpSettings, setSmtpSettings] = useState<SMTPSetting[]>([])
+  const [selectedSmtpId, setSelectedSmtpId] = useState<string>('')
 
   // Initialize TipTap editor with table extensions
   const editor = useEditor({
@@ -355,24 +368,46 @@ export default function EmailComposeModal({
         }
       }
 
-      // Fetch signature from active SMTP settings
-      const fetchSignature = async () => {
+      // Fetch active SMTP settings for dropdown
+      const fetchSmtpSettings = async () => {
         try {
-          const response = await fetch('/api/email-settings')
+          const response = await fetch('/api/email-settings?active=true')
           if (response.ok) {
             const data = await response.json()
-            setSignature(data?.signature_html || null)
+            // Always returns array now
+            const settings = Array.isArray(data) ? data : []
+            setSmtpSettings(settings)
+            
+            // Set first active account as default
+            if (settings.length > 0) {
+              setSelectedSmtpId(settings[0].id)
+              setSignature(settings[0].signature_html || null)
+            } else {
+              // No active accounts
+              setSelectedSmtpId('')
+              setSignature(null)
+            }
           }
         } catch (error) {
-          console.error('Error fetching signature:', error)
-          // Don't show error toast, signature is optional
+          console.error('Error fetching SMTP settings:', error)
+          // Don't show error toast, settings are optional
         }
       }
 
       fetchItems()
-      fetchSignature()
+      fetchSmtpSettings()
     }
   }, [open, poId])
+
+  // Update signature when selected SMTP account changes
+  useEffect(() => {
+    if (selectedSmtpId && smtpSettings.length > 0) {
+      const selectedSetting = smtpSettings.find(s => s.id === selectedSmtpId)
+      if (selectedSetting) {
+        setSignature(selectedSetting.signature_html || null)
+      }
+    }
+  }, [selectedSmtpId, smtpSettings])
 
   // Pre-fill subject when modal opens
   useEffect(() => {
@@ -463,6 +498,12 @@ export default function EmailComposeModal({
       return
     }
 
+    // Check if there's an active account selected
+    if (smtpSettings.length === 0 || !selectedSmtpId) {
+      toast.error('Nincs aktív email fiók kiválasztva. Kérjük, hozzon létre egy aktív email fiókot az email beállításokban.')
+      return
+    }
+
     setIsSending(true)
     try {
       const response = await fetch('/api/email/send', {
@@ -475,6 +516,7 @@ export default function EmailComposeModal({
           subject: subject.trim(),
           html: html,
           po_id: poId,
+          smtp_setting_id: selectedSmtpId,
         }),
       })
 
@@ -626,8 +668,34 @@ export default function EmailComposeModal({
 
       <DialogContent sx={{ pt: 2, p: 0 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+          {/* Feladó (Sender) dropdown */}
+          {smtpSettings.length > 0 ? (
+            <Box sx={{ px: 3, pt: 1.5, pb: 0.5 }}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Feladó</InputLabel>
+                <Select
+                  value={selectedSmtpId}
+                  onChange={(e) => setSelectedSmtpId(e.target.value)}
+                  label="Feladó"
+                >
+                  {smtpSettings.map((setting) => (
+                    <MenuItem key={setting.id} value={setting.id}>
+                      {setting.from_name} - {setting.from_email}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+          ) : (
+            <Box sx={{ px: 3, pt: 1.5, pb: 0.5 }}>
+              <Typography variant="body2" color="warning.main">
+                Nincs aktív email fiók. Kérjük, hozzon létre egy aktív email fiókot az email beállításokban.
+              </Typography>
+            </Box>
+          )}
+
           {/* To field */}
-          <Box sx={{ px: 3, pt: 1.5, pb: 0.5 }}>
+          <Box sx={{ px: 3, pt: 1, pb: 0.5 }}>
             <TextField
               fullWidth
               size="small"
