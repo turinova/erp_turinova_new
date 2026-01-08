@@ -30,6 +30,50 @@ import {
 import { toast } from 'react-toastify'
 import PaymentConfirmationModal from './PaymentConfirmationModal'
 import SmsConfirmationModal from './SmsConfirmationModal'
+import { printOrderReceipt } from '@/lib/print-receipt'
+
+// WebUSB API type (available in browsers that support WebUSB)
+declare global {
+  interface USBDevice {
+    vendorId: number
+    productId: number
+    productName?: string
+    manufacturerName?: string
+    opened: boolean
+    configuration: USBConfiguration | null
+    open(): Promise<void>
+    close(): Promise<void>
+    selectConfiguration(configurationValue: number): Promise<void>
+    claimInterface(interfaceNumber: number): Promise<void>
+    releaseInterface(interfaceNumber: number): Promise<void>
+    transferOut(endpointNumber: number, data: BufferSource): Promise<USBOutTransferResult>
+  }
+  interface USBConfiguration {
+    interfaces: USBInterface[]
+  }
+  interface USBInterface {
+    interfaceNumber: number
+    alternates: USBAlternateInterface[]
+  }
+  interface USBAlternateInterface {
+    endpoints: USBEndpoint[]
+  }
+  interface USBEndpoint {
+    endpointNumber: number
+    direction: 'in' | 'out'
+    type: 'bulk' | 'interrupt' | 'isochronous' | 'control'
+    packetSize?: number
+  }
+  interface USBOutTransferResult {
+    status: 'ok' | 'stall' | 'babble'
+  }
+  interface Navigator {
+    usb?: {
+      getDevices(): Promise<USBDevice[]>
+      requestDevice(options: { filters: Array<{ vendorId?: number; productId?: number }> }): Promise<USBDevice>
+    }
+  }
+}
 
 interface ScannedOrder {
   id: string
@@ -254,12 +298,127 @@ export default function ScannerClient() {
     setBarcodeInput('')
   }
 
+  // Extract printing logic to separate function for reuse (same as orders page)
+  const printReceiptForOrder = async (orderId: string, order: ScannedOrder, preRequestedUsbDevice?: USBDevice | null) => {
+    console.log('[Receipt Print] Attempting to print receipt for order:', order.order_number)
+    try {
+      // Fetch order quote data and tenant company data
+      console.log('[Receipt Print] Fetching data...')
+      const [quoteDataResponse, tenantCompanyResponse] = await Promise.all([
+        fetch(`/api/orders/${orderId}/quote-data`),
+        fetch('/api/tenant-company')
+      ])
+
+      console.log('[Receipt Print] Fetch responses:', {
+        quoteDataOk: quoteDataResponse.ok,
+        quoteDataStatus: quoteDataResponse.status,
+        tenantCompanyOk: tenantCompanyResponse.ok,
+        tenantCompanyStatus: tenantCompanyResponse.status
+      })
+
+      if (!quoteDataResponse.ok || !tenantCompanyResponse.ok) {
+        // Try to get error details from responses
+        let errorDetails = {
+          quoteDataStatus: quoteDataResponse.status,
+          tenantCompanyStatus: tenantCompanyResponse.status
+        }
+        
+        try {
+          if (!quoteDataResponse.ok) {
+            const quoteError = await quoteDataResponse.text()
+            errorDetails = { ...errorDetails, quoteDataError: quoteError }
+          }
+          if (!tenantCompanyResponse.ok) {
+            const tenantError = await tenantCompanyResponse.text()
+            errorDetails = { ...errorDetails, tenantCompanyError: tenantError }
+          }
+        } catch (e) {
+          console.warn('[Receipt Print] Could not parse error responses:', e)
+        }
+        
+        console.error('[Receipt Print] Failed to fetch data for printing:', errorDetails)
+        toast.error('Nem sikerült betölteni az adatokat a nyomtatáshoz')
+        return
+      }
+
+      const quoteData = await quoteDataResponse.json()
+      const tenantCompany = await tenantCompanyResponse.json()
+
+      console.log('[Receipt Print] Data fetched successfully:', {
+        pricingCount: quoteData.pricing?.length || 0,
+        tenantCompanyName: tenantCompany.name
+      })
+
+      // Print receipt (pass pre-requested USB device if available)
+      console.log('[Receipt Print] Calling printOrderReceipt...')
+      await printOrderReceipt({
+        tenantCompany: {
+          name: tenantCompany.name,
+          logo_url: tenantCompany.logo_url,
+          postal_code: tenantCompany.postal_code,
+          city: tenantCompany.city,
+          address: tenantCompany.address,
+          phone_number: tenantCompany.phone_number,
+          email: tenantCompany.email,
+          tax_number: tenantCompany.tax_number
+        },
+        orderNumber: order.order_number,
+        customerName: order.customer_name,
+        barcode: quoteData.barcode || null,
+        pricing: quoteData.pricing || []
+      }, preRequestedUsbDevice)
+      console.log('[Receipt Print] printOrderReceipt completed')
+    } catch (error: any) {
+      console.error('[Receipt Print] Error printing receipt:', error)
+      // Show user-friendly error message
+      const errorMessage = error?.message || 'Hiba történt a nyomtatás során'
+      if (errorMessage.includes('not supported')) {
+        toast.warning('A böngésző nem támogatja a közvetlen USB nyomtatást. Kérjük, használja a Chrome vagy Edge böngészőt.')
+      } else if (errorMessage.includes('cancelled') || errorMessage.includes('Nincs nyomtató')) {
+        toast.info('Nyomtatás megszakítva vagy nincs nyomtató kiválasztva. A böngésző nyomtatási párbeszédablaka megnyílik.')
+      } else {
+        toast.error(errorMessage)
+      }
+    }
+  }
+
   // Handle finished button click (with payment confirmation)
-  const handleFinishedClick = () => {
+  const handleFinishedClick = async () => {
     if (selectedOrders.length === 0) {
       toast.warning('Válassz legalább egy megrendelést')
       return
     }
+
+    // IMPORTANT: Request WebUSB access IMMEDIATELY while we still have user gesture
+    // This must happen before any async operations to preserve the user gesture chain
+    let usbDevice: USBDevice | null = null
+    const orderIdToPrint = selectedOrders.length === 1 ? selectedOrders[0] : null
+    
+    if (orderIdToPrint) {
+      try {
+        const { getPairedPrinter, requestPrinterAccess } = await import('@/lib/webusb-printer')
+        const pairedDevices = await getPairedPrinter()
+        if (pairedDevices.length === 0) {
+          // Request access now while we have user gesture
+          console.log('[Receipt Print] Requesting WebUSB access immediately (user gesture)...')
+          try {
+            usbDevice = await requestPrinterAccess()
+            console.log('[Receipt Print] WebUSB device requested successfully:', usbDevice?.productName)
+          } catch (usbError: any) {
+            // WebUSB failed, but continue - will use browser print fallback
+            console.warn('[Receipt Print] WebUSB access failed, will use browser print fallback:', usbError.message)
+          }
+        } else {
+          usbDevice = pairedDevices[0]
+          console.log('[Receipt Print] Using already paired WebUSB device:', usbDevice.productName)
+        }
+      } catch (usbError: any) {
+        console.warn('[Receipt Print] WebUSB setup failed, will use browser print fallback:', usbError.message)
+      }
+    }
+
+    // IMPORTANT: Store order info BEFORE any async operations
+    const orderToPrint = orderIdToPrint ? scannedOrders.find(o => o.id === orderIdToPrint) : null
 
     // Check if any selected orders have unpaid balance
     const ordersWithBalance = scannedOrders
@@ -268,18 +427,78 @@ export default function ScannerClient() {
 
     // If no orders with balance, just update status directly
     if (ordersWithBalance.length === 0) {
-      handleBulkStatusUpdate('finished', false)
+      console.log('[Receipt Print] No balance - direct update:', {
+        selectedOrdersCount: selectedOrders.length,
+        orderIdToPrint,
+        orderToPrint: orderToPrint ? { id: orderToPrint.id, order_number: orderToPrint.order_number } : null
+      })
+      
+      // Store order info and USB device before status update (state will be cleared)
+      const storedOrderId = orderIdToPrint
+      const storedOrder = orderToPrint ? { ...orderToPrint } : null
+      const storedUsbDevice = usbDevice
+      
+      await handleBulkStatusUpdate('finished', false)
+      
+      // Print receipt if exactly 1 order was selected (ALWAYS print when 1 order)
+      // Use stored order info (state was cleared by handleBulkStatusUpdate)
+      if (storedOrderId && storedOrder) {
+        await printReceiptForOrder(storedOrderId, storedOrder, storedUsbDevice)
+      } else {
+        console.log('[Receipt Print] Skipping print - not exactly 1 order selected')
+      }
       return
     }
 
-    // Show payment confirmation modal
+    // Store USB device in a ref or state so we can use it after modal confirmation
+    // Store it in window object for access after modal
+    ;(window as any).__pendingUsbDevice = usbDevice
+    ;(window as any).__pendingOrderToPrint = orderToPrint
+    ;(window as any).__pendingOrderIdToPrint = orderIdToPrint
+
+    // Show payment confirmation modal (for orders with balance)
     setPaymentModalOpen(true)
   }
 
   // Handle payment confirmation response
   const handlePaymentConfirmation = async (createPayments: boolean) => {
     setPaymentModalOpen(false)
+    
+    // IMPORTANT: Store order info BEFORE status update (state will be cleared)
+    const orderIdToPrint = selectedOrders.length === 1 ? selectedOrders[0] : null
+    const orderToPrint = orderIdToPrint ? scannedOrders.find(o => o.id === orderIdToPrint) : null
+    
+    // Retrieve the USB device that was requested during the button click
+    const usbDevice = (window as any).__pendingUsbDevice || null
+    if (usbDevice) {
+      console.log('[Receipt Print] Using pre-requested USB device from button click')
+    }
+    // Clean up window storage
+    delete (window as any).__pendingUsbDevice
+    delete (window as any).__pendingOrderToPrint
+    delete (window as any).__pendingOrderIdToPrint
+    
+    // Store order info in local variables (state will be cleared by handleBulkStatusUpdate)
+    const storedOrderId = orderIdToPrint
+    const storedOrder = orderToPrint ? { ...orderToPrint } : null
+    const storedUsbDevice = usbDevice
+    
+    console.log('[Receipt Print] Starting payment confirmation:', {
+      selectedOrdersCount: selectedOrders.length,
+      orderIdToPrint: storedOrderId,
+      orderToPrint: storedOrder ? { id: storedOrder.id, order_number: storedOrder.order_number } : null,
+      hasUsbDevice: !!storedUsbDevice
+    })
+    
     await handleBulkStatusUpdate('finished', createPayments)
+    
+    // Print receipt if exactly 1 order was selected (ALWAYS print when 1 order)
+    // Use stored order info (state was cleared by handleBulkStatusUpdate)
+    if (storedOrderId && storedOrder) {
+      await printReceiptForOrder(storedOrderId, storedOrder, storedUsbDevice)
+    } else {
+      console.log('[Receipt Print] Skipping print - not exactly 1 order selected')
+    }
   }
 
   // Handle "Gyártás kész" button click - check for SMS-eligible orders first
