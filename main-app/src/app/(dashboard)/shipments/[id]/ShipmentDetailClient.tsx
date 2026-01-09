@@ -444,6 +444,7 @@ export default function ShipmentDetailClient({
     const charMap: Record<string, string> = {
       'ü': '-',  // Scanner sends - but browser interprets as ü
       'ö': '0',  // Scanner sends 0 but browser interprets as ö
+      'Y': 'Z',  // Hungarian keyboard: scanner sends Z but OS shows Y
       // Add more mappings as needed if other characters are affected
     }
     

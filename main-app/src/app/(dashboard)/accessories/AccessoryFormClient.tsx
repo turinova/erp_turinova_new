@@ -310,11 +310,12 @@ export default function AccessoryFormClient({
   }, [formData.net_price, formData.vat_id, vatRates])
 
   // Normalize barcode input (fix keyboard layout issues from scanner)
-  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö'
+  // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö', 'Z' -> 'Y'
   const normalizeBarcode = (input: string): string => {
     const charMap: Record<string, string> = {
       'ü': '-',
-      'ö': '0'
+      'ö': '0',
+      'Y': 'Z'  // Hungarian keyboard: scanner sends Z but OS shows Y
     }
     return input
       .split('')
