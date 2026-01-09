@@ -413,12 +413,12 @@ export default function AccessoriesListClient({
 
   // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
   // Fixed-height vertical sections using CSS Grid:
+  // - Top padding: 1.5mm (to prevent overflow at top of sticker)
   // - Termék név: 5.3mm
   // - SKU: 3.0mm
   // - Price: 8.3mm
-  // - Barcode: 10.375mm (increased by 25% from 8.3mm)
-  // Total: 25mm
-  // No padding, no margin, no gaps
+  // - Barcode: 8.875mm (reduced from 10.375mm to account for top padding)
+  // Total: 1.5mm + 5.3mm + 3.0mm + 8.3mm + 8.875mm = 25mm (when all fields visible)
   const PrintLabel = ({ accessory, fields, price, productName, unitShortform }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string, unitShortform: string }) => {
     const text = productName || accessory.name || 'N/A'
     const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
@@ -443,7 +443,7 @@ export default function AccessoriesListClient({
     if (fields.showName) gridRows.push('5.3mm')
     if (fields.showSku && accessory.sku) gridRows.push('3.0mm')
     if (fields.showPrice) gridRows.push('8.3mm')
-    if (fields.showBarcode && accessory.barcode) gridRows.push('10.375mm') // Increased by 25%
+    if (fields.showBarcode && accessory.barcode) gridRows.push('8.875mm') // Reduced from 10.375mm to 8.875mm to account for 1.5mm top padding
     
     return (
       <div
@@ -451,7 +451,7 @@ export default function AccessoriesListClient({
           width: '33mm',
           height: '25mm',
           // border: '1px solid #000', // Removed - interferes with barcode scanning
-          padding: 0,
+          padding: '1.5mm 0 0 0', // Top padding to prevent overflow at top of sticker
           margin: 0,
           backgroundColor: 'white',
           display: 'grid',
@@ -585,7 +585,7 @@ export default function AccessoriesListClient({
           </div>
         )}
 
-        {/* Section 4: Barcode - 10.375mm (increased by 25%) - Flush to bottom */}
+        {/* Section 4: Barcode - 8.875mm (reduced to account for top padding) - Flush to bottom */}
         {fields.showBarcode && accessory.barcode && (
           <div
             style={{
@@ -730,7 +730,7 @@ export default function AccessoriesListClient({
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 1.5mm 0 0 0 !important; /* Top padding to prevent overflow at top of sticker */
             gap: 0 !important;
             row-gap: 0 !important;
             column-gap: 0 !important;
@@ -809,8 +809,12 @@ export default function AccessoriesListClient({
             color: #000000 !important;
           }
           
-          /* Only hide overflow on main container, not on text containers */
+          /* Preserve top padding on main container (override NUCLEAR OPTION for main container only) */
           #label-print-container > div {
+            padding-top: 1.5mm !important;
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
             overflow: hidden !important;
           }
           
@@ -819,7 +823,7 @@ export default function AccessoriesListClient({
             overflow: visible !important;
           }
           
-          /* Main grid container - enforce grid with no gaps */
+          /* Main grid container - enforce grid with no gaps, preserve top padding */
           #label-print-container > div {
             display: grid !important;
             gap: 0 !important;
@@ -831,6 +835,10 @@ export default function AccessoriesListClient({
             max-height: 100% !important;
             flex-shrink: 0 !important;
             flex-grow: 0 !important;
+            padding-top: 1.5mm !important; /* Ensure top padding is preserved */
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
           }
           
           /* Grid children - stretch to fill rows */
