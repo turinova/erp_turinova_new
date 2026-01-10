@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import {
-  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel, Tooltip, Alert
+  Box, Breadcrumbs, Button, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Grid, Link, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography, IconButton, Checkbox, FormControlLabel, FormGroup, Autocomplete, Divider, RadioGroup, Radio, FormControl, FormLabel, Tooltip, Alert, InputAdornment, MenuItem, Select
 } from '@mui/material'
 import dynamic from 'next/dynamic'
 
@@ -85,8 +85,9 @@ export default function ShipmentDetailClient({
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
   const [printLabelOpen, setPrintLabelOpen] = useState(false)
   const [itemToPrint, setItemToPrint] = useState<ShipmentItem | null>(null)
-  const [priceMultiplier, setPriceMultiplier] = useState<number>(1.753)
-  const [manualSellingPrice, setManualSellingPrice] = useState<number | null>(null)
+  const [editableSellingPrice, setEditableSellingPrice] = useState<number | null>(null)
+  const [selectedUnitShortform, setSelectedUnitShortform] = useState<string>('')
+  const [units, setUnits] = useState<Array<{ id: string; name: string; shortform: string }>>([])
   const [labelFields, setLabelFields] = useState({
     showName: true,
     showSku: true,
@@ -95,7 +96,6 @@ export default function ShipmentDetailClient({
   })
   const [printAmount, setPrintAmount] = useState<number>(1)
   const [isPrinting, setIsPrinting] = useState(false)
-  const [priceRounding, setPriceRounding] = useState<'none' | '10' | '100'>('none')
   const [editableProductName, setEditableProductName] = useState<string>('')
   const [barcodeModalOpen, setBarcodeModalOpen] = useState(false)
   const [itemForBarcode, setItemForBarcode] = useState<ShipmentItem | null>(null)
@@ -815,11 +815,10 @@ export default function ShipmentDetailClient({
   }
 
   // Handle print label modal open
-  const handleOpenPrintLabel = (item: ShipmentItem) => {
+  const handleOpenPrintLabel = async (item: ShipmentItem) => {
     setItemToPrint(item)
     setEditableProductName(item.product_name)
-    setPriceMultiplier(1.753)
-    setManualSellingPrice(null)
+    setEditableSellingPrice(null)
     setPrintAmount(item.quantity_received || 1)
     // If no barcode, don't select it by default
     const hasBarcode = !!item.barcode
@@ -829,6 +828,30 @@ export default function ShipmentDetailClient({
       showBarcode: hasBarcode,
       showPrice: true
     })
+    
+    // Fetch units when modal opens
+    try {
+      const unitsResponse = await fetch('/api/units')
+      if (unitsResponse.ok) {
+        const unitsData = await unitsResponse.json()
+        setUnits(unitsData || [])
+        // Set default unit from item's units_id
+        if (item.units_id && unitsData) {
+          const unit = unitsData.find((u: { id: string }) => u.id === item.units_id)
+          if (unit) {
+            setSelectedUnitShortform(unit.shortform || 'db')
+          } else {
+            setSelectedUnitShortform('db')
+          }
+        } else {
+          setSelectedUnitShortform('db')
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching units:', error)
+      setSelectedUnitShortform('db')
+    }
+    
     setPrintLabelOpen(true)
   }
 
@@ -884,13 +907,15 @@ export default function ShipmentDetailClient({
 
     setSavingBarcode(true)
     try {
+      // Normalize barcode before saving (fix keyboard layout issues)
+      const normalizedBarcode = normalizeBarcode(barcodeInputValue.trim())
       const response = await fetch(`/api/accessories/${itemForBarcode.accessory_id}/barcode`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          barcode: barcodeInputValue.trim()
+          barcode: normalizedBarcode
         })
       })
 
@@ -1135,25 +1160,40 @@ export default function ShipmentDetailClient({
 
   // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
   // Using native divs and CSS Grid to eliminate all spacing
-  const PrintLabel = ({ item, fields, price, productName }: { item: ShipmentItem, fields: typeof labelFields, price: number, productName: string }) => {
+  const PrintLabel = ({ item, fields, price, productName, unitShortform }: { item: ShipmentItem, fields: typeof labelFields, price: number, productName: string, unitShortform: string }) => {
     // Label dimensions: 33mm x 25mm
-    // Fixed-height vertical sections using CSS Grid:
-    // - Termék név: 5.3mm
-    // - SKU: 3.0mm
-    // - Price: 8.3mm
-    // - Barcode: 10.375mm (increased by 25% from 8.3mm)
-    // Total: 25mm
-    // No padding, no margin, no gaps
+    // Fixed-height vertical sections using CSS Grid (matching accessories page):
+    // - Top padding: 1.5mm (to prevent overflow at top of sticker)
+    // - Termék név: 6.3mm
+    // - SKU: 3.8mm
+    // - Price: 6.5mm
+    // - Barcode: 6.9mm (adjusted to keep total at 25mm)
+    // Total: 1.5mm + 6.3mm + 3.8mm + 6.5mm + 6.9mm = 25mm (when all fields visible)
     
     const text = productName || item.product_name || 'N/A'
     const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
     
+    // Calculate price text length and adjust font size accordingly
+    const priceText = `${new Intl.NumberFormat('hu-HU').format(price)} Ft / ${unitShortform || 'db'}`
+    const priceTextLength = priceText.length
+    // Scale font size based on text length: 6mm for short, down to 4mm for very long
+    let priceFontSize = '6mm'
+    if (priceTextLength > 20) {
+      priceFontSize = '4mm'
+    } else if (priceTextLength > 15) {
+      priceFontSize = '4.5mm'
+    } else if (priceTextLength > 12) {
+      priceFontSize = '5mm'
+    } else if (priceTextLength > 10) {
+      priceFontSize = '5.5mm'
+    }
+    
     // Build grid template rows based on visible fields
     const gridRows: string[] = []
-    if (fields.showName) gridRows.push('5.3mm')
-    if (fields.showSku && item.sku) gridRows.push('3.0mm')
-    if (fields.showPrice) gridRows.push('8.3mm')
-    if (fields.showBarcode && item.barcode) gridRows.push('10.375mm') // Increased by 25%
+    if (fields.showName) gridRows.push('6.3mm')
+    if (fields.showSku && item.sku) gridRows.push('3.8mm')
+    if (fields.showPrice) gridRows.push('6.5mm')
+    if (fields.showBarcode && item.barcode) gridRows.push('6.9mm') // Adjusted to keep total at 25mm
     
     return (
       <div
@@ -1161,7 +1201,7 @@ export default function ShipmentDetailClient({
           width: '33mm',
           height: '25mm',
           // border: '1px solid #000', // Removed - interferes with barcode scanning
-          padding: 0,
+          padding: '1.5mm 0 0 0', // Top padding to prevent overflow at top of sticker
           margin: 0,
           backgroundColor: 'white',
           display: 'grid',
@@ -1175,7 +1215,7 @@ export default function ShipmentDetailClient({
           position: 'relative'
         }}
       >
-        {/* Section 1: Termék név - 5.3mm */}
+        {/* Section 1: Termék név - 6.3mm */}
         {fields.showName && (
           <div
             style={{
@@ -1218,7 +1258,7 @@ export default function ShipmentDetailClient({
           </div>
         )}
 
-        {/* Section 2: SKU - 3.0mm */}
+        {/* Section 2: SKU - 3.8mm */}
         {fields.showSku && item.sku && (
           <div
             style={{
@@ -1236,7 +1276,7 @@ export default function ShipmentDetailClient({
           >
             <div
               style={{
-                fontSize: '2.2mm',
+                fontSize: '3.0mm',
                 color: '#000000',
                 lineHeight: 1,
                 margin: 0,
@@ -1255,7 +1295,7 @@ export default function ShipmentDetailClient({
           </div>
         )}
 
-        {/* Section 3: Price - 8.3mm - Flush to bottom (on top of barcode) */}
+        {/* Section 3: Price - 6.5mm - Flush to bottom (on top of barcode) */}
         {fields.showPrice && (
           <div
             style={{
@@ -1273,27 +1313,29 @@ export default function ShipmentDetailClient({
           >
             <div
               style={{
-                fontSize: '6mm',
+                fontSize: priceFontSize,
                 fontWeight: 'bold',
                 color: '#000000',
                 lineHeight: 1,
                 whiteSpace: 'nowrap',
                 margin: 0,
-                padding: 0,
+                padding: '0 1mm',
                 width: '100%',
                 height: '100%',
                 display: 'flex',
                 alignItems: 'flex-end',
                 justifyContent: 'center',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                boxSizing: 'border-box'
               }}
             >
-              {new Intl.NumberFormat('hu-HU').format(price)} Ft
+              {priceText}
             </div>
           </div>
         )}
 
-        {/* Section 4: Barcode - 10.375mm (increased by 25%) - Flush to bottom */}
+        {/* Section 4: Barcode - 6.9mm (adjusted to keep total at 25mm) - Flush to bottom */}
         {fields.showBarcode && item.barcode && (
           <div
             style={{
@@ -1438,7 +1480,11 @@ export default function ShipmentDetailClient({
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin: 0 !important;
-            padding: 0 !important;
+            /* Preserve inline padding for vertical alignment */
+            padding-top: 1.5mm !important; /* Explicitly preserve top padding */
+            padding-left: 0 !important;
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
             gap: 0 !important;
             row-gap: 0 !important;
             column-gap: 0 !important;
@@ -1660,14 +1706,9 @@ export default function ShipmentDetailClient({
             text-rendering: optimizeLegibility !important;
           }
           
-          /* Ensure text nodes inside divs are visible */
-          #label-print-container > div > div > div {
-            white-space: normal !important;
-            word-wrap: break-word !important;
-            overflow-wrap: break-word !important;
-          }
-          
           /* Make sure flex containers show their content */
+          /* Note: Do NOT override white-space here - let inline styles from PrintLabel component work */
+          /* Price section uses whiteSpace: 'nowrap' with dynamic font scaling, which should not be overridden */
           #label-print-container > div > div {
             min-width: 0 !important;
             min-height: 0 !important;
@@ -1677,6 +1718,9 @@ export default function ShipmentDetailClient({
       document.head.appendChild(style)
 
       // Debug: Log what we're about to render
+      const finalPrice = editableSellingPrice !== null ? editableSellingPrice : (currentSellingPrice || 0)
+      const finalUnit = selectedUnitShortform || 'db'
+      
       console.log('Rendering print labels:', {
         printAmount,
         showName: labelFields.showName,
@@ -1685,7 +1729,8 @@ export default function ShipmentDetailClient({
         showBarcode: labelFields.showBarcode,
         productName: itemToPrint?.product_name,
         sku: itemToPrint?.sku,
-        price: calculatedSellingPrice,
+        price: finalPrice,
+        unit: finalUnit,
         barcode: itemToPrint?.barcode
       })
 
@@ -1698,8 +1743,9 @@ export default function ShipmentDetailClient({
               key={i}
               item={itemToPrint}
               fields={labelFields}
-              price={calculatedSellingPrice}
+              price={editableSellingPrice !== null ? editableSellingPrice : (currentSellingPrice || 0)}
               productName={editableProductName}
+              unitShortform={selectedUnitShortform || 'db'}
             />
           ))}
         </>
@@ -1724,12 +1770,14 @@ export default function ShipmentDetailClient({
         const allText = firstLabel?.textContent || ''
         const typographyElements = firstLabel?.querySelectorAll('p, [class*="Typography"], span') || []
         
+        const finalPrice = editableSellingPrice !== null ? editableSellingPrice : (currentSellingPrice || 0)
         console.log('Print labels rendered:', {
           labelCount: container.children.length,
           showName: labelFields.showName,
           showPrice: labelFields.showPrice,
           productName: itemToPrint?.product_name,
-          price: calculatedSellingPrice,
+          price: finalPrice,
+          unit: selectedUnitShortform || 'db',
           firstLabelText: allText,
           typographyCount: typographyElements.length,
           firstLabelHTML: firstLabel?.innerHTML.substring(0, 500)
@@ -1787,34 +1835,20 @@ export default function ShipmentDetailClient({
     }
   }
 
-  // Calculate selling price with rounding (ALWAYS ROUND UP)
-  // Use manual override if set, otherwise calculate from multiplier and rounding
-  const calculatedSellingPrice = useMemo(() => {
-    if (manualSellingPrice !== null) {
-      return manualSellingPrice
-    }
-    if (!itemToPrint) return 0
-    const basePrice = itemToPrint.net_price * priceMultiplier
-    
-    if (priceRounding === '10') {
-      return Math.ceil(basePrice / 10) * 10  // Round UP to nearest 10
-    } else if (priceRounding === '100') {
-      return Math.ceil(basePrice / 100) * 100  // Round UP to nearest 100
-    }
-    
-    return Math.round(basePrice)
-  }, [itemToPrint, priceMultiplier, priceRounding, manualSellingPrice])
-
-  // Calculate current selling price from accessory: base_price * multiplier * (1 + vat) rounded UP to nearest 10
+  // Calculate current selling price: base_price * multiplier * (1 + vat_percent/100) rounded UP to nearest 10
   const currentSellingPrice = useMemo(() => {
-    if (!itemToPrint || !itemToPrint.accessory_id || !itemToPrint.base_price || !itemToPrint.multiplier) {
+    if (!itemToPrint || !itemToPrint.base_price || !itemToPrint.multiplier) {
       return null
     }
     
+    const basePrice = itemToPrint.base_price || 0
+    const multiplier = parseFloat(String(itemToPrint.multiplier)) || 1
     const vatPercent = vatRates.get(itemToPrint.vat_id) || 0
-    const priceWithVat = itemToPrint.base_price * itemToPrint.multiplier * (1 + vatPercent / 100)
     
-    // Always round UP to nearest 10
+    // Calculate: base_price * multiplier * (1 + vat_percent/100)
+    const priceWithVat = basePrice * multiplier * (1 + vatPercent / 100)
+    
+    // Always round UP to nearest 10 (keep this behavior as requested)
     return Math.ceil(priceWithVat / 10) * 10
   }, [itemToPrint, vatRates])
 
@@ -2671,87 +2705,113 @@ export default function ShipmentDetailClient({
                   {/* Divider */}
                   <Box sx={{ borderTop: '1px solid', borderColor: 'divider', my: 3 }} />
 
-                  {/* Row 2: Ár beállítások + Ár kerekítés + Jelenlegi eladási ár (horizontally) */}
+                  {/* Row 2: Jelenlegi eladási ár */}
                   <Grid container spacing={3} sx={{ mb: 3 }}>
-                    {/* Ár beállítások */}
-                    <Grid item xs={12} sm={4}>
-                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
-                        Ár beállítások
-                      </Typography>
-                      <Grid container spacing={2}>
-                        <Grid item xs={6}>
-                          <TextField
-                            label="Ár szorzó"
-                            type="number"
-                            value={priceMultiplier}
-                            onChange={(e) => setPriceMultiplier(Number(e.target.value) || 1.753)}
-                            inputProps={{ min: 0.01, step: 0.01 }}
-                            fullWidth
-                            size="small"
-                            helperText="Alapértelmezett: 1.753"
-                          />
-                        </Grid>
-                        <Grid item xs={6}>
-                          <TextField
-                            label="Eladási ár"
-                            type="number"
-                            value={calculatedSellingPrice}
-                            onChange={(e) => {
-                              const value = Number(e.target.value)
-                              if (!isNaN(value) && value >= 0) {
-                                setManualSellingPrice(value)
-                              }
-                            }}
-                            onBlur={(e) => {
-                              const value = Number(e.target.value)
-                              if (isNaN(value) || value < 0) {
-                                setManualSellingPrice(null)
-                              }
-                            }}
-                            fullWidth
-                            size="small"
-                            inputProps={{ min: 0, step: 1 }}
-                          />
-                        </Grid>
-                      </Grid>
-                    </Grid>
-
-                    {/* Ár kerekítés */}
-                    <Grid item xs={12} sm={4}>
-                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
-                        Ár kerekítés
-                      </Typography>
-                      <FormControl component="fieldset" size="small" fullWidth>
-                        <RadioGroup
-                          value={priceRounding}
-                          onChange={(e) => setPriceRounding(e.target.value as 'none' | '10' | '100')}
-                          row
-                          sx={{ mt: 0 }}
-                        >
-                          <FormControlLabel value="none" control={<Radio size="small" />} label="Nincs" sx={{ mr: 1 }} />
-                          <FormControlLabel value="10" control={<Radio size="small" />} label="10-re" sx={{ mr: 1 }} />
-                          <FormControlLabel value="100" control={<Radio size="small" />} label="100-ra" />
-                        </RadioGroup>
-                      </FormControl>
-                    </Grid>
-
-                    {/* Jelenlegi eladási ár */}
-                    <Grid item xs={12} sm={4}>
+                    <Grid item xs={12}>
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
                         Jelenlegi eladási ár
                       </Typography>
                       {currentSellingPrice !== null ? (
-                        <Typography
-                          variant="h4"
-                          sx={{
-                            color: 'error.main',
-                            fontWeight: 'bold',
-                            fontSize: '2rem',
-                            lineHeight: 1.2
-                          }}
-                        >
-                          {new Intl.NumberFormat('hu-HU').format(currentSellingPrice)} Ft
-                        </Typography>
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: 2,
+                          flexWrap: 'wrap',
+                          width: '100%'
+                        }}>
+                          <TextField
+                            type="number"
+                            value={editableSellingPrice !== null ? editableSellingPrice : currentSellingPrice}
+                            onChange={(e) => {
+                              const value = parseInt(e.target.value) || 0
+                              setEditableSellingPrice(value >= 0 ? value : 0)
+                            }}
+                            InputProps={{
+                              endAdornment: <InputAdornment position="end">Ft</InputAdornment>,
+                              sx: {
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold',
+                                '& input': {
+                                  textAlign: 'right',
+                                  color: 'error.main',
+                                  fontWeight: 'bold'
+                                }
+                              }
+                            }}
+                            sx={{
+                              width: '200px',
+                              flexShrink: 0,
+                              '& .MuiOutlinedInput-root': {
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold'
+                              }
+                            }}
+                          />
+                          <Typography variant="h6" sx={{ color: 'text.secondary', flexShrink: 0 }}>/</Typography>
+                          <FormControl sx={{ minWidth: 120, flexShrink: 0 }}>
+                            <Select
+                              value={selectedUnitShortform}
+                              onChange={(e) => setSelectedUnitShortform(e.target.value)}
+                              displayEmpty
+                              sx={{
+                                fontSize: '1.5rem',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {units.map((unit) => (
+                                <MenuItem key={unit.id} value={unit.shortform}>
+                                  {unit.shortform}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                          <Box
+                            sx={{
+                              flex: '1 1 auto',
+                              minWidth: 0,
+                              overflow: 'hidden',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'flex-start',
+                              position: 'relative',
+                              maxWidth: '100%'
+                            }}
+                          >
+                            <Typography 
+                              variant="h4" 
+                              sx={{ 
+                                color: 'error.main', 
+                                fontWeight: 'bold',
+                                fontSize: '2rem',
+                                lineHeight: 1.2,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: '100%',
+                                width: '100%',
+                                transform: 'scale(1)',
+                                transformOrigin: 'left center',
+                                '@media (max-width: 1400px)': {
+                                  fontSize: '1.75rem'
+                                },
+                                '@media (max-width: 1200px)': {
+                                  fontSize: '1.5rem'
+                                },
+                                '@media (max-width: 1000px)': {
+                                  fontSize: '1.25rem'
+                                },
+                                '@media (max-width: 800px)': {
+                                  fontSize: '1rem'
+                                },
+                                '@media (max-width: 600px)': {
+                                  fontSize: '0.875rem'
+                                }
+                              }}
+                            >
+                              = {new Intl.NumberFormat('hu-HU').format(editableSellingPrice !== null ? editableSellingPrice : currentSellingPrice)} Ft / {selectedUnitShortform || 'db'}
+                            </Typography>
+                          </Box>
+                        </Box>
                       ) : (
                         <Typography
                           variant="body2"
@@ -2760,7 +2820,7 @@ export default function ShipmentDetailClient({
                             fontStyle: 'italic'
                           }}
                         >
-                          Csak kiegészítőknél elérhető
+                          Ár számítható
                         </Typography>
                       )}
                     </Grid>
@@ -2817,10 +2877,10 @@ export default function ShipmentDetailClient({
                       display: 'grid',
                       gridTemplateRows: (() => {
                         const rows: string[] = []
-                        if (labelFields.showName) rows.push('40px') // 5.3mm * 2x
-                        if (labelFields.showSku && itemToPrint.sku) rows.push('22.68px') // 3.0mm * 2x
-                        if (labelFields.showPrice) rows.push('62.74px') // 8.3mm * 2x
-                        if (labelFields.showBarcode && itemToPrint.barcode) rows.push('78.425px') // 10.375mm * 2x (increased by 25%)
+                        if (labelFields.showName) rows.push('47.63px')  // 6.3mm * 7.56
+                        if (labelFields.showSku && itemToPrint.sku) rows.push('28.73px')  // 3.8mm * 7.56
+                        if (labelFields.showPrice) rows.push('49.14px')  // 6.5mm * 7.56
+                        if (labelFields.showBarcode && itemToPrint.barcode) rows.push('52.16px')  // 6.9mm * 7.56
                         return rows.join(' ')
                       })(),
                       gridTemplateColumns: '100%',
@@ -2832,7 +2892,7 @@ export default function ShipmentDetailClient({
                       position: 'relative'
                     }}
                   >
-                    {/* Section 1: Termék név - 5.3mm * 2x = 10.6mm = 40px */}
+                    {/* Section 1: Termék név */}
                     {labelFields.showName && (
                       <div
                         style={{
@@ -2854,9 +2914,9 @@ export default function ShipmentDetailClient({
                             fontSize: (() => {
                               const text = editableProductName || itemToPrint.product_name || ''
                               if (text.length > 25) {
-                                return '18.9px' // 2.5mm * 2x = 5mm = 18.9px at 96 DPI
+                                return '18.9px'
                               }
-                              return '26.46px' // 3.5mm * 2x = 7mm = 26.46px at 96 DPI
+                              return '26.46px'
                             })(),
                             fontWeight: 'bold',
                             color: '#000000',
@@ -2881,7 +2941,7 @@ export default function ShipmentDetailClient({
                       </div>
                     )}
 
-                    {/* Section 2: SKU - 3.0mm * 2x = 6mm = 22.68px */}
+                    {/* Section 2: SKU */}
                     {labelFields.showSku && itemToPrint.sku && (
                       <div
                         style={{
@@ -2899,7 +2959,7 @@ export default function ShipmentDetailClient({
                       >
                         <div
                           style={{
-                            fontSize: '16.63px', // 2.2mm * 2x = 4.4mm = 16.63px
+                            fontSize: '22.68px',  // 3.0mm * 7.56 (preview scale factor)
                             color: '#000000',
                             lineHeight: 1,
                             margin: 0,
@@ -2918,7 +2978,7 @@ export default function ShipmentDetailClient({
                       </div>
                     )}
 
-                    {/* Section 3: Price - 8.3mm * 2x = 16.6mm = 62.74px - Flush to bottom (on top of barcode) */}
+                    {/* Section 3: Price */}
                     {labelFields.showPrice && (
                       <div
                         style={{
@@ -2926,7 +2986,7 @@ export default function ShipmentDetailClient({
                           height: '100%',
                           alignSelf: 'stretch',
                           display: 'flex',
-                          alignItems: 'flex-end',
+                          alignItems: 'center',
                           justifyContent: 'center',
                           overflow: 'hidden',
                           padding: 0,
@@ -2936,7 +2996,7 @@ export default function ShipmentDetailClient({
                       >
                         <div
                           style={{
-                            fontSize: '45.36px', // 6mm * 2x = 12mm = 45.36px at 96 DPI
+                            fontSize: '45.36px',
                             fontWeight: 'bold',
                             color: '#000000',
                             lineHeight: 1,
@@ -2946,17 +3006,17 @@ export default function ShipmentDetailClient({
                             width: '100%',
                             height: '100%',
                             display: 'flex',
-                            alignItems: 'flex-end',
+                            alignItems: 'center',
                             justifyContent: 'center',
                             overflow: 'hidden'
                           }}
                         >
-                          {new Intl.NumberFormat('hu-HU').format(calculatedSellingPrice)} Ft
+                          {new Intl.NumberFormat('hu-HU').format(editableSellingPrice !== null ? editableSellingPrice : (currentSellingPrice || 0))} Ft / {selectedUnitShortform || 'db'}
                         </div>
                       </div>
                     )}
 
-                    {/* Section 4: Barcode - 10.375mm * 2x = 20.75mm = 78.425px (increased by 25%) - Flush to bottom */}
+                    {/* Section 4: Barcode */}
                     {labelFields.showBarcode && itemToPrint.barcode && (
                       <div
                         style={{
@@ -2988,7 +3048,7 @@ export default function ShipmentDetailClient({
                             value={itemToPrint.barcode}
                             format="CODE128"
                             width={2.5}
-                            height={62.5}
+                            height={32}
                             fontSize={10}
                             displayValue={false}
                             margin={0}
@@ -3042,7 +3102,7 @@ export default function ShipmentDetailClient({
               <TextField
                 label="Vonalkód"
                 value={barcodeInputValue}
-                onChange={(e) => setBarcodeInputValue(e.target.value)}
+                onChange={(e) => setBarcodeInputValue(normalizeBarcode(e.target.value))}
                 fullWidth
                 sx={{ mb: 2 }}
                 inputProps={{ maxLength: 64 }}
