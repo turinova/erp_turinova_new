@@ -5,7 +5,6 @@ import { getPortalQuoteById } from '@/lib/supabase-server'
 import { 
   getCompanyInfo, 
   getCompanyVatRates,
-  getMaterialMachineCodes,
   getEdgeMaterialCodes
 } from '@/lib/company-data-server'
 import generatePortalQuotePdfHtml from './pdf-template'
@@ -85,8 +84,7 @@ export async function GET(
       return NextResponse.json({ error: 'Cégadatok nem találhatók' }, { status: 500 })
     }
 
-    // Fetch material machine codes and edge material codes for panels
-    const materialIds = quoteData.panels?.map(p => p.material_id).filter(Boolean) || []
+    // Fetch edge material codes for panels (machine codes not needed for customer portal)
     const edgeMaterialIds = new Set<string>()
     quoteData.panels?.forEach(panel => {
       if (panel.edge_material_a_id) edgeMaterialIds.add(panel.edge_material_a_id)
@@ -95,12 +93,11 @@ export async function GET(
       if (panel.edge_material_d_id) edgeMaterialIds.add(panel.edge_material_d_id)
     })
 
-    const [materialCodesMap, edgeCodesMap] = await Promise.all([
-      materialIds.length > 0 ? getMaterialMachineCodes(companyCredentials, materialIds) : Promise.resolve(new Map()),
-      edgeMaterialIds.size > 0 ? getEdgeMaterialCodes(companyCredentials, Array.from(edgeMaterialIds)) : Promise.resolve(new Map())
-    ])
+    const edgeCodesMap = edgeMaterialIds.size > 0 
+      ? await getEdgeMaterialCodes(companyCredentials, Array.from(edgeMaterialIds))
+      : new Map()
 
-    // Enrich panels with machine codes and edge codes
+    // Enrich panels with edge codes and material names
     // Get material name from pricing data (same as the page does)
     const enrichedPanels = quoteData.panels?.map(panel => {
       // Find material name from pricing (same logic as PortalQuoteDetailClient.tsx)
@@ -109,8 +106,8 @@ export async function GET(
       
       return {
         ...panel,
-        material_machine_code: materialCodesMap.get(panel.material_id) || materialName,
-        material_name: materialName, // Also set material_name for fallback
+        material_machine_code: materialName, // Use material name (machine codes not needed for customers)
+        material_name: materialName,
         edge_a_code: panel.edge_material_a_id ? edgeCodesMap.get(panel.edge_material_a_id) || null : null,
         edge_b_code: panel.edge_material_b_id ? edgeCodesMap.get(panel.edge_material_b_id) || null : null,
         edge_c_code: panel.edge_material_c_id ? edgeCodesMap.get(panel.edge_material_c_id) || null : null,
