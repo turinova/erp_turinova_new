@@ -149,6 +149,11 @@ const formatCurrencyPdf = (amount: number) => {
   }).format(amount)
 }
 
+// Format waste multiplier for PDF (e.g., 1.2 -> "1.20x")
+const formatWasteMultiplier = (value: number) => {
+  return `${value.toFixed(2)}x`
+}
+
 // Escape HTML to prevent XSS
 const escapeHtml = (text: string | null | undefined) => {
   if (!text) return ''
@@ -253,6 +258,9 @@ export default function generateQuotePdfHtml({
           <div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${dimensions}</div>
         </td>
         <td>
+          <span class="chip">${formatWasteMultiplier(wasteMulti)}</span>
+        </td>
+        <td>
           <span class="chip">Laptermék</span>
         </td>
         <td class="text-right nowrap">${quantityDisplay}</td>
@@ -282,6 +290,7 @@ export default function generateQuotePdfHtml({
         <td>
           <div style="font-weight: 500;">Szabás díj</div>
         </td>
+        <td></td>
         <td>
           <span class="chip">Díj</span>
         </td>
@@ -311,6 +320,7 @@ export default function generateQuotePdfHtml({
         <td>
           <div style="font-weight: 500;">Élzárás</div>
         </td>
+        <td></td>
         <td>
           <span class="chip">Díj</span>
         </td>
@@ -350,6 +360,7 @@ export default function generateQuotePdfHtml({
         <td>
           <div style="font-weight: 500;">${escapeHtml(serviceName)}</div>
         </td>
+        <td></td>
         <td>
           <span class="chip">Díj</span>
         </td>
@@ -369,6 +380,7 @@ export default function generateQuotePdfHtml({
         <td>
           <div style="font-weight: 500;">${escapeHtml(fee.fee_name)}</div>
         </td>
+        <td></td>
         <td>
           <span class="chip">Díj</span>
         </td>
@@ -383,22 +395,22 @@ export default function generateQuotePdfHtml({
 
   const beforeDiscountRows = (Number(discountAmount) || 0) > 0 ? `
     <tr class="summary-row">
-      <td colspan="4" style="border-top: 2px solid #000000; border-bottom: 1px solid #000000;">Nettó összesen:</td>
+      <td colspan="5" style="border-top: 2px solid #000000; border-bottom: 1px solid #000000;">Nettó összesen:</td>
       <td class="text-right nowrap" style="border-top: 2px solid #000000; border-bottom: 1px solid #000000;">${formatCurrencyPdf(summary.totalNetBeforeDiscount)} Ft</td>
     </tr>
     <tr class="summary-row">
-      <td colspan="4" style="border-bottom: 1px solid #000000;">Áfa összesen:</td>
+      <td colspan="5" style="border-bottom: 1px solid #000000;">Áfa összesen:</td>
       <td class="text-right nowrap" style="border-bottom: 1px solid #000000;">${formatCurrencyPdf(summary.totalVatBeforeDiscount)} Ft</td>
     </tr>
     <tr class="summary-row">
-      <td colspan="4" style="border-bottom: 2px solid #000000;">Bruttó összesen:</td>
+      <td colspan="5" style="border-bottom: 2px solid #000000;">Bruttó összesen:</td>
       <td class="text-right nowrap" style="border-bottom: 2px solid #000000;">${formatCurrencyPdf(summary.totalGrossBeforeDiscount)} Ft</td>
     </tr>
   ` : ''
 
   const discountRow = (Number(discountAmount) || 0) > 0 ? `
     <tr class="discount-row">
-      <td colspan="4" style="border-bottom: 1px solid #000000;">Kedvezmény${Number(discountPercentage) > 0 ? ` (${Number(discountPercentage)}%)` : ''}:</td>
+      <td colspan="5" style="border-bottom: 1px solid #000000;">Kedvezmény${Number(discountPercentage) > 0 ? ` (${Number(discountPercentage)}%)` : ''}:</td>
       <td class="text-right nowrap" style="border-bottom: 1px solid #000000; font-weight: 500;">-${formatCurrencyPdf(Number(discountAmount))} Ft</td>
     </tr>
   ` : ''
@@ -711,6 +723,7 @@ export default function generateQuotePdfHtml({
       <thead>
         <tr>
           <th>Megnevezés</th>
+          <th>Hull. szorzó</th>
           <th>Típus</th>
           <th class="text-right nowrap">Mennyiség</th>
           <th class="text-right nowrap">Bruttó egységár</th>
@@ -727,15 +740,15 @@ export default function generateQuotePdfHtml({
         ${beforeDiscountRows}
         ${discountRow}
         <tr class="summary-row">
-          <td colspan="4" class="summary-row-bold">Nettó összesen:</td>
+          <td colspan="5" class="summary-row-bold">Nettó összesen:</td>
           <td class="text-right nowrap summary-row-bold">${formatCurrencyPdf(summary.totalNetAfterDiscount)} Ft</td>
         </tr>
         <tr class="summary-row">
-          <td colspan="4" class="summary-row-bold" style="border-top: none;">Áfa összesen:</td>
+          <td colspan="5" class="summary-row-bold" style="border-top: none;">Áfa összesen:</td>
           <td class="text-right nowrap summary-row-bold" style="border-top: none;">${formatCurrencyPdf(summary.totalVatAfterDiscount)} Ft</td>
         </tr>
         <tr>
-          <td colspan="4" class="summary-row-total">Bruttó összesen:</td>
+          <td colspan="5" class="summary-row-total">Bruttó összesen:</td>
           <td class="text-right nowrap summary-row-total">${formatCurrencyPdf(summary.totalGrossAfterDiscount)} Ft</td>
         </tr>
       </tbody>

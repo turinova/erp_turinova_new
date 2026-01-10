@@ -585,6 +585,7 @@ export default function PortalQuoteDetailClient({
                     <TableHead>
                       <TableRow>
                         <TableCell><strong>Anyag</strong></TableCell>
+                        <TableCell align="center"><strong>Hull. szorzó</strong></TableCell>
                         <TableCell align="right"><strong>Mennyiség</strong></TableCell>
                         <TableCell align="right"><strong>Nettó ár</strong></TableCell>
                         <TableCell align="right"><strong>Bruttó ár</strong></TableCell>
@@ -595,6 +596,13 @@ export default function PortalQuoteDetailClient({
                         quoteData.pricing.map((pricing) => (
                           <TableRow key={pricing.id}>
                             <TableCell>{pricing.material_name}</TableCell>
+                            <TableCell align="center">
+                              <Chip 
+                                label={`${(pricing.waste_multi || 1).toFixed(2)}x`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            </TableCell>
                             <TableCell align="right">
                               {(() => {
                                 const chargedSqm = pricing.charged_sqm || 0
@@ -613,7 +621,7 @@ export default function PortalQuoteDetailClient({
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={4} align="center">
+                          <TableCell colSpan={5} align="center">
                             <Typography variant="body2" color="text.secondary">
                               Nincs árazási adat elérhető.
                             </Typography>
