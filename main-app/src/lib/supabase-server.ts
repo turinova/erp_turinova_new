@@ -3742,23 +3742,7 @@ export async function getPurchaseOrdersWithPagination(
   try {
     const offset = (page - 1) * limit
 
-    // If search is provided, find matching PO IDs by partner name
-    let allMatchingPoIds: string[] = []
-    if (search && search.trim().length >= 2) {
-      const searchTerm = search.trim()
-      const { data: partnerMatches } = await supabaseServer
-        .from('purchase_orders')
-        .select('id, partner_id, partners:partner_id(name)')
-        .is('deleted_at', null)
-      
-      if (partnerMatches) {
-        allMatchingPoIds = partnerMatches
-          .filter((po: any) => po.partners?.name?.toLowerCase().includes(searchTerm.toLowerCase()))
-          .map((po: any) => po.id)
-      }
-    }
-
-    // Build the main query
+    // Build the main query - OPTIMIZED: removed nested relations
     let query = supabaseServer
       .from('purchase_orders')
       .select(`
@@ -3772,9 +3756,7 @@ export async function getPurchaseOrdersWithPagination(
         expected_date,
         created_at,
         email_sent,
-        email_sent_at,
-        items:purchase_order_items(deleted_at),
-        net_total:purchase_order_items!purchase_order_items_purchase_order_id_fkey(id, net_price, quantity, deleted_at)
+        email_sent_at
       `, { count: 'exact' })
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -3784,12 +3766,9 @@ export async function getPurchaseOrdersWithPagination(
       query = query.eq('status', statusFilter)
     }
 
-    // Apply search filter
-    if (search && search.trim().length >= 2 && allMatchingPoIds.length > 0) {
-      query = query.in('id', allMatchingPoIds)
-    } else if (search && search.trim().length >= 2 && allMatchingPoIds.length === 0) {
-      // No matches found, return empty result
-      return { purchaseOrders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    // Apply search filter - OPTIMIZED: use database-level filtering instead of fetching all records
+    if (search && search.trim().length >= 2) {
+      query = query.ilike('partners.name', `%${search.trim()}%`)
     }
 
     const { data, error, count } = await query.range(offset, offset + limit - 1)
@@ -3799,20 +3778,50 @@ export async function getPurchaseOrdersWithPagination(
       return { purchaseOrders: [], totalCount: 0, totalPages: 0, currentPage: 1 }
     }
 
-    // Fetch all shipments for the purchase orders
     const poIds = (data || []).map((row: any) => row.id)
-    const { data: allShipments } = poIds.length > 0
-      ? await supabaseServer
-          .from('shipments')
-          .select('id, shipment_number, purchase_order_id')
-          .in('purchase_order_id', poIds)
-          .is('deleted_at', null)
-      : { data: [] }
+
+    if (poIds.length === 0) {
+      return { purchaseOrders: [], totalCount: count || 0, totalPages: Math.ceil((count || 0) / limit), currentPage: page }
+    }
+
+    // OPTIMIZED: Fetch all related data in parallel (much faster!)
+    const [allShipments, receivedData, itemsCountsData, netTotalsData] = await Promise.all([
+      // Shipments
+      supabaseServer
+        .from('shipments')
+        .select('id, shipment_number, purchase_order_id')
+        .in('purchase_order_id', poIds)
+        .is('deleted_at', null),
+      // Received quantities
+      supabaseServer
+        .from('shipment_items')
+        .select(`
+          purchase_order_item_id,
+          quantity_received,
+          shipments!inner(purchase_order_id, status, deleted_at)
+        `)
+        .in('shipments.purchase_order_id', poIds)
+        .is('deleted_at', null)
+        .eq('shipments.status', 'received')
+        .is('shipments.deleted_at', null),
+      // Items count - OPTIMIZED: only fetch purchase_order_id (minimal data)
+      supabaseServer
+        .from('purchase_order_items')
+        .select('purchase_order_id')
+        .in('purchase_order_id', poIds)
+        .is('deleted_at', null),
+      // Net totals - OPTIMIZED: only fetch fields needed for calculation
+      supabaseServer
+        .from('purchase_order_items')
+        .select('purchase_order_id, net_price, quantity')
+        .in('purchase_order_id', poIds)
+        .is('deleted_at', null)
+    ])
 
     // Group shipments by purchase_order_id
     const shipmentsByPo = new Map<string, Array<{ id: string; number: string }>>()
-    if (allShipments) {
-      allShipments.forEach((shipment: any) => {
+    if (allShipments.data) {
+      allShipments.data.forEach((shipment: any) => {
         if (shipment.purchase_order_id && shipment.shipment_number) {
           if (!shipmentsByPo.has(shipment.purchase_order_id)) {
             shipmentsByPo.set(shipment.purchase_order_id, [])
@@ -3825,7 +3834,7 @@ export async function getPurchaseOrdersWithPagination(
       })
     }
 
-    // Check for stock movements
+    // Check for stock movements (after we have shipment IDs)
     const allShipmentIds = Array.from(new Set(Array.from(shipmentsByPo.values()).flat().map(s => s.id)))
     const { data: stockMovements } = allShipmentIds.length > 0
       ? await supabaseServer
@@ -3839,68 +3848,69 @@ export async function getPurchaseOrdersWithPagination(
       (stockMovements || []).map((sm: any) => sm.source_id)
     )
 
-    // Fetch received quantities for all POs (for non-draft POs)
-    const { data: receivedData } = poIds.length > 0
-      ? await supabaseServer
-          .from('shipment_items')
-          .select(`
-            purchase_order_item_id,
-            quantity_received,
-            shipments!inner(purchase_order_id, status, deleted_at)
-          `)
-          .in('shipments.purchase_order_id', poIds)
-          .is('deleted_at', null)
-          .eq('shipments.status', 'received')
-          .is('shipments.deleted_at', null)
-      : { data: [] }
-
     // Group received quantities by purchase_order_item_id
     const receivedByPoItem = new Map<string, number>()
-    if (receivedData) {
-      receivedData.forEach((row: any) => {
+    if (receivedData.data) {
+      receivedData.data.forEach((row: any) => {
         const poItemId = row.purchase_order_item_id
         const qty = Number(row.quantity_received) || 0
         receivedByPoItem.set(poItemId, (receivedByPoItem.get(poItemId) || 0) + qty)
       })
     }
 
-    // Compute net totals and counts
+    // OPTIMIZED: Build items count map (O(n) instead of O(n*m) filtering)
+    const itemsCountByPo = new Map<string, number>()
+    if (itemsCountsData.data) {
+      itemsCountsData.data.forEach((item: any) => {
+        const poId = item.purchase_order_id
+        itemsCountByPo.set(poId, (itemsCountByPo.get(poId) || 0) + 1)
+      })
+    }
+
+    // OPTIMIZED: Build net total map (O(n) instead of O(n*m) filtering and reducing)
+    const netTotalByPo = new Map<string, number>()
+    if (netTotalsData.data) {
+      netTotalsData.data.forEach((item: any) => {
+        const poId = item.purchase_order_id
+        const lineTotal = (Number(item.net_price) || 0) * (Number(item.quantity) || 0)
+        netTotalByPo.set(poId, (netTotalByPo.get(poId) || 0) + lineTotal)
+      })
+    }
+
+    // For received totals, we need item IDs to match with receivedByPoItem
+    // OPTIMIZED: Fetch only id, purchase_order_id, and net_price (minimal fields)
+    const { data: poItemsData } = await supabaseServer
+      .from('purchase_order_items')
+      .select('id, purchase_order_id, net_price')
+      .in('purchase_order_id', poIds)
+      .is('deleted_at', null)
+
+    const receivedNetTotalByPo = new Map<string, number>()
+    if (poItemsData) {
+      poItemsData.forEach((item: any) => {
+        const poId = item.purchase_order_id
+        const qtyReceived = receivedByPoItem.get(item.id) || 0
+        const lineReceived = (Number(item.net_price) || 0) * qtyReceived
+        receivedNetTotalByPo.set(poId, (receivedNetTotalByPo.get(poId) || 0) + lineReceived)
+      })
+    }
+
+    // OPTIMIZED: Build result using maps for O(1) lookups
     const result = (data || []).map((row: any) => {
-      // Filter out soft-deleted items
-      const activeItems = Array.isArray(row.items) ? row.items.filter((item: any) => !item.deleted_at) : []
-      const itemsCount = activeItems.length
-      
       const shipmentNumbers = shipmentsByPo.get(row.id) || []
       const poShipmentIds = shipmentNumbers.map((s: { id: string }) => s.id)
       const hasStockMovements = poShipmentIds.some((sid: string) => 
         shipmentIdsWithStockMovements.has(sid)
       )
       
-      // Sum net_price * quantity across non-deleted purchase_order_items rows (ordered total)
-      const activeNetTotalItems = Array.isArray(row.net_total) 
-        ? row.net_total.filter((it: any) => !it.deleted_at) 
-        : []
-      const netTotal = activeNetTotalItems.reduce((sum: number, it: any) => {
-        const unit = Number(it?.net_price) || 0
-        const qty = Number(it?.quantity) || 0
-        return sum + unit * qty
-      }, 0)
-      
-      // Calculate received total (net_price * quantity_received)
-      const receivedNetTotal = activeNetTotalItems.reduce((sum: number, it: any) => {
-        const unit = Number(it?.net_price) || 0
-        const qtyReceived = receivedByPoItem.get(it.id) || 0
-        return sum + (unit * qtyReceived)
-      }, 0)
-      
       return {
         id: row.id,
         po_number: row.po_number,
         status: row.status,
         partner_name: row.partners?.name || '',
-        items_count: itemsCount,
-        net_total: netTotal,
-        received_net_total: receivedNetTotal,
+        items_count: itemsCountByPo.get(row.id) || 0,
+        net_total: netTotalByPo.get(row.id) || 0,
+        received_net_total: receivedNetTotalByPo.get(row.id) || 0,
         created_at: row.created_at,
         expected_date: row.expected_date,
         email_sent: row.email_sent || false,
