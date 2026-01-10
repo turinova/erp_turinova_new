@@ -415,11 +415,11 @@ export default function AccessoriesListClient({
   // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
   // Fixed-height vertical sections using CSS Grid:
   // - Top padding: 1.5mm (to prevent overflow at top of sticker)
-  // - Termék név: 5.3mm
-  // - SKU: 3.0mm
-  // - Price: 8.3mm
-  // - Barcode: 8.875mm (reduced from 10.375mm to account for top padding)
-  // Total: 1.5mm + 5.3mm + 3.0mm + 8.3mm + 8.875mm = 25mm (when all fields visible)
+  // - Termék név: 6.3mm
+  // - SKU: 3.8mm
+  // - Price: 6.5mm
+  // - Barcode: 6.9mm (adjusted to keep total at 25mm)
+  // Total: 1.5mm + 6.3mm + 3.8mm + 6.5mm + 6.9mm = 25mm (when all fields visible)
   const PrintLabel = ({ accessory, fields, price, productName, unitShortform }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string, unitShortform: string }) => {
     const text = productName || accessory.name || 'N/A'
     const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
@@ -441,10 +441,10 @@ export default function AccessoriesListClient({
     
     // Build grid template rows based on visible fields
     const gridRows: string[] = []
-    if (fields.showName) gridRows.push('5.3mm')
-    if (fields.showSku && accessory.sku) gridRows.push('3.0mm')
-    if (fields.showPrice) gridRows.push('8.3mm')
-    if (fields.showBarcode && accessory.barcode) gridRows.push('8.875mm') // Reduced from 10.375mm to 8.875mm to account for 1.5mm top padding
+    if (fields.showName) gridRows.push('6.3mm')
+    if (fields.showSku && accessory.sku) gridRows.push('3.8mm')
+    if (fields.showPrice) gridRows.push('6.5mm')
+    if (fields.showBarcode && accessory.barcode) gridRows.push('6.9mm') // Adjusted to keep total at 25mm // Reduced from 10.375mm to 8.875mm to account for 1.5mm top padding
     
     return (
       <div
@@ -466,7 +466,7 @@ export default function AccessoriesListClient({
           position: 'relative'
         }}
       >
-        {/* Section 1: Termék név - 5.3mm */}
+        {/* Section 1: Termék név - 6.3mm */}
         {fields.showName && (
           <div
             style={{
@@ -509,7 +509,7 @@ export default function AccessoriesListClient({
           </div>
         )}
 
-        {/* Section 2: SKU - 3.0mm */}
+        {/* Section 2: SKU - 3.8mm */}
         {fields.showSku && accessory.sku && (
           <div
             style={{
@@ -527,7 +527,7 @@ export default function AccessoriesListClient({
           >
             <div
               style={{
-                fontSize: '2.2mm',
+                fontSize: '3.0mm',
                 color: '#000000',
                 lineHeight: 1,
                 margin: 0,
@@ -546,7 +546,7 @@ export default function AccessoriesListClient({
           </div>
         )}
 
-        {/* Section 3: Price - 8.3mm - Flush to bottom (on top of barcode) */}
+        {/* Section 3: Price - 6.5mm - Flush to bottom (on top of barcode) */}
         {fields.showPrice && (
           <div
             style={{
@@ -586,7 +586,7 @@ export default function AccessoriesListClient({
           </div>
         )}
 
-        {/* Section 4: Barcode - 8.875mm (reduced to account for top padding) - Flush to bottom */}
+        {/* Section 4: Barcode - 6.9mm (adjusted to keep total at 25mm) - Flush to bottom */}
         {fields.showBarcode && accessory.barcode && (
           <div
             style={{
@@ -1793,10 +1793,10 @@ export default function AccessoriesListClient({
                       display: 'grid',
                       gridTemplateRows: (() => {
                         const rows: string[] = []
-                        if (labelFields.showName) rows.push('40px')
-                        if (labelFields.showSku && accessoryToPrint.sku) rows.push('22.68px')
-                        if (labelFields.showPrice) rows.push('62.74px')
-                        if (labelFields.showBarcode && accessoryToPrint.barcode) rows.push('62.74px')
+                        if (labelFields.showName) rows.push('47.63px')  // 6.3mm * 7.56
+                        if (labelFields.showSku && accessoryToPrint.sku) rows.push('28.73px')  // 3.8mm * 7.56
+                        if (labelFields.showPrice) rows.push('49.14px')  // 6.5mm * 7.56
+                        if (labelFields.showBarcode && accessoryToPrint.barcode) rows.push('52.16px')  // 6.9mm * 7.56
                         return rows.join(' ')
                       })(),
                       gridTemplateColumns: '100%',
@@ -1875,7 +1875,7 @@ export default function AccessoriesListClient({
                       >
                         <div
                           style={{
-                            fontSize: '16.63px',
+                            fontSize: '22.68px',  // 3.0mm * 7.56 (preview scale factor)
                             color: '#000000',
                             lineHeight: 1,
                             margin: 0,
