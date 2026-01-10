@@ -4,3 +4,4 @@ alter table public.pos_orders
 
 -- Ensure updated_at still maintained via existing triggers (if any)
 
+

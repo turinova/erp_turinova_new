@@ -13,6 +13,7 @@ interface PortalQuoteMaterialPricing {
   material_gross: number
   cutting_length_m: number
   cutting_gross: number
+  edge_materials_gross?: number
   portal_quote_edge_materials_breakdown?: Array<{
     edge_material_name: string
     total_length_m: number
@@ -122,6 +123,14 @@ const formatCurrencyPdf = (amount: number) => {
   }).format(amount)
 }
 
+// Format currency for PDF with 2 decimals (for unit prices)
+const formatCurrencyPdfWithDecimals = (amount: number) => {
+  return new Intl.NumberFormat('hu-HU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(amount)
+}
+
 // Format waste multiplier for PDF (e.g., 1.2 -> "1.20x")
 const formatWasteMultiplier = (value: number) => {
   return `${value.toFixed(2)}x`
@@ -213,14 +222,19 @@ export default function generatePortalQuotePdfHtml({
     const displaySqm = chargedSqm / wasteMulti
     const quantityDisplay = `${displaySqm.toFixed(2)} m² / ${boardsUsed} db`
     
-    // Calculate total area: full boards area + charged area
-    // board_length_mm * board_width_mm / 1000000 = area of one board in m²
+    // Calculate total charged area: full boards area + panel charged area
+    // boards_used = boardsSold (count of full boards only)
+    // charged_sqm = panel area charged areas (with waste multiplier already included)
     const boardAreaM2 = (boardLengthMm * boardWidthMm) / 1000000
-    const totalBoardsArea = boardAreaM2 * boardsUsed
-    const totalArea = totalBoardsArea + chargedSqm
+    const totalBoardsArea = boardAreaM2 * boardsUsed  // Full boards charged area
+    const totalArea = totalBoardsArea + chargedSqm  // Total charged area (full boards + panel area)
     
-    // Calculate unit price (gross per m²)
+    // Calculate unit price (gross per m²) with 2 decimal precision
     const unitPriceGross = totalArea > 0 ? pricing.material_gross / totalArea : 0
+    const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
+    
+    // Recalculate total from rounded unit price (2 decimals) so math is consistent
+    const recalculatedTotalGross = roundedUnitPriceGross * totalArea
     
     const dimensions = `${pricing.board_length_mm}×${pricing.board_width_mm}×${pricing.thickness_mm} mm`
     
@@ -237,8 +251,8 @@ export default function generatePortalQuotePdfHtml({
           <span class="chip">Laptermék</span>
         </td>
         <td class="text-right nowrap">${quantityDisplay}</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(Math.round(unitPriceGross))} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(pricing.material_gross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
       </tr>
     `
   }).join('')
@@ -246,18 +260,22 @@ export default function generatePortalQuotePdfHtml({
   // 2. Services from pricing breakdowns
   const serviceRows: string[] = []
   
-  // Aggregate cutting costs
+  // Aggregate cutting costs - use stored totals from pricing table
   let totalCuttingLength = 0
   let totalCuttingGross = 0
   quote.pricing.forEach(p => {
-    if (p.cutting_length_m > 0 && p.cutting_gross > 0) {
-      totalCuttingLength += p.cutting_length_m
-      totalCuttingGross += p.cutting_gross
+    if (p.cutting_gross > 0) {
+      totalCuttingLength += p.cutting_length_m || 0
+      totalCuttingGross += p.cutting_gross  // Use stored total from pricing table
     }
   })
   
   if (totalCuttingGross > 0) {
+    // Calculate unit price with 2 decimal precision
     const unitPriceGross = totalCuttingLength > 0 ? totalCuttingGross / totalCuttingLength : 0
+    const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
+    // Recalculate total from rounded unit price (2 decimals) so math is consistent
+    const recalculatedTotalGross = roundedUnitPriceGross * totalCuttingLength
     serviceRows.push(`
       <tr>
         <td>
@@ -268,26 +286,34 @@ export default function generatePortalQuotePdfHtml({
           <span class="chip">Díj</span>
         </td>
         <td class="text-right nowrap">${totalCuttingLength.toFixed(2)} m</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(Math.round(unitPriceGross))} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(totalCuttingGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
       </tr>
     `)
   }
   
-  // Aggregate edge materials for services section
+  // Aggregate edge materials for services section - use stored totals from pricing table
   let totalEdgeLengthForService = 0
   let totalEdgeGross = 0
   quote.pricing.forEach(p => {
-    if (p.portal_quote_edge_materials_breakdown) {
-      p.portal_quote_edge_materials_breakdown.forEach(edge => {
-        totalEdgeLengthForService += edge.total_length_m
-        totalEdgeGross += edge.gross_price
-      })
+    // Use stored totals from pricing table (not breakdown)
+    if (p.edge_materials_gross > 0) {
+      totalEdgeGross += p.edge_materials_gross  // Use stored total from pricing table
+      // Sum length from breakdown for display quantity only
+      if (p.portal_quote_edge_materials_breakdown) {
+        p.portal_quote_edge_materials_breakdown.forEach(edge => {
+          totalEdgeLengthForService += edge.total_length_m
+        })
+      }
     }
   })
   
   if (totalEdgeGross > 0) {
+    // Calculate unit price with 2 decimal precision
     const unitPriceGross = totalEdgeLengthForService > 0 ? totalEdgeGross / totalEdgeLengthForService : 0
+    const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
+    // Recalculate total from rounded unit price (2 decimals) so math is consistent
+    const recalculatedTotalGross = roundedUnitPriceGross * totalEdgeLengthForService
     serviceRows.push(`
       <tr>
         <td>
@@ -298,8 +324,8 @@ export default function generatePortalQuotePdfHtml({
           <span class="chip">Díj</span>
         </td>
         <td class="text-right nowrap">${totalEdgeLengthForService.toFixed(2)} m</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(Math.round(unitPriceGross))} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(totalEdgeGross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdfWithDecimals(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
       </tr>
     `)
   }
@@ -327,6 +353,8 @@ export default function generatePortalQuotePdfHtml({
     const serviceName = getServiceName(serviceType)
     const unit = getServiceUnit(serviceType)
     const unitPriceGross = data.quantity > 0 ? data.gross / data.quantity : 0
+    const roundedUnitPriceGross = Math.round(unitPriceGross)
+    const recalculatedTotalGross = roundedUnitPriceGross * data.quantity
     
     serviceRows.push(`
       <tr>
@@ -338,8 +366,8 @@ export default function generatePortalQuotePdfHtml({
           <span class="chip">Díj</span>
         </td>
         <td class="text-right nowrap">${data.quantity} ${unit}</td>
-        <td class="text-right nowrap">${formatCurrencyPdf(Math.round(unitPriceGross))} Ft</td>
-        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(data.gross))} Ft</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
       </tr>
     `)
   })

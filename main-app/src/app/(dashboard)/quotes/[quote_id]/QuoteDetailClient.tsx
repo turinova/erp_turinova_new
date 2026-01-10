@@ -913,32 +913,51 @@ export default function QuoteDetailClient({
                   </TableHead>
                   <TableBody>
                     {quoteData.pricing && quoteData.pricing.length > 0 ? (
-                      quoteData.pricing.map((pricing) => (
-                        <TableRow key={pricing.id}>
-                          <TableCell>{pricing.materials?.name || pricing.material_name}</TableCell>
-                          <TableCell align="center">
-                            <Chip 
-                              label={`${(pricing.waste_multi || 1).toFixed(2)}x`}
-                              size="small"
-                              variant="outlined"
-                            />
-                          </TableCell>
-                          <TableCell align="right">
-                            {(() => {
-                              const chargedSqm = pricing.charged_sqm || 0
-                              const boardsSold = pricing.boards_used || 0
-                              const wasteMulti = pricing.waste_multi || 1
-                              
-                              // Divide charged_sqm by waste_multi to show net material quantity
-                              const displaySqm = chargedSqm / wasteMulti
-                              
-                              return `${displaySqm.toFixed(2)} m² / ${boardsSold} db`
-                            })()}
-                          </TableCell>
-                          <TableCell align="right">{formatCurrency(pricing.material_net)}</TableCell>
-                          <TableCell align="right">{formatCurrency(pricing.material_gross)}</TableCell>
-                        </TableRow>
-                      ))
+                      quoteData.pricing.map((pricing) => {
+                        // Calculate total charged area for unit price calculation
+                        // boards_used = boardsSold (count of full boards only)
+                        // charged_sqm = panel area charged areas (with waste multiplier already included)
+                        const boardLengthMm = pricing.board_length_mm || 0
+                        const boardWidthMm = pricing.board_width_mm || 0
+                        const boardsUsed = pricing.boards_used || 0
+                        const chargedSqm = pricing.charged_sqm || 0
+                        const wasteMulti = pricing.waste_multi || 1
+                        
+                        const boardAreaM2 = (boardLengthMm * boardWidthMm) / 1000000
+                        const totalBoardsArea = boardAreaM2 * boardsUsed  // Full boards charged area
+                        const totalArea = totalBoardsArea + chargedSqm  // Total charged area (full boards + panel area)
+                        
+                        // Calculate unit price with 2 decimal precision
+                        const unitPriceGross = totalArea > 0 ? pricing.material_gross / totalArea : 0
+                        const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
+                        
+                        // Recalculate total from rounded unit price (2 decimals) so math is consistent
+                        const recalculatedTotalGross = roundedUnitPriceGross * totalArea
+                        const recalculatedTotalNet = pricing.material_gross > 0
+                          ? pricing.material_net * (recalculatedTotalGross / pricing.material_gross)
+                          : pricing.material_net
+                        
+                        // Display quantity
+                        const displaySqm = chargedSqm / wasteMulti
+                        
+                        return (
+                          <TableRow key={pricing.id}>
+                            <TableCell>{pricing.materials?.name || pricing.material_name}</TableCell>
+                            <TableCell align="center">
+                              <Chip 
+                                label={`${wasteMulti.toFixed(2)}x`}
+                                size="small"
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell align="right">
+                              {`${displaySqm.toFixed(2)} m² / ${boardsUsed} db`}
+                            </TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalNet))}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalGross))}</TableCell>
+                          </TableRow>
+                        )
+                      })
                     ) : (
                       <TableRow>
                         <TableCell colSpan={5} align="center">
@@ -985,23 +1004,27 @@ export default function QuoteDetailClient({
                         )
                       }
 
-                      // Calculate totals from saved breakdown data
-                      const totalCuttingCost = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_gross || 0), 0)
+                      // Calculate totals from stored pricing data (not breakdown)
+                      const totalCuttingGross = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_gross || 0), 0)
                       const totalCuttingNet = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_net || 0), 0)
                       const totalCuttingLength = quoteData.pricing.reduce((sum, p) => sum + (p.cutting_length_m || 0), 0)
                       
-                      // Calculate total edge materials from breakdown data
+                      // Calculate total edge materials from stored pricing data (not breakdown)
                       let totalEdgeLength = 0
                       let totalEdgeNet = 0
                       let totalEdgeGross = 0
                       
                       quoteData.pricing.forEach(pricing => {
-                        if (pricing.quote_edge_materials_breakdown) {
-                          pricing.quote_edge_materials_breakdown.forEach(edge => {
-                            totalEdgeLength += edge.total_length_m
-                            totalEdgeNet += edge.net_price
-                            totalEdgeGross += edge.gross_price
-                          })
+                        // Use stored totals from pricing table (not breakdown)
+                        if (pricing.edge_materials_gross > 0) {
+                          totalEdgeGross += pricing.edge_materials_gross
+                          totalEdgeNet += pricing.edge_materials_net || 0
+                          // Sum length from breakdown for display quantity only
+                          if (pricing.quote_edge_materials_breakdown) {
+                            pricing.quote_edge_materials_breakdown.forEach(edge => {
+                              totalEdgeLength += edge.total_length_m
+                            })
+                          }
                         }
                       })
                       
@@ -1031,25 +1054,43 @@ export default function QuoteDetailClient({
                       const servicesRows = []
                       
                       // Add cutting cost if exists
-                      if (totalCuttingCost > 0) {
+                      if (totalCuttingGross > 0) {
+                        // Calculate unit price with 2 decimal precision (matching PDF)
+                        const unitPriceGross = totalCuttingLength > 0 ? totalCuttingGross / totalCuttingLength : 0
+                        const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
+                        // Recalculate total from rounded unit price (2 decimals) so math is consistent
+                        const recalculatedTotalGross = roundedUnitPriceGross * totalCuttingLength
+                        const recalculatedTotalNet = totalCuttingGross > 0
+                          ? totalCuttingNet * (recalculatedTotalGross / totalCuttingGross)
+                          : totalCuttingNet // Proportional adjustment, fallback to original if division by zero
+                        
                         servicesRows.push(
                           <TableRow key="cutting">
                             <TableCell>Szabás díj</TableCell>
                             <TableCell align="right">{totalCuttingLength.toFixed(2)} m</TableCell>
-                            <TableCell align="right">{formatCurrency(totalCuttingNet)}</TableCell>
-                            <TableCell align="right">{formatCurrency(totalCuttingCost)}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalNet))}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalGross))}</TableCell>
                           </TableRow>
                         )
                       }
                       
                       // Add total edge materials if exists
                       if (totalEdgeGross > 0) {
+                        // Calculate unit price with 2 decimal precision (matching PDF)
+                        const unitPriceGross = totalEdgeLength > 0 ? totalEdgeGross / totalEdgeLength : 0
+                        const roundedUnitPriceGross = Math.round(unitPriceGross * 100) / 100  // Round to 2 decimals
+                        // Recalculate total from rounded unit price (2 decimals) so math is consistent
+                        const recalculatedTotalGross = roundedUnitPriceGross * totalEdgeLength
+                        const recalculatedTotalNet = totalEdgeGross > 0
+                          ? totalEdgeNet * (recalculatedTotalGross / totalEdgeGross)
+                          : totalEdgeNet // Proportional adjustment, fallback to original if division by zero
+                        
                         servicesRows.push(
                           <TableRow key="edge-total">
                             <TableCell>Élzárás</TableCell>
                             <TableCell align="right">{totalEdgeLength.toFixed(2)} m</TableCell>
-                            <TableCell align="right">{formatCurrency(totalEdgeNet)}</TableCell>
-                            <TableCell align="right">{formatCurrency(totalEdgeGross)}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalNet))}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalGross))}</TableCell>
                           </TableRow>
                         )
                       }
@@ -1059,12 +1100,21 @@ export default function QuoteDetailClient({
                         const serviceName = service.type === 'panthelyfuras' ? 'Pánthely fúrás' :
                                           service.type === 'duplungolas' ? 'Duplung' :
                                           service.type === 'szogvagas' ? 'Szögvágás' : service.type
+                        
+                        // Calculate unit price, round it, and recalculate total to match PDF
+                        const unitPriceGross = service.quantity > 0 ? service.gross_price / service.quantity : 0
+                        const roundedUnitPriceGross = Math.round(unitPriceGross)
+                        const recalculatedTotalGross = roundedUnitPriceGross * service.quantity
+                        const recalculatedTotalNet = service.gross_price > 0
+                          ? service.net_price * (recalculatedTotalGross / service.gross_price)
+                          : service.net_price // Proportional adjustment, fallback to original if division by zero
+                        
                         servicesRows.push(
                           <TableRow key={service.type}>
                             <TableCell>{serviceName}</TableCell>
                             <TableCell align="right">{service.quantity} {service.type === 'duplungolas' ? 'm²' : 'db'}</TableCell>
-                            <TableCell align="right">{formatCurrency(service.net_price)}</TableCell>
-                            <TableCell align="right">{formatCurrency(service.gross_price)}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalNet))}</TableCell>
+                            <TableCell align="right">{formatCurrency(Math.round(recalculatedTotalGross))}</TableCell>
                           </TableRow>
                         )
                       })
