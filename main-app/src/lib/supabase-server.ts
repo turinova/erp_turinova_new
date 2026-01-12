@@ -776,6 +776,7 @@ export async function getCuttingFee() {
       panthelyfuras_fee_per_hole,
       duplungolas_fee_per_sqm,
       szogvagas_fee_per_panel,
+      machine_threshold,
       currency_id,
       vat_id,
       currencies (

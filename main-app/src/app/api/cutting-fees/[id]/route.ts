@@ -15,6 +15,7 @@ export async function PATCH(
       panthelyfuras_fee_per_hole,
       duplungolas_fee_per_sqm,
       szogvagas_fee_per_panel,
+      machine_threshold,
       currency_id,
       vat_id
     } = body
@@ -61,18 +62,31 @@ export async function PATCH(
       )
     }
 
+    if (machine_threshold !== undefined && (machine_threshold < 0 || machine_threshold === null)) {
+      return NextResponse.json(
+        { error: 'A géphozzárendelési küszöbérték nem lehet negatív' },
+        { status: 400 }
+      )
+    }
+
     // Update the cutting fee
+    const updateData: any = {
+      fee_per_meter: parseFloat(fee_per_meter),
+      panthelyfuras_fee_per_hole: parseFloat(panthelyfuras_fee_per_hole),
+      duplungolas_fee_per_sqm: parseFloat(duplungolas_fee_per_sqm),
+      szogvagas_fee_per_panel: parseFloat(szogvagas_fee_per_panel),
+      currency_id,
+      vat_id,
+      updated_at: new Date().toISOString()
+    }
+
+    if (machine_threshold !== undefined) {
+      updateData.machine_threshold = parseFloat(machine_threshold)
+    }
+
     const { data, error } = await supabaseServer
       .from('cutting_fees')
-      .update({
-        fee_per_meter: parseFloat(fee_per_meter),
-        panthelyfuras_fee_per_hole: parseFloat(panthelyfuras_fee_per_hole),
-        duplungolas_fee_per_sqm: parseFloat(duplungolas_fee_per_sqm),
-        szogvagas_fee_per_panel: parseFloat(szogvagas_fee_per_panel),
-        currency_id,
-        vat_id,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
       .select(`
         id,
@@ -80,6 +94,7 @@ export async function PATCH(
         panthelyfuras_fee_per_hole,
         duplungolas_fee_per_sqm,
         szogvagas_fee_per_panel,
+        machine_threshold,
         currency_id,
         vat_id,
         currencies (

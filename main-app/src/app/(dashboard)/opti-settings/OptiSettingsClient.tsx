@@ -25,6 +25,7 @@ interface CuttingFee {
   panthelyfuras_fee_per_hole: number
   duplungolas_fee_per_sqm: number
   szogvagas_fee_per_panel: number
+  machine_threshold: number | null
   currency_id: string
   vat_id: string
   currencies: Currency
@@ -141,6 +142,10 @@ export default function OptiSettingsClient({ initialCuttingFee, currencies, vatR
       newErrors.szogvagas_fee_per_panel = 'A szögvágási díj nem lehet negatív'
     }
     
+    if (formData.machine_threshold !== null && formData.machine_threshold !== undefined && formData.machine_threshold < 0) {
+      newErrors.machine_threshold = 'A géphozzárendelési küszöbérték nem lehet negatív'
+    }
+    
     if (!formData.currency_id) {
       newErrors.currency_id = 'A pénznem kötelező'
     }
@@ -167,6 +172,7 @@ export default function OptiSettingsClient({ initialCuttingFee, currencies, vatR
           panthelyfuras_fee_per_hole: formData.panthelyfuras_fee_per_hole,
           duplungolas_fee_per_sqm: formData.duplungolas_fee_per_sqm,
           szogvagas_fee_per_panel: formData.szogvagas_fee_per_panel,
+          machine_threshold: formData.machine_threshold,
           currency_id: formData.currency_id,
           vat_id: formData.vat_id,
         }),
@@ -387,6 +393,27 @@ export default function OptiSettingsClient({ initialCuttingFee, currencies, vatR
               error={!!errors.szogvagas_fee_per_panel}
               helperText={errors.szogvagas_fee_per_panel || 'Ft/panel (bruttó)'}
               inputProps={{ min: 0, step: 1 }}
+            />
+          </Grid>
+
+          {/* Machine Assignment Settings */}
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom color="primary" sx={{ mt: 2 }}>
+              Géphozzárendelési beállítások
+            </Typography>
+            <Divider sx={{ mb: 2 }} />
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Géphozzárendelési küszöbérték (m²/panel)"
+              type="number"
+              value={formData.machine_threshold ?? 0.35}
+              onChange={(e) => handleInputChange('machine_threshold', parseFloat(e.target.value) || 0)}
+              error={!!errors.machine_threshold}
+              helperText={errors.machine_threshold || 'Küszöbérték a gépek közötti választáshoz (pl. 0.35)'}
+              inputProps={{ min: 0, step: 0.01 }}
             />
           </Grid>
 
