@@ -102,6 +102,7 @@ export default function AccessoriesListClient({
   })
   const [printAmount, setPrintAmount] = useState<number>(1)
   const [isPrinting, setIsPrinting] = useState(false)
+  const [labelSize, setLabelSize] = useState<'33x25' | '64x39'>('33x25') // Default: 33mm × 25mm
 
   useEffect(() => {
     setMounted(true)
@@ -412,47 +413,71 @@ export default function AccessoriesListClient({
     return Math.round(price)
   }, [accessoryToPrint])
 
-  // Label component for printing - EXACTLY 33mm x 25mm with fixed-height vertical sections
+  // Label component for printing - Supports 33mm x 25mm and 64mm x 39mm sizes
+  // Using native divs and CSS Grid to eliminate all spacing
+  // Label dimensions: 33mm x 25mm (default) or 64mm x 39mm (large)
+  // Scaling factor for large size: 1.56x (height-based)
   // Fixed-height vertical sections using CSS Grid:
-  // - Top padding: 1.5mm (to prevent overflow at top of sticker)
-  // - Termék név: 6.3mm
-  // - SKU: 3.8mm
-  // - Price: 6.5mm
-  // - Barcode: 6.9mm (adjusted to keep total at 25mm)
-  // Total: 1.5mm + 6.3mm + 3.8mm + 6.5mm + 6.9mm = 25mm (when all fields visible)
-  const PrintLabel = ({ accessory, fields, price, productName, unitShortform }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string, unitShortform: string }) => {
-    const text = productName || accessory.name || 'N/A'
-    const nameFontSize = text.length > 25 ? '2.5mm' : '3.5mm'
+  // - Top padding: 1.5mm (33x25) or 2.34mm (64x39)
+  // - Termék név: 6.3mm (33x25) or 9.83mm (64x39)
+  // - SKU: 3.8mm (33x25) or 5.93mm (64x39)
+  // - Price: 6.5mm (33x25) or 10.14mm (64x39)
+  // - Barcode: 6.9mm (33x25) or 10.76mm (64x39)
+  // Total: 25mm (33x25) or 39mm (64x39) when all fields visible
+  const PrintLabel = ({ accessory, fields, price, productName, unitShortform, size = '33x25' }: { accessory: Accessory, fields: typeof labelFields, price: number, productName: string, unitShortform: string, size?: '33x25' | '64x39' }) => {
+    // Calculate scaling factor (1.56x for large size)
+    const scale = size === '64x39' ? 1.56 : 1
     
-    // Calculate price text length and adjust font size accordingly
+    // Label dimensions
+    const labelWidth = size === '64x39' ? '64mm' : '33mm'
+    const labelHeight = size === '64x39' ? '39mm' : '25mm'
+    const topPadding = size === '64x39' ? '2.34mm' : '1.5mm'
+    
+    // Section heights (scaled)
+    const nameHeight = size === '64x39' ? '9.83mm' : '6.3mm'
+    const skuHeight = size === '64x39' ? '5.93mm' : '3.8mm'
+    const priceHeight = size === '64x39' ? '10.14mm' : '6.5mm'
+    const barcodeHeight = size === '64x39' ? '10.76mm' : '6.9mm'
+    
+    // Font sizes (scaled)
+    const text = productName || accessory.name || 'N/A'
+    const baseNameFontSize = text.length > 25 ? 2.5 : 3.5
+    const nameFontSize = `${(baseNameFontSize * scale).toFixed(2)}mm`
+    const skuFontSize = `${(3.0 * scale).toFixed(2)}mm`
+    
+    // Calculate price text length and adjust font size accordingly (scaled)
     const priceText = `${new Intl.NumberFormat('hu-HU').format(price)} Ft / ${unitShortform || 'db'}`
     const priceTextLength = priceText.length
-    // Scale font size based on text length: 6mm for short, down to 4mm for very long
-    let priceFontSize = '6mm'
+    // Base font sizes scaled: 6mm for short, down to 4mm for very long
+    let basePriceFontSize = 6
     if (priceTextLength > 20) {
-      priceFontSize = '4mm'
+      basePriceFontSize = 4
     } else if (priceTextLength > 15) {
-      priceFontSize = '4.5mm'
+      basePriceFontSize = 4.5
     } else if (priceTextLength > 12) {
-      priceFontSize = '5mm'
+      basePriceFontSize = 5
     } else if (priceTextLength > 10) {
-      priceFontSize = '5.5mm'
+      basePriceFontSize = 5.5
     }
+    const priceFontSize = `${(basePriceFontSize * scale).toFixed(2)}mm`
+    
+    // Barcode height (scaled)
+    const barcodeHeightPx = Math.round(50 * scale)
     
     // Build grid template rows based on visible fields
     const gridRows: string[] = []
-    if (fields.showName) gridRows.push('6.3mm')
-    if (fields.showSku && accessory.sku) gridRows.push('3.8mm')
-    if (fields.showPrice) gridRows.push('6.5mm')
-    if (fields.showBarcode && accessory.barcode) gridRows.push('6.9mm') // Adjusted to keep total at 25mm // Reduced from 10.375mm to 8.875mm to account for 1.5mm top padding
+    if (fields.showName) gridRows.push(nameHeight)
+    if (fields.showSku && accessory.sku) gridRows.push(skuHeight)
+    if (fields.showPrice) gridRows.push(priceHeight)
+    if (fields.showBarcode && accessory.barcode) gridRows.push(barcodeHeight)
     
     return (
       <div
         style={{
-          width: '33mm',
-          height: '25mm',
+          width: labelWidth,
+          height: labelHeight,
           // border: '1px solid #000', // Removed - interferes with barcode scanning
-          padding: '1.5mm 0 0 0', // Top padding to prevent overflow at top of sticker
+          padding: `${topPadding} 0 0 0`, // Top padding to prevent overflow at top of sticker
           margin: 0,
           backgroundColor: 'white',
           display: 'grid',
@@ -527,7 +552,7 @@ export default function AccessoriesListClient({
           >
             <div
               style={{
-                fontSize: '3.0mm',
+                fontSize: skuFontSize,
                 color: '#000000',
                 lineHeight: 1,
                 margin: 0,
@@ -618,7 +643,7 @@ export default function AccessoriesListClient({
                 value={accessory.barcode}
                 format="CODE128"
                 width={2.5}
-                height={50}
+                height={barcodeHeightPx}
                 fontSize={10}
                 displayValue={false}
                 margin={0}
@@ -678,7 +703,7 @@ export default function AccessoriesListClient({
         
         @media print {
           @page {
-            size: 33mm 25mm !important;
+            size: ${labelSize === '64x39' ? '64mm 39mm' : '33mm 25mm'} !important;
             margin: 0 !important;
             padding: 0 !important;
           }
@@ -695,7 +720,7 @@ export default function AccessoriesListClient({
           html, body {
             margin: 0 !important;
             padding: 0 !important;
-            width: 33mm !important;
+            width: ${labelSize === '64x39' ? '64mm' : '33mm'} !important;
             height: auto !important;
             background: white !important;
             overflow: visible !important;
@@ -712,7 +737,7 @@ export default function AccessoriesListClient({
             position: relative !important;
             left: 0 !important;
             top: 0 !important;
-            width: 33mm !important;
+            width: ${labelSize === '64x39' ? '64mm' : '33mm'} !important;
             margin: 0 !important;
             padding: 0 !important;
             background: white !important;
@@ -724,14 +749,14 @@ export default function AccessoriesListClient({
           
           /* Label items - main grid container */
           #label-print-container > div {
-            width: 33mm !important;
-            height: 25mm !important;
+            width: ${labelSize === '64x39' ? '64mm' : '33mm'} !important;
+            height: ${labelSize === '64x39' ? '39mm' : '25mm'} !important;
             page-break-after: always !important;
             break-after: page !important;
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             margin: 0 !important;
-            padding: 1.5mm 0 0 0 !important; /* Top padding to prevent overflow at top of sticker */
+            padding: ${labelSize === '64x39' ? '2.34mm' : '1.5mm'} 0 0 0 !important; /* Top padding to prevent overflow at top of sticker */
             gap: 0 !important;
             row-gap: 0 !important;
             column-gap: 0 !important;
@@ -812,7 +837,7 @@ export default function AccessoriesListClient({
           
           /* Preserve top padding on main container (override NUCLEAR OPTION for main container only) */
           #label-print-container > div {
-            padding-top: 1.5mm !important;
+            padding-top: ${labelSize === '64x39' ? '2.34mm' : '1.5mm'} !important;
             padding-right: 0 !important;
             padding-bottom: 0 !important;
             padding-left: 0 !important;
@@ -836,7 +861,7 @@ export default function AccessoriesListClient({
             max-height: 100% !important;
             flex-shrink: 0 !important;
             flex-grow: 0 !important;
-            padding-top: 1.5mm !important; /* Ensure top padding is preserved */
+            padding-top: ${labelSize === '64x39' ? '2.34mm' : '1.5mm'} !important; /* Ensure top padding is preserved */
             padding-right: 0 !important;
             padding-bottom: 0 !important;
             padding-left: 0 !important;
@@ -885,6 +910,7 @@ export default function AccessoriesListClient({
             price={editableSellingPrice || currentSellingPrice || 0}
             productName={editableProductName}
             unitShortform={selectedUnitShortform || accessoryToPrint?.unit_shortform || 'db'}
+            size={labelSize}
           />
         )
       }
@@ -1527,7 +1553,10 @@ export default function AccessoriesListClient({
       {/* Print Label Modal */}
       <Dialog
         open={printLabelOpen}
-        onClose={() => setPrintLabelOpen(false)}
+        onClose={() => {
+          setPrintLabelOpen(false)
+          setLabelSize('33x25')  // Reset to default size
+        }}
         maxWidth="md"
         fullWidth
         aria-labelledby="print-label-dialog-title"
@@ -1750,12 +1779,12 @@ export default function AccessoriesListClient({
 
                   {/* Row 3: Nyomtatás */}
                   <Grid container spacing={3}>
-                    <Grid item xs={12}>
+                    <Grid item xs={12} sm={6}>
                       <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
-                        Nyomtatás
+                        Nyomtatandó mennyiség
                       </Typography>
                       <TextField
-                        label="Nyomtatandó mennyiség"
+                        label="Mennyiség"
                         type="number"
                         value={printAmount}
                         onChange={(e) => setPrintAmount(Math.max(1, Number(e.target.value) || 1))}
@@ -1766,6 +1795,29 @@ export default function AccessoriesListClient({
                         sx={{ maxWidth: '300px' }}
                       />
                     </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 600 }}>
+                        Címke mérete
+                      </Typography>
+                      <FormControl component="fieldset">
+                        <RadioGroup
+                          row
+                          value={labelSize}
+                          onChange={(e) => setLabelSize(e.target.value as '33x25' | '64x39')}
+                        >
+                          <FormControlLabel
+                            value="33x25"
+                            control={<Radio size="small" />}
+                            label="33mm × 25mm"
+                          />
+                          <FormControlLabel
+                            value="64x39"
+                            control={<Radio size="small" />}
+                            label="64mm × 39mm"
+                          />
+                        </RadioGroup>
+                      </FormControl>
+                    </Grid>
                   </Grid>
                 </Box>
               </Grid>
@@ -1773,7 +1825,7 @@ export default function AccessoriesListClient({
               {/* Row 2 - Preview */}
               <Grid item xs={12}>
                 <Typography variant="subtitle2" gutterBottom sx={{ textAlign: 'center' }}>
-                  Előnézet (33mm × 25mm - 2x nagyított):
+                  Előnézet ({labelSize === '64x39' ? '64mm × 39mm' : '33mm × 25mm'} - 2x nagyított):
                 </Typography>
                 <Box
                   sx={{
@@ -1784,19 +1836,21 @@ export default function AccessoriesListClient({
                 >
                   <div
                     style={{
-                      width: '250px',
-                      height: '189px',
+                      width: labelSize === '64x39' ? '484px' : '250px',  // 64mm * 7.56 = 484px, 33mm * 7.56 = 250px
+                      height: labelSize === '64x39' ? '295px' : '189px',  // 39mm * 7.56 = 295px, 25mm * 7.56 = 189px
                       border: '2px solid #ccc',
-                      padding: 0,
+                      padding: `${labelSize === '64x39' ? (2.34 * 7.56).toFixed(2) : (1.5 * 7.56).toFixed(2)}px 0 0 0`,  // Top padding scaled for preview
                       margin: 0,
                       backgroundColor: 'white',
                       display: 'grid',
                       gridTemplateRows: (() => {
+                        const scale = labelSize === '64x39' ? 1.56 : 1
+                        const previewScale = 7.56  // 2x scale factor for preview
                         const rows: string[] = []
-                        if (labelFields.showName) rows.push('47.63px')  // 6.3mm * 7.56
-                        if (labelFields.showSku && accessoryToPrint.sku) rows.push('28.73px')  // 3.8mm * 7.56
-                        if (labelFields.showPrice) rows.push('49.14px')  // 6.5mm * 7.56
-                        if (labelFields.showBarcode && accessoryToPrint.barcode) rows.push('52.16px')  // 6.9mm * 7.56
+                        if (labelFields.showName) rows.push(`${(6.3 * scale * previewScale).toFixed(2)}px`)  // 6.3mm * scale * 7.56
+                        if (labelFields.showSku && accessoryToPrint.sku) rows.push(`${(3.8 * scale * previewScale).toFixed(2)}px`)  // 3.8mm * scale * 7.56
+                        if (labelFields.showPrice) rows.push(`${(6.5 * scale * previewScale).toFixed(2)}px`)  // 6.5mm * scale * 7.56
+                        if (labelFields.showBarcode && accessoryToPrint.barcode) rows.push(`${(6.9 * scale * previewScale).toFixed(2)}px`)  // 6.9mm * scale * 7.56
                         return rows.join(' ')
                       })(),
                       gridTemplateColumns: '100%',
@@ -1829,10 +1883,10 @@ export default function AccessoriesListClient({
                           style={{
                             fontSize: (() => {
                               const text = editableProductName || accessoryToPrint.name || ''
-                              if (text.length > 25) {
-                                return '18.9px'
-                              }
-                              return '26.46px'
+                              const scale = labelSize === '64x39' ? 1.56 : 1
+                              const previewScale = 7.56  // 2x scale factor for preview
+                              const baseFontSize = text.length > 25 ? 2.5 : 3.5
+                              return `${(baseFontSize * scale * previewScale).toFixed(2)}px`
                             })(),
                             fontWeight: 'bold',
                             color: '#000000',
@@ -1875,7 +1929,11 @@ export default function AccessoriesListClient({
                       >
                         <div
                           style={{
-                            fontSize: '22.68px',  // 3.0mm * 7.56 (preview scale factor)
+                            fontSize: (() => {
+                              const scale = labelSize === '64x39' ? 1.56 : 1
+                              const previewScale = 7.56  // 2x scale factor for preview
+                              return `${(3.0 * scale * previewScale).toFixed(2)}px`
+                            })(),
                             color: '#000000',
                             lineHeight: 1,
                             margin: 0,
@@ -1912,7 +1970,23 @@ export default function AccessoriesListClient({
                       >
                         <div
                           style={{
-                            fontSize: '45.36px',
+                            fontSize: (() => {
+                              const scale = labelSize === '64x39' ? 1.56 : 1
+                              const previewScale = 7.56  // 2x scale factor for preview
+                              const priceText = `${new Intl.NumberFormat('hu-HU').format(editableSellingPrice || currentSellingPrice || 0)} Ft / ${selectedUnitShortform || accessoryToPrint?.unit_shortform || 'db'}`
+                              const priceTextLength = priceText.length
+                              let basePriceFontSize = 6
+                              if (priceTextLength > 20) {
+                                basePriceFontSize = 4
+                              } else if (priceTextLength > 15) {
+                                basePriceFontSize = 4.5
+                              } else if (priceTextLength > 12) {
+                                basePriceFontSize = 5
+                              } else if (priceTextLength > 10) {
+                                basePriceFontSize = 5.5
+                              }
+                              return `${(basePriceFontSize * scale * previewScale).toFixed(2)}px`
+                            })(),
                             fontWeight: 'bold',
                             color: '#000000',
                             lineHeight: 1,
@@ -1964,7 +2038,10 @@ export default function AccessoriesListClient({
                             value={accessoryToPrint.barcode}
                             format="CODE128"
                             width={2.5}
-                            height={32}
+                            height={(() => {
+                              const scale = labelSize === '64x39' ? 1.56 : 1
+                              return Math.round(32 * scale)  // Preview barcode height scaled
+                            })()}
                             fontSize={10}
                             displayValue={false}
                             margin={0}
@@ -1991,6 +2068,7 @@ export default function AccessoriesListClient({
                 showPrice: true
               })
               setPrintAmount(1)
+              setLabelSize('33x25')  // Reset to default size
             }}
             disabled={isPrinting}
           >
