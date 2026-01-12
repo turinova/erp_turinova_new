@@ -1827,6 +1827,20 @@ export async function getQuoteById(quoteId: string) {
       edge_d_code: panel.edge_material_d_id ? edgeCodeMap.get(panel.edge_material_d_id) || null : null
     })) || []
 
+    // Sort by machine_code to restore previous grouping behavior (works with new PDF generation)
+    const sortedEnrichedPanels = enrichedPanels.sort((a, b) => {
+      const codeA = a.material_machine_code || ''
+      const codeB = b.material_machine_code || ''
+      
+      // Empty codes go to the end
+      if (!codeA && !codeB) return 0
+      if (!codeA) return 1
+      if (!codeB) return -1
+      
+      // Sort alphabetically by machine code (restores previous grouping)
+      return codeA.localeCompare(codeB)
+    })
+
     // Transform the response to include all necessary data
     const transformedQuote = {
       id: quote.id,
@@ -1845,7 +1859,7 @@ export async function getQuoteById(quoteId: string) {
       barcode: quote.barcode || null,
       production_machine: quote.production_machines || null,
       customer: quote.customers,
-      panels: enrichedPanels,
+      panels: sortedEnrichedPanels,
       pricing: pricingData || [],
       fees: fees || [],
       accessories: accessories || [],
