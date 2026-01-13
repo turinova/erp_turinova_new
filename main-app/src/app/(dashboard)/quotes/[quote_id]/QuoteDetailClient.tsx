@@ -58,6 +58,7 @@ interface Machine {
   machine_name: string
   comment: string | null
   usage_limit_per_day: number
+  created_at?: string
 }
 
 interface QuoteData {
@@ -379,6 +380,9 @@ export default function QuoteDetailClient({
       if (!aIsMachine3 && bIsMachine3) return 1
       
       // For other machines, sort by created_at if available, otherwise by id
+      if (a.created_at && b.created_at) {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      }
       return a.id.localeCompare(b.id)
     })
   }, [machines])
