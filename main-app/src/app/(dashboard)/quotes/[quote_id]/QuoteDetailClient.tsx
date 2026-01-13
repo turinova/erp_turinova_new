@@ -488,15 +488,11 @@ export default function QuoteDetailClient({
       } else {
         // Single material
         const material = materialMetrics[0]
-        if (material.boards_used > 1 || (material.boards_used === 0 && material.usage_percentage >= 65)) {
-          calculatedM2PerPanel = material.panelCount > 0 
-            ? material.actualMaterialUsed / material.panelCount 
-            : null
-        } else {
-          // Machine 3 case (already handled above, but just in case)
-          setSuggestedMachineId(sortedMachines[0]?.id || null)
-          return
-        }
+        // Machine 3 case is already handled above (boards_used === 0 && usage_percentage < 65)
+        // For all other cases (including boards_used === 1), calculate m²/panel
+        calculatedM2PerPanel = material.panelCount > 0 
+          ? material.actualMaterialUsed / material.panelCount 
+          : null
       }
 
       // Decide Machine 1 or 2 based on m² per panel (using threshold from settings)

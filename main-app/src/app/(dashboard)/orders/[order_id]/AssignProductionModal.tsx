@@ -243,17 +243,11 @@ export default function AssignProductionModal({
       } else {
         // Single material
         const material = materialMetrics[0]
-        if (material.boards_used > 1 || (material.boards_used === 0 && material.usage_percentage >= 65)) {
-          calculatedM2PerPanel = material.panelCount > 0 
-            ? material.actualMaterialUsed / material.panelCount 
-            : null
-        } else {
-          // Machine 3 case (already handled above, but just in case)
-          setSuggestedMachineId(sortedMachines[0]?.id || null)
-          setSuggestionReason(`1 anyag, ${material.boards_used} tábla, ${material.usage_percentage.toFixed(1)}% használat`)
-          setM2PerPanel(null)
-          return
-        }
+        // Machine 3 case is already handled above (boards_used === 0 && usage_percentage < 65)
+        // For all other cases (including boards_used === 1), calculate m²/panel
+        calculatedM2PerPanel = material.panelCount > 0 
+          ? material.actualMaterialUsed / material.panelCount 
+          : null
       }
 
       setM2PerPanel(calculatedM2PerPanel)
