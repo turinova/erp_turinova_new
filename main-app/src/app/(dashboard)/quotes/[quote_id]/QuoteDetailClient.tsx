@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 
@@ -358,6 +358,30 @@ export default function QuoteDetailClient({
   const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
   const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false)
   const [assignProductionModalOpen, setAssignProductionModalOpen] = useState(false)
+  
+  // Machine suggestion state
+  const [suggestedMachineId, setSuggestedMachineId] = useState<string | null>(null)
+  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false)
+  const [machineThreshold, setMachineThreshold] = useState<number>(0.35) // Default threshold
+
+  // Sort machines: Machine 3 (used_boards = 0, usage < 65%) should be at index 0
+  // Then Machine 1 (large panels), then Machine 2 (small panels)
+  const sortedMachines = useMemo(() => {
+    return [...machines].sort((a, b) => {
+      // Machine 3 (for used_boards = 0, usage < 65%) should be first
+      // Check if machine name contains "Gyuri" or similar identifier
+      const aIsMachine3 = a.machine_name.toLowerCase().includes('gyuri') || 
+                          (a.comment && a.comment.toLowerCase().includes('kis rendelés'))
+      const bIsMachine3 = b.machine_name.toLowerCase().includes('gyuri') || 
+                          (b.comment && b.comment.toLowerCase().includes('kis rendelés'))
+      
+      if (aIsMachine3 && !bIsMachine3) return -1
+      if (!aIsMachine3 && bIsMachine3) return 1
+      
+      // For other machines, sort by created_at if available, otherwise by id
+      return a.id.localeCompare(b.id)
+    })
+  }, [machines])
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -377,6 +401,121 @@ export default function QuoteDetailClient({
     })
   }
 
+  // Calculate machine suggestion based on panels and pricing
+  const calculateMachineSuggestion = useCallback(async () => {
+    if (!quoteData || sortedMachines.length < 3) return
+
+    setIsLoadingSuggestion(true)
+    try {
+      // Fetch threshold first
+      let threshold = machineThreshold
+      try {
+        const thresholdResponse = await fetch(`/api/cutting-fees/current?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          }
+        })
+        if (thresholdResponse.ok) {
+          const thresholdData = await thresholdResponse.json()
+          if (thresholdData && thresholdData.machine_threshold !== null && thresholdData.machine_threshold !== undefined) {
+            threshold = parseFloat(thresholdData.machine_threshold)
+            setMachineThreshold(threshold)
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching threshold, using current state:', err)
+      }
+
+      const panels = quoteData.panels || []
+      const pricing = quoteData.pricing || []
+
+      if (panels.length === 0 || pricing.length === 0) {
+        return
+      }
+
+      // Group panels by material_id and count total panels per material
+      const panelsByMaterial = new Map<string, number>()
+      panels.forEach((panel: any) => {
+        const materialId = panel.material_id
+        const currentCount = panelsByMaterial.get(materialId) || 0
+        panelsByMaterial.set(materialId, currentCount + (panel.quantity || 1))
+      })
+
+      // Calculate metrics for each material
+      const materialMetrics = pricing.map((p: any) => {
+        const panelCount = panelsByMaterial.get(p.material_id) || 0
+        const boardAreaM2 = (p.board_width_mm * p.board_length_mm) / 1000000 // Convert mm² to m²
+        const totalMaterialArea = (boardAreaM2 * p.boards_used) + (p.charged_sqm || 0)
+        const actualMaterialUsed = totalMaterialArea / (p.waste_multi || 1)
+        
+        return {
+          material_id: p.material_id,
+          panelCount,
+          boards_used: p.boards_used,
+          charged_sqm: p.charged_sqm || 0,
+          usage_percentage: p.usage_percentage || 0,
+          waste_multi: p.waste_multi || 1,
+          boardAreaM2,
+          totalMaterialArea,
+          actualMaterialUsed
+        }
+      })
+
+      const materialCount = materialMetrics.length
+
+      // Machine 3 (index 0): Single material, no boards, usage < 65%
+      if (materialCount === 1) {
+        const material = materialMetrics[0]
+        if (material.boards_used === 0 && material.usage_percentage < 65) {
+          setSuggestedMachineId(sortedMachines[0]?.id || null)
+          return
+        }
+      }
+
+      // Calculate m² per panel
+      let calculatedM2PerPanel: number | null = null
+
+      if (materialCount > 1) {
+        // Multiple materials: sum everything
+        const totalActualArea = materialMetrics.reduce((sum, m) => sum + m.actualMaterialUsed, 0)
+        const totalPanels = materialMetrics.reduce((sum, m) => sum + m.panelCount, 0)
+        calculatedM2PerPanel = totalPanels > 0 ? totalActualArea / totalPanels : null
+      } else {
+        // Single material
+        const material = materialMetrics[0]
+        if (material.boards_used > 1 || (material.boards_used === 0 && material.usage_percentage >= 65)) {
+          calculatedM2PerPanel = material.panelCount > 0 
+            ? material.actualMaterialUsed / material.panelCount 
+            : null
+        } else {
+          // Machine 3 case (already handled above, but just in case)
+          setSuggestedMachineId(sortedMachines[0]?.id || null)
+          return
+        }
+      }
+
+      // Decide Machine 1 or 2 based on m² per panel (using threshold from settings)
+      if (calculatedM2PerPanel !== null) {
+        if (calculatedM2PerPanel > threshold) {
+          // Machine 2 (index 2): Large panels (few per board)
+          setSuggestedMachineId(sortedMachines[2]?.id || null)
+        } else {
+          // Machine 1 (index 1): Small panels (many per board)
+          setSuggestedMachineId(sortedMachines[1]?.id || null)
+        }
+      } else {
+        // Fallback to Machine 1 if calculation fails
+        setSuggestedMachineId(sortedMachines[1]?.id || null)
+      }
+
+    } catch (err) {
+      console.error('Error calculating machine suggestion:', err)
+    } finally {
+      setIsLoadingSuggestion(false)
+    }
+  }, [quoteData, sortedMachines, machineThreshold])
+
   // Handle back navigation
   const handleBack = () => {
     router.push(isOrderView ? '/orders' : '/quotes')
@@ -386,6 +525,15 @@ export default function QuoteDetailClient({
   const handleEditOptimization = () => {
     router.push(`/opti?quote_id=${quoteData.id}`)
   }
+
+  // Calculate machine suggestion when component mounts or quoteData changes
+  useEffect(() => {
+    if (quoteData?.panels?.length > 0 && quoteData?.pricing?.length > 0 && sortedMachines.length >= 3) {
+      calculateMachineSuggestion()
+    } else {
+      setSuggestedMachineId(null)
+    }
+  }, [quoteData.id, sortedMachines.length, calculateMachineSuggestion])
 
   // Handle print - Materialize approach
   const handlePrint = () => {
@@ -1463,6 +1611,22 @@ export default function QuoteDetailClient({
                     <Chip 
                       label={(quoteData as any).payment_methods.name}
                       color="error"
+                      size="small"
+                    />
+                  ) : (
+                    <Typography variant="body2">-</Typography>
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="body2">
+                    <strong>Ajánlott gép:</strong>
+                  </Typography>
+                  {isLoadingSuggestion ? (
+                    <CircularProgress size={16} />
+                  ) : suggestedMachineId ? (
+                    <Chip 
+                      label={machines.find(m => m.id === suggestedMachineId)?.machine_name || '-'}
+                      color="primary"
                       size="small"
                     />
                   ) : (
