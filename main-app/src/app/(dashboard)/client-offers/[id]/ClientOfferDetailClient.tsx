@@ -216,6 +216,15 @@ export default function ClientOfferDetailClient({
   const [isSearchingProducts, setIsSearchingProducts] = useState(false)
   const productSearchAbortControllerRef = useRef<AbortController | null>(null)
 
+  // Quantity display values (as strings to allow empty/editing)
+  const [quantityDisplayValues, setQuantityDisplayValues] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {}
+    items.forEach(item => {
+      initial[item.id] = item.quantity.toFixed(3)
+    })
+    return initial
+  })
+
   // Taxpayer validation state
   const [taxpayerValidating, setTaxpayerValidating] = useState(false)
   const [taxpayerValidationError, setTaxpayerValidationError] = useState<string | null>(null)
@@ -648,10 +657,34 @@ export default function ClientOfferDetailClient({
     }
 
     setItems(prevItems => [...prevItems, newProduct])
+    // Initialize quantity display value for new product
+    setQuantityDisplayValues(prev => ({
+      ...prev,
+      [newProduct.id]: quantity.toFixed(3)
+    }))
     setAddingProduct(false)
     setProductSearchTerm('')
     setProductSearchResults([])
   }
+
+  // Sync quantity display values when items change
+  useEffect(() => {
+    setQuantityDisplayValues(prev => {
+      const updated = { ...prev }
+      items.forEach(item => {
+        if (!updated[item.id]) {
+          updated[item.id] = item.quantity.toFixed(3)
+        }
+      })
+      // Remove display values for items that no longer exist
+      Object.keys(updated).forEach(itemId => {
+        if (!items.find(item => item.id === itemId)) {
+          delete updated[itemId]
+        }
+      })
+      return updated
+    })
+  }, [items.map(item => item.id).join(',')])
 
   // Handle item quantity change
   const handleItemQuantityChange = (itemId: string, newQuantity: number) => {
@@ -663,6 +696,49 @@ export default function ClientOfferDetailClient({
       if (item.id !== itemId) return item
       return recalculateItem(item, newQuantity)
     }))
+    // Update display value
+    setQuantityDisplayValues(prev => ({
+      ...prev,
+      [itemId]: newQuantity.toFixed(3)
+    }))
+  }
+
+  // Handle quantity input change (allows empty string for editing)
+  const handleQuantityInputChange = (itemId: string, value: string) => {
+    if (offer?.status === 'accepted') {
+      toast.warning('Az elfogadott ajánlat nem módosítható')
+      return
+    }
+    // Allow empty string for editing
+    setQuantityDisplayValues(prev => ({
+      ...prev,
+      [itemId]: value
+    }))
+  }
+
+  // Handle quantity input blur (format and validate)
+  const handleQuantityInputBlur = (itemId: string) => {
+    const displayValue = quantityDisplayValues[itemId] || ''
+    const numValue = parseFloat(displayValue)
+    
+    if (isNaN(numValue) || numValue <= 0) {
+      // If invalid, restore the original quantity from items
+      const item = items.find(i => i.id === itemId)
+      if (item) {
+        setQuantityDisplayValues(prev => ({
+          ...prev,
+          [itemId]: item.quantity.toFixed(3)
+        }))
+      }
+    } else {
+      // Format to 3 decimals and update the actual quantity
+      const formattedValue = numValue.toFixed(3)
+      setQuantityDisplayValues(prev => ({
+        ...prev,
+        [itemId]: formattedValue
+      }))
+      handleItemQuantityChange(itemId, numValue)
+    }
   }
 
   // Handle item price change (gross)
@@ -1343,13 +1419,15 @@ export default function ClientOfferDetailClient({
                       <TableCell align="right">
                         <TextField
                           type="number"
-                          value={item.quantity}
+                          value={quantityDisplayValues[item.id] ?? item.quantity.toFixed(3)}
                           size="small"
                           sx={{ width: 80 }}
-                          inputProps={{ step: 0.01, min: 0.01 }}
+                          inputProps={{ step: 0.001, min: 0 }}
                           onChange={(e) => {
-                            const newQty = parseFloat(e.target.value) || 0
-                            handleItemQuantityChange(item.id, newQty)
+                            handleQuantityInputChange(item.id, e.target.value)
+                          }}
+                          onBlur={() => {
+                            handleQuantityInputBlur(item.id)
                           }}
                           disabled={offer?.status === 'accepted'}
                         />
