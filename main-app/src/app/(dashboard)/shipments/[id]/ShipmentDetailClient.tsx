@@ -404,9 +404,12 @@ export default function ShipmentDetailClient({
       const copy = [...prev]
       const item = copy[index]
       const qty = value === '' ? 0 : value
-      const netTotal = qty * item.net_price
+      // Szamlazz.hu requirement: Round net total to integer first
+      const netTotal = Math.round(qty * item.net_price)
       const vatPercent = vatRates.get(item.vat_id) || 0
+      // Round VAT from rounded net total
       const vatAmount = Math.round(netTotal * (vatPercent / 100))
+      // Gross = Net (integer) + VAT (integer) = integer
       const grossTotal = netTotal + vatAmount
       copy[index] = {
         ...item,
@@ -423,9 +426,12 @@ export default function ShipmentDetailClient({
       const copy = [...prev]
       const item = copy[index]
       const price = value === '' ? 0 : value
-      const netTotal = item.quantity_received * price
+      // Szamlazz.hu requirement: Round net total to integer first
+      const netTotal = Math.round(item.quantity_received * price)
       const vatPercent = vatRates.get(item.vat_id) || 0
+      // Round VAT from rounded net total
       const vatAmount = Math.round(netTotal * (vatPercent / 100))
+      // Gross = Net (integer) + VAT (integer) = integer
       const grossTotal = netTotal + vatAmount
       copy[index] = {
         ...item,
@@ -584,8 +590,11 @@ export default function ShipmentDetailClient({
           const newItem = addData.item
           const netPrice = newItem.net_price
           const vatPercent = vatRates.get(newItem.vat_id) || 0
-          const lineNet = newItem.quantity_received * netPrice
+          // Szamlazz.hu requirement: Round net total to integer first
+          const lineNet = Math.round(newItem.quantity_received * netPrice)
+          // Round VAT from rounded net total
           const lineVat = Math.round(lineNet * (vatPercent / 100))
+          // Gross = Net (integer) + VAT (integer) = integer
           const lineGross = lineNet + lineVat
           
           // Add item to state with calculated totals
@@ -753,8 +762,11 @@ export default function ShipmentDetailClient({
 
       // Calculate totals for the new item
       const vatPercent = vatRates.get(data.item.vat_id) || 0
-      const net_total = data.item.quantity_received * data.item.net_price
+      // Szamlazz.hu requirement: Round net total to integer first
+      const net_total = Math.round(data.item.quantity_received * data.item.net_price)
+      // Round VAT from rounded net total
       const vat_amount = Math.round(net_total * (vatPercent / 100))
+      // Gross = Net (integer) + VAT (integer) = integer
       const gross_total = net_total + vat_amount
 
       // Create the new item with calculated totals

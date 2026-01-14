@@ -104,9 +104,12 @@ export async function GET(request: NextRequest) {
         if (poi) {
           const qty = Number(item.quantity_received) || 0
           const netPrice = Number(poi.net_price) || 0
-          const lineNet = qty * netPrice
+          // Szamlazz.hu requirement: Round net total to integer first
+          const lineNet = Math.round(qty * netPrice)
           const vatPercent = vatMap.get(poi.vat_id) || 0
+          // Round VAT from rounded net total
           const lineVat = Math.round(lineNet * (vatPercent / 100))
+          // Gross = Net (integer) + VAT (integer) = integer
           const lineGross = lineNet + lineVat
           netTotal += lineNet
           grossTotal += lineGross

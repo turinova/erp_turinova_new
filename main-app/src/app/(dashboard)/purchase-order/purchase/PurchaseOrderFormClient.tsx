@@ -637,20 +637,26 @@ export default function PurchaseOrderFormClient({
       // Ordered totals
       totalQty += it.quantity || 0
       const netUnit = Math.round(Number(it.net_price) || 0)
-      const lineNet = netUnit * (it.quantity || 0)
+      // Szamlazz.hu requirement: Round net total to integer first
+      const lineNet = Math.round(netUnit * (it.quantity || 0))
       totalNet += lineNet
       const vatPercent = vatMap.get(it.vat_id) || 0
+      // Round VAT from rounded net total
       const lineVat = Math.round(lineNet * (vatPercent / 100))
       totalVat += lineVat
+      // Gross = Net (integer) + VAT (integer) = integer
       totalGross += lineNet + lineVat
       
       // Received totals (for non-draft POs)
       const qtyReceived = it.quantity_received || 0
       receivedQty += qtyReceived
-      const lineNetReceived = netUnit * qtyReceived
+      // Szamlazz.hu requirement: Round net total to integer first
+      const lineNetReceived = Math.round(netUnit * qtyReceived)
       receivedNet += lineNetReceived
+      // Round VAT from rounded net total
       const lineVatReceived = Math.round(lineNetReceived * (vatPercent / 100))
       receivedVat += lineVatReceived
+      // Gross = Net (integer) + VAT (integer) = integer
       receivedGross += lineNetReceived + lineVatReceived
     }
     
@@ -1325,8 +1331,11 @@ export default function PurchaseOrderFormClient({
                           const vatPercent = vatRates.find(v => v.id === it.vat_id)?.kulcs || 0
                           const qty = Number(it.quantity) || 0
                           const netUnit = Number(it.net_price) || 0
-                          const lineNet = netUnit * qty
+                          // Szamlazz.hu requirement: Round net total to integer first
+                          const lineNet = Math.round(netUnit * qty)
+                          // Round VAT from rounded net total
                           const lineVat = Math.round(lineNet * (vatPercent / 100))
+                          // Gross = Net (integer) + VAT (integer) = integer
                           const lineGross = lineNet + lineVat
                           return (
                             <TableRow
