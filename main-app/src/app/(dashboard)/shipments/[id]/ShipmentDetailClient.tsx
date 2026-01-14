@@ -1563,8 +1563,12 @@ export default function ShipmentDetailClient({
             color: #000000 !important;
           }
           
-          /* Only hide overflow on main container, not on text containers */
+          /* Preserve top padding on main container (override NUCLEAR OPTION for main container only) */
           #label-print-container > div {
+            padding-top: 1.5mm !important;
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
             overflow: hidden !important;
           }
           
@@ -1573,7 +1577,7 @@ export default function ShipmentDetailClient({
             overflow: visible !important;
           }
           
-          /* Main grid container - enforce grid with no gaps */
+          /* Main grid container - enforce grid with no gaps, preserve top padding */
           #label-print-container > div {
             display: grid !important;
             gap: 0 !important;
@@ -1582,6 +1586,10 @@ export default function ShipmentDetailClient({
             grid-gap: 0 !important;
             grid-auto-rows: 0 !important;
             min-height: 0 !important;
+            padding-top: 1.5mm !important; /* Ensure top padding is preserved */
+            padding-right: 0 !important;
+            padding-bottom: 0 !important;
+            padding-left: 0 !important;
           }
           
           /* Grid children (sections) - these are ALSO flex containers */

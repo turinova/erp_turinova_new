@@ -366,6 +366,21 @@ export default function AccessoryFormClient({
     })
   }
 
+  // Translate API error messages to Hungarian
+  const translateError = (errorMessage: string): string => {
+    const translations: Record<string, string> = {
+      'SKU already exists': 'Ez a SKU már létezik',
+      'All fields are required': 'Minden mező kitöltése kötelező',
+      'Base price must be a positive number': 'Az alapár pozitív szám kell legyen',
+      'Multiplier must be between 1.0 and 5.0': 'A szorzó 1.0 és 5.0 között kell legyen',
+      'Failed to create accessory': 'Hiba a termék létrehozásakor',
+      'Failed to update accessory': 'Hiba a termék frissítésekor',
+      'Hiba a termék létrehozásakor': 'Hiba a termék létrehozásakor',
+      'Hiba a termék frissítésekor': 'Hiba a termék frissítésekor'
+    }
+    return translations[errorMessage] || errorMessage
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -410,14 +425,27 @@ export default function AccessoryFormClient({
         router.push('/accessories')
       } else {
         const error = await response.json()
-        toast.error(error.error || 'Hiba a mentés során', {
-          position: "top-right",
-          autoClose: 3000,
-          hideProgressBar: false,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-        })
+        // Handle duplicate SKU error (409) specifically
+        if (response.status === 409) {
+          toast.error(error.error || 'Ez a SKU már létezik', {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          })
+        } else {
+          // Translate other errors
+          toast.error(translateError(error.error) || 'Hiba a mentés során', {
+            position: "top-right",
+            autoClose: 3000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          })
+        }
       }
     } catch (error) {
       console.error('Submit error:', error)
