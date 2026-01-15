@@ -133,6 +133,21 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     ]
   },
   {
+    label: 'HR',
+    icon: 'ri-user-line',
+    iconColor: '#E91E63', // Pink for HR
+    children: [
+      {
+        label: 'Kollégák',
+        href: '/employees'
+      },
+      {
+        label: 'Ünnepek',
+        href: '/holidays'
+      }
+    ]
+  },
+  {
     label: 'Törzsadatok',
     icon: 'ri-database-2-line',
     iconColor: '#2ECC71', // Green for master data

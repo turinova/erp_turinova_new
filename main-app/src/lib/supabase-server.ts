@@ -2535,6 +2535,182 @@ export async function getWorkerById(id: string) {
   return data
 }
 
+// Employees functions (for attendance system)
+export async function getAllEmployees() {
+  const startTime = performance.now()
+  
+  // Fetch all employees with explicit limit to ensure we get all records
+  const { data, error } = await supabaseServer
+    .from('employees')
+    .select('id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+    .limit(1000) // High limit to ensure we get all employees (adjust if you have more)
+
+  const queryTime = performance.now()
+  logTiming('Employees DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching employees:', error)
+    return []
+  }
+
+  logTiming('Employees Total', startTime, `returned ${data?.length || 0} records`)
+  return data || []
+}
+
+export async function getEmployeeById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('employees')
+    .select('id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching employee:', error)
+    return null
+  }
+
+  return data
+}
+
+// Holidays functions
+export async function getAllHolidays() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('holidays')
+    .select('id, name, start_date, end_date, type, active, created_at, updated_at')
+    .is('deleted_at', null)
+    .order('start_date', { ascending: true })
+    .limit(1000)
+
+  const queryTime = performance.now()
+  logTiming('Holidays DB Query', startTime, `fetched ${data?.length || 0} records`)
+
+  if (error) {
+    console.error('Error fetching holidays:', error)
+    return []
+  }
+
+  logTiming('Holidays Total', startTime, `returned ${data?.length || 0} records`)
+  return data || []
+}
+
+export async function getHolidayById(id: string) {
+  const { data, error } = await supabaseServer
+    .from('holidays')
+    .select('id, name, start_date, end_date, type, active, created_at, updated_at')
+    .eq('id', id)
+    .is('deleted_at', null)
+    .single()
+
+  if (error) {
+    console.error('Error fetching holiday:', error)
+    return null
+  }
+
+  return data
+}
+
+// Get holidays for a specific date range
+export async function getHolidaysForDateRange(startDate: string, endDate: string) {
+  const { data, error } = await supabaseServer
+    .from('holidays')
+    .select('id, name, start_date, end_date, type, active')
+    .eq('active', true)
+    .is('deleted_at', null)
+    .lte('start_date', endDate)
+    .gte('end_date', startDate)
+
+  if (error) {
+    console.error('Error fetching holidays for date range:', error)
+    return []
+  }
+
+  return data || []
+}
+
+// Attendance logs functions
+export async function getAttendanceLogsForMonth(employeeId: string, year: number, month: number) {
+  const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
+  const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+
+  const { data, error } = await supabaseServer
+    .from('attendance_logs')
+    .select('id, scan_time, scan_type, location_id, scan_date')
+    .eq('employee_id', employeeId)
+    .gte('scan_date', startDate)
+    .lte('scan_date', endDate)
+    .order('scan_time', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching attendance logs:', error)
+    return []
+  }
+
+  // Group by date and scan_type, keeping only the latest scan for each
+  const logsByDate = new Map<string, { arrival: any | null, departure: any | null }>()
+  
+  if (data) {
+    for (const log of data) {
+      const dateKey = log.scan_date
+      if (!logsByDate.has(dateKey)) {
+        logsByDate.set(dateKey, { arrival: null, departure: null })
+      }
+      
+      const dayLogs = logsByDate.get(dateKey)!
+      const scanType = log.scan_type
+      
+      // Handle both 'arrival' and 'arrival_pin', 'departure' and 'departure_pin'
+      if ((scanType === 'arrival' || scanType === 'arrival_pin') && !dayLogs.arrival) {
+        dayLogs.arrival = log
+      } else if ((scanType === 'departure' || scanType === 'departure_pin') && !dayLogs.departure) {
+        dayLogs.departure = log
+      }
+    }
+  }
+
+  // Convert to array format
+  return Array.from(logsByDate.entries()).map(([date, logs]) => ({
+    date,
+    arrival: logs.arrival ? {
+      id: logs.arrival.id,
+      time: new Date(logs.arrival.scan_time).toTimeString().slice(0, 5) // HH:MM format
+    } : null,
+    departure: logs.departure ? {
+      id: logs.departure.id,
+      time: new Date(logs.departure.scan_time).toTimeString().slice(0, 5) // HH:MM format
+    } : null
+  }))
+}
+
+// Employee holidays functions
+export async function getEmployeeHolidays(employeeId: string, year?: number, month?: number) {
+  let query = supabaseServer
+    .from('employee_holidays')
+    .select('id, date, type, name, created_at, updated_at')
+    .eq('employee_id', employeeId)
+    .order('date', { ascending: true })
+
+  if (year && month) {
+    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
+    const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+    query = query.gte('date', startDate).lte('date', endDate)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('Error fetching employee holidays:', error)
+    return []
+  }
+
+  return data || []
+}
+
 // Shop Orders functions
 export async function getAllShopOrders() {
   const startTime = performance.now()
