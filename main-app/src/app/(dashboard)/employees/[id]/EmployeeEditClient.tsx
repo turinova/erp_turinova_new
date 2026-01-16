@@ -45,6 +45,8 @@ import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
 import Tab from '@mui/material/Tab'
 import TabPanel from '@mui/lab/TabPanel'
+import { LocalizationProvider, TimePicker } from '@mui/x-date-pickers'
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 
 interface Employee {
   id: string
@@ -153,6 +155,24 @@ function calculateHours(startTime: string | null, endTime: string | null, lunchS
   // Return hours rounded to 2 decimals, ensure non-negative
   const hours = Math.max(0, totalMinutes / 60)
   return Math.round(hours * 100) / 100
+}
+
+// Helper function to convert "HH:MM" string to Date object for TimePicker
+function timeStringToDate(timeStr: string | null): Date | null {
+  if (!timeStr) return null
+  const [hours, minutes] = timeStr.split(':').map(Number)
+  if (isNaN(hours) || isNaN(minutes)) return null
+  const date = new Date()
+  date.setHours(hours, minutes, 0, 0)
+  return date
+}
+
+// Helper function to convert Date object to "HH:MM" string
+function dateToTimeString(date: Date | null): string {
+  if (!date) return ''
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
 }
 
 interface DayData {
@@ -587,6 +607,7 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
             <CircularProgress />
           </Box>
         ) : (
+          <LocalizationProvider dateAdapter={AdapterDateFns}>
           <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
@@ -644,53 +665,73 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <TextField
-                      type="time"
-                      size="small"
-                      value={day.arrival || ''}
-                      onChange={(e) => handleTimeChange(index, 'arrival', e.target.value)}
+                    <TimePicker
+                      value={timeStringToDate(day.arrival)}
+                      onChange={(newValue) => {
+                        const timeStr = newValue ? dateToTimeString(newValue) : ''
+                        handleTimeChange(index, 'arrival', timeStr)
+                      }}
                       disabled={day.isDisabled}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ step: 300 }}
-                      error={!day.isDisabled && !day.arrival && !!day.departure}
-                      sx={{ width: 120 }}
+                      ampm={false}
+                      slotProps={{
+                        textField: {
+                          size: 'small',
+                          error: !day.isDisabled && !day.arrival && !!day.departure,
+                          sx: { width: 120 }
+                        }
+                      }}
                     />
                   </TableCell>
                   <TableCell>
-                    <TextField
-                      type="time"
-                      size="small"
-                      value={day.lunchStart || ''}
-                      onChange={(e) => handleTimeChange(index, 'lunchStart', e.target.value)}
+                    <TimePicker
+                      value={timeStringToDate(day.lunchStart)}
+                      onChange={(newValue) => {
+                        const timeStr = newValue ? dateToTimeString(newValue) : ''
+                        handleTimeChange(index, 'lunchStart', timeStr)
+                      }}
                       disabled={day.isDisabled}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ step: 300 }}
-                      sx={{ width: 120 }}
+                      ampm={false}
+                      slotProps={{
+                        textField: {
+                          size: 'small',
+                          sx: { width: 120 }
+                        }
+                      }}
                     />
                   </TableCell>
                   <TableCell>
-                    <TextField
-                      type="time"
-                      size="small"
-                      value={day.lunchEnd || ''}
-                      onChange={(e) => handleTimeChange(index, 'lunchEnd', e.target.value)}
+                    <TimePicker
+                      value={timeStringToDate(day.lunchEnd)}
+                      onChange={(newValue) => {
+                        const timeStr = newValue ? dateToTimeString(newValue) : ''
+                        handleTimeChange(index, 'lunchEnd', timeStr)
+                      }}
                       disabled={day.isDisabled}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ step: 300 }}
-                      sx={{ width: 120 }}
+                      ampm={false}
+                      slotProps={{
+                        textField: {
+                          size: 'small',
+                          sx: { width: 120 }
+                        }
+                      }}
                     />
                   </TableCell>
                   <TableCell>
-                    <TextField
-                      type="time"
-                      size="small"
-                      value={day.departure || ''}
-                      onChange={(e) => handleTimeChange(index, 'departure', e.target.value)}
+                    <TimePicker
+                      value={timeStringToDate(day.departure)}
+                      onChange={(newValue) => {
+                        const timeStr = newValue ? dateToTimeString(newValue) : ''
+                        handleTimeChange(index, 'departure', timeStr)
+                      }}
                       disabled={day.isDisabled}
-                      InputLabelProps={{ shrink: true }}
-                      inputProps={{ step: 300 }}
-                      error={!day.isDisabled && !!day.arrival && !day.departure}
-                      sx={{ width: 120 }}
+                      ampm={false}
+                      slotProps={{
+                        textField: {
+                          size: 'small',
+                          error: !day.isDisabled && !!day.arrival && !day.departure,
+                          sx: { width: 120 }
+                        }
+                      }}
                     />
                   </TableCell>
                   <TableCell align="right">
@@ -710,6 +751,7 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
             </TableBody>
           </Table>
         </TableContainer>
+        </LocalizationProvider>
         )}
       </AccordionDetails>
     </Accordion>
