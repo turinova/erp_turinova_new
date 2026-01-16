@@ -68,16 +68,24 @@ export async function GET(
       }
     }
 
+    // Helper function to format time in UTC (avoid timezone issues)
+    const formatTimeUTC = (isoString: string): string => {
+      const date = new Date(isoString)
+      const hours = String(date.getUTCHours()).padStart(2, '0')
+      const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+      return `${hours}:${minutes}`
+    }
+
     // Convert to array format
     const result = Array.from(logsByDate.entries()).map(([date, logs]) => ({
       date,
       arrival: logs.arrival ? {
         id: logs.arrival.id,
-        time: new Date(logs.arrival.scan_time).toTimeString().slice(0, 5) // HH:MM format
+        time: formatTimeUTC(logs.arrival.scan_time) // HH:MM format in UTC
       } : null,
       departure: logs.departure ? {
         id: logs.departure.id,
-        time: new Date(logs.departure.scan_time).toTimeString().slice(0, 5) // HH:MM format
+        time: formatTimeUTC(logs.departure.scan_time) // HH:MM format in UTC
       } : null
     }))
 

@@ -272,8 +272,14 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
               const arrival = dayLog.arrival?.time || null
               const departure = dayLog.departure?.time || null
               
-              // If it's an employee holiday, set hours to 0
+              // Calculate hours worked (always calculate if there are logs, even if day is disabled)
+              // Only set to 0 if it's an employee holiday
               const hours = isEmpHoliday ? 0 : calculateHours(arrival, departure, day.lunchStart, day.lunchEnd)
+              
+              // Debug log for Saturday
+              if (isSaturday(day.date)) {
+                console.log(`Saturday ${dateStr}: arrival=${arrival}, departure=${departure}, hours=${hours}, isEmpHoliday=${isEmpHoliday}, isDisabled=${shouldBeDisabled}, worksOnSaturday=${worksOnSaturday}`)
+              }
               
               return {
                 ...updatedDay,
@@ -283,8 +289,14 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
                 departureLogId: dayLog.departure?.id || null,
                 hoursWorked: hours
               }
+            } else {
+              // Debug log for Saturday when no log found
+              if (isSaturday(day.date)) {
+                console.log(`Saturday ${dateStr}: No log found. Available logs:`, logs.map((l: any) => l.date))
+              }
             }
             
+            // Even if no log, keep existing hoursWorked if it was set
             return updatedDay
           }))
         } else {
@@ -320,11 +332,27 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
       const empHoliday = employeeHolidays.find((h: any) => h.date === dateStr)
       const isHolidayDay = isHoliday(day.date, holidays)
       const isEmpHoliday = !!empHoliday
+      
+      // Recalculate hours if it's an employee holiday (set to 0) or if we have arrival/departure
+      let hoursWorked = day.hoursWorked
+      if (isEmpHoliday) {
+        hoursWorked = 0
+      } else if (day.arrival && day.departure) {
+        // Recalculate hours if we have both arrival and departure (always calculate, even if day is disabled)
+        hoursWorked = calculateHours(day.arrival, day.departure, day.lunchStart, day.lunchEnd)
+      }
+      
+      // Debug log for Saturday
+      if (isSaturday(day.date) && day.arrival && day.departure) {
+        console.log(`Saturday useEffect ${dateStr}: arrival=${day.arrival}, departure=${day.departure}, hours=${hoursWorked}, isDisabled=${isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay || isEmpHoliday}`)
+      }
+      
       return {
         ...day,
         isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay || isEmpHoliday,
         isEmployeeHoliday: isEmpHoliday,
-        holidayType: empHoliday?.type
+        holidayType: empHoliday?.type,
+        hoursWorked: hoursWorked
       }
     }))
   }, [holidays, worksOnSaturday, employeeHolidays])
