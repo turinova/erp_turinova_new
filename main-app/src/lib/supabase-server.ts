@@ -2640,7 +2640,7 @@ export async function getAttendanceLogsForMonth(employeeId: string, year: number
 
   const { data, error } = await supabaseServer
     .from('attendance_logs')
-    .select('id, scan_time, scan_type, location_id, scan_date')
+    .select('id, scan_time, scan_type, location_id, scan_date, manually_edited')
     .eq('employee_id', employeeId)
     .gte('scan_date', startDate)
     .lte('scan_date', endDate)
@@ -2686,11 +2686,13 @@ export async function getAttendanceLogsForMonth(employeeId: string, year: number
     date,
     arrival: logs.arrival ? {
       id: logs.arrival.id,
-      time: formatTimeUTC(logs.arrival.scan_time) // HH:MM format in UTC
+      time: formatTimeUTC(logs.arrival.scan_time), // HH:MM format in UTC
+      manually_edited: logs.arrival.manually_edited || false
     } : null,
     departure: logs.departure ? {
       id: logs.departure.id,
-      time: formatTimeUTC(logs.departure.scan_time) // HH:MM format in UTC
+      time: formatTimeUTC(logs.departure.scan_time), // HH:MM format in UTC
+      manually_edited: logs.departure.manually_edited || false
     } : null
   }))
 }

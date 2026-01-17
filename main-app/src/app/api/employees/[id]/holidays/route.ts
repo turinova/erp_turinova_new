@@ -119,6 +119,9 @@ export async function POST(
       return NextResponse.json({ error: 'Hiba történt a szabadság létrehozása során' }, { status: 500 })
     }
 
+    // Note: We no longer delete attendance logs when holiday is added
+    // This allows employees to work on their holiday days if needed
+
     return NextResponse.json(data, { status: 201 })
 
   } catch (error) {

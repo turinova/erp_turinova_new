@@ -36,7 +36,8 @@ import {
   FormControl,
   InputLabel,
   Checkbox,
-  IconButton
+  IconButton,
+  Tooltip
 } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon, ExpandMore as ExpandMoreIcon, Add as AddIcon, Delete as DeleteIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
@@ -179,10 +180,12 @@ interface DayData {
   date: Date
   arrival: string | null
   arrivalLogId: string | null
+  arrivalManuallyEdited: boolean
   lunchStart: string | null
   lunchEnd: string | null
   departure: string | null
   departureLogId: string | null
+  departureManuallyEdited: boolean
   hoursWorked: number
   isDisabled: boolean
   isEmployeeHoliday: boolean
@@ -213,10 +216,12 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
       date,
       arrival: null,
       arrivalLogId: null,
+      arrivalManuallyEdited: false,
       lunchStart: lunchBreakStart || null,
       lunchEnd: lunchBreakEnd || null,
       departure: null,
       departureLogId: null,
+      departureManuallyEdited: false,
       hoursWorked: 0,
       isDisabled: isSunday(date) || (!worksOnSaturday && isSaturday(date)),
       isEmployeeHoliday: false,
@@ -228,6 +233,7 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const [pdfMode, setPdfMode] = useState<'holiday' | 'work'>('holiday')
   const [holidays, setHolidays] = useState<Array<{ start_date: string; end_date: string }>>([])
   const [employeeHolidays, setEmployeeHolidays] = useState<Array<{ id: string; date: string; type: string; name: string | null }>>([])
   
@@ -279,7 +285,8 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
             
             const isHolidayDay = isHoliday(day.date, activeHolidays)
             const isEmpHoliday = !!empHoliday
-            const shouldBeDisabled = isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay || isEmpHoliday
+            // Holidays are now editable - only disable Sundays, Saturdays (if not working), and national/company holidays
+            const shouldBeDisabled = isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay
             
             const updatedDay = {
               ...day,
@@ -292,9 +299,8 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
               const arrival = dayLog.arrival?.time || null
               const departure = dayLog.departure?.time || null
               
-              // Calculate hours worked (always calculate if there are logs, even if day is disabled)
-              // Only set to 0 if it's an employee holiday
-              const hours = isEmpHoliday ? 0 : calculateHours(arrival, departure, day.lunchStart, day.lunchEnd)
+              // Calculate hours worked (always calculate if there are logs, even on holidays)
+              const hours = calculateHours(arrival, departure, day.lunchStart, day.lunchEnd)
               
               // Debug log for Saturday
               if (isSaturday(day.date)) {
@@ -305,8 +311,10 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
                 ...updatedDay,
                 arrival,
                 arrivalLogId: dayLog.arrival?.id || null,
+                arrivalManuallyEdited: dayLog.arrival?.manually_edited || false,
                 departure,
                 departureLogId: dayLog.departure?.id || null,
+                departureManuallyEdited: dayLog.departure?.manually_edited || false,
                 hoursWorked: hours
               }
             } else {
@@ -328,10 +336,10 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
             const isEmpHoliday = !!empHoliday
             return {
               ...day,
-              isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay || isEmpHoliday,
+              isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay,
               isEmployeeHoliday: isEmpHoliday,
               holidayType: empHoliday?.type,
-              hoursWorked: isEmpHoliday ? 0 : day.hoursWorked
+              hoursWorked: day.hoursWorked // Always keep calculated hours, even on holidays
             }
           }))
         }
@@ -343,6 +351,17 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
     }
     
     fetchData()
+    
+    // Listen for holiday changes from EmployeeHolidaysTab
+    const handleHolidayChange = () => {
+      fetchData()
+    }
+    
+    window.addEventListener(`employee-holiday-changed-${employeeId}`, handleHolidayChange)
+    
+    return () => {
+      window.removeEventListener(`employee-holiday-changed-${employeeId}`, handleHolidayChange)
+    }
   }, [employeeId, year, month])
   
   // Update disabled status when holidays or employee holidays change
@@ -353,23 +372,22 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
       const isHolidayDay = isHoliday(day.date, holidays)
       const isEmpHoliday = !!empHoliday
       
-      // Recalculate hours if it's an employee holiday (set to 0) or if we have arrival/departure
+      // Recalculate hours if we have arrival and departure (always calculate, even if it's a holiday)
       let hoursWorked = day.hoursWorked
-      if (isEmpHoliday) {
-        hoursWorked = 0
-      } else if (day.arrival && day.departure) {
-        // Recalculate hours if we have both arrival and departure (always calculate, even if day is disabled)
+      if (day.arrival && day.departure) {
+        // Always calculate hours if we have both arrival and departure, even on holidays
         hoursWorked = calculateHours(day.arrival, day.departure, day.lunchStart, day.lunchEnd)
       }
       
       // Debug log for Saturday
       if (isSaturday(day.date) && day.arrival && day.departure) {
-        console.log(`Saturday useEffect ${dateStr}: arrival=${day.arrival}, departure=${day.departure}, hours=${hoursWorked}, isDisabled=${isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay || isEmpHoliday}`)
+        console.log(`Saturday useEffect ${dateStr}: arrival=${day.arrival}, departure=${day.departure}, hours=${hoursWorked}, isDisabled=${isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay}`)
       }
       
+      // Holidays are now editable - only disable Sundays, Saturdays (if not working), and national/company holidays
       return {
         ...day,
-        isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay || isEmpHoliday,
+        isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay,
         isEmployeeHoliday: isEmpHoliday,
         holidayType: empHoliday?.type,
         hoursWorked: hoursWorked
@@ -428,13 +446,15 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
           if (response.ok) {
             const log = await response.json()
             
-            // Update log ID in state
+            // Update log ID and manually_edited flag in state
             setDaysData(prev => {
               const updated = [...prev]
               if (field === 'arrival') {
                 updated[dayIndex].arrivalLogId = log.id
+                updated[dayIndex].arrivalManuallyEdited = log.manually_edited || false
               } else {
                 updated[dayIndex].departureLogId = log.id
+                updated[dayIndex].departureManuallyEdited = log.manually_edited || false
               }
               return updated
             })
@@ -490,15 +510,19 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
   }
   
   // Calculate summary statistics
+  // Total hours includes all hours, even on holidays (since employees can work on holidays)
   const totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
-  const daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled && !day.isEmployeeHoliday).length
-  const absentDays = daysData.filter(day => day.isEmployeeHoliday).length
+  // Days worked: count days with attendance, excluding only disabled days (Sundays, non-working Saturdays, national holidays)
+  // Employee holidays are now editable, so if they have attendance, count them
+  const daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
+  // Absent days: only count holidays that don't have any attendance
+  const absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.arrival && !day.departure).length
 
   // Handle PDF generation
   const handleGeneratePdf = async () => {
     setIsGeneratingPdf(true)
     try {
-      const response = await fetch(`/api/employees/${employeeId}/attendance/pdf?year=${year}&month=${month}`)
+      const response = await fetch(`/api/employees/${employeeId}/attendance/pdf?year=${year}&month=${month}&mode=${pdfMode}`)
       
       if (!response.ok) {
         let errorMessage = 'Hiba történt a PDF generálása során'
@@ -585,6 +609,17 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
               variant="outlined"
               size="small"
             />
+            <FormControl size="small" sx={{ minWidth: 150, ml: 1 }}>
+              <Select
+                value={pdfMode}
+                onChange={(e) => setPdfMode(e.target.value as 'holiday' | 'work')}
+                disabled={isGeneratingPdf}
+                sx={{ fontSize: '0.875rem' }}
+              >
+                <MenuItem value="holiday">PDF (Szabadság mód)</MenuItem>
+                <MenuItem value="work">PDF (Munka mód)</MenuItem>
+              </Select>
+            </FormControl>
             <Button
               variant="outlined"
               size="small"
@@ -665,22 +700,38 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
                     </Box>
                   </TableCell>
                   <TableCell>
-                    <TimePicker
-                      value={timeStringToDate(day.arrival)}
-                      onChange={(newValue) => {
-                        const timeStr = newValue ? dateToTimeString(newValue) : ''
-                        handleTimeChange(index, 'arrival', timeStr)
-                      }}
-                      disabled={day.isDisabled}
-                      ampm={false}
-                      slotProps={{
-                        textField: {
-                          size: 'small',
-                          error: !day.isDisabled && !day.arrival && !!day.departure,
-                          sx: { width: 120 }
-                        }
-                      }}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <TimePicker
+                        value={timeStringToDate(day.arrival)}
+                        onChange={(newValue) => {
+                          const timeStr = newValue ? dateToTimeString(newValue) : ''
+                          handleTimeChange(index, 'arrival', timeStr)
+                        }}
+                        disabled={day.isDisabled}
+                        ampm={false}
+                        slotProps={{
+                          textField: {
+                            size: 'small',
+                            error: !day.isDisabled && !day.arrival && !!day.departure,
+                            sx: { width: 120 }
+                          }
+                        }}
+                      />
+                      {day.arrival && (
+                        <Tooltip title={day.arrivalManuallyEdited ? 'Kézi bevitel' : 'Olvasás'}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: day.arrivalManuallyEdited ? 'primary.main' : 'text.secondary',
+                              fontSize: '0.75rem',
+                              ml: 0.5
+                            }}
+                          >
+                            {day.arrivalManuallyEdited ? '✏️' : '📱'}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     <TimePicker
@@ -717,33 +768,64 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
                     />
                   </TableCell>
                   <TableCell>
-                    <TimePicker
-                      value={timeStringToDate(day.departure)}
-                      onChange={(newValue) => {
-                        const timeStr = newValue ? dateToTimeString(newValue) : ''
-                        handleTimeChange(index, 'departure', timeStr)
-                      }}
-                      disabled={day.isDisabled}
-                      ampm={false}
-                      slotProps={{
-                        textField: {
-                          size: 'small',
-                          error: !day.isDisabled && !!day.arrival && !day.departure,
-                          sx: { width: 120 }
-                        }
-                      }}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <TimePicker
+                        value={timeStringToDate(day.departure)}
+                        onChange={(newValue) => {
+                          const timeStr = newValue ? dateToTimeString(newValue) : ''
+                          handleTimeChange(index, 'departure', timeStr)
+                        }}
+                        disabled={day.isDisabled}
+                        ampm={false}
+                        slotProps={{
+                          textField: {
+                            size: 'small',
+                            error: !day.isDisabled && !!day.arrival && !day.departure,
+                            sx: { width: 120 }
+                          }
+                        }}
+                      />
+                      {day.departure && (
+                        <Tooltip title={day.departureManuallyEdited ? 'Kézi bevitel' : 'Olvasás'}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: day.departureManuallyEdited ? 'primary.main' : 'text.secondary',
+                              fontSize: '0.75rem',
+                              ml: 0.5
+                            }}
+                          >
+                            {day.departureManuallyEdited ? '✏️' : '📱'}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell align="right">
-                    <Typography 
-                      variant="body2" 
-                      sx={{ 
-                        fontWeight: 600,
-                        color: day.hoursWorked > 0 ? 'text.primary' : 'text.disabled'
-                      }}
-                    >
-                      {day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'}
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontWeight: 600,
+                          color: day.hoursWorked > 0 ? 'text.primary' : 'text.disabled'
+                        }}
+                      >
+                        {day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'}
+                      </Typography>
+                      {day.isEmployeeHoliday && day.hoursWorked > 0 && (
+                        <Tooltip title={day.holidayType === 'Betegszabadság' ? 'Betegszabadság' : 'Szabadság'}>
+                          <Typography 
+                            variant="caption" 
+                            sx={{ 
+                              color: day.holidayType === 'Betegszabadság' ? 'error.main' : 'success.main',
+                              fontSize: '0.7rem'
+                            }}
+                          >
+                            {day.holidayType === 'Betegszabadság' ? '🌡️' : '☀️'}
+                          </Typography>
+                        </Tooltip>
+                      )}
+                    </Box>
                   </TableCell>
                 </TableRow>
                 )
@@ -1143,6 +1225,8 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
           const data = await refreshResponse.json()
           setHolidays(data)
         }
+        // Dispatch event to refresh attendance data
+        window.dispatchEvent(new CustomEvent(`employee-holiday-changed-${employeeId}`))
       } else {
         const errorData = await response.json()
         toast.error(errorData.error || 'Hiba történt a szabadság hozzáadása során', { position: "top-right" })
@@ -1175,6 +1259,8 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
           const data = await refreshResponse.json()
           setHolidays(data)
         }
+        // Dispatch event to refresh attendance data
+        window.dispatchEvent(new CustomEvent(`employee-holiday-changed-${employeeId}`))
       } else {
         toast.error(`${failed.length} szabadság törlése sikertelen`, { position: "top-right" })
       }

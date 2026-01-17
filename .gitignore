@@ -42,3 +42,6 @@ yarn-error.log*
 
 # Misc
 .turbo
+
+# Raspberry Pi Attendance System (separate project)
+raspberry-pi-attendance/

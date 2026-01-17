@@ -16,6 +16,7 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const year = parseInt(searchParams.get('year') || '2026')
     const month = parseInt(searchParams.get('month') || '1')
+    const mode = searchParams.get('mode') || 'holiday' // 'holiday' or 'work'
 
     if (!id) {
       return NextResponse.json({ error: 'Érvénytelen alkalmazott azonosító' }, { status: 400 })
@@ -71,9 +72,9 @@ export async function GET(
       const lunchStart = employee.lunch_break_start || null
       const lunchEnd = employee.lunch_break_end || null
 
-      // Calculate hours worked
+      // Calculate hours worked (always calculate if arrival and departure exist, even on holidays)
       let hoursWorked = 0
-      if (arrival && departure && !isEmpHoliday) {
+      if (arrival && departure) {
         const start = new Date(`2000-01-01T${arrival}`)
         const end = new Date(`2000-01-01T${departure}`)
         let totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60)
@@ -107,10 +108,26 @@ export async function GET(
       }
     })
 
-    // Calculate summary statistics
-    const totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
-    const daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled && !day.isEmployeeHoliday).length
-    const absentDays = daysData.filter(day => day.isEmployeeHoliday).length
+    // Calculate summary statistics based on mode
+    let totalHours: number
+    let daysWorked: number
+    let absentDays: number
+    
+    if (mode === 'holiday') {
+      // Holiday mode: exclude holidays from totals
+      totalHours = daysData.reduce((sum, day) => {
+        // Don't count hours on holidays
+        return sum + (day.isEmployeeHoliday ? 0 : day.hoursWorked)
+      }, 0)
+      daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled && !day.isEmployeeHoliday).length
+      absentDays = daysData.filter(day => day.isEmployeeHoliday).length
+    } else {
+      // Work mode: include all hours, even on holidays
+      totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
+      daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
+      // Count holidays that don't have attendance as absent
+      absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.arrival && !day.departure).length
+    }
 
     // Fetch Turinova logo
     const turinovaLogoBase64 = await readFile(join(process.cwd(), 'public', 'images', 'turinova-logo.png'))
@@ -134,7 +151,8 @@ export async function GET(
         daysWorked,
         absentDays
       },
-      turinovaLogoBase64
+      turinovaLogoBase64,
+      mode: mode as 'holiday' | 'work'
     })
 
     // Launch Puppeteer

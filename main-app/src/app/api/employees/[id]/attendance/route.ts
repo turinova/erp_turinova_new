@@ -35,7 +35,7 @@ export async function GET(
     // Get the latest scan for each day and scan_type
     const { data, error } = await supabase
       .from('attendance_logs')
-      .select('id, scan_time, scan_type, location_id, scan_date')
+      .select('id, scan_time, scan_type, location_id, scan_date, manually_edited')
       .eq('employee_id', id)
       .gte('scan_date', startDate)
       .lte('scan_date', endDate)
@@ -81,11 +81,13 @@ export async function GET(
       date,
       arrival: logs.arrival ? {
         id: logs.arrival.id,
-        time: formatTimeUTC(logs.arrival.scan_time) // HH:MM format in UTC
+        time: formatTimeUTC(logs.arrival.scan_time), // HH:MM format in UTC
+        manually_edited: logs.arrival.manually_edited || false
       } : null,
       departure: logs.departure ? {
         id: logs.departure.id,
-        time: formatTimeUTC(logs.departure.scan_time) // HH:MM format in UTC
+        time: formatTimeUTC(logs.departure.scan_time), // HH:MM format in UTC
+        manually_edited: logs.departure.manually_edited || false
       } : null
     }))
 
@@ -145,11 +147,13 @@ export async function POST(
 
     if (existingLogs && existingLogs.length > 0) {
       // Update existing log (always take the latest)
+      // Mark as manually_edited since this is a manual edit
       const { data, error } = await supabase
         .from('attendance_logs')
         .update({
           scan_time: scanTime,
-          scan_type: scanType
+          scan_type: scanType,
+          manually_edited: true
         })
         .eq('id', existingLogs[0].id)
         .select()
@@ -163,6 +167,7 @@ export async function POST(
       return NextResponse.json(data, { status: 200 })
     } else {
       // Create new log
+      // Mark as manually_edited since this is a manual edit
       const { data, error } = await supabase
         .from('attendance_logs')
         .insert({
@@ -170,7 +175,8 @@ export async function POST(
           location_id: locationId,
           scan_time: scanTime,
           scan_type: scanType,
-          pin_used: false
+          pin_used: false,
+          manually_edited: true
         })
         .select()
         .single()

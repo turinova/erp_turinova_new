@@ -31,6 +31,7 @@ interface AttendancePdfTemplateProps {
     absentDays: number
   }
   turinovaLogoBase64?: string
+  mode?: 'holiday' | 'work' // 'holiday' = exclude holidays from totals, 'work' = include all hours
 }
 
 // Format date as "MM.DD DayName"
@@ -73,7 +74,8 @@ export default function generateAttendancePdfHtml({
   month,
   daysData,
   summary,
-  turinovaLogoBase64
+  turinovaLogoBase64,
+  mode = 'holiday'
 }: AttendancePdfTemplateProps): string {
   const monthNames = ['Január', 'Február', 'Március', 'Április', 'Május', 'Június', 'Július', 'Augusztus', 'Szeptember', 'Október', 'November', 'December']
   const monthName = monthNames[month - 1]
@@ -83,19 +85,57 @@ export default function generateAttendancePdfHtml({
     const hasNoData = !day.arrival && !day.departure
     const isHoliday = day.isEmployeeHoliday
     const isSickLeave = day.holidayType === 'Betegszabadság'
-    const hoursDisplay = isHoliday 
-      ? (isSickLeave ? '<strong>BETEG SZABADSÁG</strong>' : '<strong>SZABADSÁG</strong>')
-      : (day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-')
     
-    // Replace lunch break with "-" if no data, keep date as is
-    const lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+    // Determine what to display based on mode
+    let arrivalDisplay: string
+    let departureDisplay: string
+    let lunchDisplay: string
+    let hoursDisplay: string
+    
+    if (mode === 'holiday') {
+      // Holiday mode: hide arrival/departure/lunch for holidays, show "SZABADSÁG" for hours
+      if (isHoliday) {
+        arrivalDisplay = '-'
+        departureDisplay = '-'
+        lunchDisplay = '-'
+        hoursDisplay = isSickLeave ? '<strong>BETEG SZABADSÁG</strong>' : '<strong>SZABADSÁG</strong>'
+      } else {
+        // Not a holiday: show normal data
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
+        lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+        hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
+      }
+    } else {
+      // Work mode: show all data even on holidays (if data exists)
+      if (isHoliday && day.hoursWorked > 0) {
+        // Holiday with work: show times and hours with badge
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
+        lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+        const holidayLabel = isSickLeave ? 'BETEG SZABADSÁG' : 'SZABADSÁG'
+        hoursDisplay = `${day.hoursWorked.toFixed(2)} óra <span style="font-size: 0.75em; color: #666; font-style: italic;">(${holidayLabel})</span>`
+      } else if (isHoliday && !day.arrival && !day.departure) {
+        // Holiday with no work: show "-" for times, "SZABADSÁG" for hours
+        arrivalDisplay = '-'
+        departureDisplay = '-'
+        lunchDisplay = '-'
+        hoursDisplay = isSickLeave ? '<strong>BETEG SZABADSÁG</strong>' : '<strong>SZABADSÁG</strong>'
+      } else {
+        // Normal day: show all data
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
+        lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+        hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
+      }
+    }
     
     return `
       <tr>
         <td>${formatDate(day.date, day.dayOfWeek)}</td>
-        <td>${formatTime(day.arrival)}</td>
+        <td>${arrivalDisplay}</td>
         <td>${lunchDisplay}</td>
-        <td>${formatTime(day.departure)}</td>
+        <td>${departureDisplay}</td>
         <td align="right">${hoursDisplay}</td>
       </tr>
     `
