@@ -238,12 +238,24 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
   const [employeeHolidays, setEmployeeHolidays] = useState<Array<{ id: string; date: string; type: string; name: string | null }>>([])
   
   // Fetch default location ID, attendance logs, and holidays on mount
+  // Optimized: All API calls run in parallel for faster loading
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true)
       try {
-        // Fetch first active location
-        const locationResponse = await fetch('/api/locations?active=true&limit=1')
+        // Calculate date range for the month
+        const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+        
+        // Fetch all data in parallel for faster loading
+        const [locationResponse, holidaysResponse, employeeHolidaysResponse, logsResponse] = await Promise.all([
+          fetch('/api/locations?active=true&limit=1'),
+          fetch(`/api/holidays?start_date=${startDate}&end_date=${endDate}`),
+          fetch(`/api/employees/${employeeId}/holidays?year=${year}&month=${month}`),
+          fetch(`/api/employees/${employeeId}/attendance?year=${year}&month=${month}`)
+        ])
+        
+        // Process location response
         if (locationResponse.ok) {
           const locations = await locationResponse.json()
           if (locations && locations.length > 0) {
@@ -251,12 +263,7 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
           }
         }
         
-        // Calculate date range for the month
-        const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0]
-        
-        // Fetch holidays for this month
-        const holidaysResponse = await fetch(`/api/holidays?start_date=${startDate}&end_date=${endDate}`)
+        // Process holidays response
         let activeHolidays: Array<{ start_date: string; end_date: string }> = []
         if (holidaysResponse.ok) {
           const holidaysData = await holidaysResponse.json()
@@ -264,16 +271,14 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
           setHolidays(activeHolidays)
         }
         
-        // Fetch employee holidays for this month
-        const employeeHolidaysResponse = await fetch(`/api/employees/${employeeId}/holidays?year=${year}&month=${month}`)
+        // Process employee holidays response
         let empHolidays: Array<{ id: string; date: string; type: string; name: string | null }> = []
         if (employeeHolidaysResponse.ok) {
           empHolidays = await employeeHolidaysResponse.json()
           setEmployeeHolidays(empHolidays)
         }
         
-        // Fetch attendance logs for this month
-        const logsResponse = await fetch(`/api/employees/${employeeId}/attendance?year=${year}&month=${month}`)
+        // Process attendance logs response
         if (logsResponse.ok) {
           const logs = await logsResponse.json()
           

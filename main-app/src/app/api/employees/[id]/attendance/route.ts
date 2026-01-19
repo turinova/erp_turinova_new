@@ -31,63 +31,41 @@ export async function GET(
     const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
     const endDate = new Date(year, month, 0).toISOString().split('T')[0]
 
-    // Fetch all attendance logs for this employee in this month
-    // Get the latest scan for each day and scan_type
+    // Use optimized view instead of raw table - eliminates JavaScript processing
     const { data, error } = await supabase
-      .from('attendance_logs')
-      .select('id, scan_time, scan_type, location_id, scan_date, manually_edited')
+      .from('attendance_daily_summary')
+      .select('scan_date, latest_arrival_time, latest_departure_time, arrival_id, departure_id, arrival_manually_edited, departure_manually_edited')
       .eq('employee_id', id)
       .gte('scan_date', startDate)
       .lte('scan_date', endDate)
-      .order('scan_time', { ascending: false })
+      .order('scan_date', { ascending: true })
 
     if (error) {
       console.error('Error fetching attendance logs:', error)
       return NextResponse.json({ error: 'Hiba történt a jelenléti adatok lekérdezése során' }, { status: 500 })
     }
 
-    // Group by date and scan_type, keeping only the latest scan for each
-    const logsByDate = new Map<string, { arrival: any | null, departure: any | null }>()
-    
-    if (data) {
-      for (const log of data) {
-        const dateKey = log.scan_date
-        if (!logsByDate.has(dateKey)) {
-          logsByDate.set(dateKey, { arrival: null, departure: null })
-        }
-        
-        const dayLogs = logsByDate.get(dateKey)!
-        const scanType = log.scan_type
-        
-        // Handle both 'arrival' and 'arrival_pin', 'departure' and 'departure_pin'
-        if ((scanType === 'arrival' || scanType === 'arrival_pin') && !dayLogs.arrival) {
-          dayLogs.arrival = log
-        } else if ((scanType === 'departure' || scanType === 'departure_pin') && !dayLogs.departure) {
-          dayLogs.departure = log
-        }
-      }
-    }
-
     // Helper function to format time in UTC (avoid timezone issues)
-    const formatTimeUTC = (isoString: string): string => {
+    const formatTimeUTC = (isoString: string | null): string | null => {
+      if (!isoString) return null
       const date = new Date(isoString)
       const hours = String(date.getUTCHours()).padStart(2, '0')
       const minutes = String(date.getUTCMinutes()).padStart(2, '0')
       return `${hours}:${minutes}`
     }
 
-    // Convert to array format
-    const result = Array.from(logsByDate.entries()).map(([date, logs]) => ({
-      date,
-      arrival: logs.arrival ? {
-        id: logs.arrival.id,
-        time: formatTimeUTC(logs.arrival.scan_time), // HH:MM format in UTC
-        manually_edited: logs.arrival.manually_edited || false
+    // Convert view data to response format (already grouped by date)
+    const result = (data || []).map((row) => ({
+      date: row.scan_date,
+      arrival: row.latest_arrival_time ? {
+        id: row.arrival_id,
+        time: formatTimeUTC(row.latest_arrival_time), // HH:MM format in UTC
+        manually_edited: row.arrival_manually_edited || false
       } : null,
-      departure: logs.departure ? {
-        id: logs.departure.id,
-        time: formatTimeUTC(logs.departure.scan_time), // HH:MM format in UTC
-        manually_edited: logs.departure.manually_edited || false
+      departure: row.latest_departure_time ? {
+        id: row.departure_id,
+        time: formatTimeUTC(row.latest_departure_time), // HH:MM format in UTC
+        manually_edited: row.departure_manually_edited || false
       } : null
     }))
 
