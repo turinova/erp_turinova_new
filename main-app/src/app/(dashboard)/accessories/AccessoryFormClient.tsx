@@ -258,16 +258,56 @@ export default function AccessoryFormClient({
     vat_amount: 0,
     gross_price: 0
   })
+  
+  // Track if we're editing from gross price to prevent circular updates
+  // This flag persists until user manually edits multiplier or base_price
+  const [isEditingGrossPrice, setIsEditingGrossPrice] = useState(false)
 
   // Initialize form data if editing
   useEffect(() => {
     if (initialData) {
       setFormData(initialData)
+      // Initialize calculated prices based on initial data
+      const selectedVat = vatRates.find(vat => vat.id === initialData.vat_id)
+      if (selectedVat && initialData.net_price > 0) {
+        const vatAmount = (initialData.net_price * selectedVat.kulcs) / 100
+        const grossPrice = initialData.net_price + vatAmount
+        setCalculatedPrices({
+          vat_amount: vatAmount,
+          gross_price: grossPrice
+        })
+      }
     }
-  }, [initialData])
+  }, [initialData, vatRates])
 
-  // Auto-calculate net_price when base_price or multiplier changes
+  // Auto-calculate net_price when base_price or multiplier changes (only if not editing from gross price)
   useEffect(() => {
+    if (isEditingGrossPrice) {
+      // If editing from gross price and base_price changes, recalculate multiplier
+      if (calculatedPrices.gross_price > 0 && formData.base_price > 0) {
+        const selectedVat = vatRates.find(vat => vat.id === formData.vat_id)
+        if (selectedVat) {
+          // Számlázz.hu pattern: Gross is already rounded, calculate VAT and net
+          const vatAmountPrecise = calculatedPrices.gross_price / (100 + selectedVat.kulcs) * selectedVat.kulcs
+          const vatAmount = Math.round(vatAmountPrecise) // Round VAT to integer
+          const netPrice = calculatedPrices.gross_price - vatAmount
+          const multiplier = netPrice / formData.base_price
+          
+          setFormData(prev => ({
+            ...prev,
+            net_price: netPrice,
+            multiplier: Math.round(multiplier * 100) / 100
+          }))
+          
+          setCalculatedPrices(prev => ({
+            ...prev,
+            vat_amount: vatAmount
+          }))
+        }
+      }
+      return // Skip forward calculation
+    }
+    
     const calculatedNetPrice = Math.round(formData.base_price * formData.multiplier)
     // Only update if the value actually changed to prevent infinite loops
     if (calculatedNetPrice !== formData.net_price) {
@@ -276,10 +316,12 @@ export default function AccessoryFormClient({
         net_price: calculatedNetPrice
       }))
     }
-  }, [formData.base_price, formData.multiplier, formData.net_price])
+  }, [formData.base_price, formData.multiplier, formData.net_price, isEditingGrossPrice, calculatedPrices.gross_price, formData.vat_id, vatRates])
 
-  // Calculate VAT and gross prices when net_price changes
+  // Calculate VAT and gross prices when net_price changes (forward calculation)
   useEffect(() => {
+    if (isEditingGrossPrice) return // Skip if editing from gross price
+    
     const selectedVat = vatRates.find(vat => vat.id === formData.vat_id)
     if (selectedVat && formData.net_price > 0) {
       const vatAmount = (formData.net_price * selectedVat.kulcs) / 100
@@ -307,7 +349,73 @@ export default function AccessoryFormClient({
         }
       })
     }
-  }, [formData.net_price, formData.vat_id, vatRates])
+  }, [formData.net_price, formData.vat_id, vatRates, isEditingGrossPrice])
+
+  // Reverse calculation: When gross_price is edited, calculate net_price and multiplier
+  // Follows Számlázz.hu rounding pattern: Round gross to integer first, then calculate VAT and net
+  const handleGrossPriceChange = (grossPrice: number) => {
+    setIsEditingGrossPrice(true) // Enter gross price editing mode
+    
+    const selectedVat = vatRates.find(vat => vat.id === formData.vat_id)
+    if (selectedVat && grossPrice > 0 && formData.base_price > 0) {
+      // Számlázz.hu pattern: Round gross to integer first
+      const roundedGrossPrice = Math.round(grossPrice)
+      
+      // Calculate VAT from gross: VAT = gross / (100 + VAT_rate) × VAT_rate
+      const vatAmountPrecise = roundedGrossPrice / (100 + selectedVat.kulcs) * selectedVat.kulcs
+      const vatAmount = Math.round(vatAmountPrecise) // Round VAT to integer
+      
+      // Calculate net: net = gross - VAT (both integers, result is integer)
+      const netPrice = roundedGrossPrice - vatAmount
+      
+      // Calculate multiplier from net_price and base_price
+      const multiplier = netPrice / formData.base_price
+      
+      // Update form data
+      setFormData(prev => ({
+        ...prev,
+        net_price: netPrice,
+        multiplier: Math.round(multiplier * 100) / 100 // Round to 2 decimals
+      }))
+      
+      // Update calculated prices (use rounded gross)
+      setCalculatedPrices({
+        vat_amount: vatAmount,
+        gross_price: roundedGrossPrice
+      })
+    } else if (grossPrice > 0) {
+      // If base_price is 0, just update gross_price and calculate net_price
+      const selectedVat = vatRates.find(vat => vat.id === formData.vat_id)
+      if (selectedVat) {
+        // Számlázz.hu pattern: Round gross to integer first
+        const roundedGrossPrice = Math.round(grossPrice)
+        
+        // Calculate VAT from gross: VAT = gross / (100 + VAT_rate) × VAT_rate
+        const vatAmountPrecise = roundedGrossPrice / (100 + selectedVat.kulcs) * selectedVat.kulcs
+        const vatAmount = Math.round(vatAmountPrecise) // Round VAT to integer
+        
+        // Calculate net: net = gross - VAT (both integers, result is integer)
+        const netPrice = roundedGrossPrice - vatAmount
+        
+        setFormData(prev => ({
+          ...prev,
+          net_price: netPrice
+        }))
+        
+        setCalculatedPrices({
+          vat_amount: vatAmount,
+          gross_price: roundedGrossPrice
+        })
+      }
+    } else {
+      // Reset if gross_price is 0
+      setCalculatedPrices({
+        vat_amount: 0,
+        gross_price: 0
+      })
+      setIsEditingGrossPrice(false) // Exit mode if gross_price is cleared
+    }
+  }
 
   // Normalize barcode input (fix keyboard layout issues from scanner)
   // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö', 'Z' -> 'Y'
@@ -634,7 +742,11 @@ export default function AccessoryFormClient({
                     label="Beszerzési ár (Ft)"
                     type="number"
                     value={formData.base_price}
-                    onChange={(e) => handleInputChange('base_price', parseFloat(e.target.value) || 0)}
+                    onChange={(e) => {
+                      handleInputChange('base_price', parseFloat(e.target.value) || 0)
+                      // If editing from gross price, keep gross price and recalculate multiplier
+                      // The useEffect will handle the recalculation
+                    }}
                     required
                     disabled={loading}
                     inputProps={{ min: 0, step: 1 }}
@@ -648,11 +760,14 @@ export default function AccessoryFormClient({
                     label="Árrés szorzó"
                     type="number"
                     value={formData.multiplier}
-                    onChange={(e) => handleInputChange('multiplier', parseFloat(e.target.value) || 1.38)}
+                    onChange={(e) => {
+                      handleInputChange('multiplier', parseFloat(e.target.value) || 1.38)
+                      setIsEditingGrossPrice(false) // Exit gross price mode when editing multiplier directly
+                    }}
                     required
                     disabled={loading}
                     inputProps={{ min: 1.0, max: 5.0, step: 0.01 }}
-                    helperText="1.00 - 5.00 közötti érték"
+                    helperText={isEditingGrossPrice ? "Szerkeszthető - módosítás esetén bruttó ár mód kikapcsol" : "1.00 - 5.00 közötti érték"}
                   />
                 </Grid>
 
@@ -682,7 +797,33 @@ export default function AccessoryFormClient({
                     <InputLabel>ÁFA</InputLabel>
                     <Select
                       value={formData.vat_id}
-                      onChange={(e) => handleInputChange('vat_id', e.target.value)}
+                      onChange={(e) => {
+                        handleInputChange('vat_id', e.target.value)
+                        // Recalculate if editing from gross price
+                        if (isEditingGrossPrice && calculatedPrices.gross_price > 0) {
+                          const newVat = vatRates.find(vat => vat.id === e.target.value)
+                          if (newVat) {
+                            // Számlázz.hu pattern: Gross is already rounded
+                            const vatAmountPrecise = calculatedPrices.gross_price / (100 + newVat.kulcs) * newVat.kulcs
+                            const vatAmount = Math.round(vatAmountPrecise) // Round VAT to integer
+                            const netPrice = calculatedPrices.gross_price - vatAmount
+                            const multiplier = formData.base_price > 0 
+                              ? netPrice / formData.base_price 
+                              : formData.multiplier
+                            
+                            setFormData(prev => ({
+                              ...prev,
+                              net_price: netPrice,
+                              multiplier: formData.base_price > 0 ? Math.round(multiplier * 100) / 100 : prev.multiplier
+                            }))
+                            
+                            setCalculatedPrices(prev => ({
+                              ...prev,
+                              vat_amount: vatAmount
+                            }))
+                          }
+                        }
+                      }}
                       label="ÁFA"
                     >
                       {vatRates.map((vat) => (
@@ -692,6 +833,39 @@ export default function AccessoryFormClient({
                       ))}
                     </Select>
                   </FormControl>
+                </Grid>
+
+                <Grid item xs={12} md={4}>
+                  <TextField
+                    fullWidth
+                    label="Bruttó ár (Ft)"
+                    type="number"
+                    value={calculatedPrices.gross_price}
+                    onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
+                    disabled={loading}
+                    inputProps={{ min: 0, step: 1 }}
+                    helperText="Szerkeszthető - automatikusan számítja a szorzót (egész szám, Számlázz.hu kompatibilis)"
+                    sx={{
+                      '& .MuiOutlinedInput-root': {
+                        '& fieldset': {
+                          borderColor: 'primary.main',
+                          borderWidth: 2
+                        },
+                        '&:hover fieldset': {
+                          borderColor: 'primary.dark',
+                          borderWidth: 2
+                        },
+                        '&.Mui-focused fieldset': {
+                          borderColor: 'primary.main',
+                          borderWidth: 2
+                        }
+                      },
+                      '& .MuiInputLabel-root': {
+                        fontWeight: 600,
+                        color: 'primary.main'
+                      }
+                    }}
+                  />
                 </Grid>
 
                 <Grid item xs={12} md={4}>
