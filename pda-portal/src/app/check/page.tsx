@@ -29,6 +29,7 @@ export default function CheckPage() {
   const [isScanning, setIsScanning] = useState(false)
   const [accessory, setAccessory] = useState<AccessoryData | null>(null)
   const [grossPrice, setGrossPrice] = useState<number>(0)
+  const [originalGrossPrice, setOriginalGrossPrice] = useState<number>(0)
   const [calculatedMultiplier, setCalculatedMultiplier] = useState<number>(0)
   const [isSaving, setIsSaving] = useState(false)
   const [isEditingGrossPrice, setIsEditingGrossPrice] = useState(false)
@@ -108,12 +109,18 @@ export default function CheckPage() {
 
       const accessoryData: AccessoryData = await accessoryResponse.json()
 
-      // Calculate current gross price
+      // Calculate current gross price using Számlázz.hu pattern
       const vatPercent = accessoryData.vat?.kulcs || 0
-      const currentGrossPrice = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
+      // Számlázz.hu pattern: Round net to integer first
+      const roundedNetPrice = Math.round(accessoryData.net_price)
+      // Calculate VAT: round(net * VAT% / 100)
+      const vatAmount = Math.round(roundedNetPrice * vatPercent / 100)
+      // Gross: net + VAT (both integers)
+      const currentGrossPrice = roundedNetPrice + vatAmount
 
       setAccessory(accessoryData)
-      setGrossPrice(Math.round(currentGrossPrice))
+      setGrossPrice(currentGrossPrice)
+      setOriginalGrossPrice(currentGrossPrice)
       setCalculatedMultiplier(accessoryData.multiplier)
       setBarcodeInput('')
     } catch (error) {
@@ -215,6 +222,7 @@ export default function CheckPage() {
       setBarcodeInput('')
       setAccessory(null)
       setGrossPrice(0)
+      setOriginalGrossPrice(0)
       setCalculatedMultiplier(0)
       
       setTimeout(() => {
@@ -404,6 +412,7 @@ export default function CheckPage() {
                 setBarcodeInput('')
                 setAccessory(null)
                 setGrossPrice(0)
+                setOriginalGrossPrice(0)
                 setCalculatedMultiplier(0)
                 setTimeout(() => {
                   if (barcodeInputRef.current) {
@@ -418,7 +427,7 @@ export default function CheckPage() {
             </button>
             <button
               onClick={handleSave}
-              disabled={isSaving || grossPrice === 0 || calculatedMultiplier === accessory.multiplier}
+              disabled={isSaving || grossPrice === 0 || grossPrice === originalGrossPrice}
               className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold active:bg-blue-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSaving ? 'Mentés...' : 'Mentés'}
