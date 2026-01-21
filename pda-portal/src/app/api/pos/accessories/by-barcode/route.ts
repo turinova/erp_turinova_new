@@ -65,11 +65,17 @@ export async function GET(request: NextRequest) {
 
     if (stockError) {
       console.error('Error fetching stock:', stockError)
-      // Still return the accessory even if stock check fails
+      // Only return items that have stock records - return 404 if stock check fails
+      return NextResponse.json({ error: 'Accessory not found in stock' }, { status: 404 })
+    }
+
+    // Only return items that have at least one stock record (quantity doesn't matter, just that a record exists)
+    if (!stockData || stockData.length === 0) {
+      return NextResponse.json({ error: 'Accessory not found in stock' }, { status: 404 })
     }
 
     // Sum quantity_on_hand across all warehouses
-    const quantity_on_hand = (stockData || []).reduce((sum: number, stock: any) => {
+    const quantity_on_hand = stockData.reduce((sum: number, stock: any) => {
       return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
     }, 0)
 
