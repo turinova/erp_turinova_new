@@ -14,8 +14,8 @@ export async function middleware(req: NextRequest) {
     return response
   }
   
-  // Allow login page
-  if (req.nextUrl.pathname === '/login') {
+  // Allow login page and check page (ellenörzés)
+  if (req.nextUrl.pathname === '/login' || req.nextUrl.pathname === '/check') {
     return response
   }
   

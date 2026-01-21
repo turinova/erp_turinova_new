@@ -99,6 +99,17 @@ export default function PDALoginPage() {
           }}
         />
       </div>
+
+      {/* Ellenörzés button */}
+      <div className="mb-6 w-full max-w-xs">
+        <button
+          onClick={() => router.push('/check')}
+          disabled={isLoading}
+          className="w-full px-6 py-3 bg-green-600 text-white rounded-lg font-semibold text-lg shadow-md active:bg-green-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+        >
+          Ellenőrzés
+        </button>
+      </div>
       
       {/* PIN Display */}
       <div className="mb-8">
