@@ -755,7 +755,8 @@ export default function POSPage() {
       existingItem = cartItems.find(item => item.product_type === 'linear_material' && item.linear_material_id === product.linear_material_id)
     }
 
-    const roundedPrice = roundUpToNearest10(product.gross_price)
+    // Round to nearest integer (not nearest 10) to match main app display
+    const roundedPrice = Math.round(product.gross_price)
     
     if (existingItem) {
       // Increment quantity
@@ -1440,7 +1441,8 @@ export default function POSPage() {
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {searchResults.map((product) => {
-                  const roundedPrice = roundUpToNearest10(product.gross_price)
+                  // Display actual price rounded to nearest integer (not nearest 10) to match main app
+                  const displayPrice = Math.round(product.gross_price)
                   const getTypeLabel = () => {
                     switch (product.product_type) {
                       case 'accessory':
@@ -1499,7 +1501,7 @@ export default function POSPage() {
                         </div>
                         <div className="text-right flex-shrink min-w-0 max-w-[120px]">
                           <p className="font-semibold text-gray-900 text-base truncate">
-                            {roundedPrice.toLocaleString('hu-HU')} {product.currency_name}
+                            {displayPrice.toLocaleString('hu-HU')} {product.currency_name}
                           </p>
                         </div>
                       </div>
