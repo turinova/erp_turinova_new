@@ -32,28 +32,14 @@ export default function CheckPage() {
   const [calculatedMultiplier, setCalculatedMultiplier] = useState<number>(0)
   const [isSaving, setIsSaving] = useState(false)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
-  const visibleBarcodeInputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Auto-focus barcode input - always keep it focused when not scanning
   useEffect(() => {
     const focusInput = () => {
       if (isScanning) return
-      
-      if (accessory) {
-        // When accessory is loaded, focus hidden input for scanning
-        if (barcodeInputRef.current) {
-          barcodeInputRef.current.focus()
-        }
-      } else {
-        // When no accessory, focus visible input
-        if (visibleBarcodeInputRef.current) {
-          visibleBarcodeInputRef.current.focus()
-          visibleBarcodeInputRef.current.select()
-        } else if (barcodeInputRef.current) {
-          // Fallback to hidden input
-          barcodeInputRef.current.focus()
-        }
+      if (barcodeInputRef.current) {
+        barcodeInputRef.current.focus()
       }
     }
 
@@ -80,7 +66,7 @@ export default function CheckPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [isScanning, accessory])
+  }, [isScanning])
 
   // Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
@@ -228,9 +214,7 @@ export default function CheckPage() {
       setCalculatedMultiplier(0)
       
       setTimeout(() => {
-        if (visibleBarcodeInputRef.current) {
-          visibleBarcodeInputRef.current.focus()
-        } else if (barcodeInputRef.current) {
+        if (barcodeInputRef.current) {
           barcodeInputRef.current.focus()
         }
       }, 300)
@@ -249,20 +233,8 @@ export default function CheckPage() {
   })() : 0
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 p-4 pb-safe" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-      {/* Header with back button */}
-      <div className="mb-4 flex items-center justify-between">
-        <button
-          onClick={() => router.push('/login')}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold active:bg-gray-300 active:scale-95 transition-all"
-        >
-          ← Vissza
-        </button>
-        <h1 className="text-xl font-bold text-gray-900">Ellenőrzés</h1>
-        <div className="w-20"></div> {/* Spacer for centering */}
-      </div>
-
-      {/* Hidden barcode input - always focused when accessory is loaded for continuous scanning */}
+    <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
+      {/* Hidden barcode input - always focused for scanning */}
       <input
         ref={barcodeInputRef}
         type="text"
@@ -283,8 +255,8 @@ export default function CheckPage() {
           }
         }}
         onBlur={(e) => {
-          // Re-focus immediately if accessory is loaded (for continuous scanning)
-          if (accessory && !isScanning) {
+          // Re-focus immediately if not scanning
+          if (!isScanning) {
             setTimeout(() => e.target.focus(), 0)
           }
         }}
@@ -294,115 +266,102 @@ export default function CheckPage() {
         autoComplete="off"
       />
 
-      {/* Barcode input display (when no accessory loaded) */}
-      {!accessory && (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="w-full max-w-md">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Vonalkód beolvasása
-            </label>
-            <input
-              ref={visibleBarcodeInputRef}
-              type="text"
-              value={barcodeInput}
-              onChange={(e) => handleBarcodeInputChange(e.target.value)}
-              placeholder="Vonalkód..."
-              disabled={isScanning}
-              autoFocus
-              className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              onBlur={(e) => {
-                // Re-focus immediately if not scanning and no accessory
-                if (!isScanning && !accessory) {
-                  setTimeout(() => e.target.focus(), 0)
-                }
-              }}
-            />
-            {isScanning && (
-              <div className="mt-4 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="mt-2 text-gray-600">Keresés...</p>
+      {/* Fixed Top Section */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200">
+        <div className="p-3 flex items-center justify-between">
+          <button
+            onClick={() => router.push('/login')}
+            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold active:bg-gray-300 active:scale-95 transition-all"
+          >
+            ← Vissza
+          </button>
+          <h1 className="text-lg font-bold text-gray-900">Ellenőrzés</h1>
+          <div className="w-20"></div> {/* Spacer for centering */}
+        </div>
+      </div>
+
+      {/* Scrollable Content Section */}
+      <div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
+        {!accessory ? (
+          <div className="flex flex-col items-center justify-center h-full p-4">
+            {isScanning ? (
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600 text-lg">Keresés...</p>
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-gray-500 text-lg">Vonalkód beolvasása...</p>
+                <p className="text-gray-400 text-sm mt-2">Olvassa be a kellék vonalkódját</p>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Accessory details (when loaded) */}
-      {accessory && (
-        <div className="flex-1 flex flex-col">
-          <div className="bg-white rounded-lg shadow-md p-6 mb-4">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Kellék adatok</h2>
-            
-            <div className="space-y-4">
-              {/* Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Név
-                </label>
-                <p className="text-base text-gray-900">{accessory.name}</p>
-              </div>
-
-              {/* SKU */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  SKU
-                </label>
-                <p className="text-base text-gray-900">{accessory.sku || '-'}</p>
-              </div>
-
-              {/* Net price (read-only) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nettó ár
-                </label>
-                <p className="text-base text-gray-900">
-                  {accessory.net_price.toLocaleString('hu-HU')} {accessory.currencies?.name || 'Ft'}
-                </p>
-              </div>
-
-              {/* Multiplier (read-only) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Szorzó
-                </label>
-                <p className="text-base text-gray-900">{accessory.multiplier.toFixed(2)}</p>
-              </div>
-
-              {/* Gross price (editable) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Bruttó ár (Ft) <span className="text-red-600">*</span>
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={grossPrice || ''}
-                  onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
-                  className="w-full px-4 py-3 text-lg border-2 border-blue-500 rounded-lg focus:border-blue-600 focus:outline-none font-semibold"
-                  style={{ borderWidth: '3px' }}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Szerkeszthető - a szorzó automatikusan frissül
-                </p>
-              </div>
-
-              {/* Calculated multiplier preview */}
-              {grossPrice > 0 && calculatedMultiplier !== accessory.multiplier && (
-                <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3">
-                  <p className="text-sm font-medium text-blue-900">
-                    Új szorzó: {calculatedMultiplier.toFixed(2)}
-                  </p>
-                  <p className="text-xs text-blue-700 mt-1">
-                    Jelenlegi: {accessory.multiplier.toFixed(2)} → Új: {calculatedMultiplier.toFixed(2)}
-                  </p>
+        ) : (
+          <div className="p-3">
+            {/* Compact Accessory Details */}
+            <div className="bg-white rounded-lg border-2 border-gray-200 p-4 mb-3">
+              <h2 className="text-base font-semibold text-gray-900 mb-3">Kellék adatok</h2>
+              
+              <div className="space-y-2.5">
+                {/* Name and SKU in one row */}
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 break-words">{accessory.name}</p>
+                  {accessory.sku && (
+                    <p className="text-xs text-gray-500 mt-0.5">SKU: {accessory.sku}</p>
+                  )}
                 </div>
-              )}
+
+                {/* Net price and Multiplier in compact grid */}
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+                  <div>
+                    <p className="text-xs text-gray-600 mb-0.5">Nettó ár</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {accessory.net_price.toLocaleString('hu-HU')} {accessory.currencies?.name || 'Ft'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600 mb-0.5">Szorzó</p>
+                    <p className="text-sm font-semibold text-gray-900">{accessory.multiplier.toFixed(2)}</p>
+                  </div>
+                </div>
+
+                {/* Gross price (editable) */}
+                <div className="pt-2 border-t border-gray-100">
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Bruttó ár (Ft) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={grossPrice || ''}
+                    onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2.5 text-base border-3 border-blue-500 rounded-lg focus:border-blue-600 focus:outline-none font-semibold"
+                    style={{ borderWidth: '3px' }}
+                  />
+                </div>
+
+                {/* Calculated multiplier preview - compact */}
+                {grossPrice > 0 && calculatedMultiplier !== accessory.multiplier && (
+                  <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-2.5 mt-2">
+                    <p className="text-xs font-medium text-blue-900">
+                      Új szorzó: {calculatedMultiplier.toFixed(2)}
+                    </p>
+                    <p className="text-xs text-blue-700 mt-0.5">
+                      {accessory.multiplier.toFixed(2)} → {calculatedMultiplier.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        )}
+      </div>
 
-          {/* Action buttons - fixed at bottom with safe area padding */}
-          <div className="flex gap-3 mt-auto pt-4" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+      {/* Fixed Bottom Section - Buttons */}
+      {accessory && (
+        <div className="bg-white border-t border-gray-200 shadow-lg flex-shrink-0">
+          <div className="p-4 flex gap-3">
             <button
               onClick={() => {
                 setBarcodeInput('')
@@ -410,9 +369,7 @@ export default function CheckPage() {
                 setGrossPrice(0)
                 setCalculatedMultiplier(0)
                 setTimeout(() => {
-                  if (visibleBarcodeInputRef.current) {
-                    visibleBarcodeInputRef.current.focus()
-                  } else if (barcodeInputRef.current) {
+                  if (barcodeInputRef.current) {
                     barcodeInputRef.current.focus()
                   }
                 }, 100)
