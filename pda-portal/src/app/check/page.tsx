@@ -109,14 +109,11 @@ export default function CheckPage() {
 
       const accessoryData: AccessoryData = await accessoryResponse.json()
 
-      // Calculate current gross price using Számlázz.hu pattern
+      // Calculate current gross price to match main app's display calculation
       const vatPercent = accessoryData.vat?.kulcs || 0
-      // Számlázz.hu pattern: Round net to integer first
-      const roundedNetPrice = Math.round(accessoryData.net_price)
-      // Calculate VAT: round(net * VAT% / 100)
-      const vatAmount = Math.round(roundedNetPrice * vatPercent / 100)
-      // Gross: net + VAT (both integers)
-      const currentGrossPrice = roundedNetPrice + vatAmount
+      // Main app forward calculation: net + (net * VAT% / 100), then round for display
+      const vatAmount = (accessoryData.net_price * vatPercent) / 100
+      const currentGrossPrice = Math.round(accessoryData.net_price + vatAmount)
 
       setAccessory(accessoryData)
       setGrossPrice(currentGrossPrice)
