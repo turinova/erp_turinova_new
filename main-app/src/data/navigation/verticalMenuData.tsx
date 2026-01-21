@@ -25,6 +25,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {
+    label: 'Munki',
+    href: '/worktop-config',
+    icon: 'ri-window-line',
+    iconColor: '#8E44AD' // Grouped with Opti tools
+  },
+  {
     label: 'Rendelést felvétel',
     href: '/shoporder',
     icon: 'ri-store-line',

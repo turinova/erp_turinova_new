@@ -3,6 +3,7 @@
   "short_name": "PDA",
   "description": "Turinova PDA Terminal",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1976d2",
@@ -17,6 +18,12 @@
     {
       "src": "/images/turinova-logo.png",
       "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/turinova-logo.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     }
