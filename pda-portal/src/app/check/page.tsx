@@ -31,13 +31,15 @@ export default function CheckPage() {
   const [grossPrice, setGrossPrice] = useState<number>(0)
   const [calculatedMultiplier, setCalculatedMultiplier] = useState<number>(0)
   const [isSaving, setIsSaving] = useState(false)
+  const [isEditingGrossPrice, setIsEditingGrossPrice] = useState(false)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const grossPriceInputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Auto-focus barcode input - always keep it focused when not scanning
+  // Auto-focus barcode input - always keep it focused when not scanning and not editing
   useEffect(() => {
     const focusInput = () => {
-      if (isScanning) return
+      if (isScanning || isEditingGrossPrice) return
       if (barcodeInputRef.current) {
         barcodeInputRef.current.focus()
       }
@@ -48,14 +50,16 @@ export default function CheckPage() {
     
     // Re-focus on visibility change (when user returns to tab/app)
     const handleVisibilityChange = () => {
-      if (!document.hidden) {
+      if (!document.hidden && !isEditingGrossPrice) {
         setTimeout(focusInput, 100)
       }
     }
     
     // Re-focus on window focus
     const handleWindowFocus = () => {
-      setTimeout(focusInput, 100)
+      if (!isEditingGrossPrice) {
+        setTimeout(focusInput, 100)
+      }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -66,7 +70,7 @@ export default function CheckPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('focus', handleWindowFocus)
     }
-  }, [isScanning])
+  }, [isScanning, isEditingGrossPrice])
 
   // Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
@@ -255,9 +259,26 @@ export default function CheckPage() {
           }
         }}
         onBlur={(e) => {
-          // Re-focus immediately if not scanning
-          if (!isScanning) {
-            setTimeout(() => e.target.focus(), 0)
+          // Don't refocus if user is editing gross price or if focus moved to another input
+          const activeElement = document.activeElement
+          const isAnotherInput = activeElement && (
+            activeElement.tagName === 'INPUT' ||
+            activeElement.tagName === 'TEXTAREA'
+          ) && activeElement !== barcodeInputRef.current
+
+          if (!isScanning && !isEditingGrossPrice && !isAnotherInput) {
+            setTimeout(() => {
+              // Double check before refocusing
+              const currentActive = document.activeElement
+              const stillAnotherInput = currentActive && (
+                currentActive.tagName === 'INPUT' ||
+                currentActive.tagName === 'TEXTAREA'
+              ) && currentActive !== barcodeInputRef.current
+              
+              if (barcodeInputRef.current && !isScanning && !isEditingGrossPrice && !stillAnotherInput) {
+                barcodeInputRef.current.focus()
+              }
+            }, 10)
           }
         }}
         disabled={isScanning}
@@ -331,11 +352,27 @@ export default function CheckPage() {
                     Bruttó ár (Ft) <span className="text-red-600">*</span>
                   </label>
                   <input
+                    ref={grossPriceInputRef}
                     type="number"
                     min="0"
                     step="1"
                     value={grossPrice || ''}
                     onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
+                    onFocus={() => setIsEditingGrossPrice(true)}
+                    onBlur={() => {
+                      // Delay to allow other interactions
+                      setTimeout(() => {
+                        setIsEditingGrossPrice(false)
+                        // Refocus barcode input after editing is done
+                        if (barcodeInputRef.current && !isScanning) {
+                          setTimeout(() => {
+                            if (barcodeInputRef.current && document.activeElement !== grossPriceInputRef.current) {
+                              barcodeInputRef.current.focus()
+                            }
+                          }, 100)
+                        }
+                      }, 200)
+                    }}
                     className="w-full px-3 py-2.5 text-base border-3 border-blue-500 rounded-lg focus:border-blue-600 focus:outline-none font-semibold"
                     style={{ borderWidth: '3px' }}
                   />
