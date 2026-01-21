@@ -32,19 +32,54 @@ export default function CheckPage() {
   const [calculatedMultiplier, setCalculatedMultiplier] = useState<number>(0)
   const [isSaving, setIsSaving] = useState(false)
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const visibleBarcodeInputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Auto-focus barcode input
+  // Auto-focus barcode input - always keep it focused when not scanning
   useEffect(() => {
     const focusInput = () => {
-      if (barcodeInputRef.current && !isScanning && !accessory) {
-        barcodeInputRef.current.focus()
-        barcodeInputRef.current.select()
+      if (isScanning) return
+      
+      if (accessory) {
+        // When accessory is loaded, focus hidden input for scanning
+        if (barcodeInputRef.current) {
+          barcodeInputRef.current.focus()
+        }
+      } else {
+        // When no accessory, focus visible input
+        if (visibleBarcodeInputRef.current) {
+          visibleBarcodeInputRef.current.focus()
+          visibleBarcodeInputRef.current.select()
+        } else if (barcodeInputRef.current) {
+          // Fallback to hidden input
+          barcodeInputRef.current.focus()
+        }
       }
     }
 
-    const timer = setTimeout(focusInput, 300)
-    return () => clearTimeout(timer)
+    // Initial focus
+    const timer = setTimeout(focusInput, 100)
+    
+    // Re-focus on visibility change (when user returns to tab/app)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        setTimeout(focusInput, 100)
+      }
+    }
+    
+    // Re-focus on window focus
+    const handleWindowFocus = () => {
+      setTimeout(focusInput, 100)
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleWindowFocus)
+    
+    return () => {
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleWindowFocus)
+    }
   }, [isScanning, accessory])
 
   // Handle barcode scan
@@ -193,7 +228,9 @@ export default function CheckPage() {
       setCalculatedMultiplier(0)
       
       setTimeout(() => {
-        if (barcodeInputRef.current) {
+        if (visibleBarcodeInputRef.current) {
+          visibleBarcodeInputRef.current.focus()
+        } else if (barcodeInputRef.current) {
           barcodeInputRef.current.focus()
         }
       }, 300)
@@ -212,7 +249,7 @@ export default function CheckPage() {
   })() : 0
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 p-4">
+    <div className="min-h-screen flex flex-col bg-gray-50 p-4 pb-safe" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
       {/* Header with back button */}
       <div className="mb-4 flex items-center justify-between">
         <button
@@ -225,7 +262,7 @@ export default function CheckPage() {
         <div className="w-20"></div> {/* Spacer for centering */}
       </div>
 
-      {/* Hidden barcode input */}
+      {/* Hidden barcode input - always focused when accessory is loaded for continuous scanning */}
       <input
         ref={barcodeInputRef}
         type="text"
@@ -245,7 +282,13 @@ export default function CheckPage() {
             }
           }
         }}
-        disabled={isScanning || !!accessory}
+        onBlur={(e) => {
+          // Re-focus immediately if accessory is loaded (for continuous scanning)
+          if (accessory && !isScanning) {
+            setTimeout(() => e.target.focus(), 0)
+          }
+        }}
+        disabled={isScanning}
         className="absolute left-[-9999px] w-px h-px opacity-0 pointer-events-none"
         autoFocus={false}
         autoComplete="off"
@@ -259,12 +302,20 @@ export default function CheckPage() {
               Vonalkód beolvasása
             </label>
             <input
+              ref={visibleBarcodeInputRef}
               type="text"
               value={barcodeInput}
               onChange={(e) => handleBarcodeInputChange(e.target.value)}
               placeholder="Vonalkód..."
               disabled={isScanning}
+              autoFocus
               className="w-full px-4 py-3 text-lg border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              onBlur={(e) => {
+                // Re-focus immediately if not scanning and no accessory
+                if (!isScanning && !accessory) {
+                  setTimeout(() => e.target.focus(), 0)
+                }
+              }}
             />
             {isScanning && (
               <div className="mt-4 text-center">
@@ -350,8 +401,8 @@ export default function CheckPage() {
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-3">
+          {/* Action buttons - fixed at bottom with safe area padding */}
+          <div className="flex gap-3 mt-auto pt-4" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
             <button
               onClick={() => {
                 setBarcodeInput('')
@@ -359,7 +410,9 @@ export default function CheckPage() {
                 setGrossPrice(0)
                 setCalculatedMultiplier(0)
                 setTimeout(() => {
-                  if (barcodeInputRef.current) {
+                  if (visibleBarcodeInputRef.current) {
+                    visibleBarcodeInputRef.current.focus()
+                  } else if (barcodeInputRef.current) {
                     barcodeInputRef.current.focus()
                   }
                 }, 100)
