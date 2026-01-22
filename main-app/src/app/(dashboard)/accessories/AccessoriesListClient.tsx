@@ -48,6 +48,31 @@ interface AccessoriesListClientProps {
   pageSize: number
 }
 
+// Hungarian rounding rules for cash payments
+// Based on: https://www.billingo.hu/tudastar/olvas/kerekites-szabalyai
+// - 0, 1, 2 forint → round down to nearest 0 (0, 10, 20, 30, etc.)
+// - 3, 4 forint → round up to nearest 5 (5, 15, 25, 35, etc.)
+// - 5, 6, 7 forint → round down to nearest 5 (5, 15, 25, 35, etc.)
+// - 8, 9 forint → round up to nearest 0 (0, 10, 20, 30, etc.)
+const hungarianRound = (value: number): number => {
+  const lastDigit = Math.floor(value) % 10
+  
+  if (lastDigit === 0 || lastDigit === 1 || lastDigit === 2) {
+    // Round down to nearest 0 (0, 10, 20, 30, etc.)
+    return Math.floor(value / 10) * 10
+  } else if (lastDigit === 3 || lastDigit === 4) {
+    // Round up to nearest 5 (5, 15, 25, 35, etc.)
+    return Math.ceil(value / 5) * 5
+  } else if (lastDigit === 5 || lastDigit === 6 || lastDigit === 7) {
+    // Round down to nearest 5 (5, 15, 25, 35, etc.)
+    return Math.floor(value / 5) * 5
+  } else {
+    // lastDigit === 8 || lastDigit === 9
+    // Round up to nearest 0 (0, 10, 20, 30, etc.)
+    return Math.ceil(value / 10) * 10
+  }
+}
+
 export default function AccessoriesListClient({ 
   initialAccessories, 
   totalCount, 
@@ -363,16 +388,16 @@ export default function AccessoriesListClient({
       setAccessoryToPrint(fullAccessory)
       setEditableProductName(fullAccessory.name)
       
-      // Initialize editable selling price with gross_price from API, rounded to nearest 10
+      // Initialize editable selling price with gross_price from API, using Hungarian rounding rules
       const calculatedPrice = fullAccessory.gross_price !== undefined && fullAccessory.gross_price !== null
-        ? Math.round(fullAccessory.gross_price / 10) * 10
+        ? hungarianRound(fullAccessory.gross_price)
         : (() => {
             // Fallback calculation if gross_price not available
             const basePrice = fullAccessory.base_price || 0
             const multiplier = parseFloat(String(fullAccessory.multiplier)) || 1.38
             const vatPercent = fullAccessory.vat_percent || 0
             const price = basePrice * multiplier * (1 + vatPercent / 100)
-            return Math.round(price / 10) * 10
+            return hungarianRound(price)
           })()
       setEditableSellingPrice(calculatedPrice)
       
@@ -404,13 +429,13 @@ export default function AccessoriesListClient({
     }
   }
 
-  // Calculate current selling price: use gross_price from API, rounded to nearest 10
+  // Calculate current selling price: use gross_price from API, using Hungarian rounding rules
   const currentSellingPrice = useMemo(() => {
     if (!accessoryToPrint) return null
     
-    // Use gross_price from API if available, rounded to nearest 10
+    // Use gross_price from API if available, using Hungarian rounding rules
     if (accessoryToPrint.gross_price !== undefined && accessoryToPrint.gross_price !== null) {
-      return Math.round(accessoryToPrint.gross_price / 10) * 10
+      return hungarianRound(accessoryToPrint.gross_price)
     }
     
     // Fallback to calculation if gross_price not available
@@ -421,8 +446,8 @@ export default function AccessoriesListClient({
     // Calculate: base_price * multiplier * (1 + vat_percent/100)
     const price = basePrice * multiplier * (1 + vatPercent / 100)
     
-    // Round to nearest 10
-    return Math.round(price / 10) * 10
+    // Use Hungarian rounding rules
+    return hungarianRound(price)
   }, [accessoryToPrint])
 
   // Label component for printing - Supports 33mm x 25mm and 64mm x 39mm sizes
