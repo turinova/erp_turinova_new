@@ -135,7 +135,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         sku: sku.trim(),
         barcode: barcode ? barcode.trim() : null,
         base_price: Math.round(base_price),
-        multiplier: parseFloat(multiplier.toFixed(2)),
+        multiplier: parseFloat(multiplier.toFixed(3)),
         net_price: net_price,
         image_url: image_url || null,
         vat_id,

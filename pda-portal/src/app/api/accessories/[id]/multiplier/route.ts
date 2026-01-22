@@ -57,7 +57,7 @@ export async function PATCH(
     const { data, error } = await supabaseAdmin
       .from('accessories')
       .update({
-        multiplier: parseFloat(multiplier.toFixed(2)),
+        multiplier: parseFloat(multiplier.toFixed(3)),
         net_price: net_price,
         updated_at: new Date().toISOString()
       })

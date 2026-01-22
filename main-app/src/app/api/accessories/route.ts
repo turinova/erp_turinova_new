@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         sku: sku.trim(),
         barcode: barcode ? barcode.trim() : null,
         base_price: Math.round(base_price), // Convert to integer
-        multiplier: parseFloat(multiplier.toFixed(2)), // Round to 2 decimal places
+        multiplier: parseFloat(multiplier.toFixed(3)), // Round to 3 decimal places
         net_price: Math.round(net_price), // Convert to integer
         image_url: image_url || null,
         vat_id,

@@ -165,7 +165,7 @@ export default function CheckPage() {
       const multiplier = netPrice / accessory.base_price
 
       setGrossPrice(roundedGrossPrice)
-      setCalculatedMultiplier(Math.round(multiplier * 100) / 100) // Round to 2 decimals
+      setCalculatedMultiplier(Math.round(multiplier * 1000) / 1000) // Round to 3 decimals
     } else if (grossPriceValue > 0) {
       // If base_price is 0 or no VAT, just update gross price
       setGrossPrice(Math.round(grossPriceValue))
@@ -347,7 +347,7 @@ export default function CheckPage() {
                   </div>
                   <div>
                     <p className="text-xs text-gray-600 mb-0.5">Szorzó</p>
-                    <p className="text-sm font-semibold text-gray-900">{accessory.multiplier.toFixed(2)}</p>
+                    <p className="text-sm font-semibold text-gray-900">{parseFloat(accessory.multiplier.toString()).toFixed(3)}</p>
                   </div>
                 </div>
 
@@ -387,10 +387,10 @@ export default function CheckPage() {
                 {grossPrice > 0 && calculatedMultiplier !== accessory.multiplier && (
                   <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-2.5 mt-2">
                     <p className="text-xs font-medium text-blue-900">
-                      Új szorzó: {calculatedMultiplier.toFixed(2)}
+                      Új szorzó: {calculatedMultiplier.toFixed(3)}
                     </p>
                     <p className="text-xs text-blue-700 mt-0.5">
-                      {accessory.multiplier.toFixed(2)} → {calculatedMultiplier.toFixed(2)}
+                      {accessory.multiplier.toFixed(3)} → {calculatedMultiplier.toFixed(3)}
                     </p>
                   </div>
                 )}

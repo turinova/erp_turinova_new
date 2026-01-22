@@ -791,7 +791,7 @@ export default function LinearMaterialEditClient({
                               <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
                                 <Typography variant="body2" color="error.dark">
                                   {h.old_multiplier !== null && h.old_multiplier !== undefined 
-                                    ? h.old_multiplier.toFixed(2)
+                                    ? h.old_multiplier.toFixed(3)
                                     : '-'
                                   }
                                 </Typography>
@@ -822,7 +822,7 @@ export default function LinearMaterialEditClient({
                               <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
                                 <Typography variant="body2" color="success.dark">
                                   {h.new_multiplier !== null && h.new_multiplier !== undefined 
-                                    ? h.new_multiplier.toFixed(2)
+                                    ? h.new_multiplier.toFixed(3)
                                     : '-'
                                   }
                                 </Typography>

@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       .from(tableName)
       .update({
         base_price: Math.round(new_base_price),
-        multiplier: parseFloat(new_multiplier.toFixed(2)),
+        multiplier: parseFloat(new_multiplier.toFixed(3)),
         updated_at: new Date().toISOString()
       })
       .eq('id', product_id)
@@ -116,21 +116,21 @@ export async function POST(request: NextRequest) {
 
     // Track price history if base_price or multiplier changed
     const basePriceChanged = currentData.base_price !== Math.round(new_base_price)
-    const multiplierChanged = currentData.multiplier !== parseFloat(new_multiplier.toFixed(2))
+    const multiplierChanged = currentData.multiplier !== parseFloat(new_multiplier.toFixed(3))
     
     if (basePriceChanged || multiplierChanged) {
       console.log(`Price changed - base_price: ${currentData.base_price} -> ${new_base_price}, multiplier: ${currentData.multiplier} -> ${new_multiplier}, logging to history`)
       
       if (product_type === 'material') {
         // Calculate new price_per_sqm (trigger will update it, but we need it for history)
-        const new_price_per_sqm = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(2)))
+        const new_price_per_sqm = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
         
         const historyData = {
           material_id: product_id,
           old_base_price: currentData.base_price,
           new_base_price: Math.round(new_base_price),
           old_multiplier: currentData.multiplier,
-          new_multiplier: parseFloat(new_multiplier.toFixed(2)),
+          new_multiplier: parseFloat(new_multiplier.toFixed(3)),
           old_price_per_sqm: currentData.price_per_sqm,
           new_price_per_sqm: new_price_per_sqm,
           old_currency_id: currentData.currency_id,
@@ -153,14 +153,14 @@ export async function POST(request: NextRequest) {
         }
       } else if (product_type === 'linear_material') {
         // Calculate new price_per_m (trigger will update it, but we need it for history)
-        const new_price_per_m = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(2)))
+        const new_price_per_m = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
         
         const historyData = {
           linear_material_id: product_id,
           old_base_price: currentData.base_price,
           new_base_price: Math.round(new_base_price),
           old_multiplier: currentData.multiplier,
-          new_multiplier: parseFloat(new_multiplier.toFixed(2)),
+          new_multiplier: parseFloat(new_multiplier.toFixed(3)),
           old_price: currentData.price_per_m,
           new_price: new_price_per_m,
           old_currency_id: currentData.currency_id,
@@ -184,14 +184,14 @@ export async function POST(request: NextRequest) {
         }
       } else if (product_type === 'accessory') {
         // Calculate new net_price (trigger will update it, but we need it for history)
-        const new_net_price = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(2)))
+        const new_net_price = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
         
         const historyData = {
           accessory_id: product_id,
           old_base_price: currentData.base_price,
           new_base_price: Math.round(new_base_price),
           old_multiplier: currentData.multiplier,
-          new_multiplier: parseFloat(new_multiplier.toFixed(2)),
+          new_multiplier: parseFloat(new_multiplier.toFixed(3)),
           old_net_price: currentData.net_price,
           new_net_price: new_net_price,
           old_currency_id: currentData.currency_id,

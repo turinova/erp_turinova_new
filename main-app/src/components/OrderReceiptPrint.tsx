@@ -26,6 +26,16 @@ interface OrderReceiptPrintProps {
     charged_sqm?: number
     boards_used?: number
     waste_multi?: number
+    quote_edge_materials_breakdown?: Array<{
+      id: string
+      edge_material_id: string
+      edge_material_name: string
+      total_length_m: number
+      price_per_m: number
+      net_price: number
+      vat_amount: number
+      gross_price: number
+    }>
     quote_services_breakdown?: Array<{
       id: string
       service_type: string
@@ -378,7 +388,8 @@ export default function OrderReceiptPrint({
                   padding: '2px 0',
                   borderBottom: '1px solid #000',
                   fontWeight: 'bold',
-                  fontSize: '8px'
+                  fontSize: '8px',
+                  width: '60%'
                 }}
               >
                 Anyag
@@ -389,7 +400,9 @@ export default function OrderReceiptPrint({
                   padding: '2px 0',
                   borderBottom: '1px solid #000',
                   fontWeight: 'bold',
-                  fontSize: '8px'
+                  fontSize: '8px',
+                  width: '40%',
+                  whiteSpace: 'nowrap'
                 }}
               >
                 Mennyiség
@@ -398,29 +411,73 @@ export default function OrderReceiptPrint({
           </thead>
           <tbody>
             {pricing && pricing.length > 0 ? (
-              pricing.map((item) => (
-                <tr key={item.id}>
-                  <td
-                    style={{
-                      textAlign: 'left',
-                      padding: '2px 0',
-                      fontSize: '8px',
-                      wordBreak: 'break-word'
-                    }}
-                  >
-                    {getMaterialName(item)}
-                  </td>
-                  <td
-                    style={{
-                      textAlign: 'right',
-                      padding: '2px 0',
-                      fontSize: '8px'
-                    }}
-                  >
-                    {formatQuantity(item)}
-                  </td>
-                </tr>
-              ))
+              pricing.map((item) => {
+                // Calculate total edge length if edge materials exist
+                const edgeBreakdown = item.quote_edge_materials_breakdown
+                const hasEdgeBreakdown = Array.isArray(edgeBreakdown) && edgeBreakdown.length > 0
+                
+                const totalEdgeLength = hasEdgeBreakdown
+                  ? edgeBreakdown.reduce(
+                      (sum: number, edge: any) => sum + (edge?.total_length_m || 0),
+                      0
+                    )
+                  : 0
+                
+                return (
+                  <React.Fragment key={item.id}>
+                    <tr>
+                      <td
+                        style={{
+                          textAlign: 'left',
+                          padding: '2px 0',
+                          fontSize: '8px',
+                          wordBreak: 'break-word',
+                          width: '60%'
+                        }}
+                      >
+                        {getMaterialName(item)}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: 'right',
+                          padding: '2px 0',
+                          fontSize: '8px',
+                          width: '40%',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        {formatQuantity(item)}
+                      </td>
+                    </tr>
+                    {/* Edge material info row - only show if edge materials exist */}
+                    {totalEdgeLength > 0 && (
+                      <tr>
+                        <td
+                          style={{
+                            textAlign: 'left',
+                            padding: '2px 0',
+                            fontSize: '8px',
+                            width: '60%'
+                          }}
+                        >
+                          {/* Empty for indentation effect */}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: 'right',
+                            padding: '2px 0',
+                            fontSize: '8px',
+                            width: '40%',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          Élzáró: {totalEdgeLength.toFixed(2)} m
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })
             ) : (
               <tr>
                 <td

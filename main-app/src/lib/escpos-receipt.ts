@@ -26,6 +26,16 @@ interface ReceiptData {
     charged_sqm?: number
     boards_used?: number
     waste_multi?: number
+    quote_edge_materials_breakdown?: Array<{
+      id: string
+      edge_material_id: string
+      edge_material_name: string
+      total_length_m: number
+      price_per_m: number
+      net_price: number
+      vat_amount: number
+      gross_price: number
+    }>
     quote_services_breakdown?: Array<{
       id: string
       service_type: string
@@ -435,6 +445,22 @@ export async function generateEscPosCommands(data: ReceiptData, copyType: 'origi
       
       // Use wrapping for material names (allows multi-line display)
       commands += printTableRowWithWrap(materialName, quantity)
+      
+      // Add edge material info if available
+      if (item.quote_edge_materials_breakdown && item.quote_edge_materials_breakdown.length > 0) {
+        // Calculate total edge length
+        const totalEdgeLength = item.quote_edge_materials_breakdown.reduce(
+          (sum, edge) => sum + (edge.total_length_m || 0),
+          0
+        )
+        
+        if (totalEdgeLength > 0) {
+          // Print edge info right-aligned in quantity column
+          const edgeInfo = `Élzáró: ${totalEdgeLength.toFixed(2)} m`
+          // Left column: empty, right column: edge info (right-aligned)
+          commands += printTableRow('', edgeInfo)
+        }
+      }
     })
   } else {
     commands += printTableRow('Nincs anyag adat', '')

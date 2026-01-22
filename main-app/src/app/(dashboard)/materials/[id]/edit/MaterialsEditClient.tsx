@@ -1284,7 +1284,7 @@ export default function MaterialsEditClient({
                               <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
                                 <Typography variant="body2" color="error.dark">
                                   {history.old_multiplier !== null && history.old_multiplier !== undefined 
-                                    ? history.old_multiplier.toFixed(2)
+                                    ? history.old_multiplier.toFixed(3)
                                     : '-'
                                   }
                                 </Typography>
@@ -1315,7 +1315,7 @@ export default function MaterialsEditClient({
                               <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
                                 <Typography variant="body2" color="success.dark">
                                   {history.new_multiplier !== null && history.new_multiplier !== undefined 
-                                    ? history.new_multiplier.toFixed(2)
+                                    ? history.new_multiplier.toFixed(3)
                                     : '-'
                                   }
                                 </Typography>

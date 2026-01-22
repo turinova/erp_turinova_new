@@ -29,6 +29,16 @@ interface ReceiptData {
     charged_sqm?: number
     boards_used?: number
     waste_multi?: number
+    quote_edge_materials_breakdown?: Array<{
+      id: string
+      edge_material_id: string
+      edge_material_name: string
+      total_length_m: number
+      price_per_m: number
+      net_price: number
+      vat_amount: number
+      gross_price: number
+    }>
     quote_services_breakdown?: Array<{
       id: string
       service_type: string

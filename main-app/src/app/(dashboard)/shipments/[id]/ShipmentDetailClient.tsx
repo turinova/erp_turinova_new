@@ -3211,7 +3211,7 @@ export default function ShipmentDetailClient({
                           Árrés(Nettó):
                         </Typography>
                         <Typography variant="body1" fontWeight="bold">
-                          {currentProductData.multiplier.toFixed(2)}
+                          {currentProductData.multiplier.toFixed(3)}
                         </Typography>
                       </Box>
                       <Box>
@@ -3292,7 +3292,7 @@ export default function ShipmentDetailClient({
                           Árrés(Nettó):
                         </Typography>
                         <Typography variant="body1" fontWeight="bold" color="primary.main">
-                          {calculatedNewMultiplier !== null ? calculatedNewMultiplier.toFixed(2) : currentProductData.multiplier.toFixed(2)}
+                          {calculatedNewMultiplier !== null ? calculatedNewMultiplier.toFixed(3) : currentProductData.multiplier.toFixed(3)}
                         </Typography>
                       </Box>
                       <Box>

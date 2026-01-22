@@ -296,7 +296,7 @@ export default function AccessoryFormClient({
           setFormData(prev => ({
             ...prev,
             net_price: netPrice,
-            multiplier: Math.round(multiplier * 100) / 100
+            multiplier: Math.round(multiplier * 1000) / 1000 // Round to 3 decimals
           }))
           
           setCalculatedPrices(prev => ({
@@ -375,7 +375,7 @@ export default function AccessoryFormClient({
       setFormData(prev => ({
         ...prev,
         net_price: netPrice,
-        multiplier: Math.round(multiplier * 100) / 100 // Round to 2 decimals
+        multiplier: Math.round(multiplier * 1000) / 1000 // Round to 3 decimals
       }))
       
       // Update calculated prices (use rounded gross)
@@ -766,8 +766,8 @@ export default function AccessoryFormClient({
                     }}
                     required
                     disabled={loading}
-                    inputProps={{ min: 1.0, max: 5.0, step: 0.01 }}
-                    helperText={isEditingGrossPrice ? "Szerkeszthető - módosítás esetén bruttó ár mód kikapcsol" : "1.00 - 5.00 közötti érték"}
+                    inputProps={{ min: 1.0, max: 5.0, step: 0.001 }}
+                    helperText={isEditingGrossPrice ? "Szerkeszthető - módosítás esetén bruttó ár mód kikapcsol" : "1.000 - 5.000 közötti érték"}
                   />
                 </Grid>
 
@@ -814,7 +814,7 @@ export default function AccessoryFormClient({
                             setFormData(prev => ({
                               ...prev,
                               net_price: netPrice,
-                              multiplier: formData.base_price > 0 ? Math.round(multiplier * 100) / 100 : prev.multiplier
+                              multiplier: formData.base_price > 0 ? Math.round(multiplier * 1000) / 1000 : prev.multiplier // Round to 3 decimals
                             }))
                             
                             setCalculatedPrices(prev => ({
@@ -926,7 +926,7 @@ export default function AccessoryFormClient({
                       Árrés szorzó
                     </Typography>
                     <Typography variant="h6" color="info.main">
-                      {formData.multiplier}x
+                      {formData.multiplier.toFixed(3)}x
                     </Typography>
                   </Box>
                 </Grid>
@@ -1024,7 +1024,7 @@ export default function AccessoryFormClient({
                             <TableCell align="right" sx={{ bgcolor: 'error.lighter' }}>
                               <Typography variant="body2" color="error.dark">
                                 {h.old_multiplier !== null && h.old_multiplier !== undefined 
-                                  ? h.old_multiplier.toFixed(2)
+                                  ? h.old_multiplier.toFixed(3)
                                   : '-'
                                 }
                               </Typography>
@@ -1055,7 +1055,7 @@ export default function AccessoryFormClient({
                             <TableCell align="right" sx={{ bgcolor: 'success.lighter' }}>
                               <Typography variant="body2" color="success.dark">
                                 {h.new_multiplier !== null && h.new_multiplier !== undefined 
-                                  ? h.new_multiplier.toFixed(2)
+                                  ? h.new_multiplier.toFixed(3)
                                   : '-'
                                 }
                               </Typography>
