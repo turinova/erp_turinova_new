@@ -363,11 +363,17 @@ export default function AccessoriesListClient({
       setAccessoryToPrint(fullAccessory)
       setEditableProductName(fullAccessory.name)
       
-      // Initialize editable selling price with calculated value
-      const basePrice = fullAccessory.base_price || 0
-      const multiplier = parseFloat(String(fullAccessory.multiplier)) || 1.38
-      const vatPercent = fullAccessory.vat_percent || 0
-      const calculatedPrice = Math.round(basePrice * multiplier * (1 + vatPercent / 100))
+      // Initialize editable selling price with gross_price from API, rounded to nearest 10
+      const calculatedPrice = fullAccessory.gross_price !== undefined && fullAccessory.gross_price !== null
+        ? Math.round(fullAccessory.gross_price / 10) * 10
+        : (() => {
+            // Fallback calculation if gross_price not available
+            const basePrice = fullAccessory.base_price || 0
+            const multiplier = parseFloat(String(fullAccessory.multiplier)) || 1.38
+            const vatPercent = fullAccessory.vat_percent || 0
+            const price = basePrice * multiplier * (1 + vatPercent / 100)
+            return Math.round(price / 10) * 10
+          })()
       setEditableSellingPrice(calculatedPrice)
       
       // Initialize selected unit with accessory's unit shortform
@@ -398,10 +404,16 @@ export default function AccessoriesListClient({
     }
   }
 
-  // Calculate current selling price: base_price * multiplier * (1 + vat_percent/100) rounded to nearest integer
+  // Calculate current selling price: use gross_price from API, rounded to nearest 10
   const currentSellingPrice = useMemo(() => {
     if (!accessoryToPrint) return null
     
+    // Use gross_price from API if available, rounded to nearest 10
+    if (accessoryToPrint.gross_price !== undefined && accessoryToPrint.gross_price !== null) {
+      return Math.round(accessoryToPrint.gross_price / 10) * 10
+    }
+    
+    // Fallback to calculation if gross_price not available
     const basePrice = accessoryToPrint.base_price || 0
     const multiplier = parseFloat(String(accessoryToPrint.multiplier)) || 1.38 // Ensure multiplier is a number
     const vatPercent = accessoryToPrint.vat_percent || 0
@@ -409,8 +421,8 @@ export default function AccessoriesListClient({
     // Calculate: base_price * multiplier * (1 + vat_percent/100)
     const price = basePrice * multiplier * (1 + vatPercent / 100)
     
-    // Round to nearest integer (nearest 1)
-    return Math.round(price)
+    // Round to nearest 10
+    return Math.round(price / 10) * 10
   }, [accessoryToPrint])
 
   // Label component for printing - Supports 33mm x 25mm and 64mm x 39mm sizes
