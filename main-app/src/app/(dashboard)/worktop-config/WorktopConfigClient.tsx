@@ -137,6 +137,16 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   const [cutL2, setCutL2] = useState<string>('')
   const [cutL3, setCutL3] = useState<string>('')
   const [cutL4, setCutL4] = useState<string>('')
+  
+  // Cutouts state (max 3)
+  interface Cutout {
+    id: string
+    width: string
+    height: string
+    distanceFromLeft: string
+    distanceFromBottom: string
+  }
+  const [cutouts, setCutouts] = useState<Cutout[]>([])
 
   const linearMaterialOptions = useMemo(() => {
     return linearMaterials.map(lm => ({
@@ -645,6 +655,116 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           disabled={!!(parseFloat(roundingR2) > 0)}
                         />
                       </Grid>
+                      
+                      {/* Kivágások Section */}
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 2 }} />
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                          Kivágások
+                        </Typography>
+                        {cutouts.map((cutout, index) => {
+                          const aValue = parseFloat(dimensionA) || 0
+                          const bValue = parseFloat(dimensionB) || 0
+                          const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                          const materialWidth = selectedMaterial?.length || 1
+                          const keptWidth = assemblyType === 'Levágás' && aValue > 0 ? Math.min(aValue, materialWidth) : materialWidth
+                          
+                          const cutoutWidth = parseFloat(cutout.width) || 0
+                          const cutoutHeight = parseFloat(cutout.height) || 0
+                          const distanceFromLeft = parseFloat(cutout.distanceFromLeft) || 0
+                          
+                          const widthError = cutoutWidth >= keptWidth
+                          const heightError = cutoutHeight >= bValue
+                          const positionError = distanceFromLeft + cutoutWidth > keptWidth
+                          
+                          return (
+                            <Box key={cutout.id} sx={{ mb: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                  Kivágás {index + 1}
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  color="error"
+                                  onClick={() => setCutouts(prev => prev.filter(c => c.id !== cutout.id))}
+                                >
+                                  Törlés
+                                </Button>
+                              </Box>
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} sm={6} md={3}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Szélesség (mm)"
+                                    type="number"
+                                    value={cutout.width}
+                                    onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, width: e.target.value } : c))}
+                                    inputProps={{ min: 0, step: 1 }}
+                                    error={widthError}
+                                    helperText={widthError ? `Szélesség kisebb kell legyen, mint ${keptWidth}mm` : ''}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Magasság (mm)"
+                                    type="number"
+                                    value={cutout.height}
+                                    onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, height: e.target.value } : c))}
+                                    inputProps={{ min: 0, step: 1 }}
+                                    error={heightError}
+                                    helperText={heightError ? `Magasság kisebb kell legyen, mint ${bValue}mm` : ''}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Távolság balról (mm)"
+                                    type="number"
+                                    value={cutout.distanceFromLeft}
+                                    onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, distanceFromLeft: e.target.value } : c))}
+                                    inputProps={{ min: 0, step: 1 }}
+                                    error={positionError}
+                                    helperText={positionError ? `Pozíció + szélesség nem lehet nagyobb, mint ${keptWidth}mm` : ''}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={3}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    label="Távolság alulról (mm)"
+                                    type="number"
+                                    value={cutout.distanceFromBottom}
+                                    onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, distanceFromBottom: e.target.value } : c))}
+                                    inputProps={{ min: 0, step: 1 }}
+                                  />
+                                </Grid>
+                              </Grid>
+                            </Box>
+                          )
+                        })}
+                        {cutouts.length < 3 && (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() => {
+                              setCutouts(prev => [...prev, {
+                                id: `cutout-${Date.now()}-${Math.random()}`,
+                                width: '',
+                                height: '',
+                                distanceFromLeft: '',
+                                distanceFromBottom: ''
+                              }])
+                            }}
+                            sx={{ mt: 1 }}
+                          >
+                            Kivágás hozzáadása
+                          </Button>
+                        )}
+                      </Grid>
                     </Grid>
                   </>
                 )}
@@ -667,6 +787,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                 <Box
                   sx={{
                     p: 3,
+                    pb: 4,
                     backgroundColor: '#ffffff',
                     position: 'relative',
                     fontFamily: 'monospace',
@@ -674,7 +795,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                     margin: '0 auto'
                   }}
                 >
-                  <Box sx={{ position: 'relative', margin: '0 auto', maxWidth: 700 }}>
+                  <Box sx={{ position: 'relative', margin: '0 auto', maxWidth: 700, overflow: 'visible' }}>
                     {selectedLinearMaterialId ? (
                       (() => {
                         const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
@@ -770,7 +891,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 aspectRatio: `${materialWidth} / ${materialLength}`,
                                 position: 'relative',
                                 overflow: 'visible',
-                                fontFamily: 'monospace'
+                                fontFamily: 'monospace',
+                                marginBottom: cutouts.some(c => parseFloat(c.distanceFromLeft) > 0 || parseFloat(c.distanceFromBottom) > 0) ? 12 : 3
                               }}
                             >
                               {/* SVG for rectangle with rounded corners (R1 bottom-left, R2 bottom-right at cut) */}
@@ -862,9 +984,269 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   })()}
                                   fill="#f0f8ff"
                                   stroke="#000"
-                                  strokeWidth="1"
+                                  strokeWidth="3"
                                 />
+                                
+                                {/* Cutouts - red outlined rectangles with crossed out pattern */}
+                                {cutouts.map((cutout) => {
+                                  const cutoutWidth = parseFloat(cutout.width) || 0
+                                  const cutoutHeight = parseFloat(cutout.height) || 0
+                                  const distanceFromLeft = parseFloat(cutout.distanceFromLeft) || 0
+                                  const distanceFromBottom = parseFloat(cutout.distanceFromBottom) || 0
+                                  
+                                  // Only show if valid and on kept side
+                                  if (cutoutWidth <= 0 || cutoutHeight <= 0) return null
+                                  
+                                  const keptWidth = showCut ? Math.max(0, Math.min(cutPosition, materialWidth)) : materialWidth
+                                  if (distanceFromLeft + cutoutWidth > keptWidth) return null
+                                  
+                                  // Position: distanceFromLeft from left, distanceFromBottom from bottom
+                                  const x = distanceFromLeft
+                                  const y = materialLength - distanceFromBottom - cutoutHeight
+                                  
+                                  // Don't render if outside bounds
+                                  if (x < 0 || y < 0 || x + cutoutWidth > keptWidth || y + cutoutHeight > materialLength) return null
+                                  
+                                  return (
+                                    <g key={cutout.id}>
+                                      {/* Red outlined rectangle */}
+                                      <rect
+                                        x={x}
+                                        y={y}
+                                        width={cutoutWidth}
+                                        height={cutoutHeight}
+                                        fill="rgba(255, 107, 107, 0.1)"
+                                        stroke="#ff6b6b"
+                                        strokeWidth="2"
+                                      />
+                                      {/* Diagonal cross lines */}
+                                      <line
+                                        x1={x}
+                                        y1={y}
+                                        x2={x + cutoutWidth}
+                                        y2={y + cutoutHeight}
+                                        stroke="#ff6b6b"
+                                        strokeWidth="1.5"
+                                      />
+                                      <line
+                                        x1={x + cutoutWidth}
+                                        y1={y}
+                                        x2={x}
+                                        y2={y + cutoutHeight}
+                                        stroke="#ff6b6b"
+                                        strokeWidth="1.5"
+                                      />
+                                    </g>
+                                  )
+                                })}
                               </Box>
+                              
+                              {/* Cutout dimension labels and guide lines */}
+                              {cutouts.map((cutout) => {
+                                const cutoutWidth = parseFloat(cutout.width) || 0
+                                const cutoutHeight = parseFloat(cutout.height) || 0
+                                const distanceFromLeft = parseFloat(cutout.distanceFromLeft) || 0
+                                const distanceFromBottom = parseFloat(cutout.distanceFromBottom) || 0
+                                
+                                if (cutoutWidth <= 0 || cutoutHeight <= 0) return null
+                                
+                                const keptWidth = showCut ? Math.max(0, Math.min(cutPosition, materialWidth)) : materialWidth
+                                if (distanceFromLeft + cutoutWidth > keptWidth) return null
+                                
+                                const x = distanceFromLeft
+                                const y = materialLength - distanceFromBottom - cutoutHeight
+                                
+                                if (x < 0 || y < 0 || x + cutoutWidth > keptWidth || y + cutoutHeight > materialLength) return null
+                                
+                                // Calculate percentages for positioning
+                                const xPercent = (x / materialWidth) * 100
+                                const xCenterPercent = ((x + cutoutWidth / 2) / materialWidth) * 100
+                                const xRightPercent = ((x + cutoutWidth) / materialWidth) * 100
+                                const yPercent = (y / materialLength) * 100
+                                const yCenterPercent = ((y + cutoutHeight / 2) / materialLength) * 100
+                                const yBottomPercent = ((y + cutoutHeight) / materialLength) * 100
+                                
+                                return (
+                                  <React.Fragment key={`cutout-dims-${cutout.id}`}>
+                                    {/* SVG for dimension lines (extended viewBox to include outside area below) */}
+                                    <Box
+                                      component="svg"
+                                      sx={{
+                                        position: 'absolute',
+                                        top: -30,
+                                        left: -60,
+                                        width: `calc(100% + 120px)`,
+                                        height: `calc(100% + 120px)`,
+                                        zIndex: 5,
+                                        pointerEvents: 'none'
+                                      }}
+                                      viewBox={`-60 -30 ${materialWidth + 120} ${materialLength + 120}`}
+                                      preserveAspectRatio="none"
+                                    >
+                                      {/* Distance from left - blueprint style with extension lines and label below */}
+                                      {distanceFromLeft > 0 && (
+                                        <>
+                                          {/* Horizontal dimension line */}
+                                          <line
+                                            x1={0}
+                                            y1={y + cutoutHeight / 2}
+                                            x2={x}
+                                            y2={y + cutoutHeight / 2}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                          />
+                                          {/* Extension line at start (left edge) - vertical */}
+                                          <line
+                                            x1={0}
+                                            y1={y + cutoutHeight / 2 - 8}
+                                            x2={0}
+                                            y2={y + cutoutHeight / 2 + 8}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                          />
+                                          {/* Extension line at end (cutout left edge) - vertical */}
+                                          <line
+                                            x1={x}
+                                            y1={y + cutoutHeight / 2 - 8}
+                                            x2={x}
+                                            y2={y + cutoutHeight / 2 + 8}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                          />
+                                          {/* Leader line from dimension line to label below */}
+                                          <line
+                                            x1={(x / 2)}
+                                            y1={y + cutoutHeight / 2}
+                                            x2={(x / 2)}
+                                            y2={materialLength + 40}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                            strokeDasharray="2,2"
+                                          />
+                                        </>
+                                      )}
+                                      
+                                      {/* Distance from bottom - blueprint style with extension lines and label below */}
+                                      {distanceFromBottom > 0 && (
+                                        <>
+                                          {/* Vertical dimension line */}
+                                          <line
+                                            x1={x + cutoutWidth / 2}
+                                            y1={materialLength}
+                                            x2={x + cutoutWidth / 2}
+                                            y2={y + cutoutHeight}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                          />
+                                          {/* Extension line at start (bottom edge) - horizontal */}
+                                          <line
+                                            x1={x + cutoutWidth / 2 - 8}
+                                            y1={materialLength}
+                                            x2={x + cutoutWidth / 2 + 8}
+                                            y2={materialLength}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                          />
+                                          {/* Extension line at end (cutout bottom edge) - horizontal */}
+                                          <line
+                                            x1={x + cutoutWidth / 2 - 8}
+                                            y1={y + cutoutHeight}
+                                            x2={x + cutoutWidth / 2 + 8}
+                                            y2={y + cutoutHeight}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                          />
+                                          {/* Leader line from dimension line to label below */}
+                                          <line
+                                            x1={x + cutoutWidth / 2}
+                                            y1={materialLength}
+                                            x2={x + cutoutWidth / 2}
+                                            y2={materialLength + 40}
+                                            stroke="#666"
+                                            strokeWidth="0.5"
+                                            strokeDasharray="2,2"
+                                          />
+                                        </>
+                                      )}
+                                    </Box>
+                                    
+                                    {/* Cutout dimensions label in center (e.g., "550x450") */}
+                                    <Typography
+                                      variant="caption"
+                                      sx={{
+                                        position: 'absolute',
+                                        top: `${yCenterPercent}%`,
+                                        left: `${xCenterPercent}%`,
+                                        transform: 'translate(-50%, -50%)',
+                                        fontSize: '0.75rem',
+                                        color: '#666',
+                                        fontWeight: 600,
+                                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                        padding: '3px 6px',
+                                        borderRadius: '3px',
+                                        border: '1px solid #ddd',
+                                        zIndex: 10,
+                                        pointerEvents: 'none',
+                                        fontFamily: 'monospace'
+                                      }}
+                                    >
+                                      {cutoutWidth}×{cutoutHeight}
+                                    </Typography>
+                                    
+                                    {/* Distance from left label - outside below visualization */}
+                                    {distanceFromLeft > 0 && (
+                                      <Typography
+                                        variant="caption"
+                                        sx={{
+                                          position: 'absolute',
+                                          top: '100%',
+                                          left: `${(x / 2 / materialWidth) * 100}%`,
+                                          transform: 'translate(-50%, 0)',
+                                          marginTop: '45px',
+                                          fontSize: '0.7rem',
+                                          color: '#666',
+                                          fontWeight: 500,
+                                          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                          padding: '3px 6px',
+                                          borderRadius: '3px',
+                                          border: '1px solid #ddd',
+                                          zIndex: 10,
+                                          pointerEvents: 'none',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        Távolság balról: {distanceFromLeft}mm
+                                      </Typography>
+                                    )}
+                                    
+                                    {/* Distance from bottom label - outside below visualization */}
+                                    {distanceFromBottom > 0 && (
+                                      <Typography
+                                        variant="caption"
+                                        sx={{
+                                          position: 'absolute',
+                                          top: '100%',
+                                          left: `${xCenterPercent}%`,
+                                          transform: 'translate(-50%, 0)',
+                                          marginTop: distanceFromLeft > 0 ? '70px' : '45px',
+                                          fontSize: '0.7rem',
+                                          color: '#666',
+                                          fontWeight: 500,
+                                          backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                          padding: '3px 6px',
+                                          borderRadius: '3px',
+                                          border: '1px solid #ddd',
+                                          zIndex: 10,
+                                          pointerEvents: 'none',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        Távolság alulról: {distanceFromBottom}mm
+                                      </Typography>
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
                               
                               {/* Cut part (right side) with diagonal cross lines, only for Levágás (rotated) - OVERLAY with 5px gap */}
                               {showCut && (
