@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
     // Transform the data to include calculated fields
     // Use stored gross_price if available, otherwise calculate as fallback
     const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
-    const finalGrossPrice = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
+    const finalGrossPriceResponse = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
     
     const transformedData = {
       ...data,
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
       vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: finalGrossPrice
+      gross_price: finalGrossPriceResponse
     }
 
     console.log('Accessory created successfully:', transformedData.name)
