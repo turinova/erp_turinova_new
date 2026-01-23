@@ -28,6 +28,7 @@ interface ShipmentItem {
   product_name: string
   sku: string
   barcode: string | null
+  barcode_u?: string | null
   accessory_id: string | null
   material_id: string | null
   linear_material_id: string | null
@@ -834,8 +835,8 @@ export default function ShipmentDetailClient({
     setEditableSellingPrice(null)
     setAccessoryGrossPrice(null)
     setPrintAmount(item.quantity_received || 1)
-    // If no barcode, don't select it by default
-    const hasBarcode = !!item.barcode
+    // If no barcode (or barcode_u), don't select it by default
+    const hasBarcode = !!(item.barcode || item.barcode_u)
     setLabelFields({
       showName: true,
       showSku: true,
@@ -1236,7 +1237,7 @@ export default function ShipmentDetailClient({
     if (fields.showName) gridRows.push('6.3mm')
     if (fields.showSku && item.sku) gridRows.push('3.8mm')
     if (fields.showPrice) gridRows.push('6.5mm')
-    if (fields.showBarcode && item.barcode) gridRows.push('6.9mm') // Adjusted to keep total at 25mm
+    if (fields.showBarcode && (item.barcode || item.barcode_u)) gridRows.push('6.9mm') // Adjusted to keep total at 25mm
     
     return (
       <div
@@ -1379,7 +1380,7 @@ export default function ShipmentDetailClient({
         )}
 
         {/* Section 4: Barcode - 6.9mm (adjusted to keep total at 25mm) - Flush to bottom */}
-        {fields.showBarcode && item.barcode && (
+        {fields.showBarcode && (item.barcode || item.barcode_u) && (
           <div
             style={{
               width: '100%',
@@ -1407,7 +1408,7 @@ export default function ShipmentDetailClient({
               }}
             >
               <Barcode
-                value={item.barcode}
+                value={item.barcode || item.barcode_u || ''}
                 format="CODE128"
                 width={2.5}
                 height={50}
@@ -2741,7 +2742,7 @@ export default function ShipmentDetailClient({
                             <Checkbox
                               checked={labelFields.showBarcode}
                               onChange={(e) => setLabelFields({ ...labelFields, showBarcode: e.target.checked })}
-                              disabled={!itemToPrint.barcode}
+                              disabled={!(itemToPrint.barcode || itemToPrint.barcode_u)}
                               size="small"
                             />
                           }
@@ -2941,7 +2942,7 @@ export default function ShipmentDetailClient({
                         if (labelFields.showName) rows.push('47.63px')  // 6.3mm * 7.56
                         if (labelFields.showSku && itemToPrint.sku) rows.push('28.73px')  // 3.8mm * 7.56
                         if (labelFields.showPrice) rows.push('49.14px')  // 6.5mm * 7.56
-                        if (labelFields.showBarcode && itemToPrint.barcode) rows.push('52.16px')  // 6.9mm * 7.56
+                        if (labelFields.showBarcode && (itemToPrint.barcode || itemToPrint.barcode_u)) rows.push('52.16px')  // 6.9mm * 7.56
                         return rows.join(' ')
                       })(),
                       gridTemplateColumns: '100%',
@@ -3078,7 +3079,7 @@ export default function ShipmentDetailClient({
                     )}
 
                     {/* Section 4: Barcode */}
-                    {labelFields.showBarcode && itemToPrint.barcode && (
+                    {labelFields.showBarcode && (itemToPrint.barcode || itemToPrint.barcode_u) && (
                       <div
                         style={{
                           width: '100%',
@@ -3106,7 +3107,7 @@ export default function ShipmentDetailClient({
                           }}
                         >
                           <Barcode
-                            value={itemToPrint.barcode}
+                            value={itemToPrint.barcode || itemToPrint.barcode_u || ''}
                             format="CODE128"
                             width={2.5}
                             height={32}

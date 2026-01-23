@@ -21,6 +21,7 @@ interface Accessory {
   name: string
   sku: string
   barcode?: string | null
+  barcode_u?: string | null
   base_price: number
   multiplier: number
   net_price: number
@@ -471,7 +472,7 @@ export default function AccessoriesListClient({
       setLabelFields({
         showName: true,
         showSku: true,
-        showBarcode: !!fullAccessory.barcode,
+        showBarcode: !!(fullAccessory.barcode || fullAccessory.barcode_u),
         showPrice: true
       })
       setPrintAmount(1)
@@ -557,7 +558,7 @@ export default function AccessoriesListClient({
     if (fields.showName) gridRows.push(nameHeight)
     if (fields.showSku && accessory.sku) gridRows.push(skuHeight)
     if (fields.showPrice) gridRows.push(priceHeight)
-    if (fields.showBarcode && accessory.barcode) gridRows.push(barcodeHeight)
+    if (fields.showBarcode && (accessory.barcode || accessory.barcode_u)) gridRows.push(barcodeHeight)
     
     return (
       <div
@@ -700,7 +701,7 @@ export default function AccessoriesListClient({
         )}
 
         {/* Section 4: Barcode - 6.9mm (adjusted to keep total at 25mm) - Flush to bottom */}
-        {fields.showBarcode && accessory.barcode && (
+        {fields.showBarcode && (accessory.barcode || accessory.barcode_u) && (
           <div
             style={{
               width: '100%',
@@ -728,7 +729,7 @@ export default function AccessoriesListClient({
               }}
             >
               <Barcode
-                value={accessory.barcode}
+                value={accessory.barcode || accessory.barcode_u || ''}
                 format="CODE128"
                 width={2.5}
                 height={barcodeHeightPx}
@@ -1715,7 +1716,7 @@ export default function AccessoriesListClient({
                             <Checkbox
                               checked={labelFields.showBarcode}
                               onChange={(e) => setLabelFields({ ...labelFields, showBarcode: e.target.checked })}
-                              disabled={!accessoryToPrint.barcode}
+                              disabled={!(accessoryToPrint.barcode || accessoryToPrint.barcode_u)}
                               size="small"
                             />
                           }
@@ -1938,7 +1939,7 @@ export default function AccessoriesListClient({
                         if (labelFields.showName) rows.push(`${(6.3 * scale * previewScale).toFixed(2)}px`)  // 6.3mm * scale * 7.56
                         if (labelFields.showSku && accessoryToPrint.sku) rows.push(`${(3.8 * scale * previewScale).toFixed(2)}px`)  // 3.8mm * scale * 7.56
                         if (labelFields.showPrice) rows.push(`${(6.5 * scale * previewScale).toFixed(2)}px`)  // 6.5mm * scale * 7.56
-                        if (labelFields.showBarcode && accessoryToPrint.barcode) rows.push(`${(6.9 * scale * previewScale).toFixed(2)}px`)  // 6.9mm * scale * 7.56
+                        if (labelFields.showBarcode && (accessoryToPrint.barcode || accessoryToPrint.barcode_u)) rows.push(`${(6.9 * scale * previewScale).toFixed(2)}px`)  // 6.9mm * scale * 7.56
                         return rows.join(' ')
                       })(),
                       gridTemplateColumns: '100%',
@@ -2095,7 +2096,7 @@ export default function AccessoriesListClient({
                     )}
 
                     {/* Section 4: Barcode */}
-                    {labelFields.showBarcode && accessoryToPrint.barcode && (
+                    {labelFields.showBarcode && (accessoryToPrint.barcode || accessoryToPrint.barcode_u) && (
                       <div
                         style={{
                           width: '100%',
@@ -2123,7 +2124,7 @@ export default function AccessoriesListClient({
                           }}
                         >
                           <Barcode
-                            value={accessoryToPrint.barcode}
+                            value={accessoryToPrint.barcode || accessoryToPrint.barcode_u || ''}
                             format="CODE128"
                             width={2.5}
                             height={(() => {
