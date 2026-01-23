@@ -890,7 +890,7 @@ export default function PosOrderDetailClient({
     const vatPercent = vatRate?.kulcs || 0
     
     // For materials and linear_materials, use unit prices (per m² or per m)
-    // For accessories, use whole piece prices
+    // For accessories, use whole piece prices (stored gross_price)
     let unitGrossPrice = selectedProduct.gross_price
     let unitNetPrice = selectedProduct.net_price
     
@@ -904,13 +904,29 @@ export default function PosOrderDetailClient({
       unitNetPrice = unitGrossPrice / (1 + vatPercent / 100)
     }
     
-    // Round both net and gross prices consistently
-    const roundedNetPrice = Math.round(unitNetPrice)
-    const roundedGrossPrice = Math.round(unitGrossPrice)
+    // For accessories, use stored gross_price directly (already correct)
+    // For materials/linear_materials, round for consistency
+    let roundedNetPrice: number
+    let roundedGrossPrice: number
+    let vatAmount: number
     
-    // Calculate VAT from net price to ensure consistency
-    const vatAmount = Math.round(roundedNetPrice * vatPercent / 100)
-    const adjustedGrossPrice = roundedNetPrice + vatAmount
+    if (selectedProduct.product_type === 'accessory') {
+      // Use stored gross_price directly - it's already the correct integer value
+      roundedGrossPrice = unitGrossPrice
+      // Calculate net_price from stored gross_price to maintain consistency
+      const vatAmountPrecise = roundedGrossPrice / (100 + vatPercent) * vatPercent
+      vatAmount = Math.round(vatAmountPrecise)
+      roundedNetPrice = roundedGrossPrice - vatAmount
+    } else {
+      // For materials/linear_materials, round both prices
+      roundedNetPrice = Math.round(unitNetPrice)
+      roundedGrossPrice = Math.round(unitGrossPrice)
+      // Calculate VAT from net price
+      vatAmount = Math.round(roundedNetPrice * vatPercent / 100)
+    }
+    
+    // Use the stored/calculated gross price directly
+    const adjustedGrossPrice = roundedGrossPrice
 
     const newProduct: PosOrderItem = {
       id: `temp-${Date.now()}`,
@@ -1842,22 +1858,49 @@ export default function PosOrderDetailClient({
                       <TableCell align="right">
                         {(() => {
                           // Replicate database rounding logic to accurately detect discounts
-                          // Database calculates: ROUND(net) + ROUND(ROUND(net) * vat / 100)
+                          // For accessories: database calculates total_gross = ROUND(unit_price_gross * quantity)
+                          // For materials/linear_materials: database calculates total_gross = ROUND(net) + ROUND(ROUND(net) * vat / 100)
                           const vatRate = vatRates.find(v => v.id === item.vat_id)?.kulcs || 0
                           
-                          // Step 1: Round net to integer (matching database: ROUND(quantity * unit_price_net))
-                          const totalNet = Math.round(item.unit_price_net * item.quantity)
+                          let originalSubtotal: number
                           
-                          // Step 2: Round VAT to integer (matching database: ROUND(total_net * vat_rate / 100))
-                          const totalVat = Math.round(totalNet * vatRate / 100)
+                          if (item.product_type === 'accessory') {
+                            // For accessories: use unit_price_gross * quantity directly (matching new database logic)
+                            // IMPORTANT: Use the stored unit_price_gross from database (may differ for old orders)
+                            originalSubtotal = Math.round(item.unit_price_gross * item.quantity)
+                            
+                            // Debug: Log calculation for troubleshooting
+                            if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+                              console.log('Discount detection for accessory:', {
+                                name: item.product_name,
+                                unit_price_gross: item.unit_price_gross,
+                                quantity: item.quantity,
+                                calculated_originalSubtotal: originalSubtotal,
+                                stored_total_gross: item.total_gross,
+                                difference: Math.abs(originalSubtotal - item.total_gross),
+                                discount_percentage: item.discount_percentage,
+                                discount_amount: item.discount_amount
+                              })
+                            }
+                          } else {
+                            // For materials/linear_materials: calculate from net + VAT (matching database logic)
+                            // Step 1: Round net to integer (matching database: ROUND(quantity * unit_price_net))
+                            const totalNet = Math.round(item.unit_price_net * item.quantity)
+                            
+                            // Step 2: Round VAT to integer (matching database: ROUND(total_net * vat_rate / 100))
+                            const totalVat = Math.round(totalNet * vatRate / 100)
+                            
+                            // Step 3: Gross = Net + VAT (matching database: total_net + total_vat)
+                            originalSubtotal = totalNet + totalVat
+                          }
                           
-                          // Step 3: Gross = Net + VAT (matching database: total_net + total_vat)
-                          const originalSubtotal = totalNet + totalVat
-                          
-                          // Check for discount: explicit discount fields OR difference > 1 Ft (tolerance for rounding)
+                          // Check for discount: ONLY check explicit discount fields
+                          // Don't compare originalSubtotal with total_gross because:
+                          // 1. Old orders may have incorrect stored values from before the database fix
+                          // 2. The stored total_gross is the source of truth (what was actually charged)
+                          // 3. Only show discount if explicitly set via discount_percentage or discount_amount
                           const hasDiscount = (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) || 
-                                            (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0) ||
-                                            (Math.abs(originalSubtotal - item.total_gross) > 1) // 1 Ft tolerance for rounding differences
+                                            (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0)
                           
                           return hasDiscount ? (
                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>

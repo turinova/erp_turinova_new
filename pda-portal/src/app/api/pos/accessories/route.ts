@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
               name,
               sku,
               net_price,
+              gross_price,
               image_url,
               deleted_at,
               vat (
@@ -88,6 +89,7 @@ export async function GET(request: NextRequest) {
               name,
               sku,
               net_price,
+              gross_price,
               image_url,
               deleted_at,
               vat (
@@ -271,7 +273,10 @@ export async function GET(request: NextRequest) {
 
       if (item.product_type === 'accessory') {
         net_price = product.net_price || 0
-        gross_price = net_price + ((net_price * vatPercent) / 100)
+        // Use stored gross_price if available, otherwise calculate
+        gross_price = product.gross_price !== null && product.gross_price !== undefined
+          ? product.gross_price
+          : net_price + ((net_price * vatPercent) / 100)
       } else if (item.product_type === 'material') {
         // Materials: base_price * (length_mm * width_mm / 1000000) * multiplier * (1 + vat_percent/100)
         const areaSqm = (product.length_mm * product.width_mm) / 1000000

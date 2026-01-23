@@ -47,9 +47,11 @@ interface AccessoryFormData {
   name: string
   sku: string
   barcode?: string | null
+  barcode_u?: string | null
   base_price: number
   multiplier: number
   net_price: number
+  gross_price?: number | null
   vat_id: string
   currency_id: string
   units_id: string
@@ -163,6 +165,7 @@ export default function AccessoryFormClient({
     name: '',
     sku: '',
     barcode: null,
+    barcode_u: null,
     base_price: 0,
     multiplier: 1.38,
     net_price: 0,
@@ -263,18 +266,81 @@ export default function AccessoryFormClient({
   // This flag persists until user manually edits multiplier or base_price
   const [isEditingGrossPrice, setIsEditingGrossPrice] = useState(false)
 
+  // Special rounding function for gross price display
+  // Based on decimal part of the value (in forints):
+  // - 0.01 to 2.49 forint → round down to nearest 0
+  // - 2.50 to 4.99 forint → round up to nearest 5
+  // - 5.01 to 7.49 forint → round down to nearest 5
+  // - 7.50 to 9.99 forint → round up to nearest 0
+  // If value is already an integer, round based on last digit
+  const roundGrossPriceForDisplay = (value: number): number => {
+    const integerPart = Math.floor(value)
+    const decimalPart = value - integerPart
+    // Convert decimal part to forints (0.16 → 16 forint, 0.35 → 35 forint)
+    const decimalInForints = Math.round(decimalPart * 100)
+    
+    // If no decimal part, treat last digit as if it were a decimal
+    if (decimalInForints === 0) {
+      const lastDigit = integerPart % 10
+      if (lastDigit >= 1 && lastDigit <= 2) {
+        // 1-2 → round down to nearest 0
+        return Math.floor(integerPart / 10) * 10
+      } else if (lastDigit >= 3 && lastDigit <= 4) {
+        // 3-4 → round up to nearest 5
+        return Math.ceil(integerPart / 5) * 5
+      } else if (lastDigit >= 5 && lastDigit <= 7) {
+        // 5-7 → round down to nearest 5
+        return Math.floor(integerPart / 5) * 5
+      } else if (lastDigit >= 8 && lastDigit <= 9) {
+        // 8-9 → round up to nearest 0
+        return Math.ceil(integerPart / 10) * 10
+      } else {
+        // 0 → return as is
+        return integerPart
+      }
+    }
+    
+    // Handle decimal values
+    if (decimalInForints >= 1 && decimalInForints <= 249) {
+      // 0.01 to 2.49 forint → round down to nearest 0 (10, 20, 30, etc.)
+      return Math.floor(integerPart / 10) * 10
+    } else if (decimalInForints >= 250 && decimalInForints <= 499) {
+      // 2.50 to 4.99 forint → round up to nearest 5 (5, 15, 25, 35, etc.)
+      return Math.ceil(integerPart / 5) * 5
+    } else if (decimalInForints >= 501 && decimalInForints <= 749) {
+      // 5.01 to 7.49 forint → round down to nearest 5 (5, 15, 25, 35, etc.)
+      return Math.floor(integerPart / 5) * 5
+    } else if (decimalInForints >= 750 && decimalInForints <= 999) {
+      // 7.50 to 9.99 forint → round up to nearest 0 (10, 20, 30, etc.)
+      return Math.ceil(integerPart / 10) * 10
+    } else {
+      // Exactly 0.00 → return as is
+      return integerPart
+    }
+  }
+
   // Initialize form data if editing
   useEffect(() => {
     if (initialData) {
       setFormData(initialData)
       // Initialize calculated prices based on initial data
+      // Use stored gross_price if available, otherwise calculate
       const selectedVat = vatRates.find(vat => vat.id === initialData.vat_id)
       if (selectedVat && initialData.net_price > 0) {
         const vatAmount = (initialData.net_price * selectedVat.kulcs) / 100
-        const grossPrice = initialData.net_price + vatAmount
+        // Use stored gross_price if available and valid, otherwise calculate
+        const grossPrice = (initialData.gross_price !== null && initialData.gross_price !== undefined && initialData.gross_price > 0)
+          ? initialData.gross_price 
+          : initialData.net_price + vatAmount
         setCalculatedPrices({
           vat_amount: vatAmount,
           gross_price: grossPrice
+        })
+      } else if (initialData.net_price > 0) {
+        // If no VAT selected but net_price exists, set gross_price to net_price
+        setCalculatedPrices({
+          vat_amount: 0,
+          gross_price: initialData.net_price
         })
       }
     }
@@ -322,6 +388,24 @@ export default function AccessoryFormClient({
   useEffect(() => {
     if (isEditingGrossPrice) return // Skip if editing from gross price
     
+    // Skip if net_price is 0 or not set yet (wait for initialization)
+    if (!formData.net_price || formData.net_price <= 0) {
+      return
+    }
+    
+    // IMPORTANT: If we have a stored gross_price from initialData and values haven't changed, preserve it
+    // This prevents overwriting the stored value when loading existing data
+    if (initialData?.gross_price !== null && initialData?.gross_price !== undefined && initialData?.gross_price > 0) {
+      // Only preserve stored gross_price if net_price and vat_id match initial values
+      // This means the user hasn't changed anything yet, so keep the stored value
+      if (formData.net_price === initialData.net_price && formData.vat_id === initialData.vat_id) {
+        // Keep the stored gross_price from initialization, don't recalculate
+        // The initialization useEffect already set it correctly
+        return
+      }
+    }
+    
+    // Otherwise, calculate from net_price + VAT (for new items or when values changed)
     const selectedVat = vatRates.find(vat => vat.id === formData.vat_id)
     if (selectedVat && formData.net_price > 0) {
       const vatAmount = (formData.net_price * selectedVat.kulcs) / 100
@@ -337,8 +421,8 @@ export default function AccessoryFormClient({
           gross_price: grossPrice
         }
       })
-    } else {
-      // Only update if values actually changed to prevent infinite loops
+    } else if (formData.net_price > 0) {
+      // If no VAT selected but net_price exists, set gross_price to net_price
       setCalculatedPrices(prev => {
         if (prev.vat_amount === 0 && prev.gross_price === formData.net_price) {
           return prev // Return same reference if no change
@@ -349,7 +433,7 @@ export default function AccessoryFormClient({
         }
       })
     }
-  }, [formData.net_price, formData.vat_id, vatRates, isEditingGrossPrice])
+  }, [formData.net_price, formData.vat_id, vatRates, isEditingGrossPrice, initialData])
 
   // Reverse calculation: When gross_price is edited, calculate net_price and multiplier
   // Follows Számlázz.hu rounding pattern: Round gross to integer first, then calculate VAT and net
@@ -463,7 +547,7 @@ export default function AccessoryFormClient({
 
   const handleGenerateBarcode = () => {
     const newBarcode = generateEAN13()
-    handleInputChange('barcode', newBarcode)
+    handleInputChange('barcode_u', newBarcode)
     toast.success('EAN-13 vonalkód generálva', {
       position: "top-right",
       autoClose: 2000,
@@ -512,12 +596,18 @@ export default function AccessoryFormClient({
       const url = initialData?.id ? `/api/accessories/${initialData.id}` : '/api/accessories'
       const method = initialData?.id ? 'PUT' : 'POST'
       
+      // Include gross_price from calculatedPrices in the submission
+      const submitData = {
+        ...formData,
+        gross_price: calculatedPrices.gross_price
+      }
+      
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(submitData),
       })
 
       if (response.ok) {
@@ -670,13 +760,24 @@ export default function AccessoryFormClient({
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
-                        label="Vonalkód"
+                        label="Gyártói vonalkód"
                         value={formData.barcode || ''}
                         onChange={(e) => handleInputChange('barcode', normalizeBarcode(e.target.value))}
                         disabled={loading}
                         helperText="Opcionális"
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        label="Belső vonalkód"
+                        value={formData.barcode_u || ''}
+                        onChange={(e) => handleInputChange('barcode_u', normalizeBarcode(e.target.value))}
+                        disabled={loading}
+                        helperText="Opcionális - generált EAN-13 kód"
                         InputProps={{
-                          endAdornment: !formData.barcode ? (
+                          endAdornment: !formData.barcode_u ? (
                             <InputAdornment position="end">
                               <IconButton
                                 size="small"
@@ -990,8 +1091,19 @@ export default function AccessoryFormClient({
                         const newVatPercent = h.new_vat?.kulcs || (vatRates.find(v => v.id === formData.vat_id)?.kulcs || 27)
                         
                         // Calculate gross prices with historical VAT
+                        // For old values, always calculate from net_price + VAT (historical data)
                         const oldGross = oldNetPrice + (oldNetPrice * oldVatPercent / 100)
-                        const newGross = newNetPrice + (newNetPrice * newVatPercent / 100)
+                        
+                        // For new values: if this matches the current accessory's values, use stored gross_price
+                        // Otherwise calculate from net_price + VAT
+                        const isCurrentAccessoryPrice = initialData && 
+                          newNetPrice === initialData.net_price && 
+                          (h.new_vat_id === initialData.vat_id || h.new_vat?.kulcs === vatRates.find(v => v.id === initialData.vat_id)?.kulcs)
+                        
+                        const newGross = isCurrentAccessoryPrice && initialData.gross_price !== null && initialData.gross_price !== undefined
+                          ? initialData.gross_price
+                          : newNetPrice + (newNetPrice * newVatPercent / 100)
+                        
                         const grossDiff = newGross - oldGross
                         
                         // Get currency names

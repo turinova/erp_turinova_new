@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     }
 
     const sanitizedSearch = search.replace(/"/g, '\\"')
-    const orFilter = `name.ilike."%${sanitizedSearch}%",sku.ilike."%${sanitizedSearch}%",barcode.ilike."%${sanitizedSearch}%"`
+    const orFilter = `name.ilike."%${sanitizedSearch}%",sku.ilike."%${sanitizedSearch}%",barcode.ilike."%${sanitizedSearch}%",barcode_u.ilike."%${sanitizedSearch}%"`
 
     // Get total count for search
     const { count } = await supabaseServer
@@ -32,9 +32,11 @@ export async function GET(request: NextRequest) {
         name, 
         sku, 
         barcode,
+        barcode_u,
         base_price,
         multiplier,
-        net_price, 
+        net_price,
+        gross_price,
         created_at, 
         updated_at,
         vat_id,
@@ -71,29 +73,36 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform data to match the expected format
-    const accessories = data?.map(accessory => ({
-      id: accessory.id,
-      name: accessory.name,
-      sku: accessory.sku,
-      barcode: accessory.barcode,
-      base_price: accessory.base_price,
-      multiplier: accessory.multiplier,
-      net_price: accessory.net_price,
-      created_at: accessory.created_at,
-      updated_at: accessory.updated_at,
-      vat_id: accessory.vat_id,
-      currency_id: accessory.currency_id,
-      units_id: accessory.units_id,
-      partners_id: accessory.partners_id,
-      vat_name: accessory.vat?.name || '',
-      vat_percent: accessory.vat?.kulcs || 0,
-      currency_name: accessory.currencies?.name || '',
-      unit_name: accessory.units?.name || '',
-      unit_shortform: accessory.units?.shortform || '',
-      partner_name: accessory.partners?.name || '',
-      vat_amount: Math.round((accessory.net_price || 0) * (accessory.vat?.kulcs || 0) / 100),
-      gross_price: Math.round((accessory.net_price || 0) * (1 + (accessory.vat?.kulcs || 0) / 100))
-    })) || []
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const accessories = data?.map(accessory => {
+      const calculatedGrossPrice = Math.round((accessory.net_price || 0) * (1 + (accessory.vat?.kulcs || 0) / 100))
+      const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
+      
+      return {
+        id: accessory.id,
+        name: accessory.name,
+        sku: accessory.sku,
+        barcode: accessory.barcode,
+        barcode_u: accessory.barcode_u,
+        base_price: accessory.base_price,
+        multiplier: accessory.multiplier,
+        net_price: accessory.net_price,
+        created_at: accessory.created_at,
+        updated_at: accessory.updated_at,
+        vat_id: accessory.vat_id,
+        currency_id: accessory.currency_id,
+        units_id: accessory.units_id,
+        partners_id: accessory.partners_id,
+        vat_name: accessory.vat?.name || '',
+        vat_percent: accessory.vat?.kulcs || 0,
+        currency_name: accessory.currencies?.name || '',
+        unit_name: accessory.units?.name || '',
+        unit_shortform: accessory.units?.shortform || '',
+        partner_name: accessory.partners?.name || '',
+        vat_amount: Math.round((accessory.net_price || 0) * (accessory.vat?.kulcs || 0) / 100),
+        gross_price: finalGrossPrice
+      }
+    }) || []
 
     const totalCount = count || 0
     const totalPages = Math.ceil(totalCount / limit)

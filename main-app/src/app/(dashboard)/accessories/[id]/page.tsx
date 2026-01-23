@@ -8,9 +8,11 @@ interface AccessoryFormData {
   name: string
   sku: string
   barcode?: string | null
+  barcode_u?: string | null
   base_price: number
   multiplier: number
   net_price: number
+  gross_price?: number | null
   vat_id: string
   currency_id: string
   units_id: string
@@ -84,9 +86,11 @@ export default async function EditAccessoryPage({ params }: { params: Promise<{ 
     name: accessory.name,
     sku: accessory.sku,
     barcode: accessory.barcode || null,
+    barcode_u: accessory.barcode_u || null,
     base_price: accessory.base_price || 0,
     multiplier: accessory.multiplier || 1.38,
     net_price: accessory.net_price,
+    gross_price: accessory.gross_price || null,
     vat_id: accessory.vat_id,
     currency_id: accessory.currency_id,
     units_id: accessory.units_id,

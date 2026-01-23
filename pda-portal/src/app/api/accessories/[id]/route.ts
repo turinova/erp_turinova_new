@@ -35,6 +35,7 @@ export async function GET(
         base_price,
         multiplier,
         net_price,
+        gross_price,
         vat_id,
         currency_id,
         vat (
@@ -69,6 +70,13 @@ export async function GET(
     const vat = Array.isArray(accessoryData.vat) ? accessoryData.vat[0] : accessoryData.vat
     const currency = Array.isArray(accessoryData.currencies) ? accessoryData.currencies[0] : accessoryData.currencies
 
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const vatPercent = vat?.kulcs || 0
+    const calculatedGrossPrice = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
+    const finalGrossPrice = accessoryData.gross_price !== null && accessoryData.gross_price !== undefined
+      ? accessoryData.gross_price
+      : calculatedGrossPrice
+
     return NextResponse.json({
       id: accessoryData.id,
       name: accessoryData.name,
@@ -76,6 +84,7 @@ export async function GET(
       base_price: accessoryData.base_price,
       multiplier: accessoryData.multiplier,
       net_price: accessoryData.net_price,
+      gross_price: finalGrossPrice,
       vat_id: accessoryData.vat_id,
       currency_id: accessoryData.currency_id,
       vat: vat,

@@ -11,6 +11,7 @@ interface AccessoryData {
   base_price: number
   multiplier: number
   net_price: number
+  gross_price?: number | null
   vat_id: string
   currency_id: string
   vat?: {
@@ -109,11 +110,13 @@ export default function CheckPage() {
 
       const accessoryData: AccessoryData = await accessoryResponse.json()
 
-      // Calculate current gross price to match main app's display calculation
+      // Use stored gross_price from API if available, otherwise calculate
       const vatPercent = accessoryData.vat?.kulcs || 0
-      // Main app forward calculation: net + (net * VAT% / 100), then round for display
-      const vatAmount = (accessoryData.net_price * vatPercent) / 100
-      const currentGrossPrice = Math.round(accessoryData.net_price + vatAmount)
+      const calculatedGrossPrice = Math.round(accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100))
+      // Use stored gross_price if available (from API response), otherwise use calculated
+      const currentGrossPrice = accessoryData.gross_price !== null && accessoryData.gross_price !== undefined
+        ? accessoryData.gross_price
+        : calculatedGrossPrice
 
       setAccessory(accessoryData)
       setGrossPrice(currentGrossPrice)
@@ -194,7 +197,8 @@ export default function CheckPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          multiplier: calculatedMultiplier
+          multiplier: calculatedMultiplier,
+          gross_price: grossPrice  // Send gross_price to preserve user-entered value
         })
       })
 
@@ -206,12 +210,19 @@ export default function CheckPage() {
 
       const result = await response.json()
       
-      // Update local state with new values
+      // Update local state with new values (including gross_price if returned)
       setAccessory({
         ...accessory,
         multiplier: result.accessory.multiplier,
-        net_price: result.accessory.net_price
+        net_price: result.accessory.net_price,
+        gross_price: result.accessory.gross_price !== undefined ? result.accessory.gross_price : accessory.gross_price
       })
+      
+      // Update grossPrice state if gross_price was saved
+      if (result.accessory.gross_price !== undefined) {
+        setGrossPrice(result.accessory.gross_price)
+        setOriginalGrossPrice(result.accessory.gross_price)
+      }
 
       toast.success('Szorzó sikeresen frissítve')
       

@@ -6,7 +6,7 @@ import { cookies } from 'next/headers'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { product_type, product_id, new_base_price, new_multiplier, shipment_id } = body
+    const { product_type, product_id, new_base_price, new_multiplier, shipment_id, gross_price } = body
 
     // Validate input
     if (!product_type || !product_id || new_base_price === undefined || new_multiplier === undefined) {
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     // FIRST: Fetch current values before update - select only columns that exist per table
     let selectColumns: string
     if (product_type === 'accessory') {
-      selectColumns = 'base_price, multiplier, currency_id, vat_id, net_price'
+      selectColumns = 'base_price, multiplier, currency_id, vat_id, net_price, gross_price'
     } else if (product_type === 'material') {
       selectColumns = 'base_price, multiplier, currency_id, vat_id, price_per_sqm'
     } else { // linear_material
@@ -86,14 +86,45 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update both base_price and multiplier
+    // For accessories, calculate gross_price from new net_price + VAT
+    let updateData: any = {
+      base_price: Math.round(new_base_price),
+      multiplier: parseFloat(new_multiplier.toFixed(3)),
+      updated_at: new Date().toISOString()
+    }
+
+    if (product_type === 'accessory') {
+      // If gross_price is provided in request, use it directly (preserves user-entered value)
+      if (gross_price !== undefined && gross_price !== null) {
+        updateData.gross_price = Math.round(gross_price)
+      } else {
+        // Otherwise, calculate from net_price + VAT
+        const { data: vatData, error: vatError } = await supabaseServer
+          .from('vat')
+          .select('kulcs')
+          .eq('id', currentData.vat_id)
+          .single()
+
+        if (vatError || !vatData) {
+          console.error('Error fetching VAT rate:', vatError)
+          return NextResponse.json(
+            { error: 'Hiba az ÁFA kulcs lekérdezésekor' },
+            { status: 500 }
+          )
+        }
+
+        const vatRate = vatData.kulcs || 0
+        const new_net_price = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
+        const new_gross_price = Math.round(new_net_price + (new_net_price * vatRate / 100))
+        
+        updateData.gross_price = new_gross_price
+      }
+    }
+
+    // Update base_price, multiplier, and gross_price (for accessories)
     const { data, error } = await supabaseServer
       .from(tableName)
-      .update({
-        base_price: Math.round(new_base_price),
-        multiplier: parseFloat(new_multiplier.toFixed(3)),
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', product_id)
       .is('deleted_at', null) // Filter out soft-deleted records
       .select(selectColumns)
@@ -183,8 +214,18 @@ export async function POST(request: NextRequest) {
           console.log('Linear material price history logged successfully')
         }
       } else if (product_type === 'accessory') {
-        // Calculate new net_price (trigger will update it, but we need it for history)
+        // Calculate new net_price and gross_price (trigger will update net_price, but we need both for history)
         const new_net_price = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
+        
+        // Fetch VAT rate to calculate gross_price for history
+        const { data: vatData } = await supabaseServer
+          .from('vat')
+          .select('kulcs')
+          .eq('id', currentData.vat_id)
+          .single()
+        
+        const vatRate = vatData?.kulcs || 0
+        const new_gross_price = Math.round(new_net_price + (new_net_price * vatRate / 100))
         
         const historyData = {
           accessory_id: product_id,

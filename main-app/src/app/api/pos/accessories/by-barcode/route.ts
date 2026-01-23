@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const trimmedBarcode = barcode.trim()
 
     // OPTIMIZED: Query accessory first (fast indexed lookup), then stock
+    // Search in both barcode and barcode_u fields
     const { data: accessoryData, error: accessoryError } = await supabaseServer
       .from('accessories')
       .select(`
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
           name
         )
       `)
-      .eq('barcode', trimmedBarcode)
+      .or(`barcode.eq.${trimmedBarcode},barcode_u.eq.${trimmedBarcode}`)
       .is('deleted_at', null)
       .maybeSingle()
 

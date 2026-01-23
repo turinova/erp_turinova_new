@@ -73,6 +73,59 @@ const hungarianRound = (value: number): number => {
   }
 }
 
+// Special rounding function for gross price display
+// Based on decimal part of the value (in forints):
+// - 0.01 to 2.49 forint → round down to nearest 0
+// - 2.50 to 4.99 forint → round up to nearest 5
+// - 5.01 to 7.49 forint → round down to nearest 5
+// - 7.50 to 9.99 forint → round up to nearest 0
+// If value is already an integer, round based on last digit
+const roundGrossPriceForDisplay = (value: number): number => {
+  const integerPart = Math.floor(value)
+  const decimalPart = value - integerPart
+  // Convert decimal part to forints (0.16 → 16 forint, 0.35 → 35 forint)
+  const decimalInForints = Math.round(decimalPart * 100)
+  
+  // If no decimal part, treat last digit as if it were a decimal
+  if (decimalInForints === 0) {
+    const lastDigit = integerPart % 10
+    if (lastDigit >= 1 && lastDigit <= 2) {
+      // 1-2 → round down to nearest 0
+      return Math.floor(integerPart / 10) * 10
+    } else if (lastDigit >= 3 && lastDigit <= 4) {
+      // 3-4 → round up to nearest 5
+      return Math.ceil(integerPart / 5) * 5
+    } else if (lastDigit >= 5 && lastDigit <= 7) {
+      // 5-7 → round down to nearest 5
+      return Math.floor(integerPart / 5) * 5
+    } else if (lastDigit >= 8 && lastDigit <= 9) {
+      // 8-9 → round up to nearest 0
+      return Math.ceil(integerPart / 10) * 10
+    } else {
+      // 0 → return as is
+      return integerPart
+    }
+  }
+  
+  // Handle decimal values
+  if (decimalInForints >= 1 && decimalInForints <= 249) {
+    // 0.01 to 2.49 forint → round down to nearest 0 (10, 20, 30, etc.)
+    return Math.floor(integerPart / 10) * 10
+  } else if (decimalInForints >= 250 && decimalInForints <= 499) {
+    // 2.50 to 4.99 forint → round up to nearest 5 (5, 15, 25, 35, etc.)
+    return Math.ceil(integerPart / 5) * 5
+  } else if (decimalInForints >= 501 && decimalInForints <= 749) {
+    // 5.01 to 7.49 forint → round down to nearest 5 (5, 15, 25, 35, etc.)
+    return Math.floor(integerPart / 5) * 5
+  } else if (decimalInForints >= 750 && decimalInForints <= 999) {
+    // 7.50 to 9.99 forint → round up to nearest 0 (10, 20, 30, etc.)
+    return Math.ceil(integerPart / 10) * 10
+  } else {
+    // Exactly 0.00 → return as is
+    return integerPart
+  }
+}
+
 export default function AccessoriesListClient({ 
   initialAccessories, 
   totalCount, 
@@ -388,16 +441,16 @@ export default function AccessoriesListClient({
       setAccessoryToPrint(fullAccessory)
       setEditableProductName(fullAccessory.name)
       
-      // Initialize editable selling price with gross_price from API, using Hungarian rounding rules
+      // Initialize editable selling price with gross_price from API
       const calculatedPrice = fullAccessory.gross_price !== undefined && fullAccessory.gross_price !== null
-        ? hungarianRound(fullAccessory.gross_price)
+        ? fullAccessory.gross_price
         : (() => {
             // Fallback calculation if gross_price not available
             const basePrice = fullAccessory.base_price || 0
             const multiplier = parseFloat(String(fullAccessory.multiplier)) || 1.38
             const vatPercent = fullAccessory.vat_percent || 0
-            const price = basePrice * multiplier * (1 + vatPercent / 100)
-            return hungarianRound(price)
+            const netPrice = basePrice * multiplier
+            return Math.round(netPrice * (1 + vatPercent / 100))
           })()
       setEditableSellingPrice(calculatedPrice)
       
@@ -429,13 +482,13 @@ export default function AccessoriesListClient({
     }
   }
 
-  // Calculate current selling price: use gross_price from API, using Hungarian rounding rules
+  // Calculate current selling price: use gross_price from API
   const currentSellingPrice = useMemo(() => {
     if (!accessoryToPrint) return null
     
-    // Use gross_price from API if available, using Hungarian rounding rules
+    // Use gross_price from API if available
     if (accessoryToPrint.gross_price !== undefined && accessoryToPrint.gross_price !== null) {
-      return hungarianRound(accessoryToPrint.gross_price)
+      return accessoryToPrint.gross_price
     }
     
     // Fallback to calculation if gross_price not available
@@ -444,10 +497,8 @@ export default function AccessoriesListClient({
     const vatPercent = accessoryToPrint.vat_percent || 0
     
     // Calculate: base_price * multiplier * (1 + vat_percent/100)
-    const price = basePrice * multiplier * (1 + vatPercent / 100)
-    
-    // Use Hungarian rounding rules
-    return hungarianRound(price)
+    const netPrice = basePrice * multiplier
+    return Math.round(netPrice * (1 + vatPercent / 100))
   }, [accessoryToPrint])
 
   // Label component for printing - Supports 33mm x 25mm and 64mm x 39mm sizes

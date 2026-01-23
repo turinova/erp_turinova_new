@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
         sku, 
         base_price,
         multiplier,
-        net_price, 
+        net_price,
+        gross_price,
         created_at, 
         updated_at,
         vat_id,
@@ -56,17 +57,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to include calculated fields
-    const transformedData = data?.map(accessory => ({
-      ...accessory,
-      vat_name: accessory.vat?.name || '',
-      vat_percent: accessory.vat?.kulcs || 0,
-      currency_name: accessory.currencies?.name || '',
-      unit_name: accessory.units?.name || '',
-      unit_shortform: accessory.units?.shortform || '',
-      partner_name: accessory.partners?.name || '',
-      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
-      gross_price: accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
-    })) || []
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const transformedData = data?.map(accessory => {
+      const calculatedGrossPrice = accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
+      const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
+      
+      return {
+        ...accessory,
+        vat_name: accessory.vat?.name || '',
+        vat_percent: accessory.vat?.kulcs || 0,
+        currency_name: accessory.currencies?.name || '',
+        unit_name: accessory.units?.name || '',
+        unit_shortform: accessory.units?.shortform || '',
+        partner_name: accessory.partners?.name || '',
+        vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+        gross_price: finalGrossPrice
+      }
+    }) || []
 
     return NextResponse.json(transformedData)
 
@@ -79,7 +86,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, sku, barcode, base_price, multiplier, net_price, vat_id, currency_id, units_id, partners_id, image_url } = body
+    const { name, sku, barcode, barcode_u, base_price, multiplier, net_price, gross_price, vat_id, currency_id, units_id, partners_id, image_url } = body
 
     // Validate required fields
     if (!name || !sku || base_price === undefined || multiplier === undefined || !vat_id || !currency_id || !units_id || !partners_id) {
@@ -96,6 +103,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Multiplier must be between 1.0 and 5.0' }, { status: 400 })
     }
 
+    // Calculate net_price if not provided
+    let finalNetPrice = net_price
+    if (finalNetPrice === undefined || finalNetPrice === null) {
+      finalNetPrice = Math.round(base_price * multiplier)
+    } else {
+      finalNetPrice = Math.round(finalNetPrice)
+    }
+
+    // Calculate gross_price: use provided value or calculate from net_price + VAT
+    let finalGrossPrice = gross_price
+    if (finalGrossPrice === undefined || finalGrossPrice === null) {
+      const { data: vatData } = await supabaseServer
+        .from('vat')
+        .select('kulcs')
+        .eq('id', vat_id)
+        .single()
+      
+      if (vatData) {
+        finalGrossPrice = Math.round(finalNetPrice + (finalNetPrice * vatData.kulcs / 100))
+      } else {
+        finalGrossPrice = finalNetPrice
+      }
+    } else {
+      finalGrossPrice = Math.round(finalGrossPrice)
+    }
+
     console.log('Creating new accessory...')
 
     const { data, error } = await supabaseServer
@@ -104,9 +137,11 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         sku: sku.trim(),
         barcode: barcode ? barcode.trim() : null,
+        barcode_u: barcode_u ? barcode_u.trim() : null,
         base_price: Math.round(base_price), // Convert to integer
         multiplier: parseFloat(multiplier.toFixed(3)), // Round to 3 decimal places
-        net_price: Math.round(net_price), // Convert to integer
+        net_price: finalNetPrice, // Convert to integer
+        gross_price: finalGrossPrice,
         image_url: image_url || null,
         vat_id,
         currency_id,
@@ -119,7 +154,8 @@ export async function POST(request: NextRequest) {
         sku, 
         base_price,
         multiplier,
-        net_price, 
+        net_price,
+        gross_price,
         created_at, 
         updated_at,
         vat_id,
@@ -159,6 +195,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Transform the data to include calculated fields
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+    const finalGrossPrice = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
+    
     const transformedData = {
       ...data,
       vat_name: data.vat?.name || '',
@@ -168,7 +208,7 @@ export async function POST(request: NextRequest) {
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
       vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+      gross_price: finalGrossPrice
     }
 
     console.log('Accessory created successfully:', transformedData.name)

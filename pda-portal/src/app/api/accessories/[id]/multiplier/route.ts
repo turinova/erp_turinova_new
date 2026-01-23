@@ -8,7 +8,7 @@ export async function PATCH(
   try {
     const { id } = await params
     const body = await request.json()
-    const { multiplier } = body
+    const { multiplier, gross_price } = body
 
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       return NextResponse.json(
@@ -23,6 +23,16 @@ export async function PATCH(
         { error: 'Multiplier must be between 1.0 and 5.0' },
         { status: 400 }
       )
+    }
+
+    // Validate gross_price if provided
+    if (gross_price !== undefined && gross_price !== null) {
+      if (typeof gross_price !== 'number' || gross_price < 0) {
+        return NextResponse.json(
+          { error: 'Gross price must be a positive number' },
+          { status: 400 }
+        )
+      }
     }
 
     const supabaseAdmin = createClient(
@@ -53,16 +63,24 @@ export async function PATCH(
     // Calculate new net_price from base_price and multiplier
     const net_price = Math.round(accessory.base_price * multiplier)
 
-    // Update only multiplier and net_price
+    // Build update object
+    const updateData: any = {
+      multiplier: parseFloat(multiplier.toFixed(3)),
+      net_price: net_price,
+      updated_at: new Date().toISOString()
+    }
+
+    // Add gross_price if provided (preserves user-entered value)
+    if (gross_price !== undefined && gross_price !== null) {
+      updateData.gross_price = Math.round(gross_price)
+    }
+
+    // Update multiplier, net_price, and optionally gross_price
     const { data, error } = await supabaseAdmin
       .from('accessories')
-      .update({
-        multiplier: parseFloat(multiplier.toFixed(3)),
-        net_price: net_price,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
-      .select('id, multiplier, net_price')
+      .select('id, multiplier, net_price, gross_price')
       .single()
 
     if (error) {

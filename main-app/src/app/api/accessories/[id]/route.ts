@@ -14,9 +14,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         name, 
         sku, 
         barcode,
+        barcode_u,
         base_price,
         multiplier,
-        net_price, 
+        net_price,
+        gross_price,
         image_url,
         created_at, 
         updated_at,
@@ -53,6 +55,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Transform the data to include calculated fields
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+    const finalGrossPrice = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
+    
     const transformedData = {
       ...data,
       vat_name: data.vat?.name || '',
@@ -62,7 +68,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
       vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+      gross_price: finalGrossPrice
     }
 
     return NextResponse.json(transformedData)
@@ -77,7 +83,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, sku, barcode, base_price, multiplier, vat_id, currency_id, units_id, partners_id, image_url } = body
+    const { name, sku, barcode, barcode_u, base_price, multiplier, gross_price, vat_id, currency_id, units_id, partners_id, image_url } = body
 
     // Validate required fields
     if (!name || !sku || base_price === undefined || multiplier === undefined || !vat_id || !currency_id || !units_id || !partners_id) {
@@ -95,7 +101,24 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Calculate net_price from base_price and multiplier
-    const net_price = Math.round(base_price * multiplier)
+    // If gross_price is provided, use it; otherwise calculate from base_price and multiplier
+    let net_price = Math.round(base_price * multiplier)
+    
+    // If gross_price is provided, calculate net_price from it
+    if (gross_price !== undefined && gross_price !== null) {
+      // Get VAT rate to calculate net_price from gross_price
+      const { data: vatData } = await supabaseServer
+        .from('vat')
+        .select('kulcs')
+        .eq('id', vat_id)
+        .single()
+      
+      if (vatData) {
+        const vatRate = vatData.kulcs
+        // net_price = gross_price / (1 + vatRate/100)
+        net_price = Math.round(gross_price / (1 + vatRate / 100))
+      }
+    }
 
     // FIRST: Get current accessory to check if price changed
     const { data: currentAccessory } = await supabaseServer
@@ -128,15 +151,35 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
     console.log(`Updating accessory ${id}`)
 
+    // Calculate gross_price: use provided value or calculate from net_price + VAT
+    let finalGrossPrice = gross_price
+    if (finalGrossPrice === undefined || finalGrossPrice === null) {
+      const { data: vatData } = await supabaseServer
+        .from('vat')
+        .select('kulcs')
+        .eq('id', vat_id)
+        .single()
+      
+      if (vatData) {
+        finalGrossPrice = Math.round(net_price + (net_price * vatData.kulcs / 100))
+      } else {
+        finalGrossPrice = net_price
+      }
+    } else {
+      finalGrossPrice = Math.round(finalGrossPrice)
+    }
+
     const { data, error } = await supabaseServer
       .from('accessories')
       .update({
         name: name.trim(),
         sku: sku.trim(),
         barcode: barcode ? barcode.trim() : null,
+        barcode_u: barcode_u ? barcode_u.trim() : null,
         base_price: Math.round(base_price),
         multiplier: parseFloat(multiplier.toFixed(3)),
         net_price: net_price,
+        gross_price: finalGrossPrice,
         image_url: image_url || null,
         vat_id,
         currency_id,
@@ -150,9 +193,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         name, 
         sku, 
         barcode,
+        barcode_u,
         base_price,
         multiplier,
-        net_price, 
+        net_price,
+        gross_price,
         image_url,
         created_at, 
         updated_at,
@@ -234,6 +279,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Transform the data to include calculated fields
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const calculatedGrossPriceResponse = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+    const finalGrossPriceResponse = data.gross_price !== null ? data.gross_price : calculatedGrossPriceResponse
+    
     const transformedData = {
       ...data,
       vat_name: data.vat?.name || '',
@@ -243,7 +292,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
       vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+      gross_price: finalGrossPriceResponse
     }
 
     console.log('Accessory updated successfully:', transformedData.name)

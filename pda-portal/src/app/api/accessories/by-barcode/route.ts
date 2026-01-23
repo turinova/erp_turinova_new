@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
     )
 
     // Query accessory by barcode - search entire accessories table (no stock requirement)
+    // Search in both barcode and barcode_u fields
     const { data: accessoryData, error: accessoryError } = await supabaseAdmin
       .from('accessories')
       .select(`
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
         name,
         sku,
         net_price,
+        gross_price,
         image_url,
         deleted_at,
         vat (
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
           name
         )
       `)
-      .eq('barcode', trimmedBarcode)
+      .or(`barcode.eq.${trimmedBarcode},barcode_u.eq.${trimmedBarcode}`)
       .is('deleted_at', null)
       .maybeSingle()
 
@@ -67,7 +69,10 @@ export async function GET(request: NextRequest) {
     const currency = Array.isArray(accessoryData.currencies) ? accessoryData.currencies[0] : accessoryData.currencies
 
     const vatPercent = vat?.kulcs || 0
-    const gross_price = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
+    // Use stored gross_price if available, otherwise calculate as fallback
+    const gross_price = accessoryData.gross_price !== null && accessoryData.gross_price !== undefined
+      ? accessoryData.gross_price
+      : accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
 
     return NextResponse.json({
       id: accessoryData.id,

@@ -107,6 +107,34 @@ const roundPrice = (value: number): number => {
   return Math.round(value / 5) * 5
 }
 
+// Hungarian cash rounding function (for display only in confirmation modal)
+// Rules: 0-2→0, 3-4→5, 5-7→5, 8-9→0
+// Reference: https://www.billingo.hu/tudastar/olvas/kerekites-szabalyai
+const hungarianRoundCash = (amount: number): number => {
+  if (amount <= 0) return 0
+  const floor = Math.floor(amount)
+  const lastDigit = floor % 10
+  
+  if (lastDigit >= 0 && lastDigit <= 2) {
+    // 0.01-2.49 → round down to nearest 0
+    return Math.floor(floor / 10) * 10
+  } else if (lastDigit >= 3 && lastDigit <= 4) {
+    // 2.50-4.99 → round up to nearest 5
+    return Math.floor(floor / 10) * 10 + 5
+  } else if (lastDigit >= 5 && lastDigit <= 7) {
+    // 5.01-7.49 → round down to nearest 5
+    return Math.floor(floor / 10) * 10 + 5
+  } else {
+    // 7.50-9.99 → round up to nearest 0 (next 10)
+    return Math.ceil(floor / 10) * 10
+  }
+}
+
+// Helper to format price as integer (no decimals)
+const formatPriceInteger = (price: number): string => {
+  return Math.round(price).toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+}
+
 interface CartItem {
   id: string
   product_type: 'accessory' | 'material' | 'linear_material'
@@ -822,6 +850,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     }
 
     // Use unit price for materials and linear_materials, whole piece price for accessories
+    // IMPORTANT: For accessories, use stored gross_price directly without rounding
+    // This preserves the exact stored value (e.g., 6610) instead of rounding it
     let priceToUse = product.gross_price
     let netPriceToUse = product.net_price
     
@@ -836,7 +866,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       const vatPercent = product.vat_percent || 0
       netPriceToUse = priceToUse / (1 + vatPercent / 100)
     }
-    const roundedPrice = Math.round(priceToUse / 5) * 5
+    
+    // Use exact prices (no rounding to nearest 5)
+    // Rounding is only applied in confirmation modal for cash payments
+    const roundedPrice = Math.round(priceToUse) // Round to integer only
     const roundedNetPrice = Math.round(netPriceToUse)
     
     if (existingItem) {
@@ -1019,8 +1052,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     return 0
   }
 
-  // Calculate részösszeg for each item, rounded to nearest 5
+  // Calculate részösszeg for each item (no rounding - exact value)
   // Accounts for per-item discounts
+  // Rounding is only applied in confirmation modal for cash payments
   const getItemSubtotal = (item: CartItem) => {
     // Calculate base subtotal before discount
     const baseSubtotal = item.gross_price * item.quantity
@@ -1034,7 +1068,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     }
     
     const subtotalAfterDiscount = baseSubtotal - discountAmount
-    return Math.round(subtotalAfterDiscount / 5) * 5
+    return Math.round(subtotalAfterDiscount) // Round to integer, but no rounding to nearest 5
   }
 
   // Fetch fee types
@@ -1060,7 +1094,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       return
     }
     const firstFeeType = feeTypes[0]
-    const roundedPrice = roundPrice(firstFeeType.gross_price)
+    const roundedPrice = Math.round(firstFeeType.gross_price) // Round to integer only, no rounding to nearest 5
     const newFee: FeeItem = {
       id: Date.now().toString(),
       feetype_id: firstFeeType.id,
@@ -1097,7 +1131,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const handleFeeTypeChange = (feeId: string, feeTypeId: string) => {
     const selectedFeeType = feeTypes.find(ft => ft.id === feeTypeId)
     if (selectedFeeType) {
-      const roundedPrice = roundPrice(selectedFeeType.gross_price)
+      const roundedPrice = Math.round(selectedFeeType.gross_price) // Round to integer only, no rounding to nearest 5
       setFees(prev =>
         prev.map(fee =>
           fee.id === feeId
@@ -1615,7 +1649,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     </TableHead>
                     <TableBody>
                       {searchResults.map((product) => {
-                        const roundedPrice = roundPrice(product.gross_price)
+                        const roundedPrice = Math.round(product.gross_price) // Round to integer only, no rounding to nearest 5
                         const getTypeLabel = () => {
                           switch (product.product_type) {
                             case 'accessory':
@@ -1773,7 +1807,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   } else if (product.product_type === 'linear_material' && product.unit_price_per_m) {
                                     displayPrice = Math.round(product.unit_price_per_m)
                                   }
-                                  return displayPrice.toLocaleString('hu-HU')
+                                  return formatPriceInteger(displayPrice)
                                 })()} {product.currency_name}
                               </Typography>
                             </TableCell>
@@ -2122,17 +2156,17 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 >
                                   {(() => {
                                     const originalSubtotal = item.gross_price * item.quantity
-                                    return `${Math.round(originalSubtotal / 5) * 5} ${item.currency_name}`
+                                    return `${formatPriceInteger(originalSubtotal)} ${item.currency_name}`
                                   })()}
                                 </Typography>
                                 {/* Discounted price */}
                                 <Typography variant="subtitle2" fontWeight="bold" color="primary">
-                                  {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                                  {formatPriceInteger(getItemSubtotal(item))} {item.currency_name}
                                 </Typography>
                               </Box>
                             ) : (
                               <Typography variant="subtitle2" fontWeight="bold" color="primary">
-                                {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                                {formatPriceInteger(getItemSubtotal(item))} {item.currency_name}
                               </Typography>
                             )}
                           </TableCell>
@@ -2174,7 +2208,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   <Grid item xs={12} sm={6}>
                                     <TextField
                                       label="Nettó egységár"
-                                      value={item.net_price.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                      value={formatPriceInteger(item.net_price)}
                                       disabled
                                       fullWidth
                                       size="small"
@@ -2190,7 +2224,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                       data-accordion-field="true"
                                       label="Bruttó egységár"
                                       type="number"
-                                      value={item.gross_price}
+                                      value={Math.round(item.gross_price)}
                                       onChange={(e) => {
                                         const value = parseFloat(e.target.value)
                                         if (!isNaN(value)) {
@@ -2493,7 +2527,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           {/* Column 3: Bruttó Részösszeg - Discount Amount */}
                           <TableCell align="right">
                             <Typography variant="body2" color="error" fontWeight="bold">
-                              -{((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100).toLocaleString('hu-HU')} HUF
+                              -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
                             </Typography>
                           </TableCell>
 
@@ -2520,7 +2554,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                   <Typography variant="h6">Összesen:</Typography>
                   <Typography variant="h5" color="primary" fontWeight="bold">
-                    {total.toLocaleString('hu-HU')} HUF
+                    {formatPriceInteger(total)} HUF
                   </Typography>
                 </Box>
                 {/* Fee and Discount Icons */}
@@ -2695,7 +2729,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                              item.unit_shortform || item.unit_name || '-'}
                           </TableCell>
                           <TableCell align="right">
-                            {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
+                            {Math.round(item.gross_price).toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {item.currency_name}
                           </TableCell>
                           <TableCell align="right">
                             {((item.discount_percentage && item.discount_percentage > 0) || 
@@ -2711,16 +2745,16 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 >
                                   {(() => {
                                     const originalSubtotal = item.gross_price * item.quantity
-                                    return `${Math.round(originalSubtotal / 5) * 5} ${item.currency_name}`
+                                    return `${formatPriceInteger(originalSubtotal)} ${item.currency_name}`
                                   })()}
                                 </Typography>
                                 <Typography variant="body2" fontWeight="bold" color="primary">
-                                  {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                                  {formatPriceInteger(getItemSubtotal(item))} {item.currency_name}
                                 </Typography>
                               </Box>
                             ) : (
                               <Typography variant="body2">
-                                {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
+                                {formatPriceInteger(getItemSubtotal(item))} {item.currency_name}
                               </Typography>
                             )}
                           </TableCell>
@@ -2745,7 +2779,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           <TableRow key={fee.id}>
                             <TableCell>{fee.name}</TableCell>
                             <TableCell align="right">
-                              {fee.price.toLocaleString('hu-HU')} {fee.currency_name}
+                              {formatPriceInteger(fee.price)} {fee.currency_name}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -2770,7 +2804,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           <TableCell>{discount.name}</TableCell>
                           <TableCell align="center">{discount.percentage}%</TableCell>
                           <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                            -{((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100).toLocaleString('hu-HU')} HUF
+                            -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
                           </TableCell>
                         </TableRow>
                       </TableBody>
@@ -2785,7 +2819,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Typography variant="h6">Összesen:</Typography>
                   <Typography variant="h5" color="primary" fontWeight="bold">
-                    {total.toLocaleString('hu-HU')} HUF
+                    {formatPriceInteger(total)} HUF
                   </Typography>
                 </Box>
               </Box>
@@ -3012,34 +3046,36 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                          item.unit_shortform || item.unit_name || '-'}
                       </TableCell>
                       <TableCell align="right">
-                        {item.gross_price.toLocaleString('hu-HU')} {item.currency_name}
+                        {formatPriceInteger(Math.round(item.gross_price))} {item.currency_name}
                       </TableCell>
                       <TableCell align="right">
-                        {((item.discount_percentage && item.discount_percentage > 0) || 
-                          (item.discount_amount && item.discount_amount > 0)) ? (
-                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
-                            <Typography
-                              variant="caption"
-                              sx={{
-                                textDecoration: 'line-through',
-                                color: 'text.secondary',
-                                fontSize: '0.7rem'
-                              }}
-                            >
-                              {(() => {
-                                const originalSubtotal = item.gross_price * item.quantity
-                                return `${Math.round(originalSubtotal / 5) * 5} ${item.currency_name}`
-                              })()}
+                        {(() => {
+                          const subtotal = getItemSubtotal(item)
+                          const originalSubtotal = item.gross_price * item.quantity
+                          
+                          return (item.discount_percentage && item.discount_percentage > 0) || 
+                                 (item.discount_amount && item.discount_amount > 0) ? (
+                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  textDecoration: 'line-through',
+                                  color: 'text.secondary',
+                                  fontSize: '0.7rem'
+                                }}
+                              >
+                                {formatPriceInteger(Math.round(originalSubtotal))} {item.currency_name}
+                              </Typography>
+                              <Typography variant="body2" fontWeight="bold" color="primary">
+                                {formatPriceInteger(subtotal)} {item.currency_name}
+                              </Typography>
+                            </Box>
+                          ) : (
+                            <Typography variant="body2">
+                              {formatPriceInteger(subtotal)} {item.currency_name}
                             </Typography>
-                            <Typography variant="body2" fontWeight="bold" color="primary">
-                              {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
-                            </Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="body2">
-                            {getItemSubtotal(item).toLocaleString('hu-HU')} {item.currency_name}
-                          </Typography>
-                        )}
+                          )
+                        })()}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -3062,7 +3098,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       <TableRow key={fee.id}>
                         <TableCell>{fee.name}</TableCell>
                         <TableCell align="right">
-                          {getFeeSubtotal(fee).toLocaleString('hu-HU')} {fee.currency_name}
+                          {formatPriceInteger(getFeeSubtotal(fee))} {fee.currency_name}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -3087,7 +3123,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       <TableCell>{discount.name}</TableCell>
                       <TableCell align="center">{discount.percentage}%</TableCell>
                       <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                        -{((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100).toLocaleString('hu-HU')} HUF
+                        -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -3098,7 +3134,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
             {/* Total */}
             <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
               <Typography variant="h6" align="right" sx={{ fontWeight: 'bold' }}>
-                Összesen: {total.toLocaleString('hu-HU')} HUF
+                Összesen: {formatPriceInteger(Math.round(total))} HUF
               </Typography>
               <Typography variant="body2" align="right" color="text.secondary">
                 Fizetési mód: {pendingPaymentType === 'cash' ? 'Készpénz' : 'Bankkártya'}

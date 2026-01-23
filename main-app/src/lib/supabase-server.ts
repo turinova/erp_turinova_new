@@ -2200,7 +2200,8 @@ export async function getAllAccessories() {
       sku, 
       base_price,
       multiplier,
-      net_price, 
+      net_price,
+      gross_price,
       created_at, 
       updated_at,
       vat_id,
@@ -2238,17 +2239,23 @@ export async function getAllAccessories() {
   }
 
   // Transform the data to include calculated fields
-  const transformedData = data?.map(accessory => ({
-    ...accessory,
-    vat_name: accessory.vat?.name || '',
-    vat_percent: accessory.vat?.kulcs || 0,
-    currency_name: accessory.currencies?.name || '',
-    unit_name: accessory.units?.name || '',
-    unit_shortform: accessory.units?.shortform || '',
-    partner_name: accessory.partners?.name || '',
-    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
-    gross_price: accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
-  })) || []
+  // Use stored gross_price if available, otherwise calculate as fallback
+  const transformedData = data?.map(accessory => {
+    const calculatedGrossPrice = accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
+    const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
+    
+    return {
+      ...accessory,
+      vat_name: accessory.vat?.name || '',
+      vat_percent: accessory.vat?.kulcs || 0,
+      currency_name: accessory.currencies?.name || '',
+      unit_name: accessory.units?.name || '',
+      unit_shortform: accessory.units?.shortform || '',
+      partner_name: accessory.partners?.name || '',
+      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+      gross_price: finalGrossPrice
+    }
+  }) || []
 
   logTiming('Accessories Total', startTime, `returned ${transformedData.length} records`)
   return transformedData
@@ -2275,7 +2282,8 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
       sku, 
       base_price,
       multiplier,
-      net_price, 
+      net_price,
+      gross_price,
       created_at, 
       updated_at,
       vat_id,
@@ -2314,17 +2322,23 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
   }
 
   // Transform the data to include calculated fields
-  const transformedData = data?.map(accessory => ({
-    ...accessory,
-    vat_name: accessory.vat?.name || '',
-    vat_percent: accessory.vat?.kulcs || 0,
-    currency_name: accessory.currencies?.name || '',
-    unit_name: accessory.units?.name || '',
-    unit_shortform: accessory.units?.shortform || '',
-    partner_name: accessory.partners?.name || '',
-    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
-    gross_price: accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
-  })) || []
+  // Use stored gross_price if available, otherwise calculate as fallback
+  const transformedData = data?.map(accessory => {
+    const calculatedGrossPrice = accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
+    const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
+    
+    return {
+      ...accessory,
+      vat_name: accessory.vat?.name || '',
+      vat_percent: accessory.vat?.kulcs || 0,
+      currency_name: accessory.currencies?.name || '',
+      unit_name: accessory.units?.name || '',
+      unit_shortform: accessory.units?.shortform || '',
+      partner_name: accessory.partners?.name || '',
+      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+      gross_price: finalGrossPrice
+    }
+  }) || []
 
   const totalCount = count || 0
   const totalPages = Math.ceil(totalCount / limit)
@@ -2440,9 +2454,11 @@ export async function getAccessoryById(id: string) {
       name, 
       sku, 
       barcode,
+      barcode_u,
       base_price,
       multiplier,
-      net_price, 
+      net_price,
+      gross_price,
       image_url,
       created_at, 
       updated_at,
@@ -2479,6 +2495,10 @@ export async function getAccessoryById(id: string) {
   }
 
   // Transform the data to include calculated fields
+  // Use stored gross_price if available, otherwise calculate as fallback
+  const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+  const finalGrossPrice = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
+  
   const transformedData = {
     ...data,
     vat_name: data.vat?.name || '',
@@ -2488,7 +2508,7 @@ export async function getAccessoryById(id: string) {
     unit_shortform: data.units?.shortform || '',
     partner_name: data.partners?.name || '',
     vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-    gross_price: data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
+    gross_price: finalGrossPrice
   }
 
   return transformedData

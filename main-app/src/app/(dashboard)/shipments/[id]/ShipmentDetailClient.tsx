@@ -88,6 +88,7 @@ export default function ShipmentDetailClient({
   const [editableSellingPrice, setEditableSellingPrice] = useState<number | null>(null)
   const [selectedUnitShortform, setSelectedUnitShortform] = useState<string>('')
   const [units, setUnits] = useState<Array<{ id: string; name: string; shortform: string }>>([])
+  const [accessoryGrossPrice, setAccessoryGrossPrice] = useState<number | null>(null)
   const [labelFields, setLabelFields] = useState({
     showName: true,
     showSku: true,
@@ -104,7 +105,7 @@ export default function ShipmentDetailClient({
   const [updateBasePriceModalOpen, setUpdateBasePriceModalOpen] = useState(false)
   const [itemForBasePriceUpdate, setItemForBasePriceUpdate] = useState<ShipmentItem | null>(null)
   const [updatingBasePrice, setUpdatingBasePrice] = useState(false)
-  const [currentProductData, setCurrentProductData] = useState<{ base_price: number; multiplier: number; material_length_mm?: number; material_width_mm?: number; linear_material_length?: number } | null>(null)
+  const [currentProductData, setCurrentProductData] = useState<{ base_price: number; multiplier: number; gross_price?: number | null; material_length_mm?: number; material_width_mm?: number; linear_material_length?: number } | null>(null)
   const [confirmUpdateBasePriceOpen, setConfirmUpdateBasePriceOpen] = useState(false)
   const [newSellingPrice, setNewSellingPrice] = useState<number | null>(null)
   const [calculatedNewBasePrice, setCalculatedNewBasePrice] = useState<number | null>(null)
@@ -831,6 +832,7 @@ export default function ShipmentDetailClient({
     setItemToPrint(item)
     setEditableProductName(item.product_name)
     setEditableSellingPrice(null)
+    setAccessoryGrossPrice(null)
     setPrintAmount(item.quantity_received || 1)
     // If no barcode, don't select it by default
     const hasBarcode = !!item.barcode
@@ -840,6 +842,21 @@ export default function ShipmentDetailClient({
       showBarcode: hasBarcode,
       showPrice: true
     })
+    
+    // Fetch accessory gross_price if it's an accessory
+    if (item.product_type === 'accessory' && item.accessory_id) {
+      try {
+        const accessoryResponse = await fetch(`/api/accessories/${item.accessory_id}`)
+        if (accessoryResponse.ok) {
+          const accessoryData = await accessoryResponse.json()
+          if (accessoryData.gross_price !== null && accessoryData.gross_price !== undefined) {
+            setAccessoryGrossPrice(accessoryData.gross_price)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching accessory gross_price:', error)
+      }
+    }
     
     // Fetch units when modal opens
     try {
@@ -1020,6 +1037,7 @@ export default function ShipmentDetailClient({
       const productDataWithDims = {
         base_price: productData.base_price || 0,
         multiplier: productData.multiplier || 1.38,
+        gross_price: productData.gross_price || null,
         material_length_mm: productData.length_mm || item.material_length_mm || null,
         material_width_mm: productData.width_mm || item.material_width_mm || null,
         linear_material_length: productData.length || item.linear_material_length || null
@@ -1047,32 +1065,44 @@ export default function ShipmentDetailClient({
       }
       setCalculatedNewBasePrice(initialBasePrice)
       
-      // Calculate initial new selling price from PO net_price and current multiplier
+      // Calculate initial new selling price
       const vatPercent = vatRates.get(item.vat_id) || 0
-      let effectiveNetPrice = item.net_price
-      if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
-        // Already per board, use as-is
-        effectiveNetPrice = item.net_price
-      } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
-        // Already per length, use as-is
-        effectiveNetPrice = item.net_price
+      
+      // For accessories, use stored gross_price if available
+      if (item.product_type === 'accessory' && productData.gross_price !== null && productData.gross_price !== undefined) {
+        setNewSellingPrice(productData.gross_price)
+      } else {
+        // For materials/linear_materials, calculate from PO net_price and current multiplier, rounded up to nearest 10
+        let effectiveNetPrice = item.net_price
+        if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
+          // Already per board, use as-is
+          effectiveNetPrice = item.net_price
+        } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
+          // Already per length, use as-is
+          effectiveNetPrice = item.net_price
+        }
+        const initialNewSellingPrice = Math.ceil(
+          (effectiveNetPrice * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
+        ) * 10
+        setNewSellingPrice(initialNewSellingPrice)
       }
-      const initialNewSellingPrice = Math.ceil(
-        (effectiveNetPrice * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
-      ) * 10
-      setNewSellingPrice(initialNewSellingPrice)
       
       // Calculate initial multiplier from initial selling price
-      const netSellingPrice = initialNewSellingPrice / (1 + vatPercent / 100)
+      const initialSellingPriceForMultiplier = item.product_type === 'accessory' && productData.gross_price !== null && productData.gross_price !== undefined
+        ? productData.gross_price
+        : Math.ceil(
+            (item.net_price * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
+          ) * 10
+      const netSellingPrice = initialSellingPriceForMultiplier / (1 + vatPercent / 100)
       if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
         const areaM2 = (productDataWithDims.material_length_mm * productDataWithDims.material_width_mm) / 1000000
-        const grossPerM2 = initialNewSellingPrice / areaM2
+        const grossPerM2 = initialSellingPriceForMultiplier / areaM2
         const netPerM2 = grossPerM2 / (1 + vatPercent / 100)
         const initialMultiplier = netPerM2 / initialBasePrice
         setCalculatedNewMultiplier(parseFloat(initialMultiplier.toFixed(2)))
       } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
         const lengthM = productDataWithDims.linear_material_length / 1000
-        const grossPerM = initialNewSellingPrice / lengthM
+        const grossPerM = initialSellingPriceForMultiplier / lengthM
         const netPerM = grossPerM / (1 + vatPercent / 100)
         const initialMultiplier = netPerM / initialBasePrice
         setCalculatedNewMultiplier(parseFloat(initialMultiplier.toFixed(2)))
@@ -1143,6 +1173,7 @@ export default function ShipmentDetailClient({
           product_id: itemForBasePriceUpdate.accessory_id || itemForBasePriceUpdate.material_id || itemForBasePriceUpdate.linear_material_id,
           new_base_price: calculatedNewBasePrice, // Fixed purchase net price
           new_multiplier: calculatedNewMultiplier, // Calculated from new selling price
+          gross_price: itemForBasePriceUpdate.product_type === 'accessory' && newSellingPrice !== null ? newSellingPrice : undefined, // Send exact gross_price for accessories
           shipment_id: id // Pass shipment ID for price history tracking
         })
       })
@@ -1855,9 +1886,19 @@ export default function ShipmentDetailClient({
     }
   }
 
-  // Calculate current selling price: base_price * multiplier * (1 + vat_percent/100) rounded UP to nearest 10
+  // Calculate current selling price: use gross_price if available (for accessories), otherwise calculate from base_price * multiplier * (1 + vat_percent/100) rounded UP to nearest 10
   const currentSellingPrice = useMemo(() => {
-    if (!itemToPrint || !itemToPrint.base_price || !itemToPrint.multiplier) {
+    if (!itemToPrint) {
+      return null
+    }
+    
+    // For accessories, use stored gross_price if available
+    if (itemToPrint.product_type === 'accessory' && accessoryGrossPrice !== null && accessoryGrossPrice !== undefined) {
+      return accessoryGrossPrice
+    }
+    
+    // Fallback to calculation from base_price and multiplier
+    if (!itemToPrint.base_price || !itemToPrint.multiplier) {
       return null
     }
     
@@ -1870,7 +1911,7 @@ export default function ShipmentDetailClient({
     
     // Always round UP to nearest 10 (keep this behavior as requested)
     return Math.ceil(priceWithVat / 10) * 10
-  }, [itemToPrint, vatRates])
+  }, [itemToPrint, vatRates, accessoryGrossPrice])
 
   const totals = items.reduce((acc, it) => {
     acc.net += it.net_total
@@ -3239,17 +3280,22 @@ export default function ShipmentDetailClient({
                         </Typography>
                         <Typography variant="h6" color="error.main" fontWeight="bold">
                           {new Intl.NumberFormat('hu-HU').format(
-                            Math.ceil(
-                              (() => {
-                                let effectiveBasePrice = currentProductData.base_price
-                                if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
-                                  effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
-                                } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
-                                  effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
-                                }
-                                return (effectiveBasePrice * currentProductData.multiplier * (1 + (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100)) / 10
-                              })()
-                            ) * 10
+                            (() => {
+                              // For accessories, use stored gross_price if available
+                              if (itemForBasePriceUpdate.product_type === 'accessory' && currentProductData.gross_price !== null && currentProductData.gross_price !== undefined) {
+                                return currentProductData.gross_price
+                              }
+                              // For materials/linear_materials, calculate and round up to nearest 10
+                              let effectiveBasePrice = currentProductData.base_price
+                              if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
+                                effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
+                              } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
+                                effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
+                              }
+                              return Math.ceil(
+                                (effectiveBasePrice * currentProductData.multiplier * (1 + (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100)) / 10
+                              ) * 10
+                            })()
                           )} Ft
                         </Typography>
                       </Box>
