@@ -42,6 +42,25 @@ function escapeXml(unsafe: string | null | undefined): string {
     .replace(/'/g, '&apos;')
 }
 
+// Calculate order total from items (matches frontend calculation)
+// This ensures invoice total matches what user sees on the page
+function calculateOrderTotalFromItems(items: any[], discountAmount: number): number {
+  // Sum all item totals (products and fees)
+  let totalGrossBeforeDiscount = 0
+  
+  items.forEach(item => {
+    const gross = Math.round(Number(item.total_gross || 0))
+    totalGrossBeforeDiscount += gross
+  })
+  
+  // Apply global discount (same logic as frontend)
+  const discountAmountValue = Number(discountAmount) || 0
+  const grossAfterDiscountRaw = totalGrossBeforeDiscount - discountAmountValue
+  const totalGrossAfterDiscount = Math.round(grossAfterDiscountRaw)
+  
+  return totalGrossAfterDiscount
+}
+
 // Build XML request for szamlazz.hu
 function buildInvoiceXml(
   order: any,
@@ -248,8 +267,13 @@ function buildInvoiceXml(
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
   if (!isAdvanceInvoice && !isProformaWithAmount && discountAmount > 0) {
-    // Calculate the gross total before discount
-    const grossBeforeDiscount = Number(order.subtotal_net) + Number(order.total_vat)
+    // Calculate the gross total before discount from items (matches frontend calculation)
+    // This ensures the discount XML uses the same base as the frontend display
+    let grossBeforeDiscount = 0
+    items.forEach(item => {
+      const gross = Math.round(Number(item.total_gross || 0))
+      grossBeforeDiscount += gross
+    })
     
     // Find the most appropriate VAT rate from items (use the one with highest gross total)
     // This ensures we use a standard VAT rate that szamlazz.hu accepts
@@ -479,7 +503,8 @@ export async function POST(
       
       if (!proformaCheckError && proformaCheck && proformaCheck.gross_total) {
         const proformaTotal = Number(proformaCheck.gross_total)
-        const orderTotal = Number(orderData.total_gross || 0)
+        // Calculate order total from items (matches frontend) for comparison
+        const orderTotal = calculateOrderTotalFromItems(itemsData || [], orderData.discount_amount || 0)
         hasPartialProforma = proformaTotal < orderTotal
         console.log('[INVOICE CREATION] Proforma check:', {
           proformaTotal,
@@ -504,7 +529,8 @@ export async function POST(
       const totalPaid = (payments || [])
         .filter(p => !p.deleted_at)
         .reduce((sum, p) => sum + Number(p.amount || 0), 0)
-      const totalDue = Number(orderData.total_gross || 0)
+      // Calculate order total from items (matches frontend) for payment validation
+      const totalDue = calculateOrderTotalFromItems(itemsData || [], orderData.discount_amount || 0)
 
       // Allow 1 Ft tolerance for rounding differences
       const remaining = totalDue - totalPaid
@@ -686,7 +712,8 @@ export async function POST(
         // AND there's NO existing advance invoice, automatically convert it to an advance invoice using the proforma amount
         if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest && !existingAdvanceInvoice && proformaData.gross_total) {
           const proformaGrossTotal = Number(proformaData.gross_total)
-          const orderTotal = Number(orderData.total_gross || 0)
+          // Calculate order total from items (matches frontend) for comparison
+          const orderTotal = calculateOrderTotalFromItems(itemsData || [], orderData.discount_amount || 0)
           
           // If proforma amount is less than order total, it's a partial proforma
           // In this case, create an advance invoice instead of a normal invoice
@@ -906,6 +933,8 @@ export async function POST(
     // For advance invoices, use advance amount
     // For final invoices (with existing advance), use order total minus advance amount
     // Calculate invoice gross total
+    // IMPORTANT: Calculate from item totals (matches frontend display) instead of using order.total_gross
+    // This ensures invoice total matches what user sees on the page
     let invoiceGrossTotal: number | null = null
     if (isAdvanceInvoiceRequest && body.advanceAmount) {
       invoiceGrossTotal = body.advanceAmount
@@ -913,11 +942,13 @@ export async function POST(
       invoiceGrossTotal = body.proformaAmount
     } else if (existingAdvanceInvoice) {
       // Final invoice: remaining amount after advance
-      const orderTotal = Number(orderData.total_gross || 0)
+      // Calculate order total from items (matches frontend)
+      const calculatedOrderTotal = calculateOrderTotalFromItems(itemsData || [], orderData.discount_amount || 0)
       const advanceTotal = existingAdvanceInvoice.gross_total
-      invoiceGrossTotal = orderTotal - advanceTotal
+      invoiceGrossTotal = calculatedOrderTotal - advanceTotal
     } else {
-      invoiceGrossTotal = orderData.total_gross || null
+      // Calculate order total from items (matches frontend display)
+      invoiceGrossTotal = calculateOrderTotalFromItems(itemsData || [], orderData.discount_amount || 0)
     }
 
       const invoiceRow: any = {

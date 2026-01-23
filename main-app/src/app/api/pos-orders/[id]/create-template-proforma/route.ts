@@ -206,18 +206,15 @@ function buildTemplateProformaXml(
     const vatRate = vatRatesMap.get(item.vat_id) || 0
     const mennyiseg = Number(item.quantity)
     
-    // Use stored net value from database (already rounded)
-    const nettoErtek = Math.round(Number(item.total_net || 0))
+    // Use stored totals which already have per-item discounts applied (matches create-invoice API)
+    // IMPORTANT: Use stored total_gross directly to match created invoice exactly
+    const nettoErtek = Math.round(Number(item.total_net) || 0)
+    const afaErtek = Math.round(Number(item.total_vat) || 0)
+    const bruttoErtek = Math.round(Number(item.total_gross) || 0)
     
-    // Recalculate VAT from net value to ensure szamlazz.hu validation passes
-    // afaErtek = nettoErtek × afakulcs / 100 (must match exactly)
-    const afaErtek = Math.round(nettoErtek * vatRate / 100)
-    
-    // Calculate gross = net + VAT (ensures consistency)
-    const bruttoErtek = nettoErtek + afaErtek
-    
-    // Calculate unit price from stored totals for display (backwards calculation)
-    const nettoEgysegar = mennyiseg > 0 ? Math.round(nettoErtek / mennyiseg) : 0
+    // Calculate unit price exactly (no rounding) to ensure nettoErtek = mennyiseg × nettoEgysegar
+    // szamlazz.hu accepts decimal unit prices and validates: nettoErtek = mennyiseg × nettoEgysegar
+    const nettoEgysegar = mennyiseg > 0 ? nettoErtek / mennyiseg : 0
     
     return `
       <tetel>
@@ -270,9 +267,10 @@ function buildTemplateProformaXml(
   }
 
   // Add discount item if discount exists (only for normal invoices, not advance or proforma with amount)
+  // The discount_amount is applied to gross total, so we need to split it into net and VAT
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
-  if (isNormalInvoiceForFinal && discountAmount > 0) {
+  if (!isAdvanceInvoice && !isProformaWithAmount && discountAmount > 0) {
     // Find the most appropriate VAT rate from items (use the one with highest gross total)
     // This ensures we use a standard VAT rate that szamlazz.hu accepts
     let discountVatRate = 27 // Default to 27% (most common in Hungary)

@@ -98,9 +98,18 @@ function buildInvoiceXml(
   }).join('')
 
   // Add discount item if discount exists
+  // The discount_amount is applied to gross total, so we need to split it into net and VAT
   let discountXml = ''
   const discountAmount = Number(order.discount_amount) || 0
   if (discountAmount > 0) {
+    // Calculate the gross total before discount from items (matches frontend calculation)
+    // This ensures the discount XML uses the same base as the frontend display
+    let grossBeforeDiscount = 0
+    items.forEach(item => {
+      const gross = Math.round(Number(item.total_gross || 0))
+      grossBeforeDiscount += gross
+    })
+    
     // Find the most appropriate VAT rate from items (use the one with highest gross total)
     // This ensures we use a standard VAT rate that szamlazz.hu accepts
     let discountVatRate = 27 // Default to 27% (most common in Hungary)
@@ -126,12 +135,14 @@ function buildInvoiceXml(
     }
     
     // Calculate discount amounts using the selected VAT rate
+    // Round discount amount to integer first (matches create-invoice API)
+    const roundedDiscountAmount = Math.round(discountAmount)
     // Since discount is applied to gross, we need to calculate net: gross / (1 + vat_rate/100)
-    // We need to ensure discountNet + discountVat = discountAmount exactly (no rounding errors)
-    const discountNetPrecise = discountAmount / (1 + discountVatRate / 100)
-    const discountNet = Math.round(discountNetPrecise * 100) / 100
-    const discountVat = discountAmount - discountNet // Calculate VAT to ensure exact total (discountNet + discountVat = discountAmount)
-    const discountBrutto = -discountAmount // Negative for discount
+    // Round to integers (whole forints) for Számlázz.hu compliance
+    const discountNetPrecise = roundedDiscountAmount / (1 + discountVatRate / 100)
+    const discountNet = Math.round(discountNetPrecise) // Round to integer
+    const discountVat = roundedDiscountAmount - discountNet // Ensure exact total (discountNet + discountVat = roundedDiscountAmount)
+    const discountBrutto = -roundedDiscountAmount // Negative for discount
     
     // Build discount item name
     const discountName = order.discount_percentage && order.discount_percentage > 0

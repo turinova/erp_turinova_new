@@ -218,13 +218,44 @@ export default function InvoiceModal({
     return map
   }, [vatRates])
 
-  // Calculate totals
+  // Calculate totals from items (matches frontend display and invoice creation)
+  // This ensures the modal shows the same total as the page and the created invoice
   const totals = useMemo(() => {
-    const net = order.subtotal_net - order.discount_amount
-    const vat = order.total_vat
-    const gross = order.total_gross - order.discount_amount
-    return { net, vat, gross }
-  }, [order])
+    // Sum all item totals (products and fees)
+    let totalGrossBeforeDiscount = 0
+    let totalNetBeforeDiscount = 0
+    let totalVatBeforeDiscount = 0
+    
+    items.forEach(item => {
+      const gross = Math.round(Number(item.total_gross || 0))
+      const net = Math.round(Number(item.total_net || 0))
+      const vat = Math.round(Number(item.total_vat || 0))
+      totalGrossBeforeDiscount += gross
+      totalNetBeforeDiscount += net
+      totalVatBeforeDiscount += vat
+    })
+    
+    // Apply global discount (same logic as frontend and invoice creation)
+    const discountAmountValue = Number(order.discount_amount) || 0
+    const grossAfterDiscountRaw = totalGrossBeforeDiscount - discountAmountValue
+    const totalGrossAfterDiscount = Math.round(grossAfterDiscountRaw)
+    
+    // Recalculate net and VAT proportionally after discount
+    let totalNetAfterDiscount = totalNetBeforeDiscount
+    let totalVatAfterDiscount = totalVatBeforeDiscount
+    if (discountAmountValue > 0 && totalGrossBeforeDiscount > 0) {
+      // Calculate proportional reduction
+      const discountRatio = discountAmountValue / totalGrossBeforeDiscount
+      totalNetAfterDiscount = Math.round(totalNetBeforeDiscount * (1 - discountRatio))
+      totalVatAfterDiscount = totalGrossAfterDiscount - totalNetAfterDiscount
+    }
+    
+    return { 
+      net: totalNetAfterDiscount, 
+      vat: totalVatAfterDiscount, 
+      gross: totalGrossAfterDiscount // After discount, matches frontend display
+    }
+  }, [order, items])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('hu-HU', {
@@ -559,7 +590,7 @@ export default function InvoiceModal({
 
     // Validate advance amount doesn't exceed total
     if (invoiceType === 'advance' && advanceAmount > 0) {
-      const totalGross = Number(order.total_gross) || 0
+      const totalGross = totals.gross // Use calculated total from items
       if (advanceAmount > totalGross) {
         setError(`Az előleg összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
         return
@@ -573,7 +604,7 @@ export default function InvoiceModal({
 
     // Validate proforma amount doesn't exceed total
     if (invoiceType === 'proforma' && proformaAmount > 0) {
-      const totalGross = Number(order.total_gross) || 0
+      const totalGross = totals.gross // Use calculated total from items
       if (proformaAmount > totalGross) {
         setError(`A díjbekérő összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
         return
@@ -717,7 +748,7 @@ export default function InvoiceModal({
                   onChange={(e) => {
                     const value = parseFloat(e.target.value) || 0
                     setAdvanceAmount(value)
-                    const totalGross = Number(order.total_gross) || 0
+                    const totalGross = totals.gross // Use calculated total from items
                     if (value > totalGross) {
                       setAdvanceAmountError(`Az előleg összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
                     } else {
@@ -740,7 +771,7 @@ export default function InvoiceModal({
                   onChange={(e) => {
                     const value = parseFloat(e.target.value) || 0
                     setProformaAmount(value)
-                    const totalGross = Number(order.total_gross) || 0
+                    const totalGross = totals.gross // Use calculated total from items
                     if (value > totalGross) {
                       setProformaAmountError(`A díjbekérő összege nem lehet nagyobb, mint a rendelés teljes összege (${totalGross.toLocaleString('hu-HU')} Ft)`)
                     } else {
