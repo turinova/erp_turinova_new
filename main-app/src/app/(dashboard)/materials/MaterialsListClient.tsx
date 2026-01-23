@@ -38,6 +38,11 @@ interface Material {
   vat_percent: number
   created_at: string
   updated_at: string
+  stock?: {
+    quantity_on_hand: number
+    stock_value: number
+    last_movement_at: string | null
+  } | null
 }
 
 interface MaterialsListClientProps {
@@ -80,6 +85,11 @@ export default function MaterialsListClient({
   const [filterWidth, setFilterWidth] = useState<string>('')
   const [filterThickness, setFilterThickness] = useState<string>('')
   const [filterActive, setFilterActive] = useState<string>('all') // 'all', 'active', 'inactive'
+  const [filterOnStock, setFilterOnStock] = useState<string>('all') // 'all', 'yes', 'no'
+  
+  // Stock data state (lazy loaded)
+  const [stockData, setStockData] = useState<Map<string, { quantity_on_hand: number; stock_value: number; last_movement_at: string | null }>>(new Map())
+  const [loadingStock, setLoadingStock] = useState<Set<string>>(new Set())
   
   // Import states
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -157,6 +167,13 @@ export default function MaterialsListClient({
       filtered = filtered.filter(m => m.active === false)
     }
 
+    // Apply on_stock filter
+    if (filterOnStock === 'yes') {
+      filtered = filtered.filter(m => m.on_stock === true)
+    } else if (filterOnStock === 'no') {
+      filtered = filtered.filter(m => m.on_stock === false)
+    }
+
     // Apply search term
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
@@ -170,7 +187,7 @@ export default function MaterialsListClient({
     }
     
     return filtered
-  }, [materials, searchTerm, filterBrand, filterLength, filterWidth, filterThickness, filterActive])
+  }, [materials, searchTerm, filterBrand, filterLength, filterWidth, filterThickness, filterActive, filterOnStock])
 
   // Paginated filtered materials
   const paginatedMaterials = useMemo(() => {
@@ -189,6 +206,87 @@ export default function MaterialsListClient({
       setPage(1)
     }
   }, [filteredTotalPages, page])
+
+  // Lazy load stock data for visible materials
+  useEffect(() => {
+    const loadStockData = async () => {
+      const visibleMaterialIds = paginatedMaterials.map(m => m.id)
+      const materialsToLoad = visibleMaterialIds.filter(id => !stockData.has(id) && !loadingStock.has(id))
+      
+      if (materialsToLoad.length === 0) return
+
+      // Mark as loading
+      setLoadingStock(prev => {
+        const newSet = new Set(prev)
+        materialsToLoad.forEach(id => newSet.add(id))
+        return newSet
+      })
+
+      try {
+        // Batch fetch stock data for all visible materials
+        const stockPromises = materialsToLoad.map(async (materialId) => {
+          try {
+            const response = await fetch(`/api/materials/${materialId}/inventory-summary`)
+            if (response.ok) {
+              const data = await response.json()
+              // Handle null response (material has no inventory) or valid data
+              if (data && data.quantity_on_hand !== undefined) {
+                return {
+                  materialId,
+                  stock: {
+                    quantity_on_hand: Number(data.quantity_on_hand) || 0,
+                    stock_value: Number(data.total_inventory_value) || 0,
+                    last_movement_at: data.last_movement_at || null
+                  }
+                }
+              } else {
+                // No inventory data - return 0 stock
+                return {
+                  materialId,
+                  stock: {
+                    quantity_on_hand: 0,
+                    stock_value: 0,
+                    last_movement_at: null
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching stock for material ${materialId}:`, error)
+          }
+          // On error, return 0 stock
+          return {
+            materialId,
+            stock: {
+              quantity_on_hand: 0,
+              stock_value: 0,
+              last_movement_at: null
+            }
+          }
+        })
+
+        const results = await Promise.all(stockPromises)
+        
+        setStockData(prev => {
+          const newMap = new Map(prev)
+          results.forEach(({ materialId, stock }) => {
+            newMap.set(materialId, stock)
+          })
+          return newMap
+        })
+      } catch (error) {
+        console.error('Error loading stock data:', error)
+      } finally {
+        setLoadingStock(prev => {
+          const newSet = new Set(prev)
+          materialsToLoad.forEach(id => newSet.delete(id))
+          return newSet
+        })
+      }
+    }
+
+    loadStockData()
+  }, [paginatedMaterials, stockData, loadingStock])
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -541,7 +639,7 @@ export default function MaterialsListClient({
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <FilterIcon sx={{ mr: 1 }} />
             <Typography variant="h6">Szűrők</Typography>
-            {(filterBrand || filterLength || filterWidth || filterThickness || filterActive !== 'all') && (
+            {(filterBrand || filterLength || filterWidth || filterThickness || filterActive !== 'all' || filterOnStock !== 'all') && (
               <Button 
                 size="small" 
                 onClick={() => {
@@ -550,6 +648,7 @@ export default function MaterialsListClient({
                   setFilterWidth('')
                   setFilterThickness('')
                   setFilterActive('all')
+                  setFilterOnStock('all')
                 }}
                 sx={{ ml: 'auto' }}
               >
@@ -642,6 +741,22 @@ export default function MaterialsListClient({
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Raktári</InputLabel>
+                <Select
+                  value={filterOnStock}
+                  label="Raktári"
+                  onChange={(e) => setFilterOnStock(e.target.value)}
+                >
+                  <MenuItem value="all">
+                    <em>Összes</em>
+                  </MenuItem>
+                  <MenuItem value="yes">Igen</MenuItem>
+                  <MenuItem value="no">Nem</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
           </Grid>
         </Box>
       )}
@@ -680,6 +795,7 @@ export default function MaterialsListClient({
               <TableCell align="right">Bruttó ár/m²</TableCell>
               <TableCell>Szálirány</TableCell>
               <TableCell>Raktári</TableCell>
+              <TableCell>Készleten</TableCell>
               <TableCell>Aktív</TableCell>
             </TableRow>
           </TableHead>
@@ -755,6 +871,23 @@ export default function MaterialsListClient({
                    variant="filled"
                    size="small"
                  />
+               </TableCell>
+               <TableCell>
+                 {loadingStock.has(material.id) ? (
+                   <CircularProgress size={16} />
+                 ) : (() => {
+                   const stock = stockData.get(material.id)
+                   const quantity = stock?.quantity_on_hand ?? 0
+                   return (
+                     <Typography 
+                       variant="body2" 
+                       fontWeight="medium"
+                       color={quantity < 0 ? "error.main" : quantity === 0 ? "text.secondary" : "text.primary"}
+                     >
+                       {quantity} m²
+                     </Typography>
+                   )
+                 })()}
                </TableCell>
                <TableCell>
                  <Typography 

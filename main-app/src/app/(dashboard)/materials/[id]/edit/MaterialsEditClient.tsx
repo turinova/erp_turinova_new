@@ -1394,7 +1394,7 @@ export default function MaterialsEditClient({
                         <Box>
                           <Typography variant="caption" color="text.secondary">Készleten</Typography>
                           <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-                            {currentStock.quantity_on_hand} db
+                            {currentStock.quantity_on_hand} m²
                           </Typography>
                         </Box>
                       </Grid>
