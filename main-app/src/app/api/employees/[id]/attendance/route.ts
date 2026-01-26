@@ -113,14 +113,16 @@ export async function POST(
     const scanTime = new Date(`${date}T${time}:00`).toISOString()
 
     // Check if a log already exists for this employee, location, date, and scan type
+    // Prioritize manually edited logs, then latest by time
     const { data: existingLogs } = await supabase
       .from('attendance_logs')
-      .select('id')
+      .select('id, manually_edited')
       .eq('employee_id', id)
       .eq('location_id', locationId)
       .eq('scan_date', date)
       .in('scan_type', scanType === 'arrival' ? ['arrival', 'arrival_pin'] : ['departure', 'departure_pin'])
-      .order('scan_time', { ascending: false })
+      .order('manually_edited', { ascending: false })  // Prioritize manually edited logs first
+      .order('scan_time', { ascending: false })  // Then by latest time
       .limit(1)
 
     if (existingLogs && existingLogs.length > 0) {
