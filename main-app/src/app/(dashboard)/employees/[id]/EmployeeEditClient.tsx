@@ -200,7 +200,7 @@ interface AttendanceAccordionProps {
 }
 
 function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, worksOnSaturday }: AttendanceAccordionProps) {
-  const currentDate = new Date(2026, 0, 15) // 2026-01-15
+  const currentDate = new Date() // Use current date instead of hardcoded date
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth() + 1 // January = 1
   
@@ -405,9 +405,73 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
       toast.error('Helyszín ID hiányzik', { position: "top-right" })
       return
     }
-    
+
     const day = daysData[dayIndex]
     const dateStr = formatDateLocal(day.date)
+
+    // Business logic validation
+    if (field === 'arrival' || field === 'departure') {
+      // Validate time format
+      if (value && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
+        toast.error('Érvénytelen időformátum. Használja az ÓÓ:PP formátumot.', { position: "top-right" })
+        return
+      }
+
+      // Check arrival before departure
+      if (field === 'departure' && value && day.arrival) {
+        const arrivalTime = new Date(`2000-01-01T${day.arrival}`)
+        const departureTime = new Date(`2000-01-01T${value}`)
+        if (departureTime <= arrivalTime) {
+          toast.error('A távozás ideje nem lehet korábbi vagy egyenlő az érkezés idejével.', { position: "top-right" })
+          return
+        }
+
+        // Check for reasonable working hours (max 12 hours)
+        const hoursDiff = (departureTime.getTime() - arrivalTime.getTime()) / (1000 * 60 * 60)
+        if (hoursDiff > 12) {
+          toast.error('A munkavégzés időtartama nem lehet több 12 óránál.', { position: "top-right" })
+          return
+        }
+      }
+
+      // Check departure after arrival
+      if (field === 'arrival' && value && day.departure) {
+        const arrivalTime = new Date(`2000-01-01T${value}`)
+        const departureTime = new Date(`2000-01-01T${day.departure}`)
+        if (arrivalTime >= departureTime) {
+          toast.error('Az érkezés ideje nem lehet későbbi vagy egyenlő a távozás idejével.', { position: "top-right" })
+          return
+        }
+      }
+    }
+
+    // Lunch break validation
+    if (field === 'lunchStart' || field === 'lunchEnd') {
+      // Validate time format
+      if (value && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
+        toast.error('Érvénytelen időformátum. Használja az ÓÓ:PP formátumot.', { position: "top-right" })
+        return
+      }
+
+      // Check lunch start before lunch end
+      if (field === 'lunchEnd' && value && day.lunchStart) {
+        const lunchStartTime = new Date(`2000-01-01T${day.lunchStart}`)
+        const lunchEndTime = new Date(`2000-01-01T${value}`)
+        if (lunchEndTime <= lunchStartTime) {
+          toast.error('Az ebéd vége nem lehet korábbi vagy egyenlő az ebéd kezdetével.', { position: "top-right" })
+          return
+        }
+      }
+
+      if (field === 'lunchStart' && value && day.lunchEnd) {
+        const lunchStartTime = new Date(`2000-01-01T${value}`)
+        const lunchEndTime = new Date(`2000-01-01T${day.lunchEnd}`)
+        if (lunchStartTime >= lunchEndTime) {
+          toast.error('Az ebéd kezdete nem lehet későbbi vagy egyenlő az ebéd végével.', { position: "top-right" })
+          return
+        }
+      }
+    }
     
     // Update local state immediately
     setDaysData(prev => {
