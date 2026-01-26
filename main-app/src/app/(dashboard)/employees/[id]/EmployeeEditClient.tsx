@@ -197,12 +197,11 @@ interface AttendanceAccordionProps {
   lunchBreakStart: string | null
   lunchBreakEnd: string | null
   worksOnSaturday: boolean
+  year: number
+  month: number // 1-12
 }
 
-function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, worksOnSaturday }: AttendanceAccordionProps) {
-  const currentDate = new Date() // Use current date instead of hardcoded date
-  const year = currentDate.getFullYear()
-  const month = currentDate.getMonth() + 1 // January = 1
+function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, worksOnSaturday, year, month }: AttendanceAccordionProps) {
   
   const monthNames = ['Január', 'Február', 'Március', 'Április', 'Május', 'Június', 'Július', 'Augusztus', 'Szeptember', 'Október', 'November', 'December']
   const monthName = monthNames[month - 1]
@@ -652,8 +651,8 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
     <Accordion>
       <AccordionSummary
         expandIcon={<ExpandMoreIcon />}
-        aria-controls="attendance-2026-january-content"
-        id="attendance-2026-january-header"
+        aria-controls={`attendance-${year}-${month}-content`}
+        id={`attendance-${year}-${month}-header`}
       >
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
@@ -705,7 +704,7 @@ function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, works
           </Box>
         </Box>
       </AccordionSummary>
-      <AccordionDetails>
+      <AccordionDetails id={`attendance-${year}-${month}-content`}>
         {isLoading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
@@ -1209,13 +1208,24 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
 
         {/* Tab 2: Jelenlét */}
         <TabPanel value='2' sx={{ p: 0, pt: 3 }}>
-          <AttendanceAccordion 
-            key={`${employee.id}-${employee.works_on_saturday}`}
-            employeeId={employee.id} 
-            lunchBreakStart={employee.lunch_break_start}
-            lunchBreakEnd={employee.lunch_break_end}
-            worksOnSaturday={employee.works_on_saturday !== undefined ? employee.works_on_saturday : false}
-          />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {(() => {
+              const currentYear = new Date().getFullYear()
+              const months = Array.from({ length: 12 }, (_, i) => i + 1) // 1-12
+              
+              return months.map((month) => (
+                <AttendanceAccordion 
+                  key={`${employee.id}-${currentYear}-${month}`}
+                  employeeId={employee.id} 
+                  lunchBreakStart={employee.lunch_break_start}
+                  lunchBreakEnd={employee.lunch_break_end}
+                  worksOnSaturday={employee.works_on_saturday !== undefined ? employee.works_on_saturday : false}
+                  year={currentYear}
+                  month={month}
+                />
+              ))
+            })()}
+          </Box>
         </TabPanel>
 
         {/* Tab 3: Szabadságok */}
