@@ -1074,18 +1074,18 @@ export default function ShipmentDetailClient({
         setNewSellingPrice(productData.gross_price)
       } else {
         // For materials/linear_materials, calculate from PO net_price and current multiplier, rounded up to nearest 10
-        let effectiveNetPrice = item.net_price
-        if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
-          // Already per board, use as-is
-          effectiveNetPrice = item.net_price
-        } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
-          // Already per length, use as-is
-          effectiveNetPrice = item.net_price
-        }
-        const initialNewSellingPrice = Math.ceil(
-          (effectiveNetPrice * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
-        ) * 10
-        setNewSellingPrice(initialNewSellingPrice)
+      let effectiveNetPrice = item.net_price
+      if (item.product_type === 'material' && productDataWithDims.material_length_mm && productDataWithDims.material_width_mm) {
+        // Already per board, use as-is
+        effectiveNetPrice = item.net_price
+      } else if (item.product_type === 'linear_material' && productDataWithDims.linear_material_length) {
+        // Already per length, use as-is
+        effectiveNetPrice = item.net_price
+      }
+      const initialNewSellingPrice = Math.ceil(
+        (effectiveNetPrice * (productData.multiplier || 1.38) * (1 + vatPercent / 100)) / 10
+      ) * 10
+      setNewSellingPrice(initialNewSellingPrice)
       }
       
       // Calculate initial multiplier from initial selling price
@@ -3281,21 +3281,21 @@ export default function ShipmentDetailClient({
                         </Typography>
                         <Typography variant="h6" color="error.main" fontWeight="bold">
                           {new Intl.NumberFormat('hu-HU').format(
-                            (() => {
+                              (() => {
                               // For accessories, use stored gross_price if available
                               if (itemForBasePriceUpdate.product_type === 'accessory' && currentProductData.gross_price !== null && currentProductData.gross_price !== undefined) {
                                 return currentProductData.gross_price
                               }
                               // For materials/linear_materials, calculate and round up to nearest 10
-                              let effectiveBasePrice = currentProductData.base_price
-                              if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
-                                effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
-                              } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
-                                effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
-                              }
+                                let effectiveBasePrice = currentProductData.base_price
+                                if (itemForBasePriceUpdate.product_type === 'material' && currentProductData.material_length_mm && currentProductData.material_width_mm) {
+                                  effectiveBasePrice = currentProductData.base_price * (currentProductData.material_length_mm * currentProductData.material_width_mm / 1000000)
+                                } else if (itemForBasePriceUpdate.product_type === 'linear_material' && currentProductData.linear_material_length) {
+                                  effectiveBasePrice = currentProductData.base_price * (currentProductData.linear_material_length / 1000)
+                                }
                               return Math.ceil(
                                 (effectiveBasePrice * currentProductData.multiplier * (1 + (vatRates.get(itemForBasePriceUpdate.vat_id) || 0) / 100)) / 10
-                              ) * 10
+                            ) * 10
                             })()
                           )} Ft
                         </Typography>

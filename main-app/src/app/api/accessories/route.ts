@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
         sku, 
         base_price,
         multiplier,
-        net_price,
+        net_price, 
         gross_price,
         created_at, 
         updated_at,
@@ -63,14 +63,14 @@ export async function GET(request: NextRequest) {
       const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
       
       return {
-        ...accessory,
-        vat_name: accessory.vat?.name || '',
-        vat_percent: accessory.vat?.kulcs || 0,
-        currency_name: accessory.currencies?.name || '',
-        unit_name: accessory.units?.name || '',
-        unit_shortform: accessory.units?.shortform || '',
-        partner_name: accessory.partners?.name || '',
-        vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+      ...accessory,
+      vat_name: accessory.vat?.name || '',
+      vat_percent: accessory.vat?.kulcs || 0,
+      currency_name: accessory.currencies?.name || '',
+      unit_name: accessory.units?.name || '',
+      unit_shortform: accessory.units?.shortform || '',
+      partner_name: accessory.partners?.name || '',
+      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
         gross_price: finalGrossPrice
       }
     }) || []
@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
         sku, 
         base_price,
         multiplier,
-        net_price,
+        net_price, 
         gross_price,
         created_at, 
         updated_at,

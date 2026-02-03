@@ -2200,7 +2200,7 @@ export async function getAllAccessories() {
       sku, 
       base_price,
       multiplier,
-      net_price,
+      net_price, 
       gross_price,
       created_at, 
       updated_at,
@@ -2245,14 +2245,14 @@ export async function getAllAccessories() {
     const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
     
     return {
-      ...accessory,
-      vat_name: accessory.vat?.name || '',
-      vat_percent: accessory.vat?.kulcs || 0,
-      currency_name: accessory.currencies?.name || '',
-      unit_name: accessory.units?.name || '',
-      unit_shortform: accessory.units?.shortform || '',
-      partner_name: accessory.partners?.name || '',
-      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+    ...accessory,
+    vat_name: accessory.vat?.name || '',
+    vat_percent: accessory.vat?.kulcs || 0,
+    currency_name: accessory.currencies?.name || '',
+    unit_name: accessory.units?.name || '',
+    unit_shortform: accessory.units?.shortform || '',
+    partner_name: accessory.partners?.name || '',
+    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
       gross_price: finalGrossPrice
     }
   }) || []
@@ -2282,7 +2282,7 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
       sku, 
       base_price,
       multiplier,
-      net_price,
+      net_price, 
       gross_price,
       created_at, 
       updated_at,
@@ -2328,14 +2328,14 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
     const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
     
     return {
-      ...accessory,
-      vat_name: accessory.vat?.name || '',
-      vat_percent: accessory.vat?.kulcs || 0,
-      currency_name: accessory.currencies?.name || '',
-      unit_name: accessory.units?.name || '',
-      unit_shortform: accessory.units?.shortform || '',
-      partner_name: accessory.partners?.name || '',
-      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
+    ...accessory,
+    vat_name: accessory.vat?.name || '',
+    vat_percent: accessory.vat?.kulcs || 0,
+    currency_name: accessory.currencies?.name || '',
+    unit_name: accessory.units?.name || '',
+    unit_shortform: accessory.units?.shortform || '',
+    partner_name: accessory.partners?.name || '',
+    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
       gross_price: finalGrossPrice
     }
   }) || []
@@ -2457,7 +2457,7 @@ export async function getAccessoryById(id: string) {
       barcode_u,
       base_price,
       multiplier,
-      net_price,
+      net_price, 
       gross_price,
       image_url,
       created_at, 

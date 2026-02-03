@@ -3055,25 +3055,25 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           
                           return (item.discount_percentage && item.discount_percentage > 0) || 
                                  (item.discount_amount && item.discount_amount > 0) ? (
-                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
-                              <Typography
-                                variant="caption"
-                                sx={{
-                                  textDecoration: 'line-through',
-                                  color: 'text.secondary',
-                                  fontSize: '0.7rem'
-                                }}
-                              >
+                          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                textDecoration: 'line-through',
+                                color: 'text.secondary',
+                                fontSize: '0.7rem'
+                              }}
+                            >
                                 {formatPriceInteger(Math.round(originalSubtotal))} {item.currency_name}
-                              </Typography>
-                              <Typography variant="body2" fontWeight="bold" color="primary">
-                                {formatPriceInteger(subtotal)} {item.currency_name}
-                              </Typography>
-                            </Box>
-                          ) : (
-                            <Typography variant="body2">
-                              {formatPriceInteger(subtotal)} {item.currency_name}
                             </Typography>
+                            <Typography variant="body2" fontWeight="bold" color="primary">
+                                {formatPriceInteger(subtotal)} {item.currency_name}
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Typography variant="body2">
+                              {formatPriceInteger(subtotal)} {item.currency_name}
+                          </Typography>
                           )
                         })()}
                       </TableCell>

@@ -1884,13 +1884,13 @@ export default function PosOrderDetailClient({
                             }
                           } else {
                             // For materials/linear_materials: calculate from net + VAT (matching database logic)
-                            // Step 1: Round net to integer (matching database: ROUND(quantity * unit_price_net))
-                            const totalNet = Math.round(item.unit_price_net * item.quantity)
-                            
-                            // Step 2: Round VAT to integer (matching database: ROUND(total_net * vat_rate / 100))
-                            const totalVat = Math.round(totalNet * vatRate / 100)
-                            
-                            // Step 3: Gross = Net + VAT (matching database: total_net + total_vat)
+                          // Step 1: Round net to integer (matching database: ROUND(quantity * unit_price_net))
+                          const totalNet = Math.round(item.unit_price_net * item.quantity)
+                          
+                          // Step 2: Round VAT to integer (matching database: ROUND(total_net * vat_rate / 100))
+                          const totalVat = Math.round(totalNet * vatRate / 100)
+                          
+                          // Step 3: Gross = Net + VAT (matching database: total_net + total_vat)
                             originalSubtotal = totalNet + totalVat
                           }
                           
