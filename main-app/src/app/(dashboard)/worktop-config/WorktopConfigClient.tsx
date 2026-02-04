@@ -129,6 +129,8 @@ interface SavedWorktopConfig {
   dimensionB: string
   dimensionC: string
   dimensionD: string
+  dimensionE?: string
+  dimensionF?: string
   roundingR1: string
   roundingR2: string
   cutL1: string
@@ -165,7 +167,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     'Hossztoldás',
     'Összemarás Balos',
     'Összemarás jobbos',
-    'Összemarás'
+    'Összemarás U alak (Nem működik még)'
   ]
   const [assemblyType, setAssemblyType] = useState<string | null>(null)
   const [selectedLinearMaterialId, setSelectedLinearMaterialId] = useState<string | null>(null)
@@ -181,6 +183,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   const [dimensionB, setDimensionB] = useState<string>('')
   const [dimensionC, setDimensionC] = useState<string>('')
   const [dimensionD, setDimensionD] = useState<string>('')
+  const [dimensionE, setDimensionE] = useState<string>('')
+  const [dimensionF, setDimensionF] = useState<string>('')
   const [roundingR1, setRoundingR1] = useState<string>('')
   const [roundingR2, setRoundingR2] = useState<string>('')
   const [cutL1, setCutL1] = useState<string>('')
@@ -228,7 +232,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     if (!assemblyType) return false
     if (!selectedLinearMaterialId) return false
     // edgeBanding can be 'Nincs élzáró' - it's acceptable
-    if (assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') {
+    if (assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') {
       if (!dimensionA || parseFloat(dimensionA) <= 0) return false
       if (!dimensionB || parseFloat(dimensionB) <= 0) return false
       if (assemblyType === 'Hossztoldás') {
@@ -237,6 +241,12 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       if (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') {
         if (!dimensionC || parseFloat(dimensionC) <= 0) return false
         if (!dimensionD || parseFloat(dimensionD) <= 0) return false
+      }
+      if (assemblyType === 'Összemarás U alak (Nem működik még)') {
+        if (!dimensionC || parseFloat(dimensionC) <= 0) return false
+        if (!dimensionD || parseFloat(dimensionD) <= 0) return false
+        if (!dimensionE || parseFloat(dimensionE) <= 0) return false
+        if (!dimensionF || parseFloat(dimensionF) <= 0) return false
       }
     }
     return true
@@ -253,7 +263,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       return false
     }
     // edgeBanding can be 'Nincs élzáró' - it's acceptable
-    if (assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') {
+    if (assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') {
       if (!dimensionA || parseFloat(dimensionA) <= 0) {
         toast.error('Kérjük adja meg az A méretet!')
         return false
@@ -275,6 +285,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         }
         if (!dimensionD || parseFloat(dimensionD) <= 0) {
           toast.error('Kérjük adja meg a D méretet!')
+          return false
+        }
+      }
+      if (assemblyType === 'Összemarás U alak (Nem működik még)') {
+        if (!dimensionC || parseFloat(dimensionC) <= 0) {
+          toast.error('Kérjük adja meg a C méretet!')
+          return false
+        }
+        if (!dimensionD || parseFloat(dimensionD) <= 0) {
+          toast.error('Kérjük adja meg a D méretet!')
+          return false
+        }
+        if (!dimensionE || parseFloat(dimensionE) <= 0) {
+          toast.error('Kérjük adja meg az E méretet!')
+          return false
+        }
+        if (!dimensionF || parseFloat(dimensionF) <= 0) {
+          toast.error('Kérjük adja meg az F méretet!')
           return false
         }
       }
@@ -304,6 +332,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       dimensionB,
       dimensionC,
       dimensionD,
+      dimensionE,
+      dimensionF,
       roundingR1,
       roundingR2,
       cutL1,
@@ -345,6 +375,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     setDimensionB(config.dimensionB)
     setDimensionC(config.dimensionC || '')
     setDimensionD(config.dimensionD || '')
+    setDimensionE(config.dimensionE || '')
+    setDimensionF(config.dimensionF || '')
     setRoundingR1(config.roundingR1)
     setRoundingR2(config.roundingR2)
     setCutL1(config.cutL1)
@@ -387,6 +419,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     setDimensionB('')
     setDimensionC('')
     setDimensionD('')
+    setDimensionE('')
+    setDimensionF('')
     setRoundingR1('')
     setRoundingR2('')
     setCutL1('')
@@ -879,7 +913,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                 </Grid>
 
                 {/* Conditional fields per összeállítás típus */}
-                {(assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && (
+                {(assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && (
                   <>
                     <Divider sx={{ my: 3 }} />
                     <Grid container spacing={2}>
@@ -888,7 +922,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           Méretek ({assemblyType})
                         </Typography>
                       </Grid>
-                      <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 3 : (assemblyType === 'Hossztoldás' ? 4 : 6)}>
+                      <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 2 : (assemblyType === 'Hossztoldás' ? 4 : 6)}>
                         <TextField
                           fullWidth
                           size="small"
@@ -914,7 +948,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           inputProps={{ min: 0, step: 1 }}
                         />
                       </Grid>
-                      <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 3 : (assemblyType === 'Hossztoldás' ? 4 : 6)}>
+                      <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 2 : (assemblyType === 'Hossztoldás' ? 4 : 6)}>
                         <TextField
                           fullWidth
                           size="small"
@@ -925,8 +959,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           inputProps={{ min: 0, step: 1 }}
                         />
                       </Grid>
-                      {(assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && (
-                        <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 3 : 4}>
+                      {(assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && (
+                        <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 2 : 4}>
                           <TextField
                             fullWidth
                             size="small"
@@ -938,8 +972,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           />
                         </Grid>
                       )}
-                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && (
-                        <Grid item xs={12} sm={3}>
+                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && (
+                        <Grid item xs={12} sm={2}>
                           <TextField
                             fullWidth
                             size="small"
@@ -950,6 +984,32 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             inputProps={{ min: 0, step: 1 }}
                           />
                         </Grid>
+                      )}
+                      {assemblyType === 'Összemarás U alak (Nem működik még)' && (
+                        <>
+                          <Grid item xs={12} sm={2}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="E (mm)"
+                              type="number"
+                              value={dimensionE}
+                              onChange={(e) => setDimensionE(e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={2}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="F (mm)"
+                              type="number"
+                              value={dimensionF}
+                              onChange={(e) => setDimensionF(e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                            />
+                          </Grid>
+                        </>
                       )}
                       {/* Row: Lekerekítés */}
                       <Grid item xs={12} sm={6}>
@@ -1269,8 +1329,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           // B creates vertical cut from material width (like Levágás)
                           worktopWidth = aValue > 0 ? aValue : materialWidth
                           worktopLength = materialLength  // Use material width as base (same as Levágás)
-                        } else if (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') {
-                          // Összemarás Balos/jobbos: Simple A x B rectangle, no cutting logic
+                        } else if (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') {
+                          // Összemarás Balos/jobbos/Összemarás: Simple A x B rectangle, no cutting logic
                           worktopWidth = aValue > 0 ? aValue : materialWidth
                           worktopLength = bValue > 0 ? bValue : materialLength
                         } else {
@@ -1297,15 +1357,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                         const verticalCutPercent = worktopLength > 0 ? (verticalCutHeight / worktopLength) * 100 : 0
                         const showVerticalCut = (assemblyType === 'Levágás' || assemblyType === 'Hossztoldás') && bValue > 0 && bValue < worktopLength
                         
-                        // Perpendicular rectangle for Összemarás balos (at bottom-left corner)
+                        // Perpendicular rectangles for Összemarás types
                         // Simple visualization: no cutting logic
                         // Main worktop: A x B rectangle
-                        // Perpendicular rectangle: C x D rectangle, perpendicular to main worktop
+                        // Left perpendicular rectangle (Balos/Összemarás): C x D rectangle, perpendicular to main worktop
+                        // Right perpendicular rectangle (Összemarás only): E x F rectangle, perpendicular to main worktop
                         const dValue = parseFloat(dimensionD) || 0
-                        const perpendicularRectHeight = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && cValue > 0 ? cValue : 0 // Height = C
-                        const perpendicularRectWidth = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && dValue > 0 ? dValue : 0 // Width = D
-                        const showPerpendicularRect = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && cValue > 0 && dValue > 0 && perpendicularRectHeight > 0 && perpendicularRectWidth > 0
+                        const eValue = parseFloat(dimensionE) || 0
+                        const fValue = parseFloat(dimensionF) || 0
+                        const leftPerpendicularRectHeight = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && cValue > 0 ? cValue : 0 // Height = C
+                        const leftPerpendicularRectWidth = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && dValue > 0 ? dValue : 0 // Width = D
+                        const rightPerpendicularRectHeight = assemblyType === 'Összemarás U alak (Nem működik még)' && eValue > 0 ? eValue : 0 // Height = E
+                        const rightPerpendicularRectWidth = assemblyType === 'Összemarás U alak (Nem működik még)' && fValue > 0 ? fValue : 0 // Width = F
+                        const showLeftPerpendicularRect = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && cValue > 0 && dValue > 0 && leftPerpendicularRectHeight > 0 && leftPerpendicularRectWidth > 0
+                        const showRightPerpendicularRect = assemblyType === 'Összemarás U alak (Nem működik még)' && eValue > 0 && fValue > 0 && rightPerpendicularRectHeight > 0 && rightPerpendicularRectWidth > 0
+                        // For backward compatibility, keep showPerpendicularRect for left rectangle
+                        const showPerpendicularRect = showLeftPerpendicularRect
                         const isJobbos = assemblyType === 'Összemarás jobbos'
+                        const isOsszemaras = assemblyType === 'Összemarás U alak (Nem működik még)'
 
                         // Calculate rounding: R1/R2 values are in mm
                         // R1 = 100mm means: cut 100mm from bottom-left corner along bottom edge (right), 
@@ -1318,24 +1387,34 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                         // Effective height for rounding on kept part (bottom of vertical cut)
                         const keptHeight = showVerticalCut ? Math.max(0, Math.min(bValue, materialLength)) : worktopLength
                         // Use shorter edge until value of B (height), while respecting half of kept width
+                        // For Összemarás: R2 applies to right rectangle, not main worktop
                         const r1Value = Math.min(r1ValueRaw, keptWidth / 2, keptHeight)
-                        const r2Value = Math.min(r2ValueRaw, keptWidth / 2, keptHeight)
+                        const r2Value = (assemblyType === 'Összemarás U alak (Nem működik még)') ? 0 : Math.min(r2ValueRaw, keptWidth / 2, keptHeight)
                         
-                        // For perpendicular rectangle: R1 applies to its bottom-right corner
-                        const perpendicularRectR1 = showPerpendicularRect 
-                          ? Math.min(r1ValueRaw, perpendicularRectWidth / 2, perpendicularRectHeight) 
+                        // For left perpendicular rectangle: R1 applies to its bottom-right corner
+                        const leftPerpendicularRectR1 = showLeftPerpendicularRect 
+                          ? Math.min(r1ValueRaw, leftPerpendicularRectWidth / 2, leftPerpendicularRectHeight) 
+                          : 0
+                        // For right perpendicular rectangle: R2 applies to its bottom-left corner
+                        const rightPerpendicularRectR2 = showRightPerpendicularRect 
+                          ? Math.min(r2ValueRaw, rightPerpendicularRectWidth / 2, rightPerpendicularRectHeight) 
                           : 0
                         
-                        // Calculate chamfer values: L1/L2 for bottom-left (or perpendicular rectangle's bottom-right for Összemarás Balos), L3/L4 for bottom-right
+                        // Calculate chamfer values: L1/L2 for bottom-left (or left perpendicular rectangle's bottom-right for Összemarás Balos), L3/L4 for right perpendicular rectangle's bottom-left (Összemarás)
                         const l1Value = parseFloat(cutL1) || 0
                         const l2Value = parseFloat(cutL2) || 0
                         const l3Value = parseFloat(cutL3) || 0
                         const l4Value = parseFloat(cutL4) || 0
-                        // For Összemarás Balos/jobbos: L1-L2 applies to perpendicular rectangle's bottom-right, not main worktop's bottom-left
-                        const hasL1L2 = l1Value > 0 && l2Value > 0 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos'
-                        const hasL3L4 = l3Value > 0 && l4Value > 0
-                        // For perpendicular rectangle: L1-L2 applies to its bottom-right corner
-                        const hasPerpendicularL1L2 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showPerpendicularRect && l1Value > 0 && l2Value > 0
+                        // For Összemarás Balos/jobbos: L1-L2 applies to left perpendicular rectangle's bottom-right, not main worktop's bottom-left
+                        // For Összemarás: L1-L2 applies to left perpendicular rectangle's bottom-right, L3-L4 applies to right perpendicular rectangle's bottom-left
+                        const hasL1L2 = l1Value > 0 && l2Value > 0 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos' && assemblyType !== 'Összemarás U alak (Nem működik még)'
+                        const hasL3L4 = l3Value > 0 && l4Value > 0 && assemblyType !== 'Összemarás U alak (Nem működik még)'
+                        // For left perpendicular rectangle: L1-L2 applies to its bottom-right corner
+                        const hasLeftPerpendicularL1L2 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && l1Value > 0 && l2Value > 0
+                        // For right perpendicular rectangle: L3-L4 applies to its bottom-left corner
+                        const hasRightPerpendicularL3L4 = assemblyType === 'Összemarás U alak (Nem működik még)' && showRightPerpendicularRect && l3Value > 0 && l4Value > 0
+                        // For backward compatibility
+                        const hasPerpendicularL1L2 = hasLeftPerpendicularL1L2
                         const keptRightEdge = showCut ? cutPosition : worktopWidth
 
                         // Calculate expanded viewBox to accommodate labels while maintaining aspect ratio
@@ -1345,25 +1424,31 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                         // Need extra space for cutout dimension labels on right side (perpendicular worktop)
                         const maxCutoutIndex = cutouts.length > 0 ? cutouts.length - 1 : 0
                         const rightPaddingForCutouts = maxCutoutIndex * 120 + 200 // Space for perpendicular cutout dimension labels
-                        const labelPaddingLeft = showPerpendicularRect ? 550 : 400 // Extra space for C dimension label and cutout labels (increased for better spacing from card edge)
-                        const labelPaddingRight = Math.max(400, rightPaddingForCutouts) // Extra space for B dimension label and perpendicular cutout labels
-                        const labelPaddingTop = (assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 300 : 100 // Extra space for A dimension label
+                        const labelPaddingLeft = (showLeftPerpendicularRect || showRightPerpendicularRect) ? 550 : 400 // Extra space for C/E dimension labels and cutout labels (increased for better spacing from card edge)
+                        const labelPaddingRight = Math.max(400, rightPaddingForCutouts) // Extra space for B/F dimension labels and perpendicular cutout labels
+                        const labelPaddingTop = (assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 300 : 100 // Extra space for A dimension label
                         const labelPaddingBottom = 150
                         
                         // Total dimensions depend on assembly type
                         let totalWorktopHeight: number
                         let totalWorktopWidth: number
                         
-                        if (isJobbos && showPerpendicularRect) {
+                        if (isJobbos && showLeftPerpendicularRect) {
                           // Összemarás jobbos: perpendicular rectangle at top-left, main worktop attached to its top-right
-                          // Total width = perpendicularRectWidth + worktopWidth = D + A
-                          // Total height = max(perpendicularRectHeight, worktopLength) = max(C, B)
-                          totalWorktopWidth = perpendicularRectWidth + worktopWidth
-                          totalWorktopHeight = Math.max(perpendicularRectHeight, worktopLength)
-                        } else if (showPerpendicularRect) {
-                          // Összemarás Balos: perpendicular rectangle at bottom-left
-                          totalWorktopHeight = worktopLength + perpendicularRectHeight
-                          totalWorktopWidth = Math.max(worktopWidth, perpendicularRectWidth)
+                          // Total width = leftPerpendicularRectWidth + worktopWidth = D + A
+                          // Total height = max(leftPerpendicularRectHeight, worktopLength) = max(C, B)
+                          totalWorktopWidth = leftPerpendicularRectWidth + worktopWidth
+                          totalWorktopHeight = Math.max(leftPerpendicularRectHeight, worktopLength)
+                        } else if (isOsszemaras && showLeftPerpendicularRect && showRightPerpendicularRect) {
+                          // Összemarás: U-shape with left and right perpendicular rectangles
+                          // Total width = leftPerpendicularRectWidth + worktopWidth + rightPerpendicularRectWidth = D + A + F
+                          // Total height = max(worktopLength + leftPerpendicularRectHeight, worktopLength + rightPerpendicularRectHeight) = max(B + C, B + E)
+                          totalWorktopWidth = leftPerpendicularRectWidth + worktopWidth + rightPerpendicularRectWidth
+                          totalWorktopHeight = Math.max(worktopLength + leftPerpendicularRectHeight, worktopLength + rightPerpendicularRectHeight)
+                        } else if (showLeftPerpendicularRect) {
+                          // Összemarás Balos: left perpendicular rectangle at bottom-left
+                          totalWorktopHeight = worktopLength + leftPerpendicularRectHeight
+                          totalWorktopWidth = Math.max(worktopWidth, leftPerpendicularRectWidth)
                         } else {
                           totalWorktopHeight = worktopLength
                           totalWorktopWidth = worktopWidth
@@ -1389,8 +1474,17 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           finalViewBoxWidth = expandedHeight * worktopAspectRatio
                         }
                         
-                        // Center the worktop in the expanded viewBox
-                        const viewBoxX = -(finalViewBoxWidth - totalWorktopWidth) / 2
+                        // Calculate viewBox offset
+                        // For Összemarás: left rectangle starts at X=0, so viewBox should start at -labelPaddingLeft to show it
+                        // For other types: center the worktop in the expanded viewBox
+                        let viewBoxX: number
+                        if (isOsszemaras && showLeftPerpendicularRect) {
+                          // For Összemarás: left rectangle is at X=0, so viewBox should start at -labelPaddingLeft
+                          viewBoxX = -labelPaddingLeft
+                        } else {
+                          // Center the worktop in the expanded viewBox
+                          viewBoxX = -(finalViewBoxWidth - totalWorktopWidth) / 2
+                        }
                         const viewBoxY = -(finalViewBoxHeight - totalWorktopHeight) / 2
 
                         return (
@@ -1437,8 +1531,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     const r1 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 0 : Math.min(r1Value, effectiveWidth / 2, effectiveHeight)
                                     const r2 = Math.min(r2Value, effectiveWidth / 2, effectiveHeight)
                                     
-                                    // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                    const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                    // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                    // For Összemarás: main worktop stays at (0, 0), left rectangle extends LEFT from it
+                                    const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                     
                                     // Start position: if vertical cut, start from top of kept portion (bottom of cut)
                                     const startY = showVerticalCut ? verticalCutHeight : 0
@@ -1533,30 +1628,46 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
 
-                                {/* Perpendicular rectangle for Összemarás balos (at bottom-left) and jobbos (at top-left) - Simple C x D rectangle with R1 rounding or L1-L2 chamfer at bottom-right corner */}
-                                {showPerpendicularRect && (() => {
-                                  // For Balos: at bottom-left (0, worktopLength)
+                                {/* Left perpendicular rectangle for Összemarás balos (at bottom-left) and jobbos (at top-left) - Simple C x D rectangle with R1 rounding or L1-L2 chamfer at bottom-right corner */}
+                                {showLeftPerpendicularRect && (() => {
+                                  // For Balos: at bottom-left (0, worktopLength), extends to the right
+                                  //   Top-left corner connects to main worktop bottom-left
+                                  // For Összemarás: top-LEFT corner connects to main worktop's bottom-LEFT corner
+                                  //   Main worktop bottom-left is at (leftPerpendicularRectWidth, worktopLength)
+                                  //   So left rectangle's top-LEFT should be at (leftPerpendicularRectWidth, worktopLength)
+                                  //   Rectangle extends LEFT from this point
                                   // For jobbos: at top-left (0, 0)
-                                  const rectX = 0
-                                  const rectY = isJobbos ? 0 : worktopLength
-                                  const rectWidth = perpendicularRectWidth
-                                  const rectHeight = perpendicularRectHeight
-                                  const r1 = perpendicularRectR1
-                                  const bottomRightX = rectWidth
+                                  let rectX: number
+                                  let rectY: number
+                                  
+                                  if (isJobbos) {
+                                    rectX = 0
+                                    rectY = 0
+                                  } else {
+                                    // For Balos and Összemarás: at bottom-left (0, worktopLength), extends to the right
+                                    // EXACTLY the same as Összemarás Balos
+                                    rectX = 0
+                                    rectY = worktopLength
+                                  }
+                                  
+                                  const rectWidth = leftPerpendicularRectWidth
+                                  const rectHeight = leftPerpendicularRectHeight
+                                  const r1 = leftPerpendicularRectR1
+                                  
+                                  // Build path with R1 rounding or L1-L2 chamfer
+                                  // For all types (Balos, jobbos, Összemarás): standard drawing extending to the right
+                                  const bottomRightX = rectX + rectWidth
                                   const bottomRightY = rectY + rectHeight
                                   
-                                  // Build path with R1 rounding or L1-L2 chamfer at bottom-right corner
                                   let path = `M ${rectX} ${rectY}` // Start at top-left
                                   path += ` L ${bottomRightX} ${rectY}` // Top edge to top-right
                                   
                                   // Right edge: down to bottom-right corner (with L1-L2 chamfer or R1 rounding)
-                                  if (hasPerpendicularL1L2) {
-                                    // L1-L2 chamfer at bottom-right corner: go down to (rectWidth, bottomRightY - l2Value), then diagonal to (rectWidth - l1Value, bottomRightY)
+                                  if (hasLeftPerpendicularL1L2) {
                                     path += ` L ${bottomRightX} ${bottomRightY - l2Value}`
                                     path += ` L ${bottomRightX - l1Value} ${bottomRightY}`
                                   } else {
-                                    path += ` L ${bottomRightX} ${bottomRightY - r1}` // Right edge down to where rounding starts
-                                    // R1 rounding at bottom-right corner
+                                    path += ` L ${bottomRightX} ${bottomRightY - r1}`
                                     if (r1 > 0) {
                                       path += ` Q ${bottomRightX} ${bottomRightY} ${bottomRightX - r1} ${bottomRightY}`
                                     } else {
@@ -1566,6 +1677,72 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   
                                   path += ` L ${rectX} ${bottomRightY}` // Bottom edge to bottom-left
                                   path += ` L ${rectX} ${rectY}` // Left edge back to top-left
+                                  
+                                  path += ` Z` // Close path
+                                  
+                                  return (
+                                    <path
+                                      d={path}
+                                      fill="#f0f8ff"
+                                      stroke="#000"
+                                      strokeWidth="3"
+                                    />
+                                  )
+                                })()}
+
+                                {/* Right perpendicular rectangle for Összemarás (at bottom-right) - Simple E x F rectangle with R2 rounding or L3-L4 chamfer at bottom-left corner */}
+                                {showRightPerpendicularRect && (() => {
+                                  // For Összemarás: top-RIGHT corner connects to main worktop's bottom-RIGHT corner
+                                  // Main worktop bottom-right is at (worktopWidth, worktopLength) - no offset
+                                  // So right rectangle top-RIGHT should be at (worktopWidth, worktopLength)
+                                  // Rectangle extends RIGHT from this point
+                                  const topRightX = worktopWidth // Top-right corner (connection point)
+                                  const rectY = worktopLength
+                                  const rectWidth = rightPerpendicularRectWidth
+                                  const rectHeight = rightPerpendicularRectHeight
+                                  const r2 = rightPerpendicularRectR2
+                                  
+                                  // Rectangle extends RIGHT from the connection point
+                                  // Top-right corner: (topRightX, rectY) = (mainWorktopOffsetX + worktopWidth, worktopLength)
+                                  // Top-left corner: (topRightX - rectWidth, rectY) = (mainWorktopOffsetX + worktopWidth - rectWidth, worktopLength)
+                                  // Bottom-left corner: (topRightX - rectWidth, rectY + rectHeight)
+                                  // Bottom-right corner: (topRightX, rectY + rectHeight)
+                                  // R2 rounding is at bottom-RIGHT corner (the connection point side)
+                                  const topLeftX = topRightX - rectWidth
+                                  const bottomLeftX = topLeftX
+                                  const bottomLeftY = rectY + rectHeight
+                                  const bottomRightX = topRightX
+                                  const bottomRightY = bottomLeftY
+                                  
+                                  // Build path with R2 rounding or L3-L4 chamfer at bottom-RIGHT corner
+                                  let path = `M ${topRightX} ${rectY}` // Start at top-right (connection point)
+                                  path += ` L ${topLeftX} ${rectY}` // Top edge going left
+                                  path += ` L ${bottomLeftX} ${bottomLeftY}` // Left edge going down
+                                  path += ` L ${bottomRightX} ${bottomRightY}` // Bottom edge going right
+                                  
+                                  // Bottom-right corner: with L3-L4 chamfer or R2 rounding
+                                  if (hasRightPerpendicularL3L4) {
+                                    // L3-L4 chamfer at bottom-right corner: go left to (bottomRightX - l3Value, bottomRightY), then diagonal to (bottomRightX, bottomRightY - l4Value)
+                                    path = `M ${topRightX} ${rectY}` // Start at top-right (connection point)
+                                    path += ` L ${topLeftX} ${rectY}` // Top edge going left
+                                    path += ` L ${bottomLeftX} ${bottomLeftY}` // Left edge going down
+                                    path += ` L ${bottomRightX - l3Value} ${bottomRightY}` // Bottom edge to where chamfer starts
+                                    path += ` L ${bottomRightX} ${bottomRightY - l4Value}` // Diagonal chamfer
+                                    path += ` L ${topRightX} ${rectY}` // Right edge back to top-right
+                                  } else {
+                                    // R2 rounding at bottom-right corner
+                                    if (r2 > 0) {
+                                      path = `M ${topRightX} ${rectY}` // Start at top-right (connection point)
+                                      path += ` L ${topLeftX} ${rectY}` // Top edge going left
+                                      path += ` L ${bottomLeftX} ${bottomLeftY}` // Left edge going down
+                                      path += ` L ${bottomRightX - r2} ${bottomRightY}` // Bottom edge to where rounding starts
+                                      path += ` Q ${bottomRightX} ${bottomRightY} ${bottomRightX} ${bottomRightY - r2}` // R2 rounding arc
+                                      path += ` L ${topRightX} ${rectY}` // Right edge back to top-right
+                                    } else {
+                                      path += ` L ${topRightX} ${rectY}` // Right edge back to top-right
+                                    }
+                                  }
+                                  
                                   path += ` Z` // Close path
                                   
                                   return (
@@ -1589,8 +1766,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const bottomY = worktopLength
                                   const rightEdge = showCut ? cutPosition : worktopWidth
                                   
-                                  // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                  const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                  // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  // For Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                   
                                   // Build the EXACT same path as the worktop border
                                   const buildWorktopBorderPath = () => {
@@ -1604,28 +1783,29 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     }
                                     
                                     // Right edge
+                                    // For Összemarás: no R2 or L3-L4 on main worktop (they apply to right rectangle)
                                     if (showCut) {
                                       if (hasL3L4) {
-                                        path += ` L ${cutPosition} ${bottomY - l4Value}`
-                                        path += ` L ${cutPosition - l3Value} ${bottomY}`
+                                        path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY - l4Value}`
+                                        path += ` L ${mainWorktopOffsetX + cutPosition - l3Value} ${bottomY}`
                                       } else {
-                                        path += ` L ${cutPosition} ${bottomY - r2}`
+                                        path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY - r2}`
                                         if (r2 > 0) {
-                                          path += ` Q ${cutPosition} ${bottomY} ${cutPosition - r2} ${bottomY}`
+                                          path += ` Q ${mainWorktopOffsetX + cutPosition} ${bottomY} ${mainWorktopOffsetX + cutPosition - r2} ${bottomY}`
                                         } else {
-                                          path += ` L ${cutPosition} ${bottomY}`
+                                          path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY}`
                                         }
                                       }
                                     } else {
-                                      if (hasL3L4) {
-                                        path += ` L ${worktopWidth} ${bottomY - l4Value}`
-                                        path += ` L ${worktopWidth - l3Value} ${bottomY}`
+                                      if (hasL3L4 && assemblyType !== 'Összemarás U alak (Nem működik még)') {
+                                        path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY - l4Value}`
+                                        path += ` L ${mainWorktopOffsetX + worktopWidth - l3Value} ${bottomY}`
                                       } else {
-                                        path += ` L ${worktopWidth} ${bottomY - r2}`
-                                        if (r2 > 0) {
-                                          path += ` Q ${worktopWidth} ${bottomY} ${worktopWidth - r2} ${bottomY}`
+                                        path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY - r2}`
+                                        if (r2 > 0 && assemblyType !== 'Összemarás U alak (Nem működik még)') {
+                                          path += ` Q ${mainWorktopOffsetX + worktopWidth} ${bottomY} ${mainWorktopOffsetX + worktopWidth - r2} ${bottomY}`
                                         } else {
-                                          path += ` L ${worktopWidth} ${bottomY}`
+                                          path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY}`
                                         }
                                       }
                                     }
@@ -1823,14 +2003,14 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   // Only show if valid and on kept side
                                   if (cutoutWidth <= 0 || cutoutHeight <= 0) return null
                                   
-                                  if (isPerpendicular && showPerpendicularRect) {
+                                  if (isPerpendicular && showLeftPerpendicularRect) {
                                     // Cutout on perpendicular rectangle - rotated 90 degrees clockwise
-                                    // For Balos: at bottom-left (0, worktopLength)
+                                    // For Balos and Összemarás: at bottom-left (0, worktopLength)
                                     // For jobbos: at top-left (0, 0)
                                     const rectX = 0
                                     const rectY = isJobbos ? 0 : worktopLength
-                                    const rectWidth = perpendicularRectWidth
-                                    const rectHeight = perpendicularRectHeight
+                                    const rectWidth = leftPerpendicularRectWidth
+                                    const rectHeight = leftPerpendicularRectHeight
                                     
                                     // For perpendicular rectangle: 
                                     // distanceFromBottom (távolság alulról) = distance from RIGHT edge of perpendicular worktop
@@ -1936,8 +2116,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     )
                                   } else {
                                     // Cutout on main worktop (normal placement)
-                                    // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                    const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                    // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                    // For Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth (to make room for left rectangle)
+                                    const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                               (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                     const keptWidth = showCut ? Math.max(0, Math.min(cutPosition, worktopWidth)) : worktopWidth
                                     const keptHeight = showVerticalCut ? Math.max(0, Math.min(bValue, worktopLength)) : worktopLength
                                     const startY = showVerticalCut ? verticalCutHeight : 0
@@ -2021,14 +2203,14 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   // Only show if valid
                                 if (cutoutWidth <= 0 || cutoutHeight <= 0) return null
                                 
-                                  if (isPerpendicular && showPerpendicularRect) {
+                                  if (isPerpendicular && showLeftPerpendicularRect) {
                                     // Cutout dimension labels for perpendicular rectangle
-                                    // For Balos: at bottom-left (0, worktopLength)
+                                    // For Balos and Összemarás: at bottom-left (0, worktopLength)
                                     // For jobbos: at top-left (0, 0)
                                     const rectX = 0
                                     const rectY = isJobbos ? 0 : worktopLength
-                                    const rectWidth = perpendicularRectWidth
-                                    const rectHeight = perpendicularRectHeight
+                                    const rectWidth = leftPerpendicularRectWidth
+                                    const rectHeight = leftPerpendicularRectHeight
                                     
                                     // The visual dimensions after 90° clockwise rotation:
                                     const visualWidth = cutoutHeight // Original height becomes visual width
@@ -2146,8 +2328,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                               fontSize: '80px',
                                               fontWeight: 500,
                                               fill: '#666',
-                                              pointerEvents: 'none'
-                                            }}
+                                        pointerEvents: 'none'
+                                      }}
                                           >
                                             {distanceFromBottom}mm
                                           </text>
@@ -2203,8 +2385,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     )
                                   } else {
                                     // Cutout dimension labels for main worktop
-                                    // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                    const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                    // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                    // For Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth (to make room for left rectangle)
+                                    const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                               (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                     const keptWidth = showCut ? Math.max(0, Math.min(cutPosition, worktopWidth)) : worktopWidth
                                     const keptHeight = showVerticalCut ? Math.max(0, Math.min(bValue, worktopLength)) : worktopLength
                                     const startY = showVerticalCut ? verticalCutHeight : 0
@@ -2440,9 +2624,12 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 })()}
                                 
                                 {/* L3-L4 chamfer dimension labels (bottom-right corner) - ISO standard dimensioning */}
-                                {hasL3L4 && (() => {
-                                  // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                  const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                {/* For Összemarás: L3-L4 applies to right rectangle, not main worktop */}
+                                {hasL3L4 && assemblyType !== 'Összemarás U alak (Nem működik még)' && (() => {
+                                  // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  // For Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                   const rightEdge = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
                                   const bottomY = worktopLength
                                   
@@ -2577,16 +2764,30 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
                                 
-                                {/* L1-L2 chamfer dimension labels for perpendicular rectangle (bottom-right corner) - ISO standard dimensioning */}
-                                {hasPerpendicularL1L2 && (() => {
-                                  // For Balos: at bottom-left (0, worktopLength)
-                                  // For jobbos: at top-left (0, 0)
-                                  const rectX = 0
-                                  const rectY = isJobbos ? 0 : worktopLength
-                                  const rectWidth = perpendicularRectWidth
-                                  const rectHeight = perpendicularRectHeight
-                                  const bottomRightX = rectWidth
-                                  const bottomRightY = rectY + rectHeight
+                                {/* L1-L2 chamfer dimension labels for left perpendicular rectangle (bottom-right corner for Balos, bottom-left corner for Összemarás) - ISO standard dimensioning */}
+                                {hasLeftPerpendicularL1L2 && (() => {
+                                  let rectX: number
+                                  let rectY: number
+                                  let bottomRightX: number
+                                  let bottomRightY: number
+                                  
+                                  if (isJobbos) {
+                                    // For jobbos: at top-left (0, 0)
+                                    rectX = 0
+                                    rectY = 0
+                                    bottomRightX = leftPerpendicularRectWidth
+                                    bottomRightY = leftPerpendicularRectHeight
+                                  } else {
+                                    // For Balos and Összemarás: at bottom-left (0, worktopLength), extends to the right
+                                    // Bottom-right corner (where R1/L1-L2 are): (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                    rectX = 0
+                                    rectY = worktopLength
+                                    bottomRightX = leftPerpendicularRectWidth
+                                    bottomRightY = rectY + leftPerpendicularRectHeight
+                                  }
+                                  
+                                  const rectWidth = leftPerpendicularRectWidth
+                                  const rectHeight = leftPerpendicularRectHeight
                                   
                                   // L1 dimension: horizontal distance from right edge of perpendicular rectangle (going left)
                                   const l1DimensionLineY = bottomRightY + 100
@@ -2694,8 +2895,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 
                                 {/* Edge position labels outside worktop with ISO dimension style extension lines */}
                                 {(() => {
-                                  // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                  const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                  // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  // For Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                   const rightEdge = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
                                   const startY = showVerticalCut ? verticalCutHeight : 0
                                   const bottomY = worktopLength
@@ -2888,8 +3091,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
 
-                                {/* A dimension - ISO standard dimensioning for Hossztoldás and Összemarás balos/jobbos - ABOVE worktop */}
-                                {(assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && aValue > 0 && (() => {
+                                {/* A dimension - ISO standard dimensioning for Hossztoldás and Összemarás types - ABOVE worktop */}
+                                {(assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && aValue > 0 && (() => {
                                   // Calculate maximum offset needed for cutout dimension labels
                                   // Cutout labels are at: 100 + (index * 120) + 60 (label offset)
                                   const maxCutoutOffset = cutouts.length > 0 
@@ -2907,15 +3110,18 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   let aDimensionStartX: number
                                   let aDimensionEndX: number
                                   
-                                  if (isJobbos && showPerpendicularRect) {
-                                    // For jobbos: A dimension spans from top-left of perpendicular rectangle (0) to top-right of main worktop (perpendicularRectWidth + worktopWidth = D + A)
+                                  if (isJobbos && showLeftPerpendicularRect) {
+                                    // For jobbos: A dimension spans from top-left of perpendicular rectangle (0) to top-right of main worktop (leftPerpendicularRectWidth + worktopWidth = D + A)
                                     aDimensionStartX = 0 // Top-left of perpendicular rectangle
-                                    aDimensionEndX = perpendicularRectWidth + worktopWidth // Top-right of main worktop (D + A)
+                                    aDimensionEndX = leftPerpendicularRectWidth + worktopWidth // Top-right of main worktop (D + A)
+                                  } else if (isOsszemaras && showLeftPerpendicularRect && showRightPerpendicularRect) {
+                                    // For Összemarás: A dimension spans just the main worktop (from 0 to A)
+                                    aDimensionStartX = 0 // Left edge of main worktop
+                                    aDimensionEndX = worktopWidth // Right edge of main worktop (A)
                                   } else {
                                     // For Hossztoldás and Balos: A dimension spans from left edge to right edge of main worktop
-                                    const mainWorktopOffsetX = 0
-                                    aDimensionStartX = mainWorktopOffsetX
-                                    aDimensionEndX = mainWorktopOffsetX + worktopWidth
+                                    aDimensionStartX = 0
+                                    aDimensionEndX = worktopWidth
                                   }
                                   
                                   return (
@@ -2965,10 +3171,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
                                 
-                                {/* C dimension - ISO standard dimensioning for Összemarás balos/jobbos */}
-                                {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showPerpendicularRect && cValue > 0 && (() => {
-                                  // For Balos: C dimension goes from top-left of main worktop (0, startY) to bottom-left of perpendicular rectangle (0, worktopLength + perpendicularRectHeight)
-                                  // For jobbos: C dimension goes from top-left of perpendicular rectangle (0, 0) to bottom-left of perpendicular rectangle (0, perpendicularRectHeight)
+                                {/* C dimension - ISO standard dimensioning for Összemarás types */}
+                                {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && cValue > 0 && (() => {
+                                  // For Balos and Összemarás: C dimension goes from top-left of main worktop (0, startY) to bottom-left of perpendicular rectangle (0, worktopLength + leftPerpendicularRectHeight)
+                                  // For jobbos: C dimension goes from top-left of perpendicular rectangle (0, 0) to bottom-left of perpendicular rectangle (0, leftPerpendicularRectHeight)
                                   // Both are VERTICAL dimensions on the LEFT side
                                   const startY = showVerticalCut ? verticalCutHeight : 0
                                   
@@ -2977,14 +3183,19 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   let dimensionLineX: number
                                   let labelX: number
                                   
+                                  let extensionLineX: number // X position of the extension lines
+                                  
                                   if (isJobbos) {
                                     // For jobbos: vertical dimension from top to bottom of perpendicular rectangle
                                     topY = 0 // Top of perpendicular rectangle
-                                    bottomY = perpendicularRectHeight // Bottom of perpendicular rectangle
+                                    bottomY = leftPerpendicularRectHeight // Bottom of perpendicular rectangle
+                                    extensionLineX = 0 // Left edge of perpendicular rectangle
                                   } else {
-                                    // For Balos: vertical dimension from top-left of main worktop to bottom-left of perpendicular rectangle
+                                    // For Balos and Összemarás: vertical dimension from top-left of main worktop to bottom-left of perpendicular rectangle
+                                    // Both use the same positioning: left edge at x=0
                                     topY = startY
-                                    bottomY = worktopLength + perpendicularRectHeight
+                                    bottomY = worktopLength + leftPerpendicularRectHeight
+                                    extensionLineX = 0 // Left edge
                                   }
                                   
                                   // Both use the same positioning logic: vertical dimension on the left side
@@ -2993,14 +3204,14 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     : 0
                                   const baseOffset = edgePosition1 ? 320 : 200
                                   const extensionLineOffset = Math.max(baseOffset, maxCutoutOffset)
-                                  dimensionLineX = -extensionLineOffset
+                                  dimensionLineX = extensionLineX - extensionLineOffset
                                   labelX = dimensionLineX - 60
                                   
                                   return (
                                     <g>
-                                      {/* Vertical dimension from top-left and bottom-left - same for both Balos and jobbos */}
+                                      {/* Vertical dimension from connection point */}
                                       <line
-                                        x1={0}
+                                        x1={extensionLineX}
                                         y1={topY}
                                         x2={dimensionLineX}
                                         y2={topY}
@@ -3008,7 +3219,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         strokeWidth="1.5"
                                       />
                                       <line
-                                        x1={0}
+                                        x1={extensionLineX}
                                         y1={bottomY}
                                         x2={dimensionLineX}
                                         y2={bottomY}
@@ -3042,12 +3253,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
 
-                                {/* B dimension - ISO standard dimensioning for Összemarás Balos/jobbos (vertical - main worktop height) - on right side */}
-                                {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && bValue > 0 && (() => {
+                                {/* B dimension - ISO standard dimensioning for Összemarás types (vertical - main worktop height) - on right side */}
+                                {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && bValue > 0 && (() => {
                                   const startY = showVerticalCut ? verticalCutHeight : 0
                                   const bottomY = worktopLength
-                                  // For jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                  const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                  // For jobbos/Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                   const rightEdge = mainWorktopOffsetX + worktopWidth
                                   
                                   // Calculate maximum offset needed for cutout dimension labels
@@ -3109,14 +3321,15 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
 
-                                {/* D dimension - ISO standard dimensioning for Összemarás Balos/jobbos (horizontal - perpendicular rectangle width) */}
-                                {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showPerpendicularRect && dValue > 0 && (() => {
-                                  // For Balos: at bottom-left (0, worktopLength)
+                                {/* D dimension - ISO standard dimensioning for Összemarás types (horizontal - left perpendicular rectangle width) */}
+                                {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && dValue > 0 && (() => {
+                                  // For Balos and Összemarás: at bottom-left (0, worktopLength), extends to the right
+                                  //   Left edge at x=0, right edge at x=leftPerpendicularRectWidth
                                   // For jobbos: at top-left (0, 0)
                                   const rectX = 0
                                   const rectY = isJobbos ? 0 : worktopLength
-                                  const rectWidth = perpendicularRectWidth
-                                  const rectHeight = perpendicularRectHeight
+                                  const rectWidth = leftPerpendicularRectWidth
+                                  const rectHeight = leftPerpendicularRectHeight
                                   const bottomRightX = rectWidth
                                   const bottomRightY = rectY + rectHeight
                                   
@@ -3177,6 +3390,277 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     </g>
                                 )
                               })()}
+
+                                {/* E dimension - ISO standard dimensioning for Összemarás (vertical - right rectangle height) - on left side */}
+                                {isOsszemaras && showRightPerpendicularRect && eValue > 0 && (() => {
+                                  // Main worktop is at (0, 0), no offset
+                                  const topRightX = worktopWidth // Top-right corner (connection point)
+                                  const topLeftX = topRightX - rightPerpendicularRectWidth
+                                  const rectY = worktopLength
+                                  const rectHeight = rightPerpendicularRectHeight
+                                  
+                                  // Position to the left of the right rectangle
+                                  const extensionLineOffset = 100
+                                  const dimensionLineX = topLeftX - extensionLineOffset
+                                  const labelX = dimensionLineX - 50
+                                
+                                return (
+                                    <g>
+                                      {/* Extension lines - from top and bottom of right rectangle */}
+                                      <line
+                                        x1={topLeftX}
+                                        y1={rectY}
+                                        x2={dimensionLineX}
+                                        y2={rectY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      <line
+                                        x1={topLeftX}
+                                        y1={rectY + rectHeight}
+                                        x2={dimensionLineX}
+                                        y2={rectY + rectHeight}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Dimension line (vertical) */}
+                                      <line
+                                        x1={dimensionLineX}
+                                        y1={rectY}
+                                        x2={dimensionLineX}
+                                        y2={rectY + rectHeight}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Label */}
+                                      <text
+                                        x={labelX}
+                                        y={rectY + rectHeight / 2}
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        transform={`rotate(-90 ${labelX} ${rectY + rectHeight / 2})`}
+                                        style={{
+                                          fontSize: '80px',
+                                          fontWeight: 500,
+                                          fill: '#1976d2',
+                                          pointerEvents: 'none'
+                                        }}
+                                      >
+                                        E: {eValue}mm
+                                      </text>
+                                    </g>
+                                  )
+                                })()}
+
+                                {/* F dimension - ISO standard dimensioning for Összemarás (horizontal - right rectangle width) - below right rectangle */}
+                                {isOsszemaras && showRightPerpendicularRect && fValue > 0 && (() => {
+                                  // Account for main worktop offset
+                                  const mainWorktopOffsetX = showLeftPerpendicularRect ? leftPerpendicularRectWidth : 0
+                                  const topRightX = mainWorktopOffsetX + worktopWidth // Top-right corner (connection point)
+                                  const topLeftX = topRightX - rightPerpendicularRectWidth
+                                  const rectY = worktopLength
+                                  const rectHeight = rightPerpendicularRectHeight
+                                  
+                                  // Position below the right rectangle
+                                  const extensionLineOffset = 100
+                                  const dimensionLineY = rectY + rectHeight + extensionLineOffset
+                                  const labelY = dimensionLineY + 60
+                                  
+                                  return (
+                                    <g>
+                                      {/* Extension lines - from left and right of right rectangle */}
+                                      <line
+                                        x1={topLeftX}
+                                        y1={rectY + rectHeight}
+                                        x2={topLeftX}
+                                        y2={dimensionLineY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      <line
+                                        x1={topRightX}
+                                        y1={rectY + rectHeight}
+                                        x2={topRightX}
+                                        y2={dimensionLineY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Dimension line (horizontal) */}
+                                      <line
+                                        x1={topLeftX}
+                                        y1={dimensionLineY}
+                                        x2={topRightX}
+                                        y2={dimensionLineY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Label */}
+                                      <text
+                                        x={(topLeftX + topRightX) / 2}
+                                        y={labelY}
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        style={{
+                                          fontSize: '80px',
+                                          fontWeight: 500,
+                                          fill: '#1976d2',
+                                          pointerEvents: 'none'
+                                        }}
+                                      >
+                                        F: {fValue}mm
+                                      </text>
+                                    </g>
+                                  )
+                                })()}
+
+                                {/* R2 label for right perpendicular rectangle (bottom-RIGHT corner) - Összemarás only */}
+                                {isOsszemaras && showRightPerpendicularRect && rightPerpendicularRectR2 > 0 && (() => {
+                                  // Account for main worktop offset
+                                  const mainWorktopOffsetX = showLeftPerpendicularRect ? leftPerpendicularRectWidth : 0
+                                  const topRightX = mainWorktopOffsetX + worktopWidth // Top-right corner (connection point)
+                                  const rectY = worktopLength
+                                  const rectHeight = rightPerpendicularRectHeight
+                                  const r2 = rightPerpendicularRectR2
+                                  const bottomRightX = topRightX
+                                  const bottomRightY = rectY + rectHeight
+                                  
+                                  // Position label inside the corner, offset from the arc center
+                                  // Arc center is at (bottomRightX - r2, bottomRightY - r2)
+                                  // Place label at about 60% of the radius from the corner
+                                  const labelX = bottomRightX - r2 * 0.6
+                                  const labelY = bottomRightY - r2 * 0.6
+                                  
+                                  return (
+                                    <text
+                                      x={labelX}
+                                      y={labelY}
+                                      textAnchor="start"
+                                      dominantBaseline="middle"
+                                      style={{
+                                        fontSize: '60px',
+                                      fontWeight: 600,
+                                        fill: '#1976d2',
+                                      pointerEvents: 'none'
+                                    }}
+                                  >
+                                    R2
+                                    </text>
+                                )
+                              })()}
+
+                                {/* L3-L4 chamfer dimension labels for right perpendicular rectangle (bottom-RIGHT corner) - ISO standard dimensioning - Összemarás only */}
+                                {hasRightPerpendicularL3L4 && (() => {
+                                  // Account for main worktop offset
+                                  const mainWorktopOffsetX = showLeftPerpendicularRect ? leftPerpendicularRectWidth : 0
+                                  const topRightX = mainWorktopOffsetX + worktopWidth // Top-right corner (connection point)
+                                  const rectY = worktopLength
+                                  const rectHeight = rightPerpendicularRectHeight
+                                  const bottomRightX = topRightX
+                                  const bottomRightY = rectY + rectHeight
+                                  
+                                  // L3 dimension: horizontal distance from right edge (going left)
+                                  const l3DimensionLineY = bottomRightY + 100
+                                  const l3LabelY = l3DimensionLineY + 60
+                                  
+                                  // L4 dimension: vertical distance from bottom edge (going up)
+                                  const l4DimensionLineX = bottomRightX + 100
+                                  const l4LabelX = l4DimensionLineX + 50
+                                  
+                                  return (
+                                    <g>
+                                      {/* L3 dimension - horizontal */}
+                                      <g>
+                                        {/* Extension lines */}
+                                        <line
+                                          x1={bottomRightX}
+                                          y1={bottomRightY}
+                                          x2={bottomRightX}
+                                          y2={l3DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        <line
+                                          x1={bottomRightX - l3Value}
+                                          y1={bottomRightY}
+                                          x2={bottomRightX - l3Value}
+                                          y2={l3DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Dimension line */}
+                                        <line
+                                          x1={bottomRightX - l3Value}
+                                          y1={l3DimensionLineY}
+                                          x2={bottomRightX}
+                                          y2={l3DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Label */}
+                                        <text
+                                          x={bottomRightX - l3Value / 2}
+                                          y={l3LabelY}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          style={{
+                                            fontSize: '80px',
+                                            fontWeight: 500,
+                                            fill: '#666',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          L3: {l3Value}mm
+                                        </text>
+                                      </g>
+                                      
+                                      {/* L4 dimension - vertical */}
+                                      <g>
+                                        {/* Extension lines */}
+                                        <line
+                                          x1={bottomRightX}
+                                          y1={bottomRightY}
+                                          x2={l4DimensionLineX}
+                                          y2={bottomRightY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        <line
+                                          x1={bottomRightX}
+                                          y1={bottomRightY - l4Value}
+                                          x2={l4DimensionLineX}
+                                          y2={bottomRightY - l4Value}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Dimension line */}
+                                        <line
+                                          x1={l4DimensionLineX}
+                                          y1={bottomRightY - l4Value}
+                                          x2={l4DimensionLineX}
+                                          y2={bottomRightY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Label */}
+                                        <text
+                                          x={l4LabelX}
+                                          y={bottomRightY - l4Value / 2}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          transform={`rotate(-90 ${l4LabelX} ${bottomRightY - l4Value / 2})`}
+                                          style={{
+                                            fontSize: '80px',
+                                            fontWeight: 500,
+                                            fill: '#666',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          L4: {l4Value}mm
+                                        </text>
+                                      </g>
+                                    </g>
+                                  )
+                                })()}
 
                                 {/* C dimension - ISO standard dimensioning for Hossztoldás - above A, below cutout labels */}
                                 {assemblyType === 'Hossztoldás' && showJoin && cValue > 0 && (() => {
@@ -3404,19 +3888,23 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
                                 
-                                {/* R1 label - For Összemarás Balos/jobbos: bottom-right corner of perpendicular rectangle, otherwise: bottom-left corner of main worktop */}
+                                {/* R1 label - For Összemarás Balos/jobbos/Összemarás: bottom-right corner of left perpendicular rectangle, otherwise: bottom-left corner of main worktop */}
                                 {r1ValueRaw > 0 && (() => {
-                                  if ((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showPerpendicularRect && perpendicularRectR1 > 0) {
-                                    // R1 label for perpendicular rectangle's bottom-right corner
-                                    // For Balos: at bottom-left (0, worktopLength)
-                                    // For jobbos: at top-left (0, 0)
+                                  if ((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && leftPerpendicularRectR1 > 0) {
+                                    // R1 label for left perpendicular rectangle
+                                    // For Balos: bottom-right corner at (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                    // For Összemarás: bottom-LEFT corner (connection point) at (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                    // For jobbos: at top-left (0, 0), bottom-right at (leftPerpendicularRectWidth, leftPerpendicularRectHeight)
                                     const rectX = 0
                                     const rectY = isJobbos ? 0 : worktopLength
-                                    const rectWidth = perpendicularRectWidth
-                                    const rectHeight = perpendicularRectHeight
-                                    const r1 = perpendicularRectR1
+                                    const rectWidth = leftPerpendicularRectWidth
+                                    const rectHeight = leftPerpendicularRectHeight
+                                    const r1 = leftPerpendicularRectR1
+                                    
+                                    // For all types: R1 is at bottom-right corner
                                     const bottomRightX = rectWidth
                                     const bottomRightY = rectY + rectHeight
+                                    
                                     // Position label inside the corner, offset from the arc center
                                     // Arc center is at (bottomRightX - r1, bottomRightY - r1)
                                     // Place label at about 60% of the radius from the corner
@@ -3438,7 +3926,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         R1
                                       </text>
                                     )
-                                  } else if (assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos' && r1Value > 0) {
+                                  } else if (assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos' && assemblyType !== 'Összemarás U alak (Nem működik még)' && r1Value > 0) {
                                     // R1 label for main worktop's bottom-left corner (only if not Összemarás Balos)
                                     const startY = showVerticalCut ? verticalCutHeight : 0
                                     const bottomY = worktopLength
@@ -3470,9 +3958,12 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 })()}
                                 
                                 {/* R2 label (bottom-right corner of kept part) - positioned inside worktop close to corner */}
-                                {r2Value > 0 && (() => {
-                                  // For Összemarás jobbos: main worktop is offset to the right by perpendicularRectWidth
-                                  const mainWorktopOffsetX = isJobbos && showPerpendicularRect ? perpendicularRectWidth : 0
+                                {/* For Összemarás: R2 applies to right rectangle, not main worktop */}
+                                {r2Value > 0 && assemblyType !== 'Összemarás U alak (Nem működik még)' && (() => {
+                                  // For Összemarás jobbos: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  // For Összemarás: main worktop is offset to the right by leftPerpendicularRectWidth
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                   const startY = showVerticalCut ? verticalCutHeight : 0
                                   const bottomY = worktopLength
                                   const rightEdge = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
