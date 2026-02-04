@@ -125,6 +125,8 @@ interface SavedWorktopConfig {
   edgePosition2: boolean
   edgePosition3: boolean
   edgePosition4: boolean
+  edgePosition5?: boolean
+  edgePosition6?: boolean
   dimensionA: string
   dimensionB: string
   dimensionC: string
@@ -133,10 +135,16 @@ interface SavedWorktopConfig {
   dimensionF?: string
   roundingR1: string
   roundingR2: string
+  roundingR3: string
+  roundingR4: string
   cutL1: string
   cutL2: string
   cutL3: string
   cutL4: string
+  cutL5: string
+  cutL6: string
+  cutL7: string
+  cutL8: string
   cutouts: Cutout[]
 }
 
@@ -164,7 +172,6 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   // Worktop config state (fetch-only, no save yet)
   const assemblyTypes = [
     'Levágás',
-    'Hossztoldás',
     'Összemarás Balos',
     'Összemarás jobbos',
     'Összemarás U alak (Nem működik még)'
@@ -179,6 +186,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   const [edgePosition2, setEdgePosition2] = useState<boolean>(false)
   const [edgePosition3, setEdgePosition3] = useState<boolean>(false)
   const [edgePosition4, setEdgePosition4] = useState<boolean>(false)
+  const [edgePosition5, setEdgePosition5] = useState<boolean>(false)
+  const [edgePosition6, setEdgePosition6] = useState<boolean>(false)
   const [dimensionA, setDimensionA] = useState<string>('')
   const [dimensionB, setDimensionB] = useState<string>('')
   const [dimensionC, setDimensionC] = useState<string>('')
@@ -187,10 +196,16 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   const [dimensionF, setDimensionF] = useState<string>('')
   const [roundingR1, setRoundingR1] = useState<string>('')
   const [roundingR2, setRoundingR2] = useState<string>('')
+  const [roundingR3, setRoundingR3] = useState<string>('')
+  const [roundingR4, setRoundingR4] = useState<string>('')
   const [cutL1, setCutL1] = useState<string>('')
   const [cutL2, setCutL2] = useState<string>('')
   const [cutL3, setCutL3] = useState<string>('')
   const [cutL4, setCutL4] = useState<string>('')
+  const [cutL5, setCutL5] = useState<string>('')
+  const [cutL6, setCutL6] = useState<string>('')
+  const [cutL7, setCutL7] = useState<string>('')
+  const [cutL8, setCutL8] = useState<string>('')
   
   // Cutouts state (max 3)
   const [cutouts, setCutouts] = useState<Cutout[]>([])
@@ -328,6 +343,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       edgePosition2,
       edgePosition3,
       edgePosition4,
+      edgePosition5,
+      edgePosition6,
       dimensionA,
       dimensionB,
       dimensionC,
@@ -336,10 +353,16 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       dimensionF,
       roundingR1,
       roundingR2,
+      roundingR3,
+      roundingR4,
       cutL1,
       cutL2,
       cutL3,
       cutL4,
+      cutL5,
+      cutL6,
+      cutL7,
+      cutL8,
       cutouts: [...cutouts]
     }
 
@@ -371,6 +394,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     setEdgePosition2(config.edgePosition2)
     setEdgePosition3(config.edgePosition3)
     setEdgePosition4(config.edgePosition4)
+    setEdgePosition5(config.edgePosition5 || false)
+    setEdgePosition6(config.edgePosition6 || false)
     setDimensionA(config.dimensionA)
     setDimensionB(config.dimensionB)
     setDimensionC(config.dimensionC || '')
@@ -379,10 +404,16 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     setDimensionF(config.dimensionF || '')
     setRoundingR1(config.roundingR1)
     setRoundingR2(config.roundingR2)
+    setRoundingR3(config.roundingR3 || '')
+    setRoundingR4(config.roundingR4 || '')
     setCutL1(config.cutL1)
     setCutL2(config.cutL2)
     setCutL3(config.cutL3)
     setCutL4(config.cutL4)
+    setCutL5(config.cutL5 || '')
+    setCutL6(config.cutL6 || '')
+    setCutL7(config.cutL7 || '')
+    setCutL8(config.cutL8 || '')
     setCutouts([...config.cutouts])
 
     // Scroll to top
@@ -415,6 +446,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     setEdgePosition2(false)
     setEdgePosition3(false)
     setEdgePosition4(false)
+    setEdgePosition5(false)
+    setEdgePosition6(false)
     setDimensionA('')
     setDimensionB('')
     setDimensionC('')
@@ -423,10 +456,16 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     setDimensionF('')
     setRoundingR1('')
     setRoundingR2('')
+    setRoundingR3('')
+    setRoundingR4('')
     setCutL1('')
     setCutL2('')
     setCutL3('')
     setCutL4('')
+    setCutL5('')
+    setCutL6('')
+    setCutL7('')
+    setCutL8('')
     setCutouts([])
   }
 
@@ -803,7 +842,18 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           control={
                             <Radio
                               checked={edgeBanding === val}
-                              onChange={() => setEdgeBanding(val)}
+                              onChange={() => {
+                                setEdgeBanding(val)
+                                // Clear all edge position checkboxes when "Nincs élzáró" is selected
+                                if (val === 'Nincs élzáró') {
+                                  setEdgePosition1(false)
+                                  setEdgePosition2(false)
+                                  setEdgePosition3(false)
+                                  setEdgePosition4(false)
+                                  setEdgePosition5(false)
+                                  setEdgePosition6(false)
+                                }
+                              }}
                             />
                           }
                           label={val}
@@ -851,7 +901,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                         control={
                           <Checkbox
                             checked={noPostformingEdge}
-                            onChange={(e) => setNoPostformingEdge(e.target.checked)}
+                            onChange={(e) => {
+                              setNoPostformingEdge(e.target.checked)
+                              // If checked, automatically select ABS for élzáró anyaga
+                              if (e.target.checked) {
+                                setEdgeBanding('ABS')
+                              }
+                            }}
                           />
                         }
                         label="Ne maradjon postfroming él"
@@ -868,7 +924,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           control={
                             <Checkbox
                               checked={edgePosition1}
-                              onChange={(e) => setEdgePosition1(e.target.checked)}
+                              onChange={(e) => {
+                                // If checking and edgeBanding is 'Nincs élzáró', reset to 'ABS'
+                                if (e.target.checked && edgeBanding === 'Nincs élzáró') {
+                                  setEdgeBanding('ABS')
+                                }
+                                setEdgePosition1(e.target.checked)
+                              }}
                             />
                           }
                           label="1. oldal"
@@ -879,7 +941,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           control={
                             <Checkbox
                               checked={edgePosition2}
-                              onChange={(e) => setEdgePosition2(e.target.checked)}
+                              onChange={(e) => {
+                                // If checking and edgeBanding is 'Nincs élzáró', reset to 'ABS'
+                                if (e.target.checked && edgeBanding === 'Nincs élzáró') {
+                                  setEdgeBanding('ABS')
+                                }
+                                setEdgePosition2(e.target.checked)
+                              }}
                             />
                           }
                           label="2. oldal"
@@ -890,7 +958,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           control={
                             <Checkbox
                               checked={edgePosition3}
-                              onChange={(e) => setEdgePosition3(e.target.checked)}
+                              onChange={(e) => {
+                                // If checking and edgeBanding is 'Nincs élzáró', reset to 'ABS'
+                                if (e.target.checked && edgeBanding === 'Nincs élzáró') {
+                                  setEdgeBanding('ABS')
+                                }
+                                setEdgePosition3(e.target.checked)
+                              }}
                             />
                           }
                           label="3. oldal"
@@ -901,13 +975,58 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           control={
                             <Checkbox
                               checked={edgePosition4}
-                              onChange={(e) => setEdgePosition4(e.target.checked)}
+                              onChange={(e) => {
+                                // If checking and edgeBanding is 'Nincs élzáró', reset to 'ABS'
+                                if (e.target.checked && edgeBanding === 'Nincs élzáró') {
+                                  setEdgeBanding('ABS')
+                                }
+                                setEdgePosition4(e.target.checked)
+                              }}
                               disabled={noPostformingEdge}
                             />
                           }
                           label="4. oldal"
                         />
                       </Grid>
+                      {/* 5. oldal and 6. oldal - only for Összemarás Balos and Összemarás jobbos */}
+                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && (
+                        <>
+                          <Grid item xs={6}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={edgePosition5}
+                                  onChange={(e) => {
+                                    // If checking and edgeBanding is 'Nincs élzáró', reset to 'ABS'
+                                    if (e.target.checked && edgeBanding === 'Nincs élzáró') {
+                                      setEdgeBanding('ABS')
+                                    }
+                                    setEdgePosition5(e.target.checked)
+                                  }}
+                                />
+                              }
+                              label="5. oldal"
+                            />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  checked={edgePosition6}
+                                  onChange={(e) => {
+                                    // If checking and edgeBanding is 'Nincs élzáró', reset to 'ABS'
+                                    if (e.target.checked && edgeBanding === 'Nincs élzáró') {
+                                      setEdgeBanding('ABS')
+                                    }
+                                    setEdgePosition6(e.target.checked)
+                                  }}
+                                />
+                              }
+                              label="6. oldal"
+                            />
+                          </Grid>
+                        </>
+                      )}
                     </Grid>
                   </Grid>
                 </Grid>
@@ -922,7 +1041,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           Méretek ({assemblyType})
                         </Typography>
                       </Grid>
-                      <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 2 : (assemblyType === 'Hossztoldás' ? 4 : 6)}>
+                      {/* First row: A, B, C, D - full width */}
+                      <Grid item xs={12} sm={assemblyType === 'Levágás' ? 6 : 3}>
                         <TextField
                           fullWidth
                           size="small"
@@ -948,7 +1068,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           inputProps={{ min: 0, step: 1 }}
                         />
                       </Grid>
-                      <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 2 : (assemblyType === 'Hossztoldás' ? 4 : 6)}>
+                      <Grid item xs={12} sm={assemblyType === 'Levágás' ? 6 : 3}>
                         <TextField
                           fullWidth
                           size="small"
@@ -959,35 +1079,36 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           inputProps={{ min: 0, step: 1 }}
                         />
                       </Grid>
-                      {(assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && (
-                        <Grid item xs={12} sm={(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') ? 2 : 4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="C (mm)"
-                            type="number"
-                            value={dimensionC}
-                            onChange={(e) => setDimensionC(e.target.value)}
-                            inputProps={{ min: 0, step: 1 }}
-                          />
-                        </Grid>
+                      {assemblyType !== 'Levágás' && (
+                        <>
+                          <Grid item xs={12} sm={3}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="C (mm)"
+                              type="number"
+                              value={dimensionC}
+                              onChange={(e) => setDimensionC(e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={3}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="D (mm)"
+                              type="number"
+                              value={dimensionD}
+                              onChange={(e) => setDimensionD(e.target.value)}
+                              inputProps={{ min: 0, step: 1 }}
+                            />
+                          </Grid>
+                        </>
                       )}
-                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && (
-                        <Grid item xs={12} sm={2}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="D (mm)"
-                            type="number"
-                            value={dimensionD}
-                            onChange={(e) => setDimensionD(e.target.value)}
-                            inputProps={{ min: 0, step: 1 }}
-                          />
-                        </Grid>
-                      )}
+                      {/* E and F for Összemarás U alak - add after D if needed */}
                       {assemblyType === 'Összemarás U alak (Nem működik még)' && (
                         <>
-                          <Grid item xs={12} sm={2}>
+                          <Grid item xs={12} sm={3}>
                             <TextField
                               fullWidth
                               size="small"
@@ -998,7 +1119,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               inputProps={{ min: 0, step: 1 }}
                             />
                           </Grid>
-                          <Grid item xs={12} sm={2}>
+                          <Grid item xs={12} sm={3}>
                             <TextField
                               fullWidth
                               size="small"
@@ -1011,76 +1132,235 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           </Grid>
                         </>
                       )}
-                      {/* Row: Lekerekítés */}
-                      <Grid item xs={12} sm={6}>
+                      
+                      {/* Megmunkálások Section */}
+                      <Grid item xs={12}>
+                        <Divider sx={{ my: 2 }} />
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                          Megmunkálások
+                        </Typography>
+                      </Grid>
+                      
+                      {/* Second row: R1, R2, R3, R4 - full width (each 3 columns) */}
+                      <Grid item xs={12} sm={3}>
                         <TextField
                           fullWidth
                           size="small"
                           label="Lekerekítés bal oldalon (R1)"
                           type="number"
                           value={roundingR1}
-                          onChange={(e) => setRoundingR1(e.target.value)}
+                          onChange={(e) => {
+                            setRoundingR1(e.target.value)
+                            // Clear L1 and L2 when R1 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setCutL1('')
+                              setCutL2('')
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
+                          disabled={!!(parseFloat(cutL1) > 0) || !!(parseFloat(cutL2) > 0)}
                         />
                       </Grid>
-                      <Grid item xs={12} sm={6}>
+                      <Grid item xs={12} sm={3}>
                         <TextField
                           fullWidth
                           size="small"
                           label="Lekerekítés jobb oldalon (R2)"
                           type="number"
                           value={roundingR2}
-                          onChange={(e) => setRoundingR2(e.target.value)}
+                          onChange={(e) => {
+                            setRoundingR2(e.target.value)
+                            // Clear L3 and L4 when R2 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setCutL3('')
+                              setCutL4('')
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
+                          disabled={!!(parseFloat(cutL3) > 0) || !!(parseFloat(cutL4) > 0)}
                         />
                       </Grid>
-                      {/* Row: Letörések */}
                       <Grid item xs={12} sm={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Lekerekítés bal felső (R3)"
+                          type="number"
+                          value={roundingR3}
+                          onChange={(e) => {
+                            setRoundingR3(e.target.value)
+                            // Clear L5 and L6 when R3 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setCutL5('')
+                              setCutL6('')
+                            }
+                          }}
+                          inputProps={{ min: 0, step: 1 }}
+                          disabled={!(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') || !!(parseFloat(cutL5) > 0) || !!(parseFloat(cutL6) > 0)}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Lekerekítés jobb felső (R4)"
+                          type="number"
+                          value={roundingR4}
+                          onChange={(e) => {
+                            setRoundingR4(e.target.value)
+                            // Clear L7 and L8 when R4 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setCutL7('')
+                              setCutL8('')
+                            }
+                          }}
+                          inputProps={{ min: 0, step: 1 }}
+                          disabled={!(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') || !!(parseFloat(cutL7) > 0) || !!(parseFloat(cutL8) > 0)}
+                        />
+                      </Grid>
+                      {/* Third row: Letörések L1-L8 - all in one row (each 1.5 columns) */}
+                      <Grid item xs={12} sm={1.5}>
                         <TextField
                           fullWidth
                           size="small"
                           label="Letörés (L1)"
                           type="number"
                           value={cutL1}
-                          onChange={(e) => setCutL1(e.target.value)}
+                          onChange={(e) => {
+                            setCutL1(e.target.value)
+                            // Clear R1 when L1 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR1('')
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
                           disabled={!!(parseFloat(roundingR1) > 0)}
                         />
                       </Grid>
-                      <Grid item xs={12} sm={3}>
+                      <Grid item xs={12} sm={1.5}>
                         <TextField
                           fullWidth
                           size="small"
                           label="Letörés (L2)"
                           type="number"
                           value={cutL2}
-                          onChange={(e) => setCutL2(e.target.value)}
+                          onChange={(e) => {
+                            setCutL2(e.target.value)
+                            // Clear R1 when L2 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR1('')
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
                           disabled={!!(parseFloat(roundingR1) > 0)}
                         />
                       </Grid>
-                      <Grid item xs={12} sm={3}>
+                      <Grid item xs={12} sm={1.5}>
                         <TextField
                           fullWidth
                           size="small"
                           label="Letörés (L3)"
                           type="number"
                           value={cutL3}
-                          onChange={(e) => setCutL3(e.target.value)}
+                          onChange={(e) => {
+                            setCutL3(e.target.value)
+                            // Clear R2 when L3 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR2('')
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
                           disabled={!!(parseFloat(roundingR2) > 0)}
                         />
                       </Grid>
-                      <Grid item xs={12} sm={3}>
+                      <Grid item xs={12} sm={1.5}>
                         <TextField
                           fullWidth
                           size="small"
                           label="Letörés (L4)"
                           type="number"
                           value={cutL4}
-                          onChange={(e) => setCutL4(e.target.value)}
+                          onChange={(e) => {
+                            setCutL4(e.target.value)
+                            // Clear R2 when L4 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR2('')
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
                           disabled={!!(parseFloat(roundingR2) > 0)}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={1.5}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Letörés (L5)"
+                          type="number"
+                          value={cutL5}
+                          onChange={(e) => {
+                            setCutL5(e.target.value)
+                            // Clear R3 when L5 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR3('')
+                            }
+                          }}
+                          inputProps={{ min: 0, step: 1 }}
+                          disabled={!!(parseFloat(roundingR3) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={1.5}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Letörés (L6)"
+                          type="number"
+                          value={cutL6}
+                          onChange={(e) => {
+                            setCutL6(e.target.value)
+                            // Clear R3 when L6 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR3('')
+                            }
+                          }}
+                          inputProps={{ min: 0, step: 1 }}
+                          disabled={!!(parseFloat(roundingR3) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={1.5}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Letörés (L7)"
+                          type="number"
+                          value={cutL7}
+                          onChange={(e) => {
+                            setCutL7(e.target.value)
+                            // Clear R4 when L7 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR4('')
+                            }
+                          }}
+                          inputProps={{ min: 0, step: 1 }}
+                          disabled={!!(parseFloat(roundingR4) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={1.5}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Letörés (L8)"
+                          type="number"
+                          value={cutL8}
+                          onChange={(e) => {
+                            setCutL8(e.target.value)
+                            // Clear R4 when L8 has a value
+                            if (parseFloat(e.target.value) > 0) {
+                              setRoundingR4('')
+                            }
+                          }}
+                          inputProps={{ min: 0, step: 1 }}
+                          disabled={!!(parseFloat(roundingR4) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
                         />
                       </Grid>
                       
@@ -1409,6 +1689,22 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                         // For Összemarás: L1-L2 applies to left perpendicular rectangle's bottom-right, L3-L4 applies to right perpendicular rectangle's bottom-left
                         const hasL1L2 = l1Value > 0 && l2Value > 0 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos' && assemblyType !== 'Összemarás U alak (Nem működik még)'
                         const hasL3L4 = l3Value > 0 && l4Value > 0 && assemblyType !== 'Összemarás U alak (Nem működik még)'
+                        
+                        // Calculate top corner rounding: R3 (top-left), R4 (top-right) - only for Levágás, Összemarás Balos, Összemarás jobbos
+                        const r3ValueRaw = (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? (parseFloat(roundingR3) || 0) : 0
+                        const r4ValueRaw = (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? (parseFloat(roundingR4) || 0) : 0
+                        // Top-left rounding: limited by half of worktop width and half of worktop length
+                        const r3Value = Math.min(r3ValueRaw, worktopWidth / 2, worktopLength / 2)
+                        // Top-right rounding: limited by half of worktop width and half of worktop length
+                        const r4Value = Math.min(r4ValueRaw, worktopWidth / 2, worktopLength / 2)
+                        
+                        // Calculate top corner chamfers: L5/L6 (top-left), L7/L8 (top-right) - only for Levágás, Összemarás Balos, Összemarás jobbos
+                        const l5Value = (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? (parseFloat(cutL5) || 0) : 0
+                        const l6Value = (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? (parseFloat(cutL6) || 0) : 0
+                        const l7Value = (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? (parseFloat(cutL7) || 0) : 0
+                        const l8Value = (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? (parseFloat(cutL8) || 0) : 0
+                        const hasL5L6 = l5Value > 0 && l6Value > 0 && (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')
+                        const hasL7L8 = l7Value > 0 && l8Value > 0 && (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')
                         // For left perpendicular rectangle: L1-L2 applies to its bottom-right corner
                         const hasLeftPerpendicularL1L2 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && l1Value > 0 && l2Value > 0
                         // For right perpendicular rectangle: L3-L4 applies to its bottom-left corner
@@ -1538,46 +1834,72 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     // Start position: if vertical cut, start from top of kept portion (bottom of cut)
                                     const startY = showVerticalCut ? verticalCutHeight : 0
                                     
+                                    // Use the already-calculated R3, R4, L5-L6, L7-L8 values from the outer scope
+                                    
                                     // Build path: start from top-left of kept portion (offset for jobbos)
-                                    let path = `M ${mainWorktopOffsetX} ${startY}`
+                                    // If R3 or L5-L6, start after the rounding/chamfer on the top edge
+                                    // For Összemarás Balos/jobbos: R3 and L5-L6 apply to perpendicular rectangle, not main worktop
+                                    let path = ''
+                                    if (hasL5L6 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos') {
+                                      path = `M ${mainWorktopOffsetX + l5Value} ${startY}`
+                                    } else if (r3Value > 0 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos') {
+                                      path = `M ${mainWorktopOffsetX + r3Value} ${startY}`
+                                    } else {
+                                      path = `M ${mainWorktopOffsetX} ${startY}`
+                                    }
                                     
                                     // Top edge: to top-right (or cut position if horizontal cutting)
-                                    if (showCut) {
-                                      path += ` L ${mainWorktopOffsetX + cutPosition} ${startY}`
+                                    // Stop before R4 or L7-L8 if present
+                                    const topRightX = showCut ? (mainWorktopOffsetX + cutPosition) : (mainWorktopOffsetX + worktopWidth)
+                                    if (hasL7L8) {
+                                      path += ` L ${topRightX - l7Value} ${startY}`
+                                    } else if (r4Value > 0) {
+                                      path += ` L ${topRightX - r4Value} ${startY}`
                                     } else {
-                                      path += ` L ${mainWorktopOffsetX + worktopWidth} ${startY}`
+                                      path += ` L ${topRightX} ${startY}`
+                                    }
+                                    
+                                    // Top-right corner: R4 rounding or L7-L8 chamfer
+                                    if (hasL7L8) {
+                                      // L7-L8 chamfer: diagonal line from (topRightX - l7Value, startY) to (topRightX, startY + l8Value)
+                                      path += ` L ${topRightX} ${startY + l8Value}`
+                                    } else if (r4Value > 0) {
+                                      // R4 rounding: arc from top edge to right edge
+                                      path += ` Q ${topRightX} ${startY} ${topRightX} ${startY + r4Value}`
                                     }
                                     
                                     // Right edge: if horizontal cutting, stop at cut position; otherwise go to bottom-right
+                                    // After L7-L8 or R4, we're at (topRightX, startY + l8Value) or (topRightX, startY + r4Value)
+                                    // Continue down the right edge from there
                                     const bottomY = worktopLength // Always go to full bottom
                                     if (showCut) {
                                       // At cut position, go down the right edge
                                       if (hasL3L4) {
                                         // L3/L4 chamfer: go down to (cutPosition, worktopLength - l4Value), then diagonal to (cutPosition - l3Value, worktopLength)
-                                        path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY - l4Value}`
+                                        path += ` L ${topRightX} ${bottomY - l4Value}`
                                         path += ` L ${mainWorktopOffsetX + cutPosition - l3Value} ${bottomY}`
                                       } else {
-                                        path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY - r2}`
+                                        path += ` L ${topRightX} ${bottomY - r2}`
                                         // R2 rounding at cut line (bottom-right of kept part)
                                         if (r2 > 0) {
-                                          path += ` Q ${mainWorktopOffsetX + cutPosition} ${bottomY} ${mainWorktopOffsetX + cutPosition - r2} ${bottomY}`
+                                          path += ` Q ${topRightX} ${bottomY} ${mainWorktopOffsetX + cutPosition - r2} ${bottomY}`
                                         } else {
-                                          path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY}`
+                                          path += ` L ${topRightX} ${bottomY}`
                                         }
                                       }
                                     } else {
                                       // No horizontal cut: go to bottom-right
                                       if (hasL3L4) {
                                         // L3/L4 chamfer: go down to (worktopWidth, worktopLength - l4Value), then diagonal to (worktopWidth - l3Value, worktopLength)
-                                        path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY - l4Value}`
+                                        path += ` L ${topRightX} ${bottomY - l4Value}`
                                         path += ` L ${mainWorktopOffsetX + worktopWidth - l3Value} ${bottomY}`
                                       } else {
-                                        path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY - r2}`
+                                        path += ` L ${topRightX} ${bottomY - r2}`
                                         // R2 rounding at full width
                                         if (r2 > 0) {
-                                          path += ` Q ${mainWorktopOffsetX + worktopWidth} ${bottomY} ${mainWorktopOffsetX + worktopWidth - r2} ${bottomY}`
+                                          path += ` Q ${topRightX} ${bottomY} ${mainWorktopOffsetX + worktopWidth - r2} ${bottomY}`
                                         } else {
-                                          path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY}`
+                                          path += ` L ${topRightX} ${bottomY}`
                                         }
                                       }
                                     }
@@ -1598,7 +1920,20 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     }
                                     
                                     // Left edge: back to top (or to start of kept portion if vertical cut)
-                                    path += ` L ${mainWorktopOffsetX} ${startY}`
+                                    // End before R3 or L5-L6 if present
+                                    // For Összemarás Balos/jobbos: R3 and L5-L6 apply to perpendicular rectangle, not main worktop
+                                    if (hasL5L6 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos') {
+                                      // Left edge goes up to (mainWorktopOffsetX, startY + l6Value)
+                                      path += ` L ${mainWorktopOffsetX} ${startY + l6Value}`
+                                      // Draw diagonal chamfer line from (mainWorktopOffsetX, startY + l6Value) to (mainWorktopOffsetX + l5Value, startY)
+                                      path += ` L ${mainWorktopOffsetX + l5Value} ${startY}`
+                                    } else if (r3Value > 0 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos') {
+                                      path += ` L ${mainWorktopOffsetX} ${startY + r3Value}`
+                                      // Draw arc from left edge to top edge
+                                      path += ` Q ${mainWorktopOffsetX} ${startY} ${mainWorktopOffsetX + r3Value} ${startY}`
+                                    } else {
+                                      path += ` L ${mainWorktopOffsetX} ${startY}`
+                                    }
                                     
                                     // Close path
                                     path += ` Z`
@@ -1654,13 +1989,29 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const rectHeight = leftPerpendicularRectHeight
                                   const r1 = leftPerpendicularRectR1
                                   
-                                  // Build path with R1 rounding or L1-L2 chamfer
+                                  // For Összemarás Balos and jobbos: R3 and L5-L6 apply to bottom-left corner of perpendicular rectangle
+                                  const hasLeftPerpendicularR3 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && r3ValueRaw > 0
+                                  const hasLeftPerpendicularL5L6 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && hasL5L6
+                                  const leftPerpendicularRectR3 = hasLeftPerpendicularR3 
+                                    ? Math.min(r3ValueRaw, rectWidth / 2, rectHeight / 2) 
+                                    : 0
+                                  
+                                  // Build path with R1 rounding or L1-L2 chamfer at bottom-right, and R3 or L5-L6 at bottom-left (for Balos and jobbos)
                                   // For all types (Balos, jobbos, Összemarás): standard drawing extending to the right
                                   const bottomRightX = rectX + rectWidth
                                   const bottomRightY = rectY + rectHeight
+                                  const bottomLeftX = rectX
+                                  const bottomLeftY = bottomRightY
                                   
-                                  let path = `M ${rectX} ${rectY}` // Start at top-left
-                                  path += ` L ${bottomRightX} ${rectY}` // Top edge to top-right
+                                  // Build path with R1 rounding or L1-L2 chamfer at bottom-right, and R3 or L5-L6 at bottom-left (for Balos and jobbos)
+                                  // For all types (Balos, jobbos, Összemarás): standard drawing extending to the right
+                                  let path = ''
+                                  
+                                  // Start at top-left
+                                  path = `M ${rectX} ${rectY}`
+                                  
+                                  // Top edge: to top-right
+                                  path += ` L ${bottomRightX} ${rectY}`
                                   
                                   // Right edge: down to bottom-right corner (with L1-L2 chamfer or R1 rounding)
                                   if (hasLeftPerpendicularL1L2) {
@@ -1675,8 +2026,38 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     }
                                   }
                                   
-                                  path += ` L ${rectX} ${bottomRightY}` // Bottom edge to bottom-left
-                                  path += ` L ${rectX} ${rectY}` // Left edge back to top-left
+                                  // Bottom edge: to bottom-left (stopping before R3 or L5-L6 if present)
+                                  if (hasLeftPerpendicularL5L6) {
+                                    // Stop before L5-L6 chamfer
+                                    path += ` L ${bottomLeftX + l5Value} ${bottomLeftY}`
+                                  } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                    // Stop before R3 rounding
+                                    path += ` L ${bottomLeftX + leftPerpendicularRectR3} ${bottomLeftY}`
+                                  } else {
+                                    path += ` L ${bottomLeftX} ${bottomLeftY}` // Bottom edge to bottom-left
+                                  }
+                                  
+                                  // Bottom-left corner: R3 rounding or L5-L6 chamfer (for Összemarás Balos and jobbos)
+                                  if (hasLeftPerpendicularL5L6) {
+                                    // L5-L6 chamfer: diagonal line from (bottomLeftX + l5Value, bottomLeftY) to (bottomLeftX, bottomLeftY - l6Value)
+                                    path += ` L ${bottomLeftX} ${bottomLeftY - l6Value}`
+                                  } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                    // R3 rounding: arc from bottom edge to left edge
+                                    path += ` Q ${bottomLeftX} ${bottomLeftY} ${bottomLeftX} ${bottomLeftY - leftPerpendicularRectR3}`
+                                  }
+                                  
+                                  // Left edge: back to top-left (ending before R3 or L5-L6 if present)
+                                  if (hasLeftPerpendicularL5L6) {
+                                    // Left edge ends at (bottomLeftX, bottomLeftY - l6Value) where chamfer starts
+                                    // Already at this point from the chamfer, so go to top-left
+                                    path += ` L ${rectX} ${rectY}`
+                                  } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                    // Left edge ends at (bottomLeftX, bottomLeftY - leftPerpendicularRectR3) where rounding starts
+                                    // Already at this point from the arc, so go to top-left
+                                    path += ` L ${rectX} ${rectY}`
+                                  } else {
+                                    path += ` L ${rectX} ${rectY}` // Left edge back to top-left
+                                  }
                                   
                                   path += ` Z` // Close path
                                   
@@ -1771,15 +2152,54 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
                                                              (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
                                   
+                                  // For Összemarás Balos and jobbos: R3 and L5-L6 apply to perpendicular rectangle, not main worktop
+                                  const hasLeftPerpendicularR3 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && r3ValueRaw > 0
+                                  const hasLeftPerpendicularL5L6 = (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && hasL5L6
+                                  const leftPerpendicularRectR3 = hasLeftPerpendicularR3 && showLeftPerpendicularRect
+                                    ? Math.min(r3ValueRaw, leftPerpendicularRectWidth / 2, leftPerpendicularRectHeight / 2)
+                                    : 0
+                                  
                                   // Build the EXACT same path as the worktop border
                                   const buildWorktopBorderPath = () => {
-                                    let path = `M ${mainWorktopOffsetX} ${startY}`
+                                    // Top-left corner: R3 rounding or L5-L6 chamfer
+                                    const topLeftX = mainWorktopOffsetX
+                                    const topLeftY = startY
                                     
-                                    // Top edge
-                                    if (showCut) {
-                                      path += ` L ${mainWorktopOffsetX + cutPosition} ${startY}`
+                                    // Start path: if there's top-left rounding/chamfer, start after it on the top edge
+                                    let path = ''
+                                    if (hasL5L6) {
+                                      // Top-left chamfer: start at (topLeftX + l5Value, topLeftY) on top edge
+                                      path = `M ${topLeftX + l5Value} ${topLeftY}`
+                                    } else if (r3Value > 0) {
+                                      // Top-left rounding: start at (topLeftX + r3Value, topLeftY) on top edge
+                                      path = `M ${topLeftX + r3Value} ${topLeftY}`
                                     } else {
-                                      path += ` L ${mainWorktopOffsetX + worktopWidth} ${startY}`
+                                      path = `M ${topLeftX} ${topLeftY}`
+                                    }
+                                    
+                                    // Top edge: from top-left to top-right
+                                    const topRightX = showCut ? (mainWorktopOffsetX + cutPosition) : (mainWorktopOffsetX + worktopWidth)
+                                    const topRightY = startY
+                                    
+                                    // Continue top edge to top-right corner (stopping before rounding/chamfer)
+                                    if (hasL7L8) {
+                                      // Stop before top-right chamfer
+                                      path += ` L ${topRightX - l7Value} ${topRightY}`
+                                    } else if (r4Value > 0) {
+                                      // Stop before top-right rounding
+                                      path += ` L ${topRightX - r4Value} ${topRightY}`
+                                    } else {
+                                      path += ` L ${topRightX} ${topRightY}`
+                                    }
+                                    
+                                    // Top-right corner: R4 rounding or L7-L8 chamfer
+                                    if (hasL7L8) {
+                                      // Top-right chamfer: draw chamfer lines
+                                      path += ` L ${topRightX} ${topRightY + l8Value}`
+                                    } else if (r4Value > 0) {
+                                      // Top-right rounding: draw arc from top edge to right edge
+                                      // Control point at corner (topRightX, topRightY), end at (topRightX, topRightY + r4Value) on right edge
+                                      path += ` Q ${topRightX} ${topRightY} ${topRightX} ${topRightY + r4Value}`
                                     }
                                     
                                     // Right edge
@@ -1823,8 +2243,22 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       }
                                     }
                                     
-                                    // Left edge
-                                    path += ` L 0 ${startY}`
+                                    // Left edge: from bottom-left to top-left (ending before top-left rounding/chamfer)
+                                    if (hasL5L6) {
+                                      // Left edge ends at (mainWorktopOffsetX, topLeftY + l6Value) where chamfer starts
+                                      path += ` L ${mainWorktopOffsetX} ${topLeftY + l6Value}`
+                                      // Draw chamfer lines to connect to top edge
+                                      path += ` L ${mainWorktopOffsetX} ${topLeftY}`
+                                      path += ` L ${mainWorktopOffsetX + l5Value} ${topLeftY}`
+                                    } else if (r3Value > 0) {
+                                      // Left edge ends at (mainWorktopOffsetX, topLeftY + r3Value) where rounding starts
+                                      path += ` L ${mainWorktopOffsetX} ${topLeftY + r3Value}`
+                                      // Draw arc from left edge to top edge
+                                      // Control point at corner (topLeftX, topLeftY), end at (topLeftX + r3Value, topLeftY) on top edge
+                                      path += ` Q ${topLeftX} ${topLeftY} ${topLeftX + r3Value} ${topLeftY}`
+                                    } else {
+                                      path += ` L ${mainWorktopOffsetX} ${topLeftY}`
+                                    }
                                     path += ` Z`
                                     return path
                                   }
@@ -1837,8 +2271,76 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   
                                   // Build individual edge paths
                                   const buildLeftEdgePath = () => {
-                                    // Left edge goes from top to bottom, ending where bottom corner starts
-                                    let path = `M ${mainWorktopOffsetX} ${startY}`
+                                    // For Összemarás jobbos: 1. oldal is the C×D rectangle's left edge
+                                    if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                      // Perpendicular rectangle's left edge: from (0, 0) to (0, leftPerpendicularRectHeight)
+                                      const rectX = 0
+                                      const rectY = 0
+                                      const rectHeight = leftPerpendicularRectHeight
+                                      return `M ${rectX} ${rectY} L ${rectX} ${rectY + rectHeight}`
+                                    }
+                                    
+                                    // For Összemarás Balos: extend the left edge down the perpendicular rectangle's left edge
+                                    if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect) {
+                                      // Left edge goes from top to bottom, ending where bottom corner starts
+                                      const topLeftX = mainWorktopOffsetX
+                                      const topLeftY = startY
+                                      
+                                      // For Balos: L5-L6 applies to perpendicular rectangle's bottom-left, NOT main worktop's top-left
+                                      // So start from top of main worktop
+                                      let path = `M ${topLeftX} ${topLeftY}`
+                                      
+                                      // Continue down the main worktop's left edge
+                                      if (hasL1L2) {
+                                        // Left edge ends at (mainWorktopOffsetX, bottomY - l2Value) where chamfer starts
+                                        path += ` L ${mainWorktopOffsetX} ${bottomY - l2Value}`
+                                      } else {
+                                        // Left edge ends at (mainWorktopOffsetX, bottomY - r1) where rounding starts
+                                        path += ` L ${mainWorktopOffsetX} ${bottomY - r1}`
+                                      }
+                                      
+                                      // Perpendicular rectangle's left edge: from (0, worktopLength) to (0, worktopLength + leftPerpendicularRectHeight)
+                                      // Continue from main worktop's bottom-left corner down the perpendicular rectangle's left edge
+                                      const perpendicularRectTopY = worktopLength
+                                      const perpendicularRectBottomY = worktopLength + leftPerpendicularRectHeight
+                                      path += ` L ${mainWorktopOffsetX} ${perpendicularRectTopY}` // Connect to perpendicular rectangle top
+                                      
+                                      // For Balos: L5-L6 is on perpendicular rectangle's bottom-left corner
+                                      // Stop at L6 position (where chamfer begins on perpendicular rectangle)
+                                      if (hasLeftPerpendicularL5L6) {
+                                        // Stop at (0, perpendicularRectBottomY - l6Value) where L5-L6 chamfer begins
+                                        path += ` L ${mainWorktopOffsetX} ${perpendicularRectBottomY - l6Value}`
+                                      } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                        // Stop at R3 position if present
+                                        path += ` L ${mainWorktopOffsetX} ${perpendicularRectBottomY - leftPerpendicularRectR3}`
+                                      } else {
+                                        // Go all the way to bottom
+                                        path += ` L ${mainWorktopOffsetX} ${perpendicularRectBottomY}`
+                                      }
+                                      
+                                      return path
+                                    }
+                                    
+                                    // Default: Left edge goes from top to bottom, ending where bottom corner starts
+                                    const topLeftX = mainWorktopOffsetX
+                                    const topLeftY = startY
+                                    
+                                    let path = ''
+                                    
+                                    // Start at top-left corner, include rounding/chamfer if present
+                                    if (hasL5L6) {
+                                      // Start at left edge where chamfer begins (L6 position)
+                                      // Left edge highlight starts here and goes down, not from the top
+                                      path = `M ${topLeftX} ${topLeftY + l6Value}`
+                                    } else if (r3Value > 0) {
+                                      // Start at left edge where R3 arc begins
+                                      path = `M ${topLeftX} ${topLeftY + r3Value}`
+                                    } else {
+                                      // Start at top-left corner
+                                      path = `M ${topLeftX} ${topLeftY}`
+                                    }
+                                    
+                                    // Continue down the left edge
                                     if (hasL1L2) {
                                       // Left edge ends at (mainWorktopOffsetX, bottomY - l2Value) where chamfer starts
                                       path += ` L ${mainWorktopOffsetX} ${bottomY - l2Value}`
@@ -1846,22 +2348,108 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       // Left edge ends at (mainWorktopOffsetX, bottomY - r1) where rounding starts
                                       path += ` L ${mainWorktopOffsetX} ${bottomY - r1}`
                                     }
+                                    
                                     return path
                                   }
                                   
                                   const buildTopEdgePath = () => {
-                                    let path = `M ${mainWorktopOffsetX} ${startY}`
-                                    if (showCut) {
-                                      path += ` L ${mainWorktopOffsetX + cutPosition} ${startY}`
-                                    } else {
-                                      path += ` L ${mainWorktopOffsetX + worktopWidth} ${startY}`
+                                    // For Összemarás jobbos: 2. oldal includes both perpendicular rectangle's top edge AND main worktop's top edge
+                                    if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                      // Combined top edge: from (0, 0) to (leftPerpendicularRectWidth + worktopWidth, 0)
+                                      const rectX = 0
+                                      const rectY = 0
+                                      const rectWidth = leftPerpendicularRectWidth
+                                      
+                                      // Start from perpendicular rectangle's left edge
+                                      let path = `M ${rectX} ${rectY}`
+                                      
+                                      // Continue to perpendicular rectangle's right edge
+                                      path += ` L ${rectX + rectWidth} ${rectY}`
+                                      
+                                      // Continue to main worktop's top edge (accounting for rounding/chamfer)
+                                      const mainWorktopTopLeftX = rectWidth
+                                      const mainWorktopTopRightX = rectWidth + (showCut ? cutPosition : worktopWidth)
+                                      
+                                      // Continue to top-right corner (stopping before rounding/chamfer)
+                                      if (hasL7L8) {
+                                        // Stop before top-right chamfer
+                                        path += ` L ${mainWorktopTopRightX - l7Value} ${rectY}`
+                                        // Include the chamfer
+                                        path += ` L ${mainWorktopTopRightX} ${rectY + l8Value}`
+                                      } else if (r4Value > 0) {
+                                        // Stop before top-right rounding
+                                        path += ` L ${mainWorktopTopRightX - r4Value} ${rectY}`
+                                        // Include the R4 arc
+                                        path += ` Q ${mainWorktopTopRightX} ${rectY} ${mainWorktopTopRightX} ${rectY + r4Value}`
+                                      } else {
+                                        path += ` L ${mainWorktopTopRightX} ${rectY}`
+                                      }
+                                      
+                                      return path
                                     }
+                                    
+                                    // Default: Top edge of main worktop
+                                    const topLeftX = mainWorktopOffsetX
+                                    const topLeftY = startY
+                                    const topRightX = showCut ? (mainWorktopOffsetX + cutPosition) : (mainWorktopOffsetX + worktopWidth)
+                                    const topRightY = startY
+                                    
+                                    let path = ''
+                                    
+                                    // Start at top-left, include R3 rounding/chamfer if present
+                                    // For highlighting, we want to show the full top edge including rounded corners
+                                    // For Összemarás Balos/jobbos: L5-L6 and R3 apply to perpendicular rectangle, NOT main worktop
+                                    if (hasL5L6 && !hasLeftPerpendicularL5L6) {
+                                      // Start at left edge where chamfer begins, draw chamfer diagonal to top edge
+                                      // Then continue along top edge (the path continues in next section)
+                                      path = `M ${topLeftX} ${topLeftY + l6Value}`
+                                      // Draw chamfer diagonal to top edge
+                                      path += ` L ${topLeftX + l5Value} ${topLeftY}`
+                                      // Path now continues along top edge in the next section (no backtracking)
+                                    } else if (r3Value > 0 && !hasLeftPerpendicularR3) {
+                                      // Start at left edge where R3 arc begins, include R3 arc to top edge
+                                      // Control point at corner (topLeftX, topLeftY), end at (topLeftX + r3Value, topLeftY) on top edge
+                                      path = `M ${topLeftX} ${topLeftY + r3Value}`
+                                      path += ` Q ${topLeftX} ${topLeftY} ${topLeftX + r3Value} ${topLeftY}`
+                                    } else {
+                                      // Start at top-left corner (for Balos/jobbos, L5-L6/R3 are on perpendicular rectangle, so start at corner)
+                                      path = `M ${topLeftX} ${topLeftY}`
+                                    }
+                                    
+                                    // Continue along top edge to top-right corner (stopping before rounding/chamfer)
+                                    if (hasL7L8) {
+                                      // Continue to where top-right chamfer begins on top edge
+                                      path += ` L ${topRightX - l7Value} ${topRightY}`
+                                      // Draw diagonal chamfer line from top edge to right edge
+                                      // Chamfer is a diagonal cut from (topRightX - l7Value, topRightY) to (topRightX, topRightY + l8Value)
+                                      path += ` L ${topRightX} ${topRightY + l8Value}`
+                                    } else if (r4Value > 0) {
+                                      // Stop before top-right rounding
+                                      path += ` L ${topRightX - r4Value} ${topRightY}`
+                                      // Include the R4 arc
+                                      // Control point at corner (topRightX, topRightY), end at (topRightX, topRightY + r4Value) on right edge
+                                      path += ` Q ${topRightX} ${topRightY} ${topRightX} ${topRightY + r4Value}`
+                                    } else {
+                                      path += ` L ${topRightX} ${topRightY}`
+                                    }
+                                    
                                     return path
                                   }
                                   
                                   const buildRightEdgePath = () => {
                                     // Right edge goes from top to bottom, ending where bottom corner starts
-                                    let path = `M ${mainWorktopOffsetX + rightEdge} ${startY}`
+                                    const topRightX = mainWorktopOffsetX + rightEdge
+                                    const topRightY = startY
+                                    
+                                    // Start after top-right rounding/chamfer
+                                    let startYPos = topRightY
+                                    if (hasL7L8) {
+                                      startYPos = topRightY + l8Value
+                                    } else if (r4Value > 0) {
+                                      startYPos = topRightY + r4Value
+                                    }
+                                    
+                                    let path = `M ${topRightX} ${startYPos}`
                                     if (showCut) {
                                       if (hasL3L4) {
                                         // Right edge ends at (cutPosition, bottomY - l4Value) where bottom chamfer starts
@@ -1884,11 +2472,28 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   
                                   const buildBottomEdgePath = () => {
                                     // Bottom edge includes both left corner (R1 or L1/L2) and right corner (R2 or L3/L4)
+                                    // For Összemarás Balos: bottom edge stops at x=D (leftPerpendicularRectWidth) where perpendicular worktop starts
                                     let path = ''
-                                    if (hasL1L2) {
+                                    let bottomEdgeStartX: number
+                                    let bottomEdgeEndX: number
+                                    
+                                    if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect) {
+                                      // For Összemarás Balos: bottom edge starts at x=D (where perpendicular worktop starts), not at x=0
+                                      bottomEdgeStartX = leftPerpendicularRectWidth
+                                      bottomEdgeEndX = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
+                                    } else {
+                                      // For other types: bottom edge starts from left corner
+                                      bottomEdgeStartX = mainWorktopOffsetX
+                                      bottomEdgeEndX = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
+                                    }
+                                    
+                                    if (hasL1L2 && assemblyType !== 'Összemarás Balos') {
                                       // Start from left edge at bottom (mainWorktopOffsetX, bottomY - l2Value), then chamfer to (mainWorktopOffsetX + l1Value, bottomY)
                                       path = `M ${mainWorktopOffsetX} ${bottomY - l2Value}`
                                       path += ` L ${mainWorktopOffsetX + l1Value} ${bottomY}`
+                                    } else if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect) {
+                                      // For Összemarás Balos: start at x=D (where perpendicular worktop starts)
+                                      path = `M ${bottomEdgeStartX} ${bottomY}`
                                     } else {
                                       // Start from left edge at bottom (mainWorktopOffsetX, bottomY - r1), then rounding to (mainWorktopOffsetX + r1, bottomY)
                                       path = `M ${mainWorktopOffsetX} ${bottomY - r1}`
@@ -1898,36 +2503,172 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         path += ` L ${mainWorktopOffsetX} ${bottomY}`
                                       }
                                     }
+                                    
                                     // Continue to right corner and include it
                                     if (showCut) {
                                       if (hasL3L4) {
                                         // Go to where right chamfer starts, then include the chamfer
-                                        path += ` L ${mainWorktopOffsetX + cutPosition - l3Value} ${bottomY}`
-                                        path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY - l4Value}`
+                                        path += ` L ${bottomEdgeEndX - l3Value} ${bottomY}`
+                                        path += ` L ${bottomEdgeEndX} ${bottomY - l4Value}`
                                       } else {
                                         // Go to where right rounding starts, then include the rounding
                                         if (r2 > 0) {
-                                          path += ` L ${mainWorktopOffsetX + cutPosition - r2} ${bottomY}`
-                                          path += ` Q ${mainWorktopOffsetX + cutPosition} ${bottomY} ${mainWorktopOffsetX + cutPosition} ${bottomY - r2}`
+                                          path += ` L ${bottomEdgeEndX - r2} ${bottomY}`
+                                          path += ` Q ${bottomEdgeEndX} ${bottomY} ${bottomEdgeEndX} ${bottomY - r2}`
                                         } else {
-                                          path += ` L ${mainWorktopOffsetX + cutPosition} ${bottomY}`
+                                          path += ` L ${bottomEdgeEndX} ${bottomY}`
                                         }
                                       }
                                     } else {
                                       if (hasL3L4) {
                                         // Go to where right chamfer starts, then include the chamfer
-                                        path += ` L ${mainWorktopOffsetX + worktopWidth - l3Value} ${bottomY}`
-                                        path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY - l4Value}`
+                                        path += ` L ${bottomEdgeEndX - l3Value} ${bottomY}`
+                                        path += ` L ${bottomEdgeEndX} ${bottomY - l4Value}`
                                       } else {
                                         // Go to where right rounding starts, then include the rounding
                                         if (r2 > 0) {
-                                          path += ` L ${mainWorktopOffsetX + worktopWidth - r2} ${bottomY}`
-                                          path += ` Q ${mainWorktopOffsetX + worktopWidth} ${bottomY} ${mainWorktopOffsetX + worktopWidth} ${bottomY - r2}`
+                                          path += ` L ${bottomEdgeEndX - r2} ${bottomY}`
+                                          path += ` Q ${bottomEdgeEndX} ${bottomY} ${bottomEdgeEndX} ${bottomY - r2}`
                                         } else {
-                                          path += ` L ${mainWorktopOffsetX + worktopWidth} ${bottomY}`
+                                          path += ` L ${bottomEdgeEndX} ${bottomY}`
                                         }
                                       }
                                     }
+                                    return path
+                                  }
+                                  
+                                  // Build paths for perpendicular rectangle edges (5. oldal and 6. oldal) for Összemarás Balos and Összemarás jobbos
+                                  const buildPerpendicularRightEdgePath = () => {
+                                    if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                      // For jobbos: 5. oldal is the C×D rectangle's right edge minus the B value from the top
+                                      // Right edge: from (D, B) to (D, C)
+                                      const rectX = 0
+                                      const rectY = 0
+                                      const rectWidth = leftPerpendicularRectWidth
+                                      const rectHeight = leftPerpendicularRectHeight
+                                      const rightEdgeX = rectX + rectWidth
+                                      const bValue = parseFloat(dimensionB) || 0
+                                      const startY = rectY + bValue
+                                      const endY = rectY + rectHeight
+                                      
+                                      // Account for R1 rounding at bottom-right corner
+                                      const r1 = leftPerpendicularRectR1
+                                      
+                                      let path = `M ${rightEdgeX} ${startY}`
+                                      
+                                      if (hasLeftPerpendicularL1L2) {
+                                        // L1-L2 chamfer: go down to (rightEdgeX, endY - l2Value), then diagonal to (rightEdgeX - l1Value, endY)
+                                        path += ` L ${rightEdgeX} ${endY - l2Value}`
+                                        path += ` L ${rightEdgeX - l1Value} ${endY}`
+                                      } else {
+                                        // R1 rounding: go down to (rightEdgeX, endY - r1), then rounding to (rightEdgeX - r1, endY)
+                                        path += ` L ${rightEdgeX} ${endY - r1}`
+                                        if (r1 > 0) {
+                                          path += ` Q ${rightEdgeX} ${endY} ${rightEdgeX - r1} ${endY}`
+                                        } else {
+                                          path += ` L ${rightEdgeX} ${endY}`
+                                        }
+                                      }
+                                      
+                                      return path
+                                    }
+                                    
+                                    // For Összemarás Balos: Right edge of perpendicular rectangle (C×D): from (leftPerpendicularRectWidth, worktopLength) to (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                    // This is the C dimension edge
+                                    const rectX = 0
+                                    const rectY = worktopLength
+                                    const rectWidth = leftPerpendicularRectWidth
+                                    const rectHeight = leftPerpendicularRectHeight
+                                    const rightEdgeX = rectX + rectWidth
+                                    const topY = rectY
+                                    const bottomY = rectY + rectHeight
+                                    
+                                    // Account for R1 rounding at bottom-right corner
+                                    const r1 = leftPerpendicularRectR1
+                                    let path = `M ${rightEdgeX} ${topY}`
+                                    
+                                    if (hasLeftPerpendicularL1L2) {
+                                      // L1-L2 chamfer: go down to (rightEdgeX, bottomY - l2Value), then diagonal to (rightEdgeX - l1Value, bottomY)
+                                      path += ` L ${rightEdgeX} ${bottomY - l2Value}`
+                                      path += ` L ${rightEdgeX - l1Value} ${bottomY}`
+                                    } else {
+                                      // R1 rounding: go down to (rightEdgeX, bottomY - r1), then rounding to (rightEdgeX - r1, bottomY)
+                                      path += ` L ${rightEdgeX} ${bottomY - r1}`
+                                      if (r1 > 0) {
+                                        path += ` Q ${rightEdgeX} ${bottomY} ${rightEdgeX - r1} ${bottomY}`
+                                      } else {
+                                        path += ` L ${rightEdgeX} ${bottomY}`
+                                      }
+                                    }
+                                    
+                                    return path
+                                  }
+                                  
+                                  const buildPerpendicularBottomEdgePath = () => {
+                                    if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                      // For jobbos: 6. oldal is the C×D rectangle's bottom D edge
+                                      // Bottom edge: from (0, C) to (D, C)
+                                      const rectX = 0
+                                      const rectY = 0
+                                      const rectWidth = leftPerpendicularRectWidth
+                                      const rectHeight = leftPerpendicularRectHeight
+                                      const bottomY = rectY + rectHeight
+                                      const rightEdgeX = rectX + rectWidth
+                                      
+                                      // Account for R1 rounding at bottom-right corner
+                                      const r1 = leftPerpendicularRectR1
+                                      
+                                      // Start from left edge (0, bottomY) and go to right edge
+                                      let path = `M ${rectX} ${bottomY}`
+                                      
+                                      // Continue to right edge, accounting for R1 rounding or L1-L2 chamfer at bottom-right corner
+                                      if (hasLeftPerpendicularL1L2) {
+                                        // L1-L2 chamfer: go to (rightEdgeX - l1Value, bottomY), then diagonal to (rightEdgeX, bottomY - l2Value)
+                                        path += ` L ${rightEdgeX - l1Value} ${bottomY}`
+                                        path += ` L ${rightEdgeX} ${bottomY - l2Value}`
+                                      } else {
+                                        // R1 rounding: go to (rightEdgeX - r1, bottomY), then rounding to (rightEdgeX, bottomY - r1)
+                                        path += ` L ${rightEdgeX - r1} ${bottomY}`
+                                        if (r1 > 0) {
+                                          path += ` Q ${rightEdgeX} ${bottomY} ${rightEdgeX} ${bottomY - r1}`
+                                        } else {
+                                          path += ` L ${rightEdgeX} ${bottomY}`
+                                        }
+                                      }
+                                      
+                                      return path
+                                    }
+                                    
+                                    // For Összemarás Balos: Bottom edge of perpendicular rectangle (C×D): from (0, worktopLength + leftPerpendicularRectHeight) to (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                    // This is the D dimension edge
+                                    const rectX = 0
+                                    const rectY = worktopLength
+                                    const rectWidth = leftPerpendicularRectWidth
+                                    const rectHeight = leftPerpendicularRectHeight
+                                    const bottomY = rectY + rectHeight
+                                    const rightEdgeX = rectX + rectWidth
+                                    
+                                    // Account for R1 rounding at bottom-right corner
+                                    const r1 = leftPerpendicularRectR1
+                                    
+                                    // Start from left edge (0, bottomY) and go to right edge
+                                    let path = `M ${rectX} ${bottomY}`
+                                    
+                                    // Continue to right edge, accounting for R1 rounding or L1-L2 chamfer at bottom-right corner
+                                    if (hasLeftPerpendicularL1L2) {
+                                      // L1-L2 chamfer: go to (rightEdgeX - l1Value, bottomY), then diagonal to (rightEdgeX, bottomY - l2Value)
+                                      path += ` L ${rightEdgeX - l1Value} ${bottomY}`
+                                      path += ` L ${rightEdgeX} ${bottomY - l2Value}`
+                                    } else {
+                                      // R1 rounding: go to (rightEdgeX - r1, bottomY), then rounding to (rightEdgeX, bottomY - r1)
+                                      path += ` L ${rightEdgeX - r1} ${bottomY}`
+                                      if (r1 > 0) {
+                                        path += ` Q ${rightEdgeX} ${bottomY} ${rightEdgeX} ${bottomY - r1}`
+                                      } else {
+                                        path += ` L ${rightEdgeX} ${bottomY}`
+                                      }
+                                    }
+                                    
                                     return path
                                   }
                                   
@@ -1979,6 +2720,34 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       {edgePosition4 && (
                                         <path
                                           d={buildBottomEdgePath()}
+                                          fill="none"
+                                          stroke={edgeColor}
+                                          strokeWidth={edgeThickness}
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeDasharray={dashArray}
+                                          strokeOpacity={edgeOpacity}
+                                        />
+                                      )}
+                                      
+                                      {/* 5. oldal - Perpendicular rectangle right edge (C dimension) - for Összemarás Balos and Összemarás jobbos */}
+                                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showLeftPerpendicularRect && edgePosition5 && (
+                                        <path
+                                          d={buildPerpendicularRightEdgePath()}
+                                          fill="none"
+                                          stroke={edgeColor}
+                                          strokeWidth={edgeThickness}
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeDasharray={dashArray}
+                                          strokeOpacity={edgeOpacity}
+                                        />
+                                      )}
+                                      
+                                      {/* 6. oldal - Perpendicular rectangle bottom edge (D dimension) - for Összemarás Balos and Összemarás jobbos */}
+                                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showLeftPerpendicularRect && edgePosition6 && (
+                                        <path
+                                          d={buildPerpendicularBottomEdgePath()}
                                           fill="none"
                                           stroke={edgeColor}
                                           strokeWidth={edgeThickness}
@@ -2764,6 +3533,353 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
                                 
+                                {/* L5-L6 chamfer dimension labels - For Összemarás Balos/jobbos: bottom-left corner of left perpendicular rectangle, otherwise: top-left corner of main worktop */}
+                                {hasL5L6 && (() => {
+                                  if ((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showLeftPerpendicularRect) {
+                                    // L5-L6 labels for left perpendicular rectangle's bottom-left corner
+                                    // For Balos: at (0, worktopLength), bottom-left at (0, worktopLength + rectHeight)
+                                    // For jobbos: at (0, 0), bottom-left at (0, rectHeight)
+                                    const rectX = 0
+                                    const rectY = isJobbos ? 0 : worktopLength
+                                    const rectHeight = leftPerpendicularRectHeight
+                                    const bottomLeftX = rectX
+                                    const bottomLeftY = rectY + rectHeight
+                                    
+                                    // L5 dimension: horizontal distance from left edge (along bottom edge)
+                                    const l5DimensionLineY = bottomLeftY + 100
+                                    const l5LabelY = l5DimensionLineY + 60
+                                    
+                                    // L6 dimension: vertical distance from bottom edge (along left edge)
+                                    const l6DimensionLineX = -(100 + cutouts.length * 120)
+                                    const l6LabelX = l6DimensionLineX - 50
+                                    
+                                    return (
+                                      <g key="l5-l6-dims-perpendicular">
+                                        {/* L5 dimension - horizontal distance from left edge */}
+                                        <g>
+                                          {/* Extension lines */}
+                                          <line
+                                            x1={bottomLeftX}
+                                            y1={bottomLeftY}
+                                            x2={bottomLeftX}
+                                            y2={l5DimensionLineY}
+                                            stroke="#000000"
+                                            strokeWidth="1.5"
+                                          />
+                                          <line
+                                            x1={bottomLeftX + l5Value}
+                                            y1={bottomLeftY}
+                                            x2={bottomLeftX + l5Value}
+                                            y2={l5DimensionLineY}
+                                            stroke="#000000"
+                                            strokeWidth="1.5"
+                                          />
+                                          {/* Dimension line */}
+                                          <line
+                                            x1={bottomLeftX}
+                                            y1={l5DimensionLineY}
+                                            x2={bottomLeftX + l5Value}
+                                            y2={l5DimensionLineY}
+                                            stroke="#000000"
+                                            strokeWidth="1.5"
+                                          />
+                                          {/* Label */}
+                                          <text
+                                            x={bottomLeftX + l5Value / 2}
+                                            y={l5LabelY}
+                                            textAnchor="middle"
+                                            dominantBaseline="middle"
+                                            style={{
+                                              fontSize: '80px',
+                                              fontWeight: 500,
+                                              fill: '#666',
+                                              pointerEvents: 'none'
+                                            }}
+                                          >
+                                            L5: {l5Value}mm
+                                          </text>
+                                        </g>
+                                        
+                                        {/* L6 dimension - vertical distance from bottom edge */}
+                                        <g>
+                                          {/* Extension lines */}
+                                          <line
+                                            x1={bottomLeftX}
+                                            y1={bottomLeftY}
+                                            x2={l6DimensionLineX}
+                                            y2={bottomLeftY}
+                                            stroke="#000000"
+                                            strokeWidth="1.5"
+                                          />
+                                          <line
+                                            x1={bottomLeftX}
+                                            y1={bottomLeftY - l6Value}
+                                            x2={l6DimensionLineX}
+                                            y2={bottomLeftY - l6Value}
+                                            stroke="#000000"
+                                            strokeWidth="1.5"
+                                          />
+                                          {/* Dimension line */}
+                                          <line
+                                            x1={l6DimensionLineX}
+                                            y1={bottomLeftY - l6Value}
+                                            x2={l6DimensionLineX}
+                                            y2={bottomLeftY}
+                                            stroke="#000000"
+                                            strokeWidth="1.5"
+                                          />
+                                          {/* Label */}
+                                          <text
+                                            x={l6LabelX}
+                                            y={bottomLeftY - l6Value / 2}
+                                            textAnchor="middle"
+                                            dominantBaseline="middle"
+                                            transform={`rotate(-90 ${l6LabelX} ${bottomLeftY - l6Value / 2})`}
+                                            style={{
+                                              fontSize: '80px',
+                                              fontWeight: 500,
+                                              fill: '#666',
+                                              pointerEvents: 'none'
+                                            }}
+                                          >
+                                            L6: {l6Value}mm
+                                          </text>
+                                        </g>
+                                      </g>
+                                    )
+                                  } else {
+                                    // L5-L6 labels for main worktop's top-left corner (Levágás, jobbos)
+                                    const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                               (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
+                                    const startY = showVerticalCut ? verticalCutHeight : 0
+                                    const topLeftX = mainWorktopOffsetX
+                                    const topLeftY = startY
+                                    
+                                    // L5 dimension: horizontal distance from left edge
+                                    const l5DimensionLineY = topLeftY - 100
+                                    const l5LabelY = l5DimensionLineY - 60
+                                    
+                                    // L6 dimension: vertical distance from top edge
+                                    const l6DimensionLineX = -(100 + cutouts.length * 120)
+                                    const l6LabelX = l6DimensionLineX - 50
+                                    
+                                    return (
+                                      <g key="l5-l6-dims">
+                                      {/* L5 dimension - horizontal distance from left edge */}
+                                      <g>
+                                        {/* Extension lines */}
+                                        <line
+                                          x1={topLeftX}
+                                          y1={topLeftY}
+                                          x2={topLeftX}
+                                          y2={l5DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        <line
+                                          x1={topLeftX + l5Value}
+                                          y1={topLeftY}
+                                          x2={topLeftX + l5Value}
+                                          y2={l5DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Dimension line */}
+                                        <line
+                                          x1={topLeftX}
+                                          y1={l5DimensionLineY}
+                                          x2={topLeftX + l5Value}
+                                          y2={l5DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Label */}
+                                        <text
+                                          x={topLeftX + l5Value / 2}
+                                          y={l5LabelY}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          style={{
+                                            fontSize: '80px',
+                                            fontWeight: 500,
+                                            fill: '#666',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          L5: {l5Value}mm
+                                        </text>
+                                      </g>
+                                      
+                                      {/* L6 dimension - vertical distance from top edge */}
+                                      <g>
+                                        {/* Extension lines */}
+                                        <line
+                                          x1={topLeftX}
+                                          y1={topLeftY}
+                                          x2={l6DimensionLineX}
+                                          y2={topLeftY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        <line
+                                          x1={topLeftX}
+                                          y1={topLeftY + l6Value}
+                                          x2={l6DimensionLineX}
+                                          y2={topLeftY + l6Value}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Dimension line */}
+                                        <line
+                                          x1={l6DimensionLineX}
+                                          y1={topLeftY}
+                                          x2={l6DimensionLineX}
+                                          y2={topLeftY + l6Value}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Label */}
+                                        <text
+                                          x={l6LabelX}
+                                          y={topLeftY + l6Value / 2}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          transform={`rotate(-90 ${l6LabelX} ${topLeftY + l6Value / 2})`}
+                                          style={{
+                                            fontSize: '80px',
+                                            fontWeight: 500,
+                                            fill: '#666',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          L6: {l6Value}mm
+                                        </text>
+                                      </g>
+                                    </g>
+                                    )
+                                  }
+                                })()}
+                                
+                                {/* L7-L8 chamfer dimension labels (top-right corner) - ISO standard dimensioning - only for Levágás, Összemarás Balos, Összemarás jobbos */}
+                                {hasL7L8 && (() => {
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
+                                  const startY = showVerticalCut ? verticalCutHeight : 0
+                                  const topRightX = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
+                                  const topRightY = startY
+                                  
+                                  // L7 dimension: horizontal distance from right edge (going left)
+                                  const l7DimensionLineY = topRightY - 100
+                                  const l7LabelY = l7DimensionLineY - 60
+                                  
+                                  // L8 dimension: vertical distance from top edge
+                                  // Position L8 to the left of B label (B should be the rightmost)
+                                  let l8DimensionLineX, l8LabelX
+                                  const maxCutoutOffset = cutouts.length > 0 
+                                    ? 100 + ((cutouts.length - 1) * 120) + 50 + 40
+                                    : 0
+                                  const baseOffset = edgePosition2 ? 350 : 220
+                                  // L8 should be positioned before B, so use standard offset without extra spacing
+                                  const extensionLineOffset = Math.max(baseOffset, maxCutoutOffset)
+                                  l8DimensionLineX = topRightX + extensionLineOffset
+                                  l8LabelX = l8DimensionLineX + 50
+                                  
+                                  return (
+                                    <g key="l7-l8-dims">
+                                      {/* L7 dimension - horizontal distance from right edge */}
+                                      <g>
+                                        {/* Extension lines */}
+                                        <line
+                                          x1={topRightX}
+                                          y1={topRightY}
+                                          x2={topRightX}
+                                          y2={l7DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        <line
+                                          x1={topRightX - l7Value}
+                                          y1={topRightY}
+                                          x2={topRightX - l7Value}
+                                          y2={l7DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Dimension line */}
+                                        <line
+                                          x1={topRightX - l7Value}
+                                          y1={l7DimensionLineY}
+                                          x2={topRightX}
+                                          y2={l7DimensionLineY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Label */}
+                                        <text
+                                          x={topRightX - l7Value / 2}
+                                          y={l7LabelY}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          style={{
+                                            fontSize: '80px',
+                                            fontWeight: 500,
+                                            fill: '#666',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          L7: {l7Value}mm
+                                        </text>
+                                      </g>
+                                      
+                                      {/* L8 dimension - vertical distance from top edge */}
+                                      <g>
+                                        {/* Extension lines */}
+                                        <line
+                                          x1={topRightX}
+                                          y1={topRightY}
+                                          x2={l8DimensionLineX}
+                                          y2={topRightY}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        <line
+                                          x1={topRightX}
+                                          y1={topRightY + l8Value}
+                                          x2={l8DimensionLineX}
+                                          y2={topRightY + l8Value}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Dimension line */}
+                                        <line
+                                          x1={l8DimensionLineX}
+                                          y1={topRightY}
+                                          x2={l8DimensionLineX}
+                                          y2={topRightY + l8Value}
+                                          stroke="#000000"
+                                          strokeWidth="1.5"
+                                        />
+                                        {/* Label */}
+                                        <text
+                                          x={l8LabelX}
+                                          y={topRightY + l8Value / 2}
+                                          textAnchor="middle"
+                                          dominantBaseline="middle"
+                                          transform={`rotate(-90 ${l8LabelX} ${topRightY + l8Value / 2})`}
+                                          style={{
+                                            fontSize: '80px',
+                                            fontWeight: 500,
+                                            fill: '#666',
+                                            pointerEvents: 'none'
+                                          }}
+                                        >
+                                          L8: {l8Value}mm
+                                        </text>
+                                      </g>
+                                    </g>
+                                  )
+                                })()}
+                                
                                 {/* L1-L2 chamfer dimension labels for left perpendicular rectangle (bottom-right corner for Balos, bottom-left corner for Összemarás) - ISO standard dimensioning */}
                                 {hasLeftPerpendicularL1L2 && (() => {
                                   let rectX: number
@@ -2917,13 +4033,42 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const extensionLineLength = minDimension * 0.08 // 8% of smaller dimension
                                   
                                   // Calculate edge center points (accounting for main worktop offset for jobbos)
-                                  // 1. oldal - Left edge center: (mainWorktopOffsetX, centerY)
-                                  const leftEdgeX = mainWorktopOffsetX
-                                  const leftEdgeY = centerY
+                                  // 1. oldal - Left edge center
+                                  let leftEdgeX: number
+                                  let leftEdgeY: number
+                                  if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                    // For Összemarás jobbos: 1. oldal is the perpendicular rectangle's left edge
+                                    // Perpendicular rectangle left edge: from (0, 0) to (0, leftPerpendicularRectHeight)
+                                    leftEdgeX = 0
+                                    leftEdgeY = leftPerpendicularRectHeight / 2
+                                  } else if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect) {
+                                    // For Összemarás Balos: left edge includes both main worktop and perpendicular rectangle
+                                    // Combined left edge: from (0, startY) to (0, worktopLength + leftPerpendicularRectHeight)
+                                    leftEdgeX = 0
+                                    const combinedTopY = startY
+                                    const combinedBottomY = worktopLength + leftPerpendicularRectHeight
+                                    leftEdgeY = (combinedTopY + combinedBottomY) / 2
+                                  } else {
+                                    // For other types: left edge center is just the main worktop center
+                                    leftEdgeX = mainWorktopOffsetX
+                                    leftEdgeY = centerY
+                                  }
                                   
-                                  // 2. oldal - Top edge center: (centerX, startY)
-                                  const topEdgeX = centerX
-                                  const topEdgeY = startY
+                                  // 2. oldal - Top edge center
+                                  let topEdgeX: number
+                                  let topEdgeY: number
+                                  if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                    // For Összemarás jobbos: 2. oldal includes both perpendicular rectangle's top edge AND main worktop's top edge
+                                    // Combined top edge: from (0, 0) to (leftPerpendicularRectWidth + worktopWidth, 0)
+                                    const combinedLeftX = 0
+                                    const combinedRightX = leftPerpendicularRectWidth + (showCut ? cutPosition : worktopWidth)
+                                    topEdgeX = (combinedLeftX + combinedRightX) / 2
+                                    topEdgeY = 0
+                                  } else {
+                                    // For other types: top edge center is just the main worktop center
+                                    topEdgeX = centerX
+                                    topEdgeY = startY
+                                  }
                                   
                                   // 3. oldal - Right edge center: (rightEdge, centerY)
                                   const rightEdgeX = rightEdge
@@ -3025,6 +4170,125 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                           4. oldal
                                         </text>
                                       )}
+                                      
+                                      {/* 5. oldal - Perpendicular rectangle right edge label (C dimension) - for Összemarás Balos and Összemarás jobbos */}
+                                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showLeftPerpendicularRect && edgePosition5 && (() => {
+                                        if (assemblyType === 'Összemarás jobbos') {
+                                          // For jobbos: 5. oldal is the C×D rectangle's right edge minus B from top
+                                          // Right edge: from (D, B) to (D, C)
+                                          const perpendicularRectRightX = leftPerpendicularRectWidth
+                                          const bValue = parseFloat(dimensionB) || 0
+                                          const perpendicularRectTopY = bValue
+                                          const perpendicularRectBottomY = leftPerpendicularRectHeight
+                                          const perpendicularRectCenterY = (perpendicularRectTopY + perpendicularRectBottomY) / 2
+                                          
+                                          // Label to the right of perpendicular rectangle's right edge
+                                          const labelX = perpendicularRectRightX + extensionOffset
+                                          const labelY = perpendicularRectCenterY
+                                          
+                                          return (
+                                            <text
+                                              x={labelX}
+                                              y={labelY}
+                                              textAnchor="middle"
+                                              dominantBaseline="middle"
+                                              transform={`rotate(-90 ${labelX} ${labelY})`}
+                                              style={{
+                                                fontSize: '80px',
+                                                fontWeight: 600,
+                                                fill: '#000000',
+                                                pointerEvents: 'none'
+                                              }}
+                                            >
+                                              5. oldal
+                                            </text>
+                                          )
+                                        } else {
+                                          // For Balos: Perpendicular rectangle right edge: from (leftPerpendicularRectWidth, worktopLength) to (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                          const perpendicularRectRightX = leftPerpendicularRectWidth
+                                          const perpendicularRectTopY = worktopLength
+                                          const perpendicularRectBottomY = worktopLength + leftPerpendicularRectHeight
+                                          const perpendicularRectCenterY = (perpendicularRectTopY + perpendicularRectBottomY) / 2
+                                          
+                                          // Label to the right of perpendicular rectangle's right edge
+                                          const labelX = perpendicularRectRightX + extensionOffset
+                                          const labelY = perpendicularRectCenterY
+                                          
+                                          return (
+                                            <text
+                                              x={labelX}
+                                              y={labelY}
+                                              textAnchor="middle"
+                                              dominantBaseline="middle"
+                                              transform={`rotate(-90 ${labelX} ${labelY})`}
+                                              style={{
+                                                fontSize: '80px',
+                                                fontWeight: 600,
+                                                fill: '#000000',
+                                                pointerEvents: 'none'
+                                              }}
+                                            >
+                                              5. oldal
+                                            </text>
+                                          )
+                                        }
+                                      })()}
+                                      
+                                      {/* 6. oldal - Perpendicular rectangle bottom edge label (D dimension) - for Összemarás Balos and Összemarás jobbos */}
+                                      {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showLeftPerpendicularRect && edgePosition6 && (() => {
+                                        if (assemblyType === 'Összemarás jobbos') {
+                                          // For jobbos: 6. oldal is the C×D rectangle's bottom D edge
+                                          // Bottom edge: from (0, C) to (D, C)
+                                          const perpendicularRectBottomY = leftPerpendicularRectHeight
+                                          const perpendicularRectCenterX = leftPerpendicularRectWidth / 2
+                                          
+                                          // Label below perpendicular rectangle's bottom edge
+                                          const labelX = perpendicularRectCenterX
+                                          const labelY = perpendicularRectBottomY + extensionOffset
+                                          
+                                          return (
+                                            <text
+                                              x={labelX}
+                                              y={labelY}
+                                              textAnchor="middle"
+                                              dominantBaseline="middle"
+                                              style={{
+                                                fontSize: '80px',
+                                                fontWeight: 600,
+                                                fill: '#000000',
+                                                pointerEvents: 'none'
+                                              }}
+                                            >
+                                              6. oldal
+                                            </text>
+                                          )
+                                        } else {
+                                          // For Balos: Perpendicular rectangle bottom edge: from (0, worktopLength + leftPerpendicularRectHeight) to (leftPerpendicularRectWidth, worktopLength + leftPerpendicularRectHeight)
+                                          const perpendicularRectBottomY = worktopLength + leftPerpendicularRectHeight
+                                          const perpendicularRectCenterX = leftPerpendicularRectWidth / 2
+                                          
+                                          // Label below perpendicular rectangle's bottom edge
+                                          const labelX = perpendicularRectCenterX
+                                          const labelY = perpendicularRectBottomY + extensionOffset
+                                          
+                                          return (
+                                            <text
+                                              x={labelX}
+                                              y={labelY}
+                                              textAnchor="middle"
+                                              dominantBaseline="middle"
+                                              style={{
+                                                fontSize: '80px',
+                                                fontWeight: 600,
+                                                fill: '#000000',
+                                                pointerEvents: 'none'
+                                              }}
+                                            >
+                                              6. oldal
+                                            </text>
+                                          )
+                                        }
+                                      })()}
                                     </>
                                   )
                                 })()}
@@ -3080,12 +4344,12 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         dominantBaseline="middle"
                                         style={{
                                           fontSize: '100px',
-                                          fontWeight: 500,
+                                    fontWeight: 500,
                                           fill: '#ff6b6b',
                                           pointerEvents: 'none'
-                                        }}
-                                      >
-                                        A: {cutPosition}mm
+                                  }}
+                                >
+                                  A: {cutPosition}mm
                                       </text>
                                     </g>
                                   )
@@ -3267,11 +4531,37 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     ? 100 + ((cutouts.length - 1) * 120) + 50 + 40
                                     : 0
                                   
-                                  // Position to the right, account for 3. oldal label if active
+                                  // Position B as the rightmost dimension label (after L7-L8 if present)
+                                  // Calculate L7-L8 position to ensure B is positioned after it
+                                  // L8 uses: topRightX + Math.max(edgePosition2 ? 350 : 220, maxCutoutOffset)
+                                  // L8 label is at: l8DimensionLineX + 50
+                                  // L8 label is rotated -90 degrees, so it extends horizontally
+                                  // Label text "L8: {l8Value}mm" can be up to 200mm wide when rotated (for large values)
+                                  const l7L8BaseOffset = edgePosition2 ? 350 : 220
+                                  const l7L8DimensionLineOffset = Math.max(l7L8BaseOffset, maxCutoutOffset)
+                                  const l7L8LabelEndPosition = hasL7L8 
+                                    ? l7L8DimensionLineOffset + 50 + 200 // L8 label end position (labelX + max rotated text width)
+                                    : 0
+                                  
+                                  // Account for 3. oldal label if active
                                   const baseOffset = edgePosition3 ? 350 : 220
-                                  const extensionLineOffset = Math.max(baseOffset, maxCutoutOffset)
-                                  const dimensionLineX = rightEdge + extensionLineOffset
-                                  const labelX = dimensionLineX + 50 // Label to the right of dimension line
+                                  
+                                  // B should be the rightmost, so position it after L7-L8 (if present) with spacing
+                                  // Add 300mm spacing after L8 label end to ensure no overlap
+                                  const spacingAfterL8 = hasL7L8 ? 300 : 0
+                                  let extensionLineOffset = Math.max(baseOffset, maxCutoutOffset, l7L8LabelEndPosition + spacingAfterL8)
+                                  let dimensionLineX = rightEdge + extensionLineOffset
+                                  let labelX = dimensionLineX + 50 // Label to the right of dimension line
+                                  
+                                  // Ensure B label stays within card (check against viewBox right boundary)
+                                  // The viewBox right boundary is approximately: totalWorktopWidth + labelPaddingRight
+                                  // We'll use a conservative limit to ensure it stays visible
+                                  const maxRightPosition = rightEdge + labelPaddingRight - 100 // Leave 100mm margin from card edge
+                                  if (labelX > maxRightPosition) {
+                                    // Adjust to stay within card
+                                    dimensionLineX = maxRightPosition - 50
+                                    labelX = maxRightPosition
+                                  }
                                   
                                   return (
                                     <g>
@@ -3538,11 +4828,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       dominantBaseline="middle"
                                       style={{
                                         fontSize: '60px',
-                                      fontWeight: 600,
+                                    fontWeight: 600,
                                         fill: '#1976d2',
-                                      pointerEvents: 'none'
-                                    }}
-                                  >
+                                    pointerEvents: 'none'
+                                  }}
+                                >
                                     R2
                                     </text>
                                 )
@@ -3565,8 +4855,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   // L4 dimension: vertical distance from bottom edge (going up)
                                   const l4DimensionLineX = bottomRightX + 100
                                   const l4LabelX = l4DimensionLineX + 50
-                                  
-                                  return (
+                                
+                                return (
                                     <g>
                                       {/* L3 dimension - horizontal */}
                                       <g>
@@ -3918,7 +5208,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         dominantBaseline="middle"
                                         style={{
                                           fontSize: '60px',
-                                fontWeight: 600,
+                                      fontWeight: 600,
                                           fill: '#1976d2',
                                           pointerEvents: 'none'
                                         }}
@@ -3984,10 +5274,106 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         fontSize: '60px',
                                 fontWeight: 600,
                                         fill: '#1976d2',
+                                      pointerEvents: 'none'
+                                    }}
+                                  >
+                                    R2
+                                    </text>
+                                )
+                              })()}
+                                
+                                {/* R3 label - For Összemarás Balos/jobbos: bottom-left corner of left perpendicular rectangle, otherwise: top-left corner of main worktop */}
+                                {r3ValueRaw > 0 && (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && (() => {
+                                  if ((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && showLeftPerpendicularRect) {
+                                    // R3 label for left perpendicular rectangle's bottom-left corner
+                                    // For Balos: at (0, worktopLength), bottom-left at (0, worktopLength + rectHeight)
+                                    // For jobbos: at (0, 0), bottom-left at (0, rectHeight)
+                                    const rectX = 0
+                                    const rectY = isJobbos ? 0 : worktopLength
+                                    const rectWidth = leftPerpendicularRectWidth
+                                    const rectHeight = leftPerpendicularRectHeight
+                                    const bottomLeftX = rectX
+                                    const bottomLeftY = rectY + rectHeight
+                                    const r3 = Math.min(r3ValueRaw, rectWidth / 2, rectHeight / 2)
+                                    
+                                    // Position label inside the corner, offset from the arc center
+                                    // Arc center is at (bottomLeftX + r3, bottomLeftY - r3)
+                                    // Place label at about 60% of the radius from the corner
+                                    const labelX = bottomLeftX + r3 * 0.6
+                                    const labelY = bottomLeftY - r3 * 0.6
+                                    return (
+                                      <text
+                                        x={labelX}
+                                        y={labelY}
+                                        textAnchor="start"
+                                        dominantBaseline="middle"
+                                        style={{
+                                          fontSize: '60px',
+                                fontWeight: 600,
+                                          fill: '#1976d2',
+                                          pointerEvents: 'none'
+                                        }}
+                                      >
+                                        R3
+                                      </text>
+                                    )
+                                  } else {
+                                    // R3 label for main worktop's top-left corner (Levágás, jobbos)
+                                    const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                               (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
+                                    const startY = showVerticalCut ? verticalCutHeight : 0
+                                    const topLeftX = mainWorktopOffsetX
+                                    const topLeftY = startY
+                                    // Position label inside the corner, offset from the arc center
+                                    // Arc center is at (topLeftX + r3Value, topLeftY + r3Value)
+                                    // Place label at about 60% of the radius from the corner
+                                    const labelX = topLeftX + r3Value * 0.6
+                                    const labelY = topLeftY + r3Value * 0.6
+                                    return (
+                                      <text
+                                        x={labelX}
+                                        y={labelY}
+                                        textAnchor="start"
+                                        dominantBaseline="middle"
+                                        style={{
+                                          fontSize: '60px',
+                                          fontWeight: 600,
+                                          fill: '#1976d2',
+                                          pointerEvents: 'none'
+                                        }}
+                                      >
+                                        R3
+                                      </text>
+                                    )
+                                  }
+                                })()}
+                                
+                                {/* R4 label (top-right corner) - only for Levágás, Összemarás Balos, Összemarás jobbos */}
+                                {r4ValueRaw > 0 && (assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') && (() => {
+                                  const mainWorktopOffsetX = (isJobbos && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 
+                                                             (isOsszemaras && showLeftPerpendicularRect) ? leftPerpendicularRectWidth : 0
+                                  const startY = showVerticalCut ? verticalCutHeight : 0
+                                  const topRightX = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
+                                  const topRightY = startY
+                                  // Position label inside the corner, offset from the arc center
+                                  // Arc center is at (topRightX - r4Value, topRightY + r4Value)
+                                  // Place label at about 60% of the radius from the corner
+                                  const labelX = topRightX - r4Value * 0.6
+                                  const labelY = topRightY + r4Value * 0.6
+                                  return (
+                                    <text
+                                      x={labelX}
+                                      y={labelY}
+                                      textAnchor="end"
+                                      dominantBaseline="middle"
+                                      style={{
+                                        fontSize: '60px',
+                                fontWeight: 600,
+                                        fill: '#1976d2',
                                         pointerEvents: 'none'
                                       }}
                                     >
-                                      R2
+                                      R4
                                     </text>
                                   )
                                 })()}
