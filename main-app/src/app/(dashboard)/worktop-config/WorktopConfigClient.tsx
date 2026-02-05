@@ -22,7 +22,8 @@ import {
   TableHead,
   TableRow,
   Paper,
-  IconButton
+  IconButton,
+  Chip
 } from '@mui/material'
 import { ExpandMore as ExpandMoreIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { styled } from '@mui/material/styles'
@@ -33,6 +34,7 @@ import type { AccordionProps } from '@mui/material/Accordion'
 import type { AccordionSummaryProps } from '@mui/material/AccordionSummary'
 import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 import { toast } from 'react-toastify'
+import { formatPrice } from '@/lib/pricing/quoteCalculations'
 
 // Styled components copied from Opti for identical look & feel
 const Accordion = styled(MuiAccordion)<AccordionProps>(() => ({
@@ -95,6 +97,10 @@ interface LinearMaterial {
   length: number
   thickness: number
   type: string | null
+  price_per_m?: number
+  on_stock?: boolean
+  vat_percent?: number
+  currency_name?: string
 }
 
 interface WorktopConfigClientProps {
@@ -213,6 +219,51 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   // Saved configurations state
   const [savedConfigs, setSavedConfigs] = useState<SavedWorktopConfig[]>([])
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null)
+  
+  // Quote result state
+  const [quoteResult, setQuoteResult] = useState<{
+    materials: Array<{
+      material_id: string
+      material_name: string
+      currency: string
+      on_stock: boolean
+      anyag_koltseg_net: number
+      anyag_koltseg_vat: number
+      anyag_koltseg_gross: number
+      anyag_koltseg_details: string
+      kereszt_vagas_net: number
+      kereszt_vagas_vat: number
+      kereszt_vagas_gross: number
+      kereszt_vagas_details: string
+      hosszanti_vagas_net: number
+      hosszanti_vagas_vat: number
+      hosszanti_vagas_gross: number
+      hosszanti_vagas_details: string
+      ives_vagas_net: number
+      ives_vagas_vat: number
+      ives_vagas_gross: number
+      ives_vagas_details: string
+      szogvagas_net: number
+      szogvagas_vat: number
+      szogvagas_gross: number
+      szogvagas_details: string
+      kivagas_net: number
+      kivagas_vat: number
+      kivagas_gross: number
+      kivagas_details: string
+      elzaro_net: number
+      elzaro_vat: number
+      elzaro_gross: number
+      elzaro_details: string
+      total_net: number
+      total_vat: number
+      total_gross: number
+    }>
+    grand_total_net: number
+    grand_total_vat: number
+    grand_total_gross: number
+    currency: string
+  } | null>(null)
 
   const linearMaterialOptions = useMemo(() => {
     return linearMaterials.map(lm => ({
@@ -802,6 +853,279 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       setEditingConfigId(null)
     }
     toast.success('Konfiguráció sikeresen törölve!')
+  }
+
+  // Calculate quote for Levágás type
+  const calculateQuote = () => {
+    // Filter only Levágás type configs
+    const levagasConfigs = savedConfigs.filter(config => config.assemblyType === 'Levágás')
+    
+    if (levagasConfigs.length === 0) {
+      toast.error('Nincs mentett "Levágás" típusú konfiguráció!')
+      return
+    }
+
+    const materialsMap = new Map<string, typeof levagasConfigs>()
+    
+    // Group configs by material
+    levagasConfigs.forEach(config => {
+      if (!config.selectedLinearMaterialId) return
+      const materialId = config.selectedLinearMaterialId
+      if (!materialsMap.has(materialId)) {
+        materialsMap.set(materialId, [])
+      }
+      materialsMap.get(materialId)!.push(config)
+    })
+
+    const materials: Array<{
+      material_id: string
+      material_name: string
+      currency: string
+      on_stock: boolean
+      anyag_koltseg_net: number
+      anyag_koltseg_vat: number
+      anyag_koltseg_gross: number
+      anyag_koltseg_details: string
+      kereszt_vagas_net: number
+      kereszt_vagas_vat: number
+      kereszt_vagas_gross: number
+      kereszt_vagas_details: string
+      hosszanti_vagas_net: number
+      hosszanti_vagas_vat: number
+      hosszanti_vagas_gross: number
+      hosszanti_vagas_details: string
+      ives_vagas_net: number
+      ives_vagas_vat: number
+      ives_vagas_gross: number
+      ives_vagas_details: string
+      szogvagas_net: number
+      szogvagas_vat: number
+      szogvagas_gross: number
+      szogvagas_details: string
+      kivagas_net: number
+      kivagas_vat: number
+      kivagas_gross: number
+      kivagas_details: string
+      elzaro_net: number
+      elzaro_vat: number
+      elzaro_gross: number
+      elzaro_details: string
+      total_net: number
+      total_vat: number
+      total_gross: number
+    }> = []
+    let grandTotalNet = 0
+    let grandTotalVat = 0
+    let grandTotalGross = 0
+    let currency = 'HUF'
+
+    materialsMap.forEach((configs, materialId) => {
+      const material = linearMaterials.find(m => m.id === materialId)
+      if (!material) return
+
+      const vatPercent = material.vat_percent || 0
+      const vatMultiplier = 1 + (vatPercent / 100)
+      currency = material.currency_name || 'HUF'
+
+      let anyagKoltsegNet = 0
+      let keresztVagasNet = 0
+      let hosszantiVagasNet = 0
+      let ivesVagasNet = 0
+      let szogvagasNet = 0
+      let kivagasNet = 0
+      let elzaroNet = 0
+      let totalElzaroMeters = 0
+
+      // Details for calculations
+      const anyagKoltsegDetails: string[] = []
+      const keresztVagasDetails: string[] = []
+      const hosszantiVagasDetails: string[] = []
+      const ivesVagasDetails: string[] = []
+      const szogvagasDetails: string[] = []
+      const kivagasDetails: string[] = []
+
+      configs.forEach((config, configIdx) => {
+        const aValue = parseFloat(config.dimensionA) || 0
+        const bValue = parseFloat(config.dimensionB) || 0
+        const aMeters = aValue / 1000
+        const bMeters = bValue / 1000
+
+        // Anyag költség
+        if (material.on_stock) {
+          const cost = aMeters * (material.price_per_m || 0)
+          anyagKoltsegNet += cost
+          anyagKoltsegDetails.push(`${aValue}mm (${aMeters.toFixed(3)}m) × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+        } else {
+          const cost = (material.price_per_m || 0) * (material.length / 1000)
+          anyagKoltsegNet += cost
+          anyagKoltsegDetails.push(`${formatPrice(material.price_per_m || 0, currency)}/m × ${(material.length / 1000).toFixed(3)}m = ${formatPrice(cost, currency)}`)
+        }
+
+        // Kereszt vágás (always 2100)
+        keresztVagasNet += 2100
+        keresztVagasDetails.push(`2100`)
+
+        // Hosszanti vágás (if B < width)
+        if (bValue < material.width) {
+          const cost = aValue * 1500
+          hosszantiVagasNet += cost
+          hosszantiVagasDetails.push(`${aValue}mm × 1500 = ${formatPrice(cost, currency)}`)
+        }
+
+        // Íves vágás (each R1, R2, R3, R4 that has value = 13000)
+        const r1Value = parseFloat(config.roundingR1) || 0
+        const r2Value = parseFloat(config.roundingR2) || 0
+        const r3Value = parseFloat(config.roundingR3) || 0
+        const r4Value = parseFloat(config.roundingR4) || 0
+        const roundingValues: string[] = []
+        if (r1Value > 0) {
+          ivesVagasNet += 13000
+          roundingValues.push('R1')
+        }
+        if (r2Value > 0) {
+          ivesVagasNet += 13000
+          roundingValues.push('R2')
+        }
+        if (r3Value > 0) {
+          ivesVagasNet += 13000
+          roundingValues.push('R3')
+        }
+        if (r4Value > 0) {
+          ivesVagasNet += 13000
+          roundingValues.push('R4')
+        }
+        if (roundingValues.length > 0) {
+          ivesVagasDetails.push(`${roundingValues.join(', ')}: ${roundingValues.length} × 13000 = ${formatPrice(roundingValues.length * 13000, currency)}`)
+        }
+
+        // Szögvágás (each group L1-L2, L3-L4, L5-L6, L7-L8 = 3000)
+        const l1Value = parseFloat(config.cutL1) || 0
+        const l2Value = parseFloat(config.cutL2) || 0
+        const l3Value = parseFloat(config.cutL3) || 0
+        const l4Value = parseFloat(config.cutL4) || 0
+        const l5Value = parseFloat(config.cutL5) || 0
+        const l6Value = parseFloat(config.cutL6) || 0
+        const l7Value = parseFloat(config.cutL7) || 0
+        const l8Value = parseFloat(config.cutL8) || 0
+        const angleGroups: string[] = []
+        if (l1Value > 0 && l2Value > 0) {
+          szogvagasNet += 3000
+          angleGroups.push('L1-L2')
+        }
+        if (l3Value > 0 && l4Value > 0) {
+          szogvagasNet += 3000
+          angleGroups.push('L3-L4')
+        }
+        if (l5Value > 0 && l6Value > 0) {
+          szogvagasNet += 3000
+          angleGroups.push('L5-L6')
+        }
+        if (l7Value > 0 && l8Value > 0) {
+          szogvagasNet += 3000
+          angleGroups.push('L7-L8')
+        }
+        if (angleGroups.length > 0) {
+          szogvagasDetails.push(`${angleGroups.join(', ')}: ${angleGroups.length} × 3000 = ${formatPrice(angleGroups.length * 3000, currency)}`)
+        }
+
+        // Kivágás (each cutout = 10000)
+        const cutoutCount = config.cutouts.length
+        if (cutoutCount > 0) {
+          const cost = cutoutCount * 10000
+          kivagasNet += cost
+          kivagasDetails.push(`${cutoutCount} × 10000 = ${formatPrice(cost, currency)}`)
+        }
+
+        // Élzáró
+        if (config.edgePosition1) totalElzaroMeters += bMeters
+        if (config.edgePosition2) totalElzaroMeters += aMeters
+        if (config.edgePosition3) totalElzaroMeters += bMeters
+        if (config.edgePosition4) totalElzaroMeters += aMeters
+      })
+
+      // Calculate élzáró total
+      if (totalElzaroMeters > 0) {
+        elzaroNet = totalElzaroMeters * 1800
+      }
+
+      // Calculate VAT and gross for each category
+      const anyagKoltsegVat = anyagKoltsegNet * (vatPercent / 100)
+      const anyagKoltsegGross = anyagKoltsegNet + anyagKoltsegVat
+
+      const keresztVagasVat = keresztVagasNet * (vatPercent / 100)
+      const keresztVagasGross = keresztVagasNet + keresztVagasVat
+
+      const hosszantiVagasVat = hosszantiVagasNet * (vatPercent / 100)
+      const hosszantiVagasGross = hosszantiVagasNet + hosszantiVagasVat
+
+      const ivesVagasVat = ivesVagasNet * (vatPercent / 100)
+      const ivesVagasGross = ivesVagasNet + ivesVagasVat
+
+      const szogvagasVat = szogvagasNet * (vatPercent / 100)
+      const szogvagasGross = szogvagasNet + szogvagasVat
+
+      const kivagasVat = kivagasNet * (vatPercent / 100)
+      const kivagasGross = kivagasNet + kivagasVat
+
+      const elzaroVat = elzaroNet * (vatPercent / 100)
+      const elzaroGross = elzaroNet + elzaroVat
+
+      const totalNet = anyagKoltsegNet + keresztVagasNet + hosszantiVagasNet + ivesVagasNet + szogvagasNet + kivagasNet + elzaroNet
+      const totalVat = totalNet * (vatPercent / 100)
+      const totalGross = totalNet + totalVat
+
+      grandTotalNet += totalNet
+      grandTotalVat += totalVat
+      grandTotalGross += totalGross
+
+      materials.push({
+        material_id: materialId,
+        material_name: material.name,
+        currency,
+        on_stock: material.on_stock || false,
+        anyag_koltseg_net: anyagKoltsegNet,
+        anyag_koltseg_vat: anyagKoltsegVat,
+        anyag_koltseg_gross: anyagKoltsegGross,
+        anyag_koltseg_details: anyagKoltsegDetails.join('; '),
+        kereszt_vagas_net: keresztVagasNet,
+        kereszt_vagas_vat: keresztVagasVat,
+        kereszt_vagas_gross: keresztVagasGross,
+        kereszt_vagas_details: keresztVagasDetails.length > 0 ? `${keresztVagasDetails.length} × 2100 = ${formatPrice(keresztVagasNet, currency)}` : '',
+        hosszanti_vagas_net: hosszantiVagasNet,
+        hosszanti_vagas_vat: hosszantiVagasVat,
+        hosszanti_vagas_gross: hosszantiVagasGross,
+        hosszanti_vagas_details: hosszantiVagasDetails.join('; '),
+        ives_vagas_net: ivesVagasNet,
+        ives_vagas_vat: ivesVagasVat,
+        ives_vagas_gross: ivesVagasGross,
+        ives_vagas_details: ivesVagasDetails.join('; '),
+        szogvagas_net: szogvagasNet,
+        szogvagas_vat: szogvagasVat,
+        szogvagas_gross: szogvagasGross,
+        szogvagas_details: szogvagasDetails.join('; '),
+        kivagas_net: kivagasNet,
+        kivagas_vat: kivagasVat,
+        kivagas_gross: kivagasGross,
+        kivagas_details: kivagasDetails.join('; '),
+        elzaro_net: elzaroNet,
+        elzaro_vat: elzaroVat,
+        elzaro_gross: elzaroGross,
+        elzaro_details: totalElzaroMeters > 0 ? `${totalElzaroMeters.toFixed(3)}m × 1800 = ${formatPrice(elzaroNet, currency)}` : '',
+        total_net: totalNet,
+        total_vat: totalVat,
+        total_gross: totalGross
+      })
+    })
+
+    setQuoteResult({
+      materials,
+      grand_total_net: grandTotalNet,
+      grand_total_vat: grandTotalVat,
+      grand_total_gross: grandTotalGross,
+      currency
+    })
+
+    toast.success('Ajánlat sikeresen generálva!')
   }
 
   // Clear worktop configuration form
@@ -6231,6 +6555,230 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               </TableBody>
             </Table>
           </TableContainer>
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              color="warning"
+              onClick={calculateQuote}
+            >
+              Ajánlat generálás
+            </Button>
+          </Box>
+        </Box>
+      )}
+
+      {/* Árajánlat (Quote) Accordion */}
+      {quoteResult && (
+        <Box sx={{ mt: 4 }}>
+          <Accordion defaultExpanded={true}>
+            <AccordionSummary 
+              expandIcon={<ExpandMoreIcon />}
+              sx={{ 
+                bgcolor: 'grey.50',
+                borderBottom: '2px solid',
+                borderColor: 'success.main',
+                '&:hover': { bgcolor: 'grey.100' }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
+                <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                  Árajánlat
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 'bold', mr: 2 }}>
+                    VÉGÖSSZEG
+                  </Typography>
+                  <Chip
+                    label={
+                      <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>Nettó</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_net, quoteResult.currency)}</Typography>
+                      </Box>
+                    }
+                    sx={{ height: 'auto', bgcolor: 'info.100', color: 'info.dark', px: 2 }}
+                  />
+                  <Typography variant="h6" sx={{ mx: 0.5 }}>+</Typography>
+                  <Chip
+                    label={
+                      <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>ÁFA</Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_vat, quoteResult.currency)}</Typography>
+                      </Box>
+                    }
+                    sx={{ height: 'auto', bgcolor: 'warning.100', color: 'warning.dark', px: 2 }}
+                  />
+                  <Typography variant="h6" sx={{ mx: 0.5 }}>=</Typography>
+                  <Chip
+                    label={
+                      <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>Végösszeg</Typography>
+                        <Typography variant="h6" sx={{ fontWeight: 'bold' }}>{formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}</Typography>
+                      </Box>
+                    }
+                    sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2 }}
+                  />
+                </Box>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              {quoteResult.materials.map((material, idx) => (
+                <Box key={idx} sx={{ mb: 4 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                      {material.material_name}
+                    </Typography>
+                    <Chip 
+                      label={material.on_stock ? 'Raktári' : 'Nem raktári'} 
+                      color={material.on_stock ? 'success' : 'warning'}
+                      size="small"
+                    />
+                  </Box>
+                  
+                  {/* Costs Table */}
+                  <TableContainer component={Paper} sx={{ mb: 2 }}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: 'grey.100' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Költség típusa</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>Nettó</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>ÁFA</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>Bruttó</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        <TableRow>
+                          <TableCell>
+                            Anyag költség
+                            {material.anyag_koltseg_details && (
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                {material.anyag_koltseg_details}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="right">{formatPrice(material.anyag_koltseg_net, material.currency)}</TableCell>
+                          <TableCell align="right">{formatPrice(material.anyag_koltseg_vat, material.currency)}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.anyag_koltseg_gross, material.currency)}</TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell>
+                            Kereszt vágás
+                            {material.kereszt_vagas_details && (
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                {material.kereszt_vagas_details}
+                              </Typography>
+                            )}
+                          </TableCell>
+                          <TableCell align="right">{formatPrice(material.kereszt_vagas_net, material.currency)}</TableCell>
+                          <TableCell align="right">{formatPrice(material.kereszt_vagas_vat, material.currency)}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.kereszt_vagas_gross, material.currency)}</TableCell>
+                        </TableRow>
+                        {material.hosszanti_vagas_net > 0 && (
+                          <TableRow>
+                            <TableCell>
+                              Hosszanti vágás
+                              {material.hosszanti_vagas_details && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {material.hosszanti_vagas_details}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{formatPrice(material.hosszanti_vagas_net, material.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(material.hosszanti_vagas_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.hosszanti_vagas_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        )}
+                        {material.ives_vagas_net > 0 && (
+                          <TableRow>
+                            <TableCell>
+                              Íves vágás
+                              {material.ives_vagas_details && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {material.ives_vagas_details}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{formatPrice(material.ives_vagas_net, material.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(material.ives_vagas_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.ives_vagas_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        )}
+                        {material.szogvagas_net > 0 && (
+                          <TableRow>
+                            <TableCell>
+                              Szögvágás
+                              {material.szogvagas_details && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {material.szogvagas_details}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{formatPrice(material.szogvagas_net, material.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(material.szogvagas_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.szogvagas_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        )}
+                        {material.kivagas_net > 0 && (
+                          <TableRow>
+                            <TableCell>
+                              Kivágás
+                              {material.kivagas_details && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {material.kivagas_details}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{formatPrice(material.kivagas_net, material.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(material.kivagas_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.kivagas_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        )}
+                        {material.elzaro_net > 0 && (
+                          <TableRow>
+                            <TableCell>
+                              Élzáró
+                              {material.elzaro_details && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {material.elzaro_details}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{formatPrice(material.elzaro_net, material.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(material.elzaro_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.elzaro_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        )}
+                        <TableRow sx={{ bgcolor: 'grey.50' }}>
+                          <TableCell colSpan={1} sx={{ fontWeight: 'bold' }}>{material.material_name} összesen:</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_net, material.currency)}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_vat, material.currency)}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>{formatPrice(material.total_gross, material.currency)}</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+
+                  {/* Material Total */}
+                  <Box sx={{ p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={6}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                          {material.material_name} összesen:
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={6} sx={{ textAlign: 'right' }}>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+                          {formatPrice(material.total_gross, material.currency)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          (Nettó: {formatPrice(material.total_net, material.currency)} + ÁFA: {formatPrice(material.total_vat, material.currency)})
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                </Box>
+              ))}
+            </AccordionDetails>
+          </Accordion>
         </Box>
       )}
     </Box>
