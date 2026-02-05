@@ -255,6 +255,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       elzaro_vat: number
       elzaro_gross: number
       elzaro_details: string
+      osszemaras_net: number
+      osszemaras_vat: number
+      osszemaras_gross: number
+      osszemaras_details: string
       total_net: number
       total_vat: number
       total_gross: number
@@ -902,6 +906,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       elzaro_vat: number
       elzaro_gross: number
       elzaro_details: string
+      osszemaras_net: number
+      osszemaras_vat: number
+      osszemaras_gross: number
+      osszemaras_details: string
       total_net: number
       total_vat: number
       total_gross: number
@@ -929,6 +937,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       let szogvagasNet = 0
       let kivagasNet = 0
       let elzaroNet = 0
+      let osszemarasNet = 0
       let totalElzaroMeters = 0
 
       // Details for calculations
@@ -1122,6 +1131,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           elzaroNet = totalElzaroMeters * 1800
         }
 
+        // Calculate Összemarás fee for Balos and jobbos (always 1 × 26,000 HUF)
+        if (isOsszemaras) {
+          osszemarasNet = 26000
+        }
+
         // Calculate VAT and gross for each category
         const anyagKoltsegVat = anyagKoltsegNet * (vatPercent / 100)
         const anyagKoltsegGross = anyagKoltsegNet + anyagKoltsegVat
@@ -1144,7 +1158,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const elzaroVat = elzaroNet * (vatPercent / 100)
         const elzaroGross = elzaroNet + elzaroVat
 
-        const totalNet = anyagKoltsegNet + keresztVagasNet + hosszantiVagasNet + ivesVagasNet + szogvagasNet + kivagasNet + elzaroNet
+        const osszemarasVat = osszemarasNet * (vatPercent / 100)
+        const osszemarasGross = osszemarasNet + osszemarasVat
+
+        const totalNet = anyagKoltsegNet + keresztVagasNet + hosszantiVagasNet + ivesVagasNet + szogvagasNet + kivagasNet + elzaroNet + osszemarasNet
         const totalVat = totalNet * (vatPercent / 100)
         const totalGross = totalNet + totalVat
 
@@ -1189,6 +1206,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           elzaro_vat: elzaroVat,
           elzaro_gross: elzaroGross,
           elzaro_details: totalElzaroMeters > 0 ? `${totalElzaroMeters.toFixed(2)}m × ${formatPrice(1800, currency)} = ${formatPrice(elzaroNet, currency)}` : '',
+          osszemaras_net: osszemarasNet,
+          osszemaras_vat: osszemarasVat,
+          osszemaras_gross: osszemarasGross,
+          osszemaras_details: osszemarasNet > 0 ? `1 × ${formatPrice(26000, currency)} = ${formatPrice(osszemarasNet, currency)}` : '',
           total_net: totalNet,
           total_vat: totalVat,
           total_gross: totalGross
@@ -6549,6 +6570,60 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     </text>
                                   )
                                 })()}
+                                
+                                {/* Front edge arrow indicator - only for Levágás */}
+                                {assemblyType === 'Levágás' && (() => {
+                                  const mainWorktopOffsetX = 0 // For Levágás, no offset
+                                  
+                                  // Calculate center of kept portion (remaining part after cut)
+                                  const keptWidth = showCut ? Math.max(0, Math.min(cutPosition, worktopWidth)) : worktopWidth
+                                  const keptHeight = showVerticalCut ? Math.max(0, Math.min(bValue, worktopLength)) : worktopLength
+                                  
+                                  // Center horizontally in kept portion
+                                  const centerX = mainWorktopOffsetX + keptWidth / 2
+                                  
+                                  // Center vertically in worktop
+                                  const centerY = keptHeight / 2
+                                  const bottomY = keptHeight
+                                  
+                                  // Arrow dimensions - make it big
+                                  const arrowLength = Math.min(150, (bottomY - centerY) * 0.8) // Length of arrow tail, but don't exceed available space
+                                  const arrowHeadWidth = 60 // Width of arrowhead
+                                  const arrowHeadHeight = 50 // Height of arrowhead
+                                  const strokeWidth = 10 // Thickness of arrow tail
+                                  
+                                  // Arrow tail: vertical line from center pointing down toward bottom edge
+                                  const tailStartY = centerY
+                                  const tailEndY = Math.min(bottomY - arrowHeadHeight, centerY + arrowLength)
+                                  
+                                  // Arrowhead points
+                                  const arrowTipY = tailEndY + arrowHeadHeight
+                                  const arrowLeftX = centerX - arrowHeadWidth / 2
+                                  const arrowRightX = centerX + arrowHeadWidth / 2
+                                  
+                                  return (
+                                    <g>
+                                      {/* Arrow tail - thick vertical line */}
+                                      <line
+                                        x1={centerX}
+                                        y1={tailStartY}
+                                        x2={centerX}
+                                        y2={tailEndY}
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth}
+                                        strokeLinecap="round"
+                                      />
+                                      
+                                      {/* Arrowhead - large triangle pointing down */}
+                                      <path
+                                        d={`M ${centerX} ${arrowTipY} L ${arrowLeftX} ${tailEndY} L ${arrowRightX} ${tailEndY} Z`}
+                                        fill="#1976d2"
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth / 2}
+                                      />
+                                    </g>
+                                  )
+                                })()}
                           </Box>
                               
                               
@@ -6825,6 +6900,21 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             <TableCell align="right">{formatPrice(material.elzaro_net, material.currency)}</TableCell>
                             <TableCell align="right">{formatPrice(material.elzaro_vat, material.currency)}</TableCell>
                             <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.elzaro_gross, material.currency)}</TableCell>
+                          </TableRow>
+                        )}
+                        {material.osszemaras_net > 0 && (
+                          <TableRow>
+                            <TableCell>
+                              Összemarás
+                              {material.osszemaras_details && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {material.osszemaras_details}
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">{formatPrice(material.osszemaras_net, material.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(material.osszemaras_vat, material.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 'medium' }}>{formatPrice(material.osszemaras_gross, material.currency)}</TableCell>
                           </TableRow>
                         )}
                         <TableRow sx={{ bgcolor: 'grey.50' }}>
