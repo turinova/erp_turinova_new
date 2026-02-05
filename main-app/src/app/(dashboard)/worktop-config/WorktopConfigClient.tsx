@@ -855,15 +855,17 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     toast.success('Konfiguráció sikeresen törölve!')
   }
 
-  // Calculate quote for Levágás and Összemarás Balos types
+  // Calculate quote for Levágás, Összemarás Balos, and Összemarás jobbos types
   const calculateQuote = () => {
-    // Filter Levágás and Összemarás Balos type configs
+    // Filter Levágás, Összemarás Balos, and Összemarás jobbos type configs
     const relevantConfigs = savedConfigs.filter(config => 
-      config.assemblyType === 'Levágás' || config.assemblyType === 'Összemarás Balos'
+      config.assemblyType === 'Levágás' || 
+      config.assemblyType === 'Összemarás Balos' || 
+      config.assemblyType === 'Összemarás jobbos'
     )
     
     if (relevantConfigs.length === 0) {
-      toast.error('Nincs mentett "Levágás" vagy "Összemarás Balos" típusú konfiguráció!')
+      toast.error('Nincs mentett "Levágás", "Összemarás Balos" vagy "Összemarás jobbos" típusú konfiguráció!')
       return
     }
     
@@ -946,66 +948,85 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const dMeters = dValue / 1000
 
         const isBalos = config.assemblyType === 'Összemarás Balos'
+        const isJobbos = config.assemblyType === 'Összemarás jobbos'
+        const isOsszemaras = isBalos || isJobbos
 
         // Anyag költség
         if (isBalos) {
           // Összemarás Balos calculation
           if (material.on_stock) {
-            // A × price_per_m × (1+vat_id) + (C-D) × price_per_m × (1+vat_id)
+            // A × price_per_m + (C-D) × price_per_m
             const costA = aMeters * (material.price_per_m || 0)
             const costCD = (cMeters - dMeters) * (material.price_per_m || 0)
             const cost = costA + costCD
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${aValue}mm (${aMeters.toFixed(3)}m) × ${formatPrice(material.price_per_m || 0, currency)}/m + (${cValue}mm-${dValue}mm) (${(cMeters - dMeters).toFixed(3)}m) × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m + ${(cMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
           } else {
             // roundup((A+C-D)/linear_material_length) × price_per_m × linear_material_length
-            // Note: VAT is calculated separately, so we calculate net price here
             const totalLength = aValue + cValue - dValue
             const materialLengthMeters = material.length / 1000
             const boardsNeeded = Math.ceil(totalLength / material.length)
             const cost = boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(3)}m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m = ${formatPrice(cost, currency)}`)
+          }
+        } else if (isJobbos) {
+          // Összemarás jobbos calculation
+          if (material.on_stock) {
+            // (A-D) × price_per_m + C × price_per_m
+            const costAD = (aMeters - dMeters) * (material.price_per_m || 0)
+            const costC = cMeters * (material.price_per_m || 0)
+            const cost = costAD + costC
+            anyagKoltsegNet += cost
+            anyagKoltsegDetails.push(`${(aMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m + ${cMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+          } else {
+            // roundup((A+C-D)/linear_material_length) × price_per_m × linear_material_length
+            const totalLength = aValue + cValue - dValue
+            const materialLengthMeters = material.length / 1000
+            const boardsNeeded = Math.ceil(totalLength / material.length)
+            const cost = boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+            anyagKoltsegNet += cost
+            anyagKoltsegDetails.push(`${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m = ${formatPrice(cost, currency)}`)
           }
         } else {
           // Levágás calculation
           if (material.on_stock) {
             const cost = aMeters * (material.price_per_m || 0)
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${aValue}mm (${aMeters.toFixed(3)}m) × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
           } else {
             const cost = (material.price_per_m || 0) * (material.length / 1000)
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${formatPrice(material.price_per_m || 0, currency)}/m × ${(material.length / 1000).toFixed(3)}m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${formatPrice(material.price_per_m || 0, currency)}/m × ${(material.length / 1000).toFixed(2)}m = ${formatPrice(cost, currency)}`)
           }
         }
 
-        // Kereszt vágás (only for Levágás, not for Balos)
-        if (!isBalos) {
+        // Kereszt vágás (only for Levágás, not for Balos or jobbos)
+        if (!isOsszemaras) {
           keresztVagasNet += 2100
           keresztVagasDetails.push(`2100`)
         }
 
         // Hosszanti vágás
-        if (isBalos) {
+        if (isOsszemaras) {
           // For Balos: if D < width: (C-D) × 1500, if A < width: A × 1500
           if (dValue < material.width) {
             const cdMeters = (cValue - dValue) / 1000
             const cost = cdMeters * 1500
             hosszantiVagasNet += cost
-            hosszantiVagasDetails.push(`${cdMeters.toFixed(3)}m × 1500 = ${formatPrice(cost, currency)}`)
+            hosszantiVagasDetails.push(`${cdMeters.toFixed(2)}m × 1500 = ${formatPrice(cost, currency)}`)
           }
           if (aValue < material.width) {
             const cost = aMeters * 1500
             hosszantiVagasNet += cost
-            hosszantiVagasDetails.push(`${aMeters.toFixed(3)}m × 1500 = ${formatPrice(cost, currency)}`)
+            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × 1500 = ${formatPrice(cost, currency)}`)
           }
         } else {
           // For Levágás: if B < width: A × 1500
           if (bValue < material.width) {
             const cost = aMeters * 1500
             hosszantiVagasNet += cost
-            hosszantiVagasDetails.push(`${aMeters.toFixed(3)}m × 1500 = ${formatPrice(cost, currency)}`)
+            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × 1500 = ${formatPrice(cost, currency)}`)
           }
         }
 
@@ -1074,8 +1095,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         }
 
         // Élzáró
-        if (isBalos) {
-          // For Balos:
+        if (isOsszemaras) {
+          // For Balos and jobbos:
           // 1. oldal: C
           // 2. oldal: A
           // 3. oldal: B
@@ -1167,7 +1188,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           elzaro_net: elzaroNet,
           elzaro_vat: elzaroVat,
           elzaro_gross: elzaroGross,
-          elzaro_details: totalElzaroMeters > 0 ? `${totalElzaroMeters.toFixed(3)}m × 1800 = ${formatPrice(elzaroNet, currency)}` : '',
+          elzaro_details: totalElzaroMeters > 0 ? `${totalElzaroMeters.toFixed(2)}m × ${formatPrice(1800, currency)} = ${formatPrice(elzaroNet, currency)}` : '',
           total_net: totalNet,
           total_vat: totalVat,
           total_gross: totalGross
