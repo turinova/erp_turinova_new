@@ -242,6 +242,109 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     }
   }, [savedConfigs])
 
+  // Helper function to validate rounding values against B (for Levágás only)
+  const validateRoundingValues = (r1: string, r2: string, r3: string, r4: string, b: string, showErrors: boolean = false): boolean => {
+    if (assemblyType !== 'Levágás' || !b) return true
+    
+    const bValue = parseFloat(b) || 0
+    if (bValue <= 0) return true // B not set yet, skip validation
+    
+    const r1Value = parseFloat(r1) || 0
+    const r2Value = parseFloat(r2) || 0
+    const r3Value = parseFloat(r3) || 0
+    const r4Value = parseFloat(r4) || 0
+    
+    // R1 <= B
+    if (r1Value > bValue) {
+      if (showErrors) toast.error(`Az R1 érték (${r1Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R2 <= B
+    if (r2Value > bValue) {
+      if (showErrors) toast.error(`Az R2 érték (${r2Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R3 <= B
+    if (r3Value > bValue) {
+      if (showErrors) toast.error(`Az R3 érték (${r3Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R4 <= B
+    if (r4Value > bValue) {
+      if (showErrors) toast.error(`Az R4 érték (${r4Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R1 + R3 <= B
+    if (r1Value > 0 && r3Value > 0 && (r1Value + r3Value) > bValue) {
+      if (showErrors) toast.error(`Az R1 + R3 összege (${r1Value + r3Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R2 + R4 <= B
+    if (r2Value > 0 && r4Value > 0 && (r2Value + r4Value) > bValue) {
+      if (showErrors) toast.error(`Az R2 + R4 összege (${r2Value + r4Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    return true
+  }
+
+  // Helper function to validate rounding values for Összemarás Balos
+  const validateBalosRoundingValues = (r1: string, r2: string, r3: string, r4: string, b: string, d: string, showErrors: boolean = false): boolean => {
+    if (assemblyType !== 'Összemarás Balos' || !b || !d) return true
+    
+    const bValue = parseFloat(b) || 0
+    const dValue = parseFloat(d) || 0
+    if (bValue <= 0 || dValue <= 0) return true // B or D not set yet, skip validation
+    
+    const r1Value = parseFloat(r1) || 0
+    const r2Value = parseFloat(r2) || 0
+    const r3Value = parseFloat(r3) || 0
+    const r4Value = parseFloat(r4) || 0
+    
+    // R1 <= D
+    if (r1Value > dValue) {
+      if (showErrors) toast.error(`Az R1 érték (${r1Value}mm) nem lehet nagyobb, mint a D méret (${dValue}mm)!`)
+      return false
+    }
+    
+    // R3 <= D
+    if (r3Value > dValue) {
+      if (showErrors) toast.error(`Az R3 érték (${r3Value}mm) nem lehet nagyobb, mint a D méret (${dValue}mm)!`)
+      return false
+    }
+    
+    // R2 <= B
+    if (r2Value > bValue) {
+      if (showErrors) toast.error(`Az R2 érték (${r2Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R4 <= B
+    if (r4Value > bValue) {
+      if (showErrors) toast.error(`Az R4 érték (${r4Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    // R3 + R1 <= D
+    if (r1Value > 0 && r3Value > 0 && (r1Value + r3Value) > dValue) {
+      if (showErrors) toast.error(`Az R3 + R1 összege (${r1Value + r3Value}mm) nem lehet nagyobb, mint a D méret (${dValue}mm)!`)
+      return false
+    }
+    
+    // R2 + R4 <= B
+    if (r2Value > 0 && r4Value > 0 && (r2Value + r4Value) > bValue) {
+      if (showErrors) toast.error(`Az R2 + R4 összege (${r2Value + r4Value}mm) nem lehet nagyobb, mint a B méret (${bValue}mm)!`)
+      return false
+    }
+    
+    return true
+  }
+
   // Check if required fields are filled (without showing errors)
   const areRequiredFieldsFilled = (): boolean => {
     if (!assemblyType) return false
@@ -250,12 +353,123 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     if (assemblyType === 'Levágás' || assemblyType === 'Hossztoldás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') {
       if (!dimensionA || parseFloat(dimensionA) <= 0) return false
       if (!dimensionB || parseFloat(dimensionB) <= 0) return false
+      
+      // Additional validation for Levágás type
+      if (assemblyType === 'Levágás' && selectedLinearMaterialId) {
+        const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+        if (selectedMaterial) {
+          const materialLength = selectedMaterial.length || 0
+          const materialWidth = selectedMaterial.width || 0
+          const aValue = parseFloat(dimensionA) || 0
+          const bValue = parseFloat(dimensionB) || 0
+          
+          // A must be less than material length
+          if (aValue >= materialLength) return false
+          
+          // B must be less than or equal to material width
+          // If noPostformingEdge is checked, B must be less than material width - 10
+          if (noPostformingEdge) {
+            const maxB = materialWidth - 10
+            if (bValue >= maxB) return false
+          } else {
+            // B can be equal to material width
+            if (bValue > materialWidth) return false
+          }
+          
+          // Validate rounding values against B
+          if (!validateRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, false)) {
+            return false
+          }
+        }
+      }
       if (assemblyType === 'Hossztoldás') {
         if (!dimensionC || parseFloat(dimensionC) <= 0) return false
       }
       if (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') {
         if (!dimensionC || parseFloat(dimensionC) <= 0) return false
         if (!dimensionD || parseFloat(dimensionD) <= 0) return false
+        
+        // Additional validation for Összemarás Balos type
+        if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+          const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+          if (selectedMaterial) {
+            const materialLength = selectedMaterial.length || 0
+            const materialWidth = selectedMaterial.width || 0
+            const aValue = parseFloat(dimensionA) || 0
+            const bValue = parseFloat(dimensionB) || 0
+            const cValue = parseFloat(dimensionC) || 0
+            const dValue = parseFloat(dimensionD) || 0
+            
+            // A <= material length
+            if (aValue > materialLength) return false
+            
+            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            if (noPostformingEdge) {
+              const maxB = materialWidth - 10
+              if (bValue > maxB) return false
+            } else {
+              if (bValue > materialWidth) return false
+            }
+            
+            // (C - D) <= material length - 50 (Marás ráhagyás okán)
+            const maxCD = materialLength - 50
+            if ((cValue - dValue) > maxCD) return false
+            
+            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            if (noPostformingEdge) {
+              const maxD = materialWidth - 10
+              if (dValue > maxD) return false
+            } else {
+              if (dValue > materialWidth) return false
+            }
+            
+            // Validate rounding values against B and D
+            if (!validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, dimensionD, false)) {
+              return false
+            }
+          }
+        }
+        
+        // Additional validation for Összemarás jobbos type
+        if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+          const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+          if (selectedMaterial) {
+            const materialLength = selectedMaterial.length || 0
+            const materialWidth = selectedMaterial.width || 0
+            const aValue = parseFloat(dimensionA) || 0
+            const bValue = parseFloat(dimensionB) || 0
+            const cValue = parseFloat(dimensionC) || 0
+            const dValue = parseFloat(dimensionD) || 0
+            
+            // (A - D) <= material length - 50 (Marás ráhagyás okán)
+            const maxAD = materialLength - 50
+            if ((aValue - dValue) > maxAD) return false
+            
+            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            if (noPostformingEdge) {
+              const maxB = materialWidth - 10
+              if (bValue > maxB) return false
+            } else {
+              if (bValue > materialWidth) return false
+            }
+            
+            // C <= material length
+            if (cValue > materialLength) return false
+            
+            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            if (noPostformingEdge) {
+              const maxD = materialWidth - 10
+              if (dValue > maxD) return false
+            } else {
+              if (dValue > materialWidth) return false
+            }
+            
+            // Validate rounding values against B and D
+            if (!validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, dimensionD, false)) {
+              return false
+            }
+          }
+        }
       }
       if (assemblyType === 'Összemarás U alak (Nem működik még)') {
         if (!dimensionC || parseFloat(dimensionC) <= 0) return false
@@ -287,6 +501,44 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         toast.error('Kérjük adja meg a B méretet!')
         return false
       }
+      
+      // Additional validation for Levágás type
+      if (assemblyType === 'Levágás' && selectedLinearMaterialId) {
+        const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+        if (selectedMaterial) {
+          const materialLength = selectedMaterial.length || 0
+          const materialWidth = selectedMaterial.width || 0
+          const aValue = parseFloat(dimensionA) || 0
+          const bValue = parseFloat(dimensionB) || 0
+          
+          // A must be less than material length
+          if (aValue >= materialLength) {
+            toast.error(`Az A méret (${aValue}mm) kisebb kell legyen, mint a munkalap hossza (${materialLength}mm)!`)
+            return false
+          }
+          
+          // B must be less than or equal to material width
+          // If noPostformingEdge is checked, B must be less than material width - 10
+          if (noPostformingEdge) {
+            const maxB = materialWidth - 10
+            if (bValue >= maxB) {
+              toast.error(`A B méret (${bValue}mm) kisebb kell legyen, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+              return false
+            }
+          } else {
+            // B can be equal to material width
+            if (bValue > materialWidth) {
+              toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+              return false
+            }
+          }
+          
+          // Validate rounding values against B
+          if (!validateRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, true)) {
+            return false
+          }
+        }
+      }
       if (assemblyType === 'Hossztoldás') {
         if (!dimensionC || parseFloat(dimensionC) <= 0) {
           toast.error('Kérjük adja meg a C méretet!')
@@ -301,6 +553,124 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         if (!dimensionD || parseFloat(dimensionD) <= 0) {
           toast.error('Kérjük adja meg a D méretet!')
           return false
+        }
+        
+        // Additional validation for Összemarás Balos type
+        if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+          const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+          if (selectedMaterial) {
+            const materialLength = selectedMaterial.length || 0
+            const materialWidth = selectedMaterial.width || 0
+            const aValue = parseFloat(dimensionA) || 0
+            const bValue = parseFloat(dimensionB) || 0
+            const cValue = parseFloat(dimensionC) || 0
+            const dValue = parseFloat(dimensionD) || 0
+            
+            // A <= material length
+            if (aValue > materialLength) {
+              toast.error(`Az A méret (${aValue}mm) nem lehet nagyobb, mint a munkalap hossza (${materialLength}mm)!`)
+              return false
+            }
+            
+            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            if (noPostformingEdge) {
+              const maxB = materialWidth - 10
+              if (bValue > maxB) {
+                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                return false
+              }
+            } else {
+              if (bValue > materialWidth) {
+                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                return false
+              }
+            }
+            
+            // (C - D) <= material length - 50 (Marás ráhagyás okán)
+            const maxCD = materialLength - 50
+            if ((cValue - dValue) > maxCD) {
+              toast.error(`A (C - D) érték (${cValue - dValue}mm) nem lehet nagyobb, mint a munkalap hossza mínusz 50mm (${maxCD}mm) marás ráhagyás okán!`)
+              return false
+            }
+            
+            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            if (noPostformingEdge) {
+              const maxD = materialWidth - 10
+              if (dValue > maxD) {
+                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                return false
+              }
+            } else {
+              if (dValue > materialWidth) {
+                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                return false
+              }
+            }
+            
+            // Validate rounding values against B and D
+            if (!validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, dimensionD, true)) {
+              return false
+            }
+          }
+        }
+        
+        // Additional validation for Összemarás jobbos type
+        if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+          const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+          if (selectedMaterial) {
+            const materialLength = selectedMaterial.length || 0
+            const materialWidth = selectedMaterial.width || 0
+            const aValue = parseFloat(dimensionA) || 0
+            const bValue = parseFloat(dimensionB) || 0
+            const cValue = parseFloat(dimensionC) || 0
+            const dValue = parseFloat(dimensionD) || 0
+            
+            // (A - D) <= material length - 50 (Marás ráhagyás okán)
+            const maxAD = materialLength - 50
+            if ((aValue - dValue) > maxAD) {
+              toast.error(`Az (A - D) érték (${aValue - dValue}mm) nem lehet nagyobb, mint a munkalap hossza mínusz 50mm (${maxAD}mm) marás ráhagyás okán!`)
+              return false
+            }
+            
+            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            if (noPostformingEdge) {
+              const maxB = materialWidth - 10
+              if (bValue > maxB) {
+                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                return false
+              }
+            } else {
+              if (bValue > materialWidth) {
+                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                return false
+              }
+            }
+            
+            // C <= material length
+            if (cValue > materialLength) {
+              toast.error(`A C méret (${cValue}mm) nem lehet nagyobb, mint a munkalap hossza (${materialLength}mm)!`)
+              return false
+            }
+            
+            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            if (noPostformingEdge) {
+              const maxD = materialWidth - 10
+              if (dValue > maxD) {
+                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                return false
+              }
+            } else {
+              if (dValue > materialWidth) {
+                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                return false
+              }
+            }
+            
+            // Validate rounding values against B and D
+            if (!validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, dimensionD, true)) {
+              return false
+            }
+          }
         }
       }
       if (assemblyType === 'Összemarás U alak (Nem működik még)') {
@@ -907,6 +1277,51 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               if (e.target.checked) {
                                 setEdgeBanding('ABS')
                               }
+                              // For Levágás: clear 4. oldal élzáró pozíció when checked
+                              if (e.target.checked && assemblyType === 'Levágás') {
+                                setEdgePosition4(false)
+                              }
+                              // Re-validate B and D for Összemarás Balos when noPostformingEdge changes
+                              if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+                                const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                if (selectedMaterial) {
+                                  const materialWidth = selectedMaterial.width || 0
+                                  const bValue = parseFloat(dimensionB) || 0
+                                  const dValue = parseFloat(dimensionD) || 0
+                                  
+                                  if (e.target.checked) {
+                                    const maxB = materialWidth - 10
+                                    const maxD = materialWidth - 10
+                                    if (bValue > 0 && bValue > maxB) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                    if (dValue > 0 && dValue > maxD) {
+                                      toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                  }
+                                }
+                              }
+                              
+                              // Re-validate B and D for Összemarás jobbos when noPostformingEdge changes
+                              if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+                                const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                if (selectedMaterial) {
+                                  const materialWidth = selectedMaterial.width || 0
+                                  const bValue = parseFloat(dimensionB) || 0
+                                  const dValue = parseFloat(dimensionD) || 0
+                                  
+                                  if (e.target.checked) {
+                                    const maxB = materialWidth - 10
+                                    const maxD = materialWidth - 10
+                                    if (bValue > 0 && bValue > maxB) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                    if (dValue > 0 && dValue > maxD) {
+                                      toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                  }
+                                }
+                              }
                             }}
                           />
                         }
@@ -1050,12 +1465,52 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           type="number"
                           value={dimensionA}
                           onChange={(e) => {
-                            setDimensionA(e.target.value)
+                            const newValue = e.target.value
+                            setDimensionA(newValue)
+                            
+                            // Validation for Levágás: A must be less than material length
+                            if (assemblyType === 'Levágás' && selectedLinearMaterialId) {
+                              const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                              if (selectedMaterial) {
+                                const materialLength = selectedMaterial.length || 0
+                                const aValue = parseFloat(newValue) || 0
+                                if (aValue > 0 && aValue >= materialLength) {
+                                  toast.error(`Az A méret (${aValue}mm) kisebb kell legyen, mint a munkalap hossza (${materialLength}mm)!`)
+                                }
+                              }
+                            }
+                            
+                            // Validation for Összemarás Balos: A <= material length
+                            if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+                              const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                              if (selectedMaterial) {
+                                const materialLength = selectedMaterial.length || 0
+                                const aValue = parseFloat(newValue) || 0
+                                if (aValue > 0 && aValue > materialLength) {
+                                  toast.error(`Az A méret (${aValue}mm) nem lehet nagyobb, mint a munkalap hossza (${materialLength}mm)!`)
+                                }
+                              }
+                            }
+                            
+                            // Validation for Összemarás jobbos: (A - D) <= material length - 50
+                            if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+                              const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                              if (selectedMaterial) {
+                                const materialLength = selectedMaterial.length || 0
+                                const aValue = parseFloat(newValue) || 0
+                                const dValue = parseFloat(dimensionD) || 0
+                                const maxAD = materialLength - 50
+                                if (aValue > 0 && dValue > 0 && (aValue - dValue) > maxAD) {
+                                  toast.error(`Az (A - D) érték (${aValue - dValue}mm) nem lehet nagyobb, mint a munkalap hossza mínusz 50mm (${maxAD}mm) marás ráhagyás okán!`)
+                                }
+                              }
+                            }
+                            
                             // Prefill C for Hossztoldás: C = A - material.length
                             if (assemblyType === 'Hossztoldás' && selectedLinearMaterialId) {
                               const lm = linearMaterials.find(l => l.id === selectedLinearMaterialId)
                               if (lm?.length !== undefined && lm?.length !== null) {
-                                const aValue = parseFloat(e.target.value) || 0
+                                const aValue = parseFloat(newValue) || 0
                                 if (aValue > 0) {
                                   const cValue = Math.max(0, aValue - lm.length)
                                   setDimensionC(cValue.toString())
@@ -1075,7 +1530,93 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           label="B (mm)"
                           type="number"
                           value={dimensionB}
-                          onChange={(e) => setDimensionB(e.target.value)}
+                          onChange={(e) => {
+                            const newValue = e.target.value
+                            setDimensionB(newValue)
+                            
+                            // Validation for Levágás: B must be less than or equal to material width
+                            // If noPostformingEdge is checked, B must be less than material width - 10
+                            if (assemblyType === 'Levágás' && selectedLinearMaterialId) {
+                              const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                              if (selectedMaterial) {
+                                const materialWidth = selectedMaterial.width || 0
+                                const bValue = parseFloat(newValue) || 0
+                                
+                                if (bValue > 0) {
+                                  if (noPostformingEdge) {
+                                    const maxB = materialWidth - 10
+                                    if (bValue >= maxB) {
+                                      toast.error(`A B méret (${bValue}mm) kisebb kell legyen, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                  } else {
+                                    // B can be equal to material width
+                                    if (bValue > materialWidth) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            
+                            // Validation for Összemarás Balos: B <= material width (if noPostformingEdge checked, B <= width - 10)
+                            if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+                              const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                              if (selectedMaterial) {
+                                const materialWidth = selectedMaterial.width || 0
+                                const bValue = parseFloat(newValue) || 0
+                                
+                                if (bValue > 0) {
+                                  if (noPostformingEdge) {
+                                    const maxB = materialWidth - 10
+                                    if (bValue > maxB) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                  } else {
+                                    if (bValue > materialWidth) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            
+                            // Validation for Összemarás jobbos: B <= material width (if noPostformingEdge checked, B <= width - 10)
+                            if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+                              const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                              if (selectedMaterial) {
+                                const materialWidth = selectedMaterial.width || 0
+                                const bValue = parseFloat(newValue) || 0
+                                
+                                if (bValue > 0) {
+                                  if (noPostformingEdge) {
+                                    const maxB = materialWidth - 10
+                                    if (bValue > maxB) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                    }
+                                  } else {
+                                    if (bValue > materialWidth) {
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                            
+                            // Re-validate rounding values when B changes (for Levágás only)
+                            if (assemblyType === 'Levágás') {
+                              validateRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, newValue, true)
+                            }
+                            
+                            // Re-validate rounding values when B changes (for Összemarás Balos)
+                            if (assemblyType === 'Összemarás Balos') {
+                              validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, newValue, dimensionD, true)
+                            }
+                            
+                            // Re-validate rounding values when B changes (for Összemarás jobbos)
+                            if (assemblyType === 'Összemarás jobbos') {
+                              validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, newValue, dimensionD, true)
+                            }
+                          }}
                           inputProps={{ min: 0, step: 1 }}
                         />
                       </Grid>
@@ -1088,7 +1629,36 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               label="C (mm)"
                               type="number"
                               value={dimensionC}
-                              onChange={(e) => setDimensionC(e.target.value)}
+                              onChange={(e) => {
+                                const newValue = e.target.value
+                                setDimensionC(newValue)
+                                
+                                // Validation for Összemarás Balos: (C - D) <= material length - 50 (Marás ráhagyás okán)
+                                if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+                                  const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                  if (selectedMaterial) {
+                                    const materialLength = selectedMaterial.length || 0
+                                    const maxCD = materialLength - 50
+                                    const cValue = parseFloat(newValue) || 0
+                                    const dValue = parseFloat(dimensionD) || 0
+                                    if (cValue > 0 && dValue > 0 && (cValue - dValue) > maxCD) {
+                                      toast.error(`A (C - D) érték (${cValue - dValue}mm) nem lehet nagyobb, mint a munkalap hossza mínusz 50mm (${maxCD}mm) marás ráhagyás okán!`)
+                                    }
+                                  }
+                                }
+                                
+                                // Validation for Összemarás jobbos: C <= material length
+                                if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+                                  const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                  if (selectedMaterial) {
+                                    const materialLength = selectedMaterial.length || 0
+                                    const cValue = parseFloat(newValue) || 0
+                                    if (cValue > 0 && cValue > materialLength) {
+                                      toast.error(`A C méret (${cValue}mm) nem lehet nagyobb, mint a munkalap hossza (${materialLength}mm)!`)
+                                    }
+                                  }
+                                }
+                              }}
                               inputProps={{ min: 0, step: 1 }}
                             />
                           </Grid>
@@ -1099,7 +1669,92 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               label="D (mm)"
                               type="number"
                               value={dimensionD}
-                              onChange={(e) => setDimensionD(e.target.value)}
+                              onChange={(e) => {
+                                const newValue = e.target.value
+                                setDimensionD(newValue)
+                                
+                                // Validation for Összemarás Balos: D <= material width (if noPostformingEdge checked, D <= width - 10)
+                                if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+                                  const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                  if (selectedMaterial) {
+                                    const materialWidth = selectedMaterial.width || 0
+                                    const dValue = parseFloat(newValue) || 0
+                                    
+                                    if (dValue > 0) {
+                                      if (noPostformingEdge) {
+                                        const maxD = materialWidth - 10
+                                        if (dValue > maxD) {
+                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                        }
+                                      } else {
+                                        if (dValue > materialWidth) {
+                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                
+                                // Validation for Összemarás jobbos: D <= material width (if noPostformingEdge checked, D <= width - 10)
+                                if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+                                  const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                  if (selectedMaterial) {
+                                    const materialWidth = selectedMaterial.width || 0
+                                    const dValue = parseFloat(newValue) || 0
+                                    
+                                    if (dValue > 0) {
+                                      if (noPostformingEdge) {
+                                        const maxD = materialWidth - 10
+                                        if (dValue > maxD) {
+                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                        }
+                                      } else {
+                                        if (dValue > materialWidth) {
+                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége (${materialWidth}mm)!`)
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                                
+                                // Re-validate (C - D) for Összemarás Balos when D changes
+                                if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
+                                  const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                  if (selectedMaterial) {
+                                    const materialLength = selectedMaterial.length || 0
+                                    const maxCD = materialLength - 50
+                                    const cValue = parseFloat(dimensionC) || 0
+                                    const dValue = parseFloat(newValue) || 0
+                                    if (cValue > 0 && dValue > 0 && (cValue - dValue) > maxCD) {
+                                      toast.error(`A (C - D) érték (${cValue - dValue}mm) nem lehet nagyobb, mint a munkalap hossza mínusz 50mm (${maxCD}mm) marás ráhagyás okán!`)
+                                    }
+                                  }
+                                }
+                                
+                                // Re-validate (A - D) for Összemarás jobbos when D changes
+                                if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
+                                  const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
+                                  if (selectedMaterial) {
+                                    const materialLength = selectedMaterial.length || 0
+                                    const maxAD = materialLength - 50
+                                    const aValue = parseFloat(dimensionA) || 0
+                                    const dValue = parseFloat(newValue) || 0
+                                    if (aValue > 0 && dValue > 0 && (aValue - dValue) > maxAD) {
+                                      toast.error(`Az (A - D) érték (${aValue - dValue}mm) nem lehet nagyobb, mint a munkalap hossza mínusz 50mm (${maxAD}mm) marás ráhagyás okán!`)
+                                    }
+                                  }
+                                }
+                                
+                                // Re-validate rounding values when D changes (for Összemarás Balos)
+                                if (assemblyType === 'Összemarás Balos') {
+                                  validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, newValue, true)
+                                }
+                                
+                                // Re-validate rounding values when D changes (for Összemarás jobbos)
+                                if (assemblyType === 'Összemarás jobbos') {
+                                  validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, roundingR4, dimensionB, newValue, true)
+                                }
+                              }}
                               inputProps={{ min: 0, step: 1 }}
                             />
                           </Grid>
@@ -1150,11 +1805,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           type="number"
                           value={roundingR1}
                           onChange={(e) => {
-                            setRoundingR1(e.target.value)
+                            const newValue = e.target.value
+                            setRoundingR1(newValue)
                             // Clear L1 and L2 when R1 has a value
-                            if (parseFloat(e.target.value) > 0) {
+                            if (parseFloat(newValue) > 0) {
                               setCutL1('')
                               setCutL2('')
+                            }
+                            // Validate R1 <= B and R1+R3 <= B (for Levágás only)
+                            if (assemblyType === 'Levágás') {
+                              validateRoundingValues(newValue, roundingR2, roundingR3, roundingR4, dimensionB, true)
+                            }
+                            // Validate R1 <= D and R3+R1 <= D (for Összemarás Balos)
+                            if (assemblyType === 'Összemarás Balos') {
+                              validateBalosRoundingValues(newValue, roundingR2, roundingR3, roundingR4, dimensionB, dimensionD, true)
+                            }
+                            // Validate R1 <= D and R3+R1 <= D (for Összemarás jobbos)
+                            if (assemblyType === 'Összemarás jobbos') {
+                              validateBalosRoundingValues(newValue, roundingR2, roundingR3, roundingR4, dimensionB, dimensionD, true)
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
@@ -1169,11 +1837,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           type="number"
                           value={roundingR2}
                           onChange={(e) => {
-                            setRoundingR2(e.target.value)
+                            const newValue = e.target.value
+                            setRoundingR2(newValue)
                             // Clear L3 and L4 when R2 has a value
-                            if (parseFloat(e.target.value) > 0) {
+                            if (parseFloat(newValue) > 0) {
                               setCutL3('')
                               setCutL4('')
+                            }
+                            // Validate R2 <= B and R2+R4 <= B (for Levágás only)
+                            if (assemblyType === 'Levágás') {
+                              validateRoundingValues(roundingR1, newValue, roundingR3, roundingR4, dimensionB, true)
+                            }
+                            // Validate R2 <= B and R2+R4 <= B (for Összemarás Balos)
+                            if (assemblyType === 'Összemarás Balos') {
+                              validateBalosRoundingValues(roundingR1, newValue, roundingR3, roundingR4, dimensionB, dimensionD, true)
+                            }
+                            // Validate R2 <= B and R2+R4 <= B (for Összemarás jobbos)
+                            if (assemblyType === 'Összemarás jobbos') {
+                              validateBalosRoundingValues(roundingR1, newValue, roundingR3, roundingR4, dimensionB, dimensionD, true)
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
@@ -1188,11 +1869,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           type="number"
                           value={roundingR3}
                           onChange={(e) => {
-                            setRoundingR3(e.target.value)
+                            const newValue = e.target.value
+                            setRoundingR3(newValue)
                             // Clear L5 and L6 when R3 has a value
-                            if (parseFloat(e.target.value) > 0) {
+                            if (parseFloat(newValue) > 0) {
                               setCutL5('')
                               setCutL6('')
+                            }
+                            // Validate R3 <= B and R1+R3 <= B (for Levágás only)
+                            if (assemblyType === 'Levágás') {
+                              validateRoundingValues(roundingR1, roundingR2, newValue, roundingR4, dimensionB, true)
+                            }
+                            // Validate R3 <= D and R3+R1 <= D (for Összemarás Balos)
+                            if (assemblyType === 'Összemarás Balos') {
+                              validateBalosRoundingValues(roundingR1, roundingR2, newValue, roundingR4, dimensionB, dimensionD, true)
+                            }
+                            // Validate R3 <= D and R3+R1 <= D (for Összemarás jobbos)
+                            if (assemblyType === 'Összemarás jobbos') {
+                              validateBalosRoundingValues(roundingR1, roundingR2, newValue, roundingR4, dimensionB, dimensionD, true)
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
@@ -1207,11 +1901,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           type="number"
                           value={roundingR4}
                           onChange={(e) => {
-                            setRoundingR4(e.target.value)
+                            const newValue = e.target.value
+                            setRoundingR4(newValue)
                             // Clear L7 and L8 when R4 has a value
-                            if (parseFloat(e.target.value) > 0) {
+                            if (parseFloat(newValue) > 0) {
                               setCutL7('')
                               setCutL8('')
+                            }
+                            // Validate R4 <= B and R2+R4 <= B (for Levágás only)
+                            if (assemblyType === 'Levágás') {
+                              validateRoundingValues(roundingR1, roundingR2, roundingR3, newValue, dimensionB, true)
+                            }
+                            // Validate R4 <= B and R2+R4 <= B (for Összemarás Balos)
+                            if (assemblyType === 'Összemarás Balos') {
+                              validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, newValue, dimensionB, dimensionD, true)
+                            }
+                            // Validate R4 <= B and R2+R4 <= B (for Összemarás jobbos)
+                            if (assemblyType === 'Összemarás jobbos') {
+                              validateBalosRoundingValues(roundingR1, roundingR2, roundingR3, newValue, dimensionB, dimensionD, true)
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
@@ -2274,10 +2981,33 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     // For Összemarás jobbos: 1. oldal is the C×D rectangle's left edge
                                     if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
                                       // Perpendicular rectangle's left edge: from (0, 0) to (0, leftPerpendicularRectHeight)
+                                      // For jobbos: R3 and L5-L6 apply to bottom-left corner of perpendicular rectangle
                                       const rectX = 0
                                       const rectY = 0
                                       const rectHeight = leftPerpendicularRectHeight
-                                      return `M ${rectX} ${rectY} L ${rectX} ${rectY + rectHeight}`
+                                      const bottomY = rectY + rectHeight
+                                      
+                                      // Start from top of perpendicular rectangle
+                                      let path = `M ${rectX} ${rectY}`
+                                      
+                                      // Continue down the left edge, stopping before R3 or L5-L6 if present
+                                      if (hasLeftPerpendicularL5L6) {
+                                        // Go down to where L5-L6 chamfer begins on left edge
+                                        path += ` L ${rectX} ${bottomY - l6Value}`
+                                        // Include the chamfer diagonal line
+                                        path += ` L ${rectX + l5Value} ${bottomY}`
+                                      } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                        // Go down to where R3 arc begins on left edge
+                                        path += ` L ${rectX} ${bottomY - leftPerpendicularRectR3}`
+                                        // Include the R3 arc - this draws the rounded corner
+                                        // Control point at corner (rectX, bottomY), end at (rectX + leftPerpendicularRectR3, bottomY) on bottom edge
+                                        path += ` Q ${rectX} ${bottomY} ${rectX + leftPerpendicularRectR3} ${bottomY}`
+                                      } else {
+                                        // Go all the way to bottom if no rounding/chamfer
+                                        path += ` L ${rectX} ${bottomY}`
+                                      }
+                                      
+                                      return path
                                     }
                                     
                                     // For Összemarás Balos: extend the left edge down the perpendicular rectangle's left edge
@@ -2306,13 +3036,18 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       path += ` L ${mainWorktopOffsetX} ${perpendicularRectTopY}` // Connect to perpendicular rectangle top
                                       
                                       // For Balos: L5-L6 is on perpendicular rectangle's bottom-left corner
-                                      // Stop at L6 position (where chamfer begins on perpendicular rectangle)
+                                      // Include the R3 arc or L5-L6 chamfer in the highlight
                                       if (hasLeftPerpendicularL5L6) {
-                                        // Stop at (0, perpendicularRectBottomY - l6Value) where L5-L6 chamfer begins
+                                        // Go down to where L5-L6 chamfer begins on left edge
                                         path += ` L ${mainWorktopOffsetX} ${perpendicularRectBottomY - l6Value}`
+                                        // Include the chamfer diagonal line
+                                        path += ` L ${mainWorktopOffsetX + l5Value} ${perpendicularRectBottomY}`
                                       } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
-                                        // Stop at R3 position if present
+                                        // Go down to where R3 arc begins on left edge
                                         path += ` L ${mainWorktopOffsetX} ${perpendicularRectBottomY - leftPerpendicularRectR3}`
+                                        // Include the R3 arc - this draws the rounded corner
+                                        // Control point at corner (mainWorktopOffsetX, perpendicularRectBottomY), end at (mainWorktopOffsetX + leftPerpendicularRectR3, perpendicularRectBottomY) on bottom edge
+                                        path += ` Q ${mainWorktopOffsetX} ${perpendicularRectBottomY} ${mainWorktopOffsetX + leftPerpendicularRectR3} ${perpendicularRectBottomY}`
                                       } else {
                                         // Go all the way to bottom
                                         path += ` L ${mainWorktopOffsetX} ${perpendicularRectBottomY}`
@@ -2399,6 +3134,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     // Start at top-left, include R3 rounding/chamfer if present
                                     // For highlighting, we want to show the full top edge including rounded corners
                                     // For Összemarás Balos/jobbos: L5-L6 and R3 apply to perpendicular rectangle, NOT main worktop
+                                    // For Levágás: R3 and R4 apply to main worktop's top corners - MUST be included in the highlight
                                     if (hasL5L6 && !hasLeftPerpendicularL5L6) {
                                       // Start at left edge where chamfer begins, draw chamfer diagonal to top edge
                                       // Then continue along top edge (the path continues in next section)
@@ -2407,7 +3143,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       path += ` L ${topLeftX + l5Value} ${topLeftY}`
                                       // Path now continues along top edge in the next section (no backtracking)
                                     } else if (r3Value > 0 && !hasLeftPerpendicularR3) {
-                                      // Start at left edge where R3 arc begins, include R3 arc to top edge
+                                      // For Levágás: Start at left edge where R3 arc begins (BELOW the corner), include R3 arc to top edge
+                                      // This ensures the rounded corner is fully visible in the highlight
                                       // Control point at corner (topLeftX, topLeftY), end at (topLeftX + r3Value, topLeftY) on top edge
                                       path = `M ${topLeftX} ${topLeftY + r3Value}`
                                       path += ` Q ${topLeftX} ${topLeftY} ${topLeftX + r3Value} ${topLeftY}`
@@ -2417,6 +3154,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     }
                                     
                                     // Continue along top edge to top-right corner (stopping before rounding/chamfer)
+                                    // For Levágás: Always include R4 rounding if present - MUST be visible in the highlight
                                     if (hasL7L8) {
                                       // Continue to where top-right chamfer begins on top edge
                                       path += ` L ${topRightX - l7Value} ${topRightY}`
@@ -2424,10 +3162,12 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       // Chamfer is a diagonal cut from (topRightX - l7Value, topRightY) to (topRightX, topRightY + l8Value)
                                       path += ` L ${topRightX} ${topRightY + l8Value}`
                                     } else if (r4Value > 0) {
-                                      // Stop before top-right rounding
+                                      // For Levágás: Include the full R4 rounding arc - extend down the right edge to show the complete rounded corner
+                                      // Stop before top-right rounding on the top edge
                                       path += ` L ${topRightX - r4Value} ${topRightY}`
-                                      // Include the R4 arc
+                                      // Include the R4 arc - this draws the rounded corner
                                       // Control point at corner (topRightX, topRightY), end at (topRightX, topRightY + r4Value) on right edge
+                                      // This ensures the rounded corner is fully visible in the highlight
                                       path += ` Q ${topRightX} ${topRightY} ${topRightX} ${topRightY + r4Value}`
                                     } else {
                                       path += ` L ${topRightX} ${topRightY}`
@@ -2473,6 +3213,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const buildBottomEdgePath = () => {
                                     // Bottom edge includes both left corner (R1 or L1/L2) and right corner (R2 or L3/L4)
                                     // For Összemarás Balos: bottom edge stops at x=D (leftPerpendicularRectWidth) where perpendicular worktop starts
+                                    // For Összemarás jobbos: bottom edge is the main worktop's bottom edge (R3 is on perpendicular rectangle, not main worktop)
                                     let path = ''
                                     let bottomEdgeStartX: number
                                     let bottomEdgeEndX: number
@@ -2487,15 +3228,22 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       bottomEdgeEndX = mainWorktopOffsetX + (showCut ? cutPosition : worktopWidth)
                                     }
                                     
-                                    if (hasL1L2 && assemblyType !== 'Összemarás Balos') {
+                                    // For Összemarás jobbos: R3 is on perpendicular rectangle's bottom-left, NOT on main worktop's bottom-left
+                                    // So the main worktop's bottom edge should NOT include R3 rounding
+                                    if (hasL1L2 && assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos') {
                                       // Start from left edge at bottom (mainWorktopOffsetX, bottomY - l2Value), then chamfer to (mainWorktopOffsetX + l1Value, bottomY)
                                       path = `M ${mainWorktopOffsetX} ${bottomY - l2Value}`
                                       path += ` L ${mainWorktopOffsetX + l1Value} ${bottomY}`
                                     } else if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect) {
                                       // For Összemarás Balos: start at x=D (where perpendicular worktop starts)
                                       path = `M ${bottomEdgeStartX} ${bottomY}`
+                                    } else if (assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) {
+                                      // For Összemarás jobbos: main worktop's bottom edge starts at its left edge (leftPerpendicularRectWidth)
+                                      // R3 is on perpendicular rectangle, not main worktop, so start directly at the left edge
+                                      path = `M ${bottomEdgeStartX} ${bottomY}`
                                     } else {
                                       // Start from left edge at bottom (mainWorktopOffsetX, bottomY - r1), then rounding to (mainWorktopOffsetX + r1, bottomY)
+                                      // Only if R1 applies to main worktop (not for jobbos where R3 is on perpendicular rectangle)
                                       path = `M ${mainWorktopOffsetX} ${bottomY - r1}`
                                       if (r1 > 0) {
                                         path += ` Q ${mainWorktopOffsetX} ${bottomY} ${mainWorktopOffsetX + r1} ${bottomY}`
@@ -2618,8 +3366,19 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       // Account for R1 rounding at bottom-right corner
                                       const r1 = leftPerpendicularRectR1
                                       
-                                      // Start from left edge (0, bottomY) and go to right edge
-                                      let path = `M ${rectX} ${bottomY}`
+                                      // For Összemarás jobbos: R3 and L5-L6 apply to bottom-left corner of perpendicular rectangle
+                                      // Start from where R3 or L5-L6 begins (not from the very left edge)
+                                      let path = ''
+                                      if (hasLeftPerpendicularL5L6) {
+                                        // Start at where L5-L6 chamfer begins on bottom edge
+                                        path = `M ${rectX + l5Value} ${bottomY}`
+                                      } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                        // Start at where R3 rounding begins on bottom edge (this is the beginning of the R3 arch)
+                                        path = `M ${rectX + leftPerpendicularRectR3} ${bottomY}`
+                                      } else {
+                                        // Start from left edge if no rounding/chamfer
+                                        path = `M ${rectX} ${bottomY}`
+                                      }
                                       
                                       // Continue to right edge, accounting for R1 rounding or L1-L2 chamfer at bottom-right corner
                                       if (hasLeftPerpendicularL1L2) {
@@ -2651,8 +3410,19 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     // Account for R1 rounding at bottom-right corner
                                     const r1 = leftPerpendicularRectR1
                                     
-                                    // Start from left edge (0, bottomY) and go to right edge
-                                    let path = `M ${rectX} ${bottomY}`
+                                    // For Összemarás Balos: R3 and L5-L6 apply to bottom-left corner of perpendicular rectangle
+                                    // Start from where R3 or L5-L6 begins (not from the very left edge)
+                                    let path = ''
+                                    if (hasLeftPerpendicularL5L6) {
+                                      // Start at where L5-L6 chamfer begins on bottom edge
+                                      path = `M ${rectX + l5Value} ${bottomY}`
+                                    } else if (hasLeftPerpendicularR3 && leftPerpendicularRectR3 > 0) {
+                                      // Start at where R3 rounding begins on bottom edge (this is the beginning of the R3 arch)
+                                      path = `M ${rectX + leftPerpendicularRectR3} ${bottomY}`
+                                    } else {
+                                      // Start from left edge if no rounding/chamfer
+                                      path = `M ${rectX} ${bottomY}`
+                                    }
                                     
                                     // Continue to right edge, accounting for R1 rounding or L1-L2 chamfer at bottom-right corner
                                     if (hasLeftPerpendicularL1L2) {
