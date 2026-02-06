@@ -100,6 +100,17 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     ]
   },
   {
+    label: 'Munkalap',
+    icon: 'ri-table-line',
+    iconColor: '#8E44AD', // Purple for worktop tools
+    children: [
+      {
+        label: 'Munkalap ajánlatok',
+        href: '/worktop-quotes'
+      }
+    ]
+  },
+  {
     label: 'Beszerzés',
     icon: 'ri-shopping-bag-line',
     iconColor: '#9B59B6', // Purple for purchasing

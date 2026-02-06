@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useMemo, useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Box,
   Card,
@@ -138,6 +139,7 @@ interface WorktopConfigClientProps {
   initialCustomers: Customer[]
   initialLinearMaterials: LinearMaterial[]
   initialWorktopConfigFees: WorktopConfigFees | null
+  initialQuoteData?: any | null // Optional: Quote data for editing mode
 }
 
 // Cutout interface
@@ -186,7 +188,9 @@ interface SavedWorktopConfig {
   cutouts: Cutout[]
 }
 
-export default function WorktopConfigClient({ initialCustomers, initialLinearMaterials, initialWorktopConfigFees }: WorktopConfigClientProps) {
+export default function WorktopConfigClient({ initialCustomers, initialLinearMaterials, initialWorktopConfigFees, initialQuoteData }: WorktopConfigClientProps) {
+  const router = useRouter()
+  
   // Fetch-only: we only use initialCustomers from DB, no saves yet
   const customers = initialCustomers || []
   const linearMaterials = initialLinearMaterials || []
@@ -327,6 +331,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     currency: string
   } | null>(null)
 
+  // Quote editing state
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(initialQuoteData?.id || null)
+  const [isSavingQuote, setIsSavingQuote] = useState(false)
+
   const linearMaterialOptions = useMemo(() => {
     return linearMaterials.map(lm => ({
       id: lm.id,
@@ -354,6 +362,75 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       sessionStorage.removeItem('worktop-configs')
     }
   }, [savedConfigs])
+
+  // Load quote data when editing
+  useEffect(() => {
+    if (initialQuoteData) {
+      // Load customer data
+      const customer = customers.find(c => c.id === initialQuoteData.customer_id)
+      if (customer) {
+        setSelectedCustomer(customer)
+        setCustomerData({
+          name: customer.name,
+          email: customer.email || '',
+          phone: customer.mobile || '',
+          discount: customer.discount_percent?.toString() || '0',
+          billing_name: customer.billing_name || '',
+          billing_country: customer.billing_country || 'Magyarország',
+          billing_city: customer.billing_city || '',
+          billing_postal_code: customer.billing_postal_code || '',
+          billing_street: customer.billing_street || '',
+          billing_house_number: customer.billing_house_number || '',
+          billing_tax_number: customer.billing_tax_number || '',
+          billing_company_reg_number: customer.billing_company_reg_number || ''
+        })
+      }
+
+      // Load configs
+      const loadedConfigs: SavedWorktopConfig[] = initialQuoteData.configs.map((config: any) => {
+        const cutouts = config.cutouts ? JSON.parse(config.cutouts) : []
+        return {
+          id: config.id,
+          assemblyType: config.assembly_type,
+          selectedLinearMaterialId: config.linear_material_id,
+          edgeBanding: config.edge_banding as 'LAM' | 'ABS' | 'Nincs élzáró',
+          edgeColorChoice: config.edge_color_choice as 'Színazonos' | 'Egyéb szín',
+          edgeColorText: config.edge_color_text || '',
+          noPostformingEdge: config.no_postforming_edge,
+          edgePosition1: config.edge_position1,
+          edgePosition2: config.edge_position2,
+          edgePosition3: config.edge_position3,
+          edgePosition4: config.edge_position4,
+          edgePosition5: config.edge_position5 || false,
+          edgePosition6: config.edge_position6 || false,
+          dimensionA: config.dimension_a.toString(),
+          dimensionB: config.dimension_b.toString(),
+          dimensionC: config.dimension_c?.toString() || '',
+          dimensionD: config.dimension_d?.toString() || '',
+          dimensionE: config.dimension_e?.toString() || '',
+          dimensionF: config.dimension_f?.toString() || '',
+          roundingR1: config.rounding_r1?.toString() || '',
+          roundingR2: config.rounding_r2?.toString() || '',
+          roundingR3: config.rounding_r3?.toString() || '',
+          roundingR4: config.rounding_r4?.toString() || '',
+          cutL1: config.cut_l1?.toString() || '',
+          cutL2: config.cut_l2?.toString() || '',
+          cutL3: config.cut_l3?.toString() || '',
+          cutL4: config.cut_l4?.toString() || '',
+          cutL5: config.cut_l5?.toString() || '',
+          cutL6: config.cut_l6?.toString() || '',
+          cutL7: config.cut_l7?.toString() || '',
+          cutL8: config.cut_l8?.toString() || '',
+          cutouts: cutouts
+        }
+      })
+      setSavedConfigs(loadedConfigs)
+
+      // Recalculate quote from loaded data
+      // This will be done when user clicks "Ajánlat generálás" or we can auto-calculate
+      // For now, we'll let the user regenerate the quote
+    }
+  }, [initialQuoteData, customers])
 
   // Helper function to validate rounding values against B (for Levágás only)
   const validateRoundingValues = (r1: string, r2: string, r3: string, r4: string, b: string, showErrors: boolean = false): boolean => {
@@ -923,6 +1000,95 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   }
 
   // Calculate quote for Levágás, Összemarás Balos, and Összemarás jobbos types
+  // Save Quote function
+  const saveQuote = async () => {
+    if (!quoteResult) {
+      toast.error('Futtassa le az árajánlat generálást mentés előtt!')
+      return
+    }
+
+    if (!customerData.name.trim()) {
+      toast.error('Kérjük, töltse ki a megrendelő nevét!')
+      return
+    }
+
+    if (savedConfigs.length === 0) {
+      toast.error('Nincs mentett konfiguráció!')
+      return
+    }
+
+    setIsSavingQuote(true)
+
+    try {
+      // Prepare customer data
+      const customerPayload = {
+        id: selectedCustomer?.id || null,
+        name: customerData.name,
+        email: customerData.email,
+        phone: customerData.phone,
+        discount: customerData.discount,
+        billing_name: customerData.billing_name,
+        billing_country: customerData.billing_country,
+        billing_city: customerData.billing_city,
+        billing_postal_code: customerData.billing_postal_code,
+        billing_street: customerData.billing_street,
+        billing_house_number: customerData.billing_house_number,
+        billing_tax_number: customerData.billing_tax_number,
+        billing_company_reg_number: customerData.billing_company_reg_number
+      }
+
+      // Prepare quote calculations
+      const quoteCalculationsPayload = {
+        grand_total_net: quoteResult.grand_total_net,
+        grand_total_vat: quoteResult.grand_total_vat,
+        grand_total_gross: quoteResult.grand_total_gross,
+        materials: quoteResult.materials
+      }
+
+      // Call API to save worktop quote
+      const response = await fetch('/api/worktop-quotes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          quoteId: editingQuoteId, // null for new quote, UUID for editing
+          customerData: customerPayload,
+          savedConfigs: savedConfigs,
+          quoteCalculations: quoteCalculationsPayload
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save worktop quote')
+      }
+
+      const result = await response.json()
+      
+      // Different message for edit vs create
+      if (editingQuoteId) {
+        toast.success(`Munkalap ajánlat sikeresen frissítve: ${result.quoteNumber}`)
+        // Redirect back to detail page after successful update
+        setTimeout(() => {
+          router.push(`/worktop-quotes/${editingQuoteId}`)
+        }, 1500)
+      } else {
+        toast.success(`Munkalap ajánlat sikeresen mentve: ${result.quoteNumber}`)
+        // Redirect to detail page
+        setTimeout(() => {
+          router.push(`/worktop-quotes/${result.quoteId}`)
+        }, 1500)
+      }
+      
+    } catch (err) {
+      console.error('Error saving worktop quote:', err)
+      toast.error(`Hiba az árajánlat mentése során: ${err instanceof Error ? err.message : 'Ismeretlen hiba'}`)
+    } finally {
+      setIsSavingQuote(false)
+    }
+  }
+
   const calculateQuote = () => {
     // Filter Levágás, Összemarás Balos, and Összemarás jobbos type configs
     const relevantConfigs = savedConfigs.filter(config => 
@@ -6994,7 +7160,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               </TableBody>
             </Table>
           </TableContainer>
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center', gap: 2 }}>
             <Button
               variant="contained"
               color="warning"
@@ -7002,6 +7168,16 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             >
               Ajánlat generálás
             </Button>
+            {quoteResult && (
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={saveQuote}
+                disabled={isSavingQuote}
+              >
+                {isSavingQuote ? 'Mentés...' : 'Ajánlat mentés'}
+              </Button>
+            )}
           </Box>
         </Box>
       )}

@@ -6591,3 +6591,373 @@ export async function getClientOfferById(id: string) {
     return null
   }
 }
+
+// ============================================
+// Worktop Quotes SSR functions
+// ============================================
+
+export async function getWorktopQuotesWithPagination(page: number = 1, limit: number = 20, searchTerm?: string) {
+  const startTime = performance.now()
+  
+  console.log(`[SSR] Fetching worktop quotes page ${page}, limit ${limit}, search: "${searchTerm || 'none'}"`)
+
+  try {
+    // Check if table exists by attempting a simple query first
+    const { error: tableCheckError } = await supabaseServer
+      .from('worktop_quotes')
+      .select('id')
+      .limit(0)
+    
+    if (tableCheckError) {
+      const errorCode = tableCheckError.code || (tableCheckError as any)?.code
+      if (errorCode === '42P01') {
+        console.warn('[SSR] Worktop quotes table does not exist yet. Please run the migration.')
+        return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+      }
+    }
+    const offset = (page - 1) * limit
+    
+    // If search term is provided, find all matching quote IDs first, then paginate
+    let allMatchingQuoteIds: string[] = []
+    if (searchTerm && searchTerm.trim()) {
+      const trimmedSearch = searchTerm.trim()
+      
+      // Find quotes matching customer name
+      const { data: customerMatches, error: customerError } = await supabaseServer
+        .from('worktop_quotes')
+        .select('id, customers!inner(name)')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .ilike('customers.name', `%${trimmedSearch}%`)
+      
+      if (customerError) {
+        const errorCode = customerError.code || (customerError as any)?.code
+        // If table doesn't exist, skip search
+        if (errorCode === '42P01') {
+          console.warn('[SSR] Worktop quotes table not found. Skipping customer search.')
+        } else {
+          console.error('[SSR] Error searching worktop quotes by customer name:', customerError)
+        }
+      }
+      
+      // Also search by quote_number
+      const { data: quoteNumberMatches, error: quoteNumberError } = await supabaseServer
+        .from('worktop_quotes')
+        .select('id')
+        .eq('status', 'draft')
+        .is('deleted_at', null)
+        .ilike('quote_number', `%${trimmedSearch}%`)
+      
+      if (quoteNumberError) {
+        const errorCode = quoteNumberError.code || (quoteNumberError as any)?.code
+        // If table doesn't exist, skip search
+        if (errorCode === '42P01') {
+          console.warn('[SSR] Worktop quotes table not found. Skipping quote number search.')
+        } else {
+          console.error('[SSR] Error searching worktop quotes by quote number:', quoteNumberError)
+        }
+      }
+      
+      // Combine and deduplicate all matching IDs
+      const customerIds = customerMatches?.map(q => q.id) || []
+      const quoteNumberIds = quoteNumberMatches?.map(q => q.id) || []
+      allMatchingQuoteIds = [...new Set([...customerIds, ...quoteNumberIds])]
+      
+      console.log(`[SSR] Search results: ${customerIds.length} customer matches, ${quoteNumberIds.length} quote number matches, ${allMatchingQuoteIds.length} total unique matches`)
+      
+      if (allMatchingQuoteIds.length === 0) {
+        // No matches found, return empty result
+        return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+      }
+    }
+    
+    // Build the main query
+    let query = supabaseServer
+      .from('worktop_quotes')
+      .select(`
+        id,
+        quote_number,
+        status,
+        final_total_after_discount,
+        updated_at,
+        customers!inner(
+          id,
+          name
+        )
+      `, { count: 'exact' })
+      .eq('status', 'draft') // Only show draft quotes, not orders
+      .is('deleted_at', null)
+
+    // Apply search filter - if we have matching IDs, filter by them
+    if (searchTerm && searchTerm.trim() && allMatchingQuoteIds.length > 0) {
+      query = query.in('id', allMatchingQuoteIds)
+    }
+
+    // Apply ordering and pagination AFTER all filters
+    query = query
+      .order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    const { data: quotes, error: quotesError, count } = await query
+
+    if (quotesError) {
+      // PGRST116: No rows found (table exists but empty)
+      // 42P01: Table doesn't exist (migration not run yet)
+      const errorCode = quotesError.code || (quotesError as any)?.code
+      if (errorCode === 'PGRST116' || errorCode === '42P01') {
+        console.warn('[SSR] Worktop quotes table not found or empty. Using fallback defaults.', quotesError.message || JSON.stringify(quotesError))
+      } else {
+        console.error('[SSR] Error fetching worktop quotes:', {
+          code: errorCode,
+          message: quotesError.message,
+          details: quotesError,
+          fullError: JSON.stringify(quotesError)
+        })
+      }
+      logTiming('Worktop Quotes Fetch Failed', startTime)
+      return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    // Transform the data to flatten customer name
+    const transformedQuotes = quotes?.map(quote => ({
+      id: quote.id,
+      quote_number: quote.quote_number,
+      status: quote.status,
+      source: 'internal', // Worktop quotes are always internal
+      customer_name: quote.customers?.name || 'Unknown Customer',
+      payment_method_id: null, // Worktop quotes don't have payment_method_id
+      payment_method_name: null,
+      final_total_after_discount: quote.final_total_after_discount,
+      updated_at: quote.updated_at
+    })) || []
+
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    logTiming('Worktop Quotes Fetch', startTime, `Fetched ${transformedQuotes.length} of ${totalCount} quotes`)
+
+    return {
+      quotes: transformedQuotes,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    // Check if it's a table not found error
+    const errorCode = (error as any)?.code || (error as any)?.error?.code
+    if (errorCode === '42P01' || (error as any)?.message?.includes('does not exist')) {
+      console.warn('[SSR] Worktop quotes table does not exist yet. Please run the migration.')
+    } else {
+      console.error('[SSR] Exception fetching worktop quotes:', error)
+    }
+    logTiming('Worktop Quotes Fetch Error', startTime)
+    return { quotes: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}
+
+export async function getWorktopQuoteById(quoteId: string) {
+  const startTime = performance.now()
+  
+  console.log(`[SSR] Fetching worktop quote ${quoteId}`)
+
+  try {
+    // Fetch all data in parallel
+    const parallelStartTime = performance.now()
+    
+    const [quoteResult, configsResult, pricingResult] = await Promise.all([
+      // 1. Quote with customer data and production machine
+      supabaseServer
+        .from('worktop_quotes')
+        .select(`
+          id,
+          quote_number,
+          order_number,
+          status,
+          payment_status,
+          customer_id,
+          discount_percent,
+          production_machine_id,
+          production_date,
+          barcode,
+          comment,
+          total_net,
+          total_vat,
+          total_gross,
+          final_total_after_discount,
+          currency_id,
+          vat_id,
+          created_at,
+          updated_at,
+          customers(
+            id,
+            name,
+            email,
+            mobile,
+            discount_percent,
+            billing_name,
+            billing_country,
+            billing_city,
+            billing_postal_code,
+            billing_street,
+            billing_house_number,
+            billing_tax_number,
+            billing_company_reg_number
+          ),
+          production_machines(
+            id,
+            machine_name
+          ),
+          currencies(
+            id,
+            name
+          ),
+          vat(
+            id,
+            kulcs
+          )
+        `)
+        .eq('id', quoteId)
+        .is('deleted_at', null)
+        .single(),
+
+      // 2. Configs
+      supabaseServer
+        .from('worktop_quote_configs')
+        .select(`
+          id,
+          config_order,
+          assembly_type,
+          linear_material_id,
+          linear_material_name,
+          edge_banding,
+          edge_color_choice,
+          edge_color_text,
+          no_postforming_edge,
+          edge_position1,
+          edge_position2,
+          edge_position3,
+          edge_position4,
+          edge_position5,
+          edge_position6,
+          dimension_a,
+          dimension_b,
+          dimension_c,
+          dimension_d,
+          dimension_e,
+          dimension_f,
+          rounding_r1,
+          rounding_r2,
+          rounding_r3,
+          rounding_r4,
+          cut_l1,
+          cut_l2,
+          cut_l3,
+          cut_l4,
+          cut_l5,
+          cut_l6,
+          cut_l7,
+          cut_l8,
+          cutouts,
+          linear_materials(id, name)
+        `)
+        .eq('worktop_quote_id', quoteId)
+        .order('config_order', { ascending: true }),
+
+      // 3. Pricing
+      supabaseServer
+        .from('worktop_quote_materials_pricing')
+        .select(`
+          id,
+          config_order,
+          material_id,
+          material_name,
+          currency,
+          on_stock,
+          anyag_koltseg_net,
+          anyag_koltseg_vat,
+          anyag_koltseg_gross,
+          anyag_koltseg_details,
+          kereszt_vagas_net,
+          kereszt_vagas_vat,
+          kereszt_vagas_gross,
+          kereszt_vagas_details,
+          hosszanti_vagas_net,
+          hosszanti_vagas_vat,
+          hosszanti_vagas_gross,
+          hosszanti_vagas_details,
+          ives_vagas_net,
+          ives_vagas_vat,
+          ives_vagas_gross,
+          ives_vagas_details,
+          szogvagas_net,
+          szogvagas_vat,
+          szogvagas_gross,
+          szogvagas_details,
+          kivagas_net,
+          kivagas_vat,
+          kivagas_gross,
+          kivagas_details,
+          elzaro_net,
+          elzaro_vat,
+          elzaro_gross,
+          elzaro_details,
+          osszemaras_net,
+          osszemaras_vat,
+          osszemaras_gross,
+          osszemaras_details,
+          total_net,
+          total_vat,
+          total_gross,
+          linear_materials(id, name)
+        `)
+        .eq('worktop_quote_id', quoteId)
+        .order('config_order', { ascending: true })
+    ])
+
+    logTiming('Parallel Worktop Quote Queries Complete', parallelStartTime, 'all 3 queries executed in parallel')
+
+    // Extract data and errors from results
+    const { data: quote, error: quoteError } = quoteResult
+    const { data: configs, error: configsError } = configsResult
+    const { data: pricingData, error: pricingError } = pricingResult
+
+    // Handle errors
+    if (quoteError) {
+      // PGRST116: No rows found (table exists but empty)
+      // 42P01: Table doesn't exist (migration not run yet)
+      if (quoteError.code === 'PGRST116' || quoteError.code === '42P01') {
+        console.warn('[SSR] Worktop quotes table not found or empty. Using fallback defaults.', quoteError.message)
+      } else {
+        console.error('[SSR] Error fetching worktop quote:', quoteError)
+      }
+      logTiming('Worktop Quote Fetch Failed', startTime)
+      return null
+    }
+
+    if (!quote) {
+      console.error('[SSR] Worktop quote not found:', quoteId)
+      logTiming('Worktop Quote Not Found', startTime)
+      return null
+    }
+
+    if (configsError) {
+      console.error('[SSR] Error fetching worktop quote configs:', configsError)
+    }
+
+    if (pricingError) {
+      console.error('[SSR] Error fetching worktop quote pricing:', pricingError)
+    }
+
+    logTiming('Worktop Quote Fetch Total', startTime, `Fetched quote with ${configs?.length || 0} configs and ${pricingData?.length || 0} pricing records`)
+
+    return {
+      ...quote,
+      configs: configs || [],
+      pricing: pricingData || []
+    }
+  } catch (error) {
+    console.error('[SSR] Exception fetching worktop quote by ID:', error)
+    logTiming('Worktop Quote Fetch Error', startTime)
+    return null
+  }
+}
