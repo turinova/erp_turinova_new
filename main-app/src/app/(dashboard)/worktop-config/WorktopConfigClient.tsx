@@ -35,6 +35,7 @@ import type { AccordionSummaryProps } from '@mui/material/AccordionSummary'
 import type { AccordionDetailsProps } from '@mui/material/AccordionDetails'
 import { toast } from 'react-toastify'
 import { formatPrice } from '@/lib/pricing/quoteCalculations'
+import { calculateVat, calculateGross, roundToWholeNumber } from '@/lib/pricing/hungarianRounding'
 
 // Styled components copied from Opti for identical look & feel
 const Accordion = styled(MuiAccordion)<AccordionProps>(() => ({
@@ -103,9 +104,40 @@ interface LinearMaterial {
   currency_name?: string
 }
 
+interface WorktopConfigFees {
+  id: string
+  kereszt_vagas_fee: number
+  hosszanti_vagas_fee_per_meter: number
+  ives_vagas_fee: number
+  szogvagas_fee: number
+  kivagas_fee: number
+  elzaro_fee_per_meter: number
+  osszemaras_fee: number
+  kereszt_vagas_fee_gross?: number | null
+  hosszanti_vagas_fee_per_meter_gross?: number | null
+  ives_vagas_fee_gross?: number | null
+  szogvagas_fee_gross?: number | null
+  kivagas_fee_gross?: number | null
+  elzaro_fee_per_meter_gross?: number | null
+  osszemaras_fee_gross?: number | null
+  currency_id: string
+  vat_id: string
+  currencies: {
+    id: string
+    name: string
+  } | null
+  vat: {
+    id: string
+    kulcs: number
+  } | null
+  created_at: string | null
+  updated_at: string | null
+}
+
 interface WorktopConfigClientProps {
   initialCustomers: Customer[]
   initialLinearMaterials: LinearMaterial[]
+  initialWorktopConfigFees: WorktopConfigFees | null
 }
 
 // Cutout interface
@@ -154,10 +186,34 @@ interface SavedWorktopConfig {
   cutouts: Cutout[]
 }
 
-export default function WorktopConfigClient({ initialCustomers, initialLinearMaterials }: WorktopConfigClientProps) {
+export default function WorktopConfigClient({ initialCustomers, initialLinearMaterials, initialWorktopConfigFees }: WorktopConfigClientProps) {
   // Fetch-only: we only use initialCustomers from DB, no saves yet
   const customers = initialCustomers || []
   const linearMaterials = initialLinearMaterials || []
+  
+  // Worktop config fees with fallback to hardcoded defaults if not in DB
+  const worktopConfigFees = useMemo(() => {
+    if (initialWorktopConfigFees) {
+      return initialWorktopConfigFees
+    }
+    // Fallback to hardcoded defaults if DB doesn't have fees yet
+    return {
+      id: '',
+      kereszt_vagas_fee: 2100,
+      hosszanti_vagas_fee_per_meter: 1500,
+      ives_vagas_fee: 13000,
+      szogvagas_fee: 3000,
+      kivagas_fee: 10000,
+      elzaro_fee_per_meter: 1800,
+      osszemaras_fee: 26000,
+      currency_id: '',
+      vat_id: '',
+      currencies: { id: '', name: 'HUF' },
+      vat: { id: '', kulcs: 27 },
+      created_at: null,
+      updated_at: null
+    }
+  }, [initialWorktopConfigFees])
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [customerData, setCustomerData] = useState({
@@ -182,6 +238,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     'Összemarás jobbos',
     'Összemarás U alak (Nem működik még)'
   ]
+  // Filter out "Összemarás U alak" option (can be restored by removing the filter)
+  const visibleAssemblyTypes = assemblyTypes.filter(type => type !== 'Összemarás U alak (Nem működik még)')
   const [assemblyType, setAssemblyType] = useState<string | null>(null)
   const [selectedLinearMaterialId, setSelectedLinearMaterialId] = useState<string | null>(null)
   const [edgeBanding, setEdgeBanding] = useState<'LAM' | 'ABS' | 'Nincs élzáró'>('Nincs élzáró')
@@ -801,6 +859,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       toast.success('Konfiguráció sikeresen mentve!')
     }
 
+    // Clear quote result when config is modified (like opti page)
+    setQuoteResult(null)
+
     // Clear edit mode and form to hide visualization
     setEditingConfigId(null)
     clearWorktopConfigForm()
@@ -856,6 +917,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     if (editingConfigId === configId) {
       setEditingConfigId(null)
     }
+    // Clear quote result when config is deleted (like opti page)
+    setQuoteResult(null)
     toast.success('Konfiguráció sikeresen törölve!')
   }
 
@@ -1012,60 +1075,77 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
 
         // Kereszt vágás (only for Levágás, not for Balos or jobbos)
         if (!isOsszemaras) {
-          keresztVagasNet += 2100
-          keresztVagasDetails.push(`2100`)
+          // Use gross price from database, calculate net
+          const keresztVagasFeeGross = worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100)
+          const keresztVagasFee = Math.round(keresztVagasFeeGross / (1 + vatPercent / 100))
+          keresztVagasNet += keresztVagasFee
+          keresztVagasDetails.push(`${formatPrice(keresztVagasFeeGross, currency)}`)
         }
 
         // Hosszanti vágás
+        // Use gross price from database, calculate net
+        const hosszantiVagasFeePerMeterGross = worktopConfigFees.hosszanti_vagas_fee_per_meter_gross ?? worktopConfigFees.hosszanti_vagas_fee_per_meter * (1 + vatPercent / 100)
+        const hosszantiVagasFeePerMeter = Math.round(hosszantiVagasFeePerMeterGross / (1 + vatPercent / 100))
         if (isOsszemaras) {
-          // For Balos: if D < width: (C-D) × 1500, if A < width: A × 1500
+          // For Balos: if D < width: (C-D) × fee_per_meter, if A < width: A × fee_per_meter
           if (dValue < material.width) {
             const cdMeters = (cValue - dValue) / 1000
-            const cost = cdMeters * 1500
+            const cost = cdMeters * hosszantiVagasFeePerMeter
+            const costGross = cdMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
-            hosszantiVagasDetails.push(`${cdMeters.toFixed(2)}m × 1500 = ${formatPrice(cost, currency)}`)
+            hosszantiVagasDetails.push(`${cdMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
           if (aValue < material.width) {
-            const cost = aMeters * 1500
+            const cost = aMeters * hosszantiVagasFeePerMeter
+            const costGross = aMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
-            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × 1500 = ${formatPrice(cost, currency)}`)
+            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
         } else {
-          // For Levágás: if B < width: A × 1500
+          // For Levágás: if B < width: A × fee_per_meter
           if (bValue < material.width) {
-            const cost = aMeters * 1500
+            const cost = aMeters * hosszantiVagasFeePerMeter
+            const costGross = aMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
-            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × 1500 = ${formatPrice(cost, currency)}`)
+            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
         }
 
-        // Íves vágás (each R1, R2, R3, R4 that has value = 13000)
+        // Íves vágás (each R1, R2, R3, R4 that has value)
+        // Use gross price from database, calculate net
+        const ivesVagasFeeGross = worktopConfigFees.ives_vagas_fee_gross ?? worktopConfigFees.ives_vagas_fee * (1 + vatPercent / 100)
+        const ivesVagasFee = Math.round(ivesVagasFeeGross / (1 + vatPercent / 100))
         const r1Value = parseFloat(config.roundingR1) || 0
         const r2Value = parseFloat(config.roundingR2) || 0
         const r3Value = parseFloat(config.roundingR3) || 0
         const r4Value = parseFloat(config.roundingR4) || 0
         const roundingValues: string[] = []
         if (r1Value > 0) {
-          ivesVagasNet += 13000
+          ivesVagasNet += ivesVagasFee
           roundingValues.push('R1')
         }
         if (r2Value > 0) {
-          ivesVagasNet += 13000
+          ivesVagasNet += ivesVagasFee
           roundingValues.push('R2')
         }
         if (r3Value > 0) {
-          ivesVagasNet += 13000
+          ivesVagasNet += ivesVagasFee
           roundingValues.push('R3')
         }
         if (r4Value > 0) {
-          ivesVagasNet += 13000
+          ivesVagasNet += ivesVagasFee
           roundingValues.push('R4')
         }
         if (roundingValues.length > 0) {
-          ivesVagasDetails.push(`${roundingValues.join(', ')}: ${roundingValues.length} × 13000 = ${formatPrice(roundingValues.length * 13000, currency)}`)
+          const totalIvesVagas = roundingValues.length * ivesVagasFee
+          const totalIvesVagasGross = roundingValues.length * ivesVagasFeeGross
+          ivesVagasDetails.push(`${roundingValues.join(', ')}: ${roundingValues.length} × ${formatPrice(ivesVagasFeeGross, currency)} = ${formatPrice(totalIvesVagasGross, currency)}`)
         }
 
-        // Szögvágás (each group L1-L2, L3-L4, L5-L6, L7-L8 = 3000)
+        // Szögvágás (each group L1-L2, L3-L4, L5-L6, L7-L8)
+        // Use gross price from database, calculate net
+        const szogvagasFeeGross = worktopConfigFees.szogvagas_fee_gross ?? worktopConfigFees.szogvagas_fee * (1 + vatPercent / 100)
+        const szogvagasFee = Math.round(szogvagasFeeGross / (1 + vatPercent / 100))
         const l1Value = parseFloat(config.cutL1) || 0
         const l2Value = parseFloat(config.cutL2) || 0
         const l3Value = parseFloat(config.cutL3) || 0
@@ -1076,31 +1156,37 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const l8Value = parseFloat(config.cutL8) || 0
         const angleGroups: string[] = []
         if (l1Value > 0 && l2Value > 0) {
-          szogvagasNet += 3000
+          szogvagasNet += szogvagasFee
           angleGroups.push('L1-L2')
         }
         if (l3Value > 0 && l4Value > 0) {
-          szogvagasNet += 3000
+          szogvagasNet += szogvagasFee
           angleGroups.push('L3-L4')
         }
         if (l5Value > 0 && l6Value > 0) {
-          szogvagasNet += 3000
+          szogvagasNet += szogvagasFee
           angleGroups.push('L5-L6')
         }
         if (l7Value > 0 && l8Value > 0) {
-          szogvagasNet += 3000
+          szogvagasNet += szogvagasFee
           angleGroups.push('L7-L8')
         }
         if (angleGroups.length > 0) {
-          szogvagasDetails.push(`${angleGroups.join(', ')}: ${angleGroups.length} × 3000 = ${formatPrice(angleGroups.length * 3000, currency)}`)
+          const totalSzogvagas = angleGroups.length * szogvagasFee
+          const totalSzogvagasGross = angleGroups.length * szogvagasFeeGross
+          szogvagasDetails.push(`${angleGroups.join(', ')}: ${angleGroups.length} × ${formatPrice(szogvagasFeeGross, currency)} = ${formatPrice(totalSzogvagasGross, currency)}`)
         }
 
-        // Kivágás (each cutout = 10000)
+        // Kivágás (each cutout)
+        // Use gross price from database, calculate net
+        const kivagasFeeGross = worktopConfigFees.kivagas_fee_gross ?? worktopConfigFees.kivagas_fee * (1 + vatPercent / 100)
+        const kivagasFee = Math.round(kivagasFeeGross / (1 + vatPercent / 100))
         const cutoutCount = config.cutouts.length
         if (cutoutCount > 0) {
-          const cost = cutoutCount * 10000
+          const cost = cutoutCount * kivagasFee
+          const costGross = cutoutCount * kivagasFeeGross
           kivagasNet += cost
-          kivagasDetails.push(`${cutoutCount} × 10000 = ${formatPrice(cost, currency)}`)
+          kivagasDetails.push(`${cutoutCount} × ${formatPrice(kivagasFeeGross, currency)} = ${formatPrice(costGross, currency)}`)
         }
 
         // Élzáró
@@ -1127,43 +1213,85 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         }
       
         // Calculate élzáró total for this config
+        // Use gross price from database, calculate net
+        const elzaroFeePerMeterGross = worktopConfigFees.elzaro_fee_per_meter_gross ?? worktopConfigFees.elzaro_fee_per_meter * (1 + vatPercent / 100)
+        const elzaroFeePerMeter = Math.round(elzaroFeePerMeterGross / (1 + vatPercent / 100))
+        let elzaroNetGross = 0
         if (totalElzaroMeters > 0) {
-          elzaroNet = totalElzaroMeters * 1800
+          elzaroNet = totalElzaroMeters * elzaroFeePerMeter
+          elzaroNetGross = totalElzaroMeters * elzaroFeePerMeterGross
         }
 
-        // Calculate Összemarás fee for Balos and jobbos (always 1 × 26,000 HUF)
+        // Calculate Összemarás fee for Balos and jobbos
+        let osszemarasFeeGross = 0
         if (isOsszemaras) {
-          osszemarasNet = 26000
+          // Use gross price from database, calculate net
+          osszemarasFeeGross = worktopConfigFees.osszemaras_fee_gross ?? worktopConfigFees.osszemaras_fee * (1 + vatPercent / 100)
+          osszemarasNet = Math.round(osszemarasFeeGross / (1 + vatPercent / 100))
         }
 
-        // Calculate VAT and gross for each category
-        const anyagKoltsegVat = anyagKoltsegNet * (vatPercent / 100)
-        const anyagKoltsegGross = anyagKoltsegNet + anyagKoltsegVat
+        // Round all net amounts first (Hungarian rounding)
+        const roundedAnyagKoltsegNet = roundToWholeNumber(anyagKoltsegNet)
+        const roundedKeresztVagasNet = roundToWholeNumber(keresztVagasNet)
+        const roundedHosszantiVagasNet = roundToWholeNumber(hosszantiVagasNet)
+        const roundedIvesVagasNet = roundToWholeNumber(ivesVagasNet)
+        const roundedSzogvagasNet = roundToWholeNumber(szogvagasNet)
+        const roundedKivagasNet = roundToWholeNumber(kivagasNet)
+        const roundedElzaroNet = roundToWholeNumber(elzaroNet)
+        const roundedOsszemarasNet = roundToWholeNumber(osszemarasNet)
 
-        const keresztVagasVat = keresztVagasNet * (vatPercent / 100)
-        const keresztVagasGross = keresztVagasNet + keresztVagasVat
+        // Calculate VAT and gross for each category using Hungarian rounding
+        // For fees with fixed gross prices, use them directly to avoid rounding errors
+        const vatRate = vatPercent / 100
+        const anyagKoltsegVat = calculateVat(roundedAnyagKoltsegNet, vatRate)
+        const anyagKoltsegGross = calculateGross(roundedAnyagKoltsegNet, anyagKoltsegVat)
 
-        const hosszantiVagasVat = hosszantiVagasNet * (vatPercent / 100)
-        const hosszantiVagasGross = hosszantiVagasNet + hosszantiVagasVat
+        // Kereszt vágás: use gross price directly from database
+        const keresztVagasGross = roundedKeresztVagasNet > 0 
+          ? roundToWholeNumber(worktopConfigFees.kereszt_vagas_fee_gross ?? roundedKeresztVagasNet * (1 + vatRate))
+          : 0
+        const keresztVagasVat = roundToWholeNumber(keresztVagasGross - roundedKeresztVagasNet)
 
-        const ivesVagasVat = ivesVagasNet * (vatPercent / 100)
-        const ivesVagasGross = ivesVagasNet + ivesVagasVat
+        // Hosszanti vágás: calculate gross from gross per meter
+        const hosszantiVagasGross = roundedHosszantiVagasNet > 0 && hosszantiVagasFeePerMeter > 0
+          ? roundToWholeNumber((roundedHosszantiVagasNet / hosszantiVagasFeePerMeter) * hosszantiVagasFeePerMeterGross)
+          : roundToWholeNumber(roundedHosszantiVagasNet * (1 + vatRate))
+        const hosszantiVagasVat = roundToWholeNumber(hosszantiVagasGross - roundedHosszantiVagasNet)
 
-        const szogvagasVat = szogvagasNet * (vatPercent / 100)
-        const szogvagasGross = szogvagasNet + szogvagasVat
+        // Íves vágás: calculate gross from gross fee
+        const ivesVagasGross = roundedIvesVagasNet > 0
+          ? roundToWholeNumber((roundedIvesVagasNet / ivesVagasFee) * ivesVagasFeeGross)
+          : 0
+        const ivesVagasVat = roundToWholeNumber(ivesVagasGross - roundedIvesVagasNet)
 
-        const kivagasVat = kivagasNet * (vatPercent / 100)
-        const kivagasGross = kivagasNet + kivagasVat
+        // Szögvágás: calculate gross from gross fee
+        const szogvagasGross = roundedSzogvagasNet > 0
+          ? roundToWholeNumber((roundedSzogvagasNet / szogvagasFee) * szogvagasFeeGross)
+          : 0
+        const szogvagasVat = roundToWholeNumber(szogvagasGross - roundedSzogvagasNet)
 
-        const elzaroVat = elzaroNet * (vatPercent / 100)
-        const elzaroGross = elzaroNet + elzaroVat
+        // Kivágás: calculate gross from gross fee
+        const kivagasGross = roundedKivagasNet > 0
+          ? roundToWholeNumber((roundedKivagasNet / kivagasFee) * kivagasFeeGross)
+          : 0
+        const kivagasVat = roundToWholeNumber(kivagasGross - roundedKivagasNet)
 
-        const osszemarasVat = osszemarasNet * (vatPercent / 100)
-        const osszemarasGross = osszemarasNet + osszemarasVat
+        // Élzáró: use calculated gross from gross per meter
+        const elzaroGross = roundedElzaroNet > 0
+          ? roundToWholeNumber(elzaroNetGross)
+          : 0
+        const elzaroVat = roundToWholeNumber(elzaroGross - roundedElzaroNet)
 
-        const totalNet = anyagKoltsegNet + keresztVagasNet + hosszantiVagasNet + ivesVagasNet + szogvagasNet + kivagasNet + elzaroNet + osszemarasNet
-        const totalVat = totalNet * (vatPercent / 100)
-        const totalGross = totalNet + totalVat
+        // Összemarás: use gross price directly from database (preserves exact 26000)
+        const osszemarasGross = roundedOsszemarasNet > 0
+          ? roundToWholeNumber(osszemarasFeeGross)
+          : 0
+        const osszemarasVat = roundToWholeNumber(osszemarasGross - roundedOsszemarasNet)
+
+        // Calculate totals (sum of rounded values)
+        const totalNet = roundedAnyagKoltsegNet + roundedKeresztVagasNet + roundedHosszantiVagasNet + roundedIvesVagasNet + roundedSzogvagasNet + roundedKivagasNet + roundedElzaroNet + roundedOsszemarasNet
+        const totalVat = anyagKoltsegVat + keresztVagasVat + hosszantiVagasVat + ivesVagasVat + szogvagasVat + kivagasVat + elzaroVat + osszemarasVat
+        const totalGross = roundToWholeNumber(totalNet + totalVat)
 
         grandTotalNet += totalNet
         grandTotalVat += totalVat
@@ -1178,38 +1306,38 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           material_name: materialName,
           currency,
           on_stock: material.on_stock || false,
-          anyag_koltseg_net: anyagKoltsegNet,
+          anyag_koltseg_net: roundedAnyagKoltsegNet,
           anyag_koltseg_vat: anyagKoltsegVat,
           anyag_koltseg_gross: anyagKoltsegGross,
           anyag_koltseg_details: anyagKoltsegDetails.join('; '),
-          kereszt_vagas_net: keresztVagasNet,
+          kereszt_vagas_net: roundedKeresztVagasNet,
           kereszt_vagas_vat: keresztVagasVat,
           kereszt_vagas_gross: keresztVagasGross,
-          kereszt_vagas_details: keresztVagasDetails.length > 0 ? `${keresztVagasDetails.length} × 2100 = ${formatPrice(keresztVagasNet, currency)}` : '',
-          hosszanti_vagas_net: hosszantiVagasNet,
+          kereszt_vagas_details: keresztVagasDetails.length > 0 ? `${keresztVagasDetails.length} × ${formatPrice(worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100), currency)} = ${formatPrice(keresztVagasGross, currency)}` : '',
+          hosszanti_vagas_net: roundedHosszantiVagasNet,
           hosszanti_vagas_vat: hosszantiVagasVat,
           hosszanti_vagas_gross: hosszantiVagasGross,
           hosszanti_vagas_details: hosszantiVagasDetails.join('; '),
-          ives_vagas_net: ivesVagasNet,
+          ives_vagas_net: roundedIvesVagasNet,
           ives_vagas_vat: ivesVagasVat,
           ives_vagas_gross: ivesVagasGross,
           ives_vagas_details: ivesVagasDetails.join('; '),
-          szogvagas_net: szogvagasNet,
+          szogvagas_net: roundedSzogvagasNet,
           szogvagas_vat: szogvagasVat,
           szogvagas_gross: szogvagasGross,
           szogvagas_details: szogvagasDetails.join('; '),
-          kivagas_net: kivagasNet,
+          kivagas_net: roundedKivagasNet,
           kivagas_vat: kivagasVat,
           kivagas_gross: kivagasGross,
           kivagas_details: kivagasDetails.join('; '),
-          elzaro_net: elzaroNet,
+          elzaro_net: roundedElzaroNet,
           elzaro_vat: elzaroVat,
           elzaro_gross: elzaroGross,
-          elzaro_details: totalElzaroMeters > 0 ? `${totalElzaroMeters.toFixed(2)}m × ${formatPrice(1800, currency)} = ${formatPrice(elzaroNet, currency)}` : '',
-          osszemaras_net: osszemarasNet,
+          elzaro_details: totalElzaroMeters > 0 ? `${totalElzaroMeters.toFixed(2)}m × ${formatPrice(elzaroFeePerMeterGross, currency)} = ${formatPrice(elzaroNetGross, currency)}` : '',
+          osszemaras_net: roundedOsszemarasNet,
           osszemaras_vat: osszemarasVat,
           osszemaras_gross: osszemarasGross,
-          osszemaras_details: osszemarasNet > 0 ? `1 × ${formatPrice(26000, currency)} = ${formatPrice(osszemarasNet, currency)}` : '',
+          osszemaras_details: roundedOsszemarasNet > 0 ? `1 × ${formatPrice(osszemarasFeeGross, currency)} = ${formatPrice(osszemarasGross, currency)}` : '',
           total_net: totalNet,
           total_vat: totalVat,
           total_gross: totalGross
@@ -1579,7 +1707,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                       }
                     }}
                     >
-                      {assemblyTypes.map(type => (
+                      {visibleAssemblyTypes.map(type => (
                         <MenuItem key={type} value={type}>
                           {type}
                         </MenuItem>
@@ -1879,6 +2007,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           Méretek ({assemblyType})
                         </Typography>
                       </Grid>
+                      {/* Helper variable to disable all inputs when no material is selected */}
+                      {(() => {
+                        const isDisabled = !selectedLinearMaterialId
+                        return (
+                          <>
                       {/* First row: A, B, C, D - full width */}
                       <Grid item xs={12} sm={assemblyType === 'Levágás' ? 6 : 3}>
                         <TextField
@@ -1887,6 +2020,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           label="A (mm)"
                           type="number"
                           value={dimensionA}
+                          disabled={isDisabled}
                           onChange={(e) => {
                             const newValue = e.target.value
                             setDimensionA(newValue)
@@ -1953,6 +2087,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           label="B (mm)"
                           type="number"
                           value={dimensionB}
+                          disabled={isDisabled}
                           onChange={(e) => {
                             const newValue = e.target.value
                             setDimensionB(newValue)
@@ -2052,6 +2187,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               label="C (mm)"
                               type="number"
                               value={dimensionC}
+                              disabled={isDisabled}
                               onChange={(e) => {
                                 const newValue = e.target.value
                                 setDimensionC(newValue)
@@ -2092,6 +2228,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               label="D (mm)"
                               type="number"
                               value={dimensionD}
+                              disabled={isDisabled}
                               onChange={(e) => {
                                 const newValue = e.target.value
                                 setDimensionD(newValue)
@@ -2193,6 +2330,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               label="E (mm)"
                               type="number"
                               value={dimensionE}
+                              disabled={isDisabled}
                               onChange={(e) => setDimensionE(e.target.value)}
                               inputProps={{ min: 0, step: 1 }}
                             />
@@ -2204,6 +2342,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               label="F (mm)"
                               type="number"
                               value={dimensionF}
+                              disabled={isDisabled}
                               onChange={(e) => setDimensionF(e.target.value)}
                               inputProps={{ min: 0, step: 1 }}
                             />
@@ -2249,7 +2388,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(cutL1) > 0) || !!(parseFloat(cutL2) > 0)}
+                          disabled={isDisabled || !!(parseFloat(cutL1) > 0) || !!(parseFloat(cutL2) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={3}>
@@ -2281,7 +2420,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(cutL3) > 0) || !!(parseFloat(cutL4) > 0)}
+                          disabled={isDisabled || !!(parseFloat(cutL3) > 0) || !!(parseFloat(cutL4) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={3}>
@@ -2313,7 +2452,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') || !!(parseFloat(cutL5) > 0) || !!(parseFloat(cutL6) > 0)}
+                          disabled={isDisabled || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') || !!(parseFloat(cutL5) > 0) || !!(parseFloat(cutL6) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={3}>
@@ -2345,7 +2484,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') || !!(parseFloat(cutL7) > 0) || !!(parseFloat(cutL8) > 0)}
+                          disabled={isDisabled || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') || !!(parseFloat(cutL7) > 0) || !!(parseFloat(cutL8) > 0)}
                         />
                       </Grid>
                       {/* Third row: Letörések L1-L8 - all in one row (each 1.5 columns) */}
@@ -2364,7 +2503,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR1) > 0)}
+                          disabled={isDisabled || !!(parseFloat(roundingR1) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2382,7 +2521,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR1) > 0)}
+                          disabled={isDisabled || !!(parseFloat(roundingR1) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2400,7 +2539,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR2) > 0)}
+                          disabled={isDisabled || !!(parseFloat(roundingR2) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2418,7 +2557,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR2) > 0)}
+                          disabled={isDisabled || !!(parseFloat(roundingR2) > 0)}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2436,7 +2575,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR3) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                          disabled={isDisabled || !!(parseFloat(roundingR3) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2454,7 +2593,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR3) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                          disabled={isDisabled || !!(parseFloat(roundingR3) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2472,7 +2611,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR4) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                          disabled={isDisabled || !!(parseFloat(roundingR4) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
                         />
                       </Grid>
                       <Grid item xs={12} sm={1.5}>
@@ -2490,7 +2629,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             }
                           }}
                           inputProps={{ min: 0, step: 1 }}
-                          disabled={!!(parseFloat(roundingR4) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
+                          disabled={isDisabled || !!(parseFloat(roundingR4) > 0) || !(assemblyType === 'Levágás' || assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')}
                         />
                       </Grid>
                       
@@ -2538,6 +2677,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   size="small"
                                   color="error"
                                   onClick={() => setCutouts(prev => prev.filter(c => c.id !== cutout.id))}
+                                  disabled={isDisabled}
                                 >
                                   Törlés
                                 </Button>
@@ -2550,6 +2690,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     label="Szélesség (mm)"
                                     type="number"
                                     value={cutout.width}
+                                    disabled={isDisabled}
                                     onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, width: e.target.value } : c))}
                                     inputProps={{ min: 0, step: 1 }}
                                     error={widthError}
@@ -2563,6 +2704,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     label="Magasság (mm)"
                                     type="number"
                                     value={cutout.height}
+                                    disabled={isDisabled}
                                     onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, height: e.target.value } : c))}
                                     inputProps={{ min: 0, step: 1 }}
                                     error={heightError}
@@ -2576,6 +2718,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     label="Távolság balról (mm)"
                                     type="number"
                                     value={cutout.distanceFromLeft}
+                                    disabled={isDisabled}
                                     onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, distanceFromLeft: e.target.value } : c))}
                                     inputProps={{ min: 0, step: 1 }}
                                     error={positionError}
@@ -2589,6 +2732,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     label="Távolság alulról (mm)"
                                     type="number"
                                     value={cutout.distanceFromBottom}
+                                    disabled={isDisabled}
                                     onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, distanceFromBottom: e.target.value } : c))}
                                     inputProps={{ min: 0, step: 1 }}
                                   />
@@ -2602,6 +2746,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       size="small"
                                       label="Munkalap"
                                       value={cutout.worktopType || 'main'}
+                                      disabled={isDisabled}
                                       onChange={(e) => setCutouts(prev => prev.map(c => c.id === cutout.id ? { ...c, worktopType: e.target.value as 'main' | 'perpendicular' } : c))}
                                     >
                                       <MenuItem value="main">Fő munkalap</MenuItem>
@@ -2617,6 +2762,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           <Button
                             variant="outlined"
                             size="small"
+                            disabled={isDisabled}
                             onClick={() => {
                               setCutouts(prev => [...prev, {
                                 id: `cutout-${Date.now()}-${Math.random()}`,
@@ -2633,6 +2779,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           </Button>
                         )}
                       </Grid>
+                          </>
+                        )
+                      })()}
                     </Grid>
                   </>
                 )}
@@ -6617,6 +6766,143 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                       {/* Arrowhead - large triangle pointing down */}
                                       <path
                                         d={`M ${centerX} ${arrowTipY} L ${arrowLeftX} ${tailEndY} L ${arrowRightX} ${tailEndY} Z`}
+                                        fill="#1976d2"
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth / 2}
+                                      />
+                                    </g>
+                                  )
+                                })()}
+                                
+                                {/* Front edge arrow indicators for Összemarás Balos */}
+                                {(assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect) && (() => {
+                                  // Arrow dimensions - make it big
+                                  const arrowHeadWidth = 60 // Width of arrowhead
+                                  const arrowHeadHeight = 50 // Height of arrowhead
+                                  const strokeWidth = 10 // Thickness of arrow tail
+                                  
+                                  // Main worktop (A×B) arrow: center pointing downward
+                                  const mainCenterX = aValue / 2
+                                  const mainCenterY = bValue / 2
+                                  const mainBottomY = bValue
+                                  const mainArrowLength = Math.min(150, (mainBottomY - mainCenterY) * 0.8)
+                                  const mainTailEndY = Math.min(mainBottomY - arrowHeadHeight, mainCenterY + mainArrowLength)
+                                  const mainArrowTipY = mainTailEndY + arrowHeadHeight
+                                  const mainArrowLeftX = mainCenterX - arrowHeadWidth / 2
+                                  const mainArrowRightX = mainCenterX + arrowHeadWidth / 2
+                                  
+                                  // Perpendicular rectangle (C×D) arrow: center pointing right
+                                  const perpRectX = 0
+                                  const perpRectY = worktopLength // bValue
+                                  const perpCenterX = perpRectX + dValue / 2
+                                  const perpCenterY = perpRectY + cValue / 2
+                                  const perpRightX = perpRectX + dValue
+                                  const perpArrowLength = Math.min(150, (perpRightX - perpCenterX) * 0.8)
+                                  const perpTailEndX = Math.min(perpRightX - arrowHeadHeight, perpCenterX + perpArrowLength)
+                                  const perpArrowTipX = perpTailEndX + arrowHeadHeight
+                                  const perpArrowTopY = perpCenterY - arrowHeadWidth / 2
+                                  const perpArrowBottomY = perpCenterY + arrowHeadWidth / 2
+                                  
+                                  return (
+                                    <g>
+                                      {/* Main worktop (A×B) arrow - pointing down */}
+                                      <line
+                                        x1={mainCenterX}
+                                        y1={mainCenterY}
+                                        x2={mainCenterX}
+                                        y2={mainTailEndY}
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth}
+                                        strokeLinecap="round"
+                                      />
+                                      <path
+                                        d={`M ${mainCenterX} ${mainArrowTipY} L ${mainArrowLeftX} ${mainTailEndY} L ${mainArrowRightX} ${mainTailEndY} Z`}
+                                        fill="#1976d2"
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth / 2}
+                                      />
+                                      
+                                      {/* Perpendicular rectangle (C×D) arrow - pointing right */}
+                                      <line
+                                        x1={perpCenterX}
+                                        y1={perpCenterY}
+                                        x2={perpTailEndX}
+                                        y2={perpCenterY}
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth}
+                                        strokeLinecap="round"
+                                      />
+                                      <path
+                                        d={`M ${perpArrowTipX} ${perpCenterY} L ${perpTailEndX} ${perpArrowTopY} L ${perpTailEndX} ${perpArrowBottomY} Z`}
+                                        fill="#1976d2"
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth / 2}
+                                      />
+                                    </g>
+                                  )
+                                })()}
+                                
+                                {/* Front edge arrow indicators for Összemarás jobbos */}
+                                {(assemblyType === 'Összemarás jobbos' && showLeftPerpendicularRect) && (() => {
+                                  // Arrow dimensions - make it big
+                                  const arrowHeadWidth = 60 // Width of arrowhead
+                                  const arrowHeadHeight = 50 // Height of arrowhead
+                                  const strokeWidth = 10 // Thickness of arrow tail
+                                  
+                                  // Main worktop (A×B) arrow: center pointing downward
+                                  const mainWorktopOffsetX = leftPerpendicularRectWidth // dValue
+                                  const mainCenterX = mainWorktopOffsetX + aValue / 2
+                                  const mainCenterY = bValue / 2
+                                  const mainBottomY = bValue
+                                  const mainArrowLength = Math.min(150, (mainBottomY - mainCenterY) * 0.8)
+                                  const mainTailEndY = Math.min(mainBottomY - arrowHeadHeight, mainCenterY + mainArrowLength)
+                                  const mainArrowTipY = mainTailEndY + arrowHeadHeight
+                                  const mainArrowLeftX = mainCenterX - arrowHeadWidth / 2
+                                  const mainArrowRightX = mainCenterX + arrowHeadWidth / 2
+                                  
+                                  // Perpendicular rectangle (C×D) arrow: center pointing right
+                                  const perpRectX = 0
+                                  const perpRectY = 0
+                                  const perpCenterX = perpRectX + dValue / 2
+                                  const perpCenterY = perpRectY + cValue / 2
+                                  const perpRightX = perpRectX + dValue
+                                  const perpArrowLength = Math.min(150, (perpRightX - perpCenterX) * 0.8)
+                                  const perpTailEndX = Math.min(perpRightX - arrowHeadHeight, perpCenterX + perpArrowLength)
+                                  const perpArrowTipX = perpTailEndX + arrowHeadHeight
+                                  const perpArrowTopY = perpCenterY - arrowHeadWidth / 2
+                                  const perpArrowBottomY = perpCenterY + arrowHeadWidth / 2
+                                  
+                                  return (
+                                    <g>
+                                      {/* Main worktop (A×B) arrow - pointing down */}
+                                      <line
+                                        x1={mainCenterX}
+                                        y1={mainCenterY}
+                                        x2={mainCenterX}
+                                        y2={mainTailEndY}
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth}
+                                        strokeLinecap="round"
+                                      />
+                                      <path
+                                        d={`M ${mainCenterX} ${mainArrowTipY} L ${mainArrowLeftX} ${mainTailEndY} L ${mainArrowRightX} ${mainTailEndY} Z`}
+                                        fill="#1976d2"
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth / 2}
+                                      />
+                                      
+                                      {/* Perpendicular rectangle (C×D) arrow - pointing right */}
+                                      <line
+                                        x1={perpCenterX}
+                                        y1={perpCenterY}
+                                        x2={perpTailEndX}
+                                        y2={perpCenterY}
+                                        stroke="#1976d2"
+                                        strokeWidth={strokeWidth}
+                                        strokeLinecap="round"
+                                      />
+                                      <path
+                                        d={`M ${perpArrowTipX} ${perpCenterY} L ${perpTailEndX} ${perpArrowTopY} L ${perpTailEndX} ${perpArrowBottomY} Z`}
                                         fill="#1976d2"
                                         stroke="#1976d2"
                                         strokeWidth={strokeWidth / 2}

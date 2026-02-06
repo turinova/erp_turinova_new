@@ -805,6 +805,61 @@ export async function getCuttingFee() {
   return data || null
 }
 
+// Worktop Config Fees SSR functions
+export async function getWorktopConfigFees() {
+  const startTime = performance.now()
+  
+  const { data, error } = await supabaseServer
+    .from('worktop_config_fees')
+    .select(`
+      id,
+      kereszt_vagas_fee,
+      hosszanti_vagas_fee_per_meter,
+      ives_vagas_fee,
+      szogvagas_fee,
+      kivagas_fee,
+      elzaro_fee_per_meter,
+      osszemaras_fee,
+      kereszt_vagas_fee_gross,
+      hosszanti_vagas_fee_per_meter_gross,
+      ives_vagas_fee_gross,
+      szogvagas_fee_gross,
+      kivagas_fee_gross,
+      elzaro_fee_per_meter_gross,
+      osszemaras_fee_gross,
+      currency_id,
+      vat_id,
+      currencies (
+        id,
+        name
+      ),
+      vat (
+        id,
+        kulcs
+      ),
+      created_at,
+      updated_at
+    `)
+    .limit(1)
+    .single()
+
+  const queryTime = performance.now()
+  logTiming('Worktop Config Fees DB Query', startTime, `fetched ${data ? 1 : 0} records`)
+
+  if (error) {
+    // PGRST116 is "no rows found" - this is expected if table exists but has no data
+    // Other errors (like table doesn't exist) are also expected if migration hasn't been run yet
+    // In both cases, we return null and the client will use fallback defaults
+    if (error.code !== 'PGRST116' && error.code !== '42P01') { // 42P01 = relation does not exist
+      console.warn('Worktop config fees not available (table may not exist yet):', error.message || error)
+    }
+    return null
+  }
+
+  logTiming('Worktop Config Fees Total', startTime, `returned ${data ? 1 : 0} records`)
+  return data || null
+}
+
 export async function getMaterialPriceHistory(materialId: string) {
   const startTime = performance.now()
   
