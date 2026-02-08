@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
 import { getWorktopQuoteById, getTenantCompany, getAllVatRates } from '@/lib/supabase-server'
-import generateWorktopQuotePdfHtml from '../pdf-template'
 import { roundToWholeNumber, calculateVat, calculateGross } from '@/lib/pricing/hungarianRounding'
+import generateWorktopQuotePdfHtml, { generateVisualizationPageHtml } from '../pdf-template'
 import { generateWorktopSvg } from '../svg-generator-comprehensive'
 
 // Dynamic imports based on environment
@@ -418,7 +418,9 @@ export async function GET(
         })
     ])
 
-    // Generate HTML string directly (no React rendering)
+    // HYBRID APPROACH: Puppeteer for first page (perfect HTML template), PDFKit for visualization pages
+    
+    // Step 1: Generate first page with Puppeteer (existing perfect HTML template)
     const fullHtml = generateWorktopQuotePdfHtml({
       quote: {
         id: quoteData.id,
@@ -482,14 +484,13 @@ export async function GET(
       discountPercentage: discountPercent,
       tenantCompanyLogoBase64,
       turinovaLogoBase64,
-      generateSvg: generateWorktopSvg
+      generateSvg: null // Skip visualization pages in HTML - we'll use PDFKit for those
     })
 
-    // Launch Puppeteer with performance optimizations
+    // Launch Puppeteer for first page
     let browser
     
     if (isProduction) {
-      // Production: Use puppeteer-core with Vercel-optimized Chromium
       const puppeteerCore = await import('puppeteer-core')
       const chromium = await import('@sparticuz/chromium')
       
@@ -526,7 +527,6 @@ export async function GET(
         headless: chromium.default.headless,
       })
     } else {
-      // Development: Use puppeteer (includes bundled Chromium)
       const puppeteer = await import('puppeteer')
       
       browser = await puppeteer.default.launch({
@@ -542,25 +542,21 @@ export async function GET(
 
     const page = await browser.newPage()
     
-    // Disable unnecessary features for better performance
     await page.setJavaScriptEnabled(false)
     
-    // Block all network requests (images are already base64 embedded)
     await page.setRequestInterception(true)
     page.on('request', (req) => {
       req.abort()
     })
     
-    // Set content and wait for rendering
     await page.setContent(fullHtml, {
       waitUntil: 'domcontentloaded'
     })
     
-    // Small delay for images to render
     await new Promise(resolve => setTimeout(resolve, 50))
 
-    // Generate PDF with optimized settings
-    const pdfBuffer = await page.pdf({
+    // Generate first page PDF (portrait only - no visualization pages)
+    const firstPagePdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: true,
       preferCSSPageSize: false,
@@ -575,6 +571,306 @@ export async function GET(
     })
 
     await browser.close()
+
+    // Step 2: Generate visualization pages with HTML/Puppeteer (table) + PDFKit (SVG only)
+    let pdfBuffer: Buffer
+    
+    if (quoteData.configs && quoteData.configs.length > 0) {
+      const pdfLib = await import('pdf-lib')
+      const PDFDocument = (await import('pdfkit')).default
+      const SVGtoPDF = (await import('svg-to-pdfkit')).default
+      
+      // Create merged PDF
+      const mergedPdf = await pdfLib.PDFDocument.create()
+      
+      // Add first page from Puppeteer
+      const firstPagePdf = await pdfLib.PDFDocument.load(firstPagePdfBuffer)
+      const firstPagePages = await mergedPdf.copyPages(firstPagePdf, firstPagePdf.getPageIndices())
+      firstPagePages.forEach((page) => mergedPdf.addPage(page))
+      
+      // Prepare quote object for visualization pages
+      const quoteForViz = {
+        id: quoteData.id,
+        quote_number: quoteData.quote_number,
+        customer: {
+          name: quoteData.customers?.name || '',
+          email: quoteData.customers?.email || null,
+          mobile: quoteData.customers?.mobile || null,
+          billing_name: quoteData.customers?.billing_name || null,
+          billing_country: quoteData.customers?.billing_country || null,
+          billing_city: quoteData.customers?.billing_city || null,
+          billing_postal_code: quoteData.customers?.billing_postal_code || null,
+          billing_street: quoteData.customers?.billing_street || null,
+          billing_house_number: quoteData.customers?.billing_house_number || null,
+          billing_tax_number: quoteData.customers?.billing_tax_number || null
+        },
+        discount_percent: quoteData.discount_percent || 0,
+        comment: quoteData.comment || null,
+        created_at: quoteData.created_at,
+        materials,
+        services,
+        materialsTotalGross,
+        servicesTotalGross,
+        materialsTotalNet,
+        servicesTotalNet,
+        materialsTotalVat,
+        servicesTotalVat,
+        configs: []
+      }
+      
+      // Generate each visualization page
+      for (const config of quoteData.configs || []) {
+        // Step 2a: Generate HTML for table (no SVG)
+        const configForHtml: any = {
+          id: config.id,
+          config_order: config.config_order,
+          assembly_type: config.assembly_type,
+          linear_material_name: config.linear_material_name,
+          edge_banding: config.edge_banding || 'Nincs élzáró',
+          edge_color_choice: config.edge_color_choice || 'Színazonos',
+          edge_color_text: config.edge_color_text || null,
+          no_postforming_edge: config.no_postforming_edge || false,
+          dimension_a: config.dimension_a,
+          dimension_b: config.dimension_b,
+          dimension_c: config.dimension_c,
+          dimension_d: config.dimension_d,
+          rounding_r1: config.rounding_r1,
+          rounding_r2: config.rounding_r2,
+          rounding_r3: config.rounding_r3,
+          rounding_r4: config.rounding_r4,
+          cut_l1: config.cut_l1,
+          cut_l2: config.cut_l2,
+          cut_l3: config.cut_l3,
+          cut_l4: config.cut_l4,
+          cut_l5: config.cut_l5,
+          cut_l6: config.cut_l6,
+          cut_l7: config.cut_l7,
+          cut_l8: config.cut_l8,
+          cutouts: config.cutouts,
+          edge_position1: config.edge_position1,
+          edge_position2: config.edge_position2,
+          edge_position3: config.edge_position3,
+          edge_position4: config.edge_position4,
+          edge_position5: config.edge_position5,
+          edge_position6: config.edge_position6
+        }
+        
+        const visualizationHtml = generateVisualizationPageHtml(configForHtml, quoteForViz, config.config_order - 1, tenantCompanyLogoBase64, turinovaLogoBase64)
+        
+        // Step 2b: Render HTML table with Puppeteer
+        const vizBrowser = isProduction
+          ? await (await import('puppeteer-core')).default.launch({
+              args: [
+                ...(await import('@sparticuz/chromium')).default.args,
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-renderer-backgrounding',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-ipc-flooding-protection',
+                '--disable-hang-monitor',
+                '--disable-prompt-on-repost',
+                '--disable-sync',
+                '--disable-translate',
+                '--metrics-recording-only',
+                '--mute-audio',
+                '--no-first-run',
+                '--safebrowsing-disable-auto-update',
+                '--enable-automation',
+                '--password-store=basic',
+                '--use-mock-keychain',
+              ],
+              defaultViewport: (await import('@sparticuz/chromium')).default.defaultViewport,
+              executablePath: await (await import('@sparticuz/chromium')).default.executablePath(),
+              headless: (await import('@sparticuz/chromium')).default.headless,
+            })
+          : await (await import('puppeteer')).default.launch({
+              headless: true,
+              args: [
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-extensions',
+                '--no-sandbox',
+              ],
+            })
+        
+        const vizPage = await vizBrowser.newPage()
+        await vizPage.setJavaScriptEnabled(false)
+        await vizPage.setRequestInterception(true)
+        vizPage.on('request', (req) => {
+          req.abort()
+        })
+        
+        await vizPage.setContent(visualizationHtml, {
+          waitUntil: 'domcontentloaded'
+        })
+        
+        await new Promise(resolve => setTimeout(resolve, 50))
+        
+        // Generate PDF with table
+        const tablePdfBuffer = await vizPage.pdf({
+          format: 'A4',
+          printBackground: true,
+          preferCSSPageSize: false,
+          displayHeaderFooter: false,
+          scale: 1,
+          margin: {
+            top: '8mm',
+            right: '4mm',
+            bottom: '8mm',
+            left: '4mm'
+          }
+        })
+        
+        await vizBrowser.close()
+        
+        // Step 2c: Load table PDF and add SVG with PDFKit
+        const tablePdf = await pdfLib.PDFDocument.load(tablePdfBuffer)
+        const [tablePage] = await mergedPdf.copyPages(tablePdf, [0])
+        const addedPage = mergedPdf.addPage(tablePage)
+        
+        // Get page dimensions
+        const { width, height } = addedPage.getSize()
+        
+        // Calculate margins (8mm top/bottom, 4mm left/right)
+        const marginTop = 22.68 // 8mm in points (1mm = 2.83465 points)
+        const marginLeft = 11.34 // 4mm in points
+        const marginRight = 11.34 // 4mm in points
+        const marginBottom = 22.68 // 8mm in points
+        
+        // Header height calculation:
+        // Table has 6-7+ rows (Megrendelő, Anyag, 1-6 oldal, A-D, R1-R4, L1-L8, cutouts)
+        // Each row: ~5.3mm (font 7pt ~2.5mm + padding 4px top/bottom ~2.8mm)
+        // 7 rows: 7 * 5.3mm = 37.1mm
+        // Plus header padding (1.5mm top + 2mm bottom) + borders: ~42-45mm total
+        // With cutouts, can be 8-9 rows: ~50-55mm total
+        // Convert to points: 55mm * 2.83465 = ~155.9 points
+        // Use very conservative estimate with extra safety margin
+        const headerHeight = 170 // ~60mm in points (very conservative for 8-9 rows with multiple cutouts)
+        const gapAfterHeader = 8 // Gap between header and visualization (8 points = ~2.8mm)
+        
+        // Footer height (text + logo + padding)
+        const footerHeight = 25 // ~9mm in points (footer text + logo + padding)
+        
+        // Calculate visualization area - ensure it doesn't overlap with header or footer
+        const visualizationStartY = marginTop + headerHeight + gapAfterHeader
+        const visualizationWidth = width - marginLeft - marginRight
+        const visualizationHeight = Math.max(0, height - visualizationStartY - marginBottom - footerHeight)
+        
+        // Safety check: ensure visualization height is positive
+        if (visualizationHeight <= 0) {
+          throw new Error(`Invalid visualization height: ${visualizationHeight}. Header may be too large.`)
+        }
+        
+        // Generate SVG
+        const svgContent = generateWorktopSvg({
+          assembly_type: config.assembly_type,
+          dimension_a: config.dimension_a,
+          dimension_b: config.dimension_b,
+          dimension_c: config.dimension_c,
+          dimension_d: config.dimension_d,
+          rounding_r1: config.rounding_r1,
+          rounding_r2: config.rounding_r2,
+          rounding_r3: config.rounding_r3,
+          rounding_r4: config.rounding_r4,
+          cut_l1: config.cut_l1,
+          cut_l2: config.cut_l2,
+          cut_l3: config.cut_l3,
+          cut_l4: config.cut_l4,
+          cut_l5: config.cut_l5,
+          cut_l6: config.cut_l6,
+          cut_l7: config.cut_l7,
+          cut_l8: config.cut_l8,
+          cutouts: config.cutouts,
+          edge_position1: config.edge_position1,
+          edge_position2: config.edge_position2,
+          edge_position3: config.edge_position3,
+          edge_position4: config.edge_position4,
+          edge_position5: config.edge_position5,
+          edge_position6: config.edge_position6
+        })
+        
+        // Create PDFKit document to render SVG (only the visualization area)
+        const svgPdfDoc = new PDFDocument({
+          size: [visualizationWidth, visualizationHeight],
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          autoFirstPage: true
+        })
+        
+        const svgPdfBuffers: Buffer[] = []
+        svgPdfDoc.on('data', svgPdfBuffers.push.bind(svgPdfBuffers))
+        
+        await new Promise<void>((resolve, reject) => {
+          svgPdfDoc.on('end', resolve)
+          svgPdfDoc.on('error', reject)
+          
+          try {
+            // Ensure we have a page (autoFirstPage should create it, but be explicit)
+            if (svgPdfDoc.bufferedPageRange().count === 0) {
+              svgPdfDoc.addPage({
+                size: [visualizationWidth, visualizationHeight],
+                margins: { top: 0, bottom: 0, left: 0, right: 0 }
+              })
+            }
+            
+            // Render SVG to PDF (at origin since we're creating a document with just the SVG size)
+            SVGtoPDF(svgPdfDoc, svgContent, 0, 0, {
+              width: visualizationWidth,
+              height: visualizationHeight,
+              preserveAspectRatio: 'xMidYMid meet'
+            })
+            
+            svgPdfDoc.end()
+          } catch (error) {
+            reject(error)
+          }
+        })
+        
+        const svgPdfBuffer = Buffer.concat(svgPdfBuffers)
+        
+        if (!svgPdfBuffer || svgPdfBuffer.length === 0) {
+          throw new Error('Failed to generate SVG PDF buffer')
+        }
+        
+        const svgPdf = await pdfLib.PDFDocument.load(svgPdfBuffer)
+        
+        // Verify the SVG PDF has pages
+        const svgPageCount = svgPdf.getPageCount()
+        if (svgPageCount === 0) {
+          throw new Error('SVG PDF has no pages')
+        }
+        
+        // Get the SVG page and embed it
+        const svgPage = svgPdf.getPage(0)
+        const svgEmbeddedPage = await mergedPdf.embedPage(svgPage)
+        
+        // Draw SVG on the table page at the correct position
+        // Note: pdf-lib uses bottom-left origin, so we need to calculate Y from bottom
+        // Ensure SVG stays within the border (account for 2mm padding inside border)
+        const borderPadding = 5.67 // 2mm in points
+        const svgY = height - visualizationStartY - visualizationHeight + borderPadding
+        
+        addedPage.drawPage(svgEmbeddedPage, {
+          x: marginLeft + borderPadding,
+          y: svgY,
+          width: visualizationWidth - (borderPadding * 2),
+          height: visualizationHeight - (borderPadding * 2)
+        })
+      }
+      
+      // Generate final merged PDF
+      pdfBuffer = Buffer.from(await mergedPdf.save())
+    } else {
+      // No visualization pages, just use first page
+      pdfBuffer = firstPagePdfBuffer
+    }
 
     // Check file size (3MB limit)
     const fileSizeMB = pdfBuffer.length / (1024 * 1024)

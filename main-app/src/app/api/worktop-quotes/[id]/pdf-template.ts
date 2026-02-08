@@ -47,6 +47,10 @@ interface WorktopConfig {
   edge_position4: boolean
   edge_position5: boolean | null
   edge_position6: boolean | null
+  edge_banding?: string | null
+  edge_color_choice?: string | null
+  edge_color_text?: string | null
+  no_postforming_edge?: boolean
 }
 
 interface WorktopQuote {
@@ -293,6 +297,10 @@ export default function generateWorktopQuotePdfHtml({
         margin: 0;
         size: A4 portrait;
       }
+      @page portrait {
+        margin: 0;
+        size: A4 portrait;
+      }
       html, body {
         height: 100%;
         margin: 0;
@@ -309,6 +317,7 @@ export default function generateWorktopQuotePdfHtml({
         flex-direction: column;
         min-height: 100vh;
         box-sizing: border-box;
+        position: relative;
       }
       .content-wrapper {
         flex: 1;
@@ -485,40 +494,221 @@ export default function generateWorktopQuotePdfHtml({
         width: auto;
         margin-left: 1em;
       }
-      .visualization-page {
+      .portrait-page-wrapper {
         page-break-before: always;
-        width: 210mm;  /* A4 width */
-        height: 297mm; /* A4 height */
+        page: portrait;
+        break-before: page;
+        break-after: page;
+        page-break-before: always;
+        page-break-after: always;
+        margin: -8mm -4mm -8mm -4mm; /* Negative margins to escape body padding (8mm top/bottom, 4mm left/right) */
+        padding: 0;
+        width: 202mm;  /* Exact printable width (210mm - 4mm left - 4mm right) */
+        height: 281mm; /* Exact printable height (297mm - 8mm top - 8mm bottom) */
+        min-height: 281mm;
+        max-height: 281mm; /* Prevent overflow */
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden; /* Prevent content from overflowing to other pages */
+      }
+      .portrait-page-wrapper:last-child {
+        break-after: auto;
+        page-break-after: auto;
+      }
+      .visualization-page {
+        width: 202mm;  /* Full Puppeteer content area width (210mm - 8mm margins) */
+        height: 281mm; /* Full Puppeteer content area height (297mm - 16mm margins) */
+        max-width: 202mm;
+        max-height: 281mm;
         display: flex;
         flex-direction: column;
-        margin: 0;
+        align-items: stretch;
+        justify-content: flex-start;
+        margin: 0; /* No negative margins - let portrait-page-wrapper handle positioning */
         padding: 0;
         box-sizing: border-box;
+        position: relative;
+      }
+      /* Fixed header for visualization pages */
+      .visualization-header {
+        width: 100%;
+        flex: 0 0 auto;
+        background-color: #f5f5f5;
+        border: 1px solid #000000;
+        border-bottom: 2px solid #000000;
+        padding: 1.5mm 2mm; /* Reduced padding to prevent overflow */
+        margin: 0;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 7pt; /* Slightly smaller font to fit better */
+        line-height: 1.3;
+        overflow: hidden; /* Prevent header from overflowing */
+        max-height: 25mm; /* Limit header height to prevent overflow */
+      }
+      .visualization-header-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+        font-size: 8px;
+      }
+      .visualization-header-table th,
+      .visualization-header-table td {
+        padding: 4px 6px;
+        text-align: left;
+        border: 1px solid #000000;
+      }
+      .visualization-header-table th {
+        font-weight: 700;
+        color: #000000;
+        background-color: #f5f5f5;
+        padding: 6px;
+      }
+      .visualization-header-table td {
+        color: #000000;
+      }
+      .visualization-header-table .text-center {
+        text-align: center;
       }
       .visualization-details {
-        height: 20%; /* 20% of page height */
-        width: 100%;
-        padding: 0;
+        width: 15%; /* Reduced from 20% to give more space to visualization */
+        height: 100%;
+        padding: 2mm;
         box-sizing: border-box;
+        position: relative;
+        border-right: 1px solid #000;
+        overflow: hidden;
+        flex-shrink: 0;
         display: flex;
         flex-direction: column;
-        justify-content: flex-start;
+        align-items: stretch;
+        justify-content: center;
       }
-      .visualization-content {
-        height: 80%; /* 80% of page height */
+      .rotated-table-container {
         width: 100%;
+        height: 100%;
+        position: relative;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+      .rotated-table-wrapper {
+        width: 100%;
+        flex: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 5mm;
-        box-sizing: border-box;
+        overflow: visible;
       }
-      .visualization-content svg {
+      .rotated-table {
+        width: 100%;
+        height: auto;
+        max-height: 100%;
+        font-size: 7.5pt; /* Increased for better readability */
+        border-collapse: collapse;
+        table-layout: fixed;
+        display: table;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        margin: 0;
+      }
+      .rotated-table tbody {
+        display: table-row-group;
+      }
+      .rotated-table tr {
+        display: table-row;
+        height: auto;
+      }
+      .rotated-table th,
+      .rotated-table td {
+        border: 1px solid #000;
+        padding: 1.5mm 2mm;
+        text-align: left;
+        vertical-align: middle;
+        line-height: 1.4;
+        overflow: visible;
+        font-size: 7.5pt;
+        word-spacing: normal;
+        letter-spacing: normal;
+      }
+      .rotated-table th {
+        background-color: #f5f5f5;
+        font-weight: 700;
+        font-size: 7.5pt;
+      }
+      .rotated-table td {
+        background-color: #ffffff;
+      }
+      .rotated-table .label-cell {
+        text-align: left;
+        font-weight: 700;
+        background-color: #f9f9f9;
+        width: 45%;
+        min-width: 45%;
+        max-width: 45%;
+        white-space: nowrap;
+        overflow: visible;
+        text-overflow: clip;
+        border-right: 2px solid #000;
+        padding-right: 3mm;
+      }
+      .rotated-table .data-cell {
+        text-align: left;
+        width: 55%;
+        min-width: 55%;
+        max-width: 55%;
+        white-space: normal;
+        word-wrap: break-word;
+        word-break: break-word;
+        overflow: visible;
+        padding-left: 2mm;
+      }
+      .rotated-table .wide-cell {
+        text-align: left;
+        width: 62%;
+        min-width: 62%;
+        max-width: 62%;
+        white-space: normal;
+        word-wrap: break-word;
+        word-break: break-word;
+      }
+      .visualization-content {
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: calc(281mm - 25mm); /* Total height minus header max height */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin: 0;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+        page-break-inside: avoid; /* Prevent content from breaking across pages */
+      }
+      .visualization-content-inner {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        position: relative;
+      }
+      .visualization-content-inner svg {
         width: 100%;
         height: 100%;
         max-width: 100%;
         max-height: 100%;
         display: block;
+        object-fit: contain;
+        flex-shrink: 0;
+        overflow: visible; /* Allow labels to render even if slightly outside */
       }
       .detail-row {
         margin-bottom: 3mm;
@@ -659,23 +849,706 @@ export default function generateWorktopQuotePdfHtml({
         edge_position4: config.edge_position4,
         edge_position5: config.edge_position5,
         edge_position6: config.edge_position6
-      })
+      } as any)
       
       // Format dimension values for display
       const formatDimension = (value: number | null) => value !== null ? `${value}mm` : '-'
       
+      // Parse cutouts
+      let cutoutsData: any[] = []
+      try {
+        cutoutsData = config.cutouts ? JSON.parse(config.cutouts) : []
+      } catch (e) {
+        cutoutsData = []
+      }
+      
+      // Format cutouts for display
+      const cutoutsDisplay = cutoutsData.length > 0 
+        ? cutoutsData.map((cutout: any, idx: number) => 
+            `Kivágás ${idx + 1}: ${cutout.width || '-'}×${cutout.height || '-'}mm (${cutout.distanceFromLeft || 0}mm, ${cutout.distanceFromBottom || 0}mm)`
+          ).join('; ')
+        : 'Nincs'
+      
+      // Format edge positions
+      const edgePositions = []
+      if (config.edge_position1) edgePositions.push('1. oldal')
+      if (config.edge_position2) edgePositions.push('2. oldal')
+      if (config.edge_position3) edgePositions.push('3. oldal')
+      if (config.edge_position4) edgePositions.push('4. oldal')
+      if (config.edge_position5) edgePositions.push('5. oldal')
+      if (config.edge_position6) edgePositions.push('6. oldal')
+      const edgeDisplay = edgePositions.length > 0 ? edgePositions.join(', ') : 'Nincs'
+      
+      // Format rounding values
+      const roundingValues = []
+      if (config.rounding_r1 && config.rounding_r1 > 0) roundingValues.push(`R1: ${formatDimension(config.rounding_r1)}`)
+      if (config.rounding_r2 && config.rounding_r2 > 0) roundingValues.push(`R2: ${formatDimension(config.rounding_r2)}`)
+      if (config.rounding_r3 && config.rounding_r3 > 0) roundingValues.push(`R3: ${formatDimension(config.rounding_r3)}`)
+      if (config.rounding_r4 && config.rounding_r4 > 0) roundingValues.push(`R4: ${formatDimension(config.rounding_r4)}`)
+      const roundingDisplay = roundingValues.length > 0 ? roundingValues.join(', ') : 'Nincs'
+      
+      // Format chamfer values
+      const chamferValues = []
+      if (config.cut_l1 && config.cut_l1 > 0) chamferValues.push(`L1: ${formatDimension(config.cut_l1)}`)
+      if (config.cut_l2 && config.cut_l2 > 0) chamferValues.push(`L2: ${formatDimension(config.cut_l2)}`)
+      if (config.cut_l3 && config.cut_l3 > 0) chamferValues.push(`L3: ${formatDimension(config.cut_l3)}`)
+      if (config.cut_l4 && config.cut_l4 > 0) chamferValues.push(`L4: ${formatDimension(config.cut_l4)}`)
+      if (config.cut_l5 && config.cut_l5 > 0) chamferValues.push(`L5: ${formatDimension(config.cut_l5)}`)
+      if (config.cut_l6 && config.cut_l6 > 0) chamferValues.push(`L6: ${formatDimension(config.cut_l6)}`)
+      if (config.cut_l7 && config.cut_l7 > 0) chamferValues.push(`L7: ${formatDimension(config.cut_l7)}`)
+      if (config.cut_l8 && config.cut_l8 > 0) chamferValues.push(`L8: ${formatDimension(config.cut_l8)}`)
+      const chamferDisplay = chamferValues.length > 0 ? chamferValues.join(', ') : 'Nincs'
+      
+      // Build Munkalap méret row
+      let munkalapMeret = `A: ${formatDimension(config.dimension_a)}, B: ${formatDimension(config.dimension_b)}`
+      if (config.dimension_c !== null) munkalapMeret += `, C: ${formatDimension(config.dimension_c)}`
+      if (config.dimension_d !== null) munkalapMeret += `, D: ${formatDimension(config.dimension_d)}`
+      
+      // Get material name for this config
+      const materialForConfig = quote.materials.find(m => m.assembly_type === config.assembly_type)
+      const materialName = materialForConfig ? materialForConfig.material_name : config.linear_material_name || '-'
+      
+      // Get full customer name (will wrap if needed)
+      const customerName = quote.customer.billing_name || quote.customer.name || '—'
+      
+      // Format cutouts for display (compact format)
+      const cutoutsDisplayCompact = cutoutsData.length > 0 
+        ? cutoutsData.map((cutout: any, idx: number) => 
+            `${idx + 1}: ${cutout.width || '-'}×${cutout.height || '-'}mm`
+          ).join('; ')
+        : 'Nincs'
+      
+      // Format R1-R4 values (compact)
+      const rValues = []
+      if (config.rounding_r1 && config.rounding_r1 > 0) rValues.push(`R1:${config.rounding_r1}mm`)
+      if (config.rounding_r2 && config.rounding_r2 > 0) rValues.push(`R2:${config.rounding_r2}mm`)
+      if (config.rounding_r3 && config.rounding_r3 > 0) rValues.push(`R3:${config.rounding_r3}mm`)
+      if (config.rounding_r4 && config.rounding_r4 > 0) rValues.push(`R4:${config.rounding_r4}mm`)
+      const rValuesDisplay = rValues.length > 0 ? rValues.join(' ') : 'Nincs'
+      
+      // Format L1-L8 values (compact)
+      const lValues = []
+      if (config.cut_l1 && config.cut_l1 > 0) lValues.push(`L1:${config.cut_l1}mm`)
+      if (config.cut_l2 && config.cut_l2 > 0) lValues.push(`L2:${config.cut_l2}mm`)
+      if (config.cut_l3 && config.cut_l3 > 0) lValues.push(`L3:${config.cut_l3}mm`)
+      if (config.cut_l4 && config.cut_l4 > 0) lValues.push(`L4:${config.cut_l4}mm`)
+      if (config.cut_l5 && config.cut_l5 > 0) lValues.push(`L5:${config.cut_l5}mm`)
+      if (config.cut_l6 && config.cut_l6 > 0) lValues.push(`L6:${config.cut_l6}mm`)
+      if (config.cut_l7 && config.cut_l7 > 0) lValues.push(`L7:${config.cut_l7}mm`)
+      if (config.cut_l8 && config.cut_l8 > 0) lValues.push(`L8:${config.cut_l8}mm`)
+      const lValuesDisplay = lValues.length > 0 ? lValues.join(' ') : 'Nincs'
+      
+      // Format ABCD values (compact)
+      const abcdDisplay = `A:${config.dimension_a}mm B:${config.dimension_b}mm${config.dimension_c !== null ? ` C:${config.dimension_c}mm` : ''}${config.dimension_d !== null ? ` D:${config.dimension_d}mm` : ''}`
+      
+      // Format date
+      const quoteDate = formatDatePdf(quote.created_at)
+      
       return `
     <!-- Visualization Page ${index + 1} for Config ${config.config_order} -->
+    <div class="portrait-page-wrapper">
     <div class="visualization-page">
-      <div class="visualization-details">
-        <!-- Empty top section -->
+      <div class="visualization-header">
+        <table class="visualization-header-table">
+          <tbody>
+            <tr>
+              <th>Megrendelő</th>
+              <td>${escapeHtml(customerName)}</td>
+              <th>Telephone</th>
+              <td>${escapeHtml(quote.customer.mobile || '—')}</td>
+              <th>Quote number</th>
+              <td>${escapeHtml(quote.quote_number || '—')}</td>
+              <th>Date</th>
+              <td>${escapeHtml(quoteDate)}</td>
+            </tr>
+            <tr>
+              <th>Anyag neve</th>
+              <td>${escapeHtml(materialName)}</td>
+              <th>Élzáró anyag</th>
+              <td>${escapeHtml(config.edge_banding || 'Nincs élzáró')}</td>
+              <th>Élzáró anyag színe</th>
+              <td>${escapeHtml(config.edge_color_choice === 'Egyéb szín' && config.edge_color_text ? config.edge_color_text : (config.edge_color_choice || 'Színazonos'))}</td>
+              <th>Postforming</th>
+              <td>${config.no_postforming_edge ? 'NEM' : 'IGEN'}</td>
+            </tr>
+            <tr>
+              <th>1. oldal</th>
+              <td>${config.edge_position1 ? 'IGEN' : 'NEM'}</td>
+              <th>2. oldal</th>
+              <td>${config.edge_position2 ? 'IGEN' : 'NEM'}</td>
+              <th>3. oldal</th>
+              <td>${config.edge_position3 ? 'IGEN' : 'NEM'}</td>
+              <th>4. oldal</th>
+              <td>${config.edge_position4 ? 'IGEN' : 'NEM'}</td>
+              <th>5. oldal</th>
+              <td>${config.edge_position5 ? 'IGEN' : 'NEM'}</td>
+              <th>6. oldal</th>
+              <td>${config.edge_position6 ? 'IGEN' : 'NEM'}</td>
+            </tr>
+            <tr>
+              <th>A:</th>
+              <td>${config.dimension_a}mm</td>
+              <th>B:</th>
+              <td>${config.dimension_b}mm</td>
+              <th>C:</th>
+              <td>${config.dimension_c ? `${config.dimension_c}mm` : '—'}</td>
+              <th>D:</th>
+              <td>${config.dimension_d ? `${config.dimension_d}mm` : '—'}</td>
+            </tr>
+            <tr>
+              <th>R1:</th>
+              <td>${config.rounding_r1 ? `${config.rounding_r1}mm` : '—'}</td>
+              <th>R2:</th>
+              <td>${config.rounding_r2 ? `${config.rounding_r2}mm` : '—'}</td>
+              <th>R3:</th>
+              <td>${config.rounding_r3 ? `${config.rounding_r3}mm` : '—'}</td>
+              <th>R4:</th>
+              <td>${config.rounding_r4 ? `${config.rounding_r4}mm` : '—'}</td>
+            </tr>
+            <tr>
+              <th>L1:</th>
+              <td>${config.cut_l1 ? `${config.cut_l1}mm` : '—'}</td>
+              <th>L2:</th>
+              <td>${config.cut_l2 ? `${config.cut_l2}mm` : '—'}</td>
+              <th>L3:</th>
+              <td>${config.cut_l3 ? `${config.cut_l3}mm` : '—'}</td>
+              <th>L4:</th>
+              <td>${config.cut_l4 ? `${config.cut_l4}mm` : '—'}</td>
+              <th>L5:</th>
+              <td>${config.cut_l5 ? `${config.cut_l5}mm` : '—'}</td>
+              <th>L6:</th>
+              <td>${config.cut_l6 ? `${config.cut_l6}mm` : '—'}</td>
+              <th>L7:</th>
+              <td>${config.cut_l7 ? `${config.cut_l7}mm` : '—'}</td>
+              <th>L8:</th>
+              <td>${config.cut_l8 ? `${config.cut_l8}mm` : '—'}</td>
+            </tr>
+            ${cutoutsData.length > 0 ? cutoutsData.map((cutout: any, idx: number) => `
+            <tr>
+              <th>Kivágás${idx + 1}</th>
+              <td colspan="7">
+                Szélesség: ${cutout.width || '—'}mm, 
+                Magasság: ${cutout.height || '—'}mm, 
+                Távolság balról: ${cutout.distanceFromLeft || '—'}mm, 
+                Távolság alulról: ${cutout.distanceFromBottom || '—'}mm${cutout.worktopType ? `, Munkalap: ${cutout.worktopType}` : ''}
+              </td>
+            </tr>
+            `).join('') : ''}
+          </tbody>
+        </table>
       </div>
       <div class="visualization-content">
-        ${svgContent || '<div style="color: red; padding: 20px;">SVG not generated</div>'}
+        <div class="visualization-content-inner">
+          ${svgContent || '<div style="color: red; padding: 20px;">SVG not generated</div>'}
+        </div>
       </div>
+    </div>
     </div>
       `
     }).join('') : ''}
   </body>
 </html>`
+}
+
+// Generate HTML for a single visualization page (table only, no SVG)
+// This will be rendered with Puppeteer, then SVG will be added with PDFKit
+export function generateVisualizationPageHtml(
+  config: WorktopConfig,
+  quote: WorktopQuote,
+  index: number,
+  tenantCompanyLogoBase64?: string,
+  turinovaLogoBase64?: string
+): string {
+  // Format dimension values for display
+  const formatDimension = (value: number | null) => value !== null ? `${value}mm` : '-'
+  
+  // Parse cutouts
+  let cutoutsData: any[] = []
+  try {
+    cutoutsData = config.cutouts ? JSON.parse(config.cutouts) : []
+  } catch (e) {
+    cutoutsData = []
+  }
+  
+  // Get material name for this config (same as first page - lookup from materials array)
+  const materialForConfig = quote.materials.find(m => m.assembly_type === config.assembly_type)
+  const materialName = materialForConfig ? materialForConfig.material_name : config.linear_material_name || '-'
+  
+  // Get customer name - use customer.name (not billing_name)
+  const customerName = quote.customer.name || '—'
+  
+  // Format date
+  const quoteDate = formatDatePdf(quote.created_at)
+  
+  // Get edge color text
+  const edgeColorText = config.edge_color_choice === 'Egyéb szín' && config.edge_color_text 
+    ? config.edge_color_text 
+    : (config.edge_color_choice || 'Színazonos')
+  
+  return `<!DOCTYPE html>
+<html lang="hu">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      @page {
+        margin: 0;
+        size: A4 portrait;
+      }
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 11px;
+        color: #000000;
+        background: #ffffff;
+        padding: 8mm 4mm 8mm 4mm;
+        line-height: 1.3;
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .visualization-page {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .visualization-page-logo-container {
+        width: 100%;
+        flex: 0 0 auto;
+        margin-bottom: 2mm;
+      }
+      .visualization-header {
+        width: 100%;
+        flex: 0 0 auto;
+        background-color: #ffffff;
+        border: 0.5px solid #000000;
+        border-bottom: 1px solid #000000;
+        padding: 2mm 2.5mm;
+        margin: 0;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 7pt;
+        line-height: 1.4;
+        overflow: hidden;
+        max-height: 50mm;
+        min-height: 30mm;
+        display: flex;
+        gap: 2.5mm;
+        align-items: flex-start;
+      }
+      .header-table-container {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        overflow: hidden;
+      }
+      .header-table-container:first-child {
+        flex: 0 0 35%;
+        max-width: 35%;
+      }
+      .header-table-container:last-child {
+        flex: 0 0 63%;
+        max-width: 63%;
+        overflow: hidden;
+      }
+      .header-table-title {
+        font-weight: 700;
+        font-size: 8pt;
+        color: #000000;
+        margin-bottom: 1mm;
+        padding: 0;
+        padding-bottom: 0.5mm;
+        line-height: 1.2;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border-bottom: 1px solid #000000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .visualization-header-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0;
+        font-size: 7px;
+        table-layout: fixed;
+        max-width: 100%;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .visualization-header-table th,
+      .visualization-header-table td {
+        padding: 2px 4px;
+        text-align: left;
+        border: 0.5px solid #000000;
+        vertical-align: top;
+        overflow: hidden;
+        word-wrap: break-word;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .visualization-header-table th {
+        font-weight: 700;
+        color: #000000;
+        background-color: #ffffff;
+        padding: 2.5px 4px;
+        white-space: nowrap;
+        font-size: 7px;
+        width: 30%;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .visualization-header-table td {
+        color: #000000;
+        font-size: 7px;
+        line-height: 1.3;
+        width: 20%;
+        font-weight: 400;
+      }
+      .visualization-header-table .text-center {
+        text-align: center;
+      }
+      /* Right table - same font size as left table, prevent overflow */
+      .header-table-container:last-child .visualization-header-table {
+        font-size: 7px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .header-table-container:last-child .visualization-header-table th,
+      .header-table-container:last-child .visualization-header-table td {
+        padding: 1px 2px;
+        font-size: 6.5px;
+        box-sizing: border-box;
+        border: 0.5px solid #000000;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .header-table-container:last-child .visualization-header-table th {
+        padding: 1.5px 2px;
+        font-size: 6.5px;
+        width: 25%;
+        max-width: 25%;
+        text-transform: uppercase;
+        letter-spacing: 0.2px;
+      }
+      .header-table-container:last-child .visualization-header-table td {
+        font-size: 6.5px;
+        width: 25%;
+        max-width: 25%;
+      }
+      /* Regular rows - allow wrapping for long text */
+      .visualization-header-table tbody > tr:not(.compact-row) td {
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        word-break: break-word;
+        white-space: normal;
+      }
+      /* Compact rows - no wrapping, use maximum space */
+      .compact-row {
+        font-size: 6.5px;
+      }
+      .compact-row th,
+      .compact-row td {
+        padding: 1.5px 3px;
+        font-size: 6.5px;
+        line-height: 1.2;
+        white-space: nowrap;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        border: 0.5px solid #000000;
+      }
+      .compact-row th {
+        padding: 2px 3px;
+        font-size: 6.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.2px;
+      }
+      /* Right table compact rows - same font size as left, reduced padding */
+      .header-table-container:last-child .compact-row {
+        font-size: 6px;
+      }
+      .header-table-container:last-child .compact-row th,
+      .header-table-container:last-child .compact-row td {
+        padding: 1px 2px;
+        font-size: 6px;
+        box-sizing: border-box;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        border: 0.5px solid #000000;
+      }
+      .header-table-container:last-child .compact-row th {
+        padding: 1.5px 2px;
+        font-size: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.2px;
+      }
+      /* Value cells in compact rows should not wrap */
+      .compact-row .value-cell {
+        white-space: nowrap;
+      }
+      /* Value cells in regular rows can wrap if needed */
+      .value-cell {
+        white-space: normal;
+        word-break: break-word;
+      }
+      .visualization-content {
+        width: 100%;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2mm;
+        margin: 0;
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+        border: 0.5px solid #000000;
+        background-color: #ffffff;
+      }
+      .visualization-content-inner {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        position: relative;
+      }
+      .visualization-content-inner svg,
+      .visualization-content-inner > * {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+      }
+      .visualization-logo-bottom-left {
+        position: absolute;
+        bottom: 3mm;
+        left: 3mm;
+        z-index: 10;
+        max-height: 30px;
+        max-width: 150px;
+        width: auto;
+        height: auto;
+      }
+      .visualization-footer {
+        width: 100%;
+        padding-top: 1mm;
+        border-top: 0.5px solid #000000;
+        font-size: 7px;
+        color: #000000;
+        flex-shrink: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 2mm;
+      }
+      .visualization-footer-text {
+        flex: 1;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+      .visualization-footer-logo {
+        height: 16px;
+        width: auto;
+        margin-left: 1em;
+      }
+      .signature-space {
+        min-height: 20mm;
+        border: 0.5px solid #000000;
+        margin-top: 2mm;
+        padding: 2mm;
+        font-size: 7px;
+        color: #000000;
+      }
+      .signature-label {
+        font-weight: 700;
+        margin-bottom: 1mm;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .visualization-content-inner {
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        box-sizing: border-box;
+        overflow: hidden;
+        position: relative;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="visualization-page">
+      <div class="visualization-header">
+        <!-- Left Table: Megrendelés adatai -->
+        <div class="header-table-container">
+          <div class="header-table-title">Megrendelés adatai</div>
+          <table class="visualization-header-table">
+            <tbody>
+              <tr>
+                <th>Megrendelő neve:</th>
+                <td>${escapeHtml(customerName)}</td>
+              </tr>
+              <tr>
+                <th>Telefonszám:</th>
+                <td>${escapeHtml(quote.customer.mobile || '—')}</td>
+              </tr>
+              <tr>
+                <th>Ajánlat szám:</th>
+                <td>${escapeHtml(quote.quote_number || '—')}</td>
+              </tr>
+              <tr>
+                <th>Dátum:</th>
+                <td>${escapeHtml(quoteDate)}</td>
+              </tr>
+              <tr>
+                <th>Anyag neve:</th>
+                <td>${escapeHtml(materialName)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="signature-space">
+            <div class="signature-label">Megrendelő aláírása:</div>
+          </div>
+        </div>
+        
+        <!-- Right Table: Megmunkálások -->
+        <div class="header-table-container">
+          <div class="header-table-title">Megmunkálások</div>
+          <table class="visualization-header-table">
+            <tbody>
+              <tr>
+                <th>Élzáró anyag:</th>
+                <td class="value-cell">${escapeHtml(config.edge_banding || 'Nincs élzáró')}</td>
+                <th>Élzáró színe:</th>
+                <td class="value-cell">${escapeHtml(edgeColorText)}</td>
+              </tr>
+              <tr>
+                <th>Postforming:</th>
+                <td class="value-cell">${config.no_postforming_edge ? 'NEM' : 'IGEN'}</td>
+                <th></th>
+                <td></td>
+              </tr>
+              <tr class="compact-row">
+                <th>1. oldal:</th>
+                <td class="value-cell">${config.edge_position1 ? 'IGEN' : 'NEM'}</td>
+                <th>2. oldal:</th>
+                <td class="value-cell">${config.edge_position2 ? 'IGEN' : 'NEM'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>3. oldal:</th>
+                <td class="value-cell">${config.edge_position3 ? 'IGEN' : 'NEM'}</td>
+                <th>4. oldal:</th>
+                <td class="value-cell">${config.edge_position4 ? 'IGEN' : 'NEM'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>5. oldal:</th>
+                <td class="value-cell">${config.edge_position5 ? 'IGEN' : 'NEM'}</td>
+                <th>6. oldal:</th>
+                <td class="value-cell">${config.edge_position6 ? 'IGEN' : 'NEM'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>A:</th>
+                <td class="value-cell">${config.dimension_a}mm</td>
+                <th>B:</th>
+                <td class="value-cell">${config.dimension_b}mm</td>
+              </tr>
+              <tr class="compact-row">
+                <th>C:</th>
+                <td class="value-cell">${config.dimension_c ? `${config.dimension_c}mm` : '—'}</td>
+                <th>D:</th>
+                <td class="value-cell">${config.dimension_d ? `${config.dimension_d}mm` : '—'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>R1:</th>
+                <td class="value-cell">${config.rounding_r1 ? `${config.rounding_r1}mm` : '—'}</td>
+                <th>R2:</th>
+                <td class="value-cell">${config.rounding_r2 ? `${config.rounding_r2}mm` : '—'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>R3:</th>
+                <td class="value-cell">${config.rounding_r3 ? `${config.rounding_r3}mm` : '—'}</td>
+                <th>R4:</th>
+                <td class="value-cell">${config.rounding_r4 ? `${config.rounding_r4}mm` : '—'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>L1:</th>
+                <td class="value-cell">${config.cut_l1 ? `${config.cut_l1}mm` : '—'}</td>
+                <th>L2:</th>
+                <td class="value-cell">${config.cut_l2 ? `${config.cut_l2}mm` : '—'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>L3:</th>
+                <td class="value-cell">${config.cut_l3 ? `${config.cut_l3}mm` : '—'}</td>
+                <th>L4:</th>
+                <td class="value-cell">${config.cut_l4 ? `${config.cut_l4}mm` : '—'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>L5:</th>
+                <td class="value-cell">${config.cut_l5 ? `${config.cut_l5}mm` : '—'}</td>
+                <th>L6:</th>
+                <td class="value-cell">${config.cut_l6 ? `${config.cut_l6}mm` : '—'}</td>
+              </tr>
+              <tr class="compact-row">
+                <th>L7:</th>
+                <td class="value-cell">${config.cut_l7 ? `${config.cut_l7}mm` : '—'}</td>
+                <th>L8:</th>
+                <td class="value-cell">${config.cut_l8 ? `${config.cut_l8}mm` : '—'}</td>
+              </tr>
+              ${cutoutsData.length > 0 ? cutoutsData.map((cutout: any, idx: number) => `
+              <tr>
+                <th>KIVÁGÁS ${idx + 1}:</th>
+                <td colspan="3" class="value-cell">
+                  Szélesség: ${cutout.width || '—'}mm, 
+                  Magasság: ${cutout.height || '—'}mm, 
+                  Bal: ${cutout.distanceFromLeft || '—'}mm, 
+                  Alul: ${cutout.distanceFromBottom || '—'}mm
+                </td>
+              </tr>
+              `).join('') : ''}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="visualization-content">
+        <div class="visualization-content-inner">
+          <!-- SVG will be added here by PDFKit -->
+          ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="visualization-logo-bottom-left" />` : ''}
+        </div>
+      </div>
+      <div class="visualization-footer">
+        <div class="visualization-footer-text">
+          Ez az ajánlat a Turinova Vállalatirányítási Rendszerrel készült.
+        </div>
+        ${turinovaLogoBase64 ? `<img src="data:image/png;base64,${turinovaLogoBase64}" alt="Turinova Logo" class="visualization-footer-logo" />` : ''}
+      </div>
+    </div>
+  </body>
+</html>
+  `
 }

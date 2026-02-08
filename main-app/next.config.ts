@@ -202,13 +202,16 @@ const nextConfig: NextConfig = {
     
     // CRITICAL: Exclude Puppeteer from ALL bundles (client AND server)
     // This prevents Next.js from analyzing these massive packages during build
-    config.resolve.fallback = {
-      ...config.resolve.fallback,
-      'puppeteer': false,
-      'puppeteer-core': false,
-      '@sparticuz/chromium': false,
-      'chrome-aws-lambda': false,
-    }
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        'puppeteer': false,
+        'puppeteer-core': false,
+        '@sparticuz/chromium': false,
+        'chrome-aws-lambda': false,
+        'pdfkit': false,
+        'svg-to-pdfkit': false,
+        'pdf-lib': false,
+      }
     
     // CRITICAL: Mark Puppeteer as external for server-side builds
     // This tells webpack to NOT bundle or analyze these packages at all
@@ -219,12 +222,15 @@ const nextConfig: NextConfig = {
         config.externals = [config.externals]
       }
       
-      config.externals.push({
-        'puppeteer': 'commonjs puppeteer',
-        'puppeteer-core': 'commonjs puppeteer-core',
-        '@sparticuz/chromium': 'commonjs @sparticuz/chromium',
-        'chrome-aws-lambda': 'commonjs chrome-aws-lambda',
-      })
+        config.externals.push({
+          'puppeteer': 'commonjs puppeteer',
+          'puppeteer-core': 'commonjs puppeteer-core',
+          '@sparticuz/chromium': 'commonjs @sparticuz/chromium',
+          'chrome-aws-lambda': 'commonjs chrome-aws-lambda',
+          'pdfkit': 'commonjs pdfkit',
+          'svg-to-pdfkit': 'commonjs svg-to-pdfkit',
+          'pdf-lib': 'commonjs pdf-lib',
+        })
     }
     
     return config

@@ -136,7 +136,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     const SPACING_BETWEEN_LABEL_TYPES = 300 // Space between different label types
     const SPACING_BETWEEN_STACKED_LABELS = 120 // Space between stacked labels of same type
     const LABEL_HEIGHT = 60 // Height of label text
-    const DIMENSION_LINE_OFFSET = 50 // Offset from dimension line to label
+    const DIMENSION_LINE_OFFSET = 30 // Offset from dimension line to label (reduced from 50)
     
     // Calculate offsets for each side
     const offsets = {
@@ -207,7 +207,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     // Minimized spacing to bring much closer to edges
     if (showLeftPerpendicularRect && cValue > 0) {
       offsets.left.cDimension = leftCurrentOffset
-      leftCurrentOffset += 80 + DIMENSION_LINE_OFFSET + 40 // Further minimized: 120 -> 80, 60 -> 40
+      leftCurrentOffset += 60 + DIMENSION_LINE_OFFSET + 30 // Further reduced: 80 -> 60, 40 -> 30
     }
     
     // RIGHT SIDE CALCULATIONS
@@ -241,7 +241,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     // Minimized spacing to bring much closer to edges
     if (bValue > 0) {
       offsets.right.bDimension = rightCurrentOffset
-      rightCurrentOffset += 80 + DIMENSION_LINE_OFFSET + 40 // Further minimized: 120 -> 80, 60 -> 40
+      rightCurrentOffset += 60 + DIMENSION_LINE_OFFSET + 30 // Further reduced: 80 -> 60, 40 -> 30
     }
     
     // TOP SIDE CALCULATIONS
@@ -269,7 +269,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     // Minimized spacing to bring much closer to edges
     if ((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')) {
       offsets.top.aDimension = topCurrentOffset
-      topCurrentOffset += 60 + LABEL_HEIGHT // Further minimized: 100 -> 60
+      topCurrentOffset += 40 + LABEL_HEIGHT // Further reduced: 60 -> 40
     }
     
     // BOTTOM SIDE CALCULATIONS
@@ -313,14 +313,14 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     // Minimized spacing to bring much closer to edges
     if (assemblyType === 'Levágás' && showCut) {
       offsets.bottom.aDimension = bottomCurrentOffset
-      bottomCurrentOffset += 60 + LABEL_HEIGHT // Further minimized: 100 -> 60
+      bottomCurrentOffset += 40 + LABEL_HEIGHT // Further reduced: 60 -> 40
     }
     
     // D dimension (Összemarás only, below perpendicular rectangle) - FARTHEST (last)
     // Minimized spacing to bring much closer to edges
     if (showLeftPerpendicularRect && dValue > 0) {
       offsets.bottom.dDimension = bottomCurrentOffset
-      bottomCurrentOffset += 60 + LABEL_HEIGHT // Further minimized: 100 -> 60
+      bottomCurrentOffset += 40 + LABEL_HEIGHT // Further reduced: 60 -> 40
     }
     
     return offsets
@@ -331,10 +331,26 @@ export function generateWorktopSvg(config: WorktopConfig): string {
   
   // Calculate viewBox with padding for labels based on calculated offsets
   // A/B/C/D dimensions are now the farthest, so they determine the padding
-  const labelPaddingLeft = Math.max(showLeftPerpendicularRect ? 550 : 400, labelOffsets.left.cDimension + 100)
-  const labelPaddingRight = Math.max(400, labelOffsets.right.bDimension + 100)
-  const labelPaddingTop = Math.max((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 300 : 100, labelOffsets.top.aDimension + 100)
-  const labelPaddingBottom = Math.max(150, Math.max(labelOffsets.bottom.aDimension || 0, labelOffsets.bottom.dDimension || 0) + 100)
+  // Reduced padding to bring dimension labels closer to edges
+  // For Levágás, use cutoutVertical offset (kivágás labels) instead of cDimension
+  // cDimension doesn't exist for Levágás - use the maximum of cutout, edge, and L dimension offsets
+  const labelPaddingLeft = assemblyType === 'Levágás' 
+    ? Math.max(350, Math.max(
+        labelOffsets.left.cutoutVertical || 0,
+        labelOffsets.left.edgeLabel || 0,
+        labelOffsets.left.l2Dimension || 0,
+        labelOffsets.left.l6Dimension || 0
+      ) + 50)  // Increased minimum to 350mm and offset to 50mm to ensure kivágás labels fit
+    : Math.max(showLeftPerpendicularRect ? 450 : 300, labelOffsets.left.cDimension + 50)
+  const labelPaddingRight = assemblyType === 'Levágás'
+    ? Math.max(250, labelOffsets.right.bDimension + 30)
+    : Math.max(300, labelOffsets.right.bDimension + 50)
+  const labelPaddingTop = assemblyType === 'Levágás'
+    ? Math.max(60, labelOffsets.top.aDimension + 30)
+    : Math.max((assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') ? 250 : 80, labelOffsets.top.aDimension + 50)
+  const labelPaddingBottom = assemblyType === 'Levágás'
+    ? Math.max(80, Math.max(labelOffsets.bottom.aDimension || 0, labelOffsets.bottom.dDimension || 0) + 30)
+    : Math.max(100, Math.max(labelOffsets.bottom.aDimension || 0, labelOffsets.bottom.dDimension || 0) + 50)
   
   // Total dimensions
   // For Levágás: use kept width (cut position), not full material width
@@ -385,34 +401,101 @@ export function generateWorktopSvg(config: WorktopConfig): string {
   const rotatedWidth = originalViewBoxHeight
   const rotatedHeight = originalViewBoxWidth
   
-  // A4 paper dimensions in mm: 210mm × 297mm (portrait)
-  // We want to center the rotated content on A4
-  const a4Width = 210
-  const a4Height = 297
+  // FIX: Use printable area dimensions (202mm × 281mm) instead of A4 full size
+  // This accounts for Puppeteer margins: 8mm top/bottom, 4mm left/right
+  // Printable area = 210-8 = 202mm width, 297-16 = 281mm height
+  const printableWidth = 202  // Printable width (210mm - 4mm left - 4mm right)
+  const printableHeight = 281 // Printable height (297mm - 8mm top - 8mm bottom)
   
-  // Calculate the bounding box needed for rotated content
-  // The rotated content will fit in a box of rotatedWidth × rotatedHeight
-  // We need to ensure this fits within A4 with some margin
-  const margin = 5 // 5mm margin on all sides
-  const maxContentWidth = a4Width - (2 * margin)
-  const maxContentHeight = a4Height - (2 * margin)
+  // FIX: Calculate scale based on WORKTOP dimensions only (ignore label padding)
+  // After rotation, worktop dimensions swap:
+  // - totalWorktopWidth becomes the rotated height (vertical dimension)
+  // - totalWorktopHeight becomes the rotated width (horizontal dimension)
+  // DON'T swap dimensions here - the SVG rotation will handle it
+  // After -90° rotation: original width becomes height, original height becomes width
+  // So we calculate scale to fit rotated dimensions in printable area
+  // Printable area is portrait: 202mm (width) × 281mm (height)
+  // After rotation: original height fits in printable width, original width fits in printable height
   
-  // Calculate scale to fit rotated content within A4
-  const scaleX = maxContentWidth / rotatedWidth
-  const scaleY = maxContentHeight / rotatedHeight
-  const scale = Math.min(scaleX, scaleY, 1) // Don't scale up, only down if needed
+  // Calculate scale to fit printable area based on worktop dimensions
+  // CRITICAL: Account for labels that extend beyond worktop bounds
+  // After -90° rotation, label positions swap:
+  // - labelPaddingLeft (was left) → becomes labelPaddingTop (top after rotation)
+  // - labelPaddingRight (was right) → becomes labelPaddingBottom (bottom after rotation)
+  // - labelPaddingTop (was top) → becomes labelPaddingRight (right after rotation)
+  // - labelPaddingBottom (was bottom) → becomes labelPaddingLeft (left after rotation)
+  
+  // Calculate scale to fit in printable area AFTER rotation
+  // After rotate(-90): original width becomes vertical, original height becomes horizontal
+  // Printable area is portrait: 202mm (width) × 281mm (height)
+  // 
+  // After rotation:
+  // - Original height (vertical) becomes horizontal → must fit in printable width (202mm)
+  // - Original width (horizontal) becomes vertical → must fit in printable height (281mm)
+  //
+  // Label positions after rotation:
+  // - Left after rotation = what was bottom before rotation
+  // - Right after rotation = what was top before rotation  
+  // - Top after rotation = what was left before rotation
+  // - Bottom after rotation = what was right before rotation
+  
+  // Calculate space needed AFTER rotation:
+  // Horizontal space (printable width) = original height + left/right labels (which were bottom/top)
+  const spaceNeededHorizontal = totalWorktopHeight + labelPaddingBottom + labelPaddingTop
+  
+  // Vertical space (printable height) = original width + top/bottom labels (which were left/right)
+  const spaceNeededVertical = totalWorktopWidth + labelPaddingLeft + labelPaddingRight
+  
+  // Calculate scale to fit rotated content
+  const scaleX = printableWidth / spaceNeededHorizontal   // Fit rotated horizontal dimension
+  const scaleY = printableHeight / spaceNeededVertical    // Fit rotated vertical dimension
+  let scale = Math.min(scaleX, scaleY) * 0.95  // 95% to maximize with margin
+  
+  // Verify scaled dimensions fit within printable area
+  const scaledHorizontal = spaceNeededHorizontal * scale
+  const scaledVertical = spaceNeededVertical * scale
+  
+  // Safety check: if still exceeds, reduce scale further
+  if (scaledHorizontal > printableWidth) {
+    scale = (printableWidth / spaceNeededHorizontal) * 0.95
+  }
+  if (scaledVertical > printableHeight) {
+    const heightScale = (printableHeight / spaceNeededVertical) * 0.95
+    scale = Math.min(scale, heightScale)
+  }
+  
+  // Final verification: ensure worktop alone fits (absolute minimum)
+  const finalScaledHorizontal = spaceNeededHorizontal * scale
+  const finalScaledVertical = spaceNeededVertical * scale
+  if (finalScaledHorizontal > printableWidth || finalScaledVertical > printableHeight) {
+    // Emergency fallback: scale to fit worktop only (after rotation)
+    const emergencyScaleX = (printableWidth / totalWorktopHeight) * 0.95
+    const emergencyScaleY = (printableHeight / totalWorktopWidth) * 0.95
+    scale = Math.min(emergencyScaleX, emergencyScaleY)
+  }
+  
+  // Use printable area for viewBox and transform center
+  const a4Width = printableWidth
+  const a4Height = printableHeight
   
   // Calculate the center of the original content (in original viewBox coordinates)
   // This is the point around which we'll rotate
   const contentCenterX = originalViewBoxX + originalViewBoxWidth / 2
   const contentCenterY = originalViewBoxY + originalViewBoxHeight / 2
   
-  // Calculate viewBox to center rotated content on A4
-  // The viewBox should be A4 size, and we'll center the rotated content within it
-  const finalViewBoxWidth = a4Width
-  const finalViewBoxHeight = a4Height
+  // Calculate viewBox to center rotated content on printable area
+  // The viewBox should match printable area size (202mm × 281mm)
+  // This ensures the coordinate system matches the available space exactly
+  const finalViewBoxWidth = a4Width   // 202mm
+  const finalViewBoxHeight = a4Height // 281mm
   const viewBoxX = 0
   const viewBoxY = 0
+  
+  // CRITICAL: After rotation, labels that were on LEFT become on TOP
+  // Labels that were on RIGHT become on BOTTOM
+  // Labels that were on TOP become on RIGHT
+  // Labels that were on BOTTOM become on LEFT
+  // The transform centers the content, so labels should be visible if scale accounts for them
   
   // Build main worktop path
   const buildMainWorktopPath = (): string => {
@@ -1475,7 +1558,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         const rectWidth = leftPerpendicularRectWidth
         const rectHeight = leftPerpendicularRectHeight
         
-        // The visual dimensions after 90° clockwise rotation:
+        // The visual dimensions after 90° counter-clockwise rotation:
         const visualWidth = cutoutHeight // Original height becomes visual width
         const visualHeight = cutoutWidth // Original width becomes visual height
         
@@ -1602,7 +1685,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         const rectWidth = leftPerpendicularRectWidth
         const rectHeight = leftPerpendicularRectHeight
         
-        // After 90° clockwise rotation:
+        // After 90° counter-clockwise rotation:
         // - Original width becomes visual height
         // - Original height becomes visual width
         const visualWidth = cutoutHeight // After rotation, this is the visual width
@@ -1777,14 +1860,18 @@ export function generateWorktopSvg(config: WorktopConfig): string {
   console.log('[SVG Generator] Assembly type:', assemblyType)
   console.log('[SVG Generator] Main path:', mainPath ? mainPath.substring(0, 150) : 'EMPTY')
   console.log('[SVG Generator] ViewBox:', `${viewBoxX} ${viewBoxY} ${finalViewBoxWidth} ${finalViewBoxHeight}`)
-  console.log('[SVG Generator] Total dimensions:', `${totalWorktopWidth} × ${totalWorktopHeight}`)
+  console.log('[SVG Generator] Total worktop dimensions:', `${totalWorktopWidth} × ${totalWorktopHeight}`)
+  console.log('[SVG Generator] Original worktop dimensions:', `${totalWorktopWidth} × ${totalWorktopHeight}`)
+  console.log('[SVG Generator] After -90° rotation will be:', `${totalWorktopHeight} × ${totalWorktopWidth}`)
+  console.log('[SVG Generator] Printable area:', `${printableWidth} × ${printableHeight}`)
+  console.log('[SVG Generator] Scale:', `${scale.toFixed(4)} (${(scale * 100).toFixed(1)}%)`)
   
   // Build cut-down parts (hatched rectangles for removed material)
   const buildCutDownParts = (): string => {
     const parts: string[] = []
     
-    // Horizontal cut part (right side) for Levágás
-    if (showCut) {
+    // Horizontal cut part (right side) - exclude Levágás
+    if (showCut && assemblyType !== 'Levágás') {
       const gapSize = 25 // Gap between cut line and cut-down part (mm)
       const cutDownX = cutPosition + gapSize
       const cutDownWidth = worktopWidth - cutPosition - gapSize
@@ -1799,8 +1886,8 @@ export function generateWorktopSvg(config: WorktopConfig): string {
       `)
     }
     
-    // Vertical cut part (top side) - if needed
-    if (showVerticalCut) {
+    // Vertical cut part (top side) - exclude Levágás
+    if (showVerticalCut && assemblyType !== 'Levágás') {
       const gapSize = 25
       const cutDownY = 0
       const cutDownHeight = (worktopLength - bValue) - gapSize
@@ -1819,7 +1906,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
   }
   
   return `
-    <svg viewBox="${viewBoxX} ${viewBoxY} ${finalViewBoxWidth} ${finalViewBoxHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="width: 100%; height: 100%; font-family: Arial, sans-serif;">
+    <svg viewBox="${viewBoxX} ${viewBoxY} ${finalViewBoxWidth} ${finalViewBoxHeight}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" style="width: 100%; height: 100%; font-family: Arial, sans-serif; overflow: visible;">
       <defs>
         <style>
           .dimension-label { font-size: 100px; font-weight: 500; fill: #000; }
@@ -1832,10 +1919,11 @@ export function generateWorktopSvg(config: WorktopConfig): string {
       </defs>
       
       <!-- Transform group: 
-           1. Translate to move content center to origin
-           2. Rotate 90° counter-clockwise
+           Correct order for rotating around content center and centering on page:
+           1. Translate to printable area center
+           2. Rotate 90° counter-clockwise (to the left) around that point
            3. Scale to fit A4
-           4. Translate to A4 center
+           4. Translate to move content center to origin (relative to page center)
       -->
       <g transform="translate(${a4Width / 2}, ${a4Height / 2}) rotate(-90) scale(${scale}) translate(${-contentCenterX}, ${-contentCenterY})">
         ${buildCutDownParts() ? `<!-- Cut-down parts -->

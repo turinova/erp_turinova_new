@@ -3190,6 +3190,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                           // Összemarás Balos: left perpendicular rectangle at bottom-left
                           totalWorktopHeight = worktopLength + leftPerpendicularRectHeight
                           totalWorktopWidth = Math.max(worktopWidth, leftPerpendicularRectWidth)
+                        } else if (assemblyType === 'Levágás' && showCut) {
+                          // For Levágás: total width is the kept portion (cut position), not full material width
+                          totalWorktopHeight = worktopLength
+                          totalWorktopWidth = cutPosition
                         } else {
                           totalWorktopHeight = worktopLength
                           totalWorktopWidth = worktopWidth
@@ -6610,8 +6614,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   </pattern>
                                 </defs>
                                 
-                                {/* Horizontal cut part (right side) for Levágás - drawn in SVG to match exact dimensions */}
-                                {showCut && (() => {
+                                {/* Horizontal cut part (right side) - drawn in SVG to match exact dimensions */}
+                                {showCut && assemblyType !== 'Levágás' && (() => {
                                   const gapSize = 25 // Gap between cut line and cut-down part (mm)
                                   const cutDownX = cutPosition + gapSize
                                   const cutDownWidth = worktopWidth - cutPosition - gapSize
@@ -6649,7 +6653,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 })()}
                                 
                                 {/* Vertical cut part (top side) - drawn in SVG to match exact dimensions */}
-                                {showVerticalCut && (() => {
+                                {showVerticalCut && assemblyType !== 'Levágás' && (() => {
                                   const gapSize = 25 // Gap between cut line and cut-down part (mm)
                                   const cutDownY = 0
                                   const cutDownHeight = verticalCutHeight - gapSize
