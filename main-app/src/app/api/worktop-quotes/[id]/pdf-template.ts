@@ -108,6 +108,7 @@ interface WorktopQuotePdfTemplateProps {
   discountPercentage: number
   tenantCompanyLogoBase64?: string
   turinovaLogoBase64?: string
+  barcode?: string | null // Barcode for orders
   generateSvg?: (config: WorktopConfig) => string // SVG generator function
 }
 
@@ -184,6 +185,7 @@ export default function generateWorktopQuotePdfHtml({
   discountPercentage,
   tenantCompanyLogoBase64,
   turinovaLogoBase64,
+  barcode,
   generateSvg
 }: WorktopQuotePdfTemplateProps): string {
   
@@ -343,6 +345,30 @@ export default function generateWorktopQuotePdfHtml({
         max-width: 220px;
         width: auto;
         height: auto;
+      }
+      .header-center {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 0 10mm;
+      }
+      .header-barcode {
+        max-width: 150px;
+        max-height: 50px;
+        margin-bottom: 2mm;
+      }
+      .header-barcode svg {
+        width: 100%;
+        height: auto;
+      }
+      .header-barcode-text {
+        font-size: 8px;
+        font-family: monospace;
+        letter-spacing: 1px;
+        text-align: center;
+        margin-top: 1mm;
       }
       .header-right {
         text-align: right;
@@ -731,6 +757,14 @@ export default function generateWorktopQuotePdfHtml({
         <div class="header-left">
           ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="header-logo" />` : ''}
         </div>
+        ${barcode ? `
+        <div class="header-center">
+          <div class="header-barcode">
+            <svg id="barcode-${quote.id}"></svg>
+            <div class="header-barcode-text">${escapeHtml(barcode)}</div>
+          </div>
+        </div>
+        ` : ''}
         <div class="header-right">
           <div class="title">AJÁNLAT</div>
           <div class="quote-number">${escapeHtml(quote.quote_number)}</div>
@@ -741,6 +775,18 @@ export default function generateWorktopQuotePdfHtml({
         </div>
       </div>
     </div>
+    ${barcode ? `
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script>
+      JsBarcode("#barcode-${quote.id}", "${escapeHtml(barcode)}", {
+        format: "EAN13",
+        width: 2.5,
+        height: 50,
+        displayValue: false,
+        margin: 0
+      });
+    </script>
+    ` : ''}
 
     <div class="two-column">
       <div class="column">
@@ -1057,7 +1103,8 @@ export function generateVisualizationPageHtml(
   quote: WorktopQuote,
   index: number,
   tenantCompanyLogoBase64?: string,
-  turinovaLogoBase64?: string
+  turinovaLogoBase64?: string,
+  barcode?: string | null
 ): string {
   // Format dimension values for display
   const formatDimension = (value: number | null) => value !== null ? `${value}mm` : '-'
@@ -1140,17 +1187,17 @@ export function generateVisualizationPageHtml(
         background-color: #ffffff;
         border: 0.5px solid #000000;
         border-bottom: 1px solid #000000;
-        padding: 2mm 2.5mm;
+        padding: 3mm 3mm;
         margin: 0;
         box-sizing: border-box;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        font-size: 7pt;
-        line-height: 1.4;
+        font-size: 8pt;
+        line-height: 1.5;
         overflow: hidden;
-        max-height: 50mm;
-        min-height: 30mm;
+        max-height: 70mm;
+        min-height: 50mm;
         display: flex;
-        gap: 2.5mm;
+        gap: 3mm;
         align-items: flex-start;
       }
       .header-table-container {
@@ -1170,12 +1217,12 @@ export function generateVisualizationPageHtml(
       }
       .header-table-title {
         font-weight: 700;
-        font-size: 8pt;
+        font-size: 9pt;
         color: #000000;
-        margin-bottom: 1mm;
+        margin-bottom: 1.5mm;
         padding: 0;
         padding-bottom: 0.5mm;
-        line-height: 1.2;
+        line-height: 1.3;
         text-transform: uppercase;
         letter-spacing: 0.5px;
         border-bottom: 1px solid #000000;
@@ -1185,7 +1232,7 @@ export function generateVisualizationPageHtml(
         width: 100%;
         border-collapse: collapse;
         margin: 0;
-        font-size: 7px;
+        font-size: 8px;
         table-layout: fixed;
         max-width: 100%;
         box-sizing: border-box;
@@ -1193,7 +1240,7 @@ export function generateVisualizationPageHtml(
       }
       .visualization-header-table th,
       .visualization-header-table td {
-        padding: 2px 4px;
+        padding: 1px 2px;
         text-align: left;
         border: 0.5px solid #000000;
         vertical-align: top;
@@ -1206,17 +1253,17 @@ export function generateVisualizationPageHtml(
         font-weight: 700;
         color: #000000;
         background-color: #ffffff;
-        padding: 2.5px 4px;
+        padding: 1.5px 2px;
         white-space: nowrap;
-        font-size: 7px;
+        font-size: 8px;
         width: 30%;
         text-transform: uppercase;
         letter-spacing: 0.3px;
       }
       .visualization-header-table td {
         color: #000000;
-        font-size: 7px;
-        line-height: 1.3;
+        font-size: 8px;
+        line-height: 1.4;
         width: 20%;
         font-weight: 400;
       }
@@ -1225,7 +1272,7 @@ export function generateVisualizationPageHtml(
       }
       /* Right table - same font size as left table, prevent overflow */
       .header-table-container:last-child .visualization-header-table {
-        font-size: 7px;
+        font-size: 8px;
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
@@ -1234,21 +1281,21 @@ export function generateVisualizationPageHtml(
       .header-table-container:last-child .visualization-header-table th,
       .header-table-container:last-child .visualization-header-table td {
         padding: 1px 2px;
-        font-size: 6.5px;
+        font-size: 7.5px;
         box-sizing: border-box;
         border: 0.5px solid #000000;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       .header-table-container:last-child .visualization-header-table th {
         padding: 1.5px 2px;
-        font-size: 6.5px;
+        font-size: 7.5px;
         width: 25%;
         max-width: 25%;
         text-transform: uppercase;
         letter-spacing: 0.2px;
       }
       .header-table-container:last-child .visualization-header-table td {
-        font-size: 6.5px;
+        font-size: 7.5px;
         width: 25%;
         max-width: 25%;
       }
@@ -1261,39 +1308,39 @@ export function generateVisualizationPageHtml(
       }
       /* Compact rows - no wrapping, use maximum space */
       .compact-row {
-        font-size: 6.5px;
+        font-size: 7.5px;
       }
       .compact-row th,
       .compact-row td {
-        padding: 1.5px 3px;
-        font-size: 6.5px;
-        line-height: 1.2;
+        padding: 1px 2px;
+        font-size: 7.5px;
+        line-height: 1.3;
         white-space: nowrap;
         box-sizing: border-box;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         border: 0.5px solid #000000;
       }
       .compact-row th {
-        padding: 2px 3px;
-        font-size: 6.5px;
+        padding: 1.5px 2px;
+        font-size: 7.5px;
         text-transform: uppercase;
         letter-spacing: 0.2px;
       }
       /* Right table compact rows - same font size as left, reduced padding */
       .header-table-container:last-child .compact-row {
-        font-size: 6px;
+        font-size: 7px;
       }
       .header-table-container:last-child .compact-row th,
       .header-table-container:last-child .compact-row td {
         padding: 1px 2px;
-        font-size: 6px;
+        font-size: 7px;
         box-sizing: border-box;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         border: 0.5px solid #000000;
       }
       .header-table-container:last-child .compact-row th {
         padding: 1.5px 2px;
-        font-size: 6px;
+        font-size: 7px;
         text-transform: uppercase;
         letter-spacing: 0.2px;
       }
@@ -1351,6 +1398,29 @@ export function generateVisualizationPageHtml(
         max-width: 150px;
         width: auto;
         height: auto;
+      }
+      .visualization-barcode-bottom-right {
+        position: absolute;
+        bottom: 3mm;
+        right: 3mm;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        max-width: 120px;
+      }
+      .visualization-barcode-bottom-right svg {
+        width: 100%;
+        height: auto;
+        max-height: 40px;
+      }
+      .visualization-barcode-bottom-right-text {
+        font-size: 7px;
+        font-family: monospace;
+        letter-spacing: 0.5px;
+        text-align: center;
+        margin-top: 1mm;
       }
       .visualization-footer {
         width: 100%;
@@ -1539,6 +1609,12 @@ export function generateVisualizationPageHtml(
         <div class="visualization-content-inner">
           <!-- SVG will be added here by PDFKit -->
           ${tenantCompanyLogoBase64 ? `<img src="data:image/png;base64,${tenantCompanyLogoBase64}" alt="Company Logo" class="visualization-logo-bottom-left" />` : ''}
+          ${barcode ? `
+          <div class="visualization-barcode-bottom-right">
+            <svg id="barcode-viz-${quote.id}-${index}"></svg>
+            <div class="visualization-barcode-bottom-right-text">${escapeHtml(barcode)}</div>
+          </div>
+          ` : ''}
         </div>
       </div>
       <div class="visualization-footer">
@@ -1548,6 +1624,18 @@ export function generateVisualizationPageHtml(
         ${turinovaLogoBase64 ? `<img src="data:image/png;base64,${turinovaLogoBase64}" alt="Turinova Logo" class="visualization-footer-logo" />` : ''}
       </div>
     </div>
+    ${barcode ? `
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script>
+      JsBarcode("#barcode-viz-${quote.id}-${index}", "${escapeHtml(barcode)}", {
+        format: "EAN13",
+        width: 2,
+        height: 40,
+        displayValue: false,
+        margin: 0
+      });
+    </script>
+    ` : ''}
   </body>
 </html>
   `

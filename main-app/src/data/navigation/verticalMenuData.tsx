@@ -107,6 +107,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       {
         label: 'Munkalap ajánlatok',
         href: '/worktop-quotes'
+      },
+      {
+        label: 'Munkalap megrendelések',
+        href: '/worktop-orders'
       }
     ]
   },

@@ -27,6 +27,7 @@ interface CreateOrderModalProps {
   quoteNumber: string
   finalTotal: number
   onSuccess: (orderId: string, orderNumber: string) => void
+  apiPath?: string // Optional API path, defaults to '/api/orders'
 }
 
 export default function CreateOrderModal({
@@ -35,7 +36,8 @@ export default function CreateOrderModal({
   quoteId,
   quoteNumber,
   finalTotal,
-  onSuccess
+  onSuccess,
+  apiPath = '/api/orders'
 }: CreateOrderModalProps) {
   
   const [amount, setAmount] = useState<string>('')
@@ -96,13 +98,14 @@ export default function CreateOrderModal({
     setIsSubmitting(true)
 
     try {
-      const response = await fetch('/api/orders', {
+      const response = await fetch(apiPath, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          quote_id: quoteId,
+          worktop_quote_id: quoteId, // For worktop orders, use worktop_quote_id
+          quote_id: quoteId, // For regular orders, use quote_id (backward compatibility)
           initial_payment: {
             amount: paidAmount,
             payment_method: paymentMethod,
@@ -113,13 +116,18 @@ export default function CreateOrderModal({
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Hiba történt a megrendelés létrehozása során')
+        const errorMessage = errorData.error || 'Hiba történt a megrendelés létrehozása során'
+        const errorDetails = errorData.details ? ` (${errorData.details})` : ''
+        const errorHint = errorData.hint ? `\nTipp: ${errorData.hint}` : ''
+        throw new Error(errorMessage + errorDetails + errorHint)
       }
 
       const data = await response.json()
       
       toast.success(`Megrendelés létrehozva: ${data.order_number}`)
-      onSuccess(data.quote_id, data.order_number)
+      // Support both worktop_quote_id and quote_id for backward compatibility
+      const orderId = data.worktop_quote_id || data.quote_id
+      onSuccess(orderId, data.order_number)
       onClose()
       
     } catch (err) {

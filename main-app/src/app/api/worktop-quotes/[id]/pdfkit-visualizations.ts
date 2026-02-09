@@ -214,7 +214,7 @@ function generateVisualizationPage(
         if (currentLine) {
           lines.push(currentLine)
           currentLine = word
-        } else {
+    } else {
           // Word is too long, force it
           lines.push(word)
         }
@@ -326,7 +326,7 @@ function generateVisualizationPage(
     const dividerX = leftX + rightColLabelWidth
     doc.moveTo(dividerX, y)
     doc.lineTo(dividerX, y + rowHeight)
-    doc.stroke()
+          doc.stroke()
     // Right border
     doc.moveTo(rightX, y)
     doc.lineTo(rightX, y + rowHeight)

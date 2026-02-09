@@ -1060,8 +1060,32 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to save worktop quote')
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          const text = await response.text()
+          console.error('=== CLIENT: FAILED TO PARSE ERROR JSON ===')
+          console.error('Response text:', text)
+          console.error('Response status:', response.status)
+          throw new Error(`Failed to save worktop quote (Status: ${response.status})`)
+        }
+        
+        console.error('=== CLIENT: ERROR RESPONSE FROM API ===')
+        console.error('Full error data:', JSON.stringify(errorData, null, 2))
+        console.error('Error:', errorData.error)
+        console.error('Details:', errorData.details)
+        console.error('Code:', errorData.code)
+        console.error('Hint:', errorData.hint)
+        console.error('Full error (if present):', errorData.fullError)
+        console.error('Response status:', response.status)
+        console.error('Response status text:', response.statusText)
+        console.error('=== END CLIENT ERROR ===')
+        
+        const errorMessage = errorData.details 
+          ? `${errorData.error}: ${errorData.details}${errorData.hint ? ` (${errorData.hint})` : ''}${errorData.code ? ` [Code: ${errorData.code}]` : ''}`
+          : errorData.error || 'Failed to save worktop quote'
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()
@@ -1082,8 +1106,21 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       }
       
     } catch (err) {
-      console.error('Error saving worktop quote:', err)
-      toast.error(`Hiba az árajánlat mentése során: ${err instanceof Error ? err.message : 'Ismeretlen hiba'}`)
+      console.error('=== CLIENT: CATCH BLOCK ERROR ===')
+      console.error('Error type:', typeof err)
+      console.error('Error:', err)
+      console.error('Error message:', err instanceof Error ? err.message : String(err))
+      console.error('Error stack:', err instanceof Error ? err.stack : 'No stack')
+      console.error('Full error:', JSON.stringify(err, Object.getOwnPropertyNames(err), 2))
+      console.error('=== END CATCH BLOCK ERROR ===')
+      
+      const errorMessage = err instanceof Error ? err.message : 'Ismeretlen hiba'
+      toast.error(`Hiba az árajánlat mentése során: ${errorMessage}`)
+      
+      // Also log to alert for visibility
+      if (err instanceof Error && err.message.includes('Code:')) {
+        alert(`Detailed Error:\n${err.message}\n\nCheck browser console for full details.`)
+      }
     } finally {
       setIsSavingQuote(false)
     }

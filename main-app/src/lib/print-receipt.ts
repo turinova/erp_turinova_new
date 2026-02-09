@@ -278,12 +278,26 @@ export async function printOrderReceipt(data: ReceiptData): Promise<void> {
 
   // Render receipt using React
   console.log('[Print Receipt] Importing React components...')
+  console.log('[Print Receipt] Pricing data being passed:', JSON.stringify(data.pricing, null, 2))
+  console.log('[Print Receipt] Pricing items count:', data.pricing.length)
+  data.pricing.forEach((item, idx) => {
+    console.log(`[Print Receipt] Pricing item ${idx}:`, {
+      material_name: item.material_name || item.materials?.name,
+      charged_sqm: item.charged_sqm,
+      boards_used: item.boards_used,
+      waste_multi: item.waste_multi,
+      services_count: item.quote_services_breakdown?.length || 0
+    })
+  })
+  
   const React = await import('react')
   const { createRoot } = await import('react-dom/client')
   const { default: OrderReceiptPrint } = await import('@/components/OrderReceiptPrint')
 
+  console.log('[Print Receipt] Component imported successfully')
   console.log('[Print Receipt] Creating React root and rendering...')
   console.log('[Print Receipt] Barcode value being passed:', data.barcode || 'NO BARCODE')
+  
   const root = createRoot(printContainer)
   
   // Render both copies: original and customer

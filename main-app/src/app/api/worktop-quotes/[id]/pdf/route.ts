@@ -484,6 +484,7 @@ export async function GET(
       discountPercentage: discountPercent,
       tenantCompanyLogoBase64,
       turinovaLogoBase64,
+      barcode: quoteData.barcode || null,
       generateSvg: null // Skip visualization pages in HTML - we'll use PDFKit for those
     })
 
@@ -542,18 +543,40 @@ export async function GET(
 
     const page = await browser.newPage()
     
-    await page.setJavaScriptEnabled(false)
+    // Enable JavaScript if barcode is present (needed for JsBarcode library)
+    await page.setJavaScriptEnabled(!!quoteData.barcode)
     
     await page.setRequestInterception(true)
     page.on('request', (req) => {
-      req.abort()
+      // Allow CDN requests for JsBarcode if barcode is present
+      if (quoteData.barcode && req.url().includes('jsdelivr.net')) {
+        req.continue()
+      } else {
+        req.abort()
+      }
     })
     
     await page.setContent(fullHtml, {
-      waitUntil: 'domcontentloaded'
+      waitUntil: quoteData.barcode ? 'networkidle0' : 'domcontentloaded'
     })
     
-    await new Promise(resolve => setTimeout(resolve, 50))
+    // Wait for barcode to render if present
+    if (quoteData.barcode) {
+      await page.waitForFunction(
+        (barcodeId) => {
+          const svg = document.getElementById(barcodeId)
+          return svg && svg.querySelector('rect') !== null
+        },
+        {},
+        `barcode-${quoteData.id}`
+      ).catch(() => {
+        // If barcode doesn't render, continue anyway
+        console.warn('Barcode rendering timeout, continuing...')
+      })
+      await new Promise(resolve => setTimeout(resolve, 200))
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
 
     // Generate first page PDF (portrait only - no visualization pages)
     const firstPagePdfBuffer = await page.pdf({
@@ -655,7 +678,7 @@ export async function GET(
           edge_position6: config.edge_position6
         }
         
-        const visualizationHtml = generateVisualizationPageHtml(configForHtml, quoteForViz, config.config_order - 1, tenantCompanyLogoBase64, turinovaLogoBase64)
+        const visualizationHtml = generateVisualizationPageHtml(configForHtml, quoteForViz, config.config_order - 1, tenantCompanyLogoBase64, turinovaLogoBase64, quoteData.barcode || null)
         
         // Step 2b: Render HTML table with Puppeteer
         const vizBrowser = isProduction
@@ -702,17 +725,39 @@ export async function GET(
             })
         
         const vizPage = await vizBrowser.newPage()
-        await vizPage.setJavaScriptEnabled(false)
+        // Enable JavaScript if barcode is present (needed for JsBarcode library)
+        await vizPage.setJavaScriptEnabled(!!quoteData.barcode)
         await vizPage.setRequestInterception(true)
         vizPage.on('request', (req) => {
-          req.abort()
+          // Allow CDN requests for JsBarcode if barcode is present
+          if (quoteData.barcode && req.url().includes('jsdelivr.net')) {
+            req.continue()
+          } else {
+            req.abort()
+          }
         })
         
         await vizPage.setContent(visualizationHtml, {
-          waitUntil: 'domcontentloaded'
+          waitUntil: quoteData.barcode ? 'networkidle0' : 'domcontentloaded'
         })
         
-        await new Promise(resolve => setTimeout(resolve, 50))
+        // Wait for barcode to render if present
+        if (quoteData.barcode) {
+          await vizPage.waitForFunction(
+            (barcodeId) => {
+              const svg = document.getElementById(barcodeId)
+              return svg && svg.querySelector('rect') !== null
+            },
+            {},
+            `barcode-viz-${quoteData.id}-${config.config_order - 1}`
+          ).catch(() => {
+            // If barcode doesn't render, continue anyway
+            console.warn('Visualization barcode rendering timeout, continuing...')
+          })
+          await new Promise(resolve => setTimeout(resolve, 200))
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 50))
+        }
         
         // Generate PDF with table
         const tablePdfBuffer = await vizPage.pdf({
@@ -747,13 +792,13 @@ export async function GET(
         
         // Header height calculation:
         // Table has 6-7+ rows (Megrendelő, Anyag, 1-6 oldal, A-D, R1-R4, L1-L8, cutouts)
-        // Each row: ~5.3mm (font 7pt ~2.5mm + padding 4px top/bottom ~2.8mm)
-        // 7 rows: 7 * 5.3mm = 37.1mm
-        // Plus header padding (1.5mm top + 2mm bottom) + borders: ~42-45mm total
-        // With cutouts, can be 8-9 rows: ~50-55mm total
-        // Convert to points: 55mm * 2.83465 = ~155.9 points
-        // Use very conservative estimate with extra safety margin
-        const headerHeight = 170 // ~60mm in points (very conservative for 8-9 rows with multiple cutouts)
+        // Each row: ~6.5mm (font 8pt ~3mm + padding 3px top/bottom ~3.5mm) - increased for readability
+        // 7 rows: 7 * 6.5mm = 45.5mm
+        // Plus header padding (3mm top + 3mm bottom) + borders: ~52-55mm total
+        // With cutouts, can be 8-9 rows: ~60-70mm total
+        // Convert to points: 70mm * 2.83465 = ~198.4 points
+        // Use very conservative estimate with extra safety margin for increased font sizes
+        const headerHeight = 220 // ~78mm in points (increased for better readability with larger fonts)
         const gapAfterHeader = 8 // Gap between header and visualization (8 points = ~2.8mm)
         
         // Footer height (text + logo + padding)

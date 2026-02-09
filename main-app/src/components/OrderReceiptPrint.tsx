@@ -59,8 +59,12 @@ export default function OrderReceiptPrint({
   logoBase64,
   copyType = 'original'
 }: OrderReceiptPrintProps) {
-  // Debug logging
-  console.log('[OrderReceiptPrint] Component rendered with barcode:', barcode || 'NO BARCODE')
+  // Debug logging - ALWAYS execute this first
+  console.log('========================================')
+  console.log('[OrderReceiptPrint] Component RENDERED')
+  console.log('[OrderReceiptPrint] Barcode:', barcode || 'NO BARCODE')
+  console.log('[OrderReceiptPrint] Pricing array length:', pricing?.length || 0)
+  console.log('========================================')
   
   // Load Barcode component dynamically
   const [BarcodeComponent, setBarcodeComponent] = useState<any>(null)
@@ -75,14 +79,40 @@ export default function OrderReceiptPrint({
   }, [])
 
   const formatQuantity = (pricingItem: typeof pricing[0]) => {
-    const chargedSqm = pricingItem.charged_sqm || 0
-    const boardsSold = pricingItem.boards_used || 0
-    const wasteMulti = pricingItem.waste_multi || 1
+    // Explicitly convert to numbers to handle string values from API
+    const chargedSqm = Number(pricingItem.charged_sqm) || 0
+    const boardsSold = Number(pricingItem.boards_used) || 0
+    const wasteMulti = Number(pricingItem.waste_multi) || 1
+    const materialName = (pricingItem.materials?.name || pricingItem.material_name || '').trim()
     
-    // Divide charged_sqm by waste_multi to show net material quantity
-    const displaySqm = chargedSqm / wasteMulti
+    // Check if this is a worktop order
+    // Worktop characteristics: 
+    // 1. boardsSold is 0 AND wasteMulti is 1 (primary check - worktops always have this)
+    // 2. OR material name contains assembly type keywords
+    const hasAssemblyType = materialName.includes('(Levágás)') || 
+                            materialName.includes('(Összemarás Balos)') ||
+                            materialName.includes('(Összemarás jobbos)') ||
+                            materialName.includes('Levágás') ||
+                            materialName.includes('Összemarás')
     
-    return `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
+    // Primary check: if boardsSold is 0 and wasteMulti is 1, it's definitely a worktop
+    // Secondary check: if material name contains assembly type, it's a worktop
+    const isWorktop = (boardsSold === 0 && wasteMulti === 1) || hasAssemblyType
+    
+    console.log(`[Receipt Print formatQuantity] Material: "${materialName}", chargedSqm: ${chargedSqm}, boardsSold: ${boardsSold}, wasteMulti: ${wasteMulti}, hasAssemblyType: ${hasAssemblyType}, isWorktop: ${isWorktop}`)
+    
+    if (isWorktop) {
+      // For worktops, display as meters only (charged_sqm is already in meters)
+      const result = `${chargedSqm.toFixed(2)} m`
+      console.log(`[Receipt Print formatQuantity] Returning worktop format: "${result}"`)
+      return result
+    } else {
+      // For regular orders, display as m2 / db
+      const displaySqm = chargedSqm / wasteMulti
+      const result = `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
+      console.log(`[Receipt Print formatQuantity] Returning regular format: "${result}"`)
+      return result
+    }
   }
 
   const getMaterialName = (pricingItem: typeof pricing[0]) => {
@@ -91,49 +121,82 @@ export default function OrderReceiptPrint({
 
   // Collect and aggregate services from all pricing items
   const getAggregatedServices = () => {
+    console.log(`[Receipt Print getAggregatedServices] Starting with ${pricing.length} pricing items`)
     const servicesMap = new Map<string, { name: string; quantity: number; unit: string }>()
 
-    pricing.forEach((pricingItem) => {
-      if (pricingItem.quote_services_breakdown) {
-        pricingItem.quote_services_breakdown.forEach((service) => {
+    // Service translation map - centralized for consistency
+    const serviceTranslation: Record<string, { name: string; unit: string }> = {
+      'panthelyfuras': { name: 'Pánthelyfúrás', unit: 'db' },
+      'duplungolas': { name: 'Duplungolás', unit: 'm2' },
+      'szogvagas': { name: 'Szögvágás', unit: 'db' },
+      'osszemaras': { name: 'Összemarás', unit: 'db' },
+      'kereszt_vagas': { name: 'Kereszt vágás', unit: 'db' },
+      'hosszanti_vagas': { name: 'Hosszanti vágás', unit: 'm' },
+      'ives_vagas': { name: 'Íves vágás', unit: 'db' },
+      'kivagas': { name: 'Kivágás', unit: 'db' },
+      'elzaro': { name: 'Élzárás', unit: 'm' },
+      'élzáró': { name: 'Élzárás', unit: 'm' }, // Alternative spelling
+      'élzárás': { name: 'Élzárás', unit: 'm' } // Alternative spelling
+    }
+
+    pricing.forEach((pricingItem, itemIndex) => {
+      console.log(`[Receipt Print getAggregatedServices] Processing pricing item ${itemIndex}, has services: ${!!pricingItem.quote_services_breakdown}, count: ${pricingItem.quote_services_breakdown?.length || 0}`)
+      if (pricingItem.quote_services_breakdown && Array.isArray(pricingItem.quote_services_breakdown)) {
+        pricingItem.quote_services_breakdown.forEach((service, serviceIndex) => {
           // Translate service type to Hungarian name
-          let serviceName = ''
-          let unit = ''
+          // Normalize service_type (trim and lowercase for comparison)
+          const rawServiceType = String(service.service_type || '').trim()
+          const normalizedServiceType = rawServiceType.toLowerCase()
           
-          switch (service.service_type) {
-            case 'panthelyfuras':
-              serviceName = 'Pánthelyfúrás'
-              unit = 'db'
-              break
-            case 'duplungolas':
-              serviceName = 'Duplungolás'
-              unit = 'm2'
-              break
-            case 'szogvagas':
-              serviceName = 'Szögvágás'
-              unit = 'db'
-              break
-            default:
-              serviceName = service.service_type
-              unit = 'db'
+          console.log(`[Receipt Print getAggregatedServices] Processing service ${serviceIndex}: raw="${rawServiceType}", normalized="${normalizedServiceType}"`)
+          
+          // Look up translation
+          const translation = serviceTranslation[normalizedServiceType]
+          const serviceName = translation?.name || rawServiceType
+          const unit = translation?.unit || 'db'
+          
+          if (!translation) {
+            console.warn(`[Receipt Print getAggregatedServices] Unknown service_type: "${rawServiceType}", using as-is`)
           }
 
-          const existing = servicesMap.get(service.service_type)
+          // Use normalized service_type as key for consistent matching
+          const serviceKey = normalizedServiceType
+          const existing = servicesMap.get(serviceKey)
           if (existing) {
-            existing.quantity += service.quantity
+            existing.quantity += Number(service.quantity) || 0
+            console.log(`[Receipt Print getAggregatedServices] Aggregated existing service "${serviceName}": new quantity = ${existing.quantity}`)
           } else {
-            servicesMap.set(service.service_type, {
+            servicesMap.set(serviceKey, {
               name: serviceName,
-              quantity: service.quantity,
+              quantity: Number(service.quantity) || 0,
               unit: unit
             })
+            console.log(`[Receipt Print getAggregatedServices] Added new service "${serviceName}" (${unit}): quantity = ${service.quantity}`)
           }
         })
       }
     })
 
-    return Array.from(servicesMap.values())
+    const result = Array.from(servicesMap.values())
+    console.log(`[Receipt Print getAggregatedServices] Returning ${result.length} aggregated services:`, result)
+    return result
   }
+
+  // Debug: Log the pricing data structure - ALWAYS execute this
+  useEffect(() => {
+    console.log(`[OrderReceiptPrint] Component mounted/updated with pricing data`)
+    console.log(`[OrderReceiptPrint] Pricing items count: ${pricing.length}`)
+    console.log(`[OrderReceiptPrint] Full pricing data:`, JSON.stringify(pricing, null, 2))
+    pricing.forEach((item, idx) => {
+      console.log(`[OrderReceiptPrint] Item ${idx}:`, {
+        material_name: item.material_name || item.materials?.name,
+        charged_sqm: item.charged_sqm,
+        boards_used: item.boards_used,
+        waste_multi: item.waste_multi,
+        services_count: item.quote_services_breakdown?.length || 0
+      })
+    })
+  }, [pricing])
 
   const aggregatedServices = getAggregatedServices()
 

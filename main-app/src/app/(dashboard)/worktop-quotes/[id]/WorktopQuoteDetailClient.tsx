@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import dynamic from 'next/dynamic'
 
 import { 
   Box, 
@@ -22,6 +23,9 @@ import {
   CardContent
 } from '@mui/material'
 
+// Dynamic import for Barcode to avoid SSR issues
+const Barcode = dynamic(() => import('react-barcode'), { ssr: false })
+
 import { 
   ArrowBack as ArrowBackIcon,
   Edit as EditIcon,
@@ -33,6 +37,11 @@ import { toast } from 'react-toastify'
 import { CircularProgress } from '@mui/material'
 
 import { usePermissions } from '@/contexts/PermissionContext'
+import EditDiscountModal from '@/app/(dashboard)/quotes/[quote_id]/EditDiscountModal'
+import CommentModal from '@/app/(dashboard)/quotes/[quote_id]/CommentModal'
+import CreateOrderModal from '@/app/(dashboard)/quotes/[quote_id]/CreateOrderModal'
+import AddPaymentModal from '@/app/(dashboard)/orders/[order_id]/AddPaymentModal'
+import AssignProductionModal from '@/app/(dashboard)/worktop-orders/[order_id]/AssignProductionModal'
 
 interface TenantCompany {
   id: string
@@ -82,6 +91,14 @@ interface WorktopQuoteData {
     billing_tax_number: string | null
     billing_company_reg_number: string | null
   }
+  payments?: Array<{
+    id: string
+    amount: number
+    payment_method: string
+    comment: string | null
+    payment_date: string
+    created_at: string
+  }>
   configs: Array<{
     id: string
     config_order: number
@@ -141,18 +158,33 @@ interface WorktopQuoteData {
   }>
 }
 
+interface Machine {
+  id: string
+  machine_name: string
+  comment: string | null
+}
+
 interface WorktopQuoteDetailClientProps {
   initialQuoteData: WorktopQuoteData
   tenantCompany: TenantCompany | null
+  machines: Machine[]
 }
 
-export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompany }: WorktopQuoteDetailClientProps) {
+export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompany, machines }: WorktopQuoteDetailClientProps) {
   const router = useRouter()
   const { canAccess } = usePermissions()
   const hasAccess = canAccess('/worktop-quotes')
   
-  const [quoteData] = useState<WorktopQuoteData>(initialQuoteData)
+  const [quoteData, setQuoteData] = useState<WorktopQuoteData>(initialQuoteData)
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+  const [discountModalOpen, setDiscountModalOpen] = useState(false)
+  const [commentModalOpen, setCommentModalOpen] = useState(false)
+  const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
+  const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false)
+  const [assignProductionModalOpen, setAssignProductionModalOpen] = useState(false)
+  
+  // Determine if this is an order view (has order_number)
+  const isOrderView = Boolean(quoteData.order_number)
 
   // Format currency with thousands separator
   const formatCurrency = (amount: number) => {
@@ -160,6 +192,24 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount) + ' Ft'
+  }
+
+  // Helper function to sanitize barcode for CODE128
+  // Removes/replaces special characters (accented letters, non-ASCII)
+  const sanitizeBarcodeForCODE128 = (barcode: string): string => {
+    // Replace common Hungarian accented characters
+    const replacements: Record<string, string> = {
+      'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ö': 'o', 'ő': 'o', 'ú': 'u', 'ü': 'u', 'ű': 'u',
+      'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ö': 'O', 'Ő': 'O', 'Ú': 'U', 'Ü': 'U', 'Ű': 'U'
+    }
+    
+    let sanitized = barcode
+    Object.entries(replacements).forEach(([from, to]) => {
+      sanitized = sanitized.replace(new RegExp(from, 'g'), to)
+    })
+    
+    // Remove any remaining non-ASCII characters (keep only 0-127)
+    return sanitized.replace(/[^\x00-\x7F]/g, '')
   }
 
   // Calculate total meters for each material+assembly_type combination (grouped by material_id AND assembly_type)
@@ -411,6 +461,93 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
     router.push(`/worktop-config?id=${quoteData.id}`)
   }
 
+  // Handle refresh quote data
+  const refreshQuoteData = async () => {
+    try {
+      const response = await fetch(`/api/worktop-quotes/${quoteData.id}`)
+      if (response.ok) {
+        const updatedQuote = await response.json()
+        setQuoteData(updatedQuote)
+      }
+    } catch (error) {
+      console.error('Error refreshing worktop quote:', error)
+    }
+  }
+
+  // Handle edit discount
+  const handleEditDiscount = () => {
+    setDiscountModalOpen(true)
+  }
+
+  const handleDiscountUpdated = () => {
+    refreshQuoteData()
+  }
+
+  // Handle edit comment
+  const handleEditComment = () => {
+    setCommentModalOpen(true)
+  }
+
+  // Handle create order
+  const handleCreateOrder = () => {
+    setCreateOrderModalOpen(true)
+  }
+
+  // Handle order creation success
+  const handleOrderCreated = (quoteId: string, orderNumber: string) => {
+    // Redirect to worktop order detail page (same ID, different URL)
+    router.push(`/worktop-orders/${quoteId}`)
+  }
+
+  // Handle payment added success
+  const handlePaymentAdded = async () => {
+    await refreshQuoteData()
+  }
+
+  // Handle production assigned success
+  const handleProductionAssigned = async () => {
+    await refreshQuoteData()
+  }
+
+  const handleSaveComment = async (comment: string) => {
+    try {
+      console.log('[CLIENT] Saving comment for worktop quote:', quoteData.id)
+      console.log('[CLIENT] Comment value:', comment)
+      console.log('[CLIENT] API URL:', `/api/worktop-quotes/${quoteData.id}/comment`)
+      
+      const response = await fetch(`/api/worktop-quotes/${quoteData.id}/comment`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ comment: comment || null }),
+      })
+
+      console.log('[CLIENT] Response status:', response.status)
+      console.log('[CLIENT] Response ok:', response.ok)
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('[CLIENT] API error response:', error)
+        throw new Error(error.error || 'Failed to save comment')
+      }
+
+      const result = await response.json()
+      console.log('[CLIENT] Comment saved successfully:', result)
+
+      toast.success('Megjegyzés sikeresen mentve!', {
+        position: "top-right",
+        autoClose: 3000,
+      })
+
+      refreshQuoteData()
+    } catch (error) {
+      console.error('[CLIENT] Error saving comment:', error)
+      toast.error(error instanceof Error ? error.message : 'Hiba történt a megjegyzés mentésekor')
+      throw error
+    }
+  }
+
   // Handle PDF generation via server-side Puppeteer
   const handleGeneratePdf = async () => {
     if (!quoteData || !quoteData.id) {
@@ -453,32 +590,36 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft':
-        return 'default'
-      case 'accepted':
+        return 'error'
+      case 'ordered':
         return 'success'
       case 'in_production':
         return 'warning'
-      case 'done':
+      case 'ready':
         return 'info'
-      case 'rejected':
+      case 'finished':
+        return 'success'
+      case 'cancelled':
         return 'error'
       default:
-        return 'default'
+        return 'info'
     }
   }
 
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'draft':
-        return 'Vázlat'
-      case 'accepted':
-        return 'Elfogadva'
+        return 'Piszkozat'
+      case 'ordered':
+        return 'Megrendelve'
       case 'in_production':
         return 'Gyártásban'
-      case 'done':
-        return 'Kész'
-      case 'rejected':
-        return 'Elutasítva'
+      case 'ready':
+        return 'Leadva'
+      case 'finished':
+        return 'Átadva'
+      case 'cancelled':
+        return 'Törölve'
       default:
         return status
     }
@@ -494,34 +635,30 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
     )
   }
 
+  // Handle back navigation
+  const handleBack = () => {
+    if (isOrderView) {
+      router.push('/worktop-orders')
+    } else {
+      router.push('/worktop-quotes')
+    }
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <IconButton onClick={() => router.push('/worktop-quotes')}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Box>
-            <Typography variant="h4" component="h1">
-              {quoteData.quote_number}
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1, mt: 1, alignItems: 'center' }}>
-              <Chip 
-                label={getStatusLabel(quoteData.status)} 
-                color={getStatusColor(quoteData.status)}
-                size="small"
-              />
-              {quoteData.order_number && (
-                <Chip 
-                  label={`Megrendelés: ${quoteData.order_number}`}
-                  size="small"
-                  variant="outlined"
-                />
-              )}
-            </Box>
-          </Box>
-        </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }} className="no-print">
+        <IconButton onClick={handleBack} sx={{ mr: 2 }}>
+          <ArrowBackIcon />
+        </IconButton>
+        <Typography variant="h4" component="h1">
+          {isOrderView ? `Megrendelés: ${quoteData.order_number || quoteData.quote_number}` : `Árajánlat: ${quoteData.quote_number}`}
+        </Typography>
+        <Chip 
+          label={getStatusLabel(quoteData.status)} 
+          color={getStatusColor(quoteData.status)}
+          sx={{ ml: 2 }}
+        />
       </Box>
 
       <Grid container spacing={3}>
@@ -529,9 +666,9 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
         <Grid item xs={12} md={9}>
           {/* First Card - All Quote Information */}
           <Paper sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0' }}>
-            {/* Company Info */}
+            {/* Company Info and Barcode */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={12}>
+              <Grid item xs={12} md={quoteData.barcode ? 7 : 12}>
                 <Box sx={{ 
                   p: 3, 
                   backgroundColor: '#f5f5f5', 
@@ -558,6 +695,39 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                   </Typography>
                 </Box>
               </Grid>
+              
+              {/* Barcode Display - Only for orders with barcode */}
+              {quoteData.barcode && (
+                <Grid item xs={12} md={5}>
+                  <Box sx={{ 
+                    p: 2, 
+                    backgroundColor: '#ffffff', 
+                    borderRadius: 2,
+                    border: '2px solid #e0e0e0',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    height: '100%'
+                  }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ mb: 1 }}>
+                      Vonalkód
+                    </Typography>
+                    <Barcode 
+                      value={quoteData.barcode} 
+                      format="EAN13"
+                      width={2}
+                      height={60}
+                      displayValue={false}
+                      fontSize={14}
+                      margin={5}
+                    />
+                    <Typography variant="body2" sx={{ mt: 1, fontFamily: 'monospace', letterSpacing: 2 }}>
+                      {quoteData.barcode}
+                    </Typography>
+                  </Box>
+                </Grid>
+              )}
             </Grid>
 
             {/* Customer & Billing Info */}
@@ -660,7 +830,7 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                       materialsGrouped.map((material, index) => (
                         <TableRow key={`${material.material_id}_${material.assembly_type}_${index}`}>
                           <TableCell>
-                            {material.material_name} ({material.assembly_type})
+                            {material.material_name}
                           </TableCell>
                           <TableCell align="right">
                             {material.totalMeters.toFixed(2)} m
@@ -882,6 +1052,30 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
               })()}
             </Box>
           </Paper>
+
+          {/* Comment Display - Separate card under summary */}
+          {quoteData.comment && (
+            <Card sx={{ mt: 3 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Megjegyzés
+                </Typography>
+                <Paper 
+                  variant="outlined" 
+                  sx={{ 
+                    p: 2, 
+                    bgcolor: 'grey.50',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word'
+                  }}
+                >
+                  <Typography variant="body2">
+                    {quoteData.comment}
+                  </Typography>
+                </Paper>
+              </CardContent>
+            </Card>
+          )}
         </Grid>
 
         {/* Right Column - Actions */}
@@ -908,10 +1102,11 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                   variant="outlined"
                   color="success"
                   startIcon={<EditIcon />}
+                  onClick={handleEditDiscount}
                   fullWidth
-                  disabled
+                  disabled={isOrderView && ['ready', 'finished'].includes(quoteData.status)}
                 >
-                  Kedvezmény ({quoteData.discount_percent}%)
+                  Kedvezmény ({quoteData.discount_percent}%) {isOrderView && ['ready', 'finished'].includes(quoteData.status) && '🔒'}
                 </Button>
 
                 {/* Megjegyzés */}
@@ -919,10 +1114,11 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                   variant="outlined"
                   color="primary"
                   startIcon={<EditIcon />}
+                  onClick={handleEditComment}
                   fullWidth
-                  disabled
+                  disabled={isOrderView && ['ready', 'finished'].includes(quoteData.status)}
                 >
-                  Megjegyzés
+                  Megjegyzés {isOrderView && ['ready', 'finished'].includes(quoteData.status) && '🔒'}
                 </Button>
 
                 <Divider />
@@ -941,43 +1137,154 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
 
                 <Divider />
 
-                {/* Gyártásba adás */}
-                <Button
-                  variant="outlined"
-                  color="warning"
-                  fullWidth
-                  disabled
-                >
-                  Gyártásba adás
-                </Button>
-
-                {/* Fizetés hozzáadás */}
-                <Button
-                  variant="outlined"
-                  color="error"
-                  startIcon={<PaymentIcon />}
-                  fullWidth
-                  disabled
-                >
-                  Fizetés hozzáadás
-                </Button>
-
-                {/* Megrendelés */}
-                {quoteData.status === 'draft' && (
+                {/* Show different buttons based on view type and status */}
+                {!isOrderView && quoteData.status === 'draft' && (
                   <Button
                     variant="outlined"
                     startIcon={<OrderIcon />}
+                    onClick={handleCreateOrder}
                     fullWidth
-                    disabled
                   >
                     Megrendelés
+                  </Button>
+                )}
+
+                {isOrderView && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    startIcon={<EditIcon />}
+                    onClick={() => setAssignProductionModalOpen(true)}
+                    fullWidth
+                    disabled={['ready', 'finished'].includes(quoteData.status)}
+                  >
+                    Gyártásba adás {['ready', 'finished'].includes(quoteData.status) && '🔒'}
+                  </Button>
+                )}
+
+                {isOrderView && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<PaymentIcon />}
+                    onClick={() => setAddPaymentModalOpen(true)}
+                    fullWidth
+                    disabled={['ready', 'finished'].includes(quoteData.status)}
+                  >
+                    Fizetés hozzáadás {['ready', 'finished'].includes(quoteData.status) && '🔒'}
                   </Button>
                 )}
               </Box>
             </CardContent>
           </Card>
+
+          {/* Order/Quote Info - Only show for orders */}
+          {isOrderView && (
+            <Card sx={{ mt: 2 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  Megrendelés információk
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {quoteData.order_number && (
+                    <Typography variant="body2">
+                      <strong>Megrendelés szám:</strong> {quoteData.order_number}
+                    </Typography>
+                  )}
+                  <Typography variant="body2">
+                    <strong>Létrehozva:</strong> {new Date(quoteData.created_at).toLocaleDateString('hu-HU', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit'
+                    })}
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Frissítve:</strong> {new Date(quoteData.updated_at).toLocaleDateString('hu-HU', {
+                      year: 'numeric',
+                      month: '2-digit',
+                      day: '2-digit'
+                    })}
+                  </Typography>
+                  <Typography variant="body2">
+                    <strong>Kedvezmény:</strong> {quoteData.discount_percent}%
+                  </Typography>
+                  {quoteData.payment_status && (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2">
+                        <strong>Fizetési állapot:</strong>
+                      </Typography>
+                      <Chip 
+                        label={quoteData.payment_status === 'not_paid' ? 'Nincs fizetve' : quoteData.payment_status === 'partial' ? 'Részben fizetve' : 'Kifizetve'} 
+                        color={quoteData.payment_status === 'not_paid' ? 'error' : quoteData.payment_status === 'partial' ? 'warning' : 'success'}
+                        size="small"
+                      />
+                    </Box>
+                  )}
+                </Box>
+              </CardContent>
+            </Card>
+          )}
         </Grid>
       </Grid>
+
+      {/* Edit Discount Modal */}
+      <EditDiscountModal
+        open={discountModalOpen}
+        onClose={() => setDiscountModalOpen(false)}
+        quoteId={quoteData.id}
+        currentDiscountPercent={quoteData.discount_percent}
+        onSuccess={handleDiscountUpdated}
+        apiPath="/api/worktop-quotes/"
+      />
+
+      {/* Comment Modal */}
+      <CommentModal
+        open={commentModalOpen}
+        onClose={() => setCommentModalOpen(false)}
+        onSave={handleSaveComment}
+        initialComment={quoteData.comment || null}
+        quoteNumber={quoteData.quote_number}
+      />
+
+      {/* Create Order Modal */}
+      <CreateOrderModal
+        open={createOrderModalOpen}
+        onClose={() => setCreateOrderModalOpen(false)}
+        quoteId={quoteData.id}
+        quoteNumber={quoteData.quote_number}
+        finalTotal={quoteData.final_total_after_discount}
+        onSuccess={handleOrderCreated}
+        apiPath="/api/worktop-orders"
+      />
+
+      {/* Add Payment Modal */}
+      {isOrderView && (
+        <AddPaymentModal
+          open={addPaymentModalOpen}
+          onClose={() => setAddPaymentModalOpen(false)}
+          quoteId={quoteData.id}
+          orderNumber={quoteData.order_number || quoteData.quote_number}
+          finalTotal={Math.round(quoteData.final_total_after_discount)}
+          totalPaid={quoteData.payments?.reduce((sum, p) => sum + Math.round(Number(p.amount)), 0) || 0}
+          onSuccess={handlePaymentAdded}
+          apiPath={`/api/worktop-quotes/${quoteData.id}/payments`}
+        />
+      )}
+
+      {/* Assign Production Modal */}
+      {isOrderView && (
+        <AssignProductionModal
+          open={assignProductionModalOpen}
+          onClose={() => setAssignProductionModalOpen(false)}
+          worktopQuoteId={quoteData.id}
+          orderNumber={quoteData.order_number || quoteData.quote_number}
+          existingAssignment={{
+            production_date: quoteData.production_date,
+            barcode: quoteData.barcode
+          }}
+          onSuccess={handleProductionAssigned}
+        />
+      )}
     </Box>
   )
 }

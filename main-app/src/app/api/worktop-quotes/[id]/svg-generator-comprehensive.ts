@@ -619,11 +619,11 @@ export function generateWorktopSvg(config: WorktopConfig): string {
   // Build edge highlighting paths - EXACT paths from WorktopConfigClient
   const buildEdgePaths = () => {
     // Edge styling - EXACT from WorktopConfigClient
-    // Converted to greyscale
-    const edgeColor = '#4a4a4a'  // Dark grey (was red #ff6b6b)
-    const edgeThickness = 15
+    // Use black for better printing (no grayscale)
+    const edgeColor = '#000000'  // Black for better printing visibility
+    const edgeThickness = 25  // Increased from 15 to 25 for better visibility when printed
     const dashArray = '8,4'
-    const edgeOpacity = 0.7
+    const edgeOpacity = 1.0  // Full opacity for black
     
     // Calculate values needed for edge paths
     const effectiveWidth = showCut ? Math.max(0, Math.min(cutPosition, worktopWidth)) : worktopWidth
@@ -1191,7 +1191,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="0" y1="${bottomY}" x2="0" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${cutPosition}" y1="${bottomY}" x2="${cutPosition}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="0" y1="${dimensionLineY}" x2="${cutPosition}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${cutPosition / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#333333">A: ${cutPosition}mm</text>
+          <text x="${cutPosition / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#000000">A: ${cutPosition}mm</text>
         </g>
       `)
     } else if (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos') {
@@ -1216,7 +1216,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="${aDimensionStartX}" y1="${startY}" x2="${aDimensionStartX}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${aDimensionEndX}" y1="${startY}" x2="${aDimensionEndX}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${aDimensionStartX}" y1="${dimensionLineY}" x2="${aDimensionEndX}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${(aDimensionStartX + aDimensionEndX) / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#333333">A: ${aValue}mm</text>
+          <text x="${(aDimensionStartX + aDimensionEndX) / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#000000">A: ${aValue}mm</text>
         </g>
       `)
     }
@@ -1256,7 +1256,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="${rightEdge}" y1="${bStartY}" x2="${dimensionLineX}" y2="${bStartY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${rightEdge}" y1="${bBottomY}" x2="${dimensionLineX}" y2="${bBottomY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${dimensionLineX}" y1="${bStartY}" x2="${dimensionLineX}" y2="${bBottomY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${labelX}" y="${(bStartY + bBottomY) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${labelX} ${(bStartY + bBottomY) / 2})" font-size="${fontSize}" font-weight="500" fill="#333333">B: ${bValue}mm</text>
+          <text x="${labelX}" y="${(bStartY + bBottomY) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${labelX} ${(bStartY + bBottomY) / 2})" font-size="${fontSize}" font-weight="500" fill="#000000">B: ${bValue}mm</text>
         </g>
       `)
     }
@@ -1278,7 +1278,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         <line x1="${rectX}" y1="${bottomRightY}" x2="${rectX}" y2="${dimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
         <line x1="${rectX + rectWidth}" y1="${bottomRightY}" x2="${rectX + rectWidth}" y2="${dimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
         <line x1="${rectX}" y1="${dimensionLineY}" x2="${rectX + rectWidth}" y2="${dimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
-        <text x="${rectX + rectWidth / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#333333">D: ${dValue}mm</text>
+        <text x="${rectX + rectWidth / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#000000">D: ${dValue}mm</text>
       `)
       
       // C dimension (height) - vertical on LEFT side - use unified spacing
@@ -1302,7 +1302,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="0" y1="${topY}" x2="${dimensionLineX}" y2="${topY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="0" y1="${bottomY2}" x2="${dimensionLineX}" y2="${bottomY2}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${dimensionLineX}" y1="${topY}" x2="${dimensionLineX}" y2="${bottomY2}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${labelX}" y="${(topY + bottomY2) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${labelX} ${(topY + bottomY2) / 2})" font-size="${fontSize}" font-weight="500" fill="#333333">C: ${cValue}mm</text>
+          <text x="${labelX}" y="${(topY + bottomY2) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${labelX} ${(topY + bottomY2) / 2})" font-size="${fontSize}" font-weight="500" fill="#000000">C: ${cValue}mm</text>
         </g>
       `)
     }
@@ -1319,14 +1319,14 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         const labelY = bottomRightY - r1 * 0.6
         
         labels.push(`
-          <text x="${labelX}" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333333">R1</text>
+          <text x="${labelX}" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000">R1</text>
         `)
       } else if (assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos' && r1Value > 0) {
         const labelX = r1Value * 0.6
         const labelY = bottomY - r1Value * 0.6
         if (labelY >= startY) {
           labels.push(`
-            <text x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333333">R1</text>
+            <text x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000">R1</text>
           `)
         }
       }
@@ -1339,7 +1339,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
       const labelY = bottomY - r2Value * 0.6
       if (labelY >= startY && labelX >= mainWorktopOffsetX && labelX <= rightEdge) {
         labels.push(`
-          <text x="${labelX}" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333333">R2</text>
+          <text x="${labelX}" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000">R2</text>
         `)
       }
     }
@@ -1356,7 +1356,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         const labelY = bottomLeftY - r3 * 0.6
         
         labels.push(`
-          <text x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333333">R3</text>
+          <text x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000">R3</text>
         `)
       } else {
         const topLeftX = mainWorktopOffsetX
@@ -1365,7 +1365,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         const labelY = topLeftY + r3Value * 0.6
         
         labels.push(`
-          <text x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333333">R3</text>
+          <text x="${labelX}" y="${labelY}" text-anchor="start" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000">R3</text>
         `)
       }
     }
@@ -1378,7 +1378,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
       const labelY = topRightY + r4Value * 0.6
       
       labels.push(`
-        <text x="${labelX}" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333333">R4</text>
+        <text x="${labelX}" y="${labelY}" text-anchor="end" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000">R4</text>
       `)
     }
     
@@ -1401,13 +1401,13 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="0" y1="${bottomY}" x2="0" y2="${l1DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${l1Value}" y1="${bottomY}" x2="${l1Value}" y2="${l1DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="0" y1="${l1DimensionLineY}" x2="${l1Value}" y2="${l1DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${l1Value / 2}" y="${l1LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">L1: ${l1Value}mm</text>
+          <text x="${l1Value / 2}" y="${l1LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">L1: ${l1Value}mm</text>
           
           <!-- L2 dimension - vertical distance from bottom edge -->
           <line x1="0" y1="${bottomY - l2Value}" x2="${l2DimensionLineX}" y2="${bottomY - l2Value}" stroke="#000000" stroke-width="1.5"/>
           <line x1="0" y1="${bottomY}" x2="${l2DimensionLineX}" y2="${bottomY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${l2DimensionLineX}" y1="${bottomY - l2Value}" x2="${l2DimensionLineX}" y2="${bottomY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${l2LabelX}" y="${bottomY - l2Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l2LabelX} ${bottomY - l2Value / 2})" font-size="80" font-weight="500" fill="#666">L2: ${l2Value}mm</text>
+          <text x="${l2LabelX}" y="${bottomY - l2Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l2LabelX} ${bottomY - l2Value / 2})" font-size="80" font-weight="700" fill="#000000">L2: ${l2Value}mm</text>
         </g>
       `)
     }
@@ -1439,13 +1439,13 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="${rightEdge}" y1="${bottomY}" x2="${rightEdge}" y2="${l3DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${rightEdge - l3Value}" y1="${bottomY}" x2="${rightEdge - l3Value}" y2="${l3DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${rightEdge - l3Value}" y1="${l3DimensionLineY}" x2="${rightEdge}" y2="${l3DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${rightEdge - l3Value / 2}" y="${l3LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">L3: ${l3Value}mm</text>
+          <text x="${rightEdge - l3Value / 2}" y="${l3LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">L3: ${l3Value}mm</text>
           
           <!-- L4 dimension - vertical distance from bottom edge -->
           <line x1="${rightEdge}" y1="${bottomY - l4Value}" x2="${l4DimensionLineX}" y2="${bottomY - l4Value}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${rightEdge}" y1="${bottomY}" x2="${l4DimensionLineX}" y2="${bottomY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${l4DimensionLineX}" y1="${bottomY - l4Value}" x2="${l4DimensionLineX}" y2="${bottomY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${l4LabelX}" y="${l4LabelY}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l4LabelX} ${l4LabelY})" font-size="80" font-weight="500" fill="#666">L4: ${l4Value}mm</text>
+          <text x="${l4LabelX}" y="${l4LabelY}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l4LabelX} ${l4LabelY})" font-size="80" font-weight="700" fill="#000000">L4: ${l4Value}mm</text>
         </g>
       `)
     }
@@ -1471,13 +1471,13 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="${topRightX}" y1="${topRightY}" x2="${topRightX}" y2="${l7DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${topRightX - l7Value}" y1="${topRightY}" x2="${topRightX - l7Value}" y2="${l7DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${topRightX - l7Value}" y1="${l7DimensionLineY}" x2="${topRightX}" y2="${l7DimensionLineY}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${topRightX - l7Value / 2}" y="${l7LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">L7: ${l7Value}mm</text>
+          <text x="${topRightX - l7Value / 2}" y="${l7LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">L7: ${l7Value}mm</text>
           
           <!-- L8 dimension - vertical distance from top edge -->
           <line x1="${topRightX}" y1="${topRightY}" x2="${l8DimensionLineX}" y2="${topRightY}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${topRightX}" y1="${topRightY + l8Value}" x2="${l8DimensionLineX}" y2="${topRightY + l8Value}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${l8DimensionLineX}" y1="${topRightY}" x2="${l8DimensionLineX}" y2="${topRightY + l8Value}" stroke="#000000" stroke-width="1.5"/>
-          <text x="${l8LabelX}" y="${topRightY + l8Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l8LabelX} ${topRightY + l8Value / 2})" font-size="80" font-weight="500" fill="#666">L8: ${l8Value}mm</text>
+          <text x="${l8LabelX}" y="${topRightY + l8Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l8LabelX} ${topRightY + l8Value / 2})" font-size="80" font-weight="700" fill="#000000">L8: ${l8Value}mm</text>
         </g>
       `)
     }
@@ -1502,12 +1502,12 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="${bottomLeftX}" y1="${bottomLeftY}" x2="${bottomLeftX}" y2="${l5DimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${bottomLeftX + l5Value}" y1="${bottomLeftY}" x2="${bottomLeftX + l5Value}" y2="${l5DimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${bottomLeftX}" y1="${l5DimensionLineY}" x2="${bottomLeftX + l5Value}" y2="${l5DimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
-          <text x="${bottomLeftX + l5Value / 2}" y="${l5LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">L5: ${l5Value}mm</text>
+          <text x="${bottomLeftX + l5Value / 2}" y="${l5LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">L5: ${l5Value}mm</text>
           
           <line x1="${bottomLeftX}" y1="${bottomLeftY}" x2="${l6DimensionLineX}" y2="${bottomLeftY}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${bottomLeftX}" y1="${bottomLeftY - l6Value}" x2="${l6DimensionLineX}" y2="${bottomLeftY - l6Value}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${l6DimensionLineX}" y1="${bottomLeftY - l6Value}" x2="${l6DimensionLineX}" y2="${bottomLeftY}" stroke="#000" stroke-width="1.5" fill="none"/>
-          <text x="${l6LabelX}" y="${bottomLeftY - l6Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l6LabelX} ${bottomLeftY - l6Value / 2})" font-size="80" font-weight="500" fill="#666">L6: ${l6Value}mm</text>
+          <text x="${l6LabelX}" y="${bottomLeftY - l6Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l6LabelX} ${bottomLeftY - l6Value / 2})" font-size="80" font-weight="700" fill="#000000">L6: ${l6Value}mm</text>
         `)
       } else if (assemblyType !== 'Összemarás Balos' && assemblyType !== 'Összemarás jobbos') {
         const topLeftX = mainWorktopOffsetX
@@ -1524,12 +1524,12 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="${topLeftX}" y1="${topLeftY}" x2="${topLeftX}" y2="${l5DimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${topLeftX + l5Value}" y1="${topLeftY}" x2="${topLeftX + l5Value}" y2="${l5DimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${topLeftX}" y1="${l5DimensionLineY}" x2="${topLeftX + l5Value}" y2="${l5DimensionLineY}" stroke="#000" stroke-width="1.5" fill="none"/>
-          <text x="${topLeftX + l5Value / 2}" y="${l5LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">L5: ${l5Value}mm</text>
+          <text x="${topLeftX + l5Value / 2}" y="${l5LabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">L5: ${l5Value}mm</text>
           
           <line x1="${topLeftX}" y1="${topLeftY}" x2="${l6DimensionLineX}" y2="${topLeftY}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${topLeftX}" y1="${topLeftY + l6Value}" x2="${l6DimensionLineX}" y2="${topLeftY + l6Value}" stroke="#000" stroke-width="1.5" fill="none"/>
           <line x1="${l6DimensionLineX}" y1="${topLeftY}" x2="${l6DimensionLineX}" y2="${topLeftY + l6Value}" stroke="#000" stroke-width="1.5" fill="none"/>
-          <text x="${l6LabelX}" y="${topLeftY + l6Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l6LabelX} ${topLeftY + l6Value / 2})" font-size="80" font-weight="500" fill="#666">L6: ${l6Value}mm</text>
+          <text x="${l6LabelX}" y="${topLeftY + l6Value / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${l6LabelX} ${topLeftY + l6Value / 2})" font-size="80" font-weight="700" fill="#000000">L6: ${l6Value}mm</text>
         `)
       }
     }
@@ -1606,13 +1606,13 @@ export function generateWorktopSvg(config: WorktopConfig): string {
               <line x1="${visualRightEdgeX}" y1="${rectY + rectHeight}" x2="${visualRightEdgeX}" y2="${horizontalDimensionLineY}" stroke="#000000" stroke-width="1.5"/>
               <line x1="${visualRightEdgeX}" y1="${horizontalDimensionLineY}" x2="${rectX + rectWidth}" y2="${horizontalDimensionLineY}" stroke="#000000" stroke-width="1.5"/>
             `}
-            <text x="${(visualRightEdgeX + rectX + rectWidth) / 2}" y="${horizontalLabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">${distanceFromBottom}mm</text>
+            <text x="${(visualRightEdgeX + rectX + rectWidth) / 2}" y="${horizontalLabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">${distanceFromBottom}mm</text>
             
             <!-- Vertical dimension - távolság balról (distance from BOTTOM edge of perpendicular worktop) - show on RIGHT side -->
             <line x1="${rectX + rectWidth}" y1="${visualBottomEdgeY}" x2="${verticalDimensionLineX}" y2="${visualBottomEdgeY}" stroke="#000000" stroke-width="1.5"/>
             <line x1="${rectX + rectWidth}" y1="${rectY + rectHeight}" x2="${verticalDimensionLineX}" y2="${rectY + rectHeight}" stroke="#000000" stroke-width="1.5"/>
             <line x1="${verticalDimensionLineX}" y1="${visualBottomEdgeY}" x2="${verticalDimensionLineX}" y2="${rectY + rectHeight}" stroke="#000000" stroke-width="1.5"/>
-            <text x="${verticalLabelX}" y="${(visualBottomEdgeY + rectY + rectHeight) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${verticalLabelX} ${(visualBottomEdgeY + rectY + rectHeight) / 2})" font-size="80" font-weight="500" fill="#666">${distanceFromLeft}mm</text>
+            <text x="${verticalLabelX}" y="${(visualBottomEdgeY + rectY + rectHeight) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${verticalLabelX} ${(visualBottomEdgeY + rectY + rectHeight) / 2})" font-size="80" font-weight="700" fill="#000000">${distanceFromLeft}mm</text>
           </g>
         `)
       } else {
@@ -1649,13 +1649,13 @@ export function generateWorktopSvg(config: WorktopConfig): string {
             <line x1="0" y1="${worktopLength}" x2="0" y2="${horizontalDimensionLineY}" stroke="#000000" stroke-width="1.5"/>
             <line x1="${x}" y1="${worktopLength}" x2="${x}" y2="${horizontalDimensionLineY}" stroke="#000000" stroke-width="1.5"/>
             <line x1="0" y1="${horizontalDimensionLineY}" x2="${x}" y2="${horizontalDimensionLineY}" stroke="#000000" stroke-width="1.5"/>
-            <text x="${x / 2}" y="${horizontalLabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="500" fill="#666">${distanceFromLeft}mm</text>
+            <text x="${x / 2}" y="${horizontalLabelY}" text-anchor="middle" dominant-baseline="middle" font-size="80" font-weight="700" fill="#000000">${distanceFromLeft}mm</text>
             
             <!-- Vertical dimension - distance from bottom -->
             <line x1="0" y1="${y + cutoutHeight}" x2="${verticalDimensionLineX}" y2="${y + cutoutHeight}" stroke="#000000" stroke-width="1.5"/>
             <line x1="0" y1="${worktopLength}" x2="${verticalDimensionLineX}" y2="${worktopLength}" stroke="#000000" stroke-width="1.5"/>
             <line x1="${verticalDimensionLineX}" y1="${y + cutoutHeight}" x2="${verticalDimensionLineX}" y2="${worktopLength}" stroke="#000000" stroke-width="1.5"/>
-            <text x="${verticalLabelX}" y="${(y + cutoutHeight + worktopLength) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${verticalLabelX} ${(y + cutoutHeight + worktopLength) / 2})" font-size="80" font-weight="500" fill="#666">${distanceFromBottom}mm</text>
+            <text x="${verticalLabelX}" y="${(y + cutoutHeight + worktopLength) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${verticalLabelX} ${(y + cutoutHeight + worktopLength) / 2})" font-size="80" font-weight="700" fill="#000000">${distanceFromBottom}mm</text>
           </g>
         `)
       }
@@ -1718,10 +1718,10 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         
         elements.push(`
           <g transform="rotate(90 ${centerX} ${centerY})">
-            <rect x="${x}" y="${y}" width="${originalWidth}" height="${originalHeight}" fill="rgba(100, 100, 100, 0.1)" stroke="#666666" stroke-width="2"/>
-            <line x1="${x}" y1="${y}" x2="${x + originalWidth}" y2="${y + originalHeight}" stroke="#666666" stroke-width="1.5"/>
-            <line x1="${x + originalWidth}" y1="${y}" x2="${x}" y2="${y + originalHeight}" stroke="#666666" stroke-width="1.5"/>
-            <text x="${centerX}" y="${centerY}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${centerX} ${centerY})" font-size="60" font-weight="600" fill="#333" font-family="monospace">
+            <rect x="${x}" y="${y}" width="${originalWidth}" height="${originalHeight}" fill="none" stroke="#000000" stroke-width="2"/>
+            <line x1="${x}" y1="${y}" x2="${x + originalWidth}" y2="${y + originalHeight}" stroke="#000000" stroke-width="1.5"/>
+            <line x1="${x + originalWidth}" y1="${y}" x2="${x}" y2="${y + originalHeight}" stroke="#000000" stroke-width="1.5"/>
+            <text x="${centerX}" y="${centerY}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${centerX} ${centerY})" font-size="60" font-weight="600" fill="#000000" font-family="monospace">
               <tspan x="${centerX}" dy="-0.3em">Kivágás ${index + 1}</tspan>
               <tspan x="${centerX}" dy="1.2em">${cutoutWidth}×${cutoutHeight}</tspan>
             </text>
@@ -1740,10 +1740,10 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         if (x < mainWorktopOffsetX || y < startY || x + cutoutWidth > mainWorktopOffsetX + keptWidth || y + cutoutHeight > worktopLength) return
         
         elements.push(`
-          <rect x="${x}" y="${y}" width="${cutoutWidth}" height="${cutoutHeight}" fill="rgba(100, 100, 100, 0.1)" stroke="#666666" stroke-width="2"/>
-          <line x1="${x}" y1="${y}" x2="${x + cutoutWidth}" y2="${y + cutoutHeight}" stroke="#666666" stroke-width="1.5"/>
-          <line x1="${x + cutoutWidth}" y1="${y}" x2="${x}" y2="${y + cutoutHeight}" stroke="#666666" stroke-width="1.5"/>
-          <text x="${x + cutoutWidth / 2}" y="${y + cutoutHeight / 2}" text-anchor="middle" dominant-baseline="middle" font-size="60" font-weight="600" fill="#333" font-family="monospace">
+          <rect x="${x}" y="${y}" width="${cutoutWidth}" height="${cutoutHeight}" fill="none" stroke="#000000" stroke-width="2"/>
+          <line x1="${x}" y1="${y}" x2="${x + cutoutWidth}" y2="${y + cutoutHeight}" stroke="#000000" stroke-width="1.5"/>
+          <line x1="${x + cutoutWidth}" y1="${y}" x2="${x}" y2="${y + cutoutHeight}" stroke="#000000" stroke-width="1.5"/>
+          <text x="${x + cutoutWidth / 2}" y="${y + cutoutHeight / 2}" text-anchor="middle" dominant-baseline="middle" font-size="60" font-weight="600" fill="#000000" font-family="monospace">
             <tspan x="${x + cutoutWidth / 2}" dy="-0.3em">Kivágás ${index + 1}</tspan>
             <tspan x="${x + cutoutWidth / 2}" dy="1.2em">${cutoutWidth}×${cutoutHeight}</tspan>
           </text>
@@ -1760,7 +1760,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     const arrowHeadWidth = 60
     const arrowHeadHeight = 50
     const strokeWidth = 10
-    const arrowColor = '#333333' // Dark grey (was blue #1976d2)
+    const arrowColor = '#000000' // Black for better printing (was blue #1976d2)
     
     if (assemblyType === 'Levágás') {
       const keptWidth = showCut ? Math.max(0, Math.min(cutPosition, worktopWidth)) : worktopWidth
@@ -1879,10 +1879,10 @@ export function generateWorktopSvg(config: WorktopConfig): string {
       parts.push(`
         <!-- Cut-down rectangle with diagonal pattern -->
         <rect x="${cutDownX}" y="0" width="${cutDownWidth}" height="${worktopLength}" 
-              fill="rgba(150, 150, 150, 0.2)" stroke="rgba(100, 100, 100, 0.5)" stroke-width="1" stroke-dasharray="5,5"/>
+              fill="none" stroke="#000000" stroke-width="1" stroke-dasharray="5,5"/>
         <rect x="${cutDownX}" y="0" width="${cutDownWidth}" height="${worktopLength}" fill="url(#diagonalHatch)"/>
-        <!-- Grey cut line -->
-        <line x1="${cutPosition}" y1="0" x2="${cutPosition}" y2="${worktopLength}" stroke="#666666" stroke-width="2"/>
+        <!-- Black cut line -->
+        <line x1="${cutPosition}" y1="0" x2="${cutPosition}" y2="${worktopLength}" stroke="#000000" stroke-width="2"/>
       `)
     }
     
@@ -1895,10 +1895,10 @@ export function generateWorktopSvg(config: WorktopConfig): string {
       parts.push(`
         <!-- Cut-down rectangle with diagonal pattern -->
         <rect x="0" y="${cutDownY}" width="${worktopWidth}" height="${cutDownHeight}" 
-              fill="rgba(150, 150, 150, 0.2)" stroke="rgba(100, 100, 100, 0.5)" stroke-width="1" stroke-dasharray="5,5"/>
+              fill="none" stroke="#000000" stroke-width="1" stroke-dasharray="5,5"/>
         <rect x="0" y="${cutDownY}" width="${worktopWidth}" height="${cutDownHeight}" fill="url(#diagonalHatch)"/>
-        <!-- Grey cut line -->
-        <line x1="0" y1="${worktopLength - bValue}" x2="${worktopWidth}" y2="${worktopLength - bValue}" stroke="#666666" stroke-width="2"/>
+        <!-- Black cut line -->
+        <line x1="0" y1="${worktopLength - bValue}" x2="${worktopWidth}" y2="${worktopLength - bValue}" stroke="#000000" stroke-width="2"/>
       `)
     }
     
@@ -1914,7 +1914,7 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         </style>
         <!-- Diagonal hatch pattern for cut-down parts -->
         <pattern id="diagonalHatch" patternUnits="userSpaceOnUse" width="80" height="80">
-          <path d="M 0,80 L 80,0" stroke="rgba(100, 100, 100, 0.35)" stroke-width="1.5"/>
+          <path d="M 0,80 L 80,0" stroke="#000000" stroke-width="1.5"/>
         </pattern>
       </defs>
       

@@ -20,6 +20,7 @@ interface EditDiscountModalProps {
   quoteId: string
   currentDiscountPercent: number
   onSuccess: () => void
+  apiPath?: string // Optional API path, defaults to '/api/quotes/'
 }
 
 export default function EditDiscountModal({ 
@@ -27,7 +28,8 @@ export default function EditDiscountModal({
   onClose, 
   quoteId, 
   currentDiscountPercent,
-  onSuccess 
+  onSuccess,
+  apiPath = '/api/quotes/'
 }: EditDiscountModalProps) {
   const [discountPercent, setDiscountPercent] = useState<number | ''>(currentDiscountPercent)
   const [loading, setLoading] = useState(false)
@@ -52,7 +54,7 @@ export default function EditDiscountModal({
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/quotes/${quoteId}`, {
+      const response = await fetch(`${apiPath}${quoteId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

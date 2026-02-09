@@ -91,10 +91,26 @@ export async function sendOrderReadySMS(
           process.env.SUPABASE_SERVICE_ROLE_KEY!
         )
         
-        const { data: materials } = await supabase
+        // First try regular quotes table
+        let materials: any[] | null = null
+        const { data: regularMaterials } = await supabase
           .from('quote_materials_pricing')
           .select('material_name')
           .eq('quote_id', quoteId)
+        
+        if (regularMaterials && regularMaterials.length > 0) {
+          materials = regularMaterials
+        } else {
+          // If not found, try worktop quotes table
+          const { data: worktopMaterials } = await supabase
+            .from('worktop_quote_materials_pricing')
+            .select('material_name')
+            .eq('worktop_quote_id', quoteId)
+          
+          if (worktopMaterials && worktopMaterials.length > 0) {
+            materials = worktopMaterials
+          }
+        }
         
         if (materials && materials.length > 0) {
           // Get unique material names

@@ -7,9 +7,16 @@ import { cookies } from 'next/headers'
 // POST - Save worktop quote (create or update)
 export async function POST(request: NextRequest) {
   try {
-    console.log('Saving worktop quote...')
+    console.log('=== WORKTOP QUOTE SAVE START ===')
+    console.log('Timestamp:', new Date().toISOString())
     
     const body = await request.json()
+    console.log('Request body keys:', Object.keys(body))
+    console.log('Quote ID (if editing):', body.quoteId)
+    console.log('Customer data present:', !!body.customerData)
+    console.log('Saved configs count:', body.savedConfigs?.length || 0)
+    console.log('Quote calculations present:', !!body.quoteCalculations)
+    
     const {
       quoteId, // if provided, this is an edit
       customerData,
@@ -220,33 +227,63 @@ export async function POST(request: NextRequest) {
     const totalGross = quoteCalculations.grand_total_gross
     const discountPercent = parseFloat(customerData.discount) || 0
     const finalTotal = totalGross * (1 - discountPercent / 100)
+    
+    console.log('=== CALCULATED VALUES ===')
+    console.log('Total Net:', totalNet, 'Type:', typeof totalNet)
+    console.log('Total VAT:', totalVat, 'Type:', typeof totalVat)
+    console.log('Total Gross:', totalGross, 'Type:', typeof totalGross)
+    console.log('Discount Percent:', discountPercent, 'Type:', typeof discountPercent)
+    console.log('Final Total:', finalTotal, 'Type:', typeof finalTotal)
 
     // Get currency_id and vat_id from worktop config fees
-    const { data: worktopConfigFees } = await supabaseServer
+    console.log('=== FETCHING WORKTOP CONFIG FEES ===')
+    const { data: worktopConfigFees, error: feesError } = await supabaseServer
       .from('worktop_config_fees')
       .select('currency_id, vat_id')
       .limit(1)
       .maybeSingle()
 
+    if (feesError) {
+      console.warn('Error fetching worktop config fees (non-critical):', feesError)
+    } else {
+      console.log('Worktop config fees:', worktopConfigFees)
+      console.log('Currency ID:', worktopConfigFees?.currency_id)
+      console.log('VAT ID:', worktopConfigFees?.vat_id)
+    }
+
     // Create or update worktop quote
+    // Convert to numbers, but preserve original values if conversion fails
     const quoteData: any = {
       customer_id: customerId,
       quote_number: quoteNumber,
       total_net: totalNet,
       total_vat: totalVat,
       total_gross: totalGross,
-      discount_percent: discountPercent,
+      discount_percent: discountPercent || 0,
       final_total_after_discount: finalTotal,
       currency_id: worktopConfigFees?.currency_id || null,
       vat_id: worktopConfigFees?.vat_id || null,
       updated_at: new Date().toISOString()
     }
+    
+    // Don't set payment_status, order_number, or barcode for new quotes
+    // - payment_status has a DEFAULT 'not_paid' in the database
+    // - order_number and barcode should remain NULL (not explicitly set) to avoid UNIQUE constraint issues
 
     // Only set status for NEW quotes, not when updating
     if (!quoteId) {
       quoteData.status = body.status || 'draft'
       quoteData.created_by = user.id
+      console.log('=== CREATING NEW QUOTE ===')
+      console.log('Status:', quoteData.status)
+      console.log('Created by:', quoteData.created_by)
+    } else {
+      console.log('=== UPDATING EXISTING QUOTE ===')
+      console.log('Quote ID:', quoteId)
     }
+    
+    console.log('=== QUOTE DATA TO INSERT/UPDATE ===')
+    console.log(JSON.stringify(quoteData, null, 2))
 
     let finalQuoteId = quoteId
     let finalQuoteNumber = quoteNumber
@@ -272,6 +309,9 @@ export async function POST(request: NextRequest) {
       console.log('Worktop quote updated successfully:', updatedQuote.quote_number)
     } else {
       // Create new quote
+      console.log('=== ATTEMPTING TO INSERT QUOTE ===')
+      console.log('Quote data:', JSON.stringify(quoteData, null, 2))
+      
       const { data: newQuote, error: quoteError } = await supabaseServer
         .from('worktop_quotes')
         .insert([quoteData])
@@ -279,12 +319,48 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (quoteError) {
-        console.error('Error creating worktop quote:', quoteError)
-        return NextResponse.json({ 
+        console.error('=== DATABASE ERROR ===')
+        console.error('Full error object:', JSON.stringify(quoteError, null, 2))
+        console.error('Error message:', quoteError.message)
+        console.error('Error code:', quoteError.code)
+        console.error('Error hint:', quoteError.hint)
+        console.error('Error details:', quoteError.details)
+        console.error('Error name:', quoteError.name)
+        console.error('Error stack:', quoteError.stack)
+        console.error('Quote data that failed:', JSON.stringify(quoteData, null, 2))
+        console.error('Customer ID:', customerId)
+        console.error('Quote Number:', quoteNumber)
+        console.error('=== END ERROR DETAILS ===')
+        
+        // Try to get more error details
+        const errorDetails: any = {
           error: 'Failed to create worktop quote',
-          details: quoteError.message
-        }, { status: 500 })
+          details: quoteError.message || 'Unknown error',
+          code: quoteError.code || 'UNKNOWN',
+          hint: quoteError.hint || null
+        }
+        
+        // Add all possible error properties
+        try {
+          errorDetails.fullError = JSON.stringify(quoteError, Object.getOwnPropertyNames(quoteError))
+          errorDetails.errorObject = {
+            message: quoteError.message,
+            code: quoteError.code,
+            details: quoteError.details,
+            hint: quoteError.hint,
+            name: (quoteError as any).name,
+            stack: (quoteError as any).stack
+          }
+        } catch (e) {
+          errorDetails.serializationError = String(e)
+        }
+        
+        return NextResponse.json(errorDetails, { status: 500 })
       }
+      
+      console.log('=== QUOTE CREATED SUCCESSFULLY ===')
+      console.log('New quote ID:', newQuote.id)
+      console.log('New quote number:', newQuote.quote_number)
 
       finalQuoteId = newQuote.id
       finalQuoteNumber = newQuote.quote_number
@@ -417,9 +493,20 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Error in worktop-quotes POST:', error)
+    console.error('=== UNEXPECTED ERROR IN WORKTOP QUOTES POST ===')
+    console.error('Error type:', typeof error)
+    console.error('Error:', error)
+    console.error('Error message:', error instanceof Error ? error.message : String(error))
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack')
+    console.error('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2))
+    console.error('=== END UNEXPECTED ERROR ===')
+    
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      },
       { status: 500 }
     )
   }

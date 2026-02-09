@@ -2243,6 +2243,174 @@ export async function getOrdersWithPagination(page: number = 1, limit: number = 
   }
 }
 
+// Get worktop orders with pagination (for worktop orders list page)
+export async function getWorktopOrdersWithPagination(page: number = 1, limit: number = 50, searchTerm?: string, statusFilter?: string) {
+  const startTime = performance.now()
+  
+  console.log(`[SSR] Fetching worktop orders page ${page}, limit ${limit}, search: "${searchTerm || 'none'}"`)
+
+  try {
+    const offset = (page - 1) * limit
+    
+    // If search term is provided, find all matching order IDs first, then paginate
+    let allMatchingOrderIds: string[] = []
+    if (searchTerm && searchTerm.trim()) {
+      const trimmedSearch = searchTerm.trim()
+      
+      // Find orders matching customer name
+      const { data: customerMatches, error: customerError } = await supabaseServer
+        .from('worktop_quotes')
+        .select('id, customers!inner(name)')
+        .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
+        .is('deleted_at', null)
+        .ilike('customers.name', `%${trimmedSearch}%`)
+      
+      if (customerError) {
+        console.error('[SSR] Error searching worktop orders by customer name:', customerError)
+      }
+      
+      // Find linear materials that match the search term
+      const { data: matchingMaterials } = await supabaseServer
+        .from('linear_materials')
+        .select('id')
+        .ilike('name', `%${trimmedSearch}%`)
+      
+      const materialIds = matchingMaterials?.map(m => m.id) || []
+      
+      // Find worktop quote IDs that have configs using these materials
+      let materialMatchIds: string[] = []
+      if (materialIds.length > 0) {
+        const { data: materialMatches } = await supabaseServer
+          .from('worktop_quote_configs')
+          .select('worktop_quote_id')
+          .in('linear_material_id', materialIds)
+        
+        materialMatchIds = materialMatches?.map(m => m.worktop_quote_id) || []
+      }
+      
+      // Also search by order_number
+      const { data: orderNumberMatches } = await supabaseServer
+        .from('worktop_quotes')
+        .select('id')
+        .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
+        .is('deleted_at', null)
+        .ilike('order_number', `%${trimmedSearch}%`)
+      
+      // Combine and deduplicate all matching IDs
+      const customerIds = customerMatches?.map(o => o.id) || []
+      const orderNumberIds = orderNumberMatches?.map(o => o.id) || []
+      allMatchingOrderIds = [...new Set([...customerIds, ...materialMatchIds, ...orderNumberIds])]
+      
+      if (allMatchingOrderIds.length === 0) {
+        // No matches found, return empty result
+        return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+      }
+    }
+    
+    // Build the main query
+    let query = supabaseServer
+      .from('worktop_quotes')
+      .select(`
+        id,
+        order_number,
+        status,
+        payment_status,
+        final_total_after_discount,
+        updated_at,
+        production_machine_id,
+        production_date,
+        ready_at,
+        barcode,
+        customers!inner(
+          id,
+          name,
+          mobile,
+          email
+        ),
+        production_machines(
+          id,
+          machine_name
+        )
+      `, { count: 'exact' })
+      .in('status', ['ordered', 'in_production', 'ready', 'finished', 'cancelled'])
+      .is('deleted_at', null)
+    
+    // Apply status filter if provided
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+    
+    // Apply search filter - if we have matching IDs, filter by them
+    if (searchTerm && searchTerm.trim() && allMatchingOrderIds.length > 0) {
+      query = query.in('id', allMatchingOrderIds)
+    }
+    
+    query = query.order('updated_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    const { data: orders, error: ordersError, count } = await query
+
+    if (ordersError) {
+      console.error('[SSR] Error fetching worktop orders:', ordersError)
+      logTiming('Worktop Orders Fetch Failed', startTime)
+      return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+    }
+
+    // Get payment totals for all orders (for payment modal)
+    const { data: paymentTotals } = await supabaseServer
+      .from('worktop_quote_payments')
+      .select('worktop_quote_id, amount')
+      .in('worktop_quote_id', orders?.map(o => o.id) || [])
+      .is('deleted_at', null)
+
+    const totalPaidByOrder = (paymentTotals || []).reduce((acc: Record<string, number>, p: any) => {
+      acc[p.worktop_quote_id] = (acc[p.worktop_quote_id] || 0) + Number(p.amount)
+      return acc
+    }, {})
+
+    // Transform the data
+    const transformedOrders = orders?.map(order => ({
+      id: order.id,
+      order_number: order.order_number || 'N/A',
+      status: order.status,
+      payment_status: order.payment_status || 'not_paid',
+      customer_name: order.customers?.name || 'Unknown Customer',
+      customer_mobile: order.customers?.mobile || '',
+      customer_email: order.customers?.email || '',
+      final_total: order.final_total_after_discount || 0,
+      total_paid: totalPaidByOrder[order.id] || 0,
+      remaining_balance: (order.final_total_after_discount || 0) - (totalPaidByOrder[order.id] || 0),
+      updated_at: order.updated_at,
+      production_machine_id: order.production_machine_id || null,
+      production_machine_name: order.production_machines?.machine_name || null,
+      production_date: order.production_date || null,
+      ready_at: order.ready_at || null,
+      barcode: order.barcode || ''
+    })) || []
+
+    const totalCount = count || 0
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / limit) : 0
+
+    console.log(`[SSR] Pagination calculation: totalCount=${totalCount}, limit=${limit}, totalPages=${totalPages}`)
+    logTiming('Worktop Orders Fetch Total', startTime, `returned ${transformedOrders.length} orders (page ${page}/${totalPages})`)
+    console.log(`[SSR] Worktop orders fetched successfully: ${transformedOrders.length} orders, total: ${totalCount}`)
+
+    return {
+      orders: transformedOrders,
+      totalCount,
+      totalPages,
+      currentPage: page
+    }
+  } catch (error) {
+    console.error('[SSR] Error fetching worktop orders:', error)
+    console.error('[SSR] Error details:', JSON.stringify(error, null, 2))
+    console.error('[SSR] Error message:', error instanceof Error ? error.message : 'Unknown error')
+    console.error('[SSR] Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    logTiming('Worktop Orders Fetch Error', startTime)
+    return { orders: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
+}
+
 // Accessories SSR functions
 export async function getAllAccessories() {
   const startTime = performance.now()
@@ -6764,7 +6932,7 @@ export async function getWorktopQuoteById(quoteId: string) {
     // Fetch all data in parallel
     const parallelStartTime = performance.now()
     
-    const [quoteResult, configsResult, pricingResult] = await Promise.all([
+    const [quoteResult, configsResult, pricingResult, paymentsResult] = await Promise.all([
       // 1. Quote with customer data and production machine
       supabaseServer
         .from('worktop_quotes')
@@ -6911,15 +7079,24 @@ export async function getWorktopQuoteById(quoteId: string) {
           linear_materials(id, name)
         `)
         .eq('worktop_quote_id', quoteId)
-        .order('config_order', { ascending: true })
+        .order('config_order', { ascending: true }),
+
+      // 4. Payments
+      supabaseServer
+        .from('worktop_quote_payments')
+        .select('*')
+        .eq('worktop_quote_id', quoteId)
+        .is('deleted_at', null)
+        .order('payment_date', { ascending: false })
     ])
 
-    logTiming('Parallel Worktop Quote Queries Complete', parallelStartTime, 'all 3 queries executed in parallel')
+    logTiming('Parallel Worktop Quote Queries Complete', parallelStartTime, 'all 4 queries executed in parallel')
 
     // Extract data and errors from results
     const { data: quote, error: quoteError } = quoteResult
     const { data: configs, error: configsError } = configsResult
     const { data: pricingData, error: pricingError } = pricingResult
+    const { data: payments, error: paymentsError } = paymentsResult
 
     // Handle errors
     if (quoteError) {
@@ -6948,12 +7125,17 @@ export async function getWorktopQuoteById(quoteId: string) {
       console.error('[SSR] Error fetching worktop quote pricing:', pricingError)
     }
 
-    logTiming('Worktop Quote Fetch Total', startTime, `Fetched quote with ${configs?.length || 0} configs and ${pricingData?.length || 0} pricing records`)
+    if (paymentsError) {
+      console.error('[SSR] Error fetching worktop quote payments:', paymentsError)
+    }
+
+    logTiming('Worktop Quote Fetch Total', startTime, `Fetched quote with ${configs?.length || 0} configs, ${pricingData?.length || 0} pricing records, and ${payments?.length || 0} payments`)
 
     return {
       ...quote,
       configs: configs || [],
-      pricing: pricingData || []
+      pricing: pricingData || [],
+      payments: payments || []
     }
   } catch (error) {
     console.error('[SSR] Exception fetching worktop quote by ID:', error)

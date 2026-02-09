@@ -440,8 +440,22 @@ export async function generateEscPosCommands(data: ReceiptData, copyType: 'origi
       const chargedSqm = item.charged_sqm || 0
       const boardsSold = item.boards_used || 0
       const wasteMulti = item.waste_multi || 1
-      const displaySqm = chargedSqm / wasteMulti
-      const quantity = `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
+      
+      // Check if this is a worktop order (has assembly type in name and no boards)
+      const isWorktop = (materialName.includes('(Levágás)') || 
+                         materialName.includes('(Összemarás Balos)') ||
+                         materialName.includes('(Összemarás jobbos)')) && 
+                        boardsSold === 0 && wasteMulti === 1
+      
+      let quantity: string
+      if (isWorktop) {
+        // For worktops, display as meters only (charged_sqm is already in meters)
+        quantity = `${chargedSqm.toFixed(2)} m`
+      } else {
+        // For regular orders, display as m2 / db
+        const displaySqm = chargedSqm / wasteMulti
+        quantity = `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
+      }
       
       // Use wrapping for material names (allows multi-line display)
       commands += printTableRowWithWrap(materialName, quantity)
@@ -488,6 +502,34 @@ export async function generateEscPosCommands(data: ReceiptData, copyType: 'origi
             case 'duplungolas':
               serviceName = 'Duplungolás'
               unit = 'm2'
+              break
+            case 'szogvagas':
+              serviceName = 'Szögvágás'
+              unit = 'db'
+              break
+            case 'osszemaras':
+              serviceName = 'Összemarás'
+              unit = 'db'
+              break
+            case 'kereszt_vagas':
+              serviceName = 'Kereszt vágás'
+              unit = 'db'
+              break
+            case 'hosszanti_vagas':
+              serviceName = 'Hosszanti vágás'
+              unit = 'm'
+              break
+            case 'ives_vagas':
+              serviceName = 'Íves vágás'
+              unit = 'db'
+              break
+            case 'kivagas':
+              serviceName = 'Kivágás'
+              unit = 'db'
+              break
+            case 'elzaro':
+              serviceName = 'Élzárás'
+              unit = 'm'
               break
             case 'szogvagas':
               serviceName = 'Szögvágás'

@@ -29,6 +29,7 @@ interface AddPaymentModalProps {
   finalTotal: number
   totalPaid: number // Sum of existing payments
   onSuccess: () => void
+  apiPath?: string // Optional API path, defaults to '/api/quotes/[id]/payments'
 }
 
 export default function AddPaymentModal({
@@ -38,7 +39,8 @@ export default function AddPaymentModal({
   orderNumber,
   finalTotal,
   totalPaid,
-  onSuccess
+  onSuccess,
+  apiPath
 }: AddPaymentModalProps) {
   
   const [amount, setAmount] = useState<string>('')
@@ -47,8 +49,11 @@ export default function AddPaymentModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Calculate remaining balance
-  const remainingBalance = finalTotal - totalPaid
+  // Calculate remaining balance (round to nearest integer to avoid floating point precision issues)
+  // Round each value first, then subtract to match API calculation
+  const roundedFinalTotal = Math.round(finalTotal)
+  const roundedTotalPaid = Math.round(totalPaid)
+  const remainingBalance = roundedFinalTotal - roundedTotalPaid
 
   // Reset form when modal opens
   useEffect(() => {
@@ -63,22 +68,31 @@ export default function AddPaymentModal({
   // Auto-format amount to max remaining if user enters more
   useEffect(() => {
     const numAmount = parseFloat(amount)
+    // remainingBalance is already rounded to nearest integer
     if (!isNaN(numAmount) && numAmount > remainingBalance && remainingBalance > 0) {
-      setAmount(remainingBalance.toString())
+      // Allow up to 1 Ft over for rounding tolerance
+      const maxAmount = remainingBalance + 1
+      if (numAmount > maxAmount) {
+        setAmount(remainingBalance.toString())
+      }
     }
   }, [amount, remainingBalance])
 
   // Calculate what payment status will be after this payment
   const getNewPaymentStatus = () => {
     const paidAmount = parseFloat(amount) || 0
-    const newTotal = totalPaid + paidAmount
+    // Round to nearest integer to avoid floating point precision issues
+    const roundedPaidAmount = Math.round(paidAmount)
+    const roundedTotalPaid = Math.round(totalPaid)
+    const roundedFinalTotal = Math.round(finalTotal)
+    const newTotal = roundedTotalPaid + roundedPaidAmount
     
     // Add 1 Ft tolerance for rounding differences
     const TOLERANCE = 1.0
     
     if (newTotal === 0) {
       return { status: 'not_paid', label: 'Nincs fizetve', color: 'error' }
-    } else if (newTotal >= finalTotal - TOLERANCE) {
+    } else if (newTotal >= roundedFinalTotal - TOLERANCE) {
       return { status: 'paid', label: 'Kifizetve', color: 'success' }
     } else {
       return { status: 'partial', label: 'Részben fizetve', color: 'warning' }
@@ -96,10 +110,21 @@ export default function AddPaymentModal({
       return
     }
 
+    // Recalculate remaining balance with proper rounding to ensure accuracy
+    // Use the same calculation as the component-level remainingBalance to ensure consistency
+    const roundedFinalTotal = Math.round(finalTotal)
+    const roundedTotalPaid = Math.round(totalPaid)
+    const calculatedRemainingBalance = roundedFinalTotal - roundedTotalPaid
+    
+    // Round paid amount to nearest integer to avoid floating point precision issues
+    const roundedPaidAmount = Math.round(paidAmount)
+
     // Allow negative amounts (refunds)
     // But positive amounts cannot exceed remaining balance (allow up to 1 Ft over due to rounding)
-    if (paidAmount > 0 && paidAmount > remainingBalance + 1) {
-      setError(`Az összeg nem lehet nagyobb, mint a hátralék (${formatCurrency(remainingBalance)})!`)
+    if (roundedPaidAmount > 0 && roundedPaidAmount > calculatedRemainingBalance + 1) {
+      // Double-check rounding for display
+      const displayRemainingBalance = Math.round(calculatedRemainingBalance)
+      setError(`Az összeg nem lehet nagyobb, mint a hátralék (${formatCurrency(displayRemainingBalance)})!`)
       return
     }
 
@@ -112,13 +137,15 @@ export default function AddPaymentModal({
     setIsSubmitting(true)
 
     try {
-      const response = await fetch(`/api/quotes/${quoteId}/payments`, {
+      // Use apiPath if provided, otherwise default to quotes payments endpoint
+      const endpoint = apiPath || `/api/quotes/${quoteId}/payments`
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          amount: paidAmount,
+          amount: roundedPaidAmount,
           payment_method: paymentMethod,
           comment: comment || null
         })
@@ -142,11 +169,15 @@ export default function AddPaymentModal({
     }
   }
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | string) => {
+    // Ensure value is a number and round to nearest integer to avoid decimal display issues
+    const numValue = typeof value === 'string' ? parseFloat(value) : value
+    if (isNaN(numValue)) return '0 Ft'
+    const roundedValue = Math.round(numValue)
     return new Intl.NumberFormat('hu-HU', {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(value) + ' Ft'
+    }).format(roundedValue) + ' Ft'
   }
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -260,7 +291,7 @@ export default function AddPaymentModal({
               </Typography>
               {parseFloat(amount) > 0 && (
                 <Typography variant="body2" sx={{ mt: 0.5 }}>
-                  Új hátralék: <strong>{formatCurrency(remainingBalance - parseFloat(amount))}</strong>
+                  Új hátralék: <strong>{formatCurrency(Math.round(remainingBalance - parseFloat(amount)))}</strong>
                 </Typography>
               )}
             </Alert>
