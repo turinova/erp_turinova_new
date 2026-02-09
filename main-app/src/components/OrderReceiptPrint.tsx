@@ -61,9 +61,14 @@ export default function OrderReceiptPrint({
 }: OrderReceiptPrintProps) {
   // Debug logging - ALWAYS execute this first
   console.log('========================================')
-  console.log('[OrderReceiptPrint] Component RENDERED')
+  console.log('[OrderReceiptPrint] Component RENDERED - NEW VERSION WITH WORKTOP DETECTION')
   console.log('[OrderReceiptPrint] Barcode:', barcode || 'NO BARCODE')
   console.log('[OrderReceiptPrint] Pricing array length:', pricing?.length || 0)
+  console.log('[OrderReceiptPrint] First pricing item:', pricing?.[0] ? {
+    material_name: pricing[0].material_name || pricing[0].materials?.name,
+    boards_used: pricing[0].boards_used,
+    waste_multi: pricing[0].waste_multi
+  } : 'NO ITEMS')
   console.log('========================================')
   
   // Load Barcode component dynamically
@@ -78,6 +83,31 @@ export default function OrderReceiptPrint({
     })
   }, [])
 
+  // Determine if this is a worktop order (check once, use for all items)
+  const isWorktopOrder = React.useMemo(() => {
+    // Check if ALL pricing items have boards_used=0 and waste_multi=1
+    // This is the most reliable indicator of worktop orders
+    const allItemsHaveWorktopCharacteristics = pricing.length > 0 && pricing.every(item => {
+      const boardsUsed = Number(item.boards_used) || 0
+      const wasteMulti = Number(item.waste_multi) || 1
+      return boardsUsed === 0 && wasteMulti === 1
+    })
+    
+    // Also check if any material name contains assembly type keywords
+    const hasAssemblyTypeInAnyItem = pricing.some(item => {
+      const materialName = (item.materials?.name || item.material_name || '').trim()
+      return materialName.includes('(Levágás)') || 
+             materialName.includes('(Összemarás Balos)') ||
+             materialName.includes('(Összemarás jobbos)') ||
+             materialName.includes('Levágás') ||
+             materialName.includes('Összemarás')
+    })
+    
+    const result = allItemsHaveWorktopCharacteristics || hasAssemblyTypeInAnyItem
+    console.log(`[OrderReceiptPrint] isWorktopOrder check: allItemsHaveWorktopCharacteristics=${allItemsHaveWorktopCharacteristics}, hasAssemblyTypeInAnyItem=${hasAssemblyTypeInAnyItem}, result=${result}`)
+    return result
+  }, [pricing])
+
   const formatQuantity = (pricingItem: typeof pricing[0]) => {
     // Explicitly convert to numbers to handle string values from API
     const chargedSqm = Number(pricingItem.charged_sqm) || 0
@@ -85,23 +115,9 @@ export default function OrderReceiptPrint({
     const wasteMulti = Number(pricingItem.waste_multi) || 1
     const materialName = (pricingItem.materials?.name || pricingItem.material_name || '').trim()
     
-    // Check if this is a worktop order
-    // Worktop characteristics: 
-    // 1. boardsSold is 0 AND wasteMulti is 1 (primary check - worktops always have this)
-    // 2. OR material name contains assembly type keywords
-    const hasAssemblyType = materialName.includes('(Levágás)') || 
-                            materialName.includes('(Összemarás Balos)') ||
-                            materialName.includes('(Összemarás jobbos)') ||
-                            materialName.includes('Levágás') ||
-                            materialName.includes('Összemarás')
+    console.log(`[Receipt Print formatQuantity] Material: "${materialName}", chargedSqm: ${chargedSqm}, boardsSold: ${boardsSold}, wasteMulti: ${wasteMulti}, isWorktopOrder: ${isWorktopOrder}`)
     
-    // Primary check: if boardsSold is 0 and wasteMulti is 1, it's definitely a worktop
-    // Secondary check: if material name contains assembly type, it's a worktop
-    const isWorktop = (boardsSold === 0 && wasteMulti === 1) || hasAssemblyType
-    
-    console.log(`[Receipt Print formatQuantity] Material: "${materialName}", chargedSqm: ${chargedSqm}, boardsSold: ${boardsSold}, wasteMulti: ${wasteMulti}, hasAssemblyType: ${hasAssemblyType}, isWorktop: ${isWorktop}`)
-    
-    if (isWorktop) {
+    if (isWorktopOrder) {
       // For worktops, display as meters only (charged_sqm is already in meters)
       const result = `${chargedSqm.toFixed(2)} m`
       console.log(`[Receipt Print formatQuantity] Returning worktop format: "${result}"`)
@@ -120,11 +136,12 @@ export default function OrderReceiptPrint({
   }
 
   // Collect and aggregate services from all pricing items
-  const getAggregatedServices = () => {
+  const getAggregatedServices = React.useMemo(() => {
     console.log(`[Receipt Print getAggregatedServices] Starting with ${pricing.length} pricing items`)
     const servicesMap = new Map<string, { name: string; quantity: number; unit: string }>()
 
     // Service translation map - centralized for consistency
+    // IMPORTANT: Keys must match exactly what comes from transformWorktopDataToReceiptFormat
     const serviceTranslation: Record<string, { name: string; unit: string }> = {
       'panthelyfuras': { name: 'Pánthelyfúrás', unit: 'db' },
       'duplungolas': { name: 'Duplungolás', unit: 'm2' },
@@ -138,6 +155,8 @@ export default function OrderReceiptPrint({
       'élzáró': { name: 'Élzárás', unit: 'm' }, // Alternative spelling
       'élzárás': { name: 'Élzárás', unit: 'm' } // Alternative spelling
     }
+    
+    console.log(`[Receipt Print getAggregatedServices] Translation map keys:`, Object.keys(serviceTranslation))
 
     pricing.forEach((pricingItem, itemIndex) => {
       console.log(`[Receipt Print getAggregatedServices] Processing pricing item ${itemIndex}, has services: ${!!pricingItem.quote_services_breakdown}, count: ${pricingItem.quote_services_breakdown?.length || 0}`)
@@ -150,15 +169,16 @@ export default function OrderReceiptPrint({
           
           console.log(`[Receipt Print getAggregatedServices] Processing service ${serviceIndex}: raw="${rawServiceType}", normalized="${normalizedServiceType}"`)
           
-          // Look up translation
+          // Look up translation - MUST match exactly
           const translation = serviceTranslation[normalizedServiceType]
+          if (!translation) {
+            console.error(`[Receipt Print getAggregatedServices] MISSING TRANSLATION for service_type: "${rawServiceType}" (normalized: "${normalizedServiceType}")`)
+            console.error(`[Receipt Print getAggregatedServices] Available keys:`, Object.keys(serviceTranslation))
+          }
+          
           const serviceName = translation?.name || rawServiceType
           const unit = translation?.unit || 'db'
           
-          if (!translation) {
-            console.warn(`[Receipt Print getAggregatedServices] Unknown service_type: "${rawServiceType}", using as-is`)
-          }
-
           // Use normalized service_type as key for consistent matching
           const serviceKey = normalizedServiceType
           const existing = servicesMap.get(serviceKey)
@@ -174,13 +194,15 @@ export default function OrderReceiptPrint({
             console.log(`[Receipt Print getAggregatedServices] Added new service "${serviceName}" (${unit}): quantity = ${service.quantity}`)
           }
         })
+      } else {
+        console.warn(`[Receipt Print getAggregatedServices] Pricing item ${itemIndex} has no quote_services_breakdown or it's not an array`)
       }
     })
 
     const result = Array.from(servicesMap.values())
-    console.log(`[Receipt Print getAggregatedServices] Returning ${result.length} aggregated services:`, result)
+    console.log(`[Receipt Print getAggregatedServices] Returning ${result.length} aggregated services:`, result.map(s => `${s.name} (${s.quantity} ${s.unit})`))
     return result
-  }
+  }, [pricing])
 
   // Debug: Log the pricing data structure - ALWAYS execute this
   useEffect(() => {
@@ -198,7 +220,7 @@ export default function OrderReceiptPrint({
     })
   }, [pricing])
 
-  const aggregatedServices = getAggregatedServices()
+  const aggregatedServices = getAggregatedServices
 
   const now = new Date()
   const printDate = now.toLocaleDateString('hu-HU', {

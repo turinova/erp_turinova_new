@@ -441,11 +441,21 @@ export async function generateEscPosCommands(data: ReceiptData, copyType: 'origi
       const boardsSold = item.boards_used || 0
       const wasteMulti = item.waste_multi || 1
       
-      // Check if this is a worktop order (has assembly type in name and no boards)
-      const isWorktop = (materialName.includes('(Levágás)') || 
-                         materialName.includes('(Összemarás Balos)') ||
-                         materialName.includes('(Összemarás jobbos)')) && 
-                        boardsSold === 0 && wasteMulti === 1
+      // Check if this is a worktop order
+      // Primary check: boardsSold is 0 AND wasteMulti is 1 (worktops always have this)
+      // Secondary check: material name contains assembly type keywords
+      const hasAssemblyType = materialName.includes('(Levágás)') || 
+                              materialName.includes('(Összemarás Balos)') ||
+                              materialName.includes('(Összemarás jobbos)') ||
+                              materialName.includes('Levágás') ||
+                              materialName.includes('Összemarás')
+      
+      // If all items have boards_used=0 and waste_multi=1, it's definitely a worktop
+      const allItemsAreWorktop = data.pricing.every((item: any) => 
+        Number(item.boards_used || 0) === 0 && Number(item.waste_multi || 1) === 1
+      )
+      
+      const isWorktop = (boardsSold === 0 && wasteMulti === 1) || hasAssemblyType || allItemsAreWorktop
       
       let quantity: string
       if (isWorktop) {

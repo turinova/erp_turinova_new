@@ -86,6 +86,7 @@ interface ScannedOrder {
   updated_at: string
   total_paid: number
   remaining_balance: number
+  order_type?: 'regular' | 'worktop' // Type indicator for worktop orders
 }
 
 interface SmsEligibleOrder {
@@ -299,14 +300,255 @@ export default function ScannerClient() {
     setBarcodeInput('')
   }
 
+  // Transform worktop quote data to receipt format
+  const transformWorktopDataToReceiptFormat = (quoteData: any) => {
+    // Group materials by material_id + assembly_type
+    const materialMap = new Map<string, {
+      material_name: string
+      assembly_type: string
+      totalMeters: number
+      totalNet: number
+      totalGross: number
+    }>()
+
+    quoteData.configs?.forEach((config: any) => {
+      const pricing = quoteData.pricing?.find((p: any) => p.config_order === config.config_order)
+      if (!pricing) return
+
+      const key = `${pricing.material_id}_${config.assembly_type}`
+      const existing = materialMap.get(key)
+
+      let meters = 0
+      if (config.assembly_type === 'Levágás') {
+        meters = config.dimension_a / 1000
+      } else if (config.assembly_type === 'Összemarás Balos') {
+        meters = (config.dimension_a / 1000) + ((config.dimension_c - (config.dimension_d || 0)) / 1000)
+      } else if (config.assembly_type === 'Összemarás jobbos') {
+        meters = ((config.dimension_a - (config.dimension_d || 0)) / 1000) + (config.dimension_c / 1000)
+      }
+
+      // Clean material name - remove any existing assembly type or config order info
+      let cleanMaterialName = pricing.material_name
+      const firstParenIndex = cleanMaterialName.indexOf('(')
+      if (firstParenIndex > 0) {
+        cleanMaterialName = cleanMaterialName.substring(0, firstParenIndex).trim()
+      }
+      
+      if (existing) {
+        existing.totalMeters += meters
+        existing.totalNet += pricing.anyag_koltseg_net || 0
+        existing.totalGross += pricing.anyag_koltseg_gross || 0
+      } else {
+        materialMap.set(key, {
+          material_name: `${cleanMaterialName} (${config.assembly_type})`,
+          assembly_type: config.assembly_type,
+          totalMeters: meters,
+          totalNet: pricing.anyag_koltseg_net || 0,
+          totalGross: pricing.anyag_koltseg_gross || 0
+        })
+      }
+    })
+
+    // Build materials array
+    const materials = Array.from(materialMap.values()).map((material, index) => ({
+      id: `material-${index}`,
+      material_name: material.material_name,
+      charged_sqm: material.totalMeters, // Using meters as quantity
+      boards_used: 0,
+      waste_multi: 1,
+      quote_services_breakdown: [] // Will be populated below
+    }))
+
+    // Build services breakdown
+    const servicesMap = new Map<string, { quantity: number; net: number; gross: number }>()
+
+    quoteData.pricing?.forEach((p: any) => {
+      // Összemarás
+      if (Number(p.osszemaras_gross) > 0) {
+        const existing = servicesMap.get('osszemaras')
+        if (existing) {
+          existing.quantity += 1
+          existing.net += Number(p.osszemaras_net) || 0
+          existing.gross += Number(p.osszemaras_gross) || 0
+        } else {
+          servicesMap.set('osszemaras', { quantity: 1, net: Number(p.osszemaras_net) || 0, gross: Number(p.osszemaras_gross) || 0 })
+        }
+      }
+
+      // Kereszt vágás
+      if (Number(p.kereszt_vagas_gross) > 0) {
+        const existing = servicesMap.get('kereszt_vagas')
+        if (existing) {
+          existing.quantity += 1
+          existing.net += Number(p.kereszt_vagas_net) || 0
+          existing.gross += Number(p.kereszt_vagas_gross) || 0
+        } else {
+          servicesMap.set('kereszt_vagas', { quantity: 1, net: Number(p.kereszt_vagas_net) || 0, gross: Number(p.kereszt_vagas_gross) || 0 })
+        }
+      }
+
+      // Hosszanti vágás (sum meters)
+      if (Number(p.hosszanti_vagas_gross) > 0) {
+        const config = quoteData.configs?.find((c: any) => c.config_order === p.config_order)
+        let meters = 0
+        if (config) {
+          if (config.assembly_type === 'Levágás') {
+            meters = config.dimension_a / 1000
+          } else if (config.assembly_type === 'Összemarás Balos') {
+            meters = (config.dimension_a / 1000) + ((config.dimension_c - (config.dimension_d || 0)) / 1000)
+          } else if (config.assembly_type === 'Összemarás jobbos') {
+            meters = ((config.dimension_a - (config.dimension_d || 0)) / 1000) + (config.dimension_c / 1000)
+          }
+        }
+        const existing = servicesMap.get('hosszanti_vagas')
+        if (existing) {
+          existing.quantity += meters
+          existing.net += Number(p.hosszanti_vagas_net) || 0
+          existing.gross += Number(p.hosszanti_vagas_gross) || 0
+        } else {
+          servicesMap.set('hosszanti_vagas', { quantity: meters, net: Number(p.hosszanti_vagas_net) || 0, gross: Number(p.hosszanti_vagas_gross) || 0 })
+        }
+      }
+
+      // Íves vágás (count R1-R4)
+      if (Number(p.ives_vagas_gross) > 0) {
+        const config = quoteData.configs?.find((c: any) => c.config_order === p.config_order)
+        let count = 0
+        if (config) {
+          if (config.rounding_r1 && config.rounding_r1 > 0) count++
+          if (config.rounding_r2 && config.rounding_r2 > 0) count++
+          if (config.rounding_r3 && config.rounding_r3 > 0) count++
+          if (config.rounding_r4 && config.rounding_r4 > 0) count++
+        }
+        const existing = servicesMap.get('ives_vagas')
+        if (existing) {
+          existing.quantity += count
+          existing.net += Number(p.ives_vagas_net) || 0
+          existing.gross += Number(p.ives_vagas_gross) || 0
+        } else {
+          servicesMap.set('ives_vagas', { quantity: count, net: Number(p.ives_vagas_net) || 0, gross: Number(p.ives_vagas_gross) || 0 })
+        }
+      }
+
+      // Szögvágás (count L groups)
+      if (Number(p.szogvagas_gross) > 0) {
+        const config = quoteData.configs?.find((c: any) => c.config_order === p.config_order)
+        let count = 0
+        if (config) {
+          if (config.cut_l1 && config.cut_l1 > 0 && config.cut_l2 && config.cut_l2 > 0) count++
+          if (config.cut_l3 && config.cut_l3 > 0 && config.cut_l4 && config.cut_l4 > 0) count++
+          if (config.cut_l5 && config.cut_l5 > 0 && config.cut_l6 && config.cut_l6 > 0) count++
+          if (config.cut_l7 && config.cut_l7 > 0 && config.cut_l8 && config.cut_l8 > 0) count++
+        }
+        const existing = servicesMap.get('szogvagas')
+        if (existing) {
+          existing.quantity += count
+          existing.net += Number(p.szogvagas_net) || 0
+          existing.gross += Number(p.szogvagas_gross) || 0
+        } else {
+          servicesMap.set('szogvagas', { quantity: count, net: Number(p.szogvagas_net) || 0, gross: Number(p.szogvagas_gross) || 0 })
+        }
+      }
+
+      // Kivágás (count cutouts)
+      if (Number(p.kivagas_gross) > 0) {
+        const config = quoteData.configs?.find((c: any) => c.config_order === p.config_order)
+        let count = 1
+        if (config && config.cutouts) {
+          try {
+            const cutouts = JSON.parse(config.cutouts)
+            count = Array.isArray(cutouts) ? cutouts.length : 1
+          } catch {
+            count = 1
+          }
+        }
+        const existing = servicesMap.get('kivagas')
+        if (existing) {
+          existing.quantity += count
+          existing.net += Number(p.kivagas_net) || 0
+          existing.gross += Number(p.kivagas_gross) || 0
+        } else {
+          servicesMap.set('kivagas', { quantity: count, net: Number(p.kivagas_net) || 0, gross: Number(p.kivagas_gross) || 0 })
+        }
+      }
+
+      // Élzáró (sum meters from details)
+      if (Number(p.elzaro_gross) > 0) {
+        const details = p.elzaro_details || ''
+        const meterMatches = details.match(/(\d+\.?\d*)m/g)
+        let meters = 0
+        if (meterMatches) {
+          meterMatches.forEach((match: string) => {
+            meters += parseFloat(match.replace('m', ''))
+          })
+        }
+        const existing = servicesMap.get('elzaro')
+        if (existing) {
+          existing.quantity += meters
+          existing.net += Number(p.elzaro_net) || 0
+          existing.gross += Number(p.elzaro_gross) || 0
+        } else {
+          servicesMap.set('elzaro', { quantity: meters, net: Number(p.elzaro_net) || 0, gross: Number(p.elzaro_gross) || 0 })
+        }
+      }
+    })
+
+    const servicesBreakdown = Array.from(servicesMap.entries())
+      .filter(([serviceType, data]) => data.quantity > 0 || data.gross > 0)
+      .map(([serviceType, data], index) => {
+        const serviceNames: Record<string, string> = {
+          'osszemaras': 'Összemarás',
+          'kereszt_vagas': 'Kereszt vágás',
+          'hosszanti_vagas': 'Hosszanti vágás',
+          'ives_vagas': 'Íves vágás',
+          'szogvagas': 'Szögvágás',
+          'kivagas': 'Kivágás',
+          'elzaro': 'Élzáró'
+        }
+
+        const units: Record<string, string> = {
+          'osszemaras': 'db',
+          'kereszt_vagas': 'db',
+          'hosszanti_vagas': 'm',
+          'ives_vagas': 'db',
+          'szogvagas': 'db',
+          'kivagas': 'db',
+          'elzaro': 'm'
+        }
+
+        return {
+          id: `service-${index}`,
+          service_type: serviceType,
+          quantity: data.quantity,
+          unit_price: data.quantity > 0 ? data.gross / data.quantity : 0,
+          net_price: data.net,
+          vat_amount: data.gross - data.net,
+          gross_price: data.gross
+        }
+      })
+   
+    // Attach services to materials (first material gets all services)
+    if (materials.length > 0 && servicesBreakdown.length > 0) {
+      materials[0].quote_services_breakdown = servicesBreakdown
+    }
+
+    return materials
+  }
+
   // Extract printing logic to separate function for reuse (same as orders page)
   const printReceiptForOrder = async (orderId: string, order: ScannedOrder, preRequestedUsbDevice?: USBDevice | null) => {
     console.log('[Receipt Print] Attempting to print receipt for order:', order.order_number)
     try {
       // Fetch order quote data and tenant company data
-      console.log('[Receipt Print] Fetching data...')
+      // Use appropriate endpoint based on order type
+      const isWorktop = order.order_type === 'worktop'
+      const quoteDataEndpoint = isWorktop 
+        ? `/api/worktop-orders/${orderId}/quote-data`
+        : `/api/orders/${orderId}/quote-data`
+      
+      console.log('[Receipt Print] Fetching data...', { isWorktop, endpoint: quoteDataEndpoint })
       const [quoteDataResponse, tenantCompanyResponse] = await Promise.all([
-        fetch(`/api/orders/${orderId}/quote-data`),
+        fetch(quoteDataEndpoint),
         fetch('/api/tenant-company')
       ])
 
@@ -346,9 +588,18 @@ export default function ScannerClient() {
       const tenantCompany = await tenantCompanyResponse.json()
 
       console.log('[Receipt Print] Data fetched successfully:', {
+        isWorktop,
         pricingCount: quoteData.pricing?.length || 0,
+        configsCount: quoteData.configs?.length || 0,
         tenantCompanyName: tenantCompany.name
       })
+
+      // Transform worktop data to receipt format if needed
+      let pricing = quoteData.pricing || []
+      if (isWorktop) {
+        pricing = transformWorktopDataToReceiptFormat(quoteData)
+        console.log('[Receipt Print] Transformed worktop pricing:', JSON.stringify(pricing, null, 2))
+      }
 
       // Print receipt (pass pre-requested USB device if available)
       console.log('[Receipt Print] Calling printOrderReceipt...')
@@ -364,9 +615,9 @@ export default function ScannerClient() {
           tax_number: tenantCompany.tax_number
         },
         orderNumber: order.order_number,
-        customerName: order.customer_name,
+        customerName: isWorktop ? (quoteData.customer?.name || order.customer_name) : order.customer_name,
         barcode: quoteData.barcode || null,
-        pricing: quoteData.pricing || []
+        pricing: pricing
       }, preRequestedUsbDevice)
       console.log('[Receipt Print] printOrderReceipt completed')
     } catch (error: any) {
@@ -510,22 +761,38 @@ export default function ScannerClient() {
     }
 
     try {
-      // Fetch full order details to check for SMS eligibility
-      const response = await fetch('/api/orders/sms-eligible', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ order_ids: selectedOrders })
-      })
+      // Separate regular and worktop orders
+      const selectedOrderData = scannedOrders.filter(o => selectedOrders.includes(o.id))
+      const regularOrderIds = selectedOrderData.filter(o => o.order_type !== 'worktop').map(o => o.id)
+      const worktopOrderIds = selectedOrderData.filter(o => o.order_type === 'worktop').map(o => o.id)
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch SMS-eligible orders')
+      // Check SMS eligibility for both types
+      const smsChecks = []
+      if (regularOrderIds.length > 0) {
+        smsChecks.push(
+          fetch('/api/orders/sms-eligible', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_ids: regularOrderIds })
+          }).then(r => r.json())
+        )
+      }
+      if (worktopOrderIds.length > 0) {
+        smsChecks.push(
+          fetch('/api/worktop-orders/sms-eligible', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order_ids: worktopOrderIds })
+          }).then(r => r.json())
+        )
       }
 
-      const { sms_eligible_orders } = await response.json()
+      const smsResults = await Promise.all(smsChecks)
+      const allSmsEligibleOrders = smsResults.flatMap(r => r.sms_eligible_orders || [])
 
       // If there are SMS-eligible orders, show confirmation modal
-      if (sms_eligible_orders && sms_eligible_orders.length > 0) {
-        setSmsEligibleOrders(sms_eligible_orders)
+      if (allSmsEligibleOrders && allSmsEligibleOrders.length > 0) {
+        setSmsEligibleOrders(allSmsEligibleOrders)
         setSmsModalOpen(true)
       } else {
         // No SMS-eligible orders, just update status directly
@@ -558,47 +825,80 @@ export default function ScannerClient() {
     setIsUpdating(true)
 
     try {
-      const response = await fetch('/api/orders/bulk-status', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          order_ids: selectedOrders,
-          new_status: newStatus,
-          create_payments: createPayments,
-          sms_order_ids: smsOrderIds,  // Send only selected order IDs for SMS
-          require_in_production: true  // Scanner page requires in_production status
-        })
-      })
+      // Separate regular and worktop orders
+      const selectedOrderData = scannedOrders.filter(o => selectedOrders.includes(o.id))
+      const regularOrderIds = selectedOrderData.filter(o => o.order_type !== 'worktop').map(o => o.id)
+      const worktopOrderIds = selectedOrderData.filter(o => o.order_type === 'worktop').map(o => o.id)
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to update orders')
+      // Separate SMS order IDs by type
+      const regularSmsIds = smsOrderIds.filter(id => regularOrderIds.includes(id))
+      const worktopSmsIds = smsOrderIds.filter(id => worktopOrderIds.includes(id))
+
+      // Process regular and worktop orders separately
+      const updatePromises = []
+      
+      if (regularOrderIds.length > 0) {
+        updatePromises.push(
+          fetch('/api/orders/bulk-status', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              order_ids: regularOrderIds,
+              new_status: newStatus,
+              create_payments: createPayments,
+              sms_order_ids: regularSmsIds,
+              require_in_production: true
+            })
+          }).then(r => r.json())
+        )
       }
 
-      const result = await response.json()
+      if (worktopOrderIds.length > 0) {
+        updatePromises.push(
+          fetch('/api/worktop-orders/bulk-status', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              order_ids: worktopOrderIds,
+              new_status: newStatus,
+              create_payments: createPayments,
+              sms_order_ids: worktopSmsIds
+            })
+          }).then(r => r.json())
+        )
+      }
+
+      const results = await Promise.all(updatePromises)
+      
+      // Aggregate results
+      const totalUpdated = results.reduce((sum, r) => sum + (r.updated_count || 0), 0)
+      const totalPaymentsCreated = results.reduce((sum, r) => sum + (r.payments_created || 0), 0)
+      const allSmsResults = {
+        sent: results.reduce((sum, r) => sum + ((r.sms_notifications?.sent || 0)), 0),
+        failed: results.reduce((sum, r) => sum + ((r.sms_notifications?.failed || 0)), 0),
+        errors: results.flatMap(r => r.sms_notifications?.errors || [])
+      }
       
       const statusLabel = newStatus === 'ready' ? 'Gyártás kész' : 'Megrendelőnek átadva'
       
       // Show summary with payment info if applicable
-      if (createPayments && result.payments_created > 0) {
+      if (createPayments && totalPaymentsCreated > 0) {
         toast.success(
-          `${result.updated_count} megrendelés lezárva, ${result.payments_created} fizetés rögzítve`
+          `${totalUpdated} megrendelés lezárva, ${totalPaymentsCreated} fizetés rögzítve`
         )
       } else {
-        toast.success(`${result.updated_count} megrendelés frissítve: ${statusLabel}`)
+        toast.success(`${totalUpdated} megrendelés frissítve: ${statusLabel}`)
       }
 
       // Show SMS notification results
-      if (result.sms_notifications) {
-        const { sent, failed, errors } = result.sms_notifications
-        
-        if (sent > 0) {
-          toast.success(`📱 ${sent} SMS értesítés elküldve`, { autoClose: 5000 })
+      if (allSmsResults.sent > 0 || allSmsResults.failed > 0) {
+        if (allSmsResults.sent > 0) {
+          toast.success(`📱 ${allSmsResults.sent} SMS értesítés elküldve`, { autoClose: 5000 })
         }
         
-        if (failed > 0) {
+        if (allSmsResults.failed > 0) {
           toast.warning(
-            `⚠️ ${failed} SMS küldése sikertelen${errors.length > 0 ? `: ${errors[0]}` : ''}`,
+            `⚠️ ${allSmsResults.failed} SMS küldése sikertelen${allSmsResults.errors.length > 0 ? `: ${allSmsResults.errors[0]}` : ''}`,
             { autoClose: 7000 }
           )
         }
@@ -734,14 +1034,24 @@ export default function ScannerClient() {
                           />
                         </TableCell>
                         <TableCell>
-                          <Link
-                            href={`/orders/${order.id}`}
-                            underline="hover"
-                            color="primary"
-                            sx={{ cursor: 'pointer', fontWeight: 500 }}
-                          >
-                            {order.order_number}
-                          </Link>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Link
+                              href={order.order_type === 'worktop' ? `/worktop-orders/${order.id}` : `/orders/${order.id}`}
+                              underline="hover"
+                              color="primary"
+                              sx={{ cursor: 'pointer', fontWeight: 500 }}
+                            >
+                              {order.order_number}
+                            </Link>
+                            {order.order_type === 'worktop' && (
+                              <Chip 
+                                label="Munkalap" 
+                                size="small" 
+                                color="secondary"
+                                sx={{ fontSize: '0.7rem', height: '20px' }}
+                              />
+                            )}
+                          </Box>
                         </TableCell>
                         <TableCell>{order.customer_name}</TableCell>
                         <TableCell align="right">{formatCurrency(order.final_total)}</TableCell>
