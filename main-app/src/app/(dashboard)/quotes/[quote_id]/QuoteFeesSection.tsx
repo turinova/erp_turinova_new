@@ -42,13 +42,15 @@ interface QuoteFeesSectionProps {
   fees: QuoteFee[]
   onFeesChange: () => void
   onAddFeeClick: () => void
+  apiPath?: string // Optional API path, defaults to '/api/quotes/'
 }
 
 export default function QuoteFeesSection({
   quoteId,
   fees,
   onFeesChange,
-  onAddFeeClick
+  onAddFeeClick,
+  apiPath = '/api/quotes/'
 }: QuoteFeesSectionProps) {
   const [selectedFees, setSelectedFees] = useState<string[]>([])
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
@@ -87,7 +89,7 @@ export default function QuoteFeesSection({
     setIsDeleting(true)
     try {
       const deletePromises = selectedFees.map(feeId =>
-        fetch(`/api/quotes/${quoteId}/fees/${feeId}`, {
+        fetch(`${apiPath}${quoteId}/fees/${feeId}`, {
           method: 'DELETE',
         })
       )

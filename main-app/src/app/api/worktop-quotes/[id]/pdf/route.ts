@@ -369,10 +369,18 @@ export async function GET(
     const servicesTotalNet = roundToWholeNumber(services.reduce((sum, s) => sum + s.totalNet, 0))
     const servicesTotalVat = calculateVat(servicesTotalNet, vatPercent)
 
-    // Calculate subtotal before discount
-    const subtotalGross = materialsTotalGross + servicesTotalGross
-    const subtotalNet = materialsTotalNet + servicesTotalNet
-    const subtotalVat = materialsTotalVat + servicesTotalVat
+    // Calculate fees totals
+    const feesTotalGross = roundToWholeNumber((quoteData.fees || []).reduce((sum, f) => sum + (Number(f.gross_price) || 0), 0))
+    const feesTotalNet = roundToWholeNumber((quoteData.fees || []).reduce((sum, f) => {
+      const totalNet = Number(f.unit_price_net) * Number(f.quantity || 1)
+      return sum + totalNet
+    }, 0))
+    const feesTotalVat = feesTotalGross - feesTotalNet
+
+    // Calculate subtotal before discount (materials + services + fees)
+    const subtotalGross = materialsTotalGross + servicesTotalGross + feesTotalGross
+    const subtotalNet = materialsTotalNet + servicesTotalNet + feesTotalNet
+    const subtotalVat = materialsTotalVat + servicesTotalVat + feesTotalVat
 
     // Calculate discount
     const discountPercent = quoteData.discount_percent || 0
@@ -389,7 +397,10 @@ export async function GET(
       totalGrossBeforeDiscount: roundToWholeNumber(subtotalGross),
       totalNetAfterDiscount: roundToWholeNumber(finalTotalNet),
       totalVatAfterDiscount: roundToWholeNumber(finalTotalVat),
-      totalGrossAfterDiscount: roundToWholeNumber(finalTotalGross)
+      totalGrossAfterDiscount: roundToWholeNumber(finalTotalGross),
+      feesTotalNet: roundToWholeNumber(feesTotalNet),
+      feesTotalVat: roundToWholeNumber(feesTotalVat),
+      feesTotalGross: roundToWholeNumber(feesTotalGross)
     }
 
     // Parallelize image fetching for better performance
@@ -442,8 +453,19 @@ export async function GET(
         created_at: quoteData.created_at,
         materials,
         services,
+        fees: (quoteData.fees || []).map(f => ({
+          id: f.id,
+          fee_name: f.fee_name,
+          quantity: f.quantity,
+          unit_price_net: f.unit_price_net,
+          vat_rate: f.vat_rate,
+          vat_amount: f.vat_amount,
+          gross_price: f.gross_price,
+          comment: f.comment
+        })),
         materialsTotalGross,
         servicesTotalGross,
+        feesTotalGross,
         materialsTotalNet,
         servicesTotalNet,
         materialsTotalVat,

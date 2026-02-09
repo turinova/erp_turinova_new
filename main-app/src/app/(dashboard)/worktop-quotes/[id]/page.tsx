@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Metadata } from 'next'
-import { getWorktopQuoteById, getTenantCompany, getAllProductionMachines } from '@/lib/supabase-server'
+import { getWorktopQuoteById, getTenantCompany, getAllProductionMachines, getAllFeeTypes } from '@/lib/supabase-server'
 import WorktopQuoteDetailClient from './WorktopQuoteDetailClient'
 
 interface PageProps {
@@ -20,11 +20,12 @@ export default async function WorktopQuoteDetailPage({ params }: PageProps) {
   const resolvedParams = await params
   const quoteId = resolvedParams.id
   
-  // Fetch worktop quote data, tenant company, and machines in parallel
-  const [quoteData, tenantCompany, machines] = await Promise.all([
+  // Fetch worktop quote data, tenant company, machines, and fee types in parallel
+  const [quoteData, tenantCompany, machines, feeTypes] = await Promise.all([
     getWorktopQuoteById(quoteId),
     getTenantCompany(),
-    getAllProductionMachines()
+    getAllProductionMachines(),
+    getAllFeeTypes()
   ])
   
   if (!quoteData) {
@@ -43,6 +44,7 @@ export default async function WorktopQuoteDetailPage({ params }: PageProps) {
       initialQuoteData={quoteData}
       tenantCompany={tenantCompany}
       machines={machines}
+      feeTypes={feeTypes}
     />
   )
 }

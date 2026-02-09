@@ -6932,7 +6932,7 @@ export async function getWorktopQuoteById(quoteId: string) {
     // Fetch all data in parallel
     const parallelStartTime = performance.now()
     
-    const [quoteResult, configsResult, pricingResult, paymentsResult] = await Promise.all([
+    const [quoteResult, configsResult, pricingResult, paymentsResult, feesResult] = await Promise.all([
       // 1. Quote with customer data and production machine
       supabaseServer
         .from('worktop_quotes')
@@ -7087,7 +7087,20 @@ export async function getWorktopQuoteById(quoteId: string) {
         .select('*')
         .eq('worktop_quote_id', quoteId)
         .is('deleted_at', null)
-        .order('payment_date', { ascending: false })
+        .order('payment_date', { ascending: false }),
+
+      // 5. Fees
+      supabaseServer
+        .from('worktop_quote_fees')
+        .select(`
+          id, fee_name, quantity, unit_price_net, vat_rate, vat_amount, gross_price, currency_id, comment,
+          created_at,
+          feetypes(id, name),
+          currencies(id, name)
+        `)
+        .eq('worktop_quote_id', quoteId)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true })
     ])
 
     logTiming('Parallel Worktop Quote Queries Complete', parallelStartTime, 'all 4 queries executed in parallel')
@@ -7097,6 +7110,7 @@ export async function getWorktopQuoteById(quoteId: string) {
     const { data: configs, error: configsError } = configsResult
     const { data: pricingData, error: pricingError } = pricingResult
     const { data: payments, error: paymentsError } = paymentsResult
+    const { data: fees, error: feesError } = feesResult
 
     // Handle errors
     if (quoteError) {
@@ -7129,13 +7143,18 @@ export async function getWorktopQuoteById(quoteId: string) {
       console.error('[SSR] Error fetching worktop quote payments:', paymentsError)
     }
 
-    logTiming('Worktop Quote Fetch Total', startTime, `Fetched quote with ${configs?.length || 0} configs, ${pricingData?.length || 0} pricing records, and ${payments?.length || 0} payments`)
+    if (feesError) {
+      console.error('[SSR] Error fetching worktop quote fees:', feesError)
+    }
+
+    logTiming('Worktop Quote Fetch Total', startTime, `Fetched quote with ${configs?.length || 0} configs, ${pricingData?.length || 0} pricing records, ${payments?.length || 0} payments, and ${fees?.length || 0} fees`)
 
     return {
       ...quote,
       configs: configs || [],
       pricing: pricingData || [],
-      payments: payments || []
+      payments: payments || [],
+      fees: fees || []
     }
   } catch (error) {
     console.error('[SSR] Exception fetching worktop quote by ID:', error)

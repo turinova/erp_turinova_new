@@ -105,12 +105,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD', // Purple for worktop tools
     children: [
       {
-        label: 'Munkalap ajánlatok',
-        href: '/worktop-quotes'
+        label: 'Megrendelések',
+        href: '/worktop-orders'
       },
       {
-        label: 'Munkalap megrendelések',
-        href: '/worktop-orders'
+        label: 'Ajánlatok',
+        href: '/worktop-quotes'
       }
     ]
   },

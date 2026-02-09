@@ -582,7 +582,7 @@ function generateVisualizationPage(
   const h7 = drawLeftField('Élzáró színe:', edgeColorText, leftY)
   leftY += h7
   
-  const h8 = drawLeftField('Postforming:', config.no_postforming_edge ? 'NEM' : 'IGEN', leftY)
+  const h8 = drawLeftField('Postforming:', config.no_postforming_edge ? 'Levág' : 'Marad', leftY)
   leftY += h8
   
   leftY += SECTION_SPACING
@@ -609,7 +609,7 @@ function generateVisualizationPage(
     config.edge_position4, config.edge_position5, config.edge_position6
   ]
   for (let i = 0; i < 6; i++) {
-    const h = drawRightField(`${i + 1}. oldal:`, edgePositions[i] ? 'IGEN' : 'NEM', rightY)
+    const h = drawRightField(`${i + 1}. oldal:`, edgePositions[i] ? 'Marad' : 'Levág', rightY)
     rightY += h
   }
   

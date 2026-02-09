@@ -53,6 +53,17 @@ interface WorktopConfig {
   no_postforming_edge?: boolean
 }
 
+interface WorktopQuoteFee {
+  id: string
+  fee_name: string
+  quantity: number
+  unit_price_net: number
+  vat_rate: number
+  vat_amount: number
+  gross_price: number
+  comment: string | null
+}
+
 interface WorktopQuote {
   id: string
   quote_number: string
@@ -73,8 +84,10 @@ interface WorktopQuote {
   created_at: string
   materials: WorktopQuoteMaterial[]
   services: WorktopQuoteService[]
+  fees: WorktopQuoteFee[]
   materialsTotalGross: number
   servicesTotalGross: number
+  feesTotalGross: number
   materialsTotalNet: number
   servicesTotalNet: number
   materialsTotalVat: number
@@ -103,6 +116,9 @@ interface WorktopQuotePdfTemplateProps {
     totalNetAfterDiscount: number
     totalVatAfterDiscount: number
     totalGrossAfterDiscount: number
+    feesTotalNet: number
+    feesTotalVat: number
+    feesTotalGross: number
   }
   discountAmount: number
   discountPercentage: number
@@ -260,7 +276,29 @@ export default function generateWorktopQuotePdfHtml({
     `
   }).join('')
   
-  const itemsRows = materialRows + serviceRows
+  // Fees rows
+  const feeRows = quote.fees.map((fee) => {
+    const unitPriceGross = fee.quantity > 0 ? fee.gross_price / fee.quantity : 0
+    const roundedUnitPriceGross = Math.round(unitPriceGross)
+    const recalculatedTotalGross = roundedUnitPriceGross * fee.quantity
+    
+    return `
+      <tr>
+        <td>
+          <div style="font-weight: 500;">${escapeHtml(fee.fee_name)}</div>
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">Díj</span>
+        </td>
+        <td class="text-right nowrap">${fee.quantity} db</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+      </tr>
+    `
+  }).join('')
+  
+  const itemsRows = materialRows + serviceRows + feeRows
 
   // Summary rows - matching orders PDF exactly (6 columns total, so colspan="5" for first 5 columns)
   const beforeDiscountRows = (Number(discountAmount) || 0) > 0 ? `
@@ -1015,21 +1053,21 @@ export default function generateWorktopQuotePdfHtml({
               <th>Élzáró anyag színe</th>
               <td>${escapeHtml(config.edge_color_choice === 'Egyéb szín' && config.edge_color_text ? config.edge_color_text : (config.edge_color_choice || 'Színazonos'))}</td>
               <th>Postforming</th>
-              <td>${config.no_postforming_edge ? 'NEM' : 'IGEN'}</td>
+              <td>${config.no_postforming_edge ? 'Levág' : 'Marad'}</td>
             </tr>
             <tr>
               <th>1. oldal</th>
-              <td>${config.edge_position1 ? 'IGEN' : 'NEM'}</td>
+              <td>${config.edge_position1 ? 'Marad' : 'Levág'}</td>
               <th>2. oldal</th>
-              <td>${config.edge_position2 ? 'IGEN' : 'NEM'}</td>
+              <td>${config.edge_position2 ? 'Marad' : 'Levág'}</td>
               <th>3. oldal</th>
-              <td>${config.edge_position3 ? 'IGEN' : 'NEM'}</td>
+              <td>${config.edge_position3 ? 'Marad' : 'Levág'}</td>
               <th>4. oldal</th>
-              <td>${config.edge_position4 ? 'IGEN' : 'NEM'}</td>
+              <td>${config.edge_position4 ? 'Marad' : 'Levág'}</td>
               <th>5. oldal</th>
-              <td>${config.edge_position5 ? 'IGEN' : 'NEM'}</td>
+              <td>${config.edge_position5 ? 'Marad' : 'Levág'}</td>
               <th>6. oldal</th>
-              <td>${config.edge_position6 ? 'IGEN' : 'NEM'}</td>
+              <td>${config.edge_position6 ? 'Marad' : 'Levág'}</td>
             </tr>
             <tr>
               <th>A:</th>
@@ -1520,27 +1558,27 @@ export function generateVisualizationPageHtml(
               </tr>
               <tr>
                 <th>Postforming:</th>
-                <td class="value-cell">${config.no_postforming_edge ? 'NEM' : 'IGEN'}</td>
+                <td class="value-cell">${config.no_postforming_edge ? 'Levág' : 'Marad'}</td>
                 <th></th>
                 <td></td>
               </tr>
               <tr class="compact-row">
                 <th>1. oldal:</th>
-                <td class="value-cell">${config.edge_position1 ? 'IGEN' : 'NEM'}</td>
+                <td class="value-cell">${config.edge_position1 ? 'Marad' : 'Levág'}</td>
                 <th>2. oldal:</th>
-                <td class="value-cell">${config.edge_position2 ? 'IGEN' : 'NEM'}</td>
+                <td class="value-cell">${config.edge_position2 ? 'Marad' : 'Levág'}</td>
               </tr>
               <tr class="compact-row">
                 <th>3. oldal:</th>
-                <td class="value-cell">${config.edge_position3 ? 'IGEN' : 'NEM'}</td>
+                <td class="value-cell">${config.edge_position3 ? 'Marad' : 'Levág'}</td>
                 <th>4. oldal:</th>
-                <td class="value-cell">${config.edge_position4 ? 'IGEN' : 'NEM'}</td>
+                <td class="value-cell">${config.edge_position4 ? 'Marad' : 'Levág'}</td>
               </tr>
               <tr class="compact-row">
                 <th>5. oldal:</th>
-                <td class="value-cell">${config.edge_position5 ? 'IGEN' : 'NEM'}</td>
+                <td class="value-cell">${config.edge_position5 ? 'Marad' : 'Levág'}</td>
                 <th>6. oldal:</th>
-                <td class="value-cell">${config.edge_position6 ? 'IGEN' : 'NEM'}</td>
+                <td class="value-cell">${config.edge_position6 ? 'Marad' : 'Levág'}</td>
               </tr>
               <tr class="compact-row">
                 <th>A:</th>

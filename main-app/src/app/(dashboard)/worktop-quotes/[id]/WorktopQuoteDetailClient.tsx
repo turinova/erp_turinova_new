@@ -42,6 +42,8 @@ import CommentModal from '@/app/(dashboard)/quotes/[quote_id]/CommentModal'
 import CreateOrderModal from '@/app/(dashboard)/quotes/[quote_id]/CreateOrderModal'
 import AddPaymentModal from '@/app/(dashboard)/orders/[order_id]/AddPaymentModal'
 import AssignProductionModal from '@/app/(dashboard)/worktop-orders/[order_id]/AssignProductionModal'
+import QuoteFeesSection from '@/app/(dashboard)/quotes/[quote_id]/QuoteFeesSection'
+import AddFeeModal from '@/app/(dashboard)/quotes/[quote_id]/AddFeeModal'
 
 interface TenantCompany {
   id: string
@@ -98,6 +100,17 @@ interface WorktopQuoteData {
     comment: string | null
     payment_date: string
     created_at: string
+  }>
+  fees?: Array<{
+    id: string
+    fee_name: string
+    quantity: number
+    unit_price_net: number
+    vat_rate: number
+    vat_amount: number
+    gross_price: number
+    currency_id: string
+    comment: string | null
   }>
   configs: Array<{
     id: string
@@ -164,13 +177,22 @@ interface Machine {
   comment: string | null
 }
 
+interface FeeType {
+  id: string
+  name: string
+  net_price: number
+  vat_percent: number
+  gross_price: number
+}
+
 interface WorktopQuoteDetailClientProps {
   initialQuoteData: WorktopQuoteData
   tenantCompany: TenantCompany | null
   machines: Machine[]
+  feeTypes: FeeType[]
 }
 
-export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompany, machines }: WorktopQuoteDetailClientProps) {
+export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompany, machines, feeTypes }: WorktopQuoteDetailClientProps) {
   const router = useRouter()
   const { canAccess } = usePermissions()
   const hasAccess = canAccess('/worktop-quotes')
@@ -182,6 +204,7 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
   const [createOrderModalOpen, setCreateOrderModalOpen] = useState(false)
   const [addPaymentModalOpen, setAddPaymentModalOpen] = useState(false)
   const [assignProductionModalOpen, setAssignProductionModalOpen] = useState(false)
+  const [addFeeModalOpen, setAddFeeModalOpen] = useState(false)
   
   // Determine if this is an order view (has order_number)
   const isOrderView = Boolean(quoteData.order_number)
@@ -507,6 +530,16 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
   // Handle production assigned success
   const handleProductionAssigned = async () => {
     await refreshQuoteData()
+  }
+
+  // Handle add fee
+  const handleAddFee = () => {
+    setAddFeeModalOpen(true)
+  }
+
+  // Handle fee added
+  const handleFeeAdded = () => {
+    refreshQuoteData()
   }
 
   const handleSaveComment = async (comment: string) => {
@@ -953,9 +986,15 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
               {(() => {
                 const materialsGross = materialsTotal
                 const servicesGross = servicesTotals.gross
-                const subtotal = materialsGross + servicesGross
+                const feesGross = (quoteData.fees || []).reduce((sum, f) => sum + (Number(f.gross_price) || 0), 0)
+                
+                // Only positive values get discount
+                const feesPositive = Math.max(0, feesGross)
+                const feesNegative = Math.min(0, feesGross)
+                
+                const subtotal = materialsGross + servicesGross + feesPositive
                 const discountAmount = subtotal * (quoteData.discount_percent / 100)
-                const finalTotal = subtotal - discountAmount
+                const finalTotal = subtotal - discountAmount + feesNegative
                 
                 return (
                   <>
@@ -978,7 +1017,7 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                       </Box>
 
                       {/* Services */}
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: feesGross !== 0 ? 1 : 0 }}>
                         <Typography variant="body1" fontWeight="600">
                           Szolgáltatások:
                         </Typography>
@@ -986,6 +1025,18 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                           {formatCurrency(Math.round(servicesGross))}
                         </Typography>
                       </Box>
+
+                      {/* Fees */}
+                      {feesGross !== 0 && (
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0 }}>
+                          <Typography variant="body1" fontWeight="600">
+                            Díjak:
+                          </Typography>
+                          <Typography variant="body1" fontWeight="600">
+                            {formatCurrency(Math.round(feesGross))}
+                          </Typography>
+                        </Box>
+                      )}
                     </Box>
 
                     <Divider sx={{ my: 1 }} />
@@ -1076,6 +1127,15 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
               </CardContent>
             </Card>
           )}
+
+          {/* Fees Section */}
+          <QuoteFeesSection
+            quoteId={quoteData.id}
+            fees={quoteData.fees || []}
+            onFeesChange={handleFeeAdded}
+            onAddFeeClick={handleAddFee}
+            apiPath="/api/worktop-quotes/"
+          />
         </Grid>
 
         {/* Right Column - Actions */}
@@ -1285,6 +1345,16 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
           onSuccess={handleProductionAssigned}
         />
       )}
+
+      {/* Add Fee Modal */}
+      <AddFeeModal
+        open={addFeeModalOpen}
+        onClose={() => setAddFeeModalOpen(false)}
+        quoteId={quoteData.id}
+        onSuccess={handleFeeAdded}
+        feeTypes={feeTypes}
+        apiPath="/api/worktop-quotes/"
+      />
     </Box>
   )
 }

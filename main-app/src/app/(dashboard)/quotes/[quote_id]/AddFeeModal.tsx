@@ -32,10 +32,11 @@ interface AddFeeModalProps {
   onClose: () => void
   quoteId: string
   onSuccess: () => void
-  feeTypes: FeeType[]
+  feeTypes: FeeType[] | undefined
+  apiPath?: string // Optional API path, defaults to '/api/quotes/'
 }
 
-export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeTypes }: AddFeeModalProps) {
+export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeTypes, apiPath = '/api/quotes/' }: AddFeeModalProps) {
   const [selectedFeeTypeId, setSelectedFeeTypeId] = useState('')
   const [quantity, setQuantity] = useState<number | ''>(1)
   const [unitPrice, setUnitPrice] = useState(0)
@@ -55,7 +56,7 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
   // Auto-fill unit price when fee type is selected
   const handleFeeTypeChange = (feeTypeId: string) => {
     setSelectedFeeTypeId(feeTypeId)
-    const feeType = feeTypes.find(ft => ft.id === feeTypeId)
+    const feeType = feeTypes?.find(ft => ft.id === feeTypeId)
     if (feeType) {
       setUnitPrice(feeType.gross_price)
     }
@@ -86,7 +87,7 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/quotes/${quoteId}/fees`, {
+      const response = await fetch(`${apiPath}${quoteId}/fees`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +125,7 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
     }
   }
 
-  const selectedFeeType = feeTypes.find(ft => ft.id === selectedFeeTypeId)
+  const selectedFeeType = feeTypes?.find(ft => ft.id === selectedFeeTypeId)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('hu-HU', {
@@ -156,7 +157,7 @@ export default function AddFeeModal({ open, onClose, quoteId, onSuccess, feeType
                 onChange={(e) => handleFeeTypeChange(e.target.value)}
                 label="Díjtípus"
               >
-                {feeTypes.map((feeType) => (
+                {(feeTypes || []).map((feeType) => (
                   <MenuItem key={feeType.id} value={feeType.id}>
                     {feeType.name} - {formatCurrency(feeType.gross_price)}
                   </MenuItem>

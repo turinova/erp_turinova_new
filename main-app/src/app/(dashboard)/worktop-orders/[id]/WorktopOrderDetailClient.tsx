@@ -51,10 +51,19 @@ interface WorktopQuoteData {
   pricing: any[]
 }
 
+interface FeeType {
+  id: string
+  name: string
+  net_price: number
+  vat_percent: number
+  gross_price: number
+}
+
 interface WorktopOrderDetailClientProps {
   initialQuoteData: WorktopQuoteData
   tenantCompany: TenantCompany | null
   machines: Machine[]
+  feeTypes: FeeType[]
 }
 
 export default function WorktopOrderDetailClient(props: WorktopOrderDetailClientProps) {

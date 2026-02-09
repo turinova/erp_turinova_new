@@ -1199,6 +1199,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       let anyagKoltsegNet = 0
       let keresztVagasNet = 0
       let hosszantiVagasNet = 0
+      let hosszantiVagasGross = 0 // Accumulate gross directly to avoid rounding errors
       let ivesVagasNet = 0
       let szogvagasNet = 0
       let kivagasNet = 0
@@ -1296,12 +1297,14 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             const cost = cdMeters * hosszantiVagasFeePerMeter
             const costGross = cdMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
+            hosszantiVagasGross += costGross // Accumulate gross directly
             hosszantiVagasDetails.push(`${cdMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
           if (aValue < material.width) {
             const cost = aMeters * hosszantiVagasFeePerMeter
             const costGross = aMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
+            hosszantiVagasGross += costGross // Accumulate gross directly
             hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
         } else {
@@ -1310,6 +1313,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             const cost = aMeters * hosszantiVagasFeePerMeter
             const costGross = aMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
+            hosszantiVagasGross += costGross // Accumulate gross directly
             hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
         }
@@ -1455,11 +1459,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           : 0
         const keresztVagasVat = roundToWholeNumber(keresztVagasGross - roundedKeresztVagasNet)
 
-        // Hosszanti vágás: calculate gross from gross per meter
-        const hosszantiVagasGross = roundedHosszantiVagasNet > 0 && hosszantiVagasFeePerMeter > 0
-          ? roundToWholeNumber((roundedHosszantiVagasNet / hosszantiVagasFeePerMeter) * hosszantiVagasFeePerMeterGross)
-          : roundToWholeNumber(roundedHosszantiVagasNet * (1 + vatRate))
-        const hosszantiVagasVat = roundToWholeNumber(hosszantiVagasGross - roundedHosszantiVagasNet)
+        // Hosszanti vágás: use accumulated gross directly to avoid rounding errors
+        const roundedHosszantiVagasGross = roundToWholeNumber(hosszantiVagasGross)
+        const hosszantiVagasVat = roundToWholeNumber(roundedHosszantiVagasGross - roundedHosszantiVagasNet)
 
         // Íves vágás: calculate gross from gross fee
         const ivesVagasGross = roundedIvesVagasNet > 0
@@ -1519,7 +1521,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           kereszt_vagas_details: keresztVagasDetails.length > 0 ? `${keresztVagasDetails.length} × ${formatPrice(worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100), currency)} = ${formatPrice(keresztVagasGross, currency)}` : '',
           hosszanti_vagas_net: roundedHosszantiVagasNet,
           hosszanti_vagas_vat: hosszantiVagasVat,
-          hosszanti_vagas_gross: hosszantiVagasGross,
+          hosszanti_vagas_gross: roundedHosszantiVagasGross,
           hosszanti_vagas_details: hosszantiVagasDetails.join('; '),
           ives_vagas_net: roundedIvesVagasNet,
           ives_vagas_vat: ivesVagasVat,
