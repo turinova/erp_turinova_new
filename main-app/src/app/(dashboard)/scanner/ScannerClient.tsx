@@ -771,8 +771,8 @@ export default function ScannerClient() {
       if (regularOrderIds.length > 0) {
         smsChecks.push(
           fetch('/api/orders/sms-eligible', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ order_ids: regularOrderIds })
           }).then(r => r.json())
         )
@@ -840,12 +840,12 @@ export default function ScannerClient() {
       if (regularOrderIds.length > 0) {
         updatePromises.push(
           fetch('/api/orders/bulk-status', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
               order_ids: regularOrderIds,
-              new_status: newStatus,
-              create_payments: createPayments,
+          new_status: newStatus,
+          create_payments: createPayments,
               sms_order_ids: regularSmsIds,
               require_in_production: true
             })
@@ -863,7 +863,7 @@ export default function ScannerClient() {
               new_status: newStatus,
               create_payments: createPayments,
               sms_order_ids: worktopSmsIds
-            })
+        })
           }).then(r => r.json())
         )
       }
@@ -1035,14 +1035,14 @@ export default function ScannerClient() {
                         </TableCell>
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Link
+                          <Link
                               href={order.order_type === 'worktop' ? `/worktop-orders/${order.id}` : `/orders/${order.id}`}
-                              underline="hover"
-                              color="primary"
-                              sx={{ cursor: 'pointer', fontWeight: 500 }}
-                            >
-                              {order.order_number}
-                            </Link>
+                            underline="hover"
+                            color="primary"
+                            sx={{ cursor: 'pointer', fontWeight: 500 }}
+                          >
+                            {order.order_number}
+                          </Link>
                             {order.order_type === 'worktop' && (
                               <Chip 
                                 label="Munkalap" 

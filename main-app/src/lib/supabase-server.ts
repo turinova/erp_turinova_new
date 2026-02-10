@@ -7026,7 +7026,7 @@ export async function getWorktopQuoteById(quoteId: string) {
           cut_l7,
           cut_l8,
           cutouts,
-          linear_materials(id, name)
+          linear_materials(id, name, length)
         `)
         .eq('worktop_quote_id', quoteId)
         .order('config_order', { ascending: true }),
@@ -7076,7 +7076,7 @@ export async function getWorktopQuoteById(quoteId: string) {
           total_net,
           total_vat,
           total_gross,
-          linear_materials(id, name)
+          linear_materials(id, name, length)
         `)
         .eq('worktop_quote_id', quoteId)
         .order('config_order', { ascending: true }),

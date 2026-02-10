@@ -8,6 +8,9 @@ interface WorktopQuoteMaterial {
   totalMeters: number
   totalNet: number
   totalGross: number
+  boards_used?: number
+  boards_shared?: boolean
+  configs_count?: number
 }
 
 interface WorktopQuoteService {
@@ -221,10 +224,18 @@ export default function generateWorktopQuotePdfHtml({
     // Remove any existing assembly type from material_name if present
     const materialNameOnly = material.material_name.split(' (')[0].trim()
     
+    // Build material name with board info
+    let materialNameDisplay = `${escapeHtml(materialNameOnly)} (${escapeHtml(material.assembly_type)})`
+    if (material.boards_shared && material.boards_used) {
+      materialNameDisplay += `<br/><span style="font-size: 9px; color: #1976d2;">📦 ${material.boards_used} tábla megosztva ${material.configs_count} konfiguráció között</span>`
+    } else if (material.boards_used) {
+      materialNameDisplay += `<br/><span style="font-size: 9px; color: #757575;">📦 ${material.boards_used} tábla</span>`
+    }
+    
     return `
       <tr>
         <td>
-          <div style="font-weight: 500;">${escapeHtml(materialNameOnly)} (${escapeHtml(material.assembly_type)})</div>
+          <div style="font-weight: 500;">${materialNameDisplay}</div>
         </td>
         <td></td>
         <td>

@@ -141,6 +141,11 @@ interface WorktopQuoteData {
     edge_position4: boolean
     edge_position5: boolean | null
     edge_position6: boolean | null
+    linear_materials?: {
+      id: string
+      name: string
+      length: number | null
+    } | null
   }>
   pricing: Array<{
     id: string
@@ -168,6 +173,11 @@ interface WorktopQuoteData {
     ives_vagas_details: string | null
     szogvagas_details: string | null
     kivagas_details: string | null
+    linear_materials?: {
+      id: string
+      name: string
+      length: number | null
+    } | null
   }>
 }
 
@@ -244,7 +254,142 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
       totalMeters: number
       totalNet: number
       totalGross: number
+      boards_used?: number
+      boards_shared?: boolean
+      configs_count?: number
     }>()
+
+    // First, calculate board sharing info by grouping all configs by material_id only
+    const materialBoardInfo = new Map<string, {
+      totalLengthNeeded: number
+      configs: Array<{ config: typeof quoteData.configs[0], pricing: typeof quoteData.pricing[0], length: number, pieces: number[] }>
+    }>()
+
+    quoteData.configs.forEach(config => {
+      const pricing = quoteData.pricing.find(p => p.config_order === config.config_order)
+      // Use config.linear_material_id as primary, fallback to pricing.material_id
+      const materialId = config.linear_material_id || pricing?.material_id
+      if (!materialId) return
+
+      if (!materialBoardInfo.has(materialId)) {
+        materialBoardInfo.set(materialId, {
+          totalLengthNeeded: 0,
+          configs: []
+        })
+      }
+
+      const group = materialBoardInfo.get(materialId)!
+      
+      let configLength = 0
+      let pieces: number[] = [] // For Balos/Jobbos, we need separate pieces
+      
+      if (config.assembly_type === 'Levágás') {
+        configLength = config.dimension_a || 0
+        pieces = [configLength]
+      } else if (config.assembly_type === 'Összemarás Balos') {
+        // Balos: two separate pieces - A and (C-D)
+        const piece1 = config.dimension_a || 0
+        const piece2 = (config.dimension_c || 0) - (config.dimension_d || 0)
+        pieces = [piece1, piece2]
+        configLength = piece1 + piece2
+      } else if (config.assembly_type === 'Összemarás jobbos') {
+        // Jobbos: two separate pieces - (A-D) and C
+        const piece1 = (config.dimension_a || 0) - (config.dimension_d || 0)
+        const piece2 = config.dimension_c || 0
+        pieces = [piece1, piece2]
+        configLength = piece1 + piece2
+      }
+
+      group.totalLengthNeeded += configLength
+      if (pricing) {
+        group.configs.push({ config, pricing, length: configLength, pieces })
+      }
+    })
+
+    // Get material lengths from configs or pricing (prefer configs as they have the direct relation)
+    const materialLengths = new Map<string, number>()
+    
+    // First, try to get from configs (more reliable)
+    quoteData.configs.forEach(config => {
+      if (config.linear_material_id) {
+        const length = config.linear_materials?.length
+        if (length && length > 0) {
+          materialLengths.set(config.linear_material_id, length)
+        }
+      }
+    })
+    
+    // Also get from pricing and map to both material_id and config's linear_material_id
+    quoteData.pricing.forEach(p => {
+      const config = quoteData.configs.find(c => c.config_order === p.config_order)
+      const materialId = config?.linear_material_id || p.material_id
+      
+      if (materialId && !materialLengths.has(materialId)) {
+        // Try to get from pricing's linear_materials relation
+        const length = p.linear_materials?.length
+        if (length && length > 0) {
+          materialLengths.set(materialId, length)
+        } else if (config?.linear_materials?.length && config.linear_materials.length > 0) {
+          // Fallback to config's linear_materials
+          materialLengths.set(materialId, config.linear_materials.length)
+        } else {
+          // Last resort: use 3000mm as default (should rarely happen)
+          materialLengths.set(materialId, 3000)
+        }
+      }
+      
+      // Also store for pricing.material_id if different
+      if (p.material_id && p.material_id !== materialId && !materialLengths.has(p.material_id)) {
+        const length = p.linear_materials?.length || materialLengths.get(materialId)
+        if (length && length > 0) {
+          materialLengths.set(p.material_id, length)
+        }
+      }
+    })
+
+    // Calculate boards needed for each material using bin packing (once per material)
+    // For Balos/Jobbos, we need to pack pieces separately
+    const materialBoardsNeeded = new Map<string, number>()
+    materialBoardInfo.forEach((boardGroup, materialId) => {
+      const materialLength = materialLengths.get(materialId) || 3000
+      
+      // Use bin packing algorithm to calculate actual boards needed
+      // Create a list of all pieces to pack (each piece from each config)
+      const piecesToPack: Array<{ pieceLength: number }> = []
+      
+      for (const { pieces } of boardGroup.configs) {
+        // For each piece in this config, add it to the packing list
+        pieces.forEach(pieceLength => {
+          piecesToPack.push({ pieceLength })
+        })
+      }
+      
+      // Sort pieces by length (largest first) for better packing
+      piecesToPack.sort((a, b) => b.pieceLength - a.pieceLength)
+      
+      const boards: number[] = [] // Each board tracks remaining length
+      
+      for (const { pieceLength } of piecesToPack) {
+        // Try to find a board with enough remaining space
+        let placed = false
+        for (let i = 0; i < boards.length; i++) {
+          if (boards[i] >= pieceLength) {
+            // Place on existing board
+            boards[i] -= pieceLength
+            placed = true
+            break
+          }
+        }
+        
+        // If no board has enough space, start a new board
+        if (!placed) {
+          boards.push(materialLength - pieceLength)
+        }
+      }
+      
+      const boardsNeeded = boards.length || 1
+      materialBoardsNeeded.set(materialId, boardsNeeded)
+    })
 
     // Group pricing by material_id AND assembly_type (from config)
     quoteData.pricing.forEach(pricing => {
@@ -259,13 +404,22 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
         existing.totalNet += pricing.anyag_koltseg_net
         existing.totalGross += pricing.anyag_koltseg_gross
       } else {
+        // Get board info for this material - use config.linear_material_id as primary
+        const materialId = config.linear_material_id || pricing.material_id || ''
+        const boardGroup = materialBoardInfo.get(materialId)
+        const boardsNeeded = materialBoardsNeeded.get(materialId) || 1
+        const boardsShared = boardGroup ? boardGroup.configs.length > 1 : false
+
         materialMap.set(key, {
           material_id: pricing.material_id,
           material_name: pricing.material_name,
           assembly_type: config.assembly_type,
           totalMeters: 0,
           totalNet: pricing.anyag_koltseg_net,
-          totalGross: pricing.anyag_koltseg_gross
+          totalGross: pricing.anyag_koltseg_gross,
+          boards_used: boardsNeeded,
+          boards_shared: boardsShared,
+          configs_count: boardGroup?.configs.length || 1
         })
       }
     })
@@ -316,9 +470,14 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
         acc.osszemaras.gross += (p.osszemaras_gross || 0)
       }
       
-      // Kereszt vágás: count if > 0
+      // Kereszt vágás: parse count from details string (e.g., "4 × 2100 Ft = 8400 Ft")
       if (p.kereszt_vagas_gross > 0) {
-        acc.kereszt_vagas.quantity += 1
+        // Try to extract count from details string
+        const details = p.kereszt_vagas_details || ''
+        const countMatch = details.match(/^(\d+)\s*×/)
+        const count = countMatch ? parseInt(countMatch[1], 10) : 1
+        
+        acc.kereszt_vagas.quantity += count
         acc.kereszt_vagas.net += (p.kereszt_vagas_net || 0)
         acc.kereszt_vagas.gross += (p.kereszt_vagas_gross || 0)
       }
@@ -863,7 +1022,31 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
                       materialsGrouped.map((material, index) => (
                         <TableRow key={`${material.material_id}_${material.assembly_type}_${index}`}>
                           <TableCell>
-                            {material.material_name}
+                            <Box>
+                              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                {material.material_name}
+                              </Typography>
+                              {material.boards_shared && material.boards_used && (
+                                <Typography variant="caption" sx={{ 
+                                  display: 'block', 
+                                  color: 'info.main',
+                                  fontSize: '0.7rem',
+                                  mt: 0.5
+                                }}>
+                                  📦 {material.boards_used} tábla megosztva {material.configs_count} konfiguráció között
+                                </Typography>
+                              )}
+                              {!material.boards_shared && material.boards_used && (
+                                <Typography variant="caption" sx={{ 
+                                  display: 'block', 
+                                  color: 'text.secondary',
+                                  fontSize: '0.7rem',
+                                  mt: 0.5
+                                }}>
+                                  📦 {material.boards_used} tábla
+                                </Typography>
+                              )}
+                            </Box>
                           </TableCell>
                           <TableCell align="right">
                             {material.totalMeters.toFixed(2)} m

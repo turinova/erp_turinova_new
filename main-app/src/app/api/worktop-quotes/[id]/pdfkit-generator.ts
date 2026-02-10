@@ -356,7 +356,11 @@ function generateFirstPage(
   // Materials rows
   doc.fontSize(8).font('Helvetica')
   quote.materials.forEach((material) => {
-    if (tableY + tableRowHeight > PRINTABLE_HEIGHT + MARGIN_TOP - 100) {
+    // Check if we need extra height for board sharing info
+    const hasBoardInfo = (material.boards_used && material.boards_used > 0)
+    const rowHeight = hasBoardInfo ? tableRowHeight + 8 : tableRowHeight
+
+    if (tableY + rowHeight > PRINTABLE_HEIGHT + MARGIN_TOP - 100) {
       // Need new page
       doc.addPage()
       tableY = MARGIN_TOP
@@ -368,24 +372,36 @@ function generateFirstPage(
     const recalculatedTotalGross = roundedUnitPriceGross * material.totalMeters
 
     // Draw row border and column dividers
-    doc.rect(MARGIN_LEFT, tableY, PRINTABLE_WIDTH, tableRowHeight).stroke()
+    doc.rect(MARGIN_LEFT, tableY, PRINTABLE_WIDTH, rowHeight).stroke()
     let currentX = MARGIN_LEFT
     colWidths.forEach((width, idx) => {
       if (idx < colWidths.length - 1) {
         currentX += width
         doc.moveTo(currentX, tableY)
-        doc.lineTo(currentX, tableY + tableRowHeight)
+        doc.lineTo(currentX, tableY + rowHeight)
         doc.stroke()
       }
     })
     
+    // Material name
     doc.text(`${materialNameOnly} (${material.assembly_type})`, MARGIN_LEFT + 5, tableY + 5, { width: colWidths[0] - 10 })
+    
+    // Board sharing info
+    if (material.boards_shared && material.boards_used) {
+      doc.fontSize(7).fillColor('#1976d2')
+      doc.text(`📦 ${material.boards_used} tábla megosztva ${material.configs_count} konfiguráció között`, MARGIN_LEFT + 5, tableY + 12, { width: colWidths[0] - 10 })
+      doc.fontSize(8).fillColor('black')
+    } else if (material.boards_used) {
+      doc.fontSize(7).fillColor('#757575')
+      doc.text(`📦 ${material.boards_used} tábla`, MARGIN_LEFT + 5, tableY + 12, { width: colWidths[0] - 10 })
+      doc.fontSize(8).fillColor('black')
+    }
     doc.text('', MARGIN_LEFT + colWidths[0] + 5, tableY + 5, { width: colWidths[1] - 10 }) // Hull. szorzó - empty for worktops
     doc.text('Szálas termék', MARGIN_LEFT + colWidths[0] + colWidths[1] + 5, tableY + 5, { width: colWidths[2] - 10 })
     doc.text(`${material.totalMeters.toFixed(2)} m`, MARGIN_LEFT + colWidths[0] + colWidths[1] + colWidths[2] + 5, tableY + 5, { width: colWidths[3] - 10, align: 'right' })
     doc.text(`${formatCurrencyWithDecimals(roundedUnitPriceGross)} Ft`, MARGIN_LEFT + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + 5, tableY + 5, { width: colWidths[4] - 10, align: 'right' })
     doc.text(`${formatCurrency(Math.round(recalculatedTotalGross))} Ft`, MARGIN_LEFT + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] + 5, tableY + 5, { width: colWidths[5] - 10, align: 'right' })
-    tableY += tableRowHeight
+    tableY += rowHeight
   })
 
   // Services rows

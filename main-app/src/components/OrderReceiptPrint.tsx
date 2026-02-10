@@ -124,7 +124,7 @@ export default function OrderReceiptPrint({
       return result
     } else {
       // For regular orders, display as m2 / db
-      const displaySqm = chargedSqm / wasteMulti
+    const displaySqm = chargedSqm / wasteMulti
       const result = `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
       console.log(`[Receipt Print formatQuantity] Returning regular format: "${result}"`)
       return result
@@ -192,8 +192,8 @@ export default function OrderReceiptPrint({
               unit: unit
             })
             console.log(`[Receipt Print getAggregatedServices] Added new service "${serviceName}" (${unit}): quantity = ${service.quantity}`)
-          }
-        })
+      }
+    })
       } else {
         console.warn(`[Receipt Print getAggregatedServices] Pricing item ${itemIndex} has no quote_services_breakdown or it's not an array`)
       }

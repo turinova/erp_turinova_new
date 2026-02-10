@@ -73,7 +73,7 @@ export default function AddPaymentModal({
       // Allow up to 1 Ft over for rounding tolerance
       const maxAmount = remainingBalance + 1
       if (numAmount > maxAmount) {
-        setAmount(remainingBalance.toString())
+      setAmount(remainingBalance.toString())
       }
     }
   }, [amount, remainingBalance])

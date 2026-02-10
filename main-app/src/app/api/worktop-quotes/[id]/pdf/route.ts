@@ -574,7 +574,7 @@ export async function GET(
       if (quoteData.barcode && req.url().includes('jsdelivr.net')) {
         req.continue()
       } else {
-        req.abort()
+      req.abort()
       }
     })
     
@@ -597,7 +597,7 @@ export async function GET(
       })
       await new Promise(resolve => setTimeout(resolve, 200))
     } else {
-      await new Promise(resolve => setTimeout(resolve, 50))
+    await new Promise(resolve => setTimeout(resolve, 50))
     }
 
     // Generate first page PDF (portrait only - no visualization pages)
@@ -635,33 +635,33 @@ export async function GET(
       
       // Prepare quote object for visualization pages
       const quoteForViz = {
-        id: quoteData.id,
-        quote_number: quoteData.quote_number,
-        customer: {
-          name: quoteData.customers?.name || '',
-          email: quoteData.customers?.email || null,
-          mobile: quoteData.customers?.mobile || null,
-          billing_name: quoteData.customers?.billing_name || null,
-          billing_country: quoteData.customers?.billing_country || null,
-          billing_city: quoteData.customers?.billing_city || null,
-          billing_postal_code: quoteData.customers?.billing_postal_code || null,
-          billing_street: quoteData.customers?.billing_street || null,
-          billing_house_number: quoteData.customers?.billing_house_number || null,
-          billing_tax_number: quoteData.customers?.billing_tax_number || null
-        },
-        discount_percent: quoteData.discount_percent || 0,
-        comment: quoteData.comment || null,
-        created_at: quoteData.created_at,
-        materials,
-        services,
-        materialsTotalGross,
-        servicesTotalGross,
-        materialsTotalNet,
-        servicesTotalNet,
-        materialsTotalVat,
-        servicesTotalVat,
-        configs: []
-      }
+          id: quoteData.id,
+          quote_number: quoteData.quote_number,
+          customer: {
+            name: quoteData.customers?.name || '',
+            email: quoteData.customers?.email || null,
+            mobile: quoteData.customers?.mobile || null,
+            billing_name: quoteData.customers?.billing_name || null,
+            billing_country: quoteData.customers?.billing_country || null,
+            billing_city: quoteData.customers?.billing_city || null,
+            billing_postal_code: quoteData.customers?.billing_postal_code || null,
+            billing_street: quoteData.customers?.billing_street || null,
+            billing_house_number: quoteData.customers?.billing_house_number || null,
+            billing_tax_number: quoteData.customers?.billing_tax_number || null
+          },
+          discount_percent: quoteData.discount_percent || 0,
+          comment: quoteData.comment || null,
+          created_at: quoteData.created_at,
+          materials,
+          services,
+          materialsTotalGross,
+          servicesTotalGross,
+          materialsTotalNet,
+          servicesTotalNet,
+          materialsTotalVat,
+          servicesTotalVat,
+          configs: []
+        }
       
       // Generate each visualization page
       for (const config of quoteData.configs || []) {
@@ -762,7 +762,7 @@ export async function GET(
         await vizPage.setContent(visualizationHtml, {
           waitUntil: quoteData.barcode ? 'networkidle0' : 'domcontentloaded'
         })
-        
+      
         // Wait for barcode to render if present
         if (quoteData.barcode) {
           await vizPage.waitForFunction(
@@ -825,7 +825,7 @@ export async function GET(
         
         // Footer height (text + logo + padding)
         const footerHeight = 25 // ~9mm in points (footer text + logo + padding)
-        
+      
         // Calculate visualization area - ensure it doesn't overlap with header or footer
         const visualizationStartY = marginTop + headerHeight + gapAfterHeader
         const visualizationWidth = width - marginLeft - marginRight

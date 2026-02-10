@@ -324,6 +324,10 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       total_net: number
       total_vat: number
       total_gross: number
+      boards_used?: number
+      boards_shared?: boolean
+      total_length_needed?: number
+      configs_count?: number
     }>
     grand_total_net: number
     grand_total_vat: number
@@ -1179,13 +1183,230 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       total_net: number
       total_vat: number
       total_gross: number
+      boards_used?: number
+      boards_shared?: boolean
+      total_length_needed?: number
+      configs_count?: number
     }> = []
     let grandTotalNet = 0
     let grandTotalVat = 0
     let grandTotalGross = 0
     let currency = 'HUF'
 
-    // Process each config separately (don't group by material)
+    // STEP 1: Group configs by material ID to calculate board sharing
+    const materialGroups = new Map<string, {
+      material: typeof linearMaterials[0]
+      configs: typeof relevantConfigs
+      totalLengthNeeded: number
+      configLengths: Array<{ config: typeof relevantConfigs[0], length: number, pieces: number[] }>
+    }>()
+
+    relevantConfigs.forEach((config) => {
+      if (!config.selectedLinearMaterialId) return
+      
+      const material = linearMaterials.find(m => m.id === config.selectedLinearMaterialId)
+      if (!material) return
+
+      if (!materialGroups.has(material.id)) {
+        materialGroups.set(material.id, {
+          material,
+          configs: [],
+          totalLengthNeeded: 0,
+          configLengths: []
+        })
+      }
+
+      const group = materialGroups.get(material.id)!
+      
+      // Calculate length needed for this config
+      const aValue = parseFloat(config.dimensionA) || 0
+      const cValue = parseFloat(config.dimensionC) || 0
+      const dValue = parseFloat(config.dimensionD) || 0
+      
+      let configLength = 0
+      let pieces: number[] = [] // For Balos/Jobbos, we need to pack pieces separately
+      
+      if (config.assemblyType === 'Levágás') {
+        configLength = aValue
+        pieces = [aValue] // Single piece
+      } else if (config.assemblyType === 'Összemarás Balos') {
+        // Balos: two separate pieces - A and (C-D)
+        const piece1 = aValue
+        const piece2 = cValue - dValue
+        pieces = [piece1, piece2]
+        configLength = piece1 + piece2 // Total for display
+      } else if (config.assemblyType === 'Összemarás jobbos') {
+        // Jobbos: two separate pieces - (A-D) and C
+        const piece1 = aValue - dValue
+        const piece2 = cValue
+        pieces = [piece1, piece2]
+        configLength = piece1 + piece2 // Total for display
+      }
+      
+      group.configs.push(config)
+      group.totalLengthNeeded += configLength
+      group.configLengths.push({ config, length: configLength, pieces }) // Store pieces for bin packing
+    })
+
+    // STEP 2: Calculate board sharing info for each material group using bin packing
+    // This simulates the actual cutting process where leftover pieces can't be reused if too small
+    const materialBoardInfo = new Map<string, {
+      boardsNeeded: number
+      boardsShared: boolean
+      totalLengthNeeded: number
+      configsCount: number
+      boardAssignments: Array<{ boardIndex: number, config: typeof relevantConfigs[0], length: number }> // Track which configs are on which board
+      boardKeresztVagasCount: Map<number, number> // Track kereszt vágás count per board (boardIndex -> count)
+    }>()
+
+    materialGroups.forEach((group, materialId) => {
+      const { material, configLengths, configs } = group
+      const materialLength = material.length
+      
+      // Bin packing algorithm: simulate actual cutting
+      // For Balos/Jobbos, we need to pack pieces separately, not as one combined length
+      // Create a list of all pieces to pack (each piece from each config)
+      const piecesToPack: Array<{ config: typeof relevantConfigs[0], pieceLength: number, pieceIndex: number }> = []
+      
+      for (const { config, pieces } of configLengths) {
+        // For each piece in this config, add it to the packing list
+        pieces.forEach((pieceLength, pieceIndex) => {
+          piecesToPack.push({ config, pieceLength, pieceIndex })
+        })
+      }
+      
+      // Sort pieces by length (largest first) for better packing
+      piecesToPack.sort((a, b) => b.pieceLength - a.pieceLength)
+      
+      const boards: number[] = [] // Each board tracks remaining length
+      const boardAssignments: Array<{ boardIndex: number, config: typeof relevantConfigs[0], length: number }> = []
+      const configBoards = new Map<string, Set<number>>() // Track which boards each config uses
+      const pieceBoardAssignments = new Map<string, number>() // Track which board each piece is on: "configId-pieceIndex" -> boardIndex
+      
+      for (const { config, pieceLength, pieceIndex } of piecesToPack) {
+        // Try to find a board with enough remaining space
+        let placed = false
+        for (let i = 0; i < boards.length; i++) {
+          if (boards[i] >= pieceLength) {
+            // Place on existing board
+            boards[i] -= pieceLength
+            if (!configBoards.has(config.id)) {
+              configBoards.set(config.id, new Set())
+            }
+            configBoards.get(config.id)!.add(i)
+            pieceBoardAssignments.set(`${config.id}-${pieceIndex}`, i)
+            placed = true
+            break
+          }
+        }
+        
+        // If no board has enough space, start a new board
+        if (!placed) {
+          const newBoardIndex = boards.length
+          boards.push(materialLength - pieceLength)
+          if (!configBoards.has(config.id)) {
+            configBoards.set(config.id, new Set())
+          }
+          configBoards.get(config.id)!.add(newBoardIndex)
+          pieceBoardAssignments.set(`${config.id}-${pieceIndex}`, newBoardIndex)
+        }
+      }
+      
+      // Create board assignments and calculate kereszt vágás per board
+      const boardKeresztVagasCount = new Map<number, number>() // boardIndex -> count
+      
+      configBoards.forEach((boardSet, configId) => {
+        const config = configs.find(c => c.id === configId)
+        if (!config) return
+        
+        const configLengthData = configLengths.find(cl => cl.config.id === configId)
+        if (!configLengthData) return
+        
+        const aValue = parseFloat(config.dimensionA) || 0
+        const cValue = parseFloat(config.dimensionC) || 0
+        const dValue = parseFloat(config.dimensionD) || 0
+        const isBalos = config.assemblyType === 'Összemarás Balos'
+        const isJobbos = config.assemblyType === 'Összemarás jobbos'
+        const isOsszemaras = isBalos || isJobbos
+        
+        // Calculate kereszt vágás for each piece and assign to the board it's on
+        if (!isOsszemaras) {
+          // Levágás: single piece A (pieceIndex 0)
+          if (material.length > aValue) {
+            const boardIndex = pieceBoardAssignments.get(`${configId}-0`)
+            if (boardIndex !== undefined) {
+              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
+              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
+            }
+          }
+        } else if (isBalos) {
+          // Balos: two pieces - A (pieceIndex 0) and (C-D) (pieceIndex 1)
+          if (material.length > aValue) {
+            const boardIndex = pieceBoardAssignments.get(`${configId}-0`)
+            if (boardIndex !== undefined) {
+              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
+              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
+            }
+          }
+          const piece2Length = cValue - dValue
+          if (material.length > piece2Length) {
+            const boardIndex = pieceBoardAssignments.get(`${configId}-1`)
+            if (boardIndex !== undefined) {
+              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
+              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
+            }
+          }
+        } else if (isJobbos) {
+          // Jobbos: two pieces - (A-D) (pieceIndex 0) and C (pieceIndex 1)
+          const piece1Length = aValue - dValue
+          if (material.length > piece1Length) {
+            const boardIndex = pieceBoardAssignments.get(`${configId}-0`)
+            if (boardIndex !== undefined) {
+              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
+              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
+            }
+          }
+          if (material.length > cValue) {
+            const boardIndex = pieceBoardAssignments.get(`${configId}-1`)
+            if (boardIndex !== undefined) {
+              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
+              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
+            }
+          }
+        }
+        
+        // Use the first board this config is on (for display purposes)
+        const firstBoard = Math.min(...Array.from(boardSet))
+        const configLength = configLengthData.length
+        boardAssignments.push({ boardIndex: firstBoard, config, length: configLength })
+      })
+      
+      // boardsNeeded is simply the number of boards we created
+      const boardsNeeded = boards.length
+      
+      const totalLengthNeeded = configLengths.reduce((sum, item) => sum + item.length, 0)
+      const boardsShared = configs.length > 1
+      
+      // Debug logging
+      console.log(`[Board Calculation] Material: ${material.name}, Length: ${materialLength}mm`)
+      console.log(`[Board Calculation] Config lengths:`, configLengths.map(c => `${c.length}mm`).join(', '))
+      console.log(`[Board Calculation] Total length needed: ${totalLengthNeeded}mm`)
+      console.log(`[Board Calculation] Boards needed (bin packing): ${boardsNeeded}`)
+      console.log(`[Board Calculation] Simple division would be: ${Math.ceil(totalLengthNeeded / materialLength)}`)
+      console.log(`[Board Calculation] Board assignments:`, boardAssignments.map(ba => `Board ${ba.boardIndex}: ${ba.length}mm`).join(', '))
+      console.log(`[Board Calculation] Kereszt vágás per board:`, Array.from(boardKeresztVagasCount.entries()).map(([board, count]) => `Board ${board}: ${count}x`).join(', '))
+      
+      materialBoardInfo.set(materialId, {
+        boardsNeeded,
+        boardsShared,
+        totalLengthNeeded,
+        configsCount: configs.length,
+        boardAssignments,
+        boardKeresztVagasCount
+      })
+    })
+
+    // STEP 3: Process each config (now with board sharing info available)
     relevantConfigs.forEach((config, configIdx) => {
       if (!config.selectedLinearMaterialId) return
       
@@ -1196,8 +1417,21 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       const vatMultiplier = 1 + (vatPercent / 100)
       currency = material.currency_name || 'HUF'
 
+      // Get board info for this material
+      const boardInfo = materialBoardInfo.get(material.id)
+      const configBoardAssignment = boardInfo?.boardAssignments.find(ba => ba.config.id === config.id)
+      const boardIndex = configBoardAssignment?.boardIndex ?? -1
+      
+      // Check if this config shares a board with others
+      // For Balos/Jobbos, a config can span multiple boards, so we check if any board is shared
+      const configsOnSameBoard = boardInfo?.boardAssignments.filter(ba => ba.boardIndex === boardIndex) || []
+      const sharesBoard = configsOnSameBoard.length > 1 || (boardInfo?.configsCount || 0) > 1
+      // usesFullBoard: all configs fit on exactly 1 board
+      const usesFullBoard = sharesBoard && (boardInfo?.boardsNeeded === 1)
+
       let anyagKoltsegNet = 0
       let keresztVagasNet = 0
+      let keresztVagasGross = 0 // Accumulate gross directly to avoid rounding errors
       let hosszantiVagasNet = 0
       let hosszantiVagasGross = 0 // Accumulate gross directly to avoid rounding errors
       let ivesVagasNet = 0
@@ -1329,9 +1563,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             let cost = 0
             let detailsStr = ''
             
-            // Check if A >= 3000mm
-            if (aValue >= THRESHOLD_MM) {
-              // Use full board calculation (same as on_stock = false)
+            // If configs share a board and fit on one board, use full board pricing (no multiplier)
+            if (usesFullBoard) {
+              const materialLengthMeters = material.length / 1000
+              cost = (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+            } else if (aValue >= THRESHOLD_MM) {
+              // A >= 3000mm: use full board calculation (same as on_stock = false)
               const materialLengthMeters = material.length / 1000
               cost = (material.price_per_m || 0) * materialLengthMeters
               detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
@@ -1351,13 +1589,26 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           }
         }
 
-        // Kereszt vágás (only for Levágás, not for Balos or jobbos)
-        if (!isOsszemaras) {
-          // Use gross price from database, calculate net
-          const keresztVagasFeeGross = worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100)
-          const keresztVagasFee = Math.round(keresztVagasFeeGross / (1 + vatPercent / 100))
-          keresztVagasNet += keresztVagasFee
-          keresztVagasDetails.push(`${formatPrice(keresztVagasFeeGross, currency)}`)
+        // Kereszt vágás - calculate based on actual cuts per board
+        // Use gross price from database, calculate net
+        const keresztVagasFeeGross = worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100)
+        const keresztVagasFee = Math.round(keresztVagasFeeGross / (1 + vatPercent / 100))
+        
+        // Get the board this config is on and its kereszt vágás count
+        const keresztVagasBoardAssignment = boardInfo?.boardAssignments.find(ba => ba.config.id === config.id)
+        const keresztVagasBoardIndex = keresztVagasBoardAssignment?.boardIndex ?? -1
+        
+        // Only add kereszt vágás if this is the first config on this board (to avoid double counting)
+        const isFirstConfigOnBoard = boardInfo?.boardAssignments.find(ba => ba.boardIndex === keresztVagasBoardIndex)?.config.id === config.id
+        
+        if (isFirstConfigOnBoard && keresztVagasBoardIndex >= 0) {
+          const boardKeresztVagasCount = boardInfo?.boardKeresztVagasCount.get(keresztVagasBoardIndex) || 0
+          
+          if (boardKeresztVagasCount > 0) {
+            keresztVagasNet += keresztVagasFee * boardKeresztVagasCount
+            keresztVagasGross += keresztVagasFeeGross * boardKeresztVagasCount
+            keresztVagasDetails.push(`${boardKeresztVagasCount} × ${formatPrice(keresztVagasFeeGross, currency)}`)
+          }
         }
 
         // Hosszanti vágás
@@ -1546,11 +1797,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const anyagKoltsegVat = calculateVat(roundedAnyagKoltsegNet, vatRate)
         const anyagKoltsegGross = calculateGross(roundedAnyagKoltsegNet, anyagKoltsegVat)
 
-        // Kereszt vágás: use gross price directly from database
-        const keresztVagasGross = roundedKeresztVagasNet > 0 
-          ? roundToWholeNumber(worktopConfigFees.kereszt_vagas_fee_gross ?? roundedKeresztVagasNet * (1 + vatRate))
-          : 0
-        const keresztVagasVat = roundToWholeNumber(keresztVagasGross - roundedKeresztVagasNet)
+        // Kereszt vágás: use accumulated gross directly to avoid rounding errors
+        const roundedKeresztVagasGross = roundToWholeNumber(keresztVagasGross)
+        const keresztVagasVat = roundToWholeNumber(roundedKeresztVagasGross - roundedKeresztVagasNet)
 
         // Hosszanti vágás: use accumulated gross directly to avoid rounding errors
         const roundedHosszantiVagasGross = roundToWholeNumber(hosszantiVagasGross)
@@ -1599,6 +1848,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const configNumber = configIdx + 1
         const materialName = `${material.name} (${config.assemblyType || 'N/A'}, #${configNumber})`
 
+        // Get board sharing info for this material
+        const materialBoardInfoForConfig = materialBoardInfo.get(config.selectedLinearMaterialId)
+
         materials.push({
           material_id: config.selectedLinearMaterialId,
           material_name: materialName,
@@ -1610,8 +1862,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           anyag_koltseg_details: anyagKoltsegDetails.join('; '),
           kereszt_vagas_net: roundedKeresztVagasNet,
           kereszt_vagas_vat: keresztVagasVat,
-          kereszt_vagas_gross: keresztVagasGross,
-          kereszt_vagas_details: keresztVagasDetails.length > 0 ? `${keresztVagasDetails.length} × ${formatPrice(worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100), currency)} = ${formatPrice(keresztVagasGross, currency)}` : '',
+          kereszt_vagas_gross: roundedKeresztVagasGross,
+          kereszt_vagas_details: keresztVagasDetails.length > 0 ? `${keresztVagasDetails.join('; ')} = ${formatPrice(roundedKeresztVagasGross, currency)}` : '',
           hosszanti_vagas_net: roundedHosszantiVagasNet,
           hosszanti_vagas_vat: hosszantiVagasVat,
           hosszanti_vagas_gross: roundedHosszantiVagasGross,
@@ -1638,7 +1890,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           osszemaras_details: roundedOsszemarasNet > 0 ? `1 × ${formatPrice(osszemarasFeeGross, currency)} = ${formatPrice(osszemarasGross, currency)}` : '',
           total_net: totalNet,
           total_vat: totalVat,
-          total_gross: totalGross
+          total_gross: totalGross,
+          boards_used: materialBoardInfoForConfig?.boardsNeeded,
+          boards_shared: materialBoardInfoForConfig?.boardsShared,
+          total_length_needed: materialBoardInfoForConfig?.totalLengthNeeded,
+          configs_count: materialBoardInfoForConfig?.configsCount
         })
       })
 
@@ -7409,6 +7665,21 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             {material.anyag_koltseg_details && (
                               <Typography variant="caption" display="block" color="text.secondary">
                                 {material.anyag_koltseg_details}
+                              </Typography>
+                            )}
+                            {material.boards_shared && material.boards_used && material.boards_used > 0 && (
+                              <Box sx={{ mt: 0.5, p: 0.5, bgcolor: 'info.light', borderRadius: 0.5, display: 'inline-block' }}>
+                                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'info.dark' }}>
+                                  📦 {material.boards_used} tábla megosztva {material.configs_count || 1} konfiguráció között
+                                  {material.total_length_needed && material.total_length_needed > 0 && (
+                                    <> • Összes hossz: {(material.total_length_needed / 1000).toFixed(2)} m</>
+                                  )}
+                                </Typography>
+                              </Box>
+                            )}
+                            {!material.boards_shared && material.boards_used && material.boards_used > 0 && (
+                              <Typography variant="caption" display="block" color="text.secondary" sx={{ fontSize: '0.7rem', mt: 0.5 }}>
+                                📦 {material.boards_used} tábla
                               </Typography>
                             )}
                           </TableCell>

@@ -463,7 +463,7 @@ export async function generateEscPosCommands(data: ReceiptData, copyType: 'origi
         quantity = `${chargedSqm.toFixed(2)} m`
       } else {
         // For regular orders, display as m2 / db
-        const displaySqm = chargedSqm / wasteMulti
+      const displaySqm = chargedSqm / wasteMulti
         quantity = `${displaySqm.toFixed(2)} m2 / ${boardsSold} db`
       }
       
