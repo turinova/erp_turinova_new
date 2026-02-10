@@ -172,9 +172,26 @@ export default function WorktopQuotesClient({
   const handleDeleteConfirm = async () => {
     setIsDeleting(true)
     try {
-      // TODO: Create bulk delete API route for worktop quotes
-      toast.error('A törlés funkció még nem elérhető')
+      const response = await fetch('/api/worktop-quotes/bulk-delete', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ quoteIds: selectedQuotes })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to delete worktop quotes')
+      }
+
+      toast.success(
+        `${selectedQuotes.length} munkalap ajánlat sikeresen törölve`
+      )
+      setSelectedQuotes([])
       setDeleteDialogOpen(false)
+
+      // Refresh the page to show updated data
+      router.refresh()
     } catch (error) {
       console.error('Error deleting worktop quotes:', error)
       toast.error('Hiba az árajánlatok törlése során')
