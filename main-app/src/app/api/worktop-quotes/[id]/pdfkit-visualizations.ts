@@ -609,7 +609,7 @@ function generateVisualizationPage(
     config.edge_position4, config.edge_position5, config.edge_position6
   ]
   for (let i = 0; i < 6; i++) {
-    const h = drawRightField(`${i + 1}. oldal:`, edgePositions[i] ? 'Marad' : 'Levág', rightY)
+    const h = drawRightField(`${i + 1}. oldal:`, edgePositions[i] ? 'IGEN' : 'NEM', rightY)
     rightY += h
   }
   

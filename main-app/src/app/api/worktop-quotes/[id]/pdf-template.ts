@@ -1057,17 +1057,17 @@ export default function generateWorktopQuotePdfHtml({
             </tr>
             <tr>
               <th>1. oldal</th>
-              <td>${config.edge_position1 ? 'Marad' : 'Levág'}</td>
+              <td>${config.edge_position1 ? 'IGEN' : 'NEM'}</td>
               <th>2. oldal</th>
-              <td>${config.edge_position2 ? 'Marad' : 'Levág'}</td>
+              <td>${config.edge_position2 ? 'IGEN' : 'NEM'}</td>
               <th>3. oldal</th>
-              <td>${config.edge_position3 ? 'Marad' : 'Levág'}</td>
+              <td>${config.edge_position3 ? 'IGEN' : 'NEM'}</td>
               <th>4. oldal</th>
-              <td>${config.edge_position4 ? 'Marad' : 'Levág'}</td>
+              <td>${config.edge_position4 ? 'IGEN' : 'NEM'}</td>
               <th>5. oldal</th>
-              <td>${config.edge_position5 ? 'Marad' : 'Levág'}</td>
+              <td>${config.edge_position5 ? 'IGEN' : 'NEM'}</td>
               <th>6. oldal</th>
-              <td>${config.edge_position6 ? 'Marad' : 'Levág'}</td>
+              <td>${config.edge_position6 ? 'IGEN' : 'NEM'}</td>
             </tr>
             <tr>
               <th>A:</th>
@@ -1564,21 +1564,21 @@ export function generateVisualizationPageHtml(
               </tr>
               <tr class="compact-row">
                 <th>1. oldal:</th>
-                <td class="value-cell">${config.edge_position1 ? 'Marad' : 'Levág'}</td>
+                <td class="value-cell">${config.edge_position1 ? 'IGEN' : 'NEM'}</td>
                 <th>2. oldal:</th>
-                <td class="value-cell">${config.edge_position2 ? 'Marad' : 'Levág'}</td>
+                <td class="value-cell">${config.edge_position2 ? 'IGEN' : 'NEM'}</td>
               </tr>
               <tr class="compact-row">
                 <th>3. oldal:</th>
-                <td class="value-cell">${config.edge_position3 ? 'Marad' : 'Levág'}</td>
+                <td class="value-cell">${config.edge_position3 ? 'IGEN' : 'NEM'}</td>
                 <th>4. oldal:</th>
-                <td class="value-cell">${config.edge_position4 ? 'Marad' : 'Levág'}</td>
+                <td class="value-cell">${config.edge_position4 ? 'IGEN' : 'NEM'}</td>
               </tr>
               <tr class="compact-row">
                 <th>5. oldal:</th>
-                <td class="value-cell">${config.edge_position5 ? 'Marad' : 'Levág'}</td>
+                <td class="value-cell">${config.edge_position5 ? 'IGEN' : 'NEM'}</td>
                 <th>6. oldal:</th>
-                <td class="value-cell">${config.edge_position6 ? 'Marad' : 'Levág'}</td>
+                <td class="value-cell">${config.edge_position6 ? 'IGEN' : 'NEM'}</td>
               </tr>
               <tr class="compact-row">
                 <th>A:</th>

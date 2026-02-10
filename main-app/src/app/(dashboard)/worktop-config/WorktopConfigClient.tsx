@@ -2033,9 +2033,14 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               if (e.target.checked) {
                                 setEdgeBanding('ABS')
                               }
-                              // For Levágás: clear 4. oldal élzáró pozíció when checked
-                              if (e.target.checked && assemblyType === 'Levágás') {
+                              // For Levágás: clear 4. oldal élzáró pozíció when unchecked (postforming allowed)
+                              if (!e.target.checked && assemblyType === 'Levágás') {
                                 setEdgePosition4(false)
+                              }
+                              // For Összemarás: clear 4. oldal and 5. oldal when unchecked (postforming allowed)
+                              if (!e.target.checked && (assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos')) {
+                                setEdgePosition4(false)
+                                setEdgePosition5(false)
                               }
                               // Re-validate B and D for Összemarás Balos when noPostformingEdge changes
                               if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
@@ -2153,7 +2158,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 }
                                 setEdgePosition4(e.target.checked)
                               }}
-                              disabled={noPostformingEdge}
+                              disabled={!noPostformingEdge}
                             />
                           }
                           label="4. oldal"
@@ -2174,6 +2179,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     }
                                     setEdgePosition5(e.target.checked)
                                   }}
+                                  disabled={!noPostformingEdge}
                                 />
                               }
                               label="5. oldal"
