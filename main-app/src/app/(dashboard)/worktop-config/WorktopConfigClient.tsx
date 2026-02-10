@@ -1381,9 +1381,28 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             hosszantiVagasGross += costGross // Accumulate gross directly
             hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
           }
+          
+          // If noPostformingEdge is checked, add (A + C) to hosszanti vágás
+          if (config.noPostformingEdge) {
+            const acMeters = aMeters + cMeters
+            const cost = acMeters * hosszantiVagasFeePerMeter
+            const costGross = acMeters * hosszantiVagasFeePerMeterGross
+            hosszantiVagasNet += cost
+            hosszantiVagasGross += costGross // Accumulate gross directly
+            hosszantiVagasDetails.push(`${acMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
+          }
         } else {
           // For Levágás: if B < width: A × fee_per_meter
           if (bValue < material.width) {
+            const cost = aMeters * hosszantiVagasFeePerMeter
+            const costGross = aMeters * hosszantiVagasFeePerMeterGross
+            hosszantiVagasNet += cost
+            hosszantiVagasGross += costGross // Accumulate gross directly
+            hosszantiVagasDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(hosszantiVagasFeePerMeterGross, currency)}/m = ${formatPrice(costGross, currency)}`)
+          }
+          
+          // If noPostformingEdge is checked, add A to hosszanti vágás
+          if (config.noPostformingEdge) {
             const cost = aMeters * hosszantiVagasFeePerMeter
             const costGross = aMeters * hosszantiVagasFeePerMeterGross
             hosszantiVagasNet += cost
