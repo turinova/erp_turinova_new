@@ -5313,8 +5313,11 @@ export async function getStockMovementsWithPagination(
       }
     }
 
-    // Fetch quotes
-    const quoteIds = sourceIdsByType.get('quote') || []
+    // Fetch quotes (include both 'quote' and 'quote_reservation' source types)
+    const quoteIds = [
+      ...(sourceIdsByType.get('quote') || []),
+      ...(sourceIdsByType.get('quote_reservation') || [])
+    ]
     const { data: quotes } = quoteIds.length > 0
       ? await supabaseServer
           .from('quotes')
@@ -5351,6 +5354,8 @@ export async function getStockMovementsWithPagination(
         const reservationInfo = reservationOrderMap.get(sm.source_id)
         sourceReference = reservationInfo?.orderNumber || sm.source_id
       } else if (sm.source_type === 'quote' && sm.source_id) {
+        sourceReference = quoteMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'quote_reservation' && sm.source_id) {
         sourceReference = quoteMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
         // Customer order deletion - display special label
@@ -5767,8 +5772,11 @@ export async function getStockMovementsByMaterial(
       }
     }
 
-    // Fetch quotes
-    const quoteIds = sourceIdsByType.get('quote') || []
+    // Fetch quotes (include both 'quote' and 'quote_reservation' source types)
+    const quoteIds = [
+      ...(sourceIdsByType.get('quote') || []),
+      ...(sourceIdsByType.get('quote_reservation') || [])
+    ]
     const { data: quotes } = quoteIds.length > 0
       ? await supabaseServer
           .from('quotes')
@@ -5796,6 +5804,8 @@ export async function getStockMovementsByMaterial(
         const reservationInfo = reservationOrderMap.get(sm.source_id)
         sourceReference = reservationInfo?.orderNumber || sm.source_id
       } else if (sm.source_type === 'quote' && sm.source_id) {
+        sourceReference = quoteMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'quote_reservation' && sm.source_id) {
         sourceReference = quoteMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'adjustment' && sm.note && sm.note.includes('Rendelés törlés')) {
         // Customer order deletion - display special label
