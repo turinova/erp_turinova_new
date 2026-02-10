@@ -1228,15 +1228,46 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const isOsszemaras = isBalos || isJobbos
 
         // Anyag költség
+        const STOCK_MULTIPLIER = 1.23 // Multiplier for on_stock materials under threshold
+        const THRESHOLD_MM = 3000 // Threshold in millimeters
+        
         if (isBalos) {
           // Összemarás Balos calculation
           if (material.on_stock) {
-            // A × price_per_m + (C-D) × price_per_m
-            const costA = aMeters * (material.price_per_m || 0)
-            const costCD = (cMeters - dMeters) * (material.price_per_m || 0)
-            const cost = costA + costCD
+            let cost = 0
+            let detailsParts: string[] = []
+            
+            // Calculate A part
+            let costA = 0
+            if (aValue >= THRESHOLD_MM) {
+              // A >= 3000mm: use full board
+              const materialLengthMeters = material.length / 1000
+              costA = (material.price_per_m || 0) * materialLengthMeters
+              detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
+            } else {
+              // A < 3000mm: apply multiplier
+              costA = aMeters * (material.price_per_m || 0) * STOCK_MULTIPLIER
+              detailsParts.push(`${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
+            }
+            
+            // Calculate C-D part
+            let costCD = 0
+            if (cValue >= THRESHOLD_MM) {
+              // C >= 3000mm: use full board
+              const materialLengthMeters = material.length / 1000
+              costCD = (material.price_per_m || 0) * materialLengthMeters
+              detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
+            } else {
+              // C < 3000mm: apply multiplier
+              costCD = (cMeters - dMeters) * (material.price_per_m || 0) * STOCK_MULTIPLIER
+              detailsParts.push(`${(cMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
+            }
+            
+            cost = costA + costCD
+            const detailsStr = detailsParts.join(' + ')
+            
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m + ${(cMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           } else {
             // roundup((A+C-D)/linear_material_length) × price_per_m × linear_material_length
             const totalLength = aValue + cValue - dValue
@@ -1249,12 +1280,40 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         } else if (isJobbos) {
           // Összemarás jobbos calculation
           if (material.on_stock) {
-            // (A-D) × price_per_m + C × price_per_m
-            const costAD = (aMeters - dMeters) * (material.price_per_m || 0)
-            const costC = cMeters * (material.price_per_m || 0)
-            const cost = costAD + costC
+            let cost = 0
+            let detailsParts: string[] = []
+            
+            // Calculate A-D part
+            let costAD = 0
+            if (aValue >= THRESHOLD_MM) {
+              // A >= 3000mm: use full board
+              const materialLengthMeters = material.length / 1000
+              costAD = (material.price_per_m || 0) * materialLengthMeters
+              detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
+            } else {
+              // A < 3000mm: apply multiplier
+              costAD = (aMeters - dMeters) * (material.price_per_m || 0) * STOCK_MULTIPLIER
+              detailsParts.push(`${(aMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
+            }
+            
+            // Calculate C part
+            let costC = 0
+            if (cValue >= THRESHOLD_MM) {
+              // C >= 3000mm: use full board
+              const materialLengthMeters = material.length / 1000
+              costC = (material.price_per_m || 0) * materialLengthMeters
+              detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
+            } else {
+              // C < 3000mm: apply multiplier
+              costC = cMeters * (material.price_per_m || 0) * STOCK_MULTIPLIER
+              detailsParts.push(`${cMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
+            }
+            
+            cost = costAD + costC
+            const detailsStr = detailsParts.join(' + ')
+            
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${(aMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m + ${cMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           } else {
             // roundup((A+C-D)/linear_material_length) × price_per_m × linear_material_length
             const totalLength = aValue + cValue - dValue
@@ -1267,9 +1326,24 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         } else {
           // Levágás calculation
           if (material.on_stock) {
-            const cost = aMeters * (material.price_per_m || 0)
+            let cost = 0
+            let detailsStr = ''
+            
+            // Check if A >= 3000mm
+            if (aValue >= THRESHOLD_MM) {
+              // Use full board calculation (same as on_stock = false)
+              const materialLengthMeters = material.length / 1000
+              cost = (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+            } else {
+              // A < 3000mm: apply multiplier
+              const baseCost = aMeters * (material.price_per_m || 0)
+              cost = baseCost * STOCK_MULTIPLIER
+              detailsStr = `${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`
+            }
+            
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           } else {
             const cost = (material.price_per_m || 0) * (material.length / 1000)
             anyagKoltsegNet += cost
