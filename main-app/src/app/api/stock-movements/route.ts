@@ -93,8 +93,11 @@ export async function GET(request: NextRequest) {
       : { data: [] }
     const customerOrderMap = new Map((customerOrders || []).map((co: any) => [co.id, co.order_number]))
 
-    // Fetch quotes
-    const quoteIds = sourceIdsByType.get('quote') || []
+    // Fetch quotes (include both 'quote' and 'quote_reservation' source types)
+    const quoteIds = [
+      ...(sourceIdsByType.get('quote') || []),
+      ...(sourceIdsByType.get('quote_reservation') || [])
+    ]
     const { data: quotes } = quoteIds.length > 0
       ? await supabaseServer
           .from('quotes')
@@ -130,6 +133,8 @@ export async function GET(request: NextRequest) {
       } else if (sm.source_type === 'customer_order_handover' && sm.source_id) {
         sourceReference = customerOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'quote' && sm.source_id) {
+        sourceReference = quoteMap.get(sm.source_id) || sm.source_id
+      } else if (sm.source_type === 'quote_reservation' && sm.source_id) {
         sourceReference = quoteMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_id) {
         sourceReference = sm.source_id.substring(0, 8) + '...'
