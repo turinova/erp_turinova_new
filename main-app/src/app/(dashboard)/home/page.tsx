@@ -4,7 +4,9 @@ import { getCustomerPortalDraftQuotes } from '@/lib/supabase-server'
 import { 
   getMonthlyQuotesData, 
   getMonthlySupplierOrdersData, 
-  getWeeklyCuttingData 
+  getMonthlyWorktopQuotesData,
+  getWeeklyCuttingData,
+  getWeeklyWorktopProductionData
 } from '@/lib/dashboard-server'
 
 export const metadata: Metadata = {
@@ -13,11 +15,13 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   // Fetch all dashboard data in parallel with SSR for optimal performance
-  const [customerPortalQuotes, monthlyQuotes, monthlySupplierOrders, weeklyCutting] = await Promise.all([
+  const [customerPortalQuotes, monthlyQuotes, monthlySupplierOrders, monthlyWorktopQuotes, weeklyCutting, weeklyWorktopProduction] = await Promise.all([
     getCustomerPortalDraftQuotes(),
     getMonthlyQuotesData('month', 0),
     getMonthlySupplierOrdersData('month', 0),
-    getWeeklyCuttingData(0)
+    getMonthlyWorktopQuotesData('month', 0),
+    getWeeklyCuttingData(0),
+    getWeeklyWorktopProductionData(0)
   ])
   
   return (
@@ -25,7 +29,9 @@ export default async function Page() {
       customerPortalQuotes={customerPortalQuotes}
       initialMonthlyQuotes={monthlyQuotes}
       initialMonthlySupplierOrders={monthlySupplierOrders}
+      initialMonthlyWorktopQuotes={monthlyWorktopQuotes}
       initialWeeklyCutting={weeklyCutting}
+      initialWeeklyWorktopProduction={weeklyWorktopProduction}
     />
   )
 }

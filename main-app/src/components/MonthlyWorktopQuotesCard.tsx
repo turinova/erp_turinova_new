@@ -36,11 +36,11 @@ interface QuotesSummaryData {
   endDate?: string
 }
 
-interface MonthlyQuotesCardProps {
+interface MonthlyWorktopQuotesCardProps {
   initialData?: QuotesSummaryData
 }
 
-export default function MonthlyQuotesCard({ initialData }: MonthlyQuotesCardProps) {
+export default function MonthlyWorktopQuotesCard({ initialData }: MonthlyWorktopQuotesCardProps) {
   const [data, setData] = useState<QuotesSummaryData | null>(initialData || null)
   const [loading, setLoading] = useState(!initialData)
   const [error, setError] = useState<string | null>(null)
@@ -59,7 +59,7 @@ export default function MonthlyQuotesCard({ initialData }: MonthlyQuotesCardProp
     try {
       setLoading(true)
       const response = await fetch(
-        `/api/dashboard/monthly-quotes?range=${selectedRange}&offset=${selectedOffset}`
+        `/api/dashboard/monthly-worktop-quotes?range=${selectedRange}&offset=${selectedOffset}`
       )
       if (!response.ok) {
         throw new Error('Failed to fetch data')
@@ -67,7 +67,7 @@ export default function MonthlyQuotesCard({ initialData }: MonthlyQuotesCardProp
       const result = await response.json()
       setData(result)
     } catch (err) {
-      console.error('Error fetching monthly quotes data:', err)
+      console.error('Error fetching monthly worktop quotes data:', err)
       setError('Hiba az adatok betöltésekor')
     } finally {
       setLoading(false)
@@ -120,12 +120,12 @@ export default function MonthlyQuotesCard({ initialData }: MonthlyQuotesCardProp
   }
 
   return (
-    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '2px solid', borderColor: 'warning.main' }}>
+    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '2px solid', borderColor: 'info.main' }}>
       <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1.5, mb: 2 }}>
           <Typography variant="h5" sx={{ fontWeight: 600 }}>
-            Lapszabászati megrendelések
+            Munkalap megrendelések
           </Typography>
           <ToggleButtonGroup
             value={range}
@@ -266,4 +266,3 @@ export default function MonthlyQuotesCard({ initialData }: MonthlyQuotesCardProp
     </Card>
   )
 }
-

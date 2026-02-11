@@ -401,3 +401,179 @@ export async function getWeeklyCuttingData(weekOffset: number = 0) {
   }
 }
 
+
+export async function getWeeklyWorktopProductionData(weekOffset: number = 0) {
+  const startTime = performance.now()
+  
+  // Get start and end of target week (Monday to Saturday)
+  const now = new Date()
+  const currentDay = now.getDay() // 0 = Sunday, 1 = Monday, etc.
+  
+  // Calculate Monday of current week
+  const monday = new Date(now)
+  const daysFromMonday = currentDay === 0 ? 6 : currentDay - 1
+  monday.setDate(now.getDate() - daysFromMonday)
+  
+  // Apply week offset
+  monday.setDate(monday.getDate() + (weekOffset * 7))
+  monday.setHours(0, 0, 0, 0)
+  
+  // Calculate Saturday of target week
+  const saturday = new Date(monday)
+  saturday.setDate(monday.getDate() + 5)
+  saturday.setHours(23, 59, 59, 999)
+
+  try {
+    // Fetch worktop orders with status = 'in_production' and production_date in current week
+    const { data: weeklyData, error } = await supabaseServer
+      .from('worktop_quotes')
+      .select(`
+        id,
+        production_date,
+        order_number
+      `)
+      .eq('status', 'in_production')
+      .gte('production_date', monday.toISOString().split('T')[0])
+      .lte('production_date', saturday.toISOString().split('T')[0])
+      .not('production_date', 'is', null)
+      .is('deleted_at', null)
+      .order('production_date', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching weekly worktop production data:', error)
+      throw error
+    }
+
+    // Process data: count orders per day
+    const dataByDate = new Map<string, number>()
+
+    weeklyData?.forEach(order => {
+      const date = order.production_date
+      if (!date) return
+
+      const currentCount = dataByDate.get(date) || 0
+      dataByDate.set(date, currentCount + 1)
+    })
+
+    // Convert to array format for ApexCharts
+    const weekDays = ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat']
+    const categories = weekDays
+
+    // Initialize array with zeros for all days
+    const dailyCounts = [0, 0, 0, 0, 0, 0]
+
+    // Fill in actual data
+    dataByDate.forEach((count, dateStr) => {
+      const date = new Date(dateStr)
+      const dayOfWeek = date.getDay()
+      
+      // Skip Sunday
+      if (dayOfWeek === 0) return
+      
+      const dayIndex = dayOfWeek - 1
+      dailyCounts[dayIndex] = count
+    })
+
+    // Create single series for total count
+    const series = [{
+      name: 'Gyártásban lévő megrendelések',
+      data: dailyCounts
+    }]
+
+    console.log(`[PERF] Weekly Worktop Production Query: ${(performance.now() - startTime).toFixed(2)}ms`)
+
+    return {
+      categories,
+      series,
+      dailyTotals: dailyCounts,
+      weekStart: monday.toISOString().split('T')[0],
+      weekEnd: saturday.toISOString().split('T')[0]
+    }
+  } catch (error) {
+    console.error('Error in getWeeklyWorktopProductionData:', error)
+    throw error
+  }
+}
+
+export async function getMonthlyWorktopQuotesData(range: string = 'month', offset: number = 0) {
+  const startTime = performance.now()
+  const { start, end, label } = getRange(range, offset)
+
+  const statusTimestampMap: Record<
+    'ordered' | 'in_production' | 'ready' | 'finished' | 'cancelled',
+    { column: string; label: string; color: string }
+  > = {
+    ordered: { column: 'ordered_at', label: 'Megrendelve', color: '#2196F3' },
+    in_production: { column: 'in_production_at', label: 'Gyártásban', color: '#FF9800' },
+    ready: { column: 'ready_at', label: 'Kész', color: '#4CAF50' },
+    finished: { column: 'finished_at', label: 'Átadva', color: '#00BCD4' },
+    cancelled: { column: 'cancelled_at', label: 'Törölve', color: '#F44336' }
+  }
+
+  // Run COUNT queries in parallel - much faster than fetching all IDs
+  const statusResults = await Promise.all(
+    (Object.entries(statusTimestampMap) as Array<
+      [keyof typeof statusTimestampMap, { column: string; label: string; color: string }]
+    >).map(async ([statusKey, { column }]) => {
+      const { count, error } = await supabaseServer
+        .from('worktop_quotes')
+        .select('*', { count: 'exact', head: true })
+        .gte(column, start.toISOString())
+        .lte(column, end.toISOString())
+        .is('deleted_at', null)
+
+      if (error) {
+        console.error(`Error fetching ${statusKey} worktop quotes count:`, error)
+        return { status: statusKey, count: 0 }
+      }
+
+      return {
+        status: statusKey,
+        count: count || 0
+      }
+    })
+  )
+
+  // For total, fetch unique quote IDs that have any status timestamp in the range
+  // Use a single optimized query with date range filters
+  // This is faster than multiple OR queries
+  const startDateStr = start.toISOString()
+  const endDateStr = end.toISOString()
+  
+  const { data: allQuotes } = await supabaseServer
+    .from('worktop_quotes')
+    .select('id')
+    .or(`ordered_at.gte.${startDateStr},in_production_at.gte.${startDateStr},ready_at.gte.${startDateStr},finished_at.gte.${startDateStr},cancelled_at.gte.${startDateStr}`)
+    .or(`ordered_at.lte.${endDateStr},in_production_at.lte.${endDateStr},ready_at.lte.${endDateStr},finished_at.lte.${endDateStr},cancelled_at.lte.${endDateStr}`)
+    .is('deleted_at', null)
+    .limit(10000) // Add limit to prevent excessive data
+
+  const uniqueQuoteIds = new Set(allQuotes?.map(q => q.id) || [])
+  const total = uniqueQuoteIds.size
+
+  const statusData = statusResults.map(result => {
+    const { label, color } = statusTimestampMap[result.status]
+    return {
+      status: result.status,
+      label,
+      count: result.count,
+      percentage: total > 0 ? (result.count / total) * 100 : 0,
+      color
+    }
+  })
+
+  console.log(`[PERF] Monthly Worktop Quotes Query: ${(performance.now() - startTime).toFixed(2)}ms`)
+
+  return {
+    statusData,
+    total,
+    range,
+    offset,
+    label,
+    startDate: start.toISOString(),
+    endDate: end.toISOString(),
+    month: monthNames[start.getMonth()],
+    year: start.getFullYear(),
+    monthOffset: range === 'month' ? offset : 0
+  }
+}

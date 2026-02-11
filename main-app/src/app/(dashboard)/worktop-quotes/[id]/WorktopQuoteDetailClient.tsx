@@ -841,14 +841,14 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
       {/* Header */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }} className="no-print">
         <IconButton onClick={handleBack} sx={{ mr: 2 }}>
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant="h4" component="h1">
+            <ArrowBackIcon />
+          </IconButton>
+            <Typography variant="h4" component="h1">
           {isOrderView ? `Megrendelés: ${quoteData.order_number || quoteData.quote_number}` : `Árajánlat: ${quoteData.quote_number}`}
-        </Typography>
-        <Chip 
-          label={getStatusLabel(quoteData.status)} 
-          color={getStatusColor(quoteData.status)}
+            </Typography>
+              <Chip 
+                label={getStatusLabel(quoteData.status)} 
+                color={getStatusColor(quoteData.status)}
           sx={{ ml: 2 }}
         />
       </Box>
@@ -1382,27 +1382,27 @@ export default function WorktopQuoteDetailClient({ initialQuoteData, tenantCompa
 
                 {/* Show different buttons based on view type and status */}
                 {!isOrderView && quoteData.status === 'draft' && (
-                  <Button
-                    variant="outlined"
+                <Button
+                  variant="outlined"
                     startIcon={<OrderIcon />}
                     onClick={handleCreateOrder}
-                    fullWidth
-                  >
+                  fullWidth
+                >
                     Megrendelés
-                  </Button>
+                </Button>
                 )}
 
                 {isOrderView && (
-                  <Button
-                    variant="outlined"
+                <Button
+                  variant="outlined"
                     color="warning"
                     startIcon={<EditIcon />}
                     onClick={() => setAssignProductionModalOpen(true)}
-                    fullWidth
+                  fullWidth
                     disabled={['ready', 'finished'].includes(quoteData.status)}
-                  >
+                >
                     Gyártásba adás {['ready', 'finished'].includes(quoteData.status) && '🔒'}
-                  </Button>
+                </Button>
                 )}
 
                 {isOrderView && (
