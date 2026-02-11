@@ -49,20 +49,45 @@ export async function POST(request: Request) {
     console.log('[WORKTOP ORDER CREATE] Generated order number:', orderNumber)
     console.timeEnd('[WORKTOP ORDER CREATE] Generate Order Number')
 
-    // 2. Generate barcode (EAN-13)
-    console.time('[WORKTOP ORDER CREATE] Generate Barcode')
-    const { data: barcode, error: barcodeError } = await supabase
-      .rpc('generate_worktop_order_barcode')
+    // 2. Check if barcode already exists, generate only if missing
+    console.time('[WORKTOP ORDER CREATE] Check/Generate Barcode')
+    let barcode: string | null = null
+    
+    // First, check if quote already has a barcode
+    const { data: existingQuote, error: fetchError } = await supabase
+      .from('worktop_quotes')
+      .select('barcode')
+      .eq('id', worktop_quote_id)
+      .single()
 
-    if (barcodeError || !barcode) {
-      console.error('[WORKTOP ORDER CREATE] Failed to generate barcode:', barcodeError)
+    if (fetchError) {
+      console.error('[WORKTOP ORDER CREATE] Failed to fetch existing quote:', fetchError)
       return NextResponse.json({ 
-        error: 'Failed to generate barcode',
-        details: barcodeError?.message || 'Unknown error'
+        error: 'Failed to fetch worktop quote',
+        details: fetchError.message
       }, { status: 500 })
     }
-    console.log('[WORKTOP ORDER CREATE] Generated barcode:', barcode)
-    console.timeEnd('[WORKTOP ORDER CREATE] Generate Barcode')
+
+    if (existingQuote.barcode) {
+      // Use existing barcode
+      barcode = existingQuote.barcode
+      console.log('[WORKTOP ORDER CREATE] Using existing barcode:', barcode)
+    } else {
+      // Generate new barcode if it doesn't exist
+      const { data: generatedBarcode, error: barcodeError } = await supabase
+        .rpc('generate_worktop_order_barcode')
+
+      if (barcodeError || !generatedBarcode) {
+        console.error('[WORKTOP ORDER CREATE] Failed to generate barcode:', barcodeError)
+        return NextResponse.json({ 
+          error: 'Failed to generate barcode',
+          details: barcodeError?.message || 'Unknown error'
+        }, { status: 500 })
+      }
+      barcode = generatedBarcode
+      console.log('[WORKTOP ORDER CREATE] Generated new barcode:', barcode)
+    }
+    console.timeEnd('[WORKTOP ORDER CREATE] Check/Generate Barcode')
 
     // 3. Update worktop quote to order status (with barcode)
     console.time('[WORKTOP ORDER CREATE] Update Worktop Quote to Order')

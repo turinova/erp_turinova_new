@@ -290,6 +290,38 @@ export async function POST(request: NextRequest) {
 
     if (quoteId) {
       // Update existing quote
+      // First, check if barcode already exists
+      const { data: existingQuote, error: fetchError } = await supabaseServer
+        .from('worktop_quotes')
+        .select('barcode')
+        .eq('id', quoteId)
+        .single()
+
+      if (fetchError) {
+        console.error('Error fetching existing quote:', fetchError)
+        return NextResponse.json({ 
+          error: 'Failed to fetch existing quote',
+          details: fetchError.message
+        }, { status: 500 })
+      }
+
+      // Generate barcode if it doesn't exist
+      if (!existingQuote.barcode) {
+        console.log('=== GENERATING BARCODE FOR EXISTING QUOTE ===')
+        const { data: barcode, error: barcodeError } = await supabaseServer
+          .rpc('generate_worktop_order_barcode')
+
+        if (barcodeError || !barcode) {
+          console.error('Error generating barcode:', barcodeError)
+          // Continue without barcode - non-critical
+        } else {
+          quoteData.barcode = barcode
+          console.log('Generated barcode for existing quote:', barcode)
+        }
+      } else {
+        console.log('Quote already has barcode:', existingQuote.barcode)
+      }
+
       const { data: updatedQuote, error: quoteError } = await supabaseServer
         .from('worktop_quotes')
         .update(quoteData)
@@ -308,6 +340,20 @@ export async function POST(request: NextRequest) {
       finalQuoteNumber = updatedQuote.quote_number
       console.log('Worktop quote updated successfully:', updatedQuote.quote_number)
     } else {
+      // Create new quote - generate barcode automatically
+      console.log('=== GENERATING BARCODE FOR NEW QUOTE ===')
+      const { data: barcode, error: barcodeError } = await supabaseServer
+        .rpc('generate_worktop_order_barcode')
+
+      if (barcodeError || !barcode) {
+        console.error('Error generating barcode:', barcodeError)
+        // Continue without barcode - non-critical, but log warning
+        console.warn('Proceeding without barcode for new quote')
+      } else {
+        quoteData.barcode = barcode
+        console.log('Generated barcode for new quote:', barcode)
+      }
+
       // Create new quote
       console.log('=== ATTEMPTING TO INSERT QUOTE ===')
       console.log('Quote data:', JSON.stringify(quoteData, null, 2))
