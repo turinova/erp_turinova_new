@@ -151,16 +151,21 @@ export async function GET(
         }
       }
 
-      // Kereszt vágás
+      // Kereszt vágás - parse count from details string (e.g., "4 × 2100 Ft = 8400 Ft")
       if (p.kereszt_vagas_gross > 0) {
+        // Try to extract count from details string
+        const details = p.kereszt_vagas_details || ''
+        const countMatch = details.match(/^(\d+)\s*×/)
+        const count = countMatch ? parseInt(countMatch[1], 10) : 1
+        
         const existing = servicesMap.get('kereszt_vagas')
         if (existing) {
-          existing.quantity += 1
+          existing.quantity += count
           existing.totalNet += p.kereszt_vagas_net || 0
           existing.totalGross += p.kereszt_vagas_gross
         } else {
           servicesMap.set('kereszt_vagas', {
-            quantity: 1,
+            quantity: count,
             unit: 'db',
             totalNet: p.kereszt_vagas_net || 0,
             totalGross: p.kereszt_vagas_gross
