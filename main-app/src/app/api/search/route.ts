@@ -72,13 +72,68 @@ export async function GET(request: NextRequest) {
     
     console.log(`Found ${materials?.length || 0} materials and ${linearMaterials?.length || 0} linear materials`)
     
+    // Fetch stock data for materials and linear_materials in parallel
+    const materialIds = (materials || []).map(m => m.id)
+    const linearMaterialIds = (linearMaterials || []).map(lm => lm.id)
+    
+    const [materialsStockResult, linearMaterialsStockResult] = await Promise.all([
+      // Fetch stock for materials
+      materialIds.length > 0
+        ? supabaseServer
+            .from('current_stock')
+            .select('material_id, quantity_on_hand')
+            .eq('product_type', 'material')
+            .in('material_id', materialIds)
+        : Promise.resolve({ data: [], error: null }),
+      // Fetch stock for linear_materials
+      linearMaterialIds.length > 0
+        ? supabaseServer
+            .from('current_stock')
+            .select('linear_material_id, quantity_on_hand')
+            .eq('product_type', 'linear_material')
+            .in('linear_material_id', linearMaterialIds)
+        : Promise.resolve({ data: [], error: null })
+    ])
+    
+    // Aggregate stock quantities by material/linear_material ID (sum across all warehouses)
+    const materialsStockMap = new Map<string, number>()
+    if (materialsStockResult.data) {
+      materialsStockResult.data.forEach((stock: any) => {
+        if (stock.material_id) {
+          const current = materialsStockMap.get(stock.material_id) || 0
+          materialsStockMap.set(stock.material_id, current + Number(stock.quantity_on_hand || 0))
+        }
+      })
+    }
+    
+    const linearMaterialsStockMap = new Map<string, number>()
+    if (linearMaterialsStockResult.data) {
+      linearMaterialsStockResult.data.forEach((stock: any) => {
+        if (stock.linear_material_id) {
+          const current = linearMaterialsStockMap.get(stock.linear_material_id) || 0
+          linearMaterialsStockMap.set(stock.linear_material_id, current + Number(stock.quantity_on_hand || 0))
+        }
+      })
+    }
+    
+    // Add stock data to materials and linear_materials
+    const materialsWithStock = (materials || []).map(material => ({
+      ...material,
+      quantity_on_hand: materialsStockMap.get(material.id) || null
+    }))
+    
+    const linearMaterialsWithStock = (linearMaterials || []).map(linearMaterial => ({
+      ...linearMaterial,
+      quantity_on_hand: linearMaterialsStockMap.get(linearMaterial.id) || null
+    }))
+    
     // Accessories removed from main query - will be fetched on-demand via separate API endpoints
     // This significantly improves search performance by avoiding deep nested joins
     
     // Add cache control headers for dynamic search results
     const response = NextResponse.json({
-      materials: materials || [], 
-      linearMaterials: linearMaterials || [] 
+      materials: materialsWithStock, 
+      linearMaterials: linearMaterialsWithStock 
     })
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     response.headers.set('Pragma', 'no-cache')

@@ -1710,9 +1710,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         }
 
         // Kereszt vágás - calculate based on actual cuts per board
-        // Use gross price from database, calculate net
-        const keresztVagasFeeGross = worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100)
-        const keresztVagasFee = Math.round(keresztVagasFeeGross / (1 + vatPercent / 100))
+          // Use gross price from database, calculate net
+          const keresztVagasFeeGross = worktopConfigFees.kereszt_vagas_fee_gross ?? worktopConfigFees.kereszt_vagas_fee * (1 + vatPercent / 100)
+          const keresztVagasFee = Math.round(keresztVagasFeeGross / (1 + vatPercent / 100))
         
         // Get the board this config is on and its kereszt vágás count
         const keresztVagasBoardAssignment = boardInfo?.boardAssignments.find(ba => ba.config.id === config.id)

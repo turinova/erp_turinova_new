@@ -34,6 +34,7 @@ interface Material {
   vat_id: string
   brands: { name: string } | null
   vat: { kulcs: number }
+  quantity_on_hand: number | null
 }
 
 interface LinearMaterial {
@@ -48,6 +49,7 @@ interface LinearMaterial {
   type: string
   brands: { name: string } | null
   vat: { kulcs: number }
+  quantity_on_hand: number | null
 }
 
 interface SearchResults {
@@ -234,6 +236,7 @@ export default function SearchClient() {
                   <strong>Nm ár</strong>
                 </TableCell>
                 <TableCell><strong>Egész ár</strong></TableCell>
+                <TableCell><strong>Készlet</strong></TableCell>
                 <TableCell align="center"><strong>Élzárók</strong></TableCell>
               </TableRow>
             </TableHead>
@@ -299,6 +302,12 @@ export default function SearchClient() {
                     </TableCell>
                     <TableCell>
                       {prices.egeszAr !== undefined ? formatPrice(prices.egeszAr) : '-'}
+                    </TableCell>
+                    <TableCell>
+                      {item.quantity_on_hand !== null && item.quantity_on_hand !== undefined
+                        ? `${Number(item.quantity_on_hand).toFixed(2)} ${isLinear ? 'm' : 'm²'}`
+                        : '-'
+                      }
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title="Kapcsolt élzárók megtekintése">
