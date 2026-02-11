@@ -1313,8 +1313,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       }
       
       // Create board assignments and calculate kereszt vágás per board
-      const boardKeresztVagasCount = new Map<number, number>() // boardIndex -> count
-      
+      // Populate board assignments to track which configs are on which boards
       configBoards.forEach((boardSet, configId) => {
         const config = configs.find(c => c.id === configId)
         if (!config) return
@@ -1322,63 +1321,63 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         const configLengthData = configLengths.find(cl => cl.config.id === configId)
         if (!configLengthData) return
         
-        const aValue = parseFloat(config.dimensionA) || 0
-        const cValue = parseFloat(config.dimensionC) || 0
-        const dValue = parseFloat(config.dimensionD) || 0
-        const isBalos = config.assemblyType === 'Összemarás Balos'
-        const isJobbos = config.assemblyType === 'Összemarás jobbos'
-        const isOsszemaras = isBalos || isJobbos
-        
-        // Calculate kereszt vágás for each piece and assign to the board it's on
-        if (!isOsszemaras) {
-          // Levágás: single piece A (pieceIndex 0)
-          if (material.length > aValue) {
-            const boardIndex = pieceBoardAssignments.get(`${configId}-0`)
-            if (boardIndex !== undefined) {
-              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
-              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
-            }
-          }
-        } else if (isBalos) {
-          // Balos: two pieces - A (pieceIndex 0) and (C-D) (pieceIndex 1)
-          if (material.length > aValue) {
-            const boardIndex = pieceBoardAssignments.get(`${configId}-0`)
-            if (boardIndex !== undefined) {
-              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
-              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
-            }
-          }
-          const piece2Length = cValue - dValue
-          if (material.length > piece2Length) {
-            const boardIndex = pieceBoardAssignments.get(`${configId}-1`)
-            if (boardIndex !== undefined) {
-              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
-              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
-            }
-          }
-        } else if (isJobbos) {
-          // Jobbos: two pieces - (A-D) (pieceIndex 0) and C (pieceIndex 1)
-          const piece1Length = aValue - dValue
-          if (material.length > piece1Length) {
-            const boardIndex = pieceBoardAssignments.get(`${configId}-0`)
-            if (boardIndex !== undefined) {
-              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
-              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
-            }
-          }
-          if (material.length > cValue) {
-            const boardIndex = pieceBoardAssignments.get(`${configId}-1`)
-            if (boardIndex !== undefined) {
-              const currentCount = boardKeresztVagasCount.get(boardIndex) || 0
-              boardKeresztVagasCount.set(boardIndex, currentCount + 2)
-            }
-          }
-        }
-        
         // Use the first board this config is on (for display purposes)
         const firstBoard = Math.min(...Array.from(boardSet))
         const configLength = configLengthData.length
         boardAssignments.push({ boardIndex: firstBoard, config, length: configLength })
+      })
+      
+      // Calculate kereszt vágás per board: number of configs on board + 1
+      // This counts actual cuts needed: 1 cut between each config + 1 cut at the end
+      const boardKeresztVagasCount = new Map<number, number>() // boardIndex -> count
+      
+      // Group configs by board
+      const configsByBoard = new Map<number, typeof relevantConfigs[0][]>()
+      boardAssignments.forEach(ba => {
+        if (!configsByBoard.has(ba.boardIndex)) {
+          configsByBoard.set(ba.boardIndex, [])
+        }
+        configsByBoard.get(ba.boardIndex)!.push(ba.config)
+      })
+      
+      // Calculate kereszt vágás for each board
+      configsByBoard.forEach((configsOnBoard, boardIndex) => {
+        // Check if any config on this board needs cutting
+        let needsCutting = false
+        for (const config of configsOnBoard) {
+          const aValue = parseFloat(config.dimensionA) || 0
+          const cValue = parseFloat(config.dimensionC) || 0
+          const dValue = parseFloat(config.dimensionD) || 0
+          const isBalos = config.assemblyType === 'Összemarás Balos'
+          const isJobbos = config.assemblyType === 'Összemarás jobbos'
+          const isOsszemaras = isBalos || isJobbos
+          
+          if (!isOsszemaras) {
+            // Levágás: check if material.length > A
+            if (material.length > aValue) {
+              needsCutting = true
+              break
+            }
+          } else if (isBalos) {
+            // Balos: check if material.length > A or > (C-D)
+            if (material.length > aValue || material.length > (cValue - dValue)) {
+              needsCutting = true
+              break
+            }
+          } else if (isJobbos) {
+            // Jobbos: check if material.length > (A-D) or > C
+            if (material.length > (aValue - dValue) || material.length > cValue) {
+              needsCutting = true
+              break
+            }
+          }
+        }
+        
+        // If cutting is needed, count = number of configs on board + 1
+        // Example: 2 configs on 1 board = 3 cuts (1 between + 1 at end + 1 at start = actually 2 between + 1 at end = 3 total)
+        if (needsCutting) {
+          boardKeresztVagasCount.set(boardIndex, configsOnBoard.length + 1)
+        }
       })
       
       // boardsNeeded is simply the number of boards we created
@@ -1473,42 +1472,72 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             let cost = 0
             let detailsStr = ''
             
-            // If configs share boards, calculate proportional cost
+            // If configs share boards, check if total length < 3000mm
             if (sharesBoard && boardInfo) {
-              // Calculate total cost for all boards
-              const materialLengthMeters = material.length / 1000
-              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
-              
-              // Calculate this config's total length (A + C-D)
-              const configLength = configBoardAssignment?.length || (aValue + cValue - dValue)
-              const configLengthMeters = configLength / 1000
-              
-              // Calculate total length used by all configs on shared boards
               const totalLengthUsed = boardInfo.totalLengthNeeded
               
-              // Calculate proportional cost for this config
-              if (totalLengthUsed > 0) {
-                const ratio = configLength / totalLengthUsed
-                cost = totalBoardCost * ratio
-                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
-              } else {
-                // Fallback: calculate normally
+              // If total length < 3000mm, calculate as if split (use multiplier)
+              if (totalLengthUsed < THRESHOLD_MM) {
+                // Calculate each piece separately with multiplier
                 let costA = 0
                 let costCD = 0
+                let detailsParts: string[] = []
+                
+                // Calculate A part
                 if (aValue >= THRESHOLD_MM) {
                   const materialLengthMeters = material.length / 1000
                   costA = (material.price_per_m || 0) * materialLengthMeters
+                  detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
                 } else {
                   costA = aMeters * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  detailsParts.push(`${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
                 }
+                
+                // Calculate C-D part
                 if (cValue >= THRESHOLD_MM) {
                   const materialLengthMeters = material.length / 1000
                   costCD = (material.price_per_m || 0) * materialLengthMeters
+                  detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
                 } else {
                   costCD = (cMeters - dMeters) * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  detailsParts.push(`${(cMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
                 }
+                
                 cost = costA + costCD
-                detailsStr = `Fallback calculation`
+                detailsStr = detailsParts.join(' + ')
+              } else {
+                // Total length >= 3000mm: use full board pricing (proportional split)
+                const materialLengthMeters = material.length / 1000
+                const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+                
+                // Calculate this config's total length (A + C-D)
+                const configLength = configBoardAssignment?.length || (aValue + cValue - dValue)
+                const configLengthMeters = configLength / 1000
+                
+                // Calculate proportional cost for this config
+                if (totalLengthUsed > 0) {
+                  const ratio = configLength / totalLengthUsed
+                  cost = totalBoardCost * ratio
+                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                } else {
+                  // Fallback: calculate normally
+                  let costA = 0
+                  let costCD = 0
+                  if (aValue >= THRESHOLD_MM) {
+                    const materialLengthMeters = material.length / 1000
+                    costA = (material.price_per_m || 0) * materialLengthMeters
+                  } else {
+                    costA = aMeters * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  }
+                  if (cValue >= THRESHOLD_MM) {
+                    const materialLengthMeters = material.length / 1000
+                    costCD = (material.price_per_m || 0) * materialLengthMeters
+                  } else {
+                    costCD = (cMeters - dMeters) * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  }
+                  cost = costA + costCD
+                  detailsStr = `Fallback calculation`
+                }
               }
             } else if (isAloneOnBoard) {
               // Config is alone on its board - check each piece separately
@@ -1565,42 +1594,72 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             let cost = 0
             let detailsStr = ''
             
-            // If configs share boards, calculate proportional cost
+            // If configs share boards, check if total length < 3000mm
             if (sharesBoard && boardInfo) {
-              // Calculate total cost for all boards
-              const materialLengthMeters = material.length / 1000
-              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
-              
-              // Calculate this config's total length (A-D + C)
-              const configLength = configBoardAssignment?.length || (aValue - dValue + cValue)
-              const configLengthMeters = configLength / 1000
-              
-              // Calculate total length used by all configs on shared boards
               const totalLengthUsed = boardInfo.totalLengthNeeded
               
-              // Calculate proportional cost for this config
-              if (totalLengthUsed > 0) {
-                const ratio = configLength / totalLengthUsed
-                cost = totalBoardCost * ratio
-                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
-              } else {
-                // Fallback: calculate normally
+              // If total length < 3000mm, calculate as if split (use multiplier)
+              if (totalLengthUsed < THRESHOLD_MM) {
+                // Calculate each piece separately with multiplier
                 let costAD = 0
                 let costC = 0
+                let detailsParts: string[] = []
+                
+                // Calculate A-D part
                 if (aValue >= THRESHOLD_MM) {
                   const materialLengthMeters = material.length / 1000
                   costAD = (material.price_per_m || 0) * materialLengthMeters
+                  detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
                 } else {
                   costAD = (aMeters - dMeters) * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  detailsParts.push(`${(aMeters - dMeters).toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
                 }
+                
+                // Calculate C part
                 if (cValue >= THRESHOLD_MM) {
                   const materialLengthMeters = material.length / 1000
                   costC = (material.price_per_m || 0) * materialLengthMeters
+                  detailsParts.push(`${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`)
                 } else {
                   costC = cMeters * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  detailsParts.push(`${cMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`)
                 }
+                
                 cost = costAD + costC
-                detailsStr = `Fallback calculation`
+                detailsStr = detailsParts.join(' + ')
+              } else {
+                // Total length >= 3000mm: use full board pricing (proportional split)
+                const materialLengthMeters = material.length / 1000
+                const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+                
+                // Calculate this config's total length (A-D + C)
+                const configLength = configBoardAssignment?.length || (aValue - dValue + cValue)
+                const configLengthMeters = configLength / 1000
+                
+                // Calculate proportional cost for this config
+                if (totalLengthUsed > 0) {
+                  const ratio = configLength / totalLengthUsed
+                  cost = totalBoardCost * ratio
+                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                } else {
+                  // Fallback: calculate normally
+                  let costAD = 0
+                  let costC = 0
+                  if (aValue >= THRESHOLD_MM) {
+                    const materialLengthMeters = material.length / 1000
+                    costAD = (material.price_per_m || 0) * materialLengthMeters
+                  } else {
+                    costAD = (aMeters - dMeters) * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  }
+                  if (cValue >= THRESHOLD_MM) {
+                    const materialLengthMeters = material.length / 1000
+                    costC = (material.price_per_m || 0) * materialLengthMeters
+                  } else {
+                    costC = cMeters * (material.price_per_m || 0) * STOCK_MULTIPLIER
+                  }
+                  cost = costAD + costC
+                  detailsStr = `Fallback calculation`
+                }
               }
             } else if (isAloneOnBoard) {
               // Config is alone on its board - check each piece separately
@@ -1657,28 +1716,35 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             let cost = 0
             let detailsStr = ''
             
-            // If configs share boards, calculate proportional cost
+            // If configs share boards, check if total length < 3000mm
             if (sharesBoard && boardInfo) {
-              // Calculate total cost for all boards
-              const materialLengthMeters = material.length / 1000
-              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
-              
-              // Calculate this config's length
-              const configLength = configBoardAssignment?.length || aValue
-              const configLengthMeters = configLength / 1000
-              
-              // Calculate total length used by all configs on shared boards
               const totalLengthUsed = boardInfo.totalLengthNeeded
               
-              // Calculate proportional cost for this config
-              if (totalLengthUsed > 0) {
-                const ratio = configLength / totalLengthUsed
-                cost = totalBoardCost * ratio
-                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+              // If total length < 3000mm, calculate as if split (use multiplier)
+              if (totalLengthUsed < THRESHOLD_MM) {
+                // Use multiplier for this config's length
+                const baseCost = aMeters * (material.price_per_m || 0)
+                cost = baseCost * STOCK_MULTIPLIER
+                detailsStr = `${aMeters.toFixed(2)}m × ${formatPrice(material.price_per_m || 0, currency)}/m × ${STOCK_MULTIPLIER}`
               } else {
-                // Fallback: use full board if calculation fails
-                cost = (material.price_per_m || 0) * materialLengthMeters
-                detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+                // Total length >= 3000mm: use full board pricing (proportional split)
+                const materialLengthMeters = material.length / 1000
+                const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+                
+                // Calculate this config's length
+                const configLength = configBoardAssignment?.length || aValue
+                const configLengthMeters = configLength / 1000
+                
+                // Calculate proportional cost for this config
+                if (totalLengthUsed > 0) {
+                  const ratio = configLength / totalLengthUsed
+                  cost = totalBoardCost * ratio
+                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                } else {
+                  // Fallback: use full board if calculation fails
+                  cost = (material.price_per_m || 0) * materialLengthMeters
+                  detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+                }
               }
             } else if (isAloneOnBoard) {
               // Config is alone on its board - check A value
