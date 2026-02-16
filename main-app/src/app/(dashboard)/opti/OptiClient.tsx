@@ -363,6 +363,7 @@ export default function OptiClient({
   const [selectedB, setSelectedB] = useState<string>('')
   const [selectedC, setSelectedC] = useState<string>('')
   const [selectedD, setSelectedD] = useState<string>('')
+  const [selectedKörbe, setSelectedKörbe] = useState<string>('') // Helper field for "Élzárás körbe"
   
   // State for showing optimization data card
   const [showOptimizationData, setShowOptimizationData] = useState(false)
@@ -850,6 +851,7 @@ export default function OptiClient({
     setSelectedB('')
     setSelectedC('')
     setSelectedD('')
+    setSelectedKörbe('')
     setDuplungolas(false)
     setSzögvágás(false)
     setPanthelyfurasSaved(false)
@@ -974,6 +976,7 @@ export default function OptiClient({
     setSelectedB('')
     setSelectedC('')
     setSelectedD('')
+    setSelectedKörbe('')
   }
 
   // Cancel edit
@@ -990,6 +993,7 @@ export default function OptiClient({
     setSelectedB('')
     setSelectedC('')
     setSelectedD('')
+    setSelectedKörbe('')
     setDuplungolas(false)
     setSzögvágás(false)
     setPanthelyfurasSaved(false)
@@ -2484,10 +2488,10 @@ export default function OptiClient({
                   />
                 </Grid>
                 
-                {/* Élzárás Section */}
+                {/* Élzárás élenként Section */}
                 <Grid item xs={12}>
                   <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
-                    Élzárás
+                    Élzárás élenként
                   </Typography>
                 </Grid>
                 
@@ -2618,6 +2622,55 @@ export default function OptiClient({
                     }}
                     noOptionsText="Nincs találat"
                   />
+                </Grid>
+              </Grid>
+              
+              {/* Élzárás körbe Section */}
+              <Grid item xs={12} sx={{ mt: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 'medium', color: 'primary.main' }}>
+                  Élzárás körbe
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Autocomplete
+                      fullWidth
+                      size="small"
+                      options={edgeMaterials}
+                      getOptionLabel={(option) => formatEdgeMaterialName(option)}
+                      getOptionKey={(option) => option.id}
+                      value={edgeMaterials.find(material => material.id === selectedKörbe) || null}
+                      onChange={(event, newValue) => {
+                        const edgeId = newValue ? newValue.id : ''
+                        setSelectedKörbe(edgeId)
+                        // Automatically fill all 4 edges with the selected material
+                        if (edgeId) {
+                          setSelectedA(edgeId)
+                          setSelectedB(edgeId)
+                          setSelectedC(edgeId)
+                          setSelectedD(edgeId)
+                        }
+                      }}
+                      disabled={false}
+                      renderOption={(props, option) => {
+                        const index = edgeMaterials.findIndex(em => em.id === option.id)
+                        return renderEdgeMaterialOption(props, option, index)
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Élzárás körbe"
+                          onKeyPress={handleKeyPress}
+                        />
+                      )}
+                      ListboxProps={{
+                        style: {
+                          maxHeight: '200px',
+                          overflow: 'auto'
+                        }
+                      }}
+                      noOptionsText="Nincs találat"
+                    />
+                  </Grid>
                 </Grid>
               </Grid>
               
