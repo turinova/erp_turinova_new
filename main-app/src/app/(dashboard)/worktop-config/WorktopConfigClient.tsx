@@ -1580,13 +1580,46 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             anyagKoltsegNet += cost
             anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           } else {
-            // roundup((A+C-D)/linear_material_length) × price_per_m × linear_material_length
-            const totalLength = aValue + cValue - dValue
-            const materialLengthMeters = material.length / 1000
-            const boardsNeeded = Math.ceil(totalLength / material.length)
-            const cost = boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+            // Összemarás Balos - non-stock: use board sharing logic
+            let cost = 0
+            let detailsStr = ''
+            
+            // If configs share boards, split cost proportionally
+            if (sharesBoard && boardInfo) {
+              const materialLengthMeters = material.length / 1000
+              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              
+              // Calculate this config's total length (A + C-D)
+              const configLength = configBoardAssignment?.length || (aValue + cValue - dValue)
+              const configLengthMeters = configLength / 1000
+              
+              // Calculate proportional cost for this config
+              if (boardInfo.totalLengthNeeded > 0) {
+                const ratio = configLength / boardInfo.totalLengthNeeded
+                cost = totalBoardCost * ratio
+                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(boardInfo.totalLengthNeeded / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+              } else {
+                // Fallback: use full board if calculation fails
+                const materialLengthMeters = material.length / 1000
+                cost = (material.price_per_m || 0) * materialLengthMeters
+                detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+              }
+            } else if (isAloneOnBoard) {
+              // Config is alone on its board - use full board
+              const materialLengthMeters = material.length / 1000
+              cost = (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+            } else {
+              // Fallback: calculate based on bin packing result
+              const totalLength = aValue + cValue - dValue
+              const materialLengthMeters = material.length / 1000
+              const boardsNeeded = boardInfo?.boardsNeeded || Math.ceil(totalLength / material.length)
+              cost = boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+            }
+            
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           }
         } else if (isJobbos) {
           // Összemarás jobbos calculation
@@ -1702,13 +1735,46 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             anyagKoltsegNet += cost
             anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           } else {
-            // roundup((A+C-D)/linear_material_length) × price_per_m × linear_material_length
-            const totalLength = aValue + cValue - dValue
-            const materialLengthMeters = material.length / 1000
-            const boardsNeeded = Math.ceil(totalLength / material.length)
-            const cost = boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+            // Összemarás jobbos - non-stock: use board sharing logic
+            let cost = 0
+            let detailsStr = ''
+            
+            // If configs share boards, split cost proportionally
+            if (sharesBoard && boardInfo) {
+              const materialLengthMeters = material.length / 1000
+              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              
+              // Calculate this config's total length (A-D + C)
+              const configLength = configBoardAssignment?.length || (aValue - dValue + cValue)
+              const configLengthMeters = configLength / 1000
+              
+              // Calculate proportional cost for this config
+              if (boardInfo.totalLengthNeeded > 0) {
+                const ratio = configLength / boardInfo.totalLengthNeeded
+                cost = totalBoardCost * ratio
+                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(boardInfo.totalLengthNeeded / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+              } else {
+                // Fallback: use full board if calculation fails
+                const materialLengthMeters = material.length / 1000
+                cost = (material.price_per_m || 0) * materialLengthMeters
+                detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+              }
+            } else if (isAloneOnBoard) {
+              // Config is alone on its board - use full board
+              const materialLengthMeters = material.length / 1000
+              cost = (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+            } else {
+              // Fallback: calculate based on bin packing result
+              const totalLength = aValue - dValue + cValue
+              const materialLengthMeters = material.length / 1000
+              const boardsNeeded = boardInfo?.boardsNeeded || Math.ceil(totalLength / material.length)
+              cost = boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+            }
+            
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           }
         } else {
           // Levágás calculation
@@ -1769,9 +1835,44 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             anyagKoltsegNet += cost
             anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           } else {
-            const cost = (material.price_per_m || 0) * (material.length / 1000)
+            // Levágás - non-stock: use board sharing logic
+            let cost = 0
+            let detailsStr = ''
+            
+            // If configs share boards, split cost proportionally
+            if (sharesBoard && boardInfo) {
+              const materialLengthMeters = material.length / 1000
+              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              
+              // Calculate this config's length
+              const configLength = configBoardAssignment?.length || aValue
+              const configLengthMeters = configLength / 1000
+              
+              // Calculate proportional cost for this config
+              if (boardInfo.totalLengthNeeded > 0) {
+                const ratio = configLength / boardInfo.totalLengthNeeded
+                cost = totalBoardCost * ratio
+                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(boardInfo.totalLengthNeeded / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+              } else {
+                // Fallback: use full board if calculation fails
+                const materialLengthMeters = material.length / 1000
+                cost = (material.price_per_m || 0) * materialLengthMeters
+                detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+              }
+            } else if (isAloneOnBoard) {
+              // Config is alone on its board - use full board
+              const materialLengthMeters = material.length / 1000
+              cost = (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+            } else {
+              // Fallback: use full board if we can't determine board status
+              const materialLengthMeters = material.length / 1000
+              cost = (material.price_per_m || 0) * materialLengthMeters
+              detailsStr = `${materialLengthMeters.toFixed(2)}m (Szál) × ${formatPrice(material.price_per_m || 0, currency)}/m`
+            }
+            
             anyagKoltsegNet += cost
-            anyagKoltsegDetails.push(`${formatPrice(material.price_per_m || 0, currency)}/m × ${(material.length / 1000).toFixed(2)}m = ${formatPrice(cost, currency)}`)
+            anyagKoltsegDetails.push(`${detailsStr} = ${formatPrice(cost, currency)}`)
           }
         }
 
