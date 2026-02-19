@@ -74,7 +74,18 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, connection_type, api_url, username, password, is_active } = body
+    const { 
+      name, 
+      connection_type, 
+      api_url, 
+      username, 
+      password, 
+      is_active,
+      search_console_property_url,
+      search_console_client_email,
+      search_console_private_key,
+      search_console_enabled
+    } = body
 
     // Validation
     if (!name || !connection_type || !api_url || !username || !password) {
@@ -82,6 +93,16 @@ export async function POST(request: NextRequest) {
         { error: 'Minden mező kitöltése kötelező' },
         { status: 400 }
       )
+    }
+
+    // Validate Search Console fields if enabled
+    if (search_console_enabled) {
+      if (!search_console_property_url || !search_console_client_email || !search_console_private_key) {
+        return NextResponse.json(
+          { error: 'Search Console mezők kitöltése kötelező, ha az integráció engedélyezve van' },
+          { status: 400 }
+        )
+      }
     }
 
     // Create connection
@@ -93,7 +114,11 @@ export async function POST(request: NextRequest) {
         api_url: api_url.trim(),
         username: username.trim(),
         password, // TODO: Encrypt in production
-        is_active: is_active !== false
+        is_active: is_active !== false,
+        search_console_property_url: search_console_enabled ? search_console_property_url?.trim() || null : null,
+        search_console_client_email: search_console_enabled ? search_console_client_email?.trim() || null : null,
+        search_console_private_key: search_console_enabled ? search_console_private_key || null : null,
+        search_console_enabled: search_console_enabled || false
       })
       .select()
       .single()

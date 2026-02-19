@@ -15,6 +15,10 @@ export interface WebshopConnection {
   last_tested_at: string | null
   last_test_status: 'success' | 'failed' | null
   last_test_error: string | null
+  search_console_property_url: string | null
+  search_console_client_email: string | null
+  search_console_private_key: string | null
+  search_console_enabled: boolean
   created_at: string
   updated_at: string
 }

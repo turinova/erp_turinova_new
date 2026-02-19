@@ -6,13 +6,33 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateEmbedding } from './chunking-service'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  // Explicitly set API version
-  defaultHeaders: {
-    'anthropic-version': '2023-06-01'
+/**
+ * Get Anthropic client - must be created at runtime, not module level
+ * This ensures environment variables are properly loaded in Next.js
+ */
+function getAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set in environment variables')
   }
-})
+  
+  // Explicitly set baseURL to ensure we're hitting the correct Anthropic endpoint
+  // NOT Bedrock, NOT Vertex, NOT a proxy - the direct Anthropic API
+  const client = new Anthropic({
+    apiKey: apiKey,
+    baseURL: 'https://api.anthropic.com', // Explicit endpoint - ChatGPT's suggestion #1
+    defaultHeaders: {
+      'anthropic-version': '2023-06-01', // Required header - ChatGPT's suggestion #2
+      'content-type': 'application/json' // Explicit content type
+    }
+  })
+  
+  console.log(`[ANTHROPIC CLIENT] Created with baseURL: https://api.anthropic.com`)
+  console.log(`[ANTHROPIC CLIENT] API Key format: ${apiKey.startsWith('sk-ant-') ? 'Valid' : 'INVALID'}`)
+  console.log(`[ANTHROPIC CLIENT] API Key length: ${apiKey.length}`)
+  
+  return client
+}
 
 export interface GenerationOptions {
   useSourceMaterials?: boolean // Use RAG with source materials
@@ -20,6 +40,8 @@ export interface GenerationOptions {
   maxTokens?: number // Default 2000
   language?: string // 'hu' or 'en', default 'hu'
   generationInstructions?: string // Custom instructions for generation
+  useSearchConsoleQueries?: boolean // Use Search Console queries for optimization
+  searchQueries?: Array<{ query: string; impressions: number; clicks: number; ctr: number; position: number }> // Top search queries
 }
 
 export interface GeneratedDescription {
@@ -30,6 +52,7 @@ export interface GeneratedDescription {
   sourceMaterialsUsed: string[]
   productType?: string
   validationWarnings?: string[]
+  searchQueriesUsed?: Array<{ query: string; impressions: number; clicks: number }> // Queries used for optimization
 }
 
 export interface ProductTypeInfo {
@@ -227,12 +250,13 @@ async function findRelevantChunks(
 }
 
 /**
- * Build context from source materials and chunks
+ * Build context from source materials, chunks, and search queries
  */
 function buildContext(
   product: any,
   sourceMaterials: any[],
-  relevantChunks: any[]
+  relevantChunks: any[],
+  searchQueries?: Array<{ query: string; impressions: number; clicks: number; ctr: number; position: number }>
 ): string {
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
@@ -258,6 +282,42 @@ function buildContext(
     })
   }
 
+  if (searchQueries && searchQueries.length > 0) {
+    context += `\n\nTOP SEARCH QUERIES FROM GOOGLE SEARCH CONSOLE:\n`
+    context += `These are the actual search queries people use to find this product. ` 
+    context += `You MUST naturally incorporate these keywords and phrases into the description to improve search rankings.\n\n`
+    
+    // Sort by impressions (most important) and clicks
+    const sortedQueries = [...searchQueries].sort((a, b) => {
+      // Prioritize queries with high impressions and clicks
+      const scoreA = a.impressions * 0.6 + a.clicks * 0.4
+      const scoreB = b.impressions * 0.6 + b.clicks * 0.4
+      return scoreB - scoreA
+    })
+    
+    sortedQueries.slice(0, 10).forEach((query, index) => {
+      context += `${index + 1}. "${query.query}" - ${query.impressions} megjelenés, ${query.clicks} kattintás, pozíció: ${query.position.toFixed(1)}\n`
+    })
+    
+    context += `\nOPTIMIZATION PRIORITIES:\n`
+    const highImpressionsLowCtr = searchQueries.filter(q => q.impressions > 50 && q.ctr < 0.05)
+    const goodPosition = searchQueries.filter(q => q.position > 0 && q.position < 10 && q.clicks < 10)
+    
+    if (highImpressionsLowCtr.length > 0) {
+      context += `- Queries with HIGH impressions but LOW CTR (need optimization):\n`
+      highImpressionsLowCtr.slice(0, 5).forEach(q => {
+        context += `  * "${q.query}" (${q.impressions} megjelenés, ${(q.ctr * 100).toFixed(2)}% CTR)\n`
+      })
+    }
+    
+    if (goodPosition.length > 0) {
+      context += `- Queries with GOOD position but LOW clicks (optimize title/description):\n`
+      goodPosition.slice(0, 5).forEach(q => {
+        context += `  * "${q.query}" (pozíció: ${q.position.toFixed(1)}, ${q.clicks} kattintás)\n`
+      })
+    }
+  }
+
   return context
 }
 
@@ -269,13 +329,15 @@ export async function generateProductDescription(
   productId: string,
   options: GenerationOptions = {}
 ): Promise<GeneratedDescription> {
-  const {
-    useSourceMaterials = true,
-    temperature = 0.7,
-    maxTokens = 2000,
-    language = 'hu',
-    generationInstructions
-  } = options
+    const {
+      useSourceMaterials = true,
+      temperature = 0.7,
+      maxTokens = 2000,
+      language = 'hu',
+      generationInstructions,
+      useSearchConsoleQueries = false, // Set to true to enable Search Console query optimization
+      searchQueries
+    } = options
 
   try {
     // 1. Get product data
@@ -314,12 +376,53 @@ export async function generateProductDescription(
     const productType = detectProductType(product.name || '', product.sku || '')
     console.log(`[AI GENERATION] Detected product type: ${productType.type} (confidence: ${productType.confidence})`)
 
-    // 5. Build context
-    const context = buildContext(product, sourceMaterials, relevantChunks)
+    // 5. Get Search Console queries if enabled and not provided
+    // IMPORTANT: Make this fail gracefully - don't break generation if Search Console fails
+    let queriesToUse = searchQueries
+    if (useSearchConsoleQueries && !queriesToUse) {
+      try {
+        // Fetch top queries from database (last 90 days)
+        const ninetyDaysAgo = new Date()
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+        
+        const { data: queries, error: queryError } = await supabase
+          .from('product_search_queries')
+          .select('query, impressions, clicks, ctr, position')
+          .eq('product_id', productId)
+          .gte('date', ninetyDaysAgo.toISOString().split('T')[0])
+          .order('impressions', { ascending: false })
+          .limit(20)
+        
+        if (queryError) {
+          console.warn(`[AI GENERATION] Search Console query error (non-fatal):`, queryError)
+          // Continue without Search Console queries
+        } else if (queries && queries.length > 0) {
+          queriesToUse = queries
+          console.log(`[AI GENERATION] Found ${queries.length} Search Console queries for optimization`)
+        } else {
+          console.log(`[AI GENERATION] No Search Console queries found - continuing without them`)
+        }
+      } catch (searchConsoleError: any) {
+        // Fail gracefully - don't break generation if Search Console fails
+        console.warn(`[AI GENERATION] Search Console query failed (non-fatal):`, searchConsoleError?.message || searchConsoleError)
+        // Continue without Search Console queries
+      }
+    }
 
-    // 6. Build prompts with product type awareness
+    // 6. Build context
+    const context = buildContext(product, sourceMaterials, relevantChunks, queriesToUse)
+
+    // 7. Build prompts with product type awareness
     const systemPrompt = `You are an expert product copywriter specializing in creating authentic, 
 human-written product descriptions for cabinet hardware and related products that rank high in search engines and AI search systems.
+
+SEARCH CONSOLE OPTIMIZATION:
+- If Search Console queries are provided, you MUST naturally incorporate the top search queries into the description
+- Focus on queries with high impressions but low CTR (these need optimization)
+- Also prioritize queries with good position but low clicks
+- Use exact query phrases naturally - integrate them organically into sentences
+- Balance keyword optimization with natural, readable Hungarian text
+- The goal is to improve CTR and ranking for actual search queries people use
 
 CRITICAL: PRODUCT TYPE UNDERSTANDING
 **YOU MUST FIRST IDENTIFY THE EXACT PRODUCT TYPE FROM THE PRODUCT NAME AND SKU.**
@@ -436,7 +539,24 @@ CRITICAL REQUIREMENTS:
    - Write naturally in Hungarian, not as a translation
    - No English words except brand names or universally used technical terms
 
-6. **Content Quality**:
+6. **Search Console Query Optimization** (CRITICAL):
+${queriesToUse && queriesToUse.length > 0 ? `
+   - The following search queries are what people ACTUALLY use to find this product:
+   - You MUST naturally incorporate these keywords and phrases into the description
+   - Focus especially on queries with HIGH impressions but LOW CTR (these need optimization)
+   - Also prioritize queries with GOOD position but LOW clicks (title/description optimization needed)
+   - Use the exact query phrases naturally - don't force them, but make sure they appear organically
+   - If a query is "strongmax fiókrendszer", naturally use "StrongMax fiókrendszer" in the description
+   - If a query is "40kg teherbírás", mention "40 kg teherbírás" naturally
+   - Balance: Include query keywords but maintain natural, readable Hungarian text
+   - DO NOT keyword stuff - integrate queries naturally into sentences and paragraphs
+   - The goal is to improve CTR and ranking for these actual search queries
+` : `
+   - No Search Console queries available - optimize for general Hungarian search terms
+   - Use relevant industry keywords naturally (fiókrendszer, csukló, csúszka, stb.)
+`}
+
+7. **Content Quality**:
    - Make it sound like it was written by a knowledgeable Hungarian expert
    - Include specific details from the source materials above (translated to Hungarian)
    - Optimize for Hungarian search engines without keyword stuffing
@@ -449,7 +569,7 @@ CRITICAL REQUIREMENTS:
    - Include rhetorical questions: "Mire figyeljünk?" "Miért válasszuk ezt?"
    - Add personal voice: "én", "mi", "tapasztalat" occasionally
 
-7. **Focus Areas** (all in Hungarian):
+8. **Focus Areas** (all in Hungarian):
    - Specifications (méretek, anyag, kapacitás, stb.)
    - Installation (beszerelés, szerelési útmutató)
    - Use cases (használati lehetőségek, alkalmazási területek)
@@ -463,23 +583,57 @@ These instructions override or supplement the standard requirements above. Pay s
 
 Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <li> tags), written entirely in Hungarian, nothing else.`
 
-    // 6. Generate description using Claude
-    // Try Sonnet first (best quality), fallback to Haiku if not available
+    // 8. Generate description using Claude
+    // Verify API key is set
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not set in environment variables. Please add it to .env.local')
+    }
+
+    // Try models in priority order
+    // Updated to use new generation model identifiers (claude-sonnet-4-6, etc.)
+    // These are the correct model names for accounts with new generation access
     const modelsToTry = [
-      'claude-3-5-sonnet-latest',
-      'claude-3-5-sonnet-20241022',
-      'claude-3-5-sonnet-20240620',
-      'claude-3-5-sonnet',
-      'claude-3-haiku-20240307' // Fallback - most accessible
+      'claude-sonnet-4-6',              // Default: good quality/price balance
+      'claude-opus-4-6',                // Max quality option
+      'claude-haiku-4-5-20251001',      // Cheap/fast fallback
+      'claude-sonnet-4-5-20250929',     // Older fallback option
+      'claude-sonnet-4-20250514'        // Older fallback option
     ]
+
+    // Skip pre-flight test - models are "Active" in console, so they should work
+    // Go straight to trying models with exact version identifiers
 
     let message: any = null
     let modelUsed = ''
     let lastError: any = null
 
+    // Create Anthropic client at runtime (not module level)
+    // DO THIS BEFORE ANY OTHER OPERATIONS to ensure API key is loaded
+    console.log(`[AI GENERATION] Creating Anthropic client...`)
+    console.log(`[AI GENERATION] API Key exists: ${!!process.env.ANTHROPIC_API_KEY}`)
+    console.log(`[AI GENERATION] API Key length: ${process.env.ANTHROPIC_API_KEY?.length || 0}`)
+    
+    let anthropic: Anthropic
+    try {
+      anthropic = getAnthropicClient()
+      console.log(`[AI GENERATION] Anthropic client created successfully`)
+    } catch (clientError: any) {
+      console.error(`[AI GENERATION] Failed to create Anthropic client:`, clientError)
+      throw new Error(`Failed to initialize Anthropic client: ${clientError.message}`)
+    }
+    
     for (const model of modelsToTry) {
       try {
         console.log(`[AI GENERATION] Trying model: ${model}`)
+        console.log(`[AI GENERATION] Request details:`, {
+          endpoint: 'https://api.anthropic.com/v1/messages',
+          model: model,
+          max_tokens: maxTokens,
+          has_system_prompt: !!systemPrompt,
+          system_prompt_length: systemPrompt?.length || 0,
+          user_prompt_length: userPrompt?.length || 0
+        })
+        
         message = await anthropic.messages.create({
           model: model,
           max_tokens: maxTokens,
@@ -497,27 +651,87 @@ Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <l
         break
       } catch (err: any) {
         lastError = err
-        console.log(`[AI GENERATION] Model ${model} failed:`, err?.message)
+        const errorMessage = err?.message || err?.error?.message || 'Unknown error'
+        const errorType = err?.error?.type || err?.type || 'unknown'
+        const statusCode = err?.status || err?.statusCode || err?.response?.status
+        
+        console.error(`[AI GENERATION] Model ${model} failed:`, {
+          model,
+          error: errorMessage,
+          type: errorType,
+          status: statusCode,
+          fullError: err
+        })
+        
+        // If it's a 401/403, it's an auth issue - stop trying
+        if (statusCode === 401 || statusCode === 403) {
+          console.error(`[AI GENERATION] Authentication error - stopping model attempts`)
+          throw new Error(`Anthropic API authentication failed (${statusCode}). Please check your ANTHROPIC_API_KEY environment variable. Error: ${errorMessage}`)
+        }
+        
+        // If it's a 404, the model doesn't exist - try next
+        // If it's a 429, rate limit - stop trying
+        if (statusCode === 429) {
+          console.error(`[AI GENERATION] Rate limit error - stopping model attempts`)
+          throw new Error(`Anthropic API rate limit exceeded. Please try again later. Error: ${errorMessage}`)
+        }
+        
         // Continue to next model
         continue
       }
     }
 
     if (!message) {
-      throw new Error(`All Claude models failed. Last error: ${lastError?.message || 'Unknown error'}`)
+      const lastErrorMsg = lastError?.message || lastError?.error?.message || 'Unknown error'
+      const lastErrorType = lastError?.error?.type || lastError?.type || 'unknown'
+      const lastStatus = lastError?.status || lastError?.statusCode
+      
+      // Provide helpful error message based on error type
+      if (lastErrorType === 'not_found_error' || lastStatus === 404) {
+        const diagnosticInfo = `
+🔍 DIAGNOSTIC INFORMATION:
+- API Key Format: ${process.env.ANTHROPIC_API_KEY ? 'Valid format' : 'NOT SET'}
+- API Key Length: ${process.env.ANTHROPIC_API_KEY?.length || 0} characters
+- API Key Preview: ${process.env.ANTHROPIC_API_KEY ? `${process.env.ANTHROPIC_API_KEY.substring(0, 10)}...${process.env.ANTHROPIC_API_KEY.substring(process.env.ANTHROPIC_API_KEY.length - 10)}` : 'N/A'}
+- Last Error: ${lastErrorMsg}
+- Status Code: ${lastStatus}
+
+⚠️  All Claude models returned 404. This usually means:
+1. Your API key doesn't have access to Claude models (check Anthropic console)
+2. Your account needs billing/credits set up
+3. The API key was revoked or expired
+4. Account was downgraded or model access was removed
+
+✅ WHAT TO CHECK:
+1. Visit https://console.anthropic.com/ and verify:
+   - Account has credits/billing configured
+   - API key is active and not revoked
+   - Account has access to Claude models
+2. Try creating a new API key
+3. Test the API key directly with curl:
+   curl https://api.anthropic.com/v1/messages \\
+     -H "x-api-key: YOUR_KEY" \\
+     -H "anthropic-version: 2023-06-01" \\
+     -H "content-type: application/json" \\
+     -d '{"model": "claude-3-haiku-20240307", "max_tokens": 10, "messages": [{"role": "user", "content": "hi"}]}'
+        `
+        throw new Error(`All Claude models are unavailable (404 errors).${diagnosticInfo}`)
+      }
+      
+      throw new Error(`All Claude models failed. Last error: ${lastErrorMsg} (Status: ${lastStatus})`)
     }
 
     const description = message.content[0].type === 'text' 
       ? message.content[0].text 
       : ''
 
-    // 7. Validate description for logical consistency
+    // 9. Validate description for logical consistency
     const validation = validateDescription(description, product.name || product.sku, productType)
     if (validation.warnings.length > 0) {
       console.warn(`[AI GENERATION] Validation warnings for ${product.sku}:`, validation.warnings)
     }
 
-    // 8. Calculate metrics
+    // 10. Calculate metrics
     const wordCount = description.split(/\s+/).length
     const tokensUsed = message.usage.input_tokens + message.usage.output_tokens
     const sourceMaterialsUsed = sourceMaterials.map(s => s.id)
@@ -529,7 +743,10 @@ Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <l
       modelUsed: modelUsed,
       sourceMaterialsUsed,
       productType: productType.type,
-      validationWarnings: validation.warnings.length > 0 ? validation.warnings : undefined
+      validationWarnings: validation.warnings.length > 0 ? validation.warnings : undefined,
+      searchQueriesUsed: queriesToUse && queriesToUse.length > 0 
+        ? queriesToUse.slice(0, 10).map(q => ({ query: q.query, impressions: q.impressions, clicks: q.clicks }))
+        : undefined
     }
   } catch (error) {
     console.error('Error generating description:', error)

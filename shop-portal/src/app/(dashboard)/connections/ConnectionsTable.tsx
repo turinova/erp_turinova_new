@@ -306,7 +306,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     api_url: '',
     username: '',
     password: '',
-    is_active: true
+    is_active: true,
+    search_console_property_url: '',
+    search_console_client_email: '',
+    search_console_private_key: '',
+    search_console_enabled: false
   })
   
   const [editingConnection, setEditingConnection] = useState<WebshopConnection | null>(null)
@@ -316,7 +320,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     api_url: '',
     username: '',
     password: '',
-    is_active: true
+    is_active: true,
+    search_console_property_url: '',
+    search_console_client_email: '',
+    search_console_private_key: '',
+    search_console_enabled: false
   })
   
   const [creatingConnection, setCreatingConnection] = useState(false)
@@ -435,7 +443,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           api_url: '',
           username: '',
           password: '',
-          is_active: true
+          is_active: true,
+          search_console_property_url: '',
+          search_console_client_email: '',
+          search_console_private_key: '',
+          search_console_enabled: false
         })
         startTransition(() => {
           router.refresh()
@@ -460,7 +472,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       api_url: connection.api_url,
       username: connection.username,
       password: '', // Don't pre-fill password for security
-      is_active: connection.is_active
+      is_active: connection.is_active,
+      search_console_property_url: connection.search_console_property_url || '',
+      search_console_client_email: connection.search_console_client_email || '',
+      search_console_private_key: '', // Don't pre-fill private key for security
+      search_console_enabled: connection.search_console_enabled || false
     })
     setEditConnectionDialogOpen(true)
   }
@@ -469,8 +485,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const handleUpdateConnection = async () => {
     if (!editingConnection) return
     
-    if (!editFormData.name || !editFormData.api_url || !editFormData.username || !editFormData.password) {
-      toast.error('Minden mező kitöltése kötelező')
+    if (!editFormData.name || !editFormData.api_url || !editFormData.username) {
+      toast.error('Alap mezők kitöltése kötelező')
       return
     }
 
@@ -1134,6 +1150,63 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 required
               />
             </Grid>
+            
+            {/* Search Console Configuration */}
+            <Grid item xs={12}>
+              <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 1 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Google Search Console beállítások
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={newConnection.search_console_enabled}
+                      onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_enabled: e.target.checked }))}
+                    />
+                  }
+                  label="Search Console integráció engedélyezése"
+                />
+              </Box>
+            </Grid>
+            {newConnection.search_console_enabled && (
+              <>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Property URL *"
+                    value={newConnection.search_console_property_url}
+                    onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_property_url: e.target.value }))}
+                    required={newConnection.search_console_enabled}
+                    placeholder="https://vasalatmester.hu vagy sc-domain:vasalatmester.hu"
+                    helperText="A Search Console property URL-je"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Service Account Email *"
+                    value={newConnection.search_console_client_email}
+                    onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_client_email: e.target.value }))}
+                    required={newConnection.search_console_enabled}
+                    placeholder="service-account@project.iam.gserviceaccount.com"
+                    helperText="Google Service Account email"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Private Key *"
+                    type="password"
+                    value={newConnection.search_console_private_key}
+                    onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_private_key: e.target.value }))}
+                    required={newConnection.search_console_enabled}
+                    multiline
+                    rows={4}
+                    helperText="Service Account private key (JSON formátum)"
+                  />
+                </Grid>
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
@@ -1240,16 +1313,74 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label={editFormData.connection_type === 'shoprenter' ? 'Client Secret *' : 'Jelszó *'}
+                label={editFormData.connection_type === 'shoprenter' ? 'Client Secret' : 'Jelszó'}
                 type="password"
                 value={editFormData.password}
                 onChange={(e) => setEditFormData(prev => ({ ...prev, password: e.target.value }))}
-                required
                 helperText={editFormData.connection_type === 'shoprenter' 
-                  ? "ShopRenter API Client Secret" 
-                  : "Új jelszó megadása kötelező"}
+                  ? "Hagyja üresen, ha nem szeretné megváltoztatni" 
+                  : "Hagyja üresen, ha nem szeretné megváltoztatni"}
               />
             </Grid>
+            
+            {/* Search Console Configuration */}
+            <Grid item xs={12}>
+              <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 1 }}>
+                <Typography variant="h6" sx={{ mb: 2 }}>
+                  Google Search Console beállítások
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={editFormData.search_console_enabled}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_enabled: e.target.checked }))}
+                    />
+                  }
+                  label="Search Console integráció engedélyezése"
+                />
+              </Box>
+            </Grid>
+            {editFormData.search_console_enabled && (
+              <>
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    label="Property URL *"
+                    value={editFormData.search_console_property_url}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_property_url: e.target.value }))}
+                    required={editFormData.search_console_enabled}
+                    placeholder="https://vasalatmester.hu vagy sc-domain:vasalatmester.hu"
+                    helperText="A Search Console property URL-je"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Service Account Email *"
+                    value={editFormData.search_console_client_email}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_client_email: e.target.value }))}
+                    required={editFormData.search_console_enabled}
+                    placeholder="service-account@project.iam.gserviceaccount.com"
+                    helperText="Google Service Account email"
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label={editingConnection?.search_console_private_key ? "Private Key" : "Private Key *"}
+                    type="password"
+                    value={editFormData.search_console_private_key}
+                    onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_private_key: e.target.value }))}
+                    required={editFormData.search_console_enabled && !editingConnection?.search_console_private_key}
+                    multiline
+                    rows={4}
+                    helperText={editingConnection?.search_console_private_key 
+                      ? "Hagyja üresen, ha nem szeretné megváltoztatni" 
+                      : "Service Account private key (JSON formátum)"}
+                  />
+                </Grid>
+              </>
+            )}
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
@@ -1266,7 +1397,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             onClick={handleUpdateConnection} 
             variant="contained"
             startIcon={updatingConnection ? <CircularProgress size={20} /> : <EditIcon />}
-            disabled={updatingConnection || !editFormData.name || !editFormData.api_url || !editFormData.username || !editFormData.password}
+            disabled={updatingConnection || !editFormData.name || !editFormData.api_url || !editFormData.username}
             sx={{ minWidth: 120 }}
           >
             {updatingConnection ? 'Mentés...' : 'Mentés'}

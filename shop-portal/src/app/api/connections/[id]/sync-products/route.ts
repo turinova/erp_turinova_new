@@ -19,6 +19,50 @@ function extractShopNameFromUrl(apiUrl: string): string | null {
 }
 
 /**
+ * Construct full product URL from shop name and URL alias
+ * Note: This constructs a standard ShopRenter URL. If the shop uses a custom domain,
+ * the URL may need to be updated manually or fetched from ShopRenter settings.
+ */
+function constructProductUrl(shopName: string, urlAlias: string | null | undefined): string | null {
+  if (!urlAlias || !urlAlias.trim()) {
+    return null
+  }
+  
+  if (!shopName) {
+    return null
+  }
+  
+  // Construct frontend URL from shop name
+  // Format: https://shopname.shoprenter.hu/urlAlias
+  // Note: If shop uses custom domain (e.g., vasalatmester.hu), this will need to be updated
+  // For now, use the standard ShopRenter format
+  const cleanAlias = urlAlias.trim().replace(/^\//, '') // Remove leading slash if present
+  return `https://${shopName}.shoprenter.hu/${cleanAlias}`
+}
+
+/**
+ * Extract URL alias from productExtend response
+ */
+function extractUrlAlias(product: any): string | null {
+  // Check if urlAliases exists and has urlAlias
+  if (product.urlAliases) {
+    // urlAliases can be an object with urlAlias property
+    if (typeof product.urlAliases === 'object' && product.urlAliases.urlAlias) {
+      return product.urlAliases.urlAlias
+    }
+    // Or it might be an array
+    if (Array.isArray(product.urlAliases) && product.urlAliases.length > 0) {
+      const firstAlias = product.urlAliases[0]
+      if (firstAlias.urlAlias) {
+        return firstAlias.urlAlias
+      }
+    }
+  }
+  
+  return null
+}
+
+/**
  * POST /api/connections/[id]/sync-products
  * Sync products from ShopRenter to database
  */
@@ -599,6 +643,18 @@ async function syncProductToDatabase(
       throw new Error('Termék hiányzik az SKU mező')
     }
 
+    // Extract URL information
+    const urlAlias = extractUrlAlias(product)
+    const shopName = extractShopNameFromUrl(connection.api_url)
+    const productUrl = shopName && urlAlias ? constructProductUrl(shopName, urlAlias) : null
+    
+    // Log URL extraction for debugging
+    if (urlAlias) {
+      console.log(`[SYNC] Extracted URL for product ${product.sku}: slug="${urlAlias}", full="${productUrl}"`)
+    } else {
+      console.log(`[SYNC] No URL alias found for product ${product.sku}`)
+    }
+
     // Extract product data
     const productData = {
       connection_id: connection.id,
@@ -607,6 +663,9 @@ async function syncProductToDatabase(
       sku: product.sku || '',
       name: null, // Will be set from description
       status: product.status === '1' || product.status === 1 ? 1 : 0,
+      product_url: productUrl,
+      url_slug: urlAlias,
+      last_url_synced_at: urlAlias ? new Date().toISOString() : null,
       sync_status: 'synced',
       sync_error: null,
       last_synced_at: new Date().toISOString()

@@ -16,13 +16,16 @@ import {
   DialogTitle,
   DialogContent,
   DialogContentText,
-  DialogActions
+  DialogActions,
+  Alert,
+  Chip
 } from '@mui/material'
 import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import type { ProductWithDescriptions } from '@/lib/products-server'
 import HtmlEditor from '@/components/HtmlEditor'
 import SourceMaterialsTab from '@/components/SourceMaterialsTab'
+import SearchConsoleTab from '@/components/SearchConsoleTab'
 
 interface ProductEditFormProps {
   product: ProductWithDescriptions
@@ -58,6 +61,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
+  const [generatedProductType, setGeneratedProductType] = useState<string | null>(null)
+  const [generationWarnings, setGenerationWarnings] = useState<string[]>([])
+  const [searchQueriesUsed, setSearchQueriesUsed] = useState<Array<{ query: string; impressions: number; clicks: number }> | null>(null)
   
   // Helper function to decode HTML entities
   const decodeHtmlEntities = (html: string | null | undefined): string => {
@@ -224,10 +230,24 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           description: result.description
         }))
         
+        // Store search queries used for optimization
+        if (result.searchQueriesUsed && result.searchQueriesUsed.length > 0) {
+          setSearchQueriesUsed(result.searchQueriesUsed)
+        } else {
+          setSearchQueriesUsed(null)
+        }
+        
+        // Update product type and warnings
+        setGeneratedProductType(result.productType || null)
+        setGenerationWarnings(result.validationWarnings || [])
+        
         // Show success message with product type info
         let successMessage = `Leírás sikeresen generálva! (${result.metrics.wordCount} szó, ${result.metrics.tokensUsed} token`
         if (result.productType) {
           successMessage += `, típus: ${result.productType}`
+        }
+        if (result.metrics.searchQueriesUsed > 0) {
+          successMessage += `, ${result.metrics.searchQueriesUsed} keresési lekérdezés optimalizálva`
         }
         successMessage += ')'
         toast.success(successMessage)
@@ -283,6 +303,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Tab label="SEO" />
           <Tab label="Leírás" />
           <Tab label="Forrásanyagok" />
+          <Tab label="Search Console" />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
@@ -366,6 +387,46 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 helperText="Pl.: 'A forrásanyagok 450mm fiókra vonatkoznak, de a leírás 300-550mm közötti méreteket fedjen le'"
                 sx={{ mb: 3 }}
               />
+              {searchQueriesUsed && searchQueriesUsed.length > 0 && (
+                <Alert severity="info" sx={{ mb: 3 }}>
+                  <Typography variant="body2" fontWeight="bold" sx={{ mb: 1 }}>
+                    Optimalizált keresési lekérdezések ({searchQueriesUsed.length} db):
+                  </Typography>
+                  <Box component="div" sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {searchQueriesUsed.map((q, index) => (
+                      <Chip
+                        key={index}
+                        label={`"${q.query}" (${q.impressions} megjelenés, ${q.clicks} kattintás)`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    ))}
+                  </Box>
+                  <Typography variant="caption" sx={{ mt: 1, display: 'block' }}>
+                    Ezek a lekérdezések bekerültek a generált leírásba a keresési rangsor javítása érdekében.
+                  </Typography>
+                </Alert>
+              )}
+              {generatedProductType && (
+                <Alert severity={generationWarnings.length > 0 ? 'warning' : 'info'} sx={{ mb: 3 }}>
+                  <Typography variant="body2">
+                    Detektált terméktípus: <strong>{generatedProductType.replace('_', ' ')}</strong>
+                  </Typography>
+                  {generationWarnings.length > 0 && (
+                    <Box component="div" sx={{ mt: 1 }}>
+                      <Typography variant="body2" fontWeight="bold">Figyelmeztetések:</Typography>
+                      <Box component="ul" sx={{ pl: 2, mt: 0.5 }}>
+                        {generationWarnings.map((warning, index) => (
+                          <li key={index}>
+                            <Typography variant="body2">{warning}</Typography>
+                          </li>
+                        ))}
+                      </Box>
+                    </Box>
+                  )}
+                </Alert>
+              )}
               <HtmlEditor
                 value={formData.description}
                 onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
@@ -379,6 +440,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
         <TabPanel value={tabValue} index={3}>
           <SourceMaterialsTab productId={product.id} />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={4}>
+          <SearchConsoleTab productId={product.id} productUrl={product.product_url} />
         </TabPanel>
       </Paper>
 
@@ -438,9 +503,27 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         <DialogContent>
           <DialogContentText id="generate-dialog-description" component="div">
             <Typography variant="body1" paragraph component="div">
-              Az AI a forrásanyagok alapján generál egy SEO-optimalizált, természetes hangvételű termékleírást.
+              Az AI a forrásanyagok és a Search Console adatok alapján generál egy SEO-optimalizált, természetes hangvételű termékleírást.
             </Typography>
-            <Typography variant="body2" color="text.secondary" component="div">
+            <Typography variant="body2" component="div" sx={{ mt: 2 }}>
+              <strong>A generálás a következőket veszi figyelembe:</strong>
+              <Box component="ul" sx={{ mt: 1, pl: 3 }}>
+                <li>Forrásanyagok (PDF, URL, szöveg)</li>
+                <li>Termék neve, SKU</li>
+                <li>Search Console keresési lekérdezések (ha szinkronizálva van)</li>
+                <li>AI Generálási utasítások (ha meg van adva)</li>
+                <li>SEO és AI detektálás elkerülési stratégiák</li>
+                <li>Magyar nyelvű, természetes hangvétel</li>
+              </Box>
+            </Typography>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                <strong>Search Console optimalizáció:</strong> Ha a termékhez Search Console adatok vannak szinkronizálva,
+                az AI automatikusan optimalizálja a leírást a legfontosabb keresési lekérdezésekhez.
+                Ez javítja a keresési rangsort és a kattintási arányt (CTR).
+              </Typography>
+            </Alert>
+            <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 2 }}>
               A generált leírás felülírja a jelenlegi "Részletes leírás" mezőt. Mentés előtt szerkesztheti.
             </Typography>
           </DialogContentText>

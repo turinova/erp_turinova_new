@@ -61,7 +61,8 @@ export async function POST(
       temperature: body.temperature || 0.7,
       maxTokens: body.maxTokens || 2000,
       language: body.language || 'hu',
-      generationInstructions: generationInstructions || undefined
+      generationInstructions: generationInstructions || undefined,
+      useSearchConsoleQueries: body.useSearchConsoleQueries !== false // Default to true
     }
 
     // Generate description
@@ -92,11 +93,13 @@ export async function POST(
       generationId: generation?.id,
       productType: result.productType,
       validationWarnings: result.validationWarnings,
+      searchQueriesUsed: result.searchQueriesUsed,
       metrics: {
         wordCount: result.wordCount,
         tokensUsed: result.tokensUsed,
         modelUsed: result.modelUsed,
-        sourceMaterialsUsed: result.sourceMaterialsUsed.length
+        sourceMaterialsUsed: result.sourceMaterialsUsed.length,
+        searchQueriesUsed: result.searchQueriesUsed?.length || 0
       }
     })
 

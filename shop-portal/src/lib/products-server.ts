@@ -12,6 +12,10 @@ export interface ShopRenterProduct {
   sku: string
   name: string | null
   status: number
+  product_url: string | null
+  url_slug: string | null
+  canonical_url: string | null
+  last_url_synced_at: string | null
   last_synced_at: string | null
   sync_status: string
   sync_error: string | null

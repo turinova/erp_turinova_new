@@ -96,7 +96,18 @@ export async function PUT(
     }
 
     const body = await request.json()
-    const { name, connection_type, api_url, username, password, is_active } = body
+    const { 
+      name, 
+      connection_type, 
+      api_url, 
+      username, 
+      password, 
+      is_active,
+      search_console_property_url,
+      search_console_client_email,
+      search_console_private_key,
+      search_console_enabled
+    } = body
 
     // Validation
     if (!name || !connection_type || !api_url || !username || !password) {
@@ -106,18 +117,55 @@ export async function PUT(
       )
     }
 
+    // Validate Search Console fields if enabled
+    if (search_console_enabled) {
+      if (!search_console_property_url || !search_console_client_email) {
+        return NextResponse.json(
+          { error: 'Search Console property URL és client email kötelező, ha az integráció engedélyezve van' },
+          { status: 400 }
+        )
+      }
+      // Private key is only required if it's not already set (or if user wants to update it)
+      // We'll check this by fetching the existing connection
+    }
+
+    // Get existing connection to check if private key needs to be updated
+    const { data: existingConnection } = await supabase
+      .from('webshop_connections')
+      .select('search_console_private_key')
+      .eq('id', id)
+      .single()
+
+    // Build update object
+    const updateData: any = {
+      name: name.trim(),
+      connection_type,
+      api_url: api_url.trim(),
+      username: username.trim(),
+      password, // TODO: Encrypt in production
+      is_active: is_active !== false,
+      search_console_property_url: search_console_enabled ? search_console_property_url?.trim() || null : null,
+      search_console_client_email: search_console_enabled ? search_console_client_email?.trim() || null : null,
+      search_console_enabled: search_console_enabled || false,
+      updated_at: new Date().toISOString()
+    }
+
+    // Only update private key if provided (user wants to change it)
+    if (search_console_enabled && search_console_private_key && search_console_private_key.trim().length > 0) {
+      updateData.search_console_private_key = search_console_private_key
+    } else if (search_console_enabled && !existingConnection?.search_console_private_key) {
+      // If enabled but no existing key and no new key provided, it's an error
+      return NextResponse.json(
+        { error: 'Search Console private key kötelező, ha az integráció engedélyezve van és még nincs beállítva' },
+        { status: 400 }
+      )
+    }
+    // If private key not provided but exists, keep the existing one (don't update)
+
     // Update connection
     const { data, error } = await supabase
       .from('webshop_connections')
-      .update({
-        name: name.trim(),
-        connection_type,
-        api_url: api_url.trim(),
-        username: username.trim(),
-        password, // TODO: Encrypt in production
-        is_active: is_active !== false,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
       .is('deleted_at', null)
       .select()
