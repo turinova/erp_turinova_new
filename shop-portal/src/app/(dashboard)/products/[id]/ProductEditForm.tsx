@@ -16,6 +16,7 @@ import {
 import { Save as SaveIcon, Sync as SyncIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import type { ProductWithDescriptions } from '@/lib/products-server'
+import HtmlEditor from '@/components/HtmlEditor'
 
 interface ProductEditFormProps {
   product: ProductWithDescriptions
@@ -49,6 +50,15 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   
+  // Helper function to decode HTML entities
+  const decodeHtmlEntities = (html: string | null | undefined): string => {
+    if (!html) return ''
+    // Create a temporary element to decode HTML entities
+    const textarea = document.createElement('textarea')
+    textarea.innerHTML = html
+    return textarea.value
+  }
+
   // Find Hungarian description or create default
   const huDescription = product.descriptions.find(d => d.language_code === 'hu') || {
     id: '',
@@ -70,8 +80,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     meta_title: huDescription.meta_title || '',
     meta_keywords: huDescription.meta_keywords || '',
     meta_description: huDescription.meta_description || '',
-    short_description: huDescription.short_description || '',
-    description: huDescription.description || ''
+    // Decode HTML entities for editor fields
+    short_description: decodeHtmlEntities(huDescription.short_description),
+    description: decodeHtmlEntities(huDescription.description)
   })
 
   const [isPending, startTransition] = useTransition()
@@ -87,19 +98,39 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }))
   }
 
+  // Helper function to encode HTML entities (for saving back to database)
+  const encodeHtmlEntities = (html: string): string => {
+    if (!html) return ''
+    // Encode HTML entities for storage (ShopRenter expects encoded HTML)
+    return html
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
   const handleSave = async () => {
     try {
       setSaving(true)
+
+      // Encode HTML entities before saving (ShopRenter stores HTML as entities)
+      const dataToSave = {
+        language_code: 'hu',
+        name: formData.name,
+        meta_title: formData.meta_title,
+        meta_keywords: formData.meta_keywords,
+        meta_description: formData.meta_description,
+        short_description: encodeHtmlEntities(formData.short_description),
+        description: encodeHtmlEntities(formData.description)
+      }
 
       const response = await fetch(`/api/products/${product.id}/descriptions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          language_code: 'hu',
-          ...formData
-        })
+        body: JSON.stringify(dataToSave)
       })
 
       const result = await response.json()
@@ -191,13 +222,12 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               />
             </Grid>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Rövid leírás"
+              <HtmlEditor
                 value={formData.short_description}
-                onChange={handleInputChange('short_description')}
-                multiline
-                rows={3}
+                onChange={(value) => setFormData(prev => ({ ...prev, short_description: value }))}
+                label="Rövid leírás"
+                placeholder="Írja be a termék rövid leírását..."
+                height={300}
               />
             </Grid>
           </Grid>
@@ -240,14 +270,12 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         <TabPanel value={tabValue} index={2}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Részletes leírás"
+              <HtmlEditor
                 value={formData.description}
-                onChange={handleInputChange('description')}
-                multiline
-                rows={10}
-                helperText="A termék részletes leírása (HTML formátum támogatott)"
+                onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                label="Részletes leírás"
+                placeholder="Írja be a termék részletes leírását..."
+                height={500}
               />
             </Grid>
           </Grid>

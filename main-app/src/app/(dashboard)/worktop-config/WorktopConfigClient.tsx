@@ -561,9 +561,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           if (aValue >= materialLength) return false
           
           // B must be less than or equal to material width
-          // If noPostformingEdge is checked, B must be less than material width - 10
+          // If noPostformingEdge is checked, B must be less than material width - 9
           if (noPostformingEdge) {
-            const maxB = materialWidth - 10
+            const maxB = materialWidth - 9
             if (bValue >= maxB) return false
           } else {
             // B can be equal to material width
@@ -597,9 +597,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             // A <= material length
             if (aValue > materialLength) return false
             
-            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            // B <= material width (if noPostformingEdge checked, B <= width - 9)
             if (noPostformingEdge) {
-              const maxB = materialWidth - 10
+              const maxB = materialWidth - 9
               if (bValue > maxB) return false
             } else {
               if (bValue > materialWidth) return false
@@ -609,9 +609,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             const maxCD = materialLength - 50
             if ((cValue - dValue) > maxCD) return false
             
-            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            // D <= material width (if noPostformingEdge checked, D <= width - 9)
             if (noPostformingEdge) {
-              const maxD = materialWidth - 10
+              const maxD = materialWidth - 9
               if (dValue > maxD) return false
             } else {
               if (dValue > materialWidth) return false
@@ -639,9 +639,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             const maxAD = materialLength - 50
             if ((aValue - dValue) > maxAD) return false
             
-            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            // B <= material width (if noPostformingEdge checked, B <= width - 9)
             if (noPostformingEdge) {
-              const maxB = materialWidth - 10
+              const maxB = materialWidth - 9
               if (bValue > maxB) return false
             } else {
               if (bValue > materialWidth) return false
@@ -650,9 +650,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             // C <= material length
             if (cValue > materialLength) return false
             
-            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            // D <= material width (if noPostformingEdge checked, D <= width - 9)
             if (noPostformingEdge) {
-              const maxD = materialWidth - 10
+              const maxD = materialWidth - 9
               if (dValue > maxD) return false
             } else {
               if (dValue > materialWidth) return false
@@ -712,11 +712,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
           }
           
           // B must be less than or equal to material width
-          // If noPostformingEdge is checked, B must be less than material width - 10
+          // If noPostformingEdge is checked, B must be less than material width - 9
           if (noPostformingEdge) {
-            const maxB = materialWidth - 10
+            const maxB = materialWidth - 9
             if (bValue >= maxB) {
-              toast.error(`A B méret (${bValue}mm) kisebb kell legyen, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+              toast.error(`A B méret (${bValue}mm) kisebb kell legyen, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
               return false
             }
           } else {
@@ -766,11 +766,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               return false
             }
             
-            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            // B <= material width (if noPostformingEdge checked, B <= width - 9)
             if (noPostformingEdge) {
-              const maxB = materialWidth - 10
+              const maxB = materialWidth - 9
               if (bValue > maxB) {
-                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                 return false
               }
             } else {
@@ -787,11 +787,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               return false
             }
             
-            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            // D <= material width (if noPostformingEdge checked, D <= width - 9)
             if (noPostformingEdge) {
-              const maxD = materialWidth - 10
+              const maxD = materialWidth - 9
               if (dValue > maxD) {
-                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                 return false
               }
             } else {
@@ -826,11 +826,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               return false
             }
             
-            // B <= material width (if noPostformingEdge checked, B <= width - 10)
+            // B <= material width (if noPostformingEdge checked, B <= width - 9)
             if (noPostformingEdge) {
-              const maxB = materialWidth - 10
+              const maxB = materialWidth - 9
               if (bValue > maxB) {
-                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                 return false
               }
             } else {
@@ -846,11 +846,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               return false
             }
             
-            // D <= material width (if noPostformingEdge checked, D <= width - 10)
+            // D <= material width (if noPostformingEdge checked, D <= width - 9)
             if (noPostformingEdge) {
-              const maxD = materialWidth - 10
+              const maxD = materialWidth - 9
               if (dValue > maxD) {
-                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                 return false
               }
             } else {
@@ -2586,13 +2586,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const dValue = parseFloat(dimensionD) || 0
                                   
                                   if (e.target.checked) {
-                                    const maxB = materialWidth - 10
-                                    const maxD = materialWidth - 10
+                                    const maxB = materialWidth - 9
+                                    const maxD = materialWidth - 9
                                     if (bValue > 0 && bValue > maxB) {
-                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                     if (dValue > 0 && dValue > maxD) {
-                                      toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                   }
                                 }
@@ -2607,13 +2607,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   const dValue = parseFloat(dimensionD) || 0
                                   
                                   if (e.target.checked) {
-                                    const maxB = materialWidth - 10
-                                    const maxD = materialWidth - 10
+                                    const maxB = materialWidth - 9
+                                    const maxD = materialWidth - 9
                                     if (bValue > 0 && bValue > maxB) {
-                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                     if (dValue > 0 && dValue > maxD) {
-                                      toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                   }
                                 }
@@ -2839,7 +2839,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                             setDimensionB(newValue)
                             
                             // Validation for Levágás: B must be less than or equal to material width
-                            // If noPostformingEdge is checked, B must be less than material width - 10
+                            // If noPostformingEdge is checked, B must be less than material width - 9
                             if (assemblyType === 'Levágás' && selectedLinearMaterialId) {
                               const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
                               if (selectedMaterial) {
@@ -2848,9 +2848,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 
                                 if (bValue > 0) {
                                   if (noPostformingEdge) {
-                                    const maxB = materialWidth - 10
+                                    const maxB = materialWidth - 9
                                     if (bValue >= maxB) {
-                                      toast.error(`A B méret (${bValue}mm) kisebb kell legyen, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A B méret (${bValue}mm) kisebb kell legyen, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                   } else {
                                     // B can be equal to material width
@@ -2862,7 +2862,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               }
                             }
                             
-                            // Validation for Összemarás Balos: B <= material width (if noPostformingEdge checked, B <= width - 10)
+                            // Validation for Összemarás Balos: B <= material width (if noPostformingEdge checked, B <= width - 9)
                             if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
                               const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
                               if (selectedMaterial) {
@@ -2871,9 +2871,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 
                                 if (bValue > 0) {
                                   if (noPostformingEdge) {
-                                    const maxB = materialWidth - 10
+                                    const maxB = materialWidth - 9
                                     if (bValue > maxB) {
-                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                   } else {
                                     if (bValue > materialWidth) {
@@ -2884,7 +2884,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                               }
                             }
                             
-                            // Validation for Összemarás jobbos: B <= material width (if noPostformingEdge checked, B <= width - 10)
+                            // Validation for Összemarás jobbos: B <= material width (if noPostformingEdge checked, B <= width - 9)
                             if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
                               const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
                               if (selectedMaterial) {
@@ -2893,9 +2893,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 
                                 if (bValue > 0) {
                                   if (noPostformingEdge) {
-                                    const maxB = materialWidth - 10
+                                    const maxB = materialWidth - 9
                                     if (bValue > maxB) {
-                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                      toast.error(`A B méret (${bValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxB}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                     }
                                   } else {
                                     if (bValue > materialWidth) {
@@ -2979,7 +2979,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                 const newValue = e.target.value
                                 setDimensionD(newValue)
                                 
-                                // Validation for Összemarás Balos: D <= material width (if noPostformingEdge checked, D <= width - 10)
+                                // Validation for Összemarás Balos: D <= material width (if noPostformingEdge checked, D <= width - 9)
                                 if (assemblyType === 'Összemarás Balos' && selectedLinearMaterialId) {
                                   const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
                                   if (selectedMaterial) {
@@ -2988,9 +2988,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     
                                     if (dValue > 0) {
                                       if (noPostformingEdge) {
-                                        const maxD = materialWidth - 10
+                                        const maxD = materialWidth - 9
                                         if (dValue > maxD) {
-                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                         }
                                       } else {
                                         if (dValue > materialWidth) {
@@ -3001,7 +3001,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   }
                                 }
                                 
-                                // Validation for Összemarás jobbos: D <= material width (if noPostformingEdge checked, D <= width - 10)
+                                // Validation for Összemarás jobbos: D <= material width (if noPostformingEdge checked, D <= width - 9)
                                 if (assemblyType === 'Összemarás jobbos' && selectedLinearMaterialId) {
                                   const selectedMaterial = linearMaterials.find(l => l.id === selectedLinearMaterialId)
                                   if (selectedMaterial) {
@@ -3010,9 +3010,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                     
                                     if (dValue > 0) {
                                       if (noPostformingEdge) {
-                                        const maxD = materialWidth - 10
+                                        const maxD = materialWidth - 9
                                         if (dValue > maxD) {
-                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 10mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
+                                          toast.error(`A D méret (${dValue}mm) nem lehet nagyobb, mint a munkalap szélessége mínusz 9mm (${maxD}mm), mert a "Ne maradjon postforming él" be van jelölve!`)
                                         }
                                       } else {
                                         if (dValue > materialWidth) {

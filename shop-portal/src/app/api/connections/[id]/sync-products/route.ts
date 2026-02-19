@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
+import { updateProgress, clearProgress } from '../sync-progress/route'
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -28,9 +29,11 @@ export async function POST(
   try {
     const { id } = await params
     let product_id: string | undefined
+    let forceSync = false
     try {
       const body = await request.json().catch(() => ({}))
       product_id = body?.product_id
+      forceSync = body?.force === true
     } catch {
       // Body might be empty, that's OK
       product_id = undefined
@@ -260,9 +263,9 @@ export async function POST(
 
       page++
 
-      // Rate limiting: wait between page requests
+      // Minimal delay between page requests (ShopRenter API can handle faster requests)
       if (hasMorePages) {
-        await new Promise(resolve => setTimeout(resolve, 350))
+        await new Promise(resolve => setTimeout(resolve, 50))
       }
     }
 
@@ -270,6 +273,7 @@ export async function POST(
 
     if (allProductIds.length === 0) {
       console.error(`[SYNC] No products found. First page data:`, JSON.stringify(firstPageData, null, 2).substring(0, 500))
+      clearProgress(id)
       return NextResponse.json({ 
         success: false, 
         error: 'Nem található termék a webshopban. Ellenőrizze, hogy a kapcsolat helyes-e és hogy vannak-e termékek a webshopban.' 
@@ -283,6 +287,70 @@ export async function POST(
       batches.push(allProductIds.slice(i, i + BATCH_SIZE))
     }
 
+    // Initialize progress tracking BEFORE starting background process
+    // This ensures the frontend can immediately see the total count
+    updateProgress(id, {
+      total: allProductIds.length,
+      synced: 0,
+      current: 0,
+      status: 'syncing',
+      errors: 0
+    })
+
+    // Small delay to ensure progress is set in memory before frontend polls
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // Return immediately and run sync in background
+    // The frontend will poll for progress
+    processSyncInBackground(supabase, connection, allProductIds, batches, id, forceSync, apiUrl, authHeader).catch(error => {
+      console.error('Background sync error:', error)
+      updateProgress(id, {
+        status: 'error',
+        errors: allProductIds.length
+      })
+    })
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Szinkronizálás elindítva',
+      total: allProductIds.length
+    })
+  } catch (error) {
+    console.error('Error syncing products:', error)
+    
+    // Handle specific error types
+    let errorMessage = 'Unknown error'
+    if (error instanceof SyntaxError && error.message.includes('JSON')) {
+      errorMessage = 'JSON parse hiba: ' + error.message
+    } else if (error instanceof TypeError && error.message.includes('fetch')) {
+      errorMessage = 'Hálózati hiba: ' + error.message
+    } else if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    
+    clearProgress(id)
+    
+    return NextResponse.json({ 
+      success: false, 
+      error: errorMessage 
+    }, { status: 500 })
+  }
+}
+
+/**
+ * Process sync in background (non-blocking)
+ */
+async function processSyncInBackground(
+  supabase: any,
+  connection: any,
+  allProductIds: string[],
+  batches: string[][],
+  connectionId: string,
+  forceSync: boolean,
+  apiUrl: string,
+  authHeader: string
+) {
+  try {
     let syncedCount = 0
     let errorCount = 0
     const errors: string[] = []
@@ -292,6 +360,16 @@ export async function POST(
     // Process batches sequentially (as recommended by ShopRenter)
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex]
+      
+      console.log(`[SYNC] Processing batch ${batchIndex + 1}/${totalBatches} with ${batch.length} items`)
+      
+      // Update progress at start of each batch (show current state)
+      updateProgress(connectionId, {
+        synced: syncedCount,
+        current: syncedCount + errorCount,
+        status: 'syncing',
+        errors: errorCount
+      })
       
       // Build batch request
       const batchRequests = batch.map(productId => ({
@@ -314,7 +392,7 @@ export async function POST(
           'Authorization': authHeader
         },
         body: JSON.stringify(batchPayload),
-        signal: AbortSignal.timeout(120000) // 2 minutes for batch processing
+        signal: AbortSignal.timeout(600000) // 10 minutes for batch processing (increased for large batches)
       })
 
       if (!batchResponse.ok) {
@@ -343,65 +421,109 @@ export async function POST(
       // Process batch responses
       const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
       
+      console.log(`[SYNC] Processing batch ${batchIndex + 1}/${totalBatches} with ${batchResponses.length} items`)
+      
       for (const batchItem of batchResponses) {
-        const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
-        
-        if (statusCode >= 200 && statusCode < 300) {
-          const product = batchItem.response?.body
-          if (product && product.id) {
-            try {
-              await syncProductToDatabase(supabase, connection, product)
-              syncedCount++
-            } catch (error) {
+        try {
+          const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+          
+          if (statusCode >= 200 && statusCode < 300) {
+            const product = batchItem.response?.body
+            if (product && product.id) {
+              try {
+                await syncProductToDatabase(supabase, connection, product, forceSync)
+                syncedCount++
+                // Update progress after EVERY product for real-time updates
+                updateProgress(connectionId, {
+                  synced: syncedCount,
+                  current: syncedCount + errorCount,
+                  status: 'syncing',
+                  errors: errorCount
+                })
+              } catch (error) {
+                errorCount++
+                const errorMsg = error instanceof Error ? error.message : 'Ismeretlen hiba'
+                errors.push(`Termék ${product.sku || product.id}: ${errorMsg}`)
+                console.error(`[SYNC] Error syncing product ${product.sku || product.id}:`, errorMsg)
+                // Update progress even on error
+                updateProgress(connectionId, {
+                  current: syncedCount + errorCount,
+                  errors: errorCount
+                })
+              }
+            } else {
               errorCount++
-              errors.push(`Termék ${product.sku || product.id}: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
+              errors.push(`Termék: Hiányzó adatok a válaszban`)
+              updateProgress(connectionId, {
+                current: syncedCount + errorCount,
+                errors: errorCount
+              })
             }
           } else {
             errorCount++
-            errors.push(`Termék: Hiányzó adatok a válaszban`)
+            const errorMsg = batchItem.response?.body?.message || `HTTP ${statusCode}`
+            errors.push(`Termék ${batchItem.uri}: ${errorMsg}`)
+            console.warn(`[SYNC] Product sync failed with status ${statusCode}: ${errorMsg}`)
+            updateProgress(connectionId, {
+              current: syncedCount + errorCount,
+              errors: errorCount
+            })
           }
-        } else {
+        } catch (itemError) {
+          // Handle errors in processing individual items - don't stop the entire sync
           errorCount++
-          const errorMsg = batchItem.response?.body?.message || `HTTP ${statusCode}`
-          errors.push(`Termék ${batchItem.uri}: ${errorMsg}`)
+          const errorMsg = itemError instanceof Error ? itemError.message : 'Ismeretlen hiba'
+          errors.push(`Termék feldolgozási hiba: ${errorMsg}`)
+          console.error(`[SYNC] Error processing batch item:`, itemError)
+          updateProgress(connectionId, {
+            current: syncedCount + errorCount,
+            errors: errorCount
+          })
         }
       }
+      
+      console.log(`[SYNC] Batch ${batchIndex + 1}/${totalBatches} completed: ${syncedCount} synced, ${errorCount} errors`)
 
-      // Rate limiting: wait between batches (except for last one)
+      // Update progress after each batch
+      updateProgress(connectionId, {
+        synced: syncedCount,
+        current: syncedCount + errorCount,
+        status: 'syncing', // Keep status as 'syncing' until complete
+        errors: errorCount
+      })
+
+      // Minimal delay between batches (ShopRenter recommends waiting for response, not fixed delays)
       if (batchIndex < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 350))
+        await new Promise(resolve => setTimeout(resolve, 50))
       }
     }
 
-    return NextResponse.json({ 
-      success: errorCount === 0, 
+    // Mark as complete
+    updateProgress(connectionId, {
       synced: syncedCount,
-      total: totalProducts,
-      errors: errorCount > 0 ? errors.slice(0, 20) : undefined, // Limit to first 20 errors
-      errorCount,
-      batchesProcessed: totalBatches,
-      totalBatches: totalBatches
+      current: totalProducts,
+      status: 'completed',
+      errors: errorCount
     })
+
+    // Clear progress after 30 seconds (give time for final poll)
+    setTimeout(() => {
+      clearProgress(connectionId)
+    }, 30 * 1000)
+
+    console.log(`[SYNC] Completed: ${syncedCount}/${totalProducts} synced, ${errorCount} errors`)
   } catch (error) {
-    console.error('Error syncing products:', error)
-    
-    // Handle specific error types
-    let errorMessage = 'Unknown error'
-    if (error instanceof SyntaxError && error.message.includes('JSON')) {
-      errorMessage = 'JSON parse hiba: ' + error.message
-    } else if (error instanceof TypeError && error.message.includes('fetch')) {
-      errorMessage = 'Hálózati hiba: ' + error.message
-    } else if (error instanceof Error) {
-      errorMessage = error.message
-    }
-    
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: errorMessage 
-      },
-      { status: 500 }
-    )
+    console.error('Error in background sync:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Ismeretlen hiba'
+    console.error(`[SYNC] Fatal error at batch ${Math.floor(syncedCount / 200) + 1}: ${errorMessage}`)
+    updateProgress(connectionId, {
+      status: 'error',
+      errors: errorCount,
+      synced: syncedCount,
+      current: syncedCount + errorCount
+    })
+    // Don't throw - log the error but mark progress as error so UI can show it
+    console.error(`[SYNC] Sync stopped at ${syncedCount}/${totalProducts} products due to error`)
   }
 }
 
@@ -411,7 +533,8 @@ export async function POST(
 async function syncProductToDatabase(
   supabase: any,
   connection: any,
-  product: any
+  product: any,
+  forceSync: boolean = false
 ) {
   try {
     // Validate product has required fields
@@ -481,7 +604,7 @@ async function syncProductToDatabase(
     }
 
     // Fetch product descriptions if available
-    // Note: Rate limiting delay is handled by the caller
+    // Note: No delay - descriptions are fetched per product but batches are already rate-limited
     if (product.productDescriptions?.href) {
       try {
         // Convert relative href to full URL if needed
@@ -493,9 +616,6 @@ async function syncProductToDatabase(
         } else {
           descUrl = `${apiUrl}/${descUrl}`
         }
-
-        // Add rate limiting delay before description fetch
-        await new Promise(resolve => setTimeout(resolve, 350))
 
         const descResponse = await fetch(descUrl, {
           method: 'GET',
@@ -552,6 +672,28 @@ async function syncProductToDatabase(
               languageCode = 'hu'
             }
 
+            // Check if description already exists
+            const { data: existingDesc } = await supabase
+              .from('shoprenter_product_descriptions')
+              .select('*')
+              .eq('product_id', dbProduct.id)
+              .eq('language_code', languageCode)
+              .single()
+
+            // Smart sync: only update if empty or force sync
+            if (!forceSync && existingDesc) {
+              // Check if local descriptions are not empty
+              const hasLocalContent = 
+                (existingDesc.short_description && existingDesc.short_description.trim().length > 0) ||
+                (existingDesc.description && existingDesc.description.trim().length > 0)
+              
+              if (hasLocalContent) {
+                // Skip updating descriptions if local content exists (unless force sync)
+                console.log(`Skipping description update for product ${product.sku} (local content exists, use force sync to overwrite)`)
+                continue
+              }
+            }
+
             const descDataToSave = {
               product_id: dbProduct.id,
               language_code: languageCode,
@@ -573,13 +715,6 @@ async function syncProductToDatabase(
             }
 
             // Upsert description
-            const { data: existingDesc } = await supabase
-              .from('shoprenter_product_descriptions')
-              .select('id')
-              .eq('product_id', dbProduct.id)
-              .eq('language_code', descDataToSave.language_code)
-              .single()
-
             if (existingDesc) {
               await supabase
                 .from('shoprenter_product_descriptions')
@@ -609,6 +744,28 @@ async function syncProductToDatabase(
           languageCode = 'hu'
         }
 
+        // Check if description already exists
+        const { data: existingDesc } = await supabase
+          .from('shoprenter_product_descriptions')
+          .select('*')
+          .eq('product_id', dbProduct.id)
+          .eq('language_code', languageCode)
+          .single()
+
+        // Smart sync: only update if empty or force sync
+        if (!forceSync && existingDesc) {
+          // Check if local descriptions are not empty
+          const hasLocalContent = 
+            (existingDesc.short_description && existingDesc.short_description.trim().length > 0) ||
+            (existingDesc.description && existingDesc.description.trim().length > 0)
+          
+          if (hasLocalContent) {
+            // Skip updating descriptions if local content exists (unless force sync)
+            console.log(`Skipping description update for product ${product.sku} (local content exists, use force sync to overwrite)`)
+            continue
+          }
+        }
+
         const descDataToSave = {
           product_id: dbProduct.id,
           language_code: languageCode,
@@ -627,13 +784,6 @@ async function syncProductToDatabase(
             .update({ name: descDataToSave.name })
             .eq('id', dbProduct.id)
         }
-
-        const { data: existingDesc } = await supabase
-          .from('shoprenter_product_descriptions')
-          .select('id')
-          .eq('product_id', dbProduct.id)
-          .eq('language_code', descDataToSave.language_code)
-          .single()
 
         if (existingDesc) {
           await supabase

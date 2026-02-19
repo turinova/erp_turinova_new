@@ -158,23 +158,29 @@ export default function ProductsTable({ initialProducts }: ProductsTableProps) {
       </Box>
 
       {/* Products Table */}
-      <TableContainer component={Paper}>
-        <Table>
+      <TableContainer 
+        component={Paper}
+        sx={{ 
+          maxHeight: 'calc(100vh - 250px)',
+          overflow: 'auto'
+        }}
+      >
+        <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell>SKU</TableCell>
-              <TableCell>Név</TableCell>
-              <TableCell>Státusz</TableCell>
-              <TableCell>Szinkronizálás</TableCell>
-              <TableCell>Utolsó szinkronizálás</TableCell>
-              <TableCell align="right">Műveletek</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>SKU</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Név</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Státusz</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Szinkronizálás</TableCell>
+              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Utolsó szinkronizálás</TableCell>
+              <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Műveletek</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                  <Typography color="text.secondary">
+                <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                  <Typography color="text.secondary" variant="body2">
                     {searchTerm ? 'Nincs találat' : 'Nincsenek termékek'}
                   </Typography>
                 </TableCell>
@@ -187,17 +193,19 @@ export default function ProductsTable({ initialProducts }: ProductsTableProps) {
                   sx={{ cursor: 'pointer' }}
                   onClick={() => handleProductClick(product.id)}
                 >
-                  <TableCell>{product.sku}</TableCell>
-                  <TableCell>{product.name || '-'}</TableCell>
-                  <TableCell>{getStatusChip(product)}</TableCell>
-                  <TableCell>{getSyncStatusChip(product)}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ fontSize: '0.8125rem', py: 0.75 }}>{product.sku}</TableCell>
+                  <TableCell sx={{ fontSize: '0.8125rem', py: 0.75, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={product.name || '-'}>
+                    {product.name || '-'}
+                  </TableCell>
+                  <TableCell sx={{ py: 0.75 }}>{getStatusChip(product)}</TableCell>
+                  <TableCell sx={{ py: 0.75 }}>{getSyncStatusChip(product)}</TableCell>
+                  <TableCell sx={{ fontSize: '0.8125rem', py: 0.75 }}>
                     {product.last_synced_at 
                       ? new Date(product.last_synced_at).toLocaleString('hu-HU')
                       : '-'
                     }
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" sx={{ py: 0.75 }}>
                     <Tooltip title="Szinkronizálás">
                       <IconButton
                         size="small"
