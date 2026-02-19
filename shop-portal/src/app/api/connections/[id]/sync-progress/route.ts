@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getProgress, updateProgress, clearProgress, stopSync, shouldStopSync } from '@/lib/sync-progress-store'
 
-// In-memory progress store (in production, use Redis or database)
-const progressStore = new Map<string, {
-  total: number
-  synced: number
-  current: number
-  status: string
-  errors: number
-  startTime: number
-}>()
+// Re-export for backward compatibility
+export { updateProgress, clearProgress, stopSync, shouldStopSync, getProgress }
 
 /**
  * GET /api/connections/[id]/sync-progress
@@ -20,14 +14,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const progress = progressStore.get(id)
+    const progress = getProgress(id)
 
     if (!progress) {
+      console.log(`[PROGRESS] No progress found for connection ${id}`)
       return NextResponse.json({
         success: false,
         error: 'Nincs aktív szinkronizálás'
       }, { status: 404 })
     }
+
+    console.log(`[PROGRESS] Returning progress for ${id}: synced=${progress.synced}/${progress.total}, status=${progress.status}`)
 
     return NextResponse.json({
       success: true,
@@ -51,43 +48,26 @@ export async function GET(
 }
 
 /**
- * Helper function to update progress (called from sync route)
+ * POST /api/connections/[id]/sync-progress/stop
+ * Stop the sync process for a connection
  */
-export function updateProgress(
-  connectionId: string,
-  updates: Partial<{
-    total: number
-    synced: number
-    current: number
-    status: string
-    errors: number
-  }>
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const existing = progressStore.get(connectionId) || {
-    total: 0,
-    synced: 0,
-    current: 0,
-    status: 'starting',
-    errors: 0,
-    startTime: Date.now()
+  try {
+    const { id } = await params
+    stopSync(id)
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Szinkronizálás leállítva'
+    })
+  } catch (error) {
+    console.error('Error stopping sync:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Hiba a szinkronizálás leállításakor'
+    }, { status: 500 })
   }
-
-  progressStore.set(connectionId, {
-    ...existing,
-    ...updates
-  })
-}
-
-/**
- * Helper function to clear progress
- */
-export function clearProgress(connectionId: string) {
-  progressStore.delete(connectionId)
-}
-
-/**
- * Helper function to get progress
- */
-export function getProgress(connectionId: string) {
-  return progressStore.get(connectionId)
 }

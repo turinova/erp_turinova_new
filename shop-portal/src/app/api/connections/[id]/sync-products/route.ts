@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
-import { updateProgress, clearProgress } from '../sync-progress/route'
+import { updateProgress, clearProgress, shouldStopSync } from '@/lib/sync-progress-store'
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -289,19 +289,19 @@ export async function POST(
 
     // Initialize progress tracking BEFORE starting background process
     // This ensures the frontend can immediately see the total count
+    // Clear any previous stop flag when starting a new sync
     updateProgress(id, {
       total: allProductIds.length,
       synced: 0,
       current: 0,
       status: 'syncing',
-      errors: 0
+      errors: 0,
+      shouldStop: false // Clear any previous stop flag
     })
-
-    // Small delay to ensure progress is set in memory before frontend polls
-    await new Promise(resolve => setTimeout(resolve, 100))
 
     // Return immediately and run sync in background
     // The frontend will poll for progress
+    // Don't await - let it run in background
     processSyncInBackground(supabase, connection, allProductIds, batches, id, forceSync, apiUrl, authHeader).catch(error => {
       console.error('Background sync error:', error)
       updateProgress(id, {
@@ -309,6 +309,10 @@ export async function POST(
         errors: allProductIds.length
       })
     })
+
+    // Small delay to ensure progress is set in memory before returning response
+    // This gives the progress store time to be initialized
+    await new Promise(resolve => setTimeout(resolve, 200))
 
     return NextResponse.json({ 
       success: true,
@@ -351,6 +355,20 @@ async function processSyncInBackground(
   authHeader: string
 ) {
   try {
+    // Ensure progress is initialized at the start of background process
+    // This is a safety check in case the main handler didn't set it
+    // Clear any previous stop flag when starting a new sync
+    updateProgress(connectionId, {
+      total: allProductIds.length,
+      synced: 0,
+      current: 0,
+      status: 'syncing',
+      errors: 0,
+      shouldStop: false // Clear any previous stop flag
+    })
+
+    console.log(`[SYNC] Background process started for ${allProductIds.length} products in ${batches.length} batches`)
+
     let syncedCount = 0
     let errorCount = 0
     const errors: string[] = []
@@ -359,6 +377,18 @@ async function processSyncInBackground(
 
     // Process batches sequentially (as recommended by ShopRenter)
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      // Check if sync should stop
+      if (shouldStopSync(connectionId)) {
+        console.log(`[SYNC] Sync stopped by user at batch ${batchIndex + 1}/${totalBatches}`)
+        updateProgress(connectionId, {
+          status: 'stopped',
+          synced: syncedCount,
+          current: syncedCount + errorCount,
+          errors: errorCount
+        })
+        return // Exit the sync process
+      }
+
       const batch = batches[batchIndex]
       
       console.log(`[SYNC] Processing batch ${batchIndex + 1}/${totalBatches} with ${batch.length} items`)
@@ -418,12 +448,36 @@ async function processSyncInBackground(
         continue
       }
 
+      // Check again before processing batch items
+      if (shouldStopSync(connectionId)) {
+        console.log(`[SYNC] Sync stopped by user during batch ${batchIndex + 1} processing`)
+        updateProgress(connectionId, {
+          status: 'stopped',
+          synced: syncedCount,
+          current: syncedCount + errorCount,
+          errors: errorCount
+        })
+        return // Exit the sync process
+      }
+
       // Process batch responses
       const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
       
       console.log(`[SYNC] Processing batch ${batchIndex + 1}/${totalBatches} with ${batchResponses.length} items`)
       
       for (const batchItem of batchResponses) {
+        // Check if sync should stop before each item
+        if (shouldStopSync(connectionId)) {
+          console.log(`[SYNC] Sync stopped by user during item processing`)
+          updateProgress(connectionId, {
+            status: 'stopped',
+            synced: syncedCount,
+            current: syncedCount + errorCount,
+            errors: errorCount
+          })
+          return // Exit the sync process
+        }
+
         try {
           const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
           

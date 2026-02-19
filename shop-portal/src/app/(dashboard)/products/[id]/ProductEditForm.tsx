@@ -11,12 +11,18 @@ import {
   Grid,
   Tabs,
   Tab,
-  CircularProgress
+  CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material'
-import { Save as SaveIcon, Sync as SyncIcon } from '@mui/icons-material'
+import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import type { ProductWithDescriptions } from '@/lib/products-server'
 import HtmlEditor from '@/components/HtmlEditor'
+import SourceMaterialsTab from '@/components/SourceMaterialsTab'
 
 interface ProductEditFormProps {
   product: ProductWithDescriptions
@@ -49,6 +55,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [tabValue, setTabValue] = useState(0)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   
   // Helper function to decode HTML entities
   const decodeHtmlEntities = (html: string | null | undefined): string => {
@@ -151,7 +160,12 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
   }
 
-  const handleSync = async () => {
+  const handleSyncClick = () => {
+    setSyncConfirmOpen(true)
+  }
+
+  const handleSyncConfirm = async () => {
+    setSyncConfirmOpen(false)
     try {
       setSyncing(true)
 
@@ -162,7 +176,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       const result = await response.json()
 
       if (result.success) {
-        toast.success('Termék sikeresen szinkronizálva!')
+        toast.success(result.message || 'Termék sikeresen szinkronizálva a webshopba!')
         startTransition(() => {
           router.refresh()
         })
@@ -177,6 +191,46 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
   }
 
+  const handleSyncCancel = () => {
+    setSyncConfirmOpen(false)
+  }
+
+  const handleGenerateDescription = async () => {
+    try {
+      setGenerating(true)
+      setGenerationDialogOpen(false)
+
+      const response = await fetch(`/api/products/${product.id}/generate-description`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          useSourceMaterials: true,
+          language: 'hu'
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Update the description field with generated content
+        setFormData(prev => ({
+          ...prev,
+          description: result.description
+        }))
+        toast.success(`Leírás sikeresen generálva! (${result.metrics.wordCount} szó, ${result.metrics.tokensUsed} token)`)
+      } else {
+        toast.error(`Generálási hiba: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error) {
+      console.error('Error generating description:', error)
+      toast.error('Hiba a leírás generálásakor')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -187,7 +241,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Button
             variant="outlined"
             startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
-            onClick={handleSync}
+            onClick={handleSyncClick}
             disabled={syncing}
           >
             Szinkronizálás
@@ -208,6 +262,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Tab label="Alapadatok" />
           <Tab label="SEO" />
           <Tab label="Leírás" />
+          <Tab label="Forrásanyagok" />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
@@ -270,6 +325,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         <TabPanel value={tabValue} index={2}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Részletes leírás</Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+                  onClick={() => setGenerationDialogOpen(true)}
+                  disabled={generating}
+                >
+                  {generating ? 'Generálás...' : 'AI Leírás generálása'}
+                </Button>
+              </Box>
               <HtmlEditor
                 value={formData.description}
                 onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
@@ -280,7 +346,90 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             </Grid>
           </Grid>
         </TabPanel>
+
+        <TabPanel value={tabValue} index={3}>
+          <SourceMaterialsTab productId={product.id} />
+        </TabPanel>
       </Paper>
+
+      {/* Sync Confirmation Dialog */}
+      <Dialog
+        open={syncConfirmOpen}
+        onClose={handleSyncCancel}
+        aria-labelledby="sync-dialog-title"
+        aria-describedby="sync-dialog-description"
+      >
+        <DialogTitle id="sync-dialog-title">
+          Szinkronizálás megerősítése
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="sync-dialog-description" component="div">
+            <Typography variant="body1" paragraph>
+              Biztosan szeretné szinkronizálni a termék adatait a webshopba? 
+              A helyi módosítások felülírják a webshopban lévő adatokat.
+            </Typography>
+            <Typography variant="body2" component="div" sx={{ mt: 2 }}>
+              <strong>Szinkronizált mezők:</strong>
+              <Box component="ul" sx={{ mt: 1, pl: 3 }}>
+                <li>Termék neve</li>
+                <li>Meta cím, kulcsszavak, leírás</li>
+                <li>Rövid leírás</li>
+                <li>Részletes leírás</li>
+              </Box>
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleSyncCancel} disabled={syncing}>
+            Mégse
+          </Button>
+          <Button 
+            onClick={handleSyncConfirm} 
+            variant="contained" 
+            color="primary"
+            disabled={syncing}
+            startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
+          >
+            {syncing ? 'Szinkronizálás...' : 'Szinkronizálás'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Generate Description Dialog */}
+      <Dialog
+        open={generationDialogOpen}
+        onClose={() => setGenerationDialogOpen(false)}
+        aria-labelledby="generate-dialog-title"
+        aria-describedby="generate-dialog-description"
+      >
+        <DialogTitle id="generate-dialog-title">
+          AI Leírás generálása
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="generate-dialog-description" component="div">
+            <Typography variant="body1" paragraph component="div">
+              Az AI a forrásanyagok alapján generál egy SEO-optimalizált, természetes hangvételű termékleírást.
+            </Typography>
+            <Typography variant="body2" color="text.secondary" component="div">
+              A generált leírás felülírja a jelenlegi "Részletes leírás" mezőt. Mentés előtt szerkesztheti.
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setGenerationDialogOpen(false)} disabled={generating}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleGenerateDescription}
+            variant="contained"
+            color="primary"
+            disabled={generating}
+            startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+          >
+            {generating ? 'Generálás...' : 'Generálás'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

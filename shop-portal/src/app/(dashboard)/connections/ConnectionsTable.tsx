@@ -37,7 +37,9 @@ import {
   Cancel as CancelIcon,
   Link as LinkIcon,
   Refresh as RefreshIcon,
-  Sync as SyncIcon
+  Sync as SyncIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -61,7 +63,9 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [forceSync, setForceSync] = useState(false)
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null)
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
+  const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const currentSyncingConnectionRef = useRef<WebshopConnection | null>(null)
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -72,12 +76,228 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       }
     }
   }, [])
+
+  // Helper function to start polling for a connection
+  const startPollingForConnection = (connection: WebshopConnection) => {
+    // Clear any existing polling interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
+    }
+
+    // Helper function to stop polling and cleanup
+    const stopPolling = () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+      // Don't clear syncingConnectionId or syncProgress - let panel stay visible
+    }
+
+    // Track if we've already shown success/error message
+    const completionShownRef = { current: false }
+
+    // Start polling for progress
+    pollIntervalRef.current = setInterval(async () => {
+      // Check if interval was cleared (shouldn't happen, but safety check)
+      if (!pollIntervalRef.current) {
+        return
+      }
+
+      try {
+        const progressResponse = await fetch(`/api/connections/${connection.id}/sync-progress`)
+        if (progressResponse.ok) {
+          const progressData = await progressResponse.json()
+          if (progressData.success && progressData.progress) {
+            // Update progress with exact counts from server
+            setSyncProgress(prev => ({
+              current: progressData.progress.current || prev?.current || 0,
+              total: progressData.progress.total || prev?.total || 0,
+              synced: progressData.progress.synced || prev?.synced || 0,
+              batchesProcessed: 0, // Not tracked in progress API
+              totalBatches: 0,
+              status: progressData.progress.status || prev?.status || 'syncing',
+              elapsed: progressData.progress.elapsed || prev?.elapsed || 0
+            }))
+
+            // If stopped, stop polling (only once)
+            if (progressData.progress.status === 'stopped' && !completionShownRef.current) {
+              completionShownRef.current = true
+              // Clear interval FIRST before doing anything else
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current)
+                pollIntervalRef.current = null
+              }
+              // Update progress with stopped status
+              setSyncProgress(prev => prev ? { ...prev, status: 'stopped' } : null)
+              return // Exit immediately to prevent further execution
+            } else if (progressData.progress.status === 'completed' && !completionShownRef.current) {
+              completionShownRef.current = true
+              // Clear interval FIRST before doing anything else
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current)
+                pollIntervalRef.current = null
+              }
+              // Update progress with completed status
+              setSyncProgress(prev => prev ? { ...prev, status: 'completed' } : null)
+              toast.success(`${progressData.progress.synced} termék sikeresen szinkronizálva!${progressData.progress.errors > 0 ? ` (${progressData.progress.errors} hiba)` : ''}`, {
+                autoClose: 10000, // Show for 10 seconds
+              })
+              startTransition(() => {
+                router.refresh()
+              })
+              return // Exit immediately to prevent further execution
+            } else if (progressData.progress.status === 'error' && !completionShownRef.current) {
+              // Sync encountered an error
+              completionShownRef.current = true
+              // Clear interval FIRST before doing anything else
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current)
+                pollIntervalRef.current = null
+              }
+              // Update progress with error status
+              setSyncProgress(prev => prev ? { ...prev, status: 'error' } : null)
+              toast.error(`Szinkronizálás hibával leállt: ${progressData.progress.synced}/${progressData.progress.total} termék szinkronizálva. ${progressData.progress.errors} hiba.`)
+              startTransition(() => {
+                router.refresh()
+              })
+              return // Exit immediately to prevent further execution
+            }
+          }
+        } else if (progressResponse.status === 404) {
+          // Progress not found - could mean:
+          // 1. Sync hasn't started yet (initial state)
+          // 2. Sync completed and progress was cleared (after 30 seconds)
+          // Only treat as completed if we had progress before and synced count matches total
+          if (syncProgress && syncProgress.synced > 0 && syncProgress.synced >= syncProgress.total) {
+            // Sync was completed and progress was cleared
+            if (!completionShownRef.current) {
+              completionShownRef.current = true
+              // Clear interval FIRST before doing anything else
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current)
+                pollIntervalRef.current = null
+              }
+              // Update progress with completed status
+              setSyncProgress(prev => prev ? { ...prev, status: 'completed' } : null)
+              toast.success('Szinkronizálás befejezve!')
+              startTransition(() => {
+                router.refresh()
+              })
+            }
+            return // Exit immediately
+          }
+          // Otherwise, just wait - sync might be initializing
+          // Don't update status, keep polling
+          return
+        }
+      } catch (pollError) {
+        console.error('Error polling progress:', pollError)
+        // On repeated errors, stop polling after 5 consecutive failures
+        // (This is handled by the timeout below)
+      }
+    }, 1000) // Poll every second
+
+    // Cleanup polling after 10 minutes (safety timeout)
+    setTimeout(() => {
+      if (pollIntervalRef.current) {
+        stopPolling()
+        toast.warning('Szinkronizálás timeout - a folyamat leállt')
+      }
+    }, 10 * 60 * 1000)
+  }
+
+  // Check for active syncs on mount and restore state
+  useEffect(() => {
+    const checkActiveSyncs = async () => {
+      for (const connection of connections) {
+        try {
+          const response = await fetch(`/api/connections/${connection.id}/sync-progress`)
+          if (response.ok) {
+            const data = await response.json()
+            if (data.success && data.progress && (data.progress.status === 'syncing' || data.progress.status === 'stopped')) {
+              // Found an active sync, restore state
+              setSyncingConnectionId(connection.id)
+              currentSyncingConnectionRef.current = connection
+              setSyncProgress({
+                current: data.progress.current || 0,
+                total: data.progress.total || 0,
+                synced: data.progress.synced || 0,
+                batchesProcessed: 0,
+                totalBatches: 0,
+                status: data.progress.status,
+                elapsed: data.progress.elapsed || 0
+              })
+              setSyncPanelExpanded(true)
+              // Restart polling if still syncing
+              if (data.progress.status === 'syncing') {
+                startPollingForConnection(connection)
+              }
+              break
+            }
+          }
+        } catch (error) {
+          // Ignore errors
+        }
+      }
+    }
+    
+    checkActiveSyncs()
+  }, []) // Only on mount
+
+  // Function to stop sync (accessible from dialog)
+  const handleStopSync = async () => {
+    if (!currentSyncingConnectionRef.current) {
+      return
+    }
+
+    try {
+      // First, fetch the latest progress to get the most accurate count
+      const progressResponse = await fetch(`/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress`)
+      if (progressResponse.ok) {
+        const progressData = await progressResponse.json()
+        if (progressData.success && progressData.progress) {
+          // Update UI with latest progress before stopping
+          setSyncProgress(prev => ({
+            ...prev,
+            ...progressData.progress,
+            status: 'stopped'
+          }))
+        }
+      }
+
+      // Then stop the sync
+      const stopResponse = await fetch(`/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress/stop`, {
+        method: 'POST'
+      })
+      
+      if (stopResponse.ok) {
+        // Stop polling immediately
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current)
+          pollIntervalRef.current = null
+        }
+        
+        // Ensure status is set to stopped
+        setSyncProgress(prev => prev ? { ...prev, status: 'stopped' } : null)
+        
+        toast.info('Szinkronizálás leállítva')
+      } else {
+        toast.error('Hiba a szinkronizálás leállításakor')
+      }
+    } catch (error) {
+      console.error('Error stopping sync:', error)
+      toast.error('Hiba a szinkronizálás leállításakor')
+    }
+  }
   const [syncProgress, setSyncProgress] = useState<{
     current: number
     total: number
     synced: number
     batchesProcessed: number
     totalBatches: number
+    status?: string
+    elapsed?: number
   } | null>(null)
   
   const [newConnection, setNewConnection] = useState({
@@ -351,7 +571,36 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   }
 
   // Handle sync products button click - show dialog first
-  const handleSyncProductsClick = (connection: WebshopConnection) => {
+  const handleSyncProductsClick = async (connection: WebshopConnection) => {
+    // If sync is already in progress for this connection, reopen the modal
+    if (syncingConnectionId === connection.id && syncProgress) {
+      // Sync is already running, just reopen the modal
+      setSyncingConnectionId(connection.id)
+      currentSyncingConnectionRef.current = connection
+      
+      // Fetch latest progress to ensure we have current data
+      try {
+        const progressResponse = await fetch(`/api/connections/${connection.id}/sync-progress`)
+        if (progressResponse.ok) {
+          const progressData = await progressResponse.json()
+          if (progressData.success && progressData.progress) {
+            setSyncProgress({
+              current: progressData.progress.current || 0,
+              total: progressData.progress.total || 0,
+              synced: progressData.progress.synced || 0,
+              batchesProcessed: 0,
+              totalBatches: 0,
+              status: progressData.progress.status,
+              elapsed: progressData.progress.elapsed || 0
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching progress:', error)
+      }
+      return
+    }
+    
     setSyncDialogConnection(connection)
     setForceSync(false)
     setSyncDialogOpen(true)
@@ -366,6 +615,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
     try {
       setSyncingConnectionId(connection.id)
+      currentSyncingConnectionRef.current = connection
       setSyncProgress({ current: 0, total: 0, synced: 0, batchesProcessed: 0, totalBatches: 0 })
       
       // Start sync (non-blocking)
@@ -400,122 +650,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       // Wait a moment for sync to initialize progress in the background
       await new Promise(resolve => setTimeout(resolve, 1000))
 
-      // Clear any existing polling interval
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
-        pollIntervalRef.current = null
-      }
-
-      // Helper function to stop polling and cleanup
-      const stopPolling = () => {
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current)
-          pollIntervalRef.current = null
-        }
-        setSyncingConnectionId(null)
-        setSyncProgress(null)
-      }
-
-      // Track if we've already shown success/error message
-      const completionShownRef = { current: false }
-
-      // Start polling for progress
-      pollIntervalRef.current = setInterval(async () => {
-        // Check if interval was cleared (shouldn't happen, but safety check)
-        if (!pollIntervalRef.current) {
-          return
-        }
-
-        try {
-          const progressResponse = await fetch(`/api/connections/${connection.id}/sync-progress`)
-          if (progressResponse.ok) {
-            const progressData = await progressResponse.json()
-            if (progressData.success && progressData.progress) {
-              // Update progress with exact counts from server
-              setSyncProgress({
-                current: progressData.progress.current,
-                total: progressData.progress.total,
-                synced: progressData.progress.synced,
-                batchesProcessed: 0, // Not tracked in progress API
-                totalBatches: 0,
-                status: progressData.progress.status
-              })
-
-              // If completed, stop polling and refresh (only once)
-              if (progressData.progress.status === 'completed' && !completionShownRef.current) {
-                completionShownRef.current = true
-                // Clear interval FIRST before doing anything else
-                if (pollIntervalRef.current) {
-                  clearInterval(pollIntervalRef.current)
-                  pollIntervalRef.current = null
-                }
-                // Don't clear syncingConnectionId yet - let user see completion and close manually
-                // Update progress with completed status
-                setSyncProgress(prev => prev ? { ...prev, status: 'completed' } : null)
-                toast.success(`${progressData.progress.synced} termék sikeresen szinkronizálva!${progressData.progress.errors > 0 ? ` (${progressData.progress.errors} hiba)` : ''}`)
-                startTransition(() => {
-                  router.refresh()
-                })
-                return // Exit immediately to prevent further execution
-              } else if (progressData.progress.status === 'error' && !completionShownRef.current) {
-                // Sync encountered an error
-                completionShownRef.current = true
-                // Clear interval FIRST before doing anything else
-                if (pollIntervalRef.current) {
-                  clearInterval(pollIntervalRef.current)
-                  pollIntervalRef.current = null
-                }
-                // Don't clear syncingConnectionId yet - let user see error and close manually
-                // Update progress with error status
-                setSyncProgress(prev => prev ? { ...prev, status: 'error' } : null)
-                toast.error(`Szinkronizálás hibával leállt: ${progressData.progress.synced}/${progressData.progress.total} termék szinkronizálva. ${progressData.progress.errors} hiba.`)
-                startTransition(() => {
-                  router.refresh()
-                })
-                return // Exit immediately to prevent further execution
-              }
-            }
-          } else if (progressResponse.status === 404) {
-            // Progress not found - could mean:
-            // 1. Sync hasn't started yet (initial state)
-            // 2. Sync completed and progress was cleared (after 30 seconds)
-            // Only treat as completed if we had progress before and synced count matches total
-            if (syncProgress && syncProgress.synced > 0 && syncProgress.synced >= syncProgress.total) {
-              // Sync was completed and progress was cleared
-              if (!completionShownRef.current) {
-                completionShownRef.current = true
-                // Clear interval FIRST before doing anything else
-                if (pollIntervalRef.current) {
-                  clearInterval(pollIntervalRef.current)
-                  pollIntervalRef.current = null
-                }
-                // Update progress with completed status
-                setSyncProgress(prev => prev ? { ...prev, status: 'completed' } : null)
-                toast.success('Szinkronizálás befejezve!')
-                startTransition(() => {
-                  router.refresh()
-                })
-              }
-              return // Exit immediately
-            }
-            // Otherwise, just wait - sync might be initializing
-            // Don't update status, keep polling
-            return
-          }
-        } catch (pollError) {
-          console.error('Error polling progress:', pollError)
-          // On repeated errors, stop polling after 5 consecutive failures
-          // (This is handled by the timeout below)
-        }
-      }, 1000) // Poll every second
-
-      // Cleanup polling after 10 minutes (safety timeout)
-      setTimeout(() => {
-        if (pollIntervalRef.current) {
-          stopPolling()
-          toast.warning('Szinkronizálás timeout - a folyamat leállt')
-        }
-      }, 10 * 60 * 1000)
+      // Start polling using the extracted function
+      startPollingForConnection(connection)
 
     } catch (error) {
       console.error('Error syncing products:', error)
@@ -526,6 +662,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         pollIntervalRef.current = null
       }
       setSyncingConnectionId(null)
+      currentSyncingConnectionRef.current = null
       setSyncProgress(null)
     }
   }
@@ -643,7 +780,17 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                   </TableCell>
                   <TableCell>{connection.username}</TableCell>
                   <TableCell>
-                    {getStatusIndicator(connection)}
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                      {getStatusIndicator(connection)}
+                      {syncingConnectionId === connection.id && syncProgress && (
+                        <Chip
+                          size="small"
+                          label={`Szinkronizálás: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')} (${Math.round((syncProgress.synced / syncProgress.total) * 100)}%)`}
+                          color="primary"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
                   </TableCell>
                   <TableCell>
                     {connection.last_tested_at ? (
@@ -705,6 +852,202 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Sync Progress Panel - Persistent display under table */}
+      {syncingConnectionId && syncProgress && (
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            mt: 3, 
+            p: 2,
+            borderLeft: `4px solid ${
+              syncProgress.status === 'completed' ? 'success.main' : 
+              syncProgress.status === 'error' ? 'error.main' : 
+              syncProgress.status === 'stopped' ? 'warning.main' : 
+              'primary.main'
+            }`
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: syncPanelExpanded ? 2 : 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <SyncIcon 
+                color={
+                  syncProgress.status === 'completed' ? 'success' : 
+                  syncProgress.status === 'error' ? 'error' : 
+                  syncProgress.status === 'stopped' ? 'warning' : 
+                  'primary'
+                } 
+              />
+              <Box>
+                <Typography variant="h6">
+                  Termékek szinkronizálása
+                </Typography>
+                {currentSyncingConnectionRef.current && (
+                  <Typography variant="body2" color="text.secondary">
+                    {currentSyncingConnectionRef.current.name}
+                  </Typography>
+                )}
+              </Box>
+              {syncProgress.total > 0 && (
+                <Chip
+                  label={`${syncProgress.synced.toLocaleString('hu-HU')} / ${syncProgress.total.toLocaleString('hu-HU')} (${Math.round((syncProgress.synced / syncProgress.total) * 100)}%)`}
+                  color={
+                    syncProgress.status === 'completed' ? 'success' : 
+                    syncProgress.status === 'error' ? 'error' : 
+                    syncProgress.status === 'stopped' ? 'warning' : 
+                    'primary'
+                  }
+                  variant="outlined"
+                />
+              )}
+            </Box>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              {syncProgress.status === 'syncing' && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  startIcon={<CancelIcon />}
+                  onClick={handleStopSync}
+                >
+                  Leállítás
+                </Button>
+              )}
+              {(syncProgress.status === 'completed' || syncProgress.status === 'error' || syncProgress.status === 'stopped') && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => {
+                    setSyncingConnectionId(null)
+                    currentSyncingConnectionRef.current = null
+                    setSyncProgress(null)
+                  }}
+                >
+                  Bezárás
+                </Button>
+              )}
+              <IconButton
+                size="small"
+                onClick={() => setSyncPanelExpanded(!syncPanelExpanded)}
+              >
+                {syncPanelExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+              </IconButton>
+            </Box>
+          </Box>
+
+          {syncPanelExpanded && (
+            <Box>
+              {syncProgress && syncProgress.total > 0 ? (
+                <>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {syncProgress.status === 'completed' ? 'Szinkronizálás befejezve!' : 
+                       syncProgress.status === 'error' ? 'Szinkronizálás hibával leállt!' :
+                       syncProgress.status === 'stopped' ? 'Szinkronizálás leállítva' :
+                       syncProgress.status === 'syncing' || !syncProgress.status ? 'Szinkronizálás folyamatban...' :
+                       'Szinkronizálás folyamatban...'}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" fontWeight="medium">
+                      {syncProgress.synced} / {syncProgress.total} termék
+                    </Typography>
+                  </Box>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={syncProgress.total > 0 ? (syncProgress.synced / syncProgress.total) * 100 : 0}
+                    sx={{ height: 10, borderRadius: 5, mb: 3 }}
+                    color={syncProgress.status === 'completed' ? 'success' : 'primary'}
+                  />
+                  <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Összes termék:
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold" color="primary.main">
+                        {syncProgress.total.toLocaleString('hu-HU')} db
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Szinkronizált termékek:
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold" color="success.main">
+                        {syncProgress.synced.toLocaleString('hu-HU')} db
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Hátralévő termékek:
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold" color="warning.main">
+                        {(syncProgress.total - syncProgress.synced).toLocaleString('hu-HU')} db
+                      </Typography>
+                    </Box>
+                    {syncProgress.total > 0 && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Előrehaladás:
+                        </Typography>
+                        <Typography variant="body2" fontWeight="bold" color="primary.main">
+                          {Math.round((syncProgress.synced / syncProgress.total) * 100)}%
+                        </Typography>
+                      </Box>
+                    )}
+                    {syncProgress.total > 0 && syncProgress.synced < syncProgress.total && (
+                      <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                        <Typography variant="body2" color="info.dark">
+                          <strong>Becsült hátralévő idő:</strong> {
+                            syncProgress.synced > 0 && syncProgress.elapsed && syncProgress.elapsed > 0
+                              ? (() => {
+                                  // Calculate actual sync rate (products per second)
+                                  const rate = syncProgress.synced / syncProgress.elapsed
+                                  // Calculate remaining products
+                                  const remaining = syncProgress.total - syncProgress.synced
+                                  // Estimate remaining time in seconds
+                                  const remainingSeconds = remaining / rate
+                                  // Convert to minutes (round up)
+                                  const remainingMinutes = Math.ceil(remainingSeconds / 60)
+                                  return `~${remainingMinutes} perc`
+                                })()
+                              : `~${Math.ceil((syncProgress.total - syncProgress.synced) / 200 * 0.5)} perc` // Fallback to old calculation
+                          }
+                        </Typography>
+                      </Box>
+                    )}
+                    {syncProgress.status === 'completed' && (
+                      <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+                        <Typography variant="body2" color="success.dark" fontWeight="medium">
+                          ✓ Szinkronizálás sikeresen befejeződött!
+                        </Typography>
+                      </Box>
+                    )}
+                    {syncProgress.status === 'stopped' && (
+                      <Box sx={{ mt: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                        <Typography variant="body2" color="warning.dark" fontWeight="medium">
+                          ⚠ Szinkronizálás leállítva
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                    <CircularProgress size={24} />
+                    <Typography variant="body1">
+                      Termékek listájának betöltése...
+                    </Typography>
+                  </Box>
+                  <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Kérjük, várjon.</strong> A szinkronizálás eltarthat néhány percig, ha sok termék van a webshopban.
+                    </Typography>
+                  </Box>
+                </>
+              )}
+            </Box>
+          )}
+        </Paper>
+      )}
 
       {/* New Connection Dialog */}
       <Dialog
@@ -1031,147 +1374,6 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         </DialogActions>
       </Dialog>
 
-      {/* Sync Progress Dialog */}
-      <Dialog
-        open={syncingConnectionId !== null}
-        maxWidth="sm"
-        fullWidth
-        disableEscapeKeyDown
-        onClose={(event, reason) => {
-          // Prevent closing if sync is in progress
-          if (reason === 'backdropClick' || reason === 'escapeKeyDown') {
-            // Only allow closing if sync is completed or errored
-            if (syncProgress && (syncProgress.status === 'completed' || syncProgress.status === 'error')) {
-              // Allow close - sync is done
-              setSyncingConnectionId(null)
-              setSyncProgress(null)
-            } else {
-              // Prevent close - sync is still in progress
-              event?.preventDefault?.()
-              return false
-            }
-          }
-        }}
-      >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <SyncIcon color="primary" />
-            <Typography variant="h6">
-              Termékek szinkronizálása
-            </Typography>
-          </Box>
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2 }}>
-            {syncProgress && syncProgress.total > 0 ? (
-              <>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {syncProgress.status === 'completed' ? 'Szinkronizálás befejezve!' : 
-                     syncProgress.status === 'error' ? 'Szinkronizálás hibával leállt!' :
-                     syncProgress.status === 'syncing' || !syncProgress.status ? 'Szinkronizálás folyamatban...' :
-                     'Szinkronizálás folyamatban...'}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" fontWeight="medium">
-                    {syncProgress.synced} / {syncProgress.total} termék
-                  </Typography>
-                </Box>
-                <LinearProgress 
-                  variant="determinate" 
-                  value={syncProgress.total > 0 ? (syncProgress.synced / syncProgress.total) * 100 : 0}
-                  sx={{ height: 10, borderRadius: 5, mb: 3 }}
-                  color={syncProgress.status === 'completed' ? 'success' : 'primary'}
-                />
-                <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Összes termék:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold" color="primary.main">
-                      {syncProgress.total.toLocaleString('hu-HU')} db
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Szinkronizált termékek:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold" color="success.main">
-                      {syncProgress.synced.toLocaleString('hu-HU')} db
-                    </Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Hátralévő termékek:
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold" color="warning.main">
-                      {(syncProgress.total - syncProgress.synced).toLocaleString('hu-HU')} db
-                    </Typography>
-                  </Box>
-                  {syncProgress.total > 0 && (
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Előrehaladás:
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold" color="primary.main">
-                        {Math.round((syncProgress.synced / syncProgress.total) * 100)}%
-                      </Typography>
-                    </Box>
-                  )}
-                  {syncProgress.total > 0 && syncProgress.synced < syncProgress.total && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-                      <Typography variant="body2" color="info.dark">
-                        <strong>Becsült hátralévő idő:</strong> ~{Math.ceil((syncProgress.total - syncProgress.synced) / 200 * 0.5)} perc
-                      </Typography>
-                      <Typography variant="caption" color="info.dark" display="block" sx={{ mt: 1 }}>
-                        Kérjük, várja meg a szinkronizálás befejezését. Az ablak bezárása nem ajánlott.
-                      </Typography>
-                    </Box>
-                  )}
-                  {syncProgress.status === 'completed' && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
-                      <Typography variant="body2" color="success.dark" fontWeight="medium">
-                        ✓ Szinkronizálás sikeresen befejeződött!
-                      </Typography>
-                    </Box>
-                  )}
-                </Box>
-              </>
-            ) : (
-              <>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-                  <CircularProgress size={24} />
-                  <Typography variant="body1">
-                    Termékek listájának betöltése...
-                  </Typography>
-                </Box>
-                <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    <strong>Kérjük, várjon.</strong> A szinkronizálás eltarthat néhány percig, ha sok termék van a webshopban.
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Az ablak bezárása nem ajánlott a szinkronizálás alatt.
-                  </Typography>
-                </Box>
-              </>
-            )}
-          </Box>
-        </DialogContent>
-        {syncProgress && (syncProgress.status === 'completed' || syncProgress.status === 'error') && (
-          <DialogActions sx={{ p: 3, pt: 1 }}>
-            <Button 
-              onClick={() => {
-                setSyncingConnectionId(null)
-                setSyncProgress(null)
-              }}
-              variant="contained"
-              color={syncProgress.status === 'completed' ? 'primary' : 'error'}
-              fullWidth
-            >
-              Bezárás
-            </Button>
-          </DialogActions>
-        )}
-      </Dialog>
     </>
   )
 }
