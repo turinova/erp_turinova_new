@@ -30,6 +30,7 @@ export interface ShopRenterProductDescription {
   meta_description: string | null
   short_description: string | null
   description: string | null
+  generation_instructions: string | null
   shoprenter_id: string | null
   created_at: string
   updated_at: string

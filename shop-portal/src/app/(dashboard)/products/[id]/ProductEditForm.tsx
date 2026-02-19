@@ -79,6 +79,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     meta_description: '',
     short_description: '',
     description: '',
+    generation_instructions: null,
     shoprenter_id: null,
     created_at: '',
     updated_at: ''
@@ -91,7 +92,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     meta_description: huDescription.meta_description || '',
     // Decode HTML entities for editor fields
     short_description: decodeHtmlEntities(huDescription.short_description),
-    description: decodeHtmlEntities(huDescription.description)
+    description: decodeHtmlEntities(huDescription.description),
+    generation_instructions: huDescription.generation_instructions || ''
   })
 
   const [isPending, startTransition] = useTransition()
@@ -131,7 +133,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         meta_keywords: formData.meta_keywords,
         meta_description: formData.meta_description,
         short_description: encodeHtmlEntities(formData.short_description),
-        description: encodeHtmlEntities(formData.description)
+        description: encodeHtmlEntities(formData.description),
+        generation_instructions: formData.generation_instructions.trim() || null
       }
 
       const response = await fetch(`/api/products/${product.id}/descriptions`, {
@@ -207,7 +210,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         },
         body: JSON.stringify({
           useSourceMaterials: true,
-          language: 'hu'
+          language: 'hu',
+          generationInstructions: formData.generation_instructions.trim() || undefined
         })
       })
 
@@ -219,7 +223,23 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           ...prev,
           description: result.description
         }))
-        toast.success(`Leírás sikeresen generálva! (${result.metrics.wordCount} szó, ${result.metrics.tokensUsed} token)`)
+        
+        // Show success message with product type info
+        let successMessage = `Leírás sikeresen generálva! (${result.metrics.wordCount} szó, ${result.metrics.tokensUsed} token`
+        if (result.productType) {
+          successMessage += `, típus: ${result.productType}`
+        }
+        successMessage += ')'
+        toast.success(successMessage)
+        
+        // Show validation warnings if any
+        if (result.validationWarnings && result.validationWarnings.length > 0) {
+          console.warn('Validation warnings:', result.validationWarnings)
+          // Show warning toast for each validation issue
+          result.validationWarnings.forEach((warning: string) => {
+            toast.warning(`Figyelem: ${warning}`, { autoClose: 5000 })
+          })
+        }
       } else {
         toast.error(`Generálási hiba: ${result.error || 'Ismeretlen hiba'}`)
       }
@@ -336,6 +356,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   {generating ? 'Generálás...' : 'AI Leírás generálása'}
                 </Button>
               </Box>
+              <TextField
+                fullWidth
+                label="AI Generálási utasítások (opcionális)"
+                value={formData.generation_instructions}
+                onChange={handleInputChange('generation_instructions')}
+                multiline
+                rows={3}
+                helperText="Pl.: 'A forrásanyagok 450mm fiókra vonatkoznak, de a leírás 300-550mm közötti méreteket fedjen le'"
+                sx={{ mb: 3 }}
+              />
               <HtmlEditor
                 value={formData.description}
                 onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}

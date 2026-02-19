@@ -40,11 +40,28 @@ export async function POST(
 
     // Get request body
     const body = await request.json().catch(() => ({}))
+    
+    // Get generation instructions from product description if not provided in request
+    let generationInstructions = body.generationInstructions
+    if (!generationInstructions) {
+      const { data: description } = await supabase
+        .from('shoprenter_product_descriptions')
+        .select('generation_instructions')
+        .eq('product_id', id)
+        .eq('language_code', body.language || 'hu')
+        .single()
+      
+      if (description?.generation_instructions) {
+        generationInstructions = description.generation_instructions
+      }
+    }
+    
     const options = {
       useSourceMaterials: body.useSourceMaterials !== false,
       temperature: body.temperature || 0.7,
       maxTokens: body.maxTokens || 2000,
-      language: body.language || 'hu'
+      language: body.language || 'hu',
+      generationInstructions: generationInstructions || undefined
     }
 
     // Generate description
@@ -73,6 +90,8 @@ export async function POST(
       success: true,
       description: result.description,
       generationId: generation?.id,
+      productType: result.productType,
+      validationWarnings: result.validationWarnings,
       metrics: {
         wordCount: result.wordCount,
         tokensUsed: result.tokensUsed,
