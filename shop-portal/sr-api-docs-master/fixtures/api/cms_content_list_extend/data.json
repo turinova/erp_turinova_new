@@ -1,0 +1,183 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "CMS Content List identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "CMS Content List internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "enabled",
+            "description": {
+                "en": "Status. Possible values: 0 - Inactive, 1 - Active."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showIntroText",
+            "description": {
+                "en": "Show introductory text. Possible values: 0 (No) or 1 (Yes)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showAuthorName",
+            "description": {
+                "en": "Show author name. Possible values: 0 (No) or 1 (Yes)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showDateCreated",
+            "description": {
+                "en": "Show creation date. Possible values: 0 (No) or 1 (Yes)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showIntroPicture",
+            "description": {
+                "en": "Show intro picture. Possible values: 0 (No) or 1 (Yes)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "itemsPerPage",
+            "description": {
+                "en": "Number of items displayed per page."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maxItems",
+            "description": {
+                "en": "Maximum number of items in the list."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "cmsContentListDescriptions",
+            "description": {
+                "en": "List of CMS Content List Descriptions."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "cmsContentCmsListRelations",
+            "description": {
+                "en": "List of CMS Content items related to this list."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "/cmsContentListExtend/cms content list id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "/cmsContentListExtend/Y21zQ29udGVudExpc3QtbGlzdF9pZD0x",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "/cmsContentListExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                }
+            ],
+            "example": {
+                "url": "/cmsContentListExtend?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "/cmsContentListExtend[/cms content list id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "/cmsContentListExtend",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "/cmsContentListExtend/cms content list id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "/cmsContentListExtend/Y21zQ29udGVudExpc3QtbGlzdF9pZD0x",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "/cmsContentListExtend/cms content list id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "/cmsContentListExtend/Y21zQ29udGVudExpc3QtbGlzdF9pZD0x",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

@@ -1,0 +1,139 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Customer group product price identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customerGroup",
+            "description": {
+                "en": "Customer group link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "The net price of the product"
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/customerGroupProductPrices\/id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroupProductPrices\/Y3VzdG9tZXJHcm91cFByb2R1Y3RQcmljZS1jdXN0b21lcl9ncm91cF9pZD02JnByb2R1Y3RfaWQ9NTU4MQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/customerGroupProductPrices"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Search parameter (Product identifier)."
+                    }
+                },
+                {
+                    "name": "customerGroupId",
+                    "description": {
+                        "en": "Search parameter (Customer group identifier)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/customerGroupProductPrices?limit=25&page=0",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/customerGroupProductPrices[\/id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroups",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/customerGroupProductPrices\/id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroupProductPrices\/Y3VzdG9tZXJHcm91cFByb2R1Y3RQcmljZS1jdXN0b21lcl9ncm91cF9pZD02JnByb2R1Y3RfaWQ9NTU4MQ==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/customerGroupProductPrices\/id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroupProductPrices\/Y3VzdG9tZXJHcm91cFByb2R1Y3RQcmljZS1jdXN0b21lcl9ncm91cF9pZD02JnByb2R1Y3RfaWQ9NTU4MQ==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

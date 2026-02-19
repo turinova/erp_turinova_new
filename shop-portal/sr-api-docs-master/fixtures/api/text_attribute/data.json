@@ -1,0 +1,181 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Attribute identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "type",
+            "description": {
+                "en": "Type. Possible value: TEXT."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name (lowercase, only english alphabet). "
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "priority",
+            "description": {
+                "en": "Priority. Possible values: HIDDEN, NORMAL, IMPORTANT."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "required",
+            "description": {
+                "en": "Required?."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "textFieldType",
+            "description": {
+                "en": "The type of the text field. Possible values: INPUT, TEXTAREA, TEXT_EDITOR."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "translateable",
+            "description": {
+                "en": "Is it translatable?."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "attributeDescriptions",
+            "description": {
+                "en": "Attribute descriptions."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "textAttributeValues",
+            "description": {
+                "en": "Attribute values."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/textAttributes\/attribute id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributes\/dGV4dEF0dHJpYnV0ZS1hdHRyaWJ1dGVfaWQ9Nw==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/textAttributes"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter. Az attribute name."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/textAttributes?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/textAttributes[\/attribute id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributes",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/textAttributes\/attribute id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributes\/dGV4dEF0dHJpYnV0ZS1hdHRyaWJ1dGVfaWQ9Nw==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/textAttributes\/attribute id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributes\/dGV4dEF0dHJpYnV0ZS1hdHRyaWJ1dGVfaWQ9Nw==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

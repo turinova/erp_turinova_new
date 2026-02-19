@@ -1,0 +1,97 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Setting identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "group",
+            "description": {
+                "en": "Group."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "key",
+            "description": {
+                "en": "Key (internal text identifier)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "value",
+            "description": {
+                "en": "Value."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/settings\/setting id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/settings\/bGF4Q2xhc3Mt3dGF4X2NsYXNzX2lkPTwEw",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/settings"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "group",
+                    "description": {
+                        "en": "Search parameter (Filter by group)."
+                    }
+                },
+                {
+                    "name": "key",
+                    "description": {
+                        "en": "Search parameter (Filter by key)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/settings?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        }
+    }
+}

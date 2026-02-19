@@ -1,0 +1,13 @@
+{
+    "description": "Description",
+    "customTitle": "Custom title",
+    "metaDescription": "Meta description.",
+    "metaKeywords": "keyword_1, keyword_2",
+    "heading": "H1 title",
+    "manufacturer": {
+        "id": "bWFudWZhY3R1cmVyLW1hbnVmYWN0dXJlcl9pZD02"
+    },
+    "language": {
+        "id": "bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ=="
+    }
+}

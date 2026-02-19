@@ -1,0 +1,143 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Price multiplier identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "categoryId",
+            "description": {
+                "en": "Category identifier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "manufacturerId",
+            "description": {
+                "en": "Manufacturer identifier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minNetPrice",
+            "description": {
+                "en": "Minimal net price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maxNetPrice",
+            "description": {
+                "en": "Maximal net price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "multiplier",
+            "description": {
+                "en": "Multiplier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "priority",
+            "description": {
+                "en": "Priority."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/priceMultipliers"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of multipliers"
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of multipliers displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "priceMultiplierId",
+                    "description": {
+                        "en": "Search parameter. Price multiplier identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/priceMultipliers?page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/priceMultipliers[\/price multiplier id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/priceMultipliers",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/priceMultipliers[\/price multiplier id]"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/priceMultipliers\/b3JkZXJQcm9kdWN0LW9yZGVyX3Byb2R1Y3RfaWQ9Mw==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/priceMultipliers\/price multiplier id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/priceMultipliers\/b3JkZXJQcm9kdWN0LW9yZGVyX3Byb2R1Y3RfaWQ9Mw==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

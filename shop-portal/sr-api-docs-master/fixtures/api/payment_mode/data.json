@@ -1,0 +1,109 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Payment method identifier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Payment method internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Allowed the payment method, or not. Possible value 1 or 0."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order. Where should be in order in the checkout."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "geoZone",
+            "description": {
+                "en": "Geo zone link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "orderStatus",
+            "description": {
+                "en": "The order status link that the order will be converted to after using the payment method."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentDescriptions",
+            "description": {
+                "en": "Payment method name and description, by language. If it is empty, it means that - although a payment method is installed - the settings have not been saved on the store's admin interface."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/paymentModes\/payment method id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/paymentModes\/cGF5bWVudE1vZGUtZXh0ZW5zaW9uX2lkPTIz",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/paymentModes"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/paymentModes?page=0&limit=1",
+                "statusCode": "200"
+            }
+        }
+    }
+}

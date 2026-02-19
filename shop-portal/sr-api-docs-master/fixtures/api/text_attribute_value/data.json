@@ -1,0 +1,139 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Attribute value identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "textAttribute",
+            "description": {
+                "en": "Attribute link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "textAttributeValueDescriptions",
+            "description": {
+                "en": "Attribute value descriptions link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/textAttributeValues\/attribute value id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributeValues\/dGV4dEF0dHJpYnV0ZVZhbHVlLWF0dHJpYnV0ZV9pZD03JnByb2R1Y3RfaWQ9NTE=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/textAttributeValues"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "textAttributeId",
+                    "description": {
+                        "en": "Attribute identifier."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Product identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/textAttributeValues?page=0&limit=25&textAttributeId=dGV4dEF0dHJpYnV0ZS1hdHRyaWJ1dGVfaWQ9Nw==",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/textAttributeValues[\/attribute value id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributeValues",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/textAttributeValues\/attribute value id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributeValues\/dGV4dEF0dHJpYnV0ZVZhbHVlLWF0dHJpYnV0ZV9pZD03JnByb2R1Y3RfaWQ9NTE=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/textAttributeValues\/attribute value id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/textAttributeValues\/dGV4dEF0dHJpYnV0ZVZhbHVlLWF0dHJpYnV0ZV9pZD03JnByb2R1Y3RfaWQ9NTE=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

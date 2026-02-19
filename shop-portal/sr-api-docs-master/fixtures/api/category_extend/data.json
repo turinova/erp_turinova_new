@@ -1,0 +1,213 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Category identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Category internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "picture",
+            "description": {
+                "en": "Image."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Status."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productsStatus",
+            "description": {
+                "en": "The status of the category's products."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "parentCategory",
+            "description": {
+                "en": "Parent category link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "centralCategory",
+            "description": {
+                "en": "Central category link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "categoryDescriptions *",
+            "description": {
+                "en": "Given as an array, even multilingual category description data"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "categoryCustomerGroupRelations *",
+            "description": {
+                "en": "Given as an array, even data on relationships connecting several categories and customer groups"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customerGroups",
+            "description": {
+                "en": "Customer group link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "urlAliases *",
+            "description": {
+                "en": "\nData of the category's search engine-friendly URL. Contrary to its name, there is only 1 of it per category."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/categoryExtend\/category id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryExtend\/Y2F0ZWdvcnktY2F0ZWdvcnlfaWQ9MTg=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/categoryExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Category internal identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/categoryExtend?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/categoryExtend[\/category id]"
+            },
+            "description": {
+                "en": "It is used to create. Resources marked as Related Resources are always created."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryExtend",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/categoryExtend\/category id"
+            },
+            "description": {
+                "en": "It is for modification. Resources marked as Related Resources are always overwritten."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryExtend\/Y2F0ZWdvcnktY2F0ZWdvcnlfaWQ9MTg=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/categoryExtend\/category id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryExtend\/Y2F0ZWdvcnktY2F0ZWdvcnlfaWQ9MTg=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

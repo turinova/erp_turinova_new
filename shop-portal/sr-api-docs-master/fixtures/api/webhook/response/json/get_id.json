@@ -1,0 +1,29 @@
+{
+    "href": "http://shopname.api.myshoprenter.hu/webHooks/d2ViSG9vay1ub3RpZmljYXRpb25faWQ9MTQ0",
+    "id": "d2ViSG9vay1ub3RpZmljYXRpb25faWQ9MTQ0",
+    "event": "order_confirm",
+    "status": "1",
+    "label": "test webhook",
+    "webHookParameters": {
+        "type": "json",
+        "url": "http://shoprenter.hu",
+        "webHook": {
+            "href": "http://shopname.api.myshoprenter.hu/webHooks/d2ViSG9vay1ub3RpZmljYXRpb25faWQ9MTQ0"
+        },
+        "fields" : [
+            "order_storeName",
+            "order_innerId",
+            "order_innerResourceId",
+            "order_outerResourceId",
+            "order_firstname",
+            "order_lastname"
+        ]
+    },
+    "webHookDelay": {
+        "delay": "10",
+        "delayUnit": "day",
+        "webHook": {
+            "href": "http://shopname.api.myshoprenter.hu/webHooks/d2ViSG9vay1ub3RpZmljYXRpb25faWQ9MTQ0"
+        }
+    }
+}

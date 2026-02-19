@@ -1,0 +1,131 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product to Product badge identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link"
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "productBadge",
+            "description": {
+                "en": "Product badge link"
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language link"
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productProductBadgeRelations\/relation id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productProductBadgeRelations\/cHJvZHVjdFByb2R1Y3RCYWRnZS1wcm9kdWN0X2lkPTM5NSZiYWRnZV9pZD03Jmxhbmd1YWdlX2lkPTE=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productProductBadgeRelations"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Search parameter (Product identifier)."
+                    }
+                },
+                {
+                    "name": "producBadgetId",
+                    "description": {
+                        "en": "Search parameter (Badge identifier)."
+                    }
+                },
+                {
+                    "name": "languageId",
+                    "description": {
+                        "en": "Search parameter (Language identifier)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productProductBadgeRelations?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productProductBadgeRelations"
+            },
+            "description": {
+                "en": "For creation only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productProductBadgeRelations",
+                "statusCode": "201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productProductBadgeRelations\/relation id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productProductBadgeRelations\/cHJvZHVjdFRhZy1wcm9kdWN0X2lkPTI5MjAyJmxhbmd1YWdlX2lkPTE=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

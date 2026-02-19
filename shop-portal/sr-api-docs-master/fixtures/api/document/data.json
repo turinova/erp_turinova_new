@@ -1,0 +1,133 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Document identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Document internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Upload date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/documents\/id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/documents\/ZG9jdW1lbnQtZG9jdW1lbnRfaWQ9OQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/documents"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Document internal identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/documents?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/documents[\/id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/documents",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/documents\/id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/documents\/ZG9jdW1lbnQtZG9jdW1lbnRfaWQ9OQ==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/documents\/id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/documents\/ZG9jdW1lbnQtZG9jdW1lbnRfaWQ9OQ==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

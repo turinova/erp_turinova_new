@@ -1,0 +1,151 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Shipping identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "internal identifier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "cartMinimumGross",
+            "description": {
+                "en": "Minimum gross price in cart."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "cartMaximumGross",
+            "description": {
+                "en": "Maximum gross price in cart."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "costNet",
+            "description": {
+                "en": "Net cost."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weightMinimum",
+            "description": {
+                "en": "Minimum weight (kg)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weightMaximum",
+            "description": {
+                "en": "Maximum weight (kg)."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/shippingLanes\/shipping lane id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingLanes\/c2hpcHBpbmdNb2RlLWlkPTg0?full=1",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/shippingLanes"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/shippingLanes?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/shippingLanes[\/shipping lane id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingLanes",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/shippingLanes\/shipping lane id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingLanes\/c2hpcHBpbmdNb2RlLWlkPTg0",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/shippingLanes\/shipping lane id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingLanes\/c2hpcHBpbmdNb2RlLWlkPTg0",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

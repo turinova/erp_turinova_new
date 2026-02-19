@@ -1,0 +1,301 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Coupon identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "code",
+            "description": {
+                "en": "Coupon code."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "discountType",
+            "description": {
+                "en": "Discount type. Possible values: PERCENT, FIXED."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "percentDiscountValue",
+            "description": {
+                "en": "Percent discount value."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "loginRequired",
+            "description": {
+                "en": "Is login required for the using?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "freeShipping",
+            "description": {
+                "en": "Is it giving free shipping?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "fixDiscountValue",
+            "description": {
+                "en": "Fix discount value."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateStart",
+            "description": {
+                "en": "The date when the coupon is became usable."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateEnd",
+            "description": {
+                "en": "The date when the coupon is not usable."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "totalNumberOfCoupons",
+            "description": {
+                "en": "Number of all usable coupons"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "totalNumberOfCouponsPerCustomer",
+            "description": {
+                "en": "Number of coupons that can be used by one customer."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Are coupons allowed?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "email",
+            "description": {
+                "en": "Only customers with this email address can use the coupon."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minOrderLimit",
+            "description": {
+                "en": "\nMinimum order value from which the coupon can be validated."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maxOrderLimit",
+            "description": {
+                "en": "\nMaximum order value up to which the coupon can be validated."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "validToSpecialProducts",
+            "description": {
+                "en": "\nCan be combined with other discounts."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "validWithGiftProducts",
+            "description": {
+                "en": "\nCan be used on gift promotion items."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "validWithBulkDiscount",
+            "description": {
+                "en": "\nWorks with bulk purchase discounts."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "validWithLoyaltyPoints",
+            "description": {
+                "en": "\nCan be used alongside loyalty points."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "bypassMinOrderLimitWithCoupon",
+            "description": {
+                "en": "\nWe allow placing orders even if the cart value falls below the minimum purchase amount after coupon redemption."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "targetType",
+            "description": {
+                "en": "The coupon applies to a product (PRODUCT) or a category (CATEGORY). Possible values: PRODUCT, CATEGORY."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "taxClass",
+            "description": {
+                "en": "Tax class link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "couponDescriptions",
+            "description": {
+                "en": "Coupon descriptions link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/coupons\/coupon id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/coupons\/Y291cG9uLWNvdXBvbl9pZD0x",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/coupons"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "code",
+                    "description": {
+                        "en": "Search parameter. Coupon code."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/coupons?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/coupons[\/coupon id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/coupons",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/coupons\/coupon id"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/coupons\/Y291cG9uLWNvdXBvbl9pZD0x",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/coupons\/coupon id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/coupons\/Y291cG9uLWNvdXBvbl9pZD0x",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

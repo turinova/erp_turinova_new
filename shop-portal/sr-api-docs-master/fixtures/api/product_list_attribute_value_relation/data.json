@@ -1,0 +1,117 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product list attribute value relation identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "listAttributeValue",
+            "description": {
+                "en": "List attribute attribute value link."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productListAttributeValueRelations\/relation id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productListAttributeValueRelations\/cHJvZHVjdExpc3RBdHRyaWJ1dGVWYWx1ZVJlbGF0aW9uLWF0dHJpYnV0ZV9pZD04JnByb2R1Y3RfaWQ9NTAmdmFsdWVfaWQ9OA==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productListAttributeValueRelations"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Product identifier."
+                    }
+                },
+                {
+                    "name": "listAttributeValueId",
+                    "description": {
+                        "en": "Attribute value identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productListAttributeValueRelations?page=0&limit=25&productId=cHJvZHVjdC1wcm9kdWN0X2lkPTUw",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productListAttributeValueRelations"
+            },
+            "description": {
+                "en": "For creation only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productListAttributeValueRelations",
+                "statusCode": "201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productListAttributeValueRelations\/relation id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productListAttributeValueRelations\/cHJvZHVjdExpc3RBdHRyaWJ1dGVWYWx1ZVJlbGF0aW9uLWF0dHJpYnV0ZV9pZD04JnByb2R1Y3RfaWQ9NTAmdmFsdWVfaWQ9OA==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

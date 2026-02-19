@@ -1,0 +1,141 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Customer group identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Customer group internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "percentDiscount",
+            "description": {
+                "en": "Discount based on percent."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "percentDiscountSpecialPrices",
+            "description": {
+                "en": "Should use the discount for discounted prices?"
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/customerGroups\/customer group id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroups\/Y3VzdG9tZXJHcm91cC1jdXN0b21lcl9ncm91cF9pZD02",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/customerGroups"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter (Customer group name)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/customerGroups?limit=3&page=0",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/customerGroups[\/customer group id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroups",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/customerGroups\/customer group id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroups\/Y3VzdG9tZXJHcm91cC1jdXN0b21lcl9ncm91cF9pZD02",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/customerGroups\/customer group id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerGroups\/Y3VzdG9tZXJHcm91cC1jdXN0b21lcl9ncm91cF9pZD02",
+                "statusCode": "204, 403 or 404"
+            }
+        }
+    }
+}

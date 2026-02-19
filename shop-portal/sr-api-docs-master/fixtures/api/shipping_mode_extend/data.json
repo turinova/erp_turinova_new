@@ -1,0 +1,197 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Shipping method identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Shipping method internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Sort order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "enabled",
+            "description": {
+                "en": "Is it enabled?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "costCalculationBy",
+            "description": {
+                "en": "\n                        MHow do we calculate the shipping cost?? Possible values:<br>\n                        <strong>PRICE:<\/strong> Ba cart value<br>\n                        <strong>WEIGHT:<\/strong> Ba cart weight<br>\n                        <strong>PRICE_WEIGHT:<\/strong> By cart value and weight\n                    "
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "freeShippingFrom",
+            "description": {
+                "en": "If the value of the purchase reaches this HUF, the delivery is free, regardless of the weight. Only considered if costCalculationBy is WEIGHT."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "shippingType",
+            "description": {
+                "en": "\nThis option determines whether the shipping method is included in the calculation of the shipping fee on the product side or in the feeds forwarded to the product sharer as a shipping fee. In the case of several shipping methods of the \"Courier\" type, the system always recommends the most favorable one.<br>\n                        Possible values:<br>\n                        <strong>COURIER_SERVICE:<\/strong> Courier Service<br>\n                        <strong>PERSONAL_RECEIPT:<\/strong> Personal\n                    "
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "extension",
+            "description": {
+                "en": "Type of shipping mode."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "taxClass",
+            "description": {
+                "en": "Tax class link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "geoZone",
+            "description": {
+                "en": "Geo zone link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "shippingModeDescriptions",
+            "description": {
+                "en": "Text content for the shipping mode\n."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "shippingLanes",
+            "description": {
+                "en": "Shipping lanes."
+            },
+            "required": true,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/shippingModeExtend\/shipping method id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingModeExtend\/c2hpcHBpbmdNb2RlLWlkPTg0?full=1",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/shippingModeExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Shipping method internal identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/shippingModeExtend?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/shippingModeExtend[\/shipping method id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingModeExtend",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/shippingModeExtend\/shipping method id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingModeExtend\/c2hpcHBpbmdNb2RlLWlkPTg0",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/shippingModeExtend\/shipping method id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/shippingModeExtend\/c2hpcHBpbmdNb2RlLWlkPTg0",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

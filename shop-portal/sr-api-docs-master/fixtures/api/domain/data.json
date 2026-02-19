@@ -1,0 +1,44 @@
+{
+    "properties": [
+        {
+            "name": "url",
+            "description": {
+                "en": "The url of the domain"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "primary",
+            "description": {
+                "en": "is this the primary domain? If no parent domain, then the value is '1'"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language link."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/domains"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/domains",
+                "statusCode": "200"
+            }
+        }
+    }
+}

@@ -1,0 +1,149 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product option value identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "Price (without sign)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "prefix",
+            "description": {
+                "en": "Price sign (+ or -)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productOption",
+            "description": {
+                "en": "Product option."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "productOptionValueDescriptions",
+            "description": {
+                "en": "Product option value descriptions."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productOptionValues\/id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValues\/cHJvZHVjdE9wdGlvblZhbHVlLXByb2R1Y3Rfb3B0aW9uX3ZhbHVlX2lkPTc0OA==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productOptionValues"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productOptionId",
+                    "description": {
+                        "en": "Search parameter. Product option identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productOptionValues?page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productOptionValues[\/id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValues",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productOptionValues\/id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValues\/cHJvZHVjdE9wdGlvblZhbHVlLXByb2R1Y3Rfb3B0aW9uX3ZhbHVlX2lkPTc0OA==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productOptionValues\/id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValues\/cHJvZHVjdE9wdGlvblZhbHVlLXByb2R1Y3Rfb3B0aW9uX3ZhbHVlX2lkPTc0OA==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

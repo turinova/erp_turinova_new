@@ -1,0 +1,181 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Manufacturer description identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "customTitle",
+            "description": {
+                "en": "Custom title."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "heading",
+            "description": {
+                "en": "H1 heading. This text will be the heading H1 in page source. Manufacturer name will not be affected."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaDescription",
+            "description": {
+                "en": "Custom meta description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaKeywords",
+            "description": {
+                "en": "Custom Meta keywords."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "manufacturer",
+            "description": {
+                "en": "A manufacturer link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language link."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/manufacturerDescriptions\/manufacturer description id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturerDescriptions\/bWFudWZhY3R1cmVyRGVzY3JpcHRpb24tbWFudWZhY3R1cmVyX2lkPTYmbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/manufacturerDescriptions"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "manufacturerId",
+                    "description": {
+                        "en": "Search parameter (Manufacturer identifier)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/manufacturerDescriptions?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/manufacturerDescriptions[\/manufacturer description id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturerDescriptions",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/manufacturerDescriptions\/manufacturer description id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturerDescriptions\/bWFudWZhY3R1cmVyRGVzY3JpcHRpb24tbWFudWZhY3R1cmVyX2lkPTYmbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/manufacturerDescriptions\/manufacturer description id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturerDescriptions\/bWFudWZhY3R1cmVyRGVzY3JpcHRpb24tbWFudWZhY3R1cmVyX2lkPTYmbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

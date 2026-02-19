@@ -1,0 +1,159 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product type identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "firstVariantSelectType",
+            "description": {
+                "en": "First variant forming parameter selector type. Possible values: SELECT, ICON (only for listAttributes), LIST."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "secondVariantSelectType",
+            "description": {
+                "en": "Second variant forming parameter selector type. Possible values: SELECT, ICON (only for listAttributes), LIST."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "firstVariantParameter",
+            "description": {
+                "en": "First variant parameter link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "secondVariantParameter",
+            "description": {
+                "en": "Second variant parameter link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productClassAttributeRelations",
+            "description": {
+                "en": "Attributes of the type."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productClasses\/product type id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productClasses\/cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9Mw==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productClasses"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productClasses?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productClasses[\/product type id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productClasses",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productClasses\/product type id"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productClasses\/cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9Mw==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productClasses\/product type id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productClasses\/cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9Mw==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

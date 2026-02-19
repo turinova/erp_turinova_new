@@ -1,0 +1,175 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Ordered product option identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Product option name (Required)."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "valueName",
+            "description": {
+                "en": "Product option value name (Required)."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "Price (Required)."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "prefix",
+            "description": {
+                "en": "The direction of the price change (+, -) (Required)."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "orderProduct",
+            "description": {
+                "en": "Ordered product link (Required)."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "productOptionValue",
+            "description": {
+                "en": "Product option value link (Required)."
+            },
+            "required": true,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderProductOptions\/id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProductOptions\/b3JkZXJQcm9kdWN0T3B0aW9uLW9yZGVyX29wdGlvbl9pZD0zOQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderProductOptions"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "orderProductId",
+                    "description": {
+                        "en": "Search parameter. Ordered product identifier."
+                    }
+                },
+                {
+                    "name": "productOptionValueId",
+                    "description": {
+                        "en": "Search parameter. Product option value identifier."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter. Product option name."
+                    }
+                },
+                {
+                    "name": "valueName",
+                    "description": {
+                        "en": "Search parameter. Product option value name."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/orderProductOptions?page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/orderProductOptions[\/id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProductOptions",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/orderProductOptions\/id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProductOptions\/b3JkZXJQcm9kdWN0T3B0aW9uLW9yZGVyX29wdGlvbl9pZD0zOQ==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/orderProductOptions\/id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProductOptions\/b3JkZXJQcm9kdWN0T3B0aW9uLW9yZGVyX29wdGlvbl9pZD0zOQ==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

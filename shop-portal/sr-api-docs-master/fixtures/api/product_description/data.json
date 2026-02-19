@@ -1,0 +1,249 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product description identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaTitle",
+            "description": {
+                "en": "Meta title."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaKeywords",
+            "description": {
+                "en": "Meta keywords."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaDescription",
+            "description": {
+                "en": "Meta description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "shortDescription",
+            "description": {
+                "en": "Short description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Long description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customContentTitle",
+            "description": {
+                "en": "Custom content title."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customContent",
+            "description": {
+                "en": "Custom content."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "parameters",
+            "description": {
+                "en": "Parameters."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "packagingUnit",
+            "description": {
+                "en": "Packaging name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "measurementUnit",
+            "description": {
+                "en": "Measurement name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "videoCode",
+            "description": {
+                "en": "Youtube video code."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "A Product link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language link."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productDescriptions\/product description id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productDescriptions\/cHJvZHVjdERlc2NyaXB0aW9uLXByb2R1Y3RfaWQ9MTM1ODAmbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productDescriptions"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Search parameter (Product identifier)."
+                    }
+                },
+                {
+                    "name": "languageId",
+                    "description": {
+                        "en": "Search parameter (Language identifier)."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter (Product name)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productDescriptions?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productDescriptions[\/product description id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productDescriptions",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productDescriptions\/product description id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productDescriptions\/cHJvZHVjdERlc2NyaXB0aW9uLXByb2R1Y3RfaWQ9MTM1ODAmbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productDescriptions\/product description id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productDescriptions\/cHJvZHVjdERlc2NyaXB0aW9uLXByb2R1Y3RfaWQ9MTM1ODAmbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

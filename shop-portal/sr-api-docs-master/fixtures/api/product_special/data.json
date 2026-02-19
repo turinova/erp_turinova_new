@@ -1,0 +1,189 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Sale price identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "priority",
+            "description": {
+                "en": "Priority."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "Net."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateFrom",
+            "description": {
+                "en": "The start date of the sale price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateTo",
+            "description": {
+                "en": "The end date of th sale price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minQuantity",
+            "description": {
+                "en": "Lower limit of quantity discount (no limit for 0).\n"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maxQuantity",
+            "description": {
+                "en": "Upper limit of quantity discount (no limit for 0)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "isLimitedDiscount",
+            "description": {
+                "en": "Boolean flag for enable/disable limited discount. Accepted values: 0 and 1"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maxOrderableCount",
+            "description": {
+                "en": "Quantity of products can be purchased at the discounted price"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "customerGroup",
+            "description": {
+                "en": "Customer group link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productSpecials\/sale price id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productSpecials\/cHJvZHVjdFNwZWNpYWwtcHJvZHVjdF9zcGVjaWFsX2lkPTE=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productSpecials"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Search parameter (Product identifier)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productSpecials?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productSpecials[\/sale price id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productSpecials",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productSpecials\/sale price id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productSpecials\/cHJvZHVjdFNwZWNpYWwtcHJvZHVjdF9zcGVjaWFsX2lkPTE=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productSpecials\/sale price id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productSpecials\/cHJvZHVjdFNwZWNpYWwtcHJvZHVjdF9zcGVjaWFsX2lkPTE=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

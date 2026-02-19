@@ -1,0 +1,117 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Relation identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "attributeWidget",
+            "description": {
+                "en": "Attribute widget link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "category",
+            "description": {
+                "en": "Category link."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/attributeWidgetCategoryRelations\/relation id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/attributeWidgetCategoryRelations\/YXR0cmlidXRlV2lkZ2V0Q2F0ZWdvcnktYXR0cmlidXRlX2lkPTgmY2F0ZWdvcnlfaWQ9MzY=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/attributeWidgetCategoryRelations"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "numberAttributeWidgetId",
+                    "description": {
+                        "en": "Number type attribute widget identifier."
+                    }
+                },
+                {
+                    "name": "listAttributeWidgetId",
+                    "description": {
+                        "en": "Selectable value type attribute widget identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/attributeWidgetCategoryRelations?page=0&limit=25&listAttributeWidgetId=bGlzdEF0dHJpYnV0ZVdpZGdldC1hdHRyaWJ1dGVfaWQ9OA==",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/attributeWidgetCategoryRelations"
+            },
+            "description": {
+                "en": "For creation only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/attributeWidgetCategoryRelations",
+                "statusCode": "201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/attributeWidgetCategoryRelations\/relation id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/attributeWidgetCategoryRelations\/YXR0cmlidXRlV2lkZ2V0Q2F0ZWdvcnktYXR0cmlidXRlX2lkPTgmY2F0ZWdvcnlfaWQ9MzY=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

@@ -1,0 +1,147 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Additional product image identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "imagePath",
+            "description": {
+                "en": "Image path."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "imageAlt",
+            "description": {
+                "en": "Product image alt."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Sort order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link."
+            },
+            "required": true,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productImages\/product image id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productImages\/cHJvZHVjdEltYWdlLXByb2R1Y3RfaW1hZ2VfaWQ9MQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productImages"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productId",
+                    "description": {
+                        "en": "Search parameter (Product identifier)."
+                    }
+                },
+                {
+                    "name": "imagePath",
+                    "description": {
+                        "en": "Search parameter (Product image path)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productImages?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productImages[\/product image id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productImages",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productImages\/product image id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productImages\/cHJvZHVjdEltYWdlLXByb2R1Y3RfaW1hZ2VfaWQ9MQ==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productImages\/product image id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productImages\/cHJvZHVjdEltYWdlLXByb2R1Y3RfaW1hZ2VfaWQ9MQ==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

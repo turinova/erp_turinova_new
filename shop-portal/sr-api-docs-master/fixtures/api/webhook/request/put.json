@@ -1,0 +1,25 @@
+{
+    "event": "order_confirm",
+    "status": "1",
+    "label": "test webhook",
+    "webHookParameters": [
+        {
+            "type": "json",
+            "url": "http://shoprenter.hu",
+            "fields": [
+                "order_storeName",
+                "order_innerId",
+                "order_innerResourceId",
+                "order_outerResourceId",
+                "order_firstname",
+                "order_lastname"
+            ]
+        }
+    ],
+    "webHookDelay": [
+        {
+            "delay": "10",
+            "delayUnit": "day"
+        }
+    ]
+}

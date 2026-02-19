@@ -1,0 +1,165 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product badge identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Product badge internal identifier"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name"
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "custom",
+            "description": {
+                "en": "Custom?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "active",
+            "description": {
+                "en": "Active?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Sort order"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "badgeType",
+            "description": {
+                "en": "Defines how the badge is applied. Possible values: \"manual\", \"auto\". Default value: \"manual\""
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "validatorService",
+            "description": {
+                "en": "Rule for applying badge. Possible values: <ul><li>latest_badge (auto type)</li><li>sale_badge (auto type)</li><li>top_badge (auto type)</li><li>free_shipping_badge (auto type)</li><li>low_stock_badge (auto type)</li><li>present_badge (auto type)</li><li>manual_badge (manual type)</li></ul> Default value: \"manual_badge\""
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productBadges\/product badge id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productBadges\/cHJvZHVjdEJhZGdlLWJhZGdlX2lkPTc=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productBadges"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter (Product badge name)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productBadges?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productBadges[\/product badge id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productBadges",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productBadges\/product badge id"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productBadges\/cHJvZHVjdEJhZGdlLWJhZGdlX2lkPTc=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productBadges\/product badge id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productBadges\/cHJvZHVjdEJhZGdlLWJhZGdlX2lkPTc=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

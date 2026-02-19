@@ -1,0 +1,151 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Script Tag custom identifier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "event",
+            "description": {
+                "en": "The DOM event that triggers the loading of the script. <br />Accepted value: <b>ONLOAD</b>. <br />Default value: ONLOAD"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "src",
+            "description": {
+                "en": "The external script URL"
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "displayScope",
+            "description": {
+                "en": "The pages that must contain the script. <br />Possible values: <br /><b>FRONTEND</b>: All frontend pages of the shop, except for the \"thank you\" page for successful order placement. <br /><b>THANK_YOU_PAGE</b>: Only the \"thank you\" page for successful order placement. <br /><b>ALL</b>: All frontend pages of the shop, including the \"thank you\" page for successful order placement. <br />Default value: ALL"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "displayArea",
+            "description": {
+                "en": "This field shows exactly where the script used in the call was or can be placed. In the request of POST and PUT messages, if this field is not specified, the default value will be \"HEADER\" in the call. <br />Possible values: <br /><b>HEADER</b><br /><b>BODY</b><br />Default value: <b>HEADER</b>"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/scriptTags\/scriptTag id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/scriptTags\/c2NyaXB0VGFnLWlkPTc=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/scriptTags"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/scriptTags?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/scriptTags[\/scriptTag id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/scriptTags",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/scriptTags\/scriptTag id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/scriptTags\/c2NyaXB0VGFnLWlkPTc=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/scriptTags\/scriptTags id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/scriptTags\/c2NyaXB0VGFnLWlkPTc=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

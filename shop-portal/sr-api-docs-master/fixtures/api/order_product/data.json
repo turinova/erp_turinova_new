@@ -1,0 +1,365 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Ordered product identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Ordered product internal identifier"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Product name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sku",
+            "description": {
+                "en": "sku."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productInnerId",
+            "description": {
+                "en": "The ordered product internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "modelNumber",
+            "description": {
+                "en": "Manufacturers Part No."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "originalPrice",
+            "description": {
+                "en": "Original net price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "Net price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "total",
+            "description": {
+                "en": "Total price. (\nnet price multiplied by quantity)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "taxRate",
+            "description": {
+                "en": "Tax rate. E.g.: 25."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock1",
+            "description": {
+                "en": "Quantity ordered from primary stock. (In the case of an abandoned cart, it will always be 0.)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock2",
+            "description": {
+                "en": "Quantity ordered from secondary warehouse. (In the case of an abandoned cart, it will always be 0.)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock3",
+            "description": {
+                "en": "Quantity ordered from the third warehouse. (In the case of an abandoned cart, it will always be 0.)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock4",
+            "description": {
+                "en": "Quantity ordered from fourth warehouse. (In the case of an abandoned cart, it will always be 0.)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "subtractStock",
+            "description": {
+                "en": "Deduction of ordered quantity from stock. (1\/0)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "width",
+            "description": {
+                "en": "Width."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "height",
+            "description": {
+                "en": "Height."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "length",
+            "description": {
+                "en": "Length."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weight",
+            "description": {
+                "en": "Weight."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "parentProduct",
+            "description": {
+                "en": "The ordered product parent product. If not exists, then this value is equal with the 'product' property value."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "gtin",
+            "description": {
+                "en": "Global Trade Item Number (GTIN)."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "durableMediaDevice",
+            "description": {
+                "en": "Durable media device (1/0)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "order",
+            "description": {
+                "en": "Order link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "product",
+            "description": {
+                "en": "Product link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "orderProductOptions",
+            "description": {
+                "en": "Ordered product option link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "grossPrice",
+            "description": {
+                "en": "The gross price of the product at the time of purchase."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "originalGrossPrice",
+            "description": {
+                "en": "The original gross price of the product."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "originalPriceCurrency",
+            "description": {
+              "en": "The original net price of the product, converted to the order currency."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "priceCurrency",
+            "description": {
+              "en": "The net price of the product, converted to the order currency."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "grossPriceCurrency",
+            "description": {
+              "en": "The gross price of the product, converted to the order currency."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "originalGrossPriceCurrency",
+            "description": {
+              "en": "The original gross price of the product, converted to the order currency."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderProducts\/ordered product id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProducts\/b3JkZXJQcm9kdWN0LW9yZGVyX3Byb2R1Y3RfaWQ9Mw==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderProducts"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "orderId",
+                    "description": {
+                        "en": "Search parameter. Order identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/orderProducts?page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/orderProducts[\/ordered product id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProducts",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/orderProducts\/ordered product id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProducts\/b3JkZXJQcm9kdWN0LW9yZGVyX3Byb2R1Y3RfaWQ9Mw==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/orderProducts\/ordered product id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderProducts\/b3JkZXJQcm9kdWN0LW9yZGVyX3Byb2R1Y3RfaWQ9Mw==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

@@ -1,0 +1,18 @@
+<response>
+    <href><![CDATA[http://shopname.api.myshoprenter.hu/categoryDescriptions/Y2F0ZWdvcnlEZXNjcmlwdGlvbi1jYXRlZ29yeV9pZD0xMiZsYW5ndWFnZV9pZD0x]]></href>
+    <id><![CDATA[Y2F0ZWdvcnlEZXNjcmlwdGlvbi1jYXRlZ29yeV9pZD0xMiZsYW5ndWFnZV9pZD0x]]></id>
+    <name><![CDATA[Category name]]></name>
+    <metaKeywords><![CDATA[Meta keywords]]></metaKeywords>
+    <metaDescription><![CDATA[Meta description]]></metaDescription>
+    <description><![CDATA[Long description]]></description>
+    <customTitle><![CDATA[Custom title]]></customTitle>
+    <robotsMetaTag><![CDATA[0]]></robotsMetaTag>
+    <footerSeoText><![CDATA[Seo text]]></footerSeoText>
+    <heading><![CDATA[Heading]]></heading>
+    <category>
+        <href><![CDATA[http://shopname.api.myshoprenter.hu/categories/Y2F0ZWdvcnktY2F0ZWdvcnlfaWQ9MTI=]]></href>
+    </category>
+    <language>
+        <href><![CDATA[http://shopname.api.myshoprenter.hu/languages/bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==]]></href>
+    </language>
+</response>

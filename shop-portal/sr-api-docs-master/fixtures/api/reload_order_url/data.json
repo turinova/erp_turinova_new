@@ -1,0 +1,36 @@
+{
+    "properties": [
+        {
+            "name": "order.id",
+            "description": {
+                "en": "Order identifier."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "customer.id",
+            "description": {
+                "en": "Customer identifier."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/reloadUrl"
+            },
+            "description": {
+                "en": "Used to create a reload order url."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/reloadUrl",
+                "statusCode": "200"
+            }
+        }
+    }
+}

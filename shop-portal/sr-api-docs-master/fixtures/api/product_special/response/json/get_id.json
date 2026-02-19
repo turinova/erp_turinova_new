@@ -1,0 +1,18 @@
+{
+    "href": "http://shopname.api.myshoprenter.hu/productSpecials/cHJvZHVjdFNwZWNpYWwtcHJvZHVjdF9zcGVjaWFsX2lkPTE=",
+    "id": "cHJvZHVjdFNwZWNpYWwtcHJvZHVjdF9zcGVjaWFsX2lkPTE=",
+    "priority": "1",
+    "price": "1000.0000",
+    "dateFrom": "2013-06-14 08:00:00",
+    "dateTo": "2013-06-29 16:00:00",
+    "minQuantity": "0",
+    "maxQuantity": "100",
+    "isLimitedDiscount": "0",
+    "maxOrderableCount": "0",
+    "product": {
+        "href": "http://shopname.api.myshoprenter.hu/products/cHJvZHVjdC1wcm9kdWN0X2lkPTI0NTE="
+    },
+    "customerGroup": {
+        "href": "http://shopname.api.myshoprenter.hu/customerGroups/Y3VzdG9tZXJHcm91cC1jdXN0b21lcl9ncm91cF9pZD04"
+    }
+}

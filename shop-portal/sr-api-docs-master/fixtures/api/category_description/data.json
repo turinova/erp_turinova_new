@@ -1,0 +1,199 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Category description identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaKeywords",
+            "description": {
+                "en": "Meta keywords."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "metaDescription",
+            "description": {
+                "en": "Meta description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Long description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customTitle",
+            "description": {
+                "en": "Custom title."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "robotsMetaTag",
+            "description": {
+                "en": "Robots meta tag."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "footerSeoText",
+            "description": {
+                "en": "Seo text at the bottom of the page."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "category",
+            "description": {
+                "en": "Category link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language link."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/categoryDescriptions\/category description id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryDescriptions\/Y2F0ZWdvcnlEZXNjcmlwdGlvbi1jYXRlZ29yeV9pZD0xMiZsYW5ndWFnZV9pZD0x",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/categoryDescriptions"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "categoryId",
+                    "description": {
+                        "en": "Search parameter (Category identifier)."
+                    }
+                },
+                {
+                    "name": "languageId",
+                    "description": {
+                        "en": "Search parameter (Language identifier)."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter (Category name)."
+                    }
+                },
+                {
+                    "name": "metaDescription",
+                    "description": {
+                        "en": "Search parameter (Meta description)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/categoryDescriptions?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/categoryDescriptions[\/category description id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryDescriptions",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/categoryDescriptions\/category description id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryDescriptions\/Y2F0ZWdvcnlEZXNjcmlwdGlvbi1jYXRlZ29yeV9pZD0xMiZsYW5ndWFnZV9pZD0x",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/categoryDescriptions\/category description id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/categoryDescriptions\/Y2F0ZWdvcnlEZXNjcmlwdGlvbi1jYXRlZ29yeV9pZD0xMiZsYW5ndWFnZV9pZD0x",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

@@ -1,0 +1,189 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Basket value modifying item identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "valueText",
+            "description": {
+                "en": "Value as string."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "value",
+            "description": {
+                "en": "Value."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "type",
+            "description": {
+                "en": "Type. Possible values: <br>\n<strong>SUB_TOTAL</strong> - Net subtotal.<br>\n<strong>TAX</strong> - VAT value.<br>\n<strong>SUB_TOTAL_WITH_TAX</strong> - Gross subtotal.<br>\n<strong>SHIPPING</strong> - Shipping fee.<br>\n<strong>PAYMENT</strong> - Handling fee arising in case of payment method.<br>\n<strong>COUPON</strong> - Coupon code discount.<br>\n<strong>TOTAL</strong> - Gross total.<br>\n<strong>LOYALTYPOINTS_TO_GET</strong> - New loyalty points earned by shopping.<br>\n<strong>LOYALTYPOINTS_TO_USE</strong> - Loyalty points used during the purchase."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "key",
+            "description": {
+                "en": "Key. Possible values: CART_AMOUNT_DISCOUNT, or empty."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "order",
+            "description": {
+                "en": "Order link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderTotals\/basket value modifying item id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderTotals\/b3JkZXJUb3RhbC1vcmRlcl90b3RhbF9pZD03",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderTotals"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "orderId",
+                    "description": {
+                        "en": "Search parameter. Order identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/orderTotals?page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/orderTotals[\/basket value modifying item id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderTotals",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/orderTotals\/basket value modifying item id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderTotals\/b3JkZXJUb3RhbC1vcmRlcl90b3RhbF9pZD03",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/orderTotals\/basket value modifying item id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderTotals\/b3JkZXJUb3RhbC1vcmRlcl90b3RhbF9pZD03",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

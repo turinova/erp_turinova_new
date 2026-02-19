@@ -1,0 +1,94 @@
+{
+    "href": "http://shopname.api.myshoprenter.hu/addresses?full=1&page=0&limit=25",
+    "page": "0",
+    "pageCount": "0",
+    "limit": "25",
+    "first": {
+        "href": "http://shopname.api.myshoprenter.hu/addresses?full=1&page=0&limit=25"
+    },
+    "previous": null,
+    "next": null,
+    "last": {
+        "href": "http://shopname.api.myshoprenter.hu/addresses?full=1&page=0&limit=25"
+    },
+    "items": [
+        {
+            "href": "http://shopname.api.myshoprenter.hu/addresses/YWRkcmVzcy1hZGRyZXNzX2lkPTY5",
+            "id": "YWRkcmVzcy1hZGRyZXNzX2lkPTY5",
+            "innerId": "1",
+            "company": "Company name",
+            "firstname": "Firstname",
+            "lastname": "Lastname",
+            "taxNumber": "12345678-9-00",
+            "type": "business",
+            "address1": "Test u. 1.",
+            "address2": "1. floor 10. door",
+            "postcode": "1234",
+            "city": "City",
+            "dateCreated": "2013-08-02T01:20:00",
+            "dateUpdated": "2013-08-03T07:30:00",
+            "telephone": "+36301234567",
+            "customer": {
+                "href": "http://shopname.api.myshoprenter.hu/customers/Y3VzdG9tZXItY3VzdG9tZXJfaWQ9MzU="
+            },
+            "country": {
+                "href": "http://shopname.api.myshoprenter.hu/countries/Y291bnRyeS1jb3VudHJ5X2lkPTk3"
+            },
+            "zone": {
+                "href": "http://shopname.api.myshoprenter.hu/zones/em9uZS16b25lX2lkPTE0NDE="
+            }
+        },
+        {
+            "href": "http://shopname.api.myshoprenter.hu/addresses/YWRkcmVzcy1hZGRyZXNzX2lkPTcw",
+            "id": "YWRkcmVzcy1hZGRyZXNzX2lkPTcw",
+            "innerId": "2",
+            "company": [],
+            "firstname": "Kiss",
+            "lastname": "Béla",
+            "taxNumber": [],
+            "type": "private",
+            "address1": "Test u. 1.",
+            "address2": "1. floor 10. door",
+            "postcode": "1234",
+            "city": "City",
+            "dateCreated": "2013-08-02T01:20:00",
+            "dateUpdated": "2013-08-03T07:30:00",
+            "telephone": [],
+            "customer": {
+                "href": "http://shopname.api.myshoprenter.hu/customers/Y3VzdG9tZXItY3VzdG9tZXJfaWQ9MzV="
+            },
+            "country": {
+                "href": "http://shopname.api.myshoprenter.hu/countries/Y291bnRyeS1jb3VudHJ5X2lkPTk3"
+            },
+            "zone": {
+                "href": "http://shopname.api.myshoprenter.hu/zones/em9uZS16b25lX2lkPTE0NDE="
+            }
+        },
+        {
+            "href": "http://shopname.api.myshoprenter.hu/addresses/YWRkcmVzcy1hZGRyZXNzX2lkPTcy",
+            "id": "YWRkcmVzcy1hZGRyZXNzX2lkPTcy",
+            "innerId": "3",
+            "company": [],
+            "firstname": "Nagy",
+            "lastname": "Aladár",
+            "taxNumber": [],
+            "type": "private",
+            "address1": "Test u. 1.",
+            "address2": "1. floor 10. door",
+            "postcode": "1234",
+            "city": "City",
+            "dateCreated": "2013-08-02T01:20:00",
+            "dateUpdated": "2013-08-03T07:30:00",
+            "telephone": "+36707654321",
+            "customer": {
+                "href": "http://shopname.api.myshoprenter.hu/customers/Y3VzdG9tZXItY3VzdG9tZXJfaWQ9MzW="
+            },
+            "country": {
+                "href": "http://shopname.api.myshoprenter.hu/countries/Y291bnRyeS1jb3VudHJ5X2lkPTk3"
+            },
+            "zone": {
+                "href": "http://shopname.api.myshoprenter.hu/zones/em9uZS16b25lX2lkPTE0NDE="
+            }
+        }
+    ]
+}

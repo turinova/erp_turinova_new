@@ -1,0 +1,28 @@
+{
+  "sortOrder": "1",
+  "enabled": "1",
+  "author": "John Doe",
+  "datePublished": "2022-10-21 10:00",
+  "showIntroText": "1",
+  "introPicturePath": "/cms_content/path",
+  "showAuthorName": "0",
+  "showDateCreated": "0",
+  "cmsContentDescriptions":[
+    {
+      "title":"Text content title",
+      "introtext":"Text content Introductory text",
+      "description":"Text content. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean porttitor ligula in ex pulvinar pharetra.",
+      "language":{
+        "id":"bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ=="
+      }
+    },
+    {
+      "title":"Text content title in English",
+      "introtext":"Text content Introductory text in English",
+      "description":"Text content in English. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean porttitor ligula in ex pulvinar pharetra.",
+      "language":{
+        "id":"bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9Mg=="
+      }
+    }
+  ]
+}

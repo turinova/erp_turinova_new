@@ -1,0 +1,123 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Tax rate identifier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "priority",
+            "description": {
+                "en": "Priority."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "rate",
+            "description": {
+                "en": "Rate."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Length description."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "geoZone",
+            "description": {
+                "en": "Geo zone link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "taxClass",
+            "description": {
+                "en": "Tax class link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/taxRates\/tax rate id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/taxRates\/dGF4UmF0ZS10YXhfcmF0ZV9pZD05NA==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/taxRates"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "taxClassId",
+                    "description": {
+                        "en": "Search parameter (Tax class identifier)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/taxRates?page=0&limit=25",
+                "statusCode": "200"
+            }
+        }
+    }
+}

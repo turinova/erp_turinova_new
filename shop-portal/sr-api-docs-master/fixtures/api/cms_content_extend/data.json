@@ -1,0 +1,221 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Text content identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Text content internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order relative to other textual content."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "enabled",
+            "description": {
+                "en": "Is it enabled?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "author",
+            "description": {
+                "en": "The name of the author."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showIntroText",
+            "description": {
+                "en": "Show intro text."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "introPicturePath",
+            "description": {
+                "en": "Intro picture path."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showAuthorName",
+            "description": {
+                "en": "Show author name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "showDateCreated",
+            "description": {
+                "en": "Show date created."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "datePublished",
+            "description": {
+                "en": "The date when published. (Y-m-d\\TH:i:s)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "The date when created. (Y-m-d\\TH:i:s)"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "The date when updated. (Y-m-d\\TH:i:s)"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "cmsContentDescriptions",
+            "description": {
+                "en": "\n                        Links of the descriptions belong to the text content.<br>\n                        In case of adding javascript, it must use a <strong>type=\"text/javascript\"</strong> attribute in the script tag.\n                    "
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "cmsContentTags",
+            "description": {
+                "en": "Given as an array, text content label data in several languages."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "cmsContentCmsListRelations",
+            "description": {
+                "en": "Links to CMS Content Lists that this content belongs to."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/cmsContentExtend\/text content id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/cmsContentExtend\/Y21zQ29udGVudC1pbmZvcm1hdGlvbl9pZD0zOA==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/cmsContentExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Text content internal identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/cmsContentExtend?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/cmsContentExtend[\/text content id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/cmsContentExtend",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/cmsContentExtend\/text content id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/cmsContentExtend\/Y21zQ29udGVudC1pbmZvcm1hdGlvbl9pZD0zOA==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/cmsContentExtend\/text content id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/cmsContentExtend\/Y21zQ29udGVudC1pbmZvcm1hdGlvbl9pZD0zOA==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

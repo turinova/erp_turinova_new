@@ -1,0 +1,20 @@
+{
+    "name": "Product name",
+    "metaTitle": "Meta title",
+    "metaKeywords": "Meta keywords",
+    "metaDescription": "Meta description",
+    "shortDescription": "LongShortdescription",
+    "description": "Long description",
+    "customContentTitle": "Custom content title",
+    "customContent": "Custom content",
+    "parameters": "Parameters",
+    "packagingUnit": "package",
+    "measurementUnit": "db",
+    "videoCode": "Youtube video code",
+    "product": {
+        "id": "cHJvZHVjdC1wcm9kdWN0X2lkPTEzNTgw"
+    },
+    "language": {
+        "id": "bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ=="
+    }
+}

@@ -1,0 +1,275 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Customer identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Customer internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "firstname",
+            "description": {
+                "en": "Lastname."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "lastname",
+            "description": {
+                "en": "Firstname."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "email",
+            "description": {
+                "en": "Email Address."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "telephone",
+            "description": {
+                "en": "Telephone."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "fax",
+            "description": {
+                "en": "Fax."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "password",
+            "description": {
+                "en": "bcrypt password."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "newsletter",
+            "description": {
+                "en": "Newsletter subscription status."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Status."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "approved",
+            "description": {
+                "en": "Is approved."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "freeShipping",
+            "description": {
+                "en": "Is free shipping."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "defaultAddress",
+            "description": {
+                "en": "Default Address link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customerGroup",
+            "description": {
+                "en": "Customer group link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "addresses *",
+            "description": {
+                "en": "Given as an array, even more Address data"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "loyaltyPoints *",
+            "description": {
+                "en": "Given as an array, event more loyalty point data"
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/customerExtend\/customer id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerExtend\/Y3VzdG9tZXItY3VzdG9tZXJfaWQ9MzQ=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/customerExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Customer internal identifier."
+                    }
+                },
+                {
+                    "name": "email",
+                    "description": {
+                        "en": "Search parameter. Email Address."
+                    }
+                },
+                {
+                    "name": "createdAtMin",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns customers created after the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "createdAtMax",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns customers created before the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "updatedAtMin",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns customers modified after the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "updatedAtMax",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns customers modified before the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/customerExtend?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/customerExtend[\/customer id]"
+            },
+            "description": {
+                "en": "It is used to create. Resources marked as Related Resources are always created."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customers",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/customerExtend\/customer id"
+            },
+            "description": {
+                "en": "It is for modification. Resources marked as Related Resources are always overwritten."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerExtend\/Y3VzdG9tZXItY3VzdG9tZXJfaWQ9MzQ=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/customerExtend\/customer id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/customerExtend\/Y3VzdG9tZXItY3VzdG9tZXJfaWQ9MzQ=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

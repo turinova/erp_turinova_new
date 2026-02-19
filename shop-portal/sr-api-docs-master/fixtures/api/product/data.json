@@ -1,0 +1,621 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Product internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "sku",
+            "description": {
+                "en": "Sku."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "modelNumber",
+            "description": {
+                "en": "Model number."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "gtin",
+            "description": {
+                "en": "GTIN identifier"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "orderable",
+            "description": {
+                "en": "Orderable."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "Net price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "cost",
+            "description": {
+                "en": "The purchase price of the product can be entered here. The amount displayed here is for the information of the admin, it will not be visible in the online store."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "multiplier",
+            "description": {
+                "en": "Price multiplier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "multiplierLock",
+            "description": {
+                "en": "Price multiplier lock."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "loyaltyPoints",
+            "description": {
+                "en": "Number of loyalty points for the product."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock1",
+            "description": {
+                "en": "Stock 1 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock2",
+            "description": {
+                "en": "Stock 2 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock3",
+            "description": {
+                "en": "Stock 3 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock4",
+            "description": {
+                "en": "Stock 4 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "subtractStock",
+            "description": {
+                "en": "Stock reduction switch."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "mainPicture",
+            "description": {
+                "en": "Main picture."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "width",
+            "description": {
+                "en": "Width."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "height",
+            "description": {
+                "en": "Height."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "length",
+            "description": {
+                "en": "Length."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weight",
+            "description": {
+                "en": "Weight."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Product status. Option values: 1 Enabled, 0 Disabled, 2 Deprecated"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "shipped",
+            "description": {
+                "en": "The product can be delivered, that is, they undertake to deliver it. (1/0)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minimalOrderNumber",
+            "description": {
+                "en": "Minimal order quantity."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maximalOrderNumber",
+            "description": {
+                "en": "Maximal order quantity."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minimalOrderNumberMultiply",
+            "description": {
+                "en": "Can only multiples of the smallest orderable quantity be ordered?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "availableDate",
+            "description": {
+                "en": "Since when is it available."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "quantity",
+            "description": {
+                "en": "Quantity"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Sort order"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "imageAlt",
+            "description": {
+                "en": "Product image alt."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "freeShipping",
+            "description": {
+                "en": "Is it free shipping?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "durableMediaDevice",
+            "description": {
+                "en": "Is it a durable media device?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "taxClass",
+            "description": {
+                "en": "Tax class."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "noStockStatus",
+            "description": {
+                "en": "Out of stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "inStockStatus",
+            "description": {
+                "en": "In stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productClass",
+            "description": {
+                "en": "Product type link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "parentProduct",
+            "description": {
+                "en": "Parent product link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "volumeUnit",
+            "description": {
+                "en": "Length measure link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weightUnit",
+            "description": {
+                "en": "Weight measure link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "manufacturer",
+            "description": {
+                "en": "Manufacturer link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock1Status",
+            "description": {
+                "en": "Only Warehouse 1 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock2Status",
+            "description": {
+                "en": "Only Warehouse 2 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock3Status",
+            "description": {
+                "en": "Only Warehouse 3 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock4Status",
+            "description": {
+                "en": "Only Warehouse 4 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "allImages",
+            "description": {
+                "en": "The full url of the main product image and additional images for the product."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productDescriptions",
+            "description": {
+                "en": "Product descriptions link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productRelatedProductRelations",
+            "description": {
+                "en": "Links to Resources describing the relationship between the product and related products."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productCategoryRelations",
+            "description": {
+                "en": "Links to Resources describing the relationship between the product and the category."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productSpecials",
+            "description": {
+                "en": "Product discount price links."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productProductBadgeRelations",
+            "description": {
+                "en": "Links to Resources describing the relationship between the product and stickers."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productListAttributeValueRelations",
+            "description": {
+                "en": "Links of list type values belonging to the product."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "numberAttributeValues",
+            "description": {
+                "en": "Links to integer or float values belonging to the product."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "textAttributeValues",
+            "description": {
+                "en": "Links to text type values belonging to the product."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productTags",
+            "description": {
+                "en": "Product tags link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productCollateralProductRelations",
+            "description": {
+                "en": "Links to Resources describing the relationship between the product and additional products."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "customerGroupProductPrices",
+            "description": {
+                "en": "Product prices link for the Customer group."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "relatedProducts",
+            "description": {
+                "en": "Related products link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "collateralProducts",
+            "description": {
+                "en": "The additional product link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productAddons",
+            "description": {
+                "en": "Addons that are linked to the product"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productAddonRelations",
+            "description": {
+                "en": "Links to Resources describing the relationship between the product and product addons."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/products\/product id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/products\/cHJvZHVjdC1wcm9kdWN0X2lkPTI0NTE=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/products"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Product internal identifier."
+                    }
+                },
+                {
+                    "name": "sku",
+                    "description": {
+                        "en": "Search parameter. Product sku."
+                    }
+                },
+                {
+                    "name": "createdAt",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns products created on the specified date. Format: 2013-01-01."
+                    }
+                },
+                {
+                    "name": "updatedAt",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns products modified on the specified date. Format: 2013-01-01."
+                    }
+                },
+                {
+                    "name": "parentProductId",
+                    "description": {
+                        "en": "Search parameter. According to the parent product innerId, it will filter to product having the same parent."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/products?full=1&page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/products[\/product id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/products",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/products\/product id"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/products\/cHJvZHVjdC1wcm9kdWN0X2lkPTI0NTE=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/products\/product id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/products\/cHJvZHVjdC1wcm9kdWN0X2lkPTI0NTE=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

@@ -1,0 +1,131 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Currency identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "code",
+            "description": {
+                "en": "Currency code, pl: USD, EUR, HUF."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "symbolLeft",
+            "description": {
+                "en": "The symbol before the value."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "symbolRight",
+            "description": {
+                "en": "The symbol after the value."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "decimalPlace",
+            "description": {
+                "en": "The number of decimal used in the value."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "value",
+            "description": {
+                "en": "The value used for change."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Status."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/currencies\/currency id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/currencies\/Y3VycmVuY3ktY3VycmVuY3lfaWQ9NA==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/currencies"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "code",
+                    "description": {
+                        "en": "Search parameter. A currency's code."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/currencies?page=0&limit=5",
+                "statusCode": "200"
+            }
+        }
+    }
+}

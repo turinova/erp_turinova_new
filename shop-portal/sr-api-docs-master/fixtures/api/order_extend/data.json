@@ -1,0 +1,657 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Order identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Order internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "invoiceId",
+            "description": {
+                "en": "Invoice identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "invoicePrefix",
+            "description": {
+                "en": "Invoice identifier prefix."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "firstname",
+            "description": {
+                "en": "Lastname."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "lastname",
+            "description": {
+                "en": "Firstname."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "phone",
+            "description": {
+                "en": "Telephone."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "fax",
+            "description": {
+                "en": "Fax."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "email",
+            "description": {
+                "en": "Email Address."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingFirstname",
+            "description": {
+                "en": "Shipping Address lastname."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingLastname",
+            "description": {
+                "en": "Shipping Address firstname."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingCompany",
+            "description": {
+                "en": "Shipping Address company."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingAddress1",
+            "description": {
+                "en": "Shipping Address address (street, house number)."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingAddress2",
+            "description": {
+                "en": "Shipping Address additional data."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingCity",
+            "description": {
+                "en": "Shipping Address city."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingPostcode",
+            "description": {
+                "en": "Shipping Address postcode."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingCountryName",
+            "description": {
+                "en": "Shipping Address country name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingZoneName",
+            "description": {
+                "en": "Shipping Address zone name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingAddressFormat",
+            "description": {
+                "en": "Shipping Address display format."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingMethodName",
+            "description": {
+                "en": "Shipping method name. In the case of parcel point shipping, it can also include the availability of the parcel point!"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "shippingMethodLocalizedName",
+            "description": {
+                "en": "Shipping method name. In contrast to 'shippingMethodName', it does not include the address of the package point. If the shipping method name changes in the meantime, this property will follow the change."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingMethodTaxRate",
+            "description": {
+                "en": "Shipping method tax rate."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingMethodTaxName",
+            "description": {
+                "en": "Shipping method tax rate name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingMethodExtension",
+            "description": {
+                "en": "Shipping method type. See below for possible values."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingReceivingPointId",
+            "description": {
+                "en": "Pickup point identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentFirstname",
+            "description": {
+                "en": "Billing Address Lastname."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentLastname",
+            "description": {
+                "en": "Billing Address lastname."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentCompany",
+            "description": {
+                "en": "Billing Address company."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentAddress1",
+            "description": {
+                "en": "Billing Address address (street, house number)."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentAddress2",
+            "description": {
+                "en": "Billing Address additional data."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentCity",
+            "description": {
+                "en": "Billing Address city."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentPostcode",
+            "description": {
+                "en": "Billing Address postcode."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentCountryName",
+            "description": {
+                "en": "Billing Address country name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentZoneName",
+            "description": {
+                "en": "Billing Address zone name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentAddressFormat",
+            "description": {
+                "en": "Billing Address display format."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentMethodName",
+            "description": {
+                "en": "Payment method name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentMethodCode",
+            "description": {
+                "en": "Payment method type. See below for possible values."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentMethodTaxRate",
+            "description": {
+                "en": "Payment method tax rate."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentMethodTaxName",
+            "description": {
+                "en": "Payment method tax rate name."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentMethodAfter",
+            "description": {
+                "en": "You have to pay later or in advance."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "taxNumber",
+            "description": {
+                "en": "Taxnumber."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "comment",
+            "description": {
+                "en": "Comment."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "total",
+            "description": {
+                "en": "Order gross price."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "value",
+            "description": {
+                "en": "Order price multiplier. It is used to switch between currencies."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "couponTaxRate",
+            "description": {
+                "en": "Coupon tax rate. (-1)"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "ip",
+            "description": {
+                "en": "The IP Address from which the order was received."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "pickPackPontShopCode",
+            "description": {
+                "en": "PickPackPont pick-up point identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "customer",
+            "description": {
+                "en": "Customer link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "customerGroup",
+            "description": {
+                "en": "Customer group link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingCountry *",
+            "description": {
+                "en": "Data of the country of the delivery address specified in the form of an object."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingZone",
+            "description": {
+                "en": "Shipping Address zone link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentCountry *",
+            "description": {
+                "en": "Data of the country of the billing address for the order, given in object form\n."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "paymentZone",
+            "description": {
+                "en": "Billing Address zone link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "orderStatus",
+            "description": {
+                "en": "Order status link. If there is no status, the order is not completed."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "language *",
+            "description": {
+                "en": "\nThe language data of the order given in object form."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "currency *",
+            "description": {
+                "en": "The currency data of the order, given in object form."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "shippingMode *",
+            "description": {
+                "en": "Data of the shipping method for the order specified in object form."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "coupon *",
+            "description": {
+                "en": "Coupon data for the order entered as an object."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "orderTotals *",
+            "description": {
+                "en": "Details of basket value modifying items as an object"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "orderProducts *",
+            "description": {
+                "en": "Order products as an object"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "orderProductAddons",
+            "description": {
+                "en": "Order product addons as an object"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "externalInfo",
+            "description": {
+                "en": "External marketplace identifiers"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "orderCreditCards",
+            "description": {
+                "en": "Credit card information."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderExtend\/order id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/orderExtend\/b3JkZXItb3JkZXJfaWQ9MTcy",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/orderExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Order internal identifier."
+                    }
+                },
+                {
+                    "name": "innerIdMin",
+                    "description": {
+                        "en": "Search parameter. You can filter on the internal identifier of the order. Returns orders with an ID greater than or equal to the specified ID."
+                    }
+                },
+                {
+                    "name": "orderStatusId",
+                    "description": {
+                        "en": "Search parameter. Order status identifier.<br>Example usage:http://shopname.api.myshoprenter.hu/orders?orderStatusId=b3JkZXJTdGF0dXMtb3JkZXJfc3RhdHVzX2lkPTE=<br>Therefore, it is necessary to enter the resource identifier of the given order status."
+                    }
+                },
+                {
+                    "name": "email",
+                    "description": {
+                        "en": "Search parameter. It will only list orders placed with the email address specified in the parameter."
+                    }
+                },
+                {
+                    "name": "excludeAbandonedCart",
+                    "description": {
+                        "en": "Search parameter. Using the excludeAbandonedCart=1 parameter, abandoned carts with an orderStatusId of 0 will not be displayed."
+                    }
+                },
+                {
+                    "name": "excludeStorno",
+                    "description": {
+                        "en": "Search parameter. Using the parameter excludeStorno=1, storno (deleted) orders will not be displayed."
+                    }
+                },
+                {
+                    "name": "createdAtMin",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns orders created after the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "createdAtMax",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns orders created before the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "updatedAtMin",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns orders modified after the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "updatedAtMax",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns orders modified before the specified date. Format: 2013-01-01T10:30:00."
+                    }
+                },
+                {
+                    "name": "createdAt",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns orders created on the specified date. Format: 2013-01-01."
+                    }
+                },
+                {
+                    "name": "updatedAt",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns orders modified on the specified date. Format: 2013-01-01."
+                    }
+                },
+                {
+                    "name": "shippingModeInnerId",
+                    "description": {
+                        "en": "Search parameter. Shipping method internal identifier."
+                    }
+                },
+                {
+                    "name": "externalInfo",
+                    "description": {
+                        "en": "External marketplace identifiers"
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/orderExtend?full=1&page=0&limit=1",
+                "statusCode": "200"
+            }
+        }
+    }
+}

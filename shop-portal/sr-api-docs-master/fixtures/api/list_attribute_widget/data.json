@@ -1,0 +1,181 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Attribute widget identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "active",
+            "description": {
+                "en": "Visible the widget."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "displayToAllCategory",
+            "description": {
+                "en": "Should it be displayed in all categories?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "displayMode",
+            "description": {
+                "en": "Display mode. Possible values: CHECKBOX, RADIO, SELECT."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maxlistOfOptions",
+            "description": {
+                "en": "The max number of selectable options."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortValuesBy",
+            "description": {
+                "en": "The sorting method for values . Possible values: COUNT_ASC, COUNT_DESC, ALPHABET_ASC, ALPHABET_DESC, CUSTOM_ORDER_ASC."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "attribute",
+            "description": {
+                "en": "Attribute link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "attributeWidgetCategoryRelations",
+            "description": {
+                "en": "The category link according to the widget."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "attributeWidgetDescriptions",
+            "description": {
+                "en": "The description link according to the widget."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/listAttributeWidgets\/attribute widget id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/listAttributeWidgets\/bGlzdEF0dHJpYnV0ZVdpZGdldC1hdHRyaWJ1dGVfaWQ9OA==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/listAttributeWidgets"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "listAttributeId",
+                    "description": {
+                        "en": "Attribute identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/listAttributeWidgets?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/listAttributeWidgets[\/attribute widget id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/listAttributeWidgets",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/listAttributeWidgets\/attribute widget id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/listAttributeWidgets\/bGlzdEF0dHJpYnV0ZVdpZGdldC1hdHRyaWJ1dGVfaWQ9OA==",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/listAttributeWidgets\/attribute widget id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/listAttributeWidgets\/bGlzdEF0dHJpYnV0ZVdpZGdldC1hdHRyaWJ1dGVfaWQ9OA==",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

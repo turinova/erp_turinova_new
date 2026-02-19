@@ -1,0 +1,24 @@
+<response>
+    <href><![CDATA[http://shopname.api.myshoprenter.hu/productDescriptions/cHJvZHVjdERlc2NyaXB0aW9uLXByb2R1Y3RfaWQ9MTM1ODAmbGFuZ3VhZ2VfaWQ9MQ==]]></href>
+    <id><![CDATA[cHJvZHVjdERlc2NyaXB0aW9uLXByb2R1Y3RfaWQ9MTM1ODAmbGFuZ3VhZ2VfaWQ9MQ==]]></id>
+    <name><![CDATA[Product name]]></name>
+    <metaTitle><![CDATA[Meta title]]></metaTitle>
+    <metaKeywords><![CDATA[Meta keywords]]></metaKeywords>
+    <metaDescription><![CDATA[Meta description]]></metaDescription>
+    <shortDescription><![CDATA[LongShortdescription]]></shortDescription>
+    <description><![CDATA[Long description]]></description>
+    <customContentTitle><![CDATA[Custom content title]]></customContentTitle>
+    <customContent><![CDATA[Custom content]]></customContent>
+    <parameters><![CDATA[Parameters]]></parameters>
+    <packagingUnit><![CDATA[package]]></packagingUnit>
+    <measurementUnit><![CDATA[db]]></measurementUnit>
+    <dateCreated><![CDATA[2013-08-08T12:30:00]]></dateCreated>
+    <dateUpdated><![CDATA[2013-08-08T12:30:00]]></dateUpdated>
+    <videoCode><![CDATA[Youtube video code]]></videoCode>
+    <product>
+        <href><![CDATA[http://shopname.api.myshoprenter.hu/products/cHJvZHVjdC1wcm9kdWN0X2lkPTEzNTgw]]></href>
+    </product>
+    <language>
+        <href><![CDATA[http://shopname.api.myshoprenter.hu/languages/bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==]]></href>
+    </language>
+</response>

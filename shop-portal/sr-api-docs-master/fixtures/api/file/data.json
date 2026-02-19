@@ -1,0 +1,98 @@
+{
+    "properties": [
+        {
+            "name": "filePath",
+            "description": {
+                "en": "Relative file path for the file. <strong>Important!<\/strong> The filename can only contain english alphabet's characters and (),_,-, karaktereket, and numbers!"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "type",
+            "description": {
+                "en": "File type. Possible values: image, download."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "attachment",
+            "description": {
+                "en": "Attachment with base64 encode."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/files?type=[type]&filePath=[path]"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [
+                {
+                    "name": "type",
+                    "description": {
+                        "en": "Type."
+                    }
+                },
+                {
+                    "name": "filePath",
+                    "description": {
+                        "en": "path."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/files\/type=image&filePath=product\/image.jpg",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/files"
+            },
+            "description": {
+                "en": "Create\/Modify. If file exists on the path, then it will be replaced."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/files",
+                "statusCode": "204"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/files"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [
+                {
+                    "name": "type",
+                    "description": {
+                        "en": "Type."
+                    }
+                },
+                {
+                    "name": "filePath",
+                    "description": {
+                        "en": "Relative path."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/files?type=image&filePath=product\/image.jpg",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

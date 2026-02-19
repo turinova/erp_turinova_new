@@ -1,0 +1,179 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Manufacturer identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Manufacturer internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "picture",
+            "description": {
+                "en": "Image."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "robotsMetaTag",
+            "description": {
+                "en": "Robots meta tag."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "manufacturerDescriptions",
+            "description": {
+                "en": "Manufacturer descriptions link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/manufacturers\/manufacturer id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturers\/bWFudWZhY3R1cmVyLW1hbnVmYWN0dXJlcl9pZD0x",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/manufacturers"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Manufacturer internal identifier."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter. Manufacturer name."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/manufacturers?page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/manufacturers[\/manufacturer id]"
+            },
+            "description": {
+                "en": "It is used to create and modify."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturers",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/manufacturers\/manufacturer id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturers\/bWFudWZhY3R1cmVyLW1hbnVmYWN0dXJlcl9pZD0x",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/manufacturers\/manufacturer id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/manufacturers\/bWFudWZhY3R1cmVyLW1hbnVmYWN0dXJlcl9pZD0x",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

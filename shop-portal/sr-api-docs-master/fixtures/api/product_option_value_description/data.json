@@ -1,0 +1,139 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product option value description identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productOptionValue",
+            "description": {
+                "en": "Product option value link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language link."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productOptionValueDescriptions\/id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValueDescriptions\/cHJvZHVjdE9wdGlvblZhbHVlRGVzY3JpcHRpb24tcHJvZHVjdF9vcHRpb25fdmFsdWVfaWQ9NzQ4Jmxhbmd1YWdlX2lkPTQ=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productOptionValueDescriptions"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "productOptionValueId",
+                    "description": {
+                        "en": "Search parameter. Product option value identifier."
+                    }
+                },
+                {
+                    "name": "languageId",
+                    "description": {
+                        "en": "Search parameter. Language identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productOptionValueDescriptions?page=0&limit=5",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productOptionValueDescriptions[\/id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValueDescriptions",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productOptionValueDescriptions\/id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValueDescriptions\/cHJvZHVjdE9wdGlvblZhbHVlRGVzY3JpcHRpb24tcHJvZHVjdF9vcHRpb25fdmFsdWVfaWQ9NzQ4Jmxhbmd1YWdlX2lkPTQ=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productOptionValueDescriptions\/id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productOptionValueDescriptions\/cHJvZHVjdE9wdGlvblZhbHVlRGVzY3JpcHRpb24tcHJvZHVjdF9vcHRpb25fdmFsdWVfaWQ9NzQ4Jmxhbmd1YWdlX2lkPTQ=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

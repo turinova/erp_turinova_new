@@ -1,0 +1,696 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Product identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Product internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "sku",
+            "description": {
+                "en": "sku."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "modelNumber",
+            "description": {
+                "en": "Model number."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "gtin",
+            "description": {
+                "en": "GTIN identifier"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "orderable",
+            "description": {
+                "en": "Orderable."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "price",
+            "description": {
+                "en": "A product net price."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "cost",
+            "description": {
+                "en": "Cost: The purchase price of the product can be entered here. The amount displayed here is for the information of the admin, it will not be visible in the online store."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "multiplier",
+            "description": {
+                "en": "Price multiplier."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "multiplierLock",
+            "description": {
+                "en": "Price multiplier lock."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "loyaltyPoints",
+            "description": {
+                "en": "Number of loyalty points for the product."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock1",
+            "description": {
+                "en": "Stock 1 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock2",
+            "description": {
+                "en": "Stock 2 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock3",
+            "description": {
+                "en": "Stock 3 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "stock4",
+            "description": {
+                "en": "Stock 4 set."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "subtractStock",
+            "description": {
+                "en": "Stock reduction switch."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "mainPicture",
+            "description": {
+                "en": "Main picture."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "width",
+            "description": {
+                "en": "Width."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "height",
+            "description": {
+                "en": "Height."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "length",
+            "description": {
+                "en": "Length."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weight",
+            "description": {
+                "en": "Weight."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Product status. Option values: 1 Enabled, 0 Disabled, 2 Deprecated"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "shipped",
+            "description": {
+                "en": "The product can be delivered, that is, they undertake to deliver it. (1/0)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minimalOrderNumber",
+            "description": {
+                "en": "Minimum order quantity."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "maximalOrderNumber",
+            "description": {
+                "en": "Maximal order quantity."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "minimalOrderNumberMultiply",
+            "description": {
+                "en": "Can only the minimum order quantity be ordered?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "availableDate",
+            "description": {
+                "en": "Since when is it available."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "quantity",
+            "description": {
+                "en": "Quantity"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Sort order"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "imageAlt",
+            "description": {
+                "en": "Product image alt."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "freeShipping",
+            "description": {
+                "en": "Is it free shipping?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "durableMediaDevice",
+            "description": {
+                "en": "Is it a durable media device?"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productAttributeExtend",
+            "description": {
+                "en": "This list contains the properties belonging to the product.<br> The objects in the list contain the property's type (\"type\"), its text identifier (\"name\") - this is not the label that can be entered in several languages, but the internal identifier - and itself the value (\"value\").<br> The values of \"type\" are the same as the values that can be selected on the \"Custom product properties\" editor interface.<br> \"value\" stores the value of the property belonging to the product, e.g. the blue value for the color. There may be a feature that does not have a multilingual version, e.g. a number - this does not need to be stored in multiple languages. Thus \"value\" contains only 1 object, not a list (as it would for a text value).<br> Property types: integer (INTEGER), fractional number (FLOAT), selection list (LIST), arbitrary value (TEXT)."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productPrices",
+            "description": {
+                "en": "Prices calculated with the default currency, broken down by customer groups."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "taxClass",
+            "description": {
+                "en": "Tax class link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "noStockStatus",
+            "description": {
+                "en": "Out of stoke status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "inStockStatus",
+            "description": {
+                "en": "In stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productClass",
+            "description": {
+                "en": "Product type link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "parentProduct",
+            "description": {
+                "en": "Parent product link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "volumeUnit",
+            "description": {
+                "en": "Length measurement link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "weightUnit",
+            "description": {
+                "en": "Weight measurement link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock1Status",
+            "description": {
+                "en": "Only Stock 1 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock2Status",
+            "description": {
+                "en": "Only Stock 2 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock3Status",
+            "description": {
+                "en": "Only Stock 3 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "onlyStock4Status",
+            "description": {
+                "en": "Only Stock 4 has an in-stock status link."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "allImages",
+            "description": {
+                "en": "The full url of the main product image and additional images for the product."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "manufacturer *",
+            "description": {
+                "en":"The manufacturer's data for your room, given in object form"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productDescriptions *",
+            "description": {
+                "en": "Given as an array, product description data in several languages"
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "productRelatedProductRelations *",
+            "description": {
+                "en": "Given as an array, even more connected product links"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productCategoryRelations *",
+            "description": {
+                "en": "Given as an array, even several category connections"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productSpecials *",
+            "description": {
+                "en": "Given as an array, details of even more discount prices\n"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productProductBadgeRelations *",
+            "description": {
+                "en": "Given as an array, even more sticker links"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productListAttributeValueRelations",
+            "description": {
+                "en": "List type values for the product link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "numberAttributeValues",
+            "description": {
+                "en": "Integer or float values for the product link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "textAttributeValues",
+            "description": {
+                "en": "Text type values for the product link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productTags *",
+            "description": {
+                "en": "Given as an array, product label data in several languages."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productCollateralProductRelations *",
+            "description": {
+                "en": "Given as an array, even several additional product links"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customerGroupProductPrices *",
+            "description": {
+                "en": "Given as an array, price data for several customer groups"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "relatedProducts",
+            "description": {
+                "en": "Related products link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "collateralProducts",
+            "description": {
+                "en": "The additional product link."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "urlAliases *",
+            "description": {
+                "en": "Data of the product's search engine-friendly URL. Contrary to its name, there is only 1 of it per product."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "productAddons",
+            "description": {
+                "en": "Addons that are linked to the product"
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "productAddonRelations",
+            "description": {
+                "en": "Links to Resources describing the relationship between the product and product addons."
+            },
+            "required": false,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/productExtend\/product id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/productExtend\/cHJvZHVjdC1wcm9kdWN0X2lkPTUw",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/productExtend"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Product internal identifier."
+                    }
+                },
+                {
+                    "name": "sku",
+                    "description": {
+                        "en": "Search parameter. Product sku."
+                    }
+                },
+                {
+                    "name": "createdAt",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns products created on the specified date. Format: 2013-01-01."
+                    }
+                },
+                {
+                    "name": "createdAfter",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns products created after the specified date. Format: 2019-01-01T00:00:00."
+                    }
+                },
+                {
+                    "name": "createdBefore",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the creation date. Returns products created before the specified date. Format: 2019-01-01T00:00:00."
+                    }
+                },
+                {
+                    "name": "updatedAt",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns products modified at the specified date. Format: 2013-01-01."
+                    }
+                },
+                {
+                    "name": "updatedAfter",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns products modified after the specified date. Format: 2019-01-01T00:00:00."
+                    }
+                },
+                {
+                    "name": "updatedBefore",
+                    "description": {
+                        "en": "Search parameter. It can be used for search the modification date. Returns products modified before the specified date. Format: 2019-01-01T00:00:00."
+                    }
+                },
+                {
+                    "name": "published",
+                    "description": {
+                        "en": "Search parameter. You can filter by product status. Values: 0 (Disabled), 1 (Enabled), 2 (Deprecated). By default, it lists all products."
+                    }
+                },
+                {
+                    "name": "parentProductId",
+                    "description": {
+                        "en": "Search parameter. According to the parent product innerId, it will filter to product having the same parent."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productExtend?full=1&page=0&limit=2",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/productExtend[\/product id]"
+            },
+            "description": {
+                "en": "It is used to create or modify. Resources marked as Related Resources are always created."
+            },
+            "parameters": [
+                {
+                    "name": "sku",
+                    "description": {
+                        "en": "Product SKU. It is used to identify the product to be modified. If a product with the specified SKU does not exist, an error is returned."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/products",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/productExtend\/product id"
+            },
+            "description": {
+                "en": "It is used to create or modify. Resources marked as Related Resources are always overwritten."
+            },
+            "parameters": [
+                {
+                    "name": "sku",
+                    "description": {
+                        "en": "Product SKU. It is used to identify the product to be modified. If a product with the specified SKU does not exist, an error is returned."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/products\/cHJvZHVjdC1wcm9kdWN0X2lkPTUw",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/productExtend\/product id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [
+                {
+                    "name": "sku",
+                    "description": {
+                        "en": "Product SKU. It is used to identify the product to be deleted. If a product with the specified SKU does not exist, an error is returned."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/productExtend\/cHJvZHVjdC1wcm9kdWN0X2lkPTUw",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

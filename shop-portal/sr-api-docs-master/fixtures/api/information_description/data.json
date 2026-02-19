@@ -1,0 +1,135 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Text menu description identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "title",
+            "description": {
+                "en": "Text menu title."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "description",
+            "description": {
+                "en": "Text menu.<br>When adding executable javascript, the <strong>type=\"text/javascript\"</strong> attribute must be specified within the script tag."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "language",
+            "description": {
+                "en": "Language resource link."
+            },
+            "required": true,
+            "readonly": true
+        },
+        {
+            "name": "information",
+            "description": {
+                "en": "Text menu internal identifier."
+            },
+            "required": true,
+            "readonly": true
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/informationDescriptions\/text menu description id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/informationDescriptions\/aW5mb3JtYXRpb25EZXNjcmlwdGlvbi1pbmZvcm1hdGlvbl9pZD0xNiZsYW5ndWFnZV9pZD0x=",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/informationDescriptions"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/informationDescriptions?full=1&page=0&limit=25",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/informationDescriptions[\/text menu description id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/informationDescriptions",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/informationDescriptions\/text menu description id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/informationDescriptions\/aW5mb3JtYXRpb25EZXNjcmlwdGlvbi1pbmZvcm1hdGlvbl9pZD0xNiZsYW5ndWFnZV9pZD0x=",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/informationDescriptions\/text menu description id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/informationDescriptions\/aW5mb3JtYXRpb25EZXNjcmlwdGlvbi1pbmZvcm1hdGlvbl9pZD0xNiZsYW5ndWFnZV9pZD0x=",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}

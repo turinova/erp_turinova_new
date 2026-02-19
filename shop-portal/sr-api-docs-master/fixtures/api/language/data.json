@@ -1,0 +1,127 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Language identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Language internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "name",
+            "description": {
+                "en": "Name."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "code",
+            "description": {
+                "en": "Code."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "locale",
+            "description": {
+                "en": "Locale."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "sortOrder",
+            "description": {
+                "en": "Order."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "status",
+            "description": {
+                "en": "Status."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/languages\/language id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/languages\/bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/languages"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter (Language internal identifier)."
+                    }
+                },
+                {
+                    "name": "name",
+                    "description": {
+                        "en": "Search parameter (Language name)."
+                    }
+                },
+                {
+                    "name": "code",
+                    "description": {
+                        "en": "Search parameter (Code)."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/languages?limit=3&page=0",
+                "statusCode": "200"
+            }
+        }
+    }
+}

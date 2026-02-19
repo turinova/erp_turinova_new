@@ -1,0 +1,243 @@
+{
+    "properties": [
+        {
+            "name": "id",
+            "description": {
+                "en": "Address identifier. It is used to change the OuterID."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "innerId",
+            "description": {
+                "en": "Address internal identifier."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "company",
+            "description": {
+                "en": "Company."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "firstname",
+            "description": {
+                "en": "Lastname."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "lastname",
+            "description": {
+                "en": "Firstname."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "taxNumber",
+            "description": {
+                "en": "Taxnumber."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "type",
+            "description": {
+                "en": "The type of the customer: private(private person), business (company)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "address1",
+            "description": {
+                "en": "Street, number."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "address2",
+            "description": {
+                "en": "Additional address data (floor, door)"
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "postcode",
+            "description": {
+                "en": "Postcode."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "city",
+            "description": {
+                "en": "City."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "dateCreated",
+            "description": {
+                "en": "Created date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "dateUpdated",
+            "description": {
+                "en": "Last updated date."
+            },
+            "required": false,
+            "readonly": true
+        },
+        {
+            "name": "telephone",
+            "description": {
+                "en": "Telephone."
+            },
+            "required": false,
+            "readonly": false
+        },
+        {
+            "name": "customer",
+            "description": {
+                "en": "Customer link."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "country",
+            "description": {
+                "en": "Country link."
+            },
+            "required": true,
+            "readonly": false
+        },
+        {
+            "name": "zone",
+            "description": {
+                "en": "Zone link."
+            },
+            "required": false,
+            "readonly": false
+        }
+    ],
+    "endpoints": {
+        "get": {
+            "method": "GET",
+            "url": {
+                "en": "\/addresses\/address id"
+            },
+            "description": {
+                "en": "Used to retrieve a specific item."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/addresses\/YWRkcmVzcy1hZGRyZXNzX2lkPTY5",
+                "statusCode": "200"
+            }
+        },
+        "getCollection": {
+            "method": "GET",
+            "url": {
+                "en": "\/addresses"
+            },
+            "description": {
+                "en": "Used to retrieve a collection of elements."
+            },
+            "parameters": [
+                {
+                    "name": "page",
+                    "description": {
+                        "en": "The serial number of the given page."
+                    }
+                },
+                {
+                    "name": "limit",
+                    "description": {
+                        "en": "Number of items displayed on a page. Maximum 200."
+                    }
+                },
+                {
+                    "name": "full",
+                    "description": {
+                        "en": "Whether the values of the first-level fields should be expanded. Value: 1 (yes) or 0 (no). Default: 0."
+                    }
+                },
+                {
+                    "name": "innerId",
+                    "description": {
+                        "en": "Search parameter. Address internal identifier."
+                    }
+                },
+                {
+                    "name": "customerId",
+                    "description": {
+                        "en": "Search parameter. Customer identifier."
+                    }
+                }
+            ],
+            "example": {
+                "url": "\/addresses?page=0&limit=25&full=1",
+                "statusCode": "200"
+            }
+        },
+        "post": {
+            "method": "POST",
+            "url": {
+                "en": "\/addresses[\/Address id]"
+            },
+            "description": {
+                "en": "It is used for both creation and modification."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/addresses",
+                "statusCode": "200 or 201"
+            }
+        },
+        "put": {
+            "method": "PUT",
+            "url": {
+                "en": "\/addresses\/Address id"
+            },
+            "description": {
+                "en": "It is used for modification only."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/addresses\/YWRkcmVzcy1hZGRyZXNzX2lkPTY5",
+                "statusCode": "200 or 201"
+            }
+        },
+        "delete": {
+            "method": "DELETE",
+            "url": {
+                "en": "\/addresses\/Address id"
+            },
+            "description": {
+                "en": "Used for deletion."
+            },
+            "parameters": [],
+            "example": {
+                "url": "\/addresses\/YWRkcmVzcy1hZGRyZXNzX2lkPTY5",
+                "statusCode": "204 or 404"
+            }
+        }
+    }
+}
