@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useEffect } from 'react'
-import { Box, Typography, Paper, Tabs, Tab, IconButton, Divider } from '@mui/material'
+import React, { useEffect, useState } from 'react'
+import { Box, Typography, Paper, IconButton, Divider } from '@mui/material'
 import {
   FormatBold as BoldIcon,
   FormatItalic as ItalicIcon,
@@ -32,29 +32,16 @@ interface HtmlEditorProps {
   height?: number
 }
 
-interface TabPanelProps {
-  children?: React.ReactNode
-  index: number
-  value: number
-}
-
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`html-editor-tabpanel-${index}`}
-      aria-labelledby={`html-editor-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box>{children}</Box>}
-    </div>
-  )
-}
-
 // Editor Toolbar Component
-const EditorToolbar = ({ editor }: { editor: Editor | null }) => {
+const EditorToolbar = ({ 
+  editor, 
+  isSourceMode, 
+  onToggleSourceMode 
+}: { 
+  editor: Editor | null
+  isSourceMode: boolean
+  onToggleSourceMode: () => void
+}) => {
   if (!editor) {
     return null
   }
@@ -216,20 +203,20 @@ const EditorToolbar = ({ editor }: { editor: Editor | null }) => {
       >
         <QuoteIcon fontSize="small" />
       </IconButton>
+      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
       <IconButton
         size="small"
-        onClick={() => editor.chain().focus().toggleCode().run()}
-        color={editor.isActive('code') ? 'primary' : 'default'}
+        onClick={onToggleSourceMode}
+        color={isSourceMode ? 'primary' : 'default'}
         sx={{ 
           border: 1, 
-          borderColor: editor.isActive('code') ? 'primary.main' : 'divider',
+          borderColor: isSourceMode ? 'primary.main' : 'divider',
           borderRadius: 1
         }}
-        title="Kód"
+        title={isSourceMode ? 'Vissza a szerkesztőhöz' : 'HTML forráskód megjelenítése'}
       >
         <CodeIcon fontSize="small" />
       </IconButton>
-      <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
       <IconButton
         size="small"
         onClick={() => editor.chain().focus().undo().run()}
@@ -267,11 +254,8 @@ export default function HtmlEditor({
   placeholder = 'Írjon be szöveget...',
   height = 400
 }: HtmlEditorProps) {
-  const [tabValue, setTabValue] = React.useState(0)
-
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue)
-  }
+  const [isSourceMode, setIsSourceMode] = useState(false)
+  const [sourceCode, setSourceCode] = useState(value || '')
 
   // Initialize TipTap editor
   const editor = useEditor({
@@ -287,20 +271,46 @@ export default function HtmlEditor({
     content: value || '',
     immediatelyRender: false,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML())
+      if (!isSourceMode) {
+        onChange(editor.getHTML())
+      }
     },
   })
 
   // Update editor content when value prop changes (but not from user input)
   useEffect(() => {
-    if (editor && value !== undefined) {
+    if (editor && value !== undefined && !isSourceMode) {
       const currentHtml = editor.getHTML()
       // Only update if the value actually changed (avoid infinite loops)
       if (currentHtml !== value) {
         editor.commands.setContent(value || '')
       }
     }
-  }, [editor, value])
+  }, [editor, value, isSourceMode])
+
+  // Sync sourceCode with value when entering source mode
+  useEffect(() => {
+    if (isSourceMode) {
+      setSourceCode(value || '')
+    }
+  }, [isSourceMode, value])
+
+  const handleToggleSourceMode = () => {
+    if (isSourceMode) {
+      // Switching from source mode to visual mode
+      // Update the editor with the source code
+      if (editor) {
+        editor.commands.setContent(sourceCode || '')
+        onChange(sourceCode || '')
+      }
+    }
+    setIsSourceMode(!isSourceMode)
+  }
+
+  const handleSourceCodeChange = (newSourceCode: string) => {
+    setSourceCode(newSourceCode)
+    onChange(newSourceCode)
+  }
 
   if (!editor) {
     return null
@@ -314,14 +324,75 @@ export default function HtmlEditor({
         </Typography>
       )}
       <Paper variant="outlined">
-        <Tabs value={tabValue} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tab label="Szerkesztés" />
-          <Tab label="Előnézet" />
-        </Tabs>
-
-        <TabPanel value={tabValue} index={0}>
+        {isSourceMode ? (
           <Box>
-            <EditorToolbar editor={editor} />
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                p: 1,
+                borderBottom: 1,
+                borderColor: 'divider',
+                bgcolor: 'action.hover'
+              }}
+            >
+              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                HTML forráskód
+              </Typography>
+              <IconButton
+                size="small"
+                onClick={handleToggleSourceMode}
+                color="primary"
+                sx={{ 
+                  border: 1, 
+                  borderColor: 'primary.main',
+                  borderRadius: 1
+                }}
+                title="Vissza a szerkesztőhöz"
+              >
+                <CodeIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Box
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                borderTop: 'none',
+                borderRadius: '0 0 4px 4px',
+                p: 1
+              }}
+            >
+              <Box
+                component="textarea"
+                value={sourceCode}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleSourceCodeChange(e.target.value)}
+                placeholder={placeholder}
+                sx={{
+                  width: '100%',
+                  minHeight: `${height - 150}px`,
+                  maxHeight: `${height - 150}px`,
+                  fontFamily: 'monospace',
+                  fontSize: '14px',
+                  lineHeight: '1.5',
+                  padding: '12px',
+                  border: 'none',
+                  outline: 'none',
+                  resize: 'vertical',
+                  backgroundColor: 'transparent',
+                  font: 'inherit',
+                  color: 'inherit'
+                }}
+              />
+            </Box>
+          </Box>
+        ) : (
+          <Box>
+            <EditorToolbar 
+              editor={editor} 
+              isSourceMode={isSourceMode}
+              onToggleSourceMode={handleToggleSourceMode}
+            />
             <Box
               sx={{
                 border: '1px solid',
@@ -336,46 +407,7 @@ export default function HtmlEditor({
               <EditorContent editor={editor} />
             </Box>
           </Box>
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={1}>
-          <Box
-            sx={{
-              minHeight: height - 100,
-              maxHeight: height - 100,
-              overflow: 'auto',
-              p: 2,
-              border: '1px solid',
-              borderColor: 'divider',
-              borderRadius: 1,
-              bgcolor: 'background.paper'
-            }}
-          >
-            {value ? (
-              <Box
-                dangerouslySetInnerHTML={{ __html: value }}
-                sx={{
-                  '& img': {
-                    maxWidth: '100%',
-                    height: 'auto'
-                  },
-                  '& table': {
-                    borderCollapse: 'collapse',
-                    width: '100%'
-                  },
-                  '& td, & th': {
-                    border: '1px solid #ddd',
-                    padding: '8px'
-                  }
-                }}
-              />
-            ) : (
-              <Typography color="text.secondary" variant="body2">
-                Nincs tartalom az előnézethez
-              </Typography>
-            )}
-          </Box>
-        </TabPanel>
+        )}
       </Paper>
     </Box>
   )

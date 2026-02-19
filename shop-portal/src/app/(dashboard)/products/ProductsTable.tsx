@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Box, 
@@ -17,7 +17,12 @@ import {
   CircularProgress,
   Chip,
   IconButton,
-  Tooltip
+  Tooltip,
+  Pagination,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material'
 import { 
   Search as SearchIcon, 
@@ -31,21 +36,131 @@ import type { ShopRenterProduct } from '@/lib/products-server'
 
 interface ProductsTableProps {
   initialProducts: ShopRenterProduct[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  limit: number
+  initialSearch: string
 }
 
-export default function ProductsTable({ initialProducts }: ProductsTableProps) {
+export default function ProductsTable({ 
+  initialProducts,
+  totalCount,
+  totalPages,
+  currentPage,
+  limit,
+  initialSearch
+}: ProductsTableProps) {
   const router = useRouter()
-  const [products] = useState<ShopRenterProduct[]>(initialProducts)
-  const [searchTerm, setSearchTerm] = useState('')
+  const [products, setProducts] = useState<ShopRenterProduct[]>(initialProducts)
+  const [searchTerm, setSearchTerm] = useState(initialSearch)
   const [syncingProductId, setSyncingProductId] = useState<string | null>(null)
 
-  const [isPending, startTransition] = useTransition()
+  // Pagination state
+  const [page, setPage] = useState(currentPage)
+  const [currentPageSize, setCurrentPageSize] = useState(limit)
+  const [isLoading, setIsLoading] = useState(false)
 
-  // Filter products based on search term
-  const filteredProducts = products.filter(product =>
-    product.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.name && product.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
+  // Server-side search with pagination
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchResults, setSearchResults] = useState<ShopRenterProduct[]>([])
+  const [searchTotalCount, setSearchTotalCount] = useState(0)
+  const [searchTotalPages, setSearchTotalPages] = useState(0)
+
+  // Search effect - fetch from API route
+  useEffect(() => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSearchResults([])
+      setSearchTotalCount(0)
+      setSearchTotalPages(0)
+      return
+    }
+
+    const searchTimeout = setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const response = await fetch(`/api/products/search?q=${encodeURIComponent(searchTerm)}&page=1&limit=${currentPageSize}`)
+        if (response.ok) {
+          const data = await response.json()
+          setSearchResults(data.products)
+          setSearchTotalCount(data.totalCount)
+          setSearchTotalPages(data.totalPages)
+        } else {
+          console.error('Search failed:', response.statusText)
+          setSearchResults([])
+          setSearchTotalCount(0)
+          setSearchTotalPages(0)
+        }
+      } catch (error) {
+        console.error('Error searching products:', error)
+        setSearchResults([])
+        setSearchTotalCount(0)
+        setSearchTotalPages(0)
+      } finally {
+        setIsSearching(false)
+      }
+    }, 300) // Debounce search
+
+    return () => clearTimeout(searchTimeout)
+  }, [searchTerm, currentPageSize])
+
+  // Handle search input change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value)
+  }
+
+  // Handle page change - fetch from API route
+  const handlePageChange = async (_event: React.ChangeEvent<unknown>, newPage: number) => {
+    setIsLoading(true)
+    setPage(newPage)
+    
+    try {
+      const response = await fetch(`/api/products/paginated?page=${newPage}&limit=${currentPageSize}`)
+      if (response.ok) {
+        const data = await response.json()
+        setProducts(data.products)
+      } else {
+        console.error('Failed to fetch products')
+        toast.error('Hiba történt az adatok betöltése során')
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error)
+      toast.error('Hiba történt az adatok betöltése során')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Handle limit change - fetch from API route
+  const handleLimitChange = async (event: any) => {
+    const newPageSize = Number(event.target.value)
+    setIsLoading(true)
+    setCurrentPageSize(newPageSize)
+    setPage(1) // Reset to first page when changing page size
+    
+    try {
+      const response = await fetch(`/api/products/paginated?page=1&limit=${newPageSize}`)
+      if (response.ok) {
+        const data = await response.json()
+        setProducts(data.products)
+        setPage(1)
+      } else {
+        console.error('Failed to fetch products')
+        toast.error('Hiba történt az adatok betöltése során')
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error)
+      toast.error('Hiba történt az adatok betöltése során')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Use search results if searching, otherwise use regular products
+  const displayProducts = searchTerm && searchTerm.length >= 2 ? searchResults : products
+  const displayTotalCount = searchTerm && searchTerm.length >= 2 ? searchTotalCount : totalCount
+  const displayTotalPages = searchTerm && searchTerm.length >= 2 ? searchTotalPages : totalPages
+  const displayCurrentPage = searchTerm && searchTerm.length >= 2 ? 1 : page
 
   // Get status chip
   const getStatusChip = (product: ShopRenterProduct) => {
@@ -118,9 +233,16 @@ export default function ProductsTable({ initialProducts }: ProductsTableProps) {
 
       if (result.success) {
         toast.success('Termék sikeresen szinkronizálva!')
-        startTransition(() => {
-          router.refresh()
-        })
+        // Refresh current page data
+        try {
+          const refreshResponse = await fetch(`/api/products/paginated?page=${page}&limit=${currentPageSize}`)
+          if (refreshResponse.ok) {
+            const refreshData = await refreshResponse.json()
+            setProducts(refreshData.products)
+          }
+        } catch (refreshError) {
+          console.error('Error refreshing products:', refreshError)
+        }
       } else {
         toast.error(`Szinkronizálás sikertelen: ${result.error || 'Ismeretlen hiba'}`)
       }
@@ -134,78 +256,64 @@ export default function ProductsTable({ initialProducts }: ProductsTableProps) {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Termékek
-        </Typography>
-      </Box>
-
-      {/* Search */}
-      <Box sx={{ mb: 3 }}>
-        <TextField
-          fullWidth
-          placeholder="Keresés SKU vagy név alapján..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-
-      {/* Products Table */}
-      <TableContainer 
-        component={Paper}
-        sx={{ 
-          maxHeight: 'calc(100vh - 250px)',
-          overflow: 'auto'
+      {/* Search Bar - matches accessories page placement exactly */}
+      <TextField
+        fullWidth
+        placeholder="Keresés SKU vagy név alapján..."
+        value={searchTerm}
+        onChange={(e) => handleSearchChange(e.target.value)}
+        disabled={isSearching || isLoading}
+        sx={{ mt: 2, mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              {isSearching ? <CircularProgress size={20} /> : <SearchIcon />}
+            </InputAdornment>
+          ),
         }}
-      >
+      />
+
+      {/* Products Table - matches accessories page styling exactly */}
+      <TableContainer component={Paper} sx={{ mt: 2 }}>
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow>
-              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>SKU</TableCell>
-              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Név</TableCell>
-              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Státusz</TableCell>
-              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Szinkronizálás</TableCell>
-              <TableCell sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Utolsó szinkronizálás</TableCell>
-              <TableCell align="right" sx={{ fontWeight: 'bold', fontSize: '0.75rem' }}>Műveletek</TableCell>
+              <TableCell>SKU</TableCell>
+              <TableCell>Név</TableCell>
+              <TableCell>Státusz</TableCell>
+              <TableCell>Szinkronizálás</TableCell>
+              <TableCell>Utolsó szinkronizálás</TableCell>
+              <TableCell align="right">Műveletek</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredProducts.length === 0 ? (
+            {displayProducts.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
-                    {searchTerm ? 'Nincs találat' : 'Nincsenek termékek'}
+                    {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 2 ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              filteredProducts.map((product) => (
+              displayProducts.map((product) => (
                 <TableRow
                   key={product.id}
                   hover
                   sx={{ cursor: 'pointer' }}
                   onClick={() => handleProductClick(product.id)}
                 >
-                  <TableCell sx={{ fontSize: '0.8125rem', py: 0.75 }}>{product.sku}</TableCell>
-                  <TableCell sx={{ fontSize: '0.8125rem', py: 0.75, maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={product.name || '-'}>
-                    {product.name || '-'}
-                  </TableCell>
-                  <TableCell sx={{ py: 0.75 }}>{getStatusChip(product)}</TableCell>
-                  <TableCell sx={{ py: 0.75 }}>{getSyncStatusChip(product)}</TableCell>
-                  <TableCell sx={{ fontSize: '0.8125rem', py: 0.75 }}>
+                  <TableCell>{product.sku}</TableCell>
+                  <TableCell>{product.name || '-'}</TableCell>
+                  <TableCell>{getStatusChip(product)}</TableCell>
+                  <TableCell>{getSyncStatusChip(product)}</TableCell>
+                  <TableCell>
                     {product.last_synced_at 
                       ? new Date(product.last_synced_at).toLocaleString('hu-HU')
                       : '-'
                     }
                   </TableCell>
-                  <TableCell align="right" sx={{ py: 0.75 }}>
+                  <TableCell align="right">
                     <Tooltip title="Szinkronizálás">
                       <IconButton
                         size="small"
@@ -237,6 +345,44 @@ export default function ProductsTable({ initialProducts }: ProductsTableProps) {
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Pagination Controls - matches accessories page layout */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="body2" color="text.secondary">
+            {searchTerm && searchTerm.length >= 2 
+              ? `Keresési eredmény: ${displayTotalCount} termék` 
+              : `Összesen ${displayTotalCount} termék`
+            }
+          </Typography>
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Oldal mérete</InputLabel>
+            <Select
+              value={currentPageSize}
+              onChange={handleLimitChange}
+              label="Oldal mérete"
+              disabled={isLoading || isSearching}
+            >
+              <MenuItem value={25}>25</MenuItem>
+              <MenuItem value={50}>50</MenuItem>
+              <MenuItem value={100}>100</MenuItem>
+              <MenuItem value={200}>200</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+        
+        {displayTotalPages > 1 && (
+          <Pagination
+            count={displayTotalPages}
+            page={displayCurrentPage}
+            onChange={handlePageChange}
+            color="primary"
+            disabled={isLoading || isSearching}
+            showFirstButton
+            showLastButton
+          />
+        )}
+      </Box>
     </Box>
   )
 }

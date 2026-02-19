@@ -943,9 +943,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     // Clear quote result when config is modified (like opti page)
     setQuoteResult(null)
 
-    // Clear edit mode and form to hide visualization
+    // Clear edit mode and form to hide visualization, but keep assemblyType and selectedLinearMaterialId
     setEditingConfigId(null)
-    clearWorktopConfigForm()
+    clearWorktopConfigForm(true) // Pass true to keep assemblyType and selectedLinearMaterialId
   }
 
   // Load configuration for editing
@@ -1103,6 +1103,28 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         }, 1500)
       } else {
         toast.success(`Munkalap ajánlat sikeresen mentve: ${result.quoteNumber}`)
+        
+        // Clear all form fields and saved configs after successful save (for new config)
+        setSavedConfigs([])
+        setQuoteResult(null)
+        setEditingConfigId(null)
+        setSelectedCustomer(null)
+        setCustomerData({
+          name: '',
+          email: '',
+          phone: '',
+          discount: '',
+          billing_name: '',
+          billing_country: 'Magyarország',
+          billing_city: '',
+          billing_postal_code: '',
+          billing_street: '',
+          billing_house_number: '',
+          billing_tax_number: '',
+          billing_company_reg_number: ''
+        })
+        clearWorktopConfigForm(false) // Clear everything including assemblyType and selectedLinearMaterialId
+        
         // Redirect to detail page
         setTimeout(() => {
           router.push(`/worktop-quotes/${result.quoteId}`)
@@ -2197,9 +2219,12 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
   }
 
   // Clear worktop configuration form
-  const clearWorktopConfigForm = () => {
-    setAssemblyType(null)
-    setSelectedLinearMaterialId(null)
+  // keepAssemblyTypeAndMaterial: if true, keeps assemblyType and selectedLinearMaterialId populated
+  const clearWorktopConfigForm = (keepAssemblyTypeAndMaterial: boolean = false) => {
+    if (!keepAssemblyTypeAndMaterial) {
+      setAssemblyType(null)
+      setSelectedLinearMaterialId(null)
+    }
     setEdgeBanding('Nincs élzáró')
     setEdgeColorChoice('Színazonos')
     setEdgeColorText('')
@@ -2237,6 +2262,18 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
     const material = linearMaterials.find(m => m.id === materialId)
     if (!material) return '-'
     return `${material.name} ${material.width}*${material.length}*${material.thickness} ${material.type ?? ''}`.trim()
+  }
+
+  // Get dimension display for saved configs table
+  const getDimensionDisplay = (config: SavedWorktopConfig): string => {
+    if (config.assemblyType === 'Levágás') {
+      return config.dimensionA ? `${config.dimensionA} mm` : '-'
+    } else if (config.assemblyType === 'Összemarás Balos' || config.assemblyType === 'Összemarás jobbos') {
+      const a = config.dimensionA || '-'
+      const c = config.dimensionC || '-'
+      return `A: ${a} mm, C: ${c} mm`
+    }
+    return '-'
   }
 
   const handleCustomerDataChange = (field: keyof typeof customerData, value: string) => {
@@ -7810,6 +7847,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>Munkalap típusa</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Összeállítás típusa</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Méretek</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>Műveletek</TableCell>
                 </TableRow>
               </TableHead>
@@ -7828,6 +7866,7 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                   >
                     <TableCell>{getMaterialName(config.selectedLinearMaterialId)}</TableCell>
                     <TableCell>{config.assemblyType || '-'}</TableCell>
+                    <TableCell>{getDimensionDisplay(config)}</TableCell>
                     <TableCell align="right">
                       <IconButton
                         size="small"

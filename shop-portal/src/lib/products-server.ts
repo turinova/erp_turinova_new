@@ -39,17 +39,35 @@ export interface ProductWithDescriptions extends ShopRenterProduct {
   descriptions: ShopRenterProductDescription[]
 }
 
+export interface ProductsPaginationResult {
+  products: ShopRenterProduct[]
+  totalCount: number
+  totalPages: number
+  currentPage: number
+  limit: number
+}
+
 /**
- * Get all products (server-side)
+ * Get all products with pagination and search (server-side)
  */
-export async function getAllProducts(): Promise<ShopRenterProduct[]> {
+export async function getAllProducts(
+  page: number = 1,
+  limit: number = 50,
+  search: string = ''
+): Promise<ProductsPaginationResult> {
   try {
     const cookieStore = await cookies()
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
     
     if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
       console.error('Missing Supabase environment variables')
-      return []
+      return {
+        products: [],
+        totalCount: 0,
+        totalPages: 0,
+        currentPage: page,
+        limit
+      }
     }
 
     const supabase = createServerClient(
@@ -68,14 +86,36 @@ export async function getAllProducts(): Promise<ShopRenterProduct[]> {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       console.error('User not authenticated:', userError?.message || 'No user')
-      return []
+      return {
+        products: [],
+        totalCount: 0,
+        totalPages: 0,
+        currentPage: page,
+        limit
+      }
     }
 
-    const { data: products, error } = await supabase
+    // Build single optimized query with count and data
+    let query = supabase
       .from('shoprenter_products')
-      .select('*')
+      .select('*', { count: 'exact' })
       .is('deleted_at', null)
+
+    // Apply search filter - use ilike with trigram indexes for better performance
+    // Minimum 2 characters for search to avoid too many results
+    if (search && search.trim().length >= 2) {
+      const searchTerm = search.trim().replace(/'/g, "''") // Escape single quotes for SQL
+      // Use ilike with %term% pattern - trigram indexes will make this fast
+      query = query.or(`name.ilike.%${searchTerm}%,sku.ilike.%${searchTerm}%`)
+    }
+
+    // Calculate pagination
+    const offset = (page - 1) * limit
+
+    // Get paginated results with count in single query
+    const { data: products, count, error } = await query
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (error) {
       console.error('Error fetching products:', {
@@ -84,13 +124,34 @@ export async function getAllProducts(): Promise<ShopRenterProduct[]> {
         details: error.details,
         hint: error.hint
       })
-      return []
+      return {
+        products: [],
+        totalCount: 0,
+        totalPages: 0,
+        currentPage: page,
+        limit
+      }
     }
 
-    return products || []
+    const totalCount = count || 0
+    const totalPages = Math.ceil(totalCount / limit)
+
+    return {
+      products: products || [],
+      totalCount,
+      totalPages,
+      currentPage: page,
+      limit
+    }
   } catch (error) {
     console.error('Exception in getAllProducts:', error instanceof Error ? error.message : String(error))
-    return []
+    return {
+      products: [],
+      totalCount: 0,
+      totalPages: 0,
+      currentPage: page,
+      limit
+    }
   }
 }
 
