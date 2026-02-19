@@ -70,6 +70,6 @@ const CustomIconButton = styled(MuiButton)(({ color, size, theme, variant }) => 
       })
     })
   }
-}) as typeof MuiButton
+})
 
 export default CustomIconButton
