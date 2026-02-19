@@ -170,9 +170,7 @@ const colorSchemes = (skin: Skin): Theme['colorSchemes'] => {
           tooltipText: '#FFFFFF',
           trackBg: '#F5F5F8'
         }
-      },
-      opacity: {},
-      overlays: []
+      }
     }
   } as Theme['colorSchemes']
 }
