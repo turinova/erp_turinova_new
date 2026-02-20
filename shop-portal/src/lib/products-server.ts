@@ -10,8 +10,16 @@ export interface ShopRenterProduct {
   shoprenter_id: string
   shoprenter_inner_id: string | null
   sku: string
+  model_number: string | null  // Gyártói cikkszám (Manufacturer part number)
+  gtin: string | null  // Vonalkód (Barcode/GTIN)
   name: string | null
   status: number
+  // Pricing fields (Árazás)
+  price: number | null  // Nettó ár (Net price)
+  cost: number | null  // Beszerzési ár (Cost/purchase price)
+  multiplier: number | null  // Árazási szorzó (Price multiplier)
+  multiplier_lock: boolean  // Szorzó zárolás (Multiplier lock)
+  // URLs
   product_url: string | null
   url_slug: string | null
   canonical_url: string | null

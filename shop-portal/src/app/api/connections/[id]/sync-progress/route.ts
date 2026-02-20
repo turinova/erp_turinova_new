@@ -71,3 +71,30 @@ export async function POST(
     }, { status: 500 })
   }
 }
+
+/**
+ * DELETE /api/connections/[id]/sync-progress
+ * Clear the sync progress for a connection (dismiss the panel)
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    clearProgress(id)
+    
+    console.log(`[PROGRESS] Cleared progress for connection ${id}`)
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Szinkronizálási állapot törölve'
+    })
+  } catch (error) {
+    console.error('Error clearing sync progress:', error)
+    return NextResponse.json({
+      success: false,
+      error: 'Hiba a szinkronizálási állapot törlésekor'
+    }, { status: 500 })
+  }
+}

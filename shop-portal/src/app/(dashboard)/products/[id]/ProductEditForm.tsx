@@ -102,6 +102,18 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     generation_instructions: huDescription.generation_instructions || ''
   })
 
+  // Product basic data (separate from description)
+  const [productData, setProductData] = useState({
+    sku: product.sku || '',
+    model_number: product.model_number || '',
+    gtin: product.gtin || '',  // Vonalkód (Barcode/GTIN)
+    // Pricing fields (Árazás)
+    price: product.price ?? '',
+    cost: product.cost ?? '',
+    multiplier: product.multiplier ?? 1.0,
+    multiplier_lock: product.multiplier_lock ?? false
+  })
+
   const [isPending, startTransition] = useTransition()
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -131,6 +143,31 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     try {
       setSaving(true)
 
+      // Save product basic data (sku, model_number, gtin, pricing)
+      const productDataToSave = {
+        model_number: productData.model_number.trim() || null,
+        gtin: productData.gtin.trim() || null,  // Vonalkód
+        // Pricing fields
+        price: productData.price !== '' ? parseFloat(String(productData.price)) : null,
+        cost: productData.cost !== '' ? parseFloat(String(productData.cost)) : null,
+        multiplier: productData.multiplier !== '' ? parseFloat(String(productData.multiplier)) : 1.0,
+        multiplier_lock: productData.multiplier_lock
+      }
+
+      const productResponse = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(productDataToSave)
+      })
+
+      const productResult = await productResponse.json()
+      if (!productResult.success) {
+        toast.error(`Termék mentés sikertelen: ${productResult.error || 'Ismeretlen hiba'}`)
+        return
+      }
+
       // Encode HTML entities before saving (ShopRenter stores HTML as entities)
       const dataToSave = {
         language_code: 'hu',
@@ -154,7 +191,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       const result = await response.json()
 
       if (result.success) {
-        toast.success('Termék leírás sikeresen mentve!')
+        toast.success('Termék sikeresen mentve!')
         startTransition(() => {
           router.refresh()
         })
@@ -300,6 +337,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       <Paper>
         <Tabs value={tabValue} onChange={handleTabChange}>
           <Tab label="Alapadatok" />
+          <Tab label="Árazás" />
           <Tab label="SEO" />
           <Tab label="Leírás" />
           <Tab label="Forrásanyagok" />
@@ -317,6 +355,33 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 required
               />
             </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Cikkszám (SKU)"
+                value={productData.sku}
+                disabled
+                helperText="A cikkszám nem módosítható"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Gyártói cikkszám"
+                value={productData.model_number}
+                onChange={(e) => setProductData(prev => ({ ...prev, model_number: e.target.value }))}
+                helperText="A gyártó saját termékazonosítója"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Vonalkód (GTIN/EAN)"
+                value={productData.gtin}
+                onChange={(e) => setProductData(prev => ({ ...prev, gtin: e.target.value }))}
+                helperText="A termék vonalkódja (EAN, UPC, stb.)"
+              />
+            </Grid>
             <Grid item xs={12}>
               <HtmlEditor
                 value={formData.short_description}
@@ -331,6 +396,63 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
         <TabPanel value={tabValue} index={1}>
           <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mb: 2 }}>Árazási adatok</Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Nettó ár (Ft)"
+                type="number"
+                value={productData.price}
+                onChange={(e) => setProductData(prev => ({ ...prev, price: e.target.value }))}
+                helperText="A termék nettó ára"
+                inputProps={{ step: '0.01', min: '0' }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Beszerzési ár (Ft)"
+                type="number"
+                value={productData.cost}
+                onChange={(e) => setProductData(prev => ({ ...prev, cost: e.target.value }))}
+                helperText="A termék beszerzési ára (csak admin számára látható)"
+                inputProps={{ step: '0.01', min: '0' }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Árazási szorzó"
+                type="number"
+                value={productData.multiplier}
+                onChange={(e) => setProductData(prev => ({ ...prev, multiplier: e.target.value }))}
+                helperText="Az ár szorzója (alapértelmezett: 1.0)"
+                inputProps={{ step: '0.0001', min: '0' }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center', height: '100%', pt: 1 }}>
+                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={productData.multiplier_lock}
+                    onChange={(e) => setProductData(prev => ({ ...prev, multiplier_lock: e.target.checked }))}
+                    style={{ marginRight: '8px', width: '18px', height: '18px' }}
+                  />
+                  <Typography>Szorzó zárolása</Typography>
+                </label>
+              </Box>
+            </Grid>
+          </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={2}>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="h6" sx={{ mb: 2 }}>SEO beállítások</Typography>
+            </Grid>
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -363,7 +485,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={2}>
+        <TabPanel value={tabValue} index={3}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -438,11 +560,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={3}>
+        <TabPanel value={tabValue} index={4}>
           <SourceMaterialsTab productId={product.id} />
         </TabPanel>
 
-        <TabPanel value={tabValue} index={4}>
+        <TabPanel value={tabValue} index={5}>
           <SearchConsoleTab productId={product.id} productUrl={product.product_url} />
         </TabPanel>
       </Paper>
@@ -467,6 +589,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               <strong>Szinkronizált mezők:</strong>
               <Box component="ul" sx={{ mt: 1, pl: 3 }}>
                 <li>Termék neve</li>
+                <li>Gyártói cikkszám, Vonalkód (GTIN)</li>
+                <li>Árazás (nettó ár, beszerzési ár, szorzó)</li>
                 <li>Meta cím, kulcsszavak, leírás</li>
                 <li>Rövid leírás</li>
                 <li>Részletes leírás</li>

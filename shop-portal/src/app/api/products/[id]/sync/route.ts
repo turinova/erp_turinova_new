@@ -108,6 +108,59 @@ export async function POST(
       huDescription.shoprenter_id
     )
 
+    // First, update product basic data (modelNumber, gtin, pricing) if changed
+    const productPayload: any = {}
+    
+    // Add modelNumber if exists
+    if (product.model_number !== null && product.model_number !== undefined) {
+      productPayload.modelNumber = product.model_number || ''
+    }
+    
+    // Add gtin (barcode) if exists
+    if (product.gtin !== null && product.gtin !== undefined) {
+      productPayload.gtin = product.gtin || ''
+    }
+    
+    // Add pricing fields
+    if (product.price !== null && product.price !== undefined) {
+      productPayload.price = String(product.price)
+    }
+    if (product.cost !== null && product.cost !== undefined) {
+      productPayload.cost = String(product.cost)
+    }
+    if (product.multiplier !== null && product.multiplier !== undefined) {
+      productPayload.multiplier = String(product.multiplier)
+    }
+    if (product.multiplier_lock !== null && product.multiplier_lock !== undefined) {
+      productPayload.multiplierLock = product.multiplier_lock ? '1' : '0'
+    }
+    
+    // Only update if there's something to update
+    if (Object.keys(productPayload).length > 0) {
+      const productUpdateUrl = `${apiBaseUrl}/products/${product.shoprenter_id}`
+      console.log(`[SYNC] Updating product data: PUT ${productUpdateUrl}`)
+      console.log(`[SYNC] Product payload:`, JSON.stringify(productPayload))
+      
+      const productUpdateResponse = await fetch(productUpdateUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify(productPayload),
+        signal: AbortSignal.timeout(30000)
+      })
+
+      if (!productUpdateResponse.ok) {
+        const errorText = await productUpdateResponse.text().catch(() => 'Unknown error')
+        console.warn(`[SYNC] Product data update failed: ${productUpdateResponse.status} - ${errorText.substring(0, 200)}`)
+        // Continue with description sync even if product update fails
+      } else {
+        console.log(`[SYNC] Product data updated successfully`)
+      }
+    }
+
     // Prepare payload for ShopRenter
     const payload: any = {
       name: huDescription.name || product.name || '',

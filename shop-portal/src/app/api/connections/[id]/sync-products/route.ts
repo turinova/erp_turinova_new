@@ -661,8 +661,16 @@ async function syncProductToDatabase(
       shoprenter_id: product.id,
       shoprenter_inner_id: product.innerId || null,
       sku: product.sku || '',
+      model_number: product.modelNumber || null, // Gyártói cikkszám (Manufacturer part number)
+      gtin: product.gtin || null, // Vonalkód (Barcode/GTIN)
       name: null, // Will be set from description
       status: product.status === '1' || product.status === 1 ? 1 : 0,
+      // Pricing fields (Árazás)
+      price: product.price ? parseFloat(product.price) : null, // Nettó ár
+      cost: product.cost ? parseFloat(product.cost) : null, // Beszerzési ár
+      multiplier: product.multiplier ? parseFloat(product.multiplier) : 1.0, // Árazási szorzó
+      multiplier_lock: product.multiplierLock === '1' || product.multiplierLock === 1 || product.multiplierLock === true, // Szorzó zárolás
+      // URLs
       product_url: productUrl,
       url_slug: urlAlias,
       last_url_synced_at: urlAlias ? new Date().toISOString() : null,

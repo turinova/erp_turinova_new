@@ -207,7 +207,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }, 10 * 60 * 1000)
   }
 
-  // Check for active syncs on mount and restore state
+  // Check for active syncs on mount and restore state (only for actively running syncs)
   useEffect(() => {
     const checkActiveSyncs = async () => {
       for (const connection of connections) {
@@ -215,7 +215,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           const response = await fetch(`/api/connections/${connection.id}/sync-progress`)
           if (response.ok) {
             const data = await response.json()
-            if (data.success && data.progress && (data.progress.status === 'syncing' || data.progress.status === 'stopped')) {
+            // Only restore state for actively running syncs, not stopped/completed/error
+            if (data.success && data.progress && data.progress.status === 'syncing') {
               // Found an active sync, restore state
               setSyncingConnectionId(connection.id)
               currentSyncingConnectionRef.current = connection
@@ -229,10 +230,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 elapsed: data.progress.elapsed || 0
               })
               setSyncPanelExpanded(true)
-              // Restart polling if still syncing
-              if (data.progress.status === 'syncing') {
-                startPollingForConnection(connection)
-              }
+              // Restart polling
+              startPollingForConnection(connection)
               break
             }
           }
@@ -933,7 +932,18 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 <Button
                   size="small"
                   variant="outlined"
-                  onClick={() => {
+                  onClick={async () => {
+                    // Clear progress on server so it doesn't restore on refresh
+                    if (currentSyncingConnectionRef.current) {
+                      try {
+                        await fetch(`/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress`, {
+                          method: 'DELETE'
+                        })
+                      } catch (error) {
+                        console.error('Error clearing progress:', error)
+                      }
+                    }
+                    // Clear local state
                     setSyncingConnectionId(null)
                     currentSyncingConnectionRef.current = null
                     setSyncProgress(null)
