@@ -462,7 +462,7 @@ export default function CompetitorLinksManager({ initialLinks, competitors }: Pr
     router.refresh()
   }
 
-  // Refresh all prices
+  // Refresh all prices - Using BATCH API for maximum speed
   const handleRefreshAll = async () => {
     const linksToRefresh = selectedIds.size > 0 
       ? links.filter(l => selectedIds.has(l.id))
@@ -479,27 +479,44 @@ export default function CompetitorLinksManager({ initialLinks, competitors }: Pr
     let successCount = 0
     let errorCount = 0
 
-    for (let i = 0; i < linksToRefresh.length; i++) {
-      const link = linksToRefresh[i]
-      setRefreshProgress({ current: i + 1, total: linksToRefresh.length })
+    // Process in batches of 5 (smaller batches to avoid rate limits)
+    const BATCH_SIZE = 5
+    
+    for (let i = 0; i < linksToRefresh.length; i += BATCH_SIZE) {
+      const batch = linksToRefresh.slice(i, i + BATCH_SIZE)
+      
+      // Prepare batch request
+      const requests = batch.map(link => ({
+        linkId: link.id,
+        productId: link.product.id,
+        competitorId: link.competitor.id,
+        url: link.competitor_url
+      }))
 
       try {
-        const response = await fetch(
-          `/api/products/${link.product.id}/competitor-links/${link.id}/scrape`,
-          { method: 'POST' }
-        )
-        
+        const response = await fetch('/api/scrape/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests })
+        })
+
         if (response.ok) {
-          successCount++
+          const result = await response.json()
+          successCount += result.stats?.successful || 0
+          errorCount += result.stats?.failed || 0
         } else {
-          errorCount++
+          // If batch fails, count all as errors
+          errorCount += batch.length
         }
       } catch (error) {
-        console.error('Scrape error:', error)
-        errorCount++
+        console.error('Batch scrape error:', error)
+        errorCount += batch.length
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      setRefreshProgress({ 
+        current: Math.min(i + BATCH_SIZE, linksToRefresh.length), 
+        total: linksToRefresh.length 
+      })
     }
 
     setRefreshing(false)

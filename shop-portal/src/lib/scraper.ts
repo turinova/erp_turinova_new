@@ -252,8 +252,9 @@ Other Important Notes:
 - Return ONLY the JSON object, no other text`
 
   try {
+    // Using Haiku for faster extraction (10x faster than Sonnet, still accurate for simple price extraction)
     const message = await withRetry(() => anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 500,
       messages: [
         { role: 'user', content: prompt }
@@ -321,7 +322,7 @@ Other Important Notes:
       rawHtmlHash,
       learnedPatterns,              // Include learned patterns for saving
       scrapeDurationMs,
-      aiModelUsed: 'claude-sonnet-4-20250514',
+      aiModelUsed: 'claude-haiku-4-5-20251001',
       extractedData: {
         confidence: extracted.confidence,
         pageTitle: pageContent.title,
@@ -343,7 +344,7 @@ Other Important Notes:
       productName: null,
       rawHtmlHash,
       scrapeDurationMs,
-      aiModelUsed: 'claude-sonnet-4-20250514',
+      aiModelUsed: 'claude-haiku-4-5-20251001',
       error: error.message || 'Unknown error during AI extraction'
     }
   }
@@ -382,7 +383,7 @@ export async function scrapeCompetitorPrice(
       productName: null,
       rawHtmlHash: '',
       scrapeDurationMs: 0,
-      aiModelUsed: 'claude-sonnet-4-20250514',
+      aiModelUsed: 'claude-haiku-4-5-20251001',
       error: error.message || 'Failed to fetch page'
     }
   }
