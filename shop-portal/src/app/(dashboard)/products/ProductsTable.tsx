@@ -16,8 +16,7 @@ import {
   InputAdornment, 
   CircularProgress,
   Chip,
-  IconButton,
-  Tooltip,
+  Checkbox,
   Pagination,
   Select,
   MenuItem,
@@ -26,12 +25,9 @@ import {
 } from '@mui/material'
 import { 
   Search as SearchIcon, 
-  Edit as EditIcon,
   CheckCircle as CheckCircleIcon,
-  Cancel as CancelIcon,
-  Sync as SyncIcon
+  Cancel as CancelIcon
 } from '@mui/icons-material'
-import { toast } from 'react-toastify'
 import type { ShopRenterProduct } from '@/lib/products-server'
 
 interface ProductsTableProps {
@@ -54,7 +50,9 @@ export default function ProductsTable({
   const router = useRouter()
   const [products, setProducts] = useState<ShopRenterProduct[]>(initialProducts)
   const [searchTerm, setSearchTerm] = useState(initialSearch)
-  const [syncingProductId, setSyncingProductId] = useState<string | null>(null)
+  
+  // Selection state (for future bulk operations)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   // Pagination state
   const [page, setPage] = useState(currentPage)
@@ -121,11 +119,9 @@ export default function ProductsTable({
         setProducts(data.products)
       } else {
         console.error('Failed to fetch products')
-        toast.error('Hiba történt az adatok betöltése során')
       }
     } catch (error) {
       console.error('Error fetching products:', error)
-      toast.error('Hiba történt az adatok betöltése során')
     } finally {
       setIsLoading(false)
     }
@@ -146,11 +142,9 @@ export default function ProductsTable({
         setPage(1)
       } else {
         console.error('Failed to fetch products')
-        toast.error('Hiba történt az adatok betöltése során')
       }
     } catch (error) {
       console.error('Error fetching products:', error)
-      toast.error('Hiba történt az adatok betöltése során')
     } finally {
       setIsLoading(false)
     }
@@ -161,6 +155,29 @@ export default function ProductsTable({
   const displayTotalCount = searchTerm && searchTerm.length >= 2 ? searchTotalCount : totalCount
   const displayTotalPages = searchTerm && searchTerm.length >= 2 ? searchTotalPages : totalPages
   const displayCurrentPage = searchTerm && searchTerm.length >= 2 ? 1 : page
+
+  // Selection handlers
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      setSelectedIds(new Set(displayProducts.map(p => p.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const handleSelectOne = (productId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    event.stopPropagation()
+    const newSelected = new Set(selectedIds)
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId)
+    } else {
+      newSelected.add(productId)
+    }
+    setSelectedIds(newSelected)
+  }
+
+  const isAllSelected = displayProducts.length > 0 && selectedIds.size === displayProducts.length
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < displayProducts.length
 
   // Get status chip
   const getStatusChip = (product: ShopRenterProduct) => {
@@ -213,53 +230,27 @@ export default function ProductsTable({
     )
   }
 
+  // Format price
+  const formatPrice = (price: number | null) => {
+    if (price === null || price === undefined) return '-'
+    return new Intl.NumberFormat('hu-HU', { 
+      style: 'currency', 
+      currency: 'HUF',
+      maximumFractionDigits: 0
+    }).format(price)
+  }
+
   // Handle product click - navigate to edit page
   const handleProductClick = (productId: string) => {
     router.push(`/products/${productId}`)
   }
 
-  // Handle sync product
-  const handleSyncProduct = async (productId: string, e: React.MouseEvent) => {
-    e.stopPropagation() // Prevent row click
-    
-    try {
-      setSyncingProductId(productId)
-      
-      const response = await fetch(`/api/products/${productId}/sync`, {
-        method: 'POST'
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        toast.success('Termék sikeresen szinkronizálva!')
-        // Refresh current page data
-        try {
-          const refreshResponse = await fetch(`/api/products/paginated?page=${page}&limit=${currentPageSize}`)
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json()
-            setProducts(refreshData.products)
-          }
-        } catch (refreshError) {
-          console.error('Error refreshing products:', refreshError)
-        }
-      } else {
-        toast.error(`Szinkronizálás sikertelen: ${result.error || 'Ismeretlen hiba'}`)
-      }
-    } catch (error) {
-      console.error('Error syncing product:', error)
-      toast.error('Hiba a termék szinkronizálásakor')
-    } finally {
-      setSyncingProductId(null)
-    }
-  }
-
   return (
     <Box>
-      {/* Search Bar - matches accessories page placement exactly */}
+      {/* Search Bar */}
       <TextField
         fullWidth
-        placeholder="Keresés SKU vagy név alapján..."
+        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján..."
         value={searchTerm}
         onChange={(e) => handleSearchChange(e.target.value)}
         disabled={isSearching || isLoading}
@@ -273,23 +264,40 @@ export default function ProductsTable({
         }}
       />
 
-      {/* Products Table - matches accessories page styling exactly */}
+      {/* Selected count indicator */}
+      {selectedIds.size > 0 && (
+        <Box sx={{ mb: 1 }}>
+          <Typography variant="body2" color="primary">
+            {selectedIds.size} termék kiválasztva
+          </Typography>
+        </Box>
+      )}
+
+      {/* Products Table */}
       <TableContainer component={Paper} sx={{ mt: 2 }}>
         <Table size="small" stickyHeader>
           <TableHead>
-            <TableRow>
-              <TableCell>SKU</TableCell>
-              <TableCell>Név</TableCell>
-              <TableCell>Státusz</TableCell>
-              <TableCell>Szinkronizálás</TableCell>
-              <TableCell>Utolsó szinkronizálás</TableCell>
-              <TableCell align="right">Műveletek</TableCell>
+            <TableRow sx={{ bgcolor: 'action.hover' }}>
+              <TableCell padding="checkbox" sx={{ width: 50 }}>
+                <Checkbox
+                  checked={isAllSelected}
+                  indeterminate={isIndeterminate}
+                  onChange={handleSelectAll}
+                  disabled={displayProducts.length === 0}
+                />
+              </TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>SKU</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Gyártói cikkszám</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Név</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="right">Nettó ár</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Státusz</TableCell>
+              <TableCell sx={{ fontWeight: 600 }}>Szinkron</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {displayProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
                     {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 2 ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
@@ -300,45 +308,38 @@ export default function ProductsTable({
                 <TableRow
                   key={product.id}
                   hover
+                  selected={selectedIds.has(product.id)}
                   sx={{ cursor: 'pointer' }}
                   onClick={() => handleProductClick(product.id)}
                 >
-                  <TableCell>{product.sku}</TableCell>
-                  <TableCell>{product.name || '-'}</TableCell>
-                  <TableCell>{getStatusChip(product)}</TableCell>
-                  <TableCell>{getSyncStatusChip(product)}</TableCell>
+                  <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedIds.has(product.id)}
+                      onChange={(e) => handleSelectOne(product.id, e)}
+                    />
+                  </TableCell>
                   <TableCell>
-                    {product.last_synced_at 
-                      ? new Date(product.last_synced_at).toLocaleString('hu-HU')
-                      : '-'
-                    }
+                    <Typography variant="body2" fontWeight={500}>
+                      {product.sku}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {product.model_number || '-'}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2">
+                      {product.name || '-'}
+                    </Typography>
                   </TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Szinkronizálás">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => handleSyncProduct(product.id, e)}
-                        disabled={syncingProductId === product.id}
-                      >
-                        {syncingProductId === product.id ? (
-                          <CircularProgress size={20} />
-                        ) : (
-                          <SyncIcon fontSize="small" />
-                        )}
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Szerkesztés">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleProductClick(product.id)
-                        }}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
+                    <Typography variant="body2" fontWeight={500}>
+                      {formatPrice(product.price)}
+                    </Typography>
                   </TableCell>
+                  <TableCell>{getStatusChip(product)}</TableCell>
+                  <TableCell>{getSyncStatusChip(product)}</TableCell>
                 </TableRow>
               ))
             )}
@@ -346,7 +347,7 @@ export default function ProductsTable({
         </Table>
       </TableContainer>
 
-      {/* Pagination Controls - matches accessories page layout */}
+      {/* Pagination Controls */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">

@@ -23,6 +23,25 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       ]
     },
     {
+      label: 'SEO',
+      icon: 'ri-line-chart-line',
+      iconColor: '#E67E22', // Orange for SEO/analytics
+      children: [
+        {
+          label: 'Dashboard',
+          href: '/competitors/dashboard'
+        },
+        {
+          label: 'Versenytársak',
+          href: '/competitors'
+        },
+        {
+          label: 'Linkek kezelése',
+          href: '/competitors/links'
+        }
+      ]
+    },
+    {
       label: 'Beállítások',
       icon: 'ri-settings-2-line',
       iconColor: '#8E44AD', // Purple for settings

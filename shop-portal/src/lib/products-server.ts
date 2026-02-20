@@ -19,6 +19,8 @@ export interface ShopRenterProduct {
   cost: number | null  // Beszerzési ár (Cost/purchase price)
   multiplier: number | null  // Árazási szorzó (Price multiplier)
   multiplier_lock: boolean  // Szorzó zárolás (Multiplier lock)
+  // Competitor tracking
+  competitor_tracking_enabled: boolean  // Whether this product is tracked for competitor prices
   // URLs
   product_url: string | null
   url_slug: string | null
@@ -118,8 +120,8 @@ export async function getAllProducts(
     // Minimum 2 characters for search to avoid too many results
     if (search && search.trim().length >= 2) {
       const searchTerm = search.trim().replace(/'/g, "''") // Escape single quotes for SQL
-      // Use ilike with %term% pattern - trigram indexes will make this fast
-      query = query.or(`name.ilike.%${searchTerm}%,sku.ilike.%${searchTerm}%`)
+      // Use ilike with %term% pattern - search in name, SKU, model_number (gyártói cikkszám), and GTIN
+      query = query.or(`name.ilike.%${searchTerm}%,sku.ilike.%${searchTerm}%,model_number.ilike.%${searchTerm}%,gtin.ilike.%${searchTerm}%`)
     }
 
     // Calculate pagination

@@ -26,6 +26,7 @@ import type { ProductWithDescriptions } from '@/lib/products-server'
 import HtmlEditor from '@/components/HtmlEditor'
 import SourceMaterialsTab from '@/components/SourceMaterialsTab'
 import SearchConsoleTab from '@/components/SearchConsoleTab'
+import CompetitorPricesTab from '@/components/CompetitorPricesTab'
 
 interface ProductEditFormProps {
   product: ProductWithDescriptions
@@ -342,6 +343,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Tab label="Leírás" />
           <Tab label="Forrásanyagok" />
           <Tab label="Search Console" />
+          <Tab label="Versenytárs árak" />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
@@ -566,6 +568,15 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
         <TabPanel value={tabValue} index={5}>
           <SearchConsoleTab productId={product.id} productUrl={product.product_url} />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={6}>
+          <CompetitorPricesTab 
+            productId={product.id} 
+            productPrice={product.price}
+            productName={formData.name}
+            modelNumber={productData.model_number}
+          />
         </TabPanel>
       </Paper>
 
