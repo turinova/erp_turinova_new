@@ -24,11 +24,20 @@ export interface ShopRenterProduct {
   // URLs
   product_url: string | null
   url_slug: string | null
+  url_alias_id: string | null  // ShopRenter URL alias resource ID
   canonical_url: string | null
   last_url_synced_at: string | null
   last_synced_at: string | null
   sync_status: string
   sync_error: string | null
+  // Product attributes (from ShopRenter productAttributeExtend)
+  product_attributes: Array<{
+    type: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
+    name: string
+    value: any // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
+  }> | null
+  // Parent-child relationship
+  parent_product_id: string | null
   created_at: string
   updated_at: string
   deleted_at: string | null

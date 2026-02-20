@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync } from '@/lib/sync-progress-store'
+import { updateCanonicalUrlForChild } from '@/lib/canonical-url-service'
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -43,20 +44,60 @@ function constructProductUrl(shopName: string, urlAlias: string | null | undefin
 /**
  * Extract URL alias from productExtend response
  */
-function extractUrlAlias(product: any): string | null {
+function extractUrlAlias(product: any): { slug: string | null; id: string | null } {
   // Check if urlAliases exists and has urlAlias
   if (product.urlAliases) {
     // urlAliases can be an object with urlAlias property
     if (typeof product.urlAliases === 'object' && product.urlAliases.urlAlias) {
-      return product.urlAliases.urlAlias
+      return {
+        slug: product.urlAliases.urlAlias,
+        id: product.urlAliases.id || null
+      }
     }
     // Or it might be an array
     if (Array.isArray(product.urlAliases) && product.urlAliases.length > 0) {
       const firstAlias = product.urlAliases[0]
       if (firstAlias.urlAlias) {
-        return firstAlias.urlAlias
+        return {
+          slug: firstAlias.urlAlias,
+          id: firstAlias.id || null
+        }
       }
     }
+  }
+  
+  return { slug: null, id: null }
+}
+
+/**
+ * Extract parent product ID from productExtend response
+ * Returns the ShopRenter ID of the parent product (if this is a child/variant)
+ */
+function extractParentProductId(product: any): string | null {
+  if (!product.parentProduct) {
+    return null
+  }
+
+  // parentProduct can be an object with id property
+  if (typeof product.parentProduct === 'object') {
+    // Check for direct id property
+    if (product.parentProduct.id) {
+      return product.parentProduct.id
+    }
+    
+    // Check for href and extract ID from URL
+    // Format: http://shopname.api.myshoprenter.hu/products/cHJvZHVjdC1wcm9kdWN0X2lkPTE3MDc=
+    if (product.parentProduct.href) {
+      const hrefMatch = product.parentProduct.href.match(/\/products\/([^\/\?]+)/)
+      if (hrefMatch && hrefMatch[1]) {
+        return hrefMatch[1]
+      }
+    }
+  }
+  
+  // Or it might be a string (the ID itself)
+  if (typeof product.parentProduct === 'string') {
+    return product.parentProduct
   }
   
   return null
@@ -70,8 +111,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: connectionId } = await params
   try {
-    const { id } = await params
     let product_id: string | undefined
     let forceSync = false
     try {
@@ -109,7 +150,7 @@ export async function POST(
     }
 
     // Get connection
-    const connection = await getConnectionById(id)
+    const connection = await getConnectionById(connectionId)
     if (!connection || connection.connection_type !== 'shoprenter') {
       return NextResponse.json({ error: 'Connection not found or invalid type' }, { status: 404 })
     }
@@ -317,7 +358,7 @@ export async function POST(
 
     if (allProductIds.length === 0) {
       console.error(`[SYNC] No products found. First page data:`, JSON.stringify(firstPageData, null, 2).substring(0, 500))
-      clearProgress(id)
+      clearProgress(connectionId)
       return NextResponse.json({ 
         success: false, 
         error: 'Nem található termék a webshopban. Ellenőrizze, hogy a kapcsolat helyes-e és hogy vannak-e termékek a webshopban.' 
@@ -334,7 +375,7 @@ export async function POST(
     // Initialize progress tracking BEFORE starting background process
     // This ensures the frontend can immediately see the total count
     // Clear any previous stop flag when starting a new sync
-    updateProgress(id, {
+    updateProgress(connectionId, {
       total: allProductIds.length,
       synced: 0,
       current: 0,
@@ -346,9 +387,9 @@ export async function POST(
     // Return immediately and run sync in background
     // The frontend will poll for progress
     // Don't await - let it run in background
-    processSyncInBackground(supabase, connection, allProductIds, batches, id, forceSync, apiUrl, authHeader).catch(error => {
+    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader).catch(error => {
       console.error('Background sync error:', error)
-      updateProgress(id, {
+      updateProgress(connectionId, {
         status: 'error',
         errors: allProductIds.length
       })
@@ -376,7 +417,7 @@ export async function POST(
       errorMessage = error.message
     }
     
-    clearProgress(id)
+    clearProgress(connectionId)
     
     return NextResponse.json({ 
       success: false, 
@@ -398,6 +439,13 @@ async function processSyncInBackground(
   apiUrl: string,
   authHeader: string
 ) {
+  // Initialize variables at function scope so they're accessible in catch block
+  let syncedCount = 0
+  let errorCount = 0
+  const errors: string[] = []
+  const totalProducts = allProductIds.length
+  const totalBatches = batches.length
+
   try {
     // Ensure progress is initialized at the start of background process
     // This is a safety check in case the main handler didn't set it
@@ -412,12 +460,6 @@ async function processSyncInBackground(
     })
 
     console.log(`[SYNC] Background process started for ${allProductIds.length} products in ${batches.length} batches`)
-
-    let syncedCount = 0
-    let errorCount = 0
-    const errors: string[] = []
-    const totalProducts = allProductIds.length
-    const totalBatches = batches.length
 
     // Process batches sequentially (as recommended by ShopRenter)
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
@@ -596,6 +638,106 @@ async function processSyncInBackground(
       }
     }
 
+    // Post-sync: Update parent_product_id for products that were synced before their parent
+    console.log(`[SYNC] Updating parent-child relationships for products synced before their parent...`)
+    try {
+      // Get all products for this connection that might have parents
+      // We'll re-fetch their parentProduct from ShopRenter and update if parent now exists
+      const { data: allProducts, error: productsError } = await supabase
+        .from('shoprenter_products')
+        .select('id, shoprenter_id, sku, parent_product_id')
+        .eq('connection_id', connection.id)
+        .is('deleted_at', null)
+      
+      if (productsError) {
+        console.error(`[SYNC] Error fetching products for parent update:`, productsError)
+      } else if (allProducts && allProducts.length > 0) {
+        let updatedCount = 0
+        const batchSize = 50 // Process in smaller batches to avoid timeout
+        
+        for (let i = 0; i < allProducts.length; i += batchSize) {
+          const batch = allProducts.slice(i, i + batchSize)
+          
+          // Build batch request to fetch parentProduct for each product
+          const batchRequests = batch.map(p => ({
+            method: 'GET',
+            uri: `${apiUrl}/productExtend/${p.shoprenter_id}?full=1`
+          }))
+          
+          const batchPayload = {
+            data: {
+              requests: batchRequests
+            }
+          }
+          
+          try {
+            const batchResponse = await fetch(`${apiUrl}/batch`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeader
+              },
+              body: JSON.stringify(batchPayload),
+              signal: AbortSignal.timeout(300000) // 5 minutes
+            })
+            
+            if (batchResponse.ok) {
+              const batchData = await batchResponse.json()
+              const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+              
+              for (let j = 0; j < batch.length && j < batchResponses.length; j++) {
+                const product = batch[j]
+                const batchItem = batchResponses[j]
+                
+                if (batchItem.response?.body) {
+                  const productData = batchItem.response.body
+                  const parentShopRenterId = extractParentProductId(productData)
+                  
+                  // Only update if we found a parent and it's different from current
+                  if (parentShopRenterId && (!product.parent_product_id || product.parent_product_id !== parentShopRenterId)) {
+                    // Find parent in database
+                    const { data: parentProduct } = await supabase
+                      .from('shoprenter_products')
+                      .select('id')
+                      .eq('connection_id', connection.id)
+                      .eq('shoprenter_id', parentShopRenterId)
+                      .single()
+                    
+                    if (parentProduct) {
+                      // Update the child product with parent UUID
+                      const { error: updateError } = await supabase
+                        .from('shoprenter_products')
+                        .update({ parent_product_id: parentProduct.id })
+                        .eq('id', product.id)
+                      
+                      if (!updateError) {
+                        updatedCount++
+                        console.log(`[SYNC] Updated parent for ${product.sku}: ${parentProduct.id}`)
+                      } else {
+                        console.error(`[SYNC] Error updating parent for ${product.sku}:`, updateError)
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          } catch (batchError) {
+            console.error(`[SYNC] Error in parent update batch ${Math.floor(i / batchSize) + 1}:`, batchError)
+          }
+          
+          // Small delay between batches
+          if (i + batchSize < allProducts.length) {
+            await new Promise(resolve => setTimeout(resolve, 100))
+          }
+        }
+        
+        console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
+      }
+    } catch (parentUpdateError) {
+      console.error(`[SYNC] Error updating parent relationships (non-fatal):`, parentUpdateError)
+    }
+
     // Mark as complete
     updateProgress(connectionId, {
       synced: syncedCount,
@@ -644,15 +786,57 @@ async function syncProductToDatabase(
     }
 
     // Extract URL information
-    const urlAlias = extractUrlAlias(product)
+    const urlAliasData = extractUrlAlias(product)
     const shopName = extractShopNameFromUrl(connection.api_url)
-    const productUrl = shopName && urlAlias ? constructProductUrl(shopName, urlAlias) : null
+    const productUrl = shopName && urlAliasData.slug ? constructProductUrl(shopName, urlAliasData.slug) : null
     
     // Log URL extraction for debugging
-    if (urlAlias) {
-      console.log(`[SYNC] Extracted URL for product ${product.sku}: slug="${urlAlias}", full="${productUrl}"`)
+    if (urlAliasData.slug) {
+      console.log(`[SYNC] Extracted URL for product ${product.sku}: slug="${urlAliasData.slug}", id="${urlAliasData.id}", full="${productUrl}"`)
     } else {
       console.log(`[SYNC] No URL alias found for product ${product.sku}`)
+    }
+
+    // Extract parent product ID (if this is a child/variant)
+    const parentShopRenterId = extractParentProductId(product)
+    let parentProductId: string | null = null
+    
+    // If this product has a parent, find the parent product in our database
+    if (parentShopRenterId) {
+      // Log for debugging
+      console.log(`[SYNC] Product ${product.sku} has parent in ShopRenter: ${parentShopRenterId}`)
+      
+      const { data: parentProduct, error: parentError } = await supabase
+        .from('shoprenter_products')
+        .select('id, sku')
+        .eq('connection_id', connection.id)
+        .eq('shoprenter_id', parentShopRenterId)
+        .single()
+      
+      if (parentError) {
+        // Parent not found yet - will be updated in post-sync step
+        console.log(`[SYNC] Product ${product.sku} has parent ${parentShopRenterId} but parent not found in database yet (will be updated in post-sync)`)
+      } else if (parentProduct) {
+        parentProductId = parentProduct.id
+        console.log(`[SYNC] Product ${product.sku} is a child of parent ${parentProduct.sku} (${parentProduct.id})`)
+      }
+    } else {
+      // Log when no parent is found in API response
+      if (product.parentProduct) {
+        console.warn(`[SYNC] Product ${product.sku} has parentProduct field but couldn't extract ID:`, JSON.stringify(product.parentProduct))
+      }
+    }
+
+    // Extract product attributes (productAttributeExtend from ShopRenter)
+    // This contains structured attributes like size, color, dimensions, etc.
+    let productAttributes = null
+    if (product.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
+      // Store the full attribute structure for later use
+      productAttributes = product.productAttributeExtend.map((attr: any) => ({
+        type: attr.type, // LIST, INTEGER, FLOAT, TEXT
+        name: attr.name, // e.g., "size", "color", "weight"
+        value: attr.value // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
+      }))
     }
 
     // Extract product data
@@ -670,10 +854,15 @@ async function syncProductToDatabase(
       cost: product.cost ? parseFloat(product.cost) : null, // Beszerzési ár
       multiplier: product.multiplier ? parseFloat(product.multiplier) : 1.0, // Árazási szorzó
       multiplier_lock: product.multiplierLock === '1' || product.multiplierLock === 1 || product.multiplierLock === true, // Szorzó zárolás
+      // Parent-child relationship
+      parent_product_id: parentProductId, // UUID of parent product in our database
+      // Product attributes (size, color, dimensions, etc.)
+      product_attributes: productAttributes, // JSONB: stores productAttributeExtend data
       // URLs
       product_url: productUrl,
-      url_slug: urlAlias,
-      last_url_synced_at: urlAlias ? new Date().toISOString() : null,
+      url_slug: urlAliasData.slug,
+      url_alias_id: urlAliasData.id,
+      last_url_synced_at: urlAliasData.slug ? new Date().toISOString() : null,
       sync_status: 'synced',
       sync_error: null,
       last_synced_at: new Date().toISOString()
@@ -916,6 +1105,17 @@ async function syncProductToDatabase(
             .from('shoprenter_product_descriptions')
             .insert(descDataToSave)
         }
+      }
+    }
+
+    // Auto-update canonical URL if this is a child product
+    if (parentProductId) {
+      try {
+        await updateCanonicalUrlForChild(supabase, dbProduct.id)
+        console.log(`[SYNC] Updated canonical URL for child product ${product.sku}`)
+      } catch (canonicalError) {
+        // Non-fatal - log but don't fail the sync
+        console.warn(`[SYNC] Failed to update canonical URL for ${product.sku} (non-fatal):`, canonicalError)
       }
     }
   } catch (error) {

@@ -231,7 +231,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               })
               setSyncPanelExpanded(true)
               // Restart polling
-              startPollingForConnection(connection)
+                startPollingForConnection(connection)
               break
             }
           }

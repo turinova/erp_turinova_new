@@ -59,7 +59,7 @@ export async function POST(
     const options = {
       useSourceMaterials: body.useSourceMaterials !== false,
       temperature: body.temperature || 0.7,
-      maxTokens: body.maxTokens || 2000,
+      maxTokens: body.maxTokens || 4000, // Increased default to 4000 for comprehensive descriptions
       language: body.language || 'hu',
       generationInstructions: generationInstructions || undefined,
       useSearchConsoleQueries: body.useSearchConsoleQueries !== false // Default to true

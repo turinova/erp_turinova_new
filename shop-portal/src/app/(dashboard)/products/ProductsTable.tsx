@@ -25,14 +25,22 @@ import {
   Button,
   Tooltip,
   Alert,
-  LinearProgress
+  LinearProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material'
 import { 
   Search as SearchIcon, 
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
   HelpOutline as HelpOutlineIcon,
-  Refresh as RefreshIcon
+  Refresh as RefreshIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  FamilyRestroom as FamilyRestroomIcon,
+  ArrowUpward as ArrowUpwardIcon
 } from '@mui/icons-material'
 import type { ShopRenterProduct } from '@/lib/products-server'
 
@@ -76,6 +84,22 @@ export default function ProductsTable({
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 })
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncSuccess, setSyncSuccess] = useState<string | null>(null)
+
+  // URL alias optimization state
+  const [isOptimizingUrls, setIsOptimizingUrls] = useState(false)
+  const [urlOptimizationProgress, setUrlOptimizationProgress] = useState({ current: 0, total: 0 })
+  const [urlOptimizationResults, setUrlOptimizationResults] = useState<Array<{
+    productId: string
+    success: boolean
+    suggestedSlug?: string
+    currentSlug?: string | null
+    modelNumber?: string | null
+    sku?: string
+    error?: string
+    applied?: boolean
+    applyError?: string
+  }> | null>(null)
+  const [urlOptimizationDialogOpen, setUrlOptimizationDialogOpen] = useState(false)
 
   // Pagination state
   const [page, setPage] = useState(currentPage)
@@ -218,6 +242,136 @@ export default function ProductsTable({
     }
   }
 
+  const handleBulkUrlOptimization = async () => {
+    if (selectedIds.size === 0) return
+    
+    setUrlOptimizationDialogOpen(true)
+  }
+
+  const handleConfirmUrlOptimization = async () => {
+    setUrlOptimizationDialogOpen(false) // Close confirmation dialog
+    if (selectedIds.size === 0) return
+    
+    setIsOptimizingUrls(true)
+    setUrlOptimizationResults(null) // Clear any previous results
+    setUrlOptimizationProgress({ current: 0, total: selectedIds.size })
+    setSyncError(null) // Clear any previous errors
+    setSyncSuccess(null) // Clear any previous success messages
+
+    try {
+      const productIdsArray = Array.from(selectedIds)
+      
+      // Generate slugs
+      const response = await fetch('/api/products/bulk-url-alias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: productIdsArray })
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.results) {
+        setUrlOptimizationResults(result.results)
+        setUrlOptimizationProgress({ current: result.results.length, total: selectedIds.size })
+        setIsOptimizingUrls(false) // Stop spinner so results dialog can open
+        // Results dialog will open automatically when urlOptimizationResults !== null && !isOptimizingUrls
+      } else {
+        setSyncError(result.error || 'Hiba az URL optimalizálás során')
+        setIsOptimizingUrls(false)
+        setUrlOptimizationResults(null) // Ensure results are null on error
+      }
+    } catch (error) {
+      console.error('Error optimizing URLs:', error)
+      setSyncError(error instanceof Error ? error.message : 'Hiba történt az URL optimalizálás során')
+      setIsOptimizingUrls(false)
+      setUrlOptimizationResults(null) // Ensure results are null on error
+    }
+  }
+
+  const handleApplyUrlOptimizations = async () => {
+    if (!urlOptimizationResults) return
+
+    setIsOptimizingUrls(true)
+    setSyncError(null)
+    setSyncSuccess(null)
+    const successful = urlOptimizationResults.filter(r => r.success)
+    let appliedCount = 0
+    let failedCount = 0
+    const failedProducts: Array<{ productId: string; error: string }> = []
+
+    // Process in parallel batches of 5 to avoid overwhelming the API
+    const BATCH_SIZE = 5
+    for (let i = 0; i < successful.length; i += BATCH_SIZE) {
+      const batch = successful.slice(i, i + BATCH_SIZE)
+      
+      const batchPromises = batch.map(async (result) => {
+        try {
+          const response = await fetch(`/api/products/${result.productId}/url-alias`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urlSlug: result.suggestedSlug })
+          })
+
+          if (response.ok) {
+            appliedCount++
+            return { success: true, productId: result.productId }
+          } else {
+            const errorData = await response.json().catch(() => ({ error: 'Ismeretlen hiba' }))
+            failedCount++
+            failedProducts.push({ 
+              productId: result.productId, 
+              error: errorData.error || `HTTP ${response.status}` 
+            })
+            return { success: false, productId: result.productId, error: errorData.error }
+          }
+        } catch (error) {
+          console.error(`Error applying URL for product ${result.productId}:`, error)
+          failedCount++
+          failedProducts.push({ 
+            productId: result.productId, 
+            error: error instanceof Error ? error.message : 'Hálózati hiba' 
+          })
+          return { success: false, productId: result.productId, error: 'Hálózati hiba' }
+        }
+      })
+
+      await Promise.all(batchPromises)
+      setUrlOptimizationProgress({ current: Math.min(i + BATCH_SIZE, successful.length), total: successful.length })
+      
+      // Small delay between batches to avoid rate limiting
+      if (i + BATCH_SIZE < successful.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+    }
+
+    // Update results with application status
+    const updatedResults = urlOptimizationResults.map(result => {
+      if (result.success) {
+        const failed = failedProducts.find(f => f.productId === result.productId)
+        return {
+          ...result,
+          applied: !failed,
+          applyError: failed?.error
+        }
+      }
+      return result
+    })
+    setUrlOptimizationResults(updatedResults as any)
+
+    if (failedCount > 0) {
+      setSyncError(`${appliedCount} termék sikeres, ${failedCount} sikertelen. Részletek az eredmények táblázatban.`)
+    } else {
+      setSyncSuccess(`${appliedCount} termék URL-je sikeresen frissítve`)
+    }
+    
+    setIsOptimizingUrls(false)
+    // Don't close results dialog - let user see the updated status
+    // Refresh after a delay to update the product list without closing dialog
+    setTimeout(() => {
+      router.refresh()
+    }, 2000)
+  }
+
   // Handle search input change
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
@@ -355,6 +509,25 @@ export default function ProductsTable({
     )
   }
 
+  // Get variant indicator chip
+  const getVariantChip = (product: ShopRenterProduct) => {
+    if (product.parent_product_id) {
+      return (
+        <Tooltip title="Ez egy változat termék - van szülő terméke">
+          <Chip 
+            icon={<ArrowUpwardIcon />}
+            label="Változat" 
+            size="small" 
+            color="info"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: '20px' }}
+          />
+        </Tooltip>
+      )
+    }
+    return null
+  }
+
   // Format price
   const formatPrice = (price: number | null) => {
     if (price === null || price === undefined) return '-'
@@ -433,6 +606,18 @@ export default function ProductsTable({
               ? `Search Console frissítése (${syncProgress.current}/${syncProgress.total})...` 
               : 'Search Console frissítése'}
           </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="secondary"
+            startIcon={isOptimizingUrls ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+            onClick={handleBulkUrlOptimization}
+            disabled={isOptimizingUrls || selectedIds.size === 0}
+          >
+            {isOptimizingUrls 
+              ? `SEO URL optimalizálás (${urlOptimizationProgress.current}/${urlOptimizationProgress.total})...` 
+              : 'SEO URL optimalizálás'}
+          </Button>
         </Box>
       )}
 
@@ -476,6 +661,13 @@ export default function ProductsTable({
               <TableCell sx={{ fontWeight: 600 }} align="right">Nettó ár</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Státusz</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Szinkron</TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center" width={100}>
+                <Tooltip title="Termék kapcsolatok">
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                    Kapcsolat
+                  </Box>
+                </Tooltip>
+              </TableCell>
               <TableCell sx={{ fontWeight: 600 }} align="center">
                 <Tooltip title="Google Indexelés - A keresési eredményekben megjelenik-e">
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
@@ -489,7 +681,7 @@ export default function ProductsTable({
           <TableBody>
             {displayProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
                     {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 2 ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
@@ -532,6 +724,9 @@ export default function ProductsTable({
                   </TableCell>
                   <TableCell>{getStatusChip(product)}</TableCell>
                   <TableCell>{getSyncStatusChip(product)}</TableCell>
+                  <TableCell align="center">
+                    {getVariantChip(product)}
+                  </TableCell>
                   <TableCell align="center">
                     {getIndexingStatusIcon(product.id)}
                   </TableCell>
@@ -579,6 +774,110 @@ export default function ProductsTable({
           />
         )}
       </Box>
+
+      {/* URL Optimization Confirmation Dialog */}
+      <Dialog
+        open={urlOptimizationDialogOpen}
+        onClose={() => setUrlOptimizationDialogOpen(false)}
+      >
+        <DialogTitle>SEO URL Optimalizálás</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {selectedIds.size} termék URL-je lesz AI által optimalizálva.
+            Ez több percig is eltarthat.
+            <br /><br />
+            Folytatod?
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUrlOptimizationDialogOpen(false)}>
+            Mégse
+          </Button>
+          <Button onClick={handleConfirmUrlOptimization} variant="contained" autoFocus>
+            Optimalizálás indítása
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* URL Optimization Results Dialog */}
+      <Dialog
+        open={urlOptimizationResults !== null && !isOptimizingUrls && !urlOptimizationDialogOpen}
+        onClose={() => {
+          setUrlOptimizationResults(null)
+          setUrlOptimizationDialogOpen(false) // Ensure confirmation dialog stays closed
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>SEO URL Optimalizálás - Eredmények</DialogTitle>
+        <DialogContent>
+          {urlOptimizationResults && (
+            <>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  {urlOptimizationResults.filter(r => r.success).length} termékhez generáltunk új URL slug-ot.
+                  Áttekintheted a változtatásokat, majd alkalmazhatod őket.
+                </Typography>
+              </Alert>
+              <Box sx={{ maxHeight: 400, overflow: 'auto' }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Termék</TableCell>
+                      <TableCell>Jelenlegi URL</TableCell>
+                      <TableCell>Új URL</TableCell>
+                      <TableCell>Státusz</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {urlOptimizationResults.filter(r => r.success).map((result) => {
+                      const product = products.find(p => p.id === result.productId)
+                      // Use currentSlug from result if available, otherwise fall back to product data
+                      const currentSlug = result.currentSlug !== undefined ? result.currentSlug : (product?.url_slug || null)
+                      // Display: model_number (gyártói cikkszám) from result or product, otherwise SKU, otherwise product ID
+                      const displayName = result.modelNumber || product?.model_number || result.sku || product?.sku || result.productId
+                      return (
+                        <TableRow key={result.productId}>
+                          <TableCell>{displayName}</TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                              {currentSlug || '-'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', color: 'primary.main' }}>
+                              {result.suggestedSlug}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            {(result as any).applied === undefined ? (
+                              <Chip label="Kész" color="success" size="small" />
+                            ) : (result as any).applied ? (
+                              <Chip label="Alkalmazva" color="success" size="small" icon={<CheckCircleIcon />} />
+                            ) : (
+                              <Tooltip title={(result as any).applyError || 'Ismeretlen hiba'}>
+                                <Chip label="Sikertelen" color="error" size="small" icon={<CancelIcon />} />
+                              </Tooltip>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </Box>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUrlOptimizationResults(null)}>
+            Bezárás
+          </Button>
+          <Button onClick={handleApplyUrlOptimizations} variant="contained" autoFocus>
+            Alkalmazás ({urlOptimizationResults?.filter(r => r.success).length || 0} termék)
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

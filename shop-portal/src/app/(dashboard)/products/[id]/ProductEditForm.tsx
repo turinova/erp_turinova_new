@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -20,8 +20,9 @@ import {
   Alert,
   Chip
 } from '@mui/material'
-import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon } from '@mui/icons-material'
+import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import NextLink from 'next/link'
 import type { ProductWithDescriptions } from '@/lib/products-server'
 import HtmlEditor from '@/components/HtmlEditor'
 import SourceMaterialsTab from '@/components/SourceMaterialsTab'
@@ -65,6 +66,23 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [generatedProductType, setGeneratedProductType] = useState<string | null>(null)
   const [generationWarnings, setGenerationWarnings] = useState<string[]>([])
   const [searchQueriesUsed, setSearchQueriesUsed] = useState<Array<{ query: string; impressions: number; clicks: number }> | null>(null)
+  
+  // URL alias state
+  const [urlSlug, setUrlSlug] = useState<string>('')
+  const [productUrl, setProductUrl] = useState<string | null>(null)
+  const [loadingUrlAlias, setLoadingUrlAlias] = useState(false)
+  const [generatingUrlSlug, setGeneratingUrlSlug] = useState(false)
+  const [originalUrlSlug, setOriginalUrlSlug] = useState<string>('')
+  
+  // Parent/Child relationships state
+  const [variantData, setVariantData] = useState<{
+    isParent: boolean
+    isChild: boolean
+    parent: any | null
+    children: any[]
+    childCount: number
+  } | null>(null)
+  const [loadingVariants, setLoadingVariants] = useState(false)
   
   // Helper function to decode HTML entities
   const decodeHtmlEntities = (html: string | null | undefined): string => {
@@ -242,6 +260,122 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     setSyncConfirmOpen(false)
   }
 
+  // Load URL alias on mount
+  useEffect(() => {
+    const loadUrlAlias = async () => {
+      try {
+        setLoadingUrlAlias(true)
+        const response = await fetch(`/api/products/${product.id}/url-alias`)
+        const result = await response.json()
+        
+        if (result.success && result.data) {
+          setUrlSlug(result.data.urlSlug || '')
+          setOriginalUrlSlug(result.data.urlSlug || '')
+          setProductUrl(result.data.productUrl || null)
+        }
+      } catch (error) {
+        console.error('Error loading URL alias:', error)
+      } finally {
+        setLoadingUrlAlias(false)
+      }
+    }
+    
+    loadUrlAlias()
+  }, [product.id])
+
+  // Load parent/child relationships on mount
+  useEffect(() => {
+    const loadVariants = async () => {
+      try {
+        setLoadingVariants(true)
+        const response = await fetch(`/api/products/${product.id}/variants`)
+        const result = await response.json()
+        
+        if (result.success) {
+          setVariantData({
+            isParent: result.isParent,
+            isChild: result.isChild,
+            parent: result.parent,
+            children: result.children || [],
+            childCount: result.childCount || 0
+          })
+        }
+      } catch (error) {
+        console.error('Error loading variants:', error)
+      } finally {
+        setLoadingVariants(false)
+      }
+    }
+    
+    loadVariants()
+  }, [product.id])
+
+  const handleGenerateUrlSlug = async () => {
+    try {
+      setGeneratingUrlSlug(true)
+      const response = await fetch(`/api/products/${product.id}/url-alias/generate`, {
+        method: 'POST'
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        setUrlSlug(result.data.suggestedSlug)
+        setProductUrl(result.data.previewUrl)
+        toast.success('AI által generált URL slug betöltve')
+      } else {
+        toast.error(result.error || 'Hiba az AI generálás során')
+      }
+    } catch (error) {
+      console.error('Error generating URL slug:', error)
+      toast.error('Hiba az URL slug generálásakor')
+    } finally {
+      setGeneratingUrlSlug(false)
+    }
+  }
+
+  const handleSaveUrlAlias = async () => {
+    if (!urlSlug.trim()) {
+      toast.error('URL slug megadása kötelező')
+      return
+    }
+
+    try {
+      setLoadingUrlAlias(true)
+      const response = await fetch(`/api/products/${product.id}/url-alias`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ urlSlug: urlSlug.trim() })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        setOriginalUrlSlug(urlSlug.trim())
+        setProductUrl(result.data.productUrl)
+        toast.success('URL slug sikeresen frissítve! A régi URL automatikusan átirányítja az újat.')
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba az URL slug mentésekor')
+      }
+    } catch (error) {
+      console.error('Error saving URL alias:', error)
+      toast.error('Hiba az URL slug mentésekor')
+    } finally {
+      setLoadingUrlAlias(false)
+    }
+  }
+
+  const handleRestoreOriginalUrl = () => {
+    setUrlSlug(originalUrlSlug)
+    if (originalUrlSlug) {
+      const shopName = productUrl?.match(/https?:\/\/([^.]+)/)?.[1] || 'turinovakft'
+      setProductUrl(`https://${shopName}.shoprenter.hu/${originalUrlSlug}`)
+    }
+  }
+
   const handleGenerateDescription = async () => {
     try {
       setGenerating(true)
@@ -384,6 +518,244 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 helperText="A termék vonalkódja (EAN, UPC, stb.)"
               />
             </Grid>
+            {/* Product Attributes Display - Compact */}
+            {product.product_attributes && product.product_attributes.length > 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexWrap: 'wrap', 
+                  gap: 1, 
+                  alignItems: 'center',
+                  p: 1.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  bgcolor: 'background.default'
+                }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ mr: 1, fontWeight: 500 }}>
+                    Attribútumok:
+                  </Typography>
+                  {product.product_attributes.map((attr: any, index: number) => {
+                    // Translate common attribute names to Hungarian
+                    const attrNames: Record<string, string> = {
+                      'size': 'Méret',
+                      'color': 'Szín',
+                      'weight': 'Súly',
+                      'teherbírás': 'Teherbírás',
+                      'width': 'Szélesség',
+                      'height': 'Magasság',
+                      'depth': 'Mélység',
+                      'capacity': 'Kapacitás',
+                      'material': 'Anyag',
+                      'finish': 'Felület'
+                    }
+                    const displayName = attrNames[attr.name?.toLowerCase()] || attr.name || 'Ismeretlen'
+                    
+                    // Format value based on type
+                    let displayValue: string = ''
+                    if (attr.type === 'LIST' && Array.isArray(attr.value)) {
+                      // LIST attributes: extract values from language objects
+                      const values = attr.value.map((v: any) => {
+                        if (typeof v === 'object' && v.value) {
+                          return v.value
+                        }
+                        return String(v)
+                      })
+                      displayValue = values.join(', ')
+                    } else if (attr.value !== null && attr.value !== undefined) {
+                      // INTEGER, FLOAT, TEXT attributes: single value
+                      displayValue = String(attr.value)
+                    } else {
+                      displayValue = 'Nincs érték'
+                    }
+                    
+                    return (
+                      <Chip
+                        key={index}
+                        label={`${displayName}: ${displayValue}`}
+                        size="small"
+                        variant="outlined"
+                        sx={{ 
+                          fontSize: '0.75rem',
+                          height: '24px'
+                        }}
+                      />
+                    )
+                  })}
+                </Box>
+              </Grid>
+            )}
+            {/* Parent/Child Relationships Display - Compact */}
+            {!loadingVariants && variantData && (variantData.isParent || variantData.isChild) && (
+              <Grid item xs={12}>
+                <Box sx={{ 
+                  p: 1.5, 
+                  bgcolor: 'background.default', 
+                  border: '1px solid', 
+                  borderColor: 'divider',
+                  borderRadius: 1
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <FamilyRestroomIcon fontSize="small" color="primary" />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      Termék kapcsolatok
+                    </Typography>
+                  </Box>
+                  
+                  {/* Parent Product Info - Compact */}
+                  {variantData.isChild && variantData.parent && (
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 1, 
+                      mb: variantData.isParent ? 1.5 : 0,
+                      p: 1,
+                      bgcolor: 'action.hover',
+                      borderRadius: 0.5
+                    }}>
+                      <ArrowUpwardIcon fontSize="small" color="primary" />
+                      <Typography variant="caption" color="text.secondary">Szülő:</Typography>
+                      <Chip 
+                        label={variantData.parent.sku} 
+                        size="small" 
+                        sx={{ height: '20px', fontSize: '0.7rem' }}
+                      />
+                      <Button
+                        component={NextLink}
+                        href={`/products/${variantData.parent.id}`}
+                        size="small"
+                        variant="text"
+                        sx={{ ml: 'auto', fontSize: '0.75rem', minWidth: 'auto', px: 1 }}
+                      >
+                        Megnyitás →
+                      </Button>
+                    </Box>
+                  )}
+                  
+                  {/* Child Products Info - Compact Table */}
+                  {variantData.isParent && variantData.children.length > 0 && (
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <ArrowDownwardIcon fontSize="small" color="secondary" />
+                        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 500 }}>
+                          Változatok ({variantData.childCount})
+                        </Typography>
+                      </Box>
+                      <Box sx={{ 
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 0.5
+                      }}>
+                        <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <Box component="thead" sx={{ bgcolor: 'action.hover', position: 'sticky', top: 0, zIndex: 1 }}>
+                            <Box component="tr">
+                              <Box component="th" sx={{ p: 0.75, textAlign: 'left', fontSize: '0.7rem', fontWeight: 600, borderBottom: '1px solid', borderColor: 'divider' }}>
+                                SKU
+                              </Box>
+                              <Box component="th" sx={{ p: 0.75, textAlign: 'left', fontSize: '0.7rem', fontWeight: 600, borderBottom: '1px solid', borderColor: 'divider' }}>
+                                Attribútumok
+                              </Box>
+                              <Box component="th" sx={{ p: 0.75, textAlign: 'right', fontSize: '0.7rem', fontWeight: 600, borderBottom: '1px solid', borderColor: 'divider' }}>
+                                Ár
+                              </Box>
+                              <Box component="th" sx={{ p: 0.75, textAlign: 'right', fontSize: '0.7rem', fontWeight: 600, borderBottom: '1px solid', borderColor: 'divider', width: '80px' }}>
+                                Művelet
+                              </Box>
+                            </Box>
+                          </Box>
+                          <Box component="tbody">
+                            {variantData.children.map((child: any) => {
+                              // Extract key attributes for compact display
+                              const keyAttributes = child.product_attributes && Array.isArray(child.product_attributes)
+                                ? child.product_attributes
+                                    .filter((attr: any) => ['meret', 'size', 'szin', 'color', 'teherbiras', 'teherbiras_kg'].includes(attr.name?.toLowerCase()))
+                                    .map((attr: any) => {
+                                      if (attr.type === 'LIST' && Array.isArray(attr.value)) {
+                                        const values = attr.value.map((v: any) => 
+                                          typeof v === 'object' && v.value ? v.value : String(v)
+                                        ).join(', ')
+                                        return values
+                                      }
+                                      return attr.value
+                                    })
+                                    .filter(Boolean)
+                                    .join(' • ')
+                                : null
+
+                              return (
+                                <Box 
+                                  component="tr" 
+                                  key={child.id}
+                                  sx={{ 
+                                    '&:hover': { bgcolor: 'action.hover' },
+                                    borderBottom: '1px solid',
+                                    borderColor: 'divider'
+                                  }}
+                                >
+                                  <Box component="td" sx={{ p: 0.75 }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                      <Chip 
+                                        label={child.sku} 
+                                        size="small" 
+                                        sx={{ height: '20px', fontSize: '0.7rem' }}
+                                        color={child.status === 1 ? 'secondary' : 'default'}
+                                        variant="outlined"
+                                      />
+                                      {child.status !== 1 && (
+                                        <Chip 
+                                          label="Inaktív" 
+                                          size="small" 
+                                          sx={{ height: '18px', fontSize: '0.65rem' }}
+                                        />
+                                      )}
+                                    </Box>
+                                  </Box>
+                                  <Box component="td" sx={{ p: 0.75 }}>
+                                    {keyAttributes ? (
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                                        {keyAttributes}
+                                      </Typography>
+                                    ) : (
+                                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                        -
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                  <Box component="td" sx={{ p: 0.75, textAlign: 'right' }}>
+                                    {child.price ? (
+                                      <Typography variant="caption" sx={{ fontWeight: 500, fontSize: '0.75rem' }}>
+                                        {parseFloat(child.price).toLocaleString('hu-HU')} Ft
+                                      </Typography>
+                                    ) : (
+                                      <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                                        -
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                  <Box component="td" sx={{ p: 0.75, textAlign: 'right' }}>
+                                    <Button
+                                      component={NextLink}
+                                      href={`/products/${child.id}`}
+                                      size="small"
+                                      variant="text"
+                                      sx={{ fontSize: '0.7rem', minWidth: 'auto', px: 1 }}
+                                    >
+                                      →
+                                    </Button>
+                                  </Box>
+                                </Box>
+                              )
+                            })}
+                          </Box>
+                        </Box>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              </Grid>
+            )}
             <Grid item xs={12}>
               <HtmlEditor
                 value={formData.short_description}
@@ -455,6 +827,104 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             <Grid item xs={12}>
               <Typography variant="h6" sx={{ mb: 2 }}>SEO beállítások</Typography>
             </Grid>
+            
+            {/* URL Alias Section */}
+            <Grid item xs={12}>
+              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                  🌐 SEO URL (slug)
+                </Typography>
+                
+                {loadingUrlAlias && !urlSlug ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} />
+                    <Typography variant="body2">URL betöltése...</Typography>
+                  </Box>
+                ) : (
+                  <>
+                    {productUrl && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          Jelenlegi URL:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                          {productUrl}
+                        </Typography>
+                      </Box>
+                    )}
+                    
+                    <TextField
+                      fullWidth
+                      label="SEO URL (slug)"
+                      value={urlSlug}
+                      onChange={(e) => {
+                        setUrlSlug(e.target.value)
+                        // Update preview URL
+                        if (e.target.value.trim()) {
+                          const shopName = productUrl?.match(/https?:\/\/([^.]+)/)?.[1] || 'turinovakft'
+                          setProductUrl(`https://${shopName}.shoprenter.hu/${e.target.value.trim()}`)
+                        }
+                      }}
+                      helperText="Az URL slug (pl: blum-clip-top-blumotion-pant-110-fok)"
+                      InputProps={{
+                        endAdornment: (
+                          <Button
+                            size="small"
+                            startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                            onClick={handleGenerateUrlSlug}
+                            disabled={generatingUrlSlug}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {generatingUrlSlug ? '' : 'AI'}
+                          </Button>
+                        )
+                      }}
+                      sx={{ mb: 2 }}
+                    />
+                    
+                    {urlSlug && urlSlug !== originalUrlSlug && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          Új URL előnézet:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'primary.main' }}>
+                          {productUrl || `https://turinovakft.hu/${urlSlug}`}
+                        </Typography>
+                      </Box>
+                    )}
+                    
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="contained"
+                        startIcon={loadingUrlAlias ? <CircularProgress size={16} /> : <SaveIcon />}
+                        onClick={handleSaveUrlAlias}
+                        disabled={loadingUrlAlias || !urlSlug.trim() || urlSlug.trim() === originalUrlSlug}
+                      >
+                        {loadingUrlAlias ? 'Mentés...' : 'Mentés'}
+                      </Button>
+                      
+                      {urlSlug !== originalUrlSlug && (
+                        <Button
+                          variant="outlined"
+                          startIcon={<RefreshIcon />}
+                          onClick={handleRestoreOriginalUrl}
+                          disabled={loadingUrlAlias}
+                        >
+                          Eredeti visszaállítása
+                        </Button>
+                      )}
+                    </Box>
+                    
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      <Typography variant="caption">
+                        ✅ URL változtatás után automatikus 301 redirect beállítva a régi URL-ről az újra.
+                      </Typography>
+                    </Alert>
+                  </>
+                )}
+              </Box>
+            </Grid>
+            
             <Grid item xs={12}>
               <TextField
                 fullWidth

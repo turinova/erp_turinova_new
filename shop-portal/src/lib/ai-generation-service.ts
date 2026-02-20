@@ -37,7 +37,7 @@ function getAnthropicClient() {
 export interface GenerationOptions {
   useSourceMaterials?: boolean // Use RAG with source materials
   temperature?: number // 0.0-1.0, default 0.7
-  maxTokens?: number // Default 2000
+  maxTokens?: number // Default 4000 (increased for comprehensive descriptions)
   language?: string // 'hu' or 'en', default 'hu'
   generationInstructions?: string // Custom instructions for generation
   useSearchConsoleQueries?: boolean // Use Search Console queries for optimization
@@ -332,7 +332,7 @@ export async function generateProductDescription(
     const {
       useSourceMaterials = true,
       temperature = 0.7,
-      maxTokens = 2000,
+      maxTokens = 4000, // Increased from 2000 to allow comprehensive descriptions (500-1000 words)
       language = 'hu',
       generationInstructions,
       useSearchConsoleQueries = false, // Set to true to enable Search Console query optimization
@@ -375,6 +375,95 @@ export async function generateProductDescription(
     // 4. Detect product type
     const productType = detectProductType(product.name || '', product.sku || '')
     console.log(`[AI GENERATION] Detected product type: ${productType.type} (confidence: ${productType.confidence})`)
+
+    // 4.5. Check parent-child relationships
+    let parentProduct: any = null
+    let childProducts: any[] = []
+    let isParent = false
+    let isChild = false
+    
+    // Check if this is a child product (has parent)
+    if (product.parent_product_id) {
+      isChild = true
+      const { data: parent } = await supabase
+        .from('shoprenter_products')
+        .select('id, sku, name, model_number')
+        .eq('id', product.parent_product_id)
+        .single()
+      
+      if (parent) {
+        parentProduct = parent
+        console.log(`[AI GENERATION] Product is a child/variant of parent: ${parent.sku} (${parent.name})`)
+      }
+    }
+    
+    // Check if this is a parent product (has children)
+    const { data: children } = await supabase
+      .from('shoprenter_products')
+      .select('id, sku, name, model_number, price, product_attributes')
+      .eq('parent_product_id', productId)
+      .eq('status', 1) // Only active children
+    
+    if (children && children.length > 0) {
+      isParent = true
+      childProducts = children
+      console.log(`[AI GENERATION] Product is a parent with ${children.length} child variants`)
+      
+      // Extract variant attributes for better AI context
+      const variantAttributes: Record<string, Set<string | number>> = {}
+      const variantPrices: number[] = []
+      
+      children.forEach((child: any) => {
+        // Collect prices
+        if (child.price) {
+          variantPrices.push(parseFloat(child.price))
+        }
+        
+        // Collect attributes
+        if (child.product_attributes && Array.isArray(child.product_attributes)) {
+          child.product_attributes.forEach((attr: any) => {
+            if (!variantAttributes[attr.name]) {
+              variantAttributes[attr.name] = new Set()
+            }
+            
+            // Handle different attribute types
+            if (attr.type === 'LIST' && Array.isArray(attr.value)) {
+              // LIST attributes have array of values with language objects
+              attr.value.forEach((val: any) => {
+                if (typeof val === 'object' && val.value) {
+                  variantAttributes[attr.name].add(val.value)
+                } else if (typeof val === 'string') {
+                  variantAttributes[attr.name].add(val)
+                }
+              })
+            } else if (attr.value !== null && attr.value !== undefined) {
+              // INTEGER, FLOAT, TEXT attributes have single value
+              variantAttributes[attr.name].add(attr.value)
+            }
+          })
+        }
+      })
+      
+      // Convert Sets to sorted arrays for display
+      const variantInfo: Record<string, string> = {}
+      Object.keys(variantAttributes).forEach(attrName => {
+        const values = Array.from(variantAttributes[attrName])
+          .sort((a, b) => {
+            // Sort numbers numerically, strings alphabetically
+            if (typeof a === 'number' && typeof b === 'number') return a - b
+            if (typeof a === 'number') return -1
+            if (typeof b === 'number') return 1
+            return String(a).localeCompare(String(b))
+          })
+        variantInfo[attrName] = values.join(', ')
+      })
+      
+      // Store variant info for use in prompt
+      ;(product as any).variantAttributes = variantInfo
+      ;(product as any).variantPriceRange = variantPrices.length > 0
+        ? { min: Math.min(...variantPrices), max: Math.max(...variantPrices) }
+        : null
+    }
 
     // 5. Get Search Console queries if enabled and not provided
     // IMPORTANT: Make this fail gracefully - don't break generation if Search Console fails
@@ -478,6 +567,34 @@ OTHER CRITICAL INSTRUCTIONS:
 12. Use rhetorical questions naturally: "Mire figyeljünk?" "Miért válasszuk ezt?"
 13. Include personal voice elements: "én", "mi", "tapasztalat" occasionally
 
+CRITICAL: COMPLETION REQUIREMENTS:
+1. **ALWAYS complete the description fully** - never cut off mid-sentence or mid-section
+2. **ALWAYS end with TWO sections in this order:**
+   a. **Conclusion/Summary section** - use "Összefoglalás" or "Összegzés" heading
+   b. **Q&A section** - use "Gyakran ismételt kérdések" or "Gyakori kérdések" heading with 3-5 relevant questions and answers
+3. **NEVER leave empty paragraphs** - if you start a section, complete it
+4. **ABSOLUTELY NEVER hardcode specific prices** - DO NOT mention exact prices like "6 800 Ft", "71 840 Ft", etc.
+5. **NEVER mention price ranges** - DO NOT say "6 800 és 7 700 Ft közötti áron"
+6. **If price must be mentioned, use ONLY relative terms** - "versenyképes áron", "kedvező árazás", "prémium minőség, ésszerű áron", "jó ár-érték arány"
+7. **Q&A section requirements:**
+   - Include 3-5 relevant questions customers would ask about this product
+   - Questions should be practical: installation, compatibility, maintenance, usage, etc.
+   - Answers should be helpful and specific
+   - Format: Use <h3> for questions, <p> for answers
+   - Example format:
+     <h3>Milyen szekrénymélységhez alkalmas?</h3>
+     <p>Válasz szövege...</p>
+
+SPELLING AND TERMINOLOGY:
+1. **Common correct spellings**:
+   - "gránitkompozit" (NOT "gránitkompoziit")
+   - "szekrény" (NOT "szekreny")
+   - "csukló" (NOT "csuklo")
+   - "fiók" (NOT "fiok")
+   - "csúszka" (NOT "csukszka")
+2. **Double-check technical terms** before finalizing
+3. **Use proper Hungarian compound words** - check spelling of technical terms
+
 FACT-CHECKING BEFORE RESPONSE:
 Before you write the description, ask yourself:
 1. What product type is this? (trash bin, drawer, hinge, etc.)
@@ -488,6 +605,22 @@ Before you write the description, ask yourself:
 
 If you're unsure about the product type, focus on what you KNOW from the name/SKU and source materials, 
 and avoid making assumptions about features that don't match the product type.
+
+FINAL QUALITY CHECK - BEFORE SUBMITTING:
+1. ✅ Is the description complete? (No cut-off sections, no empty paragraphs, no mid-sentence stops)
+2. ✅ Does it end with TWO sections: (1) Conclusion/Summary ("Összefoglalás" or "Összegzés") AND (2) Q&A section ("Gyakran ismételt kérdések" or "Gyakori kérdések")?
+3. ✅ Does the Q&A section have 3-5 relevant questions with helpful answers?
+4. ✅ Are all technical terms spelled correctly? (gránitkompozit, not gránitkompoziit)
+5. ✅ Are there NO hardcoded prices? (No "6 800 Ft", "71 840 Ft", "6 800 és 7 700 Ft közötti áron" - ONLY relative terms like "versenyképes áron")
+6. ✅ Is the entire description in Hungarian with proper grammar?
+7. ✅ Does every section make logical sense for the product type?
+8. ✅ If this is a PARENT product: Did you mention ALL variants together, not highlight a single specific variant?
+
+**CRITICAL: Your response MUST be complete. Do not stop mid-sentence or mid-section. Always include:**
+- A FULL conclusion/summary section ("Összefoglalás" or "Összegzés")
+- A FULL Q&A section ("Gyakran ismételt kérdések" or "Gyakori kérdések") with 3-5 questions
+- Check that your last sentence is complete before submitting
+- ABSOLUTELY NO hardcoded prices - use only relative terms
 
 Write ONLY the product description in Hungarian. Do not include meta tags, titles, or other fields.`
 
@@ -500,6 +633,66 @@ DETECTED PRODUCT TYPE: ${productType.type} (${productType.description})
 - Expected features for this product type: ${productType.features.join(', ')}
 - **CRITICAL**: Ensure your description matches this product type exactly
 - **DO NOT** confuse it with other product types (e.g., don't describe a trash bin as a drawer system)
+
+${isParent ? `
+**PARENT PRODUCT WITH VARIANTS:**
+- This is a PARENT product with ${childProducts.length} child variants available
+- Child variants: ${childProducts.map(c => `${c.sku} (${c.name || c.model_number || 'N/A'})`).join(', ')}
+
+${(product as any).variantAttributes && Object.keys((product as any).variantAttributes).length > 0 ? `
+**VARIANT ATTRIBUTES (What makes variants different):**
+${Object.entries((product as any).variantAttributes).map(([attrName, values]) => {
+  // Translate common attribute names to Hungarian
+  const attrNames: Record<string, string> = {
+    'size': 'Méret',
+    'color': 'Szín',
+    'weight': 'Súly',
+    'teherbírás': 'Teherbírás',
+    'width': 'Szélesség',
+    'height': 'Magasság',
+    'depth': 'Mélység',
+    'capacity': 'Kapacitás',
+    'szin': 'Szín',
+    'meret': 'Méret'
+  }
+  const huName = attrNames[attrName.toLowerCase()] || attrName
+  return `- ${huName}: ${values}`
+}).join('\n')}
+- **CRITICAL**: Mention ALL variant options together, NOT just one specific variant
+- **DO NOT highlight a single color/variant** - talk about all colors/variants as a group
+- Example for colors: "A termék több színben elérhető: fekete, fehér, szürke és barna kivitelben" (NOT "fekete gránit mosogató")
+- Example for sizes: "A termék több méretben elérhető: 400mm, 500mm, 600mm" (NOT "400mm méretű")
+- Write as if describing the product family, not a specific variant
+` : ''}
+
+${(product as any).variantPriceRange ? `
+**PRICE RANGE:**
+- Variants range from ${(product as any).variantPriceRange.min} HUF to ${(product as any).variantPriceRange.max} HUF
+- Mention the price range naturally in the description
+` : ''}
+
+- **CRITICAL FOR PARENT PRODUCTS**: 
+  - Write the description as if this is the MAIN product page for the ENTIRE product family
+  - **NEVER highlight a single specific variant** (e.g., don't say "fekete gránit mosogató" if there are multiple colors)
+  - **ALWAYS mention all variants together** (e.g., "fekete, fehér, szürke és barna színben elérhető")
+  - Use phrases like: "több színben/méretben elérhető", "különböző változatok", "több opció közül választhat"
+  - Focus on the general product features and benefits that apply to ALL variants
+  - Mention that customers can choose from different sizes/colors/variants
+  - DO NOT write as if this is a specific variant - write as the main product family
+  - If you mention colors, mention ALL available colors, not just one
+  - If you mention sizes, mention ALL available sizes, not just one
+` : ''}
+
+${isChild && parentProduct ? `
+**CHILD/VARIANT PRODUCT:**
+- This is a VARIANT/CHILD product of the parent: ${parentProduct.sku} (${parentProduct.name || parentProduct.model_number || 'N/A'})
+- **IMPORTANT**: Write the description focusing on THIS SPECIFIC VARIANT
+- Highlight what makes THIS variant unique (size, color, specific dimensions, etc.)
+- Reference the parent product naturally: "Ez a ${parentProduct.name || parentProduct.sku} termék egyik változata"
+- Focus on the specific variant's features and benefits
+- Mention the variant-specific details (e.g., "40kg teherbírású változat", "fekete színű", "400mm szélességű")
+- Make it clear this is a specific option within a product family
+` : ''}
 
 ${context}
 
@@ -725,8 +918,38 @@ Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <l
       ? message.content[0].text 
       : ''
 
-    // 9. Validate description for logical consistency
+    // Check if response was cut off due to token limit
+    const stopReason = (message as any).stop_reason || (message as any).stopReason
+    const wasCutOff = stopReason === 'max_tokens' || stopReason === 'length'
+    
+    if (wasCutOff) {
+      console.warn(`[AI GENERATION] WARNING: Response was cut off due to token limit (stop_reason: ${stopReason})`)
+      console.warn(`[AI GENERATION] Description length: ${description.length} chars, Word count: ${description.split(/\s+/).length}`)
+      console.warn(`[AI GENERATION] Consider increasing maxTokens (current: ${maxTokens})`)
+    }
+
+    // 9. Validate description for logical consistency and completeness
     const validation = validateDescription(description, product.name || product.sku, productType)
+    
+    // Add warning if response was cut off
+    if (wasCutOff) {
+      validation.warnings.push('⚠️ A leírás a token limit miatt le lett vágva. Érdemes növelni a maxTokens értékét vagy rövidebb leírást kérni.')
+    }
+    
+    // Check for incomplete endings (cut-off sentences, empty paragraphs at end)
+    const trimmedDescription = description.trim()
+    const endsWithIncomplete = 
+      trimmedDescription.endsWith('<p></p>') ||
+      trimmedDescription.endsWith('<li><p>') ||
+      trimmedDescription.endsWith('<li><p>✅</p></li>') ||
+      trimmedDescription.match(/<h[1-6]>[^<]*$/) || // Heading without closing tag
+      trimmedDescription.match(/<p>[^<]*$/) || // Paragraph without closing tag
+      trimmedDescription.match(/<li>[^<]*$/) // List item without closing tag
+    
+    if (endsWithIncomplete && !wasCutOff) {
+      validation.warnings.push('⚠️ A leírás hiányosnak tűnik - lehet, hogy a válasz le lett vágva.')
+    }
+    
     if (validation.warnings.length > 0) {
       console.warn(`[AI GENERATION] Validation warnings for ${product.sku}:`, validation.warnings)
     }
