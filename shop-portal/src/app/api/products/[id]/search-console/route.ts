@@ -63,12 +63,12 @@ export async function GET(
       .order('clicks', { ascending: false })
       .limit(20)
 
-    // Get indexing status
+    // Get indexing status (with enhanced fields)
     const { data: indexingStatus, error: indexingError } = await supabase
       .from('product_indexing_status')
       .select('*')
       .eq('product_id', productId)
-      .single()
+      .maybeSingle()
 
     // Calculate aggregated stats
     const totalImpressions = performance?.reduce((sum, p) => sum + (p.impressions || 0), 0) || 0

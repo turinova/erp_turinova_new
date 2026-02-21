@@ -28,6 +28,8 @@ import HtmlEditor from '@/components/HtmlEditor'
 import SourceMaterialsTab from '@/components/SourceMaterialsTab'
 import SearchConsoleTab from '@/components/SearchConsoleTab'
 import CompetitorPricesTab from '@/components/CompetitorPricesTab'
+import ProductImagesTab from '@/components/ProductImagesTab'
+import ProductQualityScore from '@/components/ProductQualityScore'
 
 interface ProductEditFormProps {
   product: ProductWithDescriptions
@@ -61,6 +63,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
+  const [pulling, setPulling] = useState(false) // For pulling from ShopRenter
   const [generating, setGenerating] = useState(false)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   const [generatedProductType, setGeneratedProductType] = useState<string | null>(null)
@@ -83,11 +86,38 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     childCount: number
   } | null>(null)
   const [loadingVariants, setLoadingVariants] = useState(false)
+
+  // Quality score state
+  const [qualityScore, setQualityScore] = useState<any>(null)
+  const [loadingQualityScore, setLoadingQualityScore] = useState(false)
+  const [calculatingQualityScore, setCalculatingQualityScore] = useState(false)
+
+  // Meta generation state
+  const [generatingMeta, setGeneratingMeta] = useState<{
+    title: boolean
+    keywords: boolean
+    description: boolean
+  }>({
+    title: false,
+    keywords: false,
+    description: false
+  })
   
-  // Helper function to decode HTML entities
+  // Helper function to decode HTML entities (client-side only)
   const decodeHtmlEntities = (html: string | null | undefined): string => {
     if (!html) return ''
-    // Create a temporary element to decode HTML entities
+    // Only use document if we're on the client side
+    if (typeof document === 'undefined') {
+      // Server-side: use a simple regex replacement for common entities
+      return html
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+    }
+    // Client-side: use DOM API
     const textarea = document.createElement('textarea')
     textarea.innerHTML = html
     return textarea.value
@@ -260,6 +290,55 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     setSyncConfirmOpen(false)
   }
 
+  // Pull product from ShopRenter (fetch latest data including display names)
+  const handlePullFromShopRenter = async () => {
+    try {
+      setPulling(true)
+
+      // Get connection_id from product
+      const connectionId = (product as any).connection_id
+      if (!connectionId) {
+        toast.error('Nincs kapcsolat ID a termékhez')
+        return
+      }
+
+      // Get shoprenter_id from product
+      const shoprenterId = (product as any).shoprenter_id
+      if (!shoprenterId) {
+        toast.error('Nincs ShopRenter ID a termékhez')
+        return
+      }
+
+      const response = await fetch(`/api/connections/${connectionId}/sync-products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          product_id: shoprenterId,
+          force: false
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Termék sikeresen frissítve ShopRenter-ből!')
+        // Refresh the page to show updated data
+        startTransition(() => {
+          router.refresh()
+        })
+      } else {
+        toast.error(`Frissítés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error) {
+      console.error('Error pulling product from ShopRenter:', error)
+      toast.error('Hiba a termék frissítésekor')
+    } finally {
+      setPulling(false)
+    }
+  }
+
   // Load URL alias on mount
   useEffect(() => {
     const loadUrlAlias = async () => {
@@ -309,6 +388,99 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     
     loadVariants()
   }, [product.id])
+
+  // Load quality score on mount
+  useEffect(() => {
+    const loadQualityScore = async () => {
+      try {
+        setLoadingQualityScore(true)
+        const response = await fetch(`/api/products/${product.id}/quality-score`)
+        const result = await response.json()
+        
+        if (result.success && result.score) {
+          setQualityScore(result.score)
+        }
+      } catch (error) {
+        console.error('Error loading quality score:', error)
+      } finally {
+        setLoadingQualityScore(false)
+      }
+    }
+    
+    loadQualityScore()
+  }, [product.id])
+
+  // Calculate quality score
+  const handleCalculateQualityScore = async () => {
+    try {
+      setCalculatingQualityScore(true)
+      const response = await fetch(`/api/products/${product.id}/quality-score`, {
+        method: 'POST'
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.score) {
+        setQualityScore(result.score)
+        toast.success('Minőségi pontszám sikeresen kiszámolva')
+      } else {
+        toast.error(result.error || 'Hiba a minőségi pontszám számítása során')
+      }
+    } catch (error) {
+      console.error('Error calculating quality score:', error)
+      toast.error('Hiba a minőségi pontszám számítása során')
+    } finally {
+      setCalculatingQualityScore(false)
+    }
+  }
+
+  // Generate meta fields
+  const handleGenerateMeta = async (field: 'title' | 'keywords' | 'description' | 'all') => {
+    try {
+      const fieldsToGenerate = field === 'all' ? ['title', 'keywords', 'description'] : [field]
+      
+      // Set loading states
+      if (field === 'all') {
+        setGeneratingMeta({ title: true, keywords: true, description: true })
+      } else {
+        setGeneratingMeta(prev => ({ ...prev, [field]: true }))
+      }
+
+      const response = await fetch(`/api/products/${product.id}/generate-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: fieldsToGenerate })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Update form data with generated values
+        const updates: any = {}
+        if (result.meta_title) updates.meta_title = result.meta_title
+        if (result.meta_keywords) updates.meta_keywords = result.meta_keywords
+        if (result.meta_description) updates.meta_description = result.meta_description
+
+        setFormData(prev => ({ ...prev, ...updates }))
+        
+        const fieldNames = {
+          title: 'Meta cím',
+          keywords: 'Meta kulcsszavak',
+          description: 'Meta leírás',
+          all: 'Meta mezők'
+        }
+        
+        toast.success(`${fieldNames[field]} sikeresen generálva`)
+      } else {
+        toast.error(result.error || 'Hiba a meta mezők generálása során')
+      }
+    } catch (error) {
+      console.error('Error generating meta fields:', error)
+      toast.error('Hiba a meta mezők generálása során')
+    } finally {
+      setGeneratingMeta({ title: false, keywords: false, description: false })
+    }
+  }
 
   const handleGenerateUrlSlug = async () => {
     try {
@@ -452,9 +624,20 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
             variant="outlined"
+            color="info"
+            startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
+            onClick={handlePullFromShopRenter}
+            disabled={pulling || syncing}
+            title="Frissítés ShopRenter-ből (lekéri a legfrissebb adatokat, pl. attribútum megjelenítési neveket)"
+          >
+            {pulling ? 'Frissítés...' : 'Frissítés ShopRenter-ből'}
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
             onClick={handleSyncClick}
-            disabled={syncing}
+            disabled={syncing || pulling}
+            title="Szinkronizálás ShopRenter-be (elküldi a helyi változtatásokat)"
           >
             Szinkronizálás
           </Button>
@@ -475,6 +658,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Tab label="Árazás" />
           <Tab label="SEO" />
           <Tab label="Leírás" />
+          <Tab label="Képek" />
+          <Tab label="Minőség" />
           <Tab label="Forrásanyagok" />
           <Tab label="Search Console" />
           <Tab label="Versenytárs árak" />
@@ -536,37 +721,76 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     Attribútumok:
                   </Typography>
                   {product.product_attributes.map((attr: any, index: number) => {
-                    // Translate common attribute names to Hungarian
-                    const attrNames: Record<string, string> = {
-                      'size': 'Méret',
-                      'color': 'Szín',
-                      'weight': 'Súly',
-                      'teherbírás': 'Teherbírás',
-                      'width': 'Szélesség',
-                      'height': 'Magasság',
-                      'depth': 'Mélység',
-                      'capacity': 'Kapacitás',
-                      'material': 'Anyag',
-                      'finish': 'Felület'
-                    }
-                    const displayName = attrNames[attr.name?.toLowerCase()] || attr.name || 'Ismeretlen'
+                    // Use display_name (from AttributeDescription) as primary, fallback to name
+                    const displayName = attr.display_name || attr.name || 'Ismeretlen'
                     
+                    // Helper function to extract value from object/array/primitive
+                    const extractAttributeValue = (val: any): string | null => {
+                      if (val === null || val === undefined) {
+                        return null
+                      }
+
+                      // Handle primitives
+                      if (typeof val !== 'object') {
+                        return String(val)
+                      }
+
+                      // Handle arrays
+                      if (Array.isArray(val)) {
+                        const extracted = val
+                          .map(v => extractAttributeValue(v))
+                          .filter(v => v !== null && v !== undefined && v !== 'null' && v !== 'undefined')
+                        return extracted.length > 0 ? extracted.join(', ') : null
+                      }
+
+                      // Handle objects - try multiple strategies
+                      // Strategy 1: Language-specific (Hungarian first)
+                      if (val.hu && typeof val.hu === 'string') {
+                        return val.hu
+                      }
+                      if (val.name && typeof val.name === 'string') {
+                        return val.name
+                      }
+                      if (val.description && typeof val.description === 'string') {
+                        return val.description
+                      }
+                      if (val.value !== undefined && val.value !== null) {
+                        const extracted = extractAttributeValue(val.value)
+                        if (extracted !== null) {
+                          return extracted
+                        }
+                      }
+
+                      // Strategy 2: Find first string value in object
+                      for (const [key, v] of Object.entries(val)) {
+                        if (typeof v === 'string' && v.trim() !== '') {
+                          return v
+                        }
+                        if (typeof v === 'number') {
+                          return String(v)
+                        }
+                      }
+
+                      // Strategy 3: If object has a single property, use it
+                      const keys = Object.keys(val)
+                      if (keys.length === 1) {
+                        const extracted = extractAttributeValue(val[keys[0]])
+                        if (extracted !== null) {
+                          return extracted
+                        }
+                      }
+
+                      return null
+                    }
+
                     // Format value based on type
                     let displayValue: string = ''
-                    if (attr.type === 'LIST' && Array.isArray(attr.value)) {
-                      // LIST attributes: extract values from language objects
-                      const values = attr.value.map((v: any) => {
-                        if (typeof v === 'object' && v.value) {
-                          return v.value
-                        }
-                        return String(v)
-                      })
-                      displayValue = values.join(', ')
-                    } else if (attr.value !== null && attr.value !== undefined) {
-                      // INTEGER, FLOAT, TEXT attributes: single value
-                      displayValue = String(attr.value)
-                    } else {
+                    const extractedValue = extractAttributeValue(attr.value)
+                    
+                    if (extractedValue === null || extractedValue === undefined || extractedValue.trim() === '') {
                       displayValue = 'Nincs érték'
+                    } else {
+                      displayValue = extractedValue
                     }
                     
                     return (
@@ -924,14 +1148,32 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 )}
               </Box>
             </Grid>
-            
+
             <Grid item xs={12}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="caption">
+                  💡 <strong>ShopRenter dinamikus címkék:</strong> Használhatod a [PRODUCT], [CATEGORY], [PRICE], [SKU], [SERIAL] címkéket, amelyeket a ShopRenter automatikusan lecserél a tényleges értékekre. Az AI generálás automatikusan tartalmazza ezeket a címkéket.
+                </Typography>
+              </Alert>
               <TextField
                 fullWidth
                 label="Meta cím"
                 value={formData.meta_title}
                 onChange={handleInputChange('meta_title')}
-                helperText="A keresőmotorokban megjelenő cím"
+                helperText={`A keresőmotorokban megjelenő cím (50-60 karakter optimális, max 70) - Jelenleg: ${formData.meta_title.length} karakter`}
+                InputProps={{
+                  endAdornment: (
+                    <Button
+                      size="small"
+                      startIcon={generatingMeta.title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                      onClick={() => handleGenerateMeta('title')}
+                      disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                      sx={{ minWidth: 'auto', ml: 1 }}
+                    >
+                      {generatingMeta.title ? '' : 'AI'}
+                    </Button>
+                  )
+                }}
               />
             </Grid>
             <Grid item xs={12}>
@@ -940,7 +1182,20 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 label="Meta kulcsszavak"
                 value={formData.meta_keywords}
                 onChange={handleInputChange('meta_keywords')}
-                helperText="Vesszővel elválasztott kulcsszavak"
+                helperText="Vesszővel elválasztott kulcsszavak (5-10 kulcsszó optimális)"
+                InputProps={{
+                  endAdornment: (
+                    <Button
+                      size="small"
+                      startIcon={generatingMeta.keywords ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                      onClick={() => handleGenerateMeta('keywords')}
+                      disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                      sx={{ minWidth: 'auto', ml: 1 }}
+                    >
+                      {generatingMeta.keywords ? '' : 'AI'}
+                    </Button>
+                  )
+                }}
               />
             </Grid>
             <Grid item xs={12}>
@@ -951,8 +1206,34 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 onChange={handleInputChange('meta_description')}
                 multiline
                 rows={3}
-                helperText="A keresőmotorokban megjelenő leírás"
+                helperText={`A keresőmotorokban megjelenő leírás (150-160 karakter optimális, max 160) - Jelenleg: ${formData.meta_description.length} karakter. Használhatod a [PRODUCT], [CATEGORY], [PRICE], [SKU], [SERIAL] címkéket.`}
+                InputProps={{
+                  endAdornment: (
+                    <Button
+                      size="small"
+                      startIcon={generatingMeta.description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                      onClick={() => handleGenerateMeta('description')}
+                      disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                      sx={{ minWidth: 'auto', ml: 1, alignSelf: 'flex-start', mt: 1 }}
+                    >
+                      {generatingMeta.description ? '' : 'AI'}
+                    </Button>
+                  )
+                }}
               />
+            </Grid>
+            <Grid item xs={12}>
+              <Button
+                variant="outlined"
+                startIcon={generatingMeta.title || generatingMeta.keywords || generatingMeta.description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                onClick={() => handleGenerateMeta('all')}
+                disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                fullWidth
+              >
+                {generatingMeta.title || generatingMeta.keywords || generatingMeta.description 
+                  ? 'Generálás...' 
+                  : 'Összes meta mező AI generálása'}
+              </Button>
             </Grid>
           </Grid>
         </TabPanel>
@@ -1033,14 +1314,52 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         </TabPanel>
 
         <TabPanel value={tabValue} index={4}>
-          <SourceMaterialsTab productId={product.id} />
+          <ProductImagesTab productId={product.id} />
         </TabPanel>
 
         <TabPanel value={tabValue} index={5}>
-          <SearchConsoleTab productId={product.id} productUrl={product.product_url} />
+          <Box sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Box>
+                <Typography variant="h6" sx={{ mb: 0.5 }}>
+                  Minőségi pontszám
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  A pontszám segít azonosítani, hogy milyen területeken lehet javítani a termék SEO és adatminőségén
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                startIcon={calculatingQualityScore ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+                onClick={handleCalculateQualityScore}
+                disabled={calculatingQualityScore || loadingQualityScore}
+              >
+                {calculatingQualityScore ? 'Számítás...' : 'Pontszám számítása'}
+              </Button>
+            </Box>
+            {loadingQualityScore ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <ProductQualityScore 
+                score={qualityScore} 
+                size="medium"
+                showBreakdown
+              />
+            )}
+          </Box>
         </TabPanel>
 
         <TabPanel value={tabValue} index={6}>
+          <SourceMaterialsTab productId={product.id} />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={7}>
+          <SearchConsoleTab productId={product.id} productUrl={product.product_url} />
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={8}>
           <CompetitorPricesTab 
             productId={product.id} 
             productPrice={product.price}

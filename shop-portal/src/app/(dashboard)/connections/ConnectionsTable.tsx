@@ -39,7 +39,8 @@ import {
   Refresh as RefreshIcon,
   Sync as SyncIcon,
   ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon
+  ExpandLess as ExpandLessIcon,
+  Code as CodeIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -64,6 +65,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null)
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
+  const [deployingScriptTagId, setDeployingScriptTagId] = useState<string | null>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentSyncingConnectionRef = useRef<WebshopConnection | null>(null)
 
@@ -462,6 +464,38 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
+  // Deploy structured data script tag
+  const handleDeployScriptTag = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('Csak ShopRenter kapcsolatokhoz elérhető')
+      return
+    }
+
+    try {
+      setDeployingScriptTagId(connection.id)
+
+      const response = await fetch(`/api/connections/${connection.id}/script-tag`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Structured data script sikeresen telepítve ShopRenter-be!')
+      } else {
+        toast.error(`Script telepítés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error) {
+      console.error('Error deploying script tag:', error)
+      toast.error('Hiba a script telepítésekor')
+    } finally {
+      setDeployingScriptTagId(null)
+    }
+  }
+
   // Open edit dialog
   const handleOpenEditDialog = (connection: WebshopConnection) => {
     setEditingConnection(connection)
@@ -644,6 +678,19 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
       if (!response.ok) {
         const errorResult = await response.json()
+        
+        // Handle 401 (Unauthorized) - session expired
+        if (response.status === 401) {
+          toast.error('A munkamenet lejárt. Kérjük, jelentkezzen ki és be újra, majd próbálja újra a szinkronizálást.')
+          setSyncingConnectionId(null)
+          currentSyncingConnectionRef.current = null
+          // Optionally redirect to login after a delay
+          setTimeout(() => {
+            router.push('/login')
+          }, 2000)
+          return
+        }
+        
         throw new Error(errorResult.error || 'Szinkronizálás sikertelen')
       }
 
@@ -835,20 +882,36 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         </IconButton>
                       </Tooltip>
                       {connection.connection_type === 'shoprenter' && (
-                        <Tooltip title="Termékek szinkronizálása">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleSyncProductsClick(connection)}
-                            disabled={syncingConnectionId === connection.id}
-                            color="secondary"
-                          >
-                            {syncingConnectionId === connection.id ? (
-                              <CircularProgress size={20} />
-                            ) : (
-                              <SyncIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </Tooltip>
+                        <>
+                          <Tooltip title="Termékek szinkronizálása">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleSyncProductsClick(connection)}
+                              disabled={syncingConnectionId === connection.id}
+                              color="secondary"
+                            >
+                              {syncingConnectionId === connection.id ? (
+                                <CircularProgress size={20} />
+                              ) : (
+                                <SyncIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Structured Data Script telepítése (JSON-LD)">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeployScriptTag(connection)}
+                              disabled={deployingScriptTagId === connection.id}
+                              color="info"
+                            >
+                              {deployingScriptTagId === connection.id ? (
+                                <CircularProgress size={20} />
+                              ) : (
+                                <CodeIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </Tooltip>
+                        </>
                       )}
                       <Tooltip title="Szerkesztés">
                         <IconButton

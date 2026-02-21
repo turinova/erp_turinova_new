@@ -236,7 +236,7 @@ export async function POST(
       }
     }
 
-    // Store indexing status
+    // Store indexing status with enhanced data
     await supabase
       .from('product_indexing_status')
       .upsert({
@@ -248,6 +248,16 @@ export async function POST(
         indexing_state: indexingStatus.indexingState,
         has_issues: indexingStatus.hasIssues,
         issues: indexingStatus.issues,
+        // Enhanced fields
+        page_fetch_state: indexingStatus.pageFetchState || null,
+        page_fetch_error: indexingStatus.pageFetchError || null,
+        mobile_usability_issues: indexingStatus.mobileUsabilityIssues || null,
+        mobile_usability_passed: indexingStatus.mobileUsabilityPassed || false,
+        core_web_vitals: indexingStatus.coreWebVitals || null,
+        structured_data_issues: indexingStatus.structuredDataIssues || null,
+        rich_results_eligible: indexingStatus.richResultsEligible || null,
+        sitemap_status: indexingStatus.sitemapStatus || null,
+        sitemap_url: indexingStatus.sitemapUrl || null,
         last_checked: new Date().toISOString(),
         check_count: 1 // Will be incremented by trigger or manually
       }, { onConflict: 'product_id' })

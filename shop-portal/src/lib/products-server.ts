@@ -13,6 +13,7 @@ export interface ShopRenterProduct {
   model_number: string | null  // Gyártói cikkszám (Manufacturer part number)
   gtin: string | null  // Vonalkód (Barcode/GTIN)
   name: string | null
+  brand: string | null  // Brand/manufacturer name from ShopRenter
   status: number
   // Pricing fields (Árazás)
   price: number | null  // Nettó ár (Net price)
@@ -25,7 +26,6 @@ export interface ShopRenterProduct {
   product_url: string | null
   url_slug: string | null
   url_alias_id: string | null  // ShopRenter URL alias resource ID
-  canonical_url: string | null
   last_url_synced_at: string | null
   last_synced_at: string | null
   sync_status: string
@@ -33,7 +33,10 @@ export interface ShopRenterProduct {
   // Product attributes (from ShopRenter productAttributeExtend)
   product_attributes: Array<{
     type: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
-    name: string
+    name: string // Internal identifier (e.g., "meret", "szin")
+    display_name?: string | null // Display name from AttributeDescription (e.g., "Méret", "Szín") - PRIMARY for display
+    prefix?: string | null // Text before value
+    postfix?: string | null // Text after value
     value: any // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
   }> | null
   // Parent-child relationship

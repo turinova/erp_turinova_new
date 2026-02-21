@@ -5,6 +5,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateEmbedding } from './chunking-service'
+import { scrapeMultipleCompetitorContents, aggregateCompetitorContent } from './competitor-content-scraper'
 
 /**
  * Get Anthropic client - must be created at runtime, not module level
@@ -250,13 +251,20 @@ async function findRelevantChunks(
 }
 
 /**
- * Build context from source materials, chunks, and search queries
+ * Build context from source materials, chunks, search queries, and competitor insights
  */
 function buildContext(
   product: any,
   sourceMaterials: any[],
   relevantChunks: any[],
-  searchQueries?: Array<{ query: string; impressions: number; clicks: number; ctr: number; position: number }>
+  searchQueries?: Array<{ query: string; impressions: number; clicks: number; ctr: number; position: number }>,
+  competitorContentInsights?: {
+    allKeywords: string[]
+    allKeyPhrases: string[]
+    commonFeatures: string[]
+    commonBenefits: string[]
+    contentStructureInsights: string[]
+  } | null
 ): string {
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
@@ -316,6 +324,47 @@ function buildContext(
         context += `  * "${q.query}" (pozíció: ${q.position.toFixed(1)}, ${q.clicks} kattintás)\n`
       })
     }
+  }
+
+  if (competitorContentInsights) {
+    context += `\n\nCOMPETITOR CONTENT ANALYSIS:\n`
+    context += `We analyzed competitor product pages to identify keywords and phrases they use. ` 
+    context += `Incorporate these naturally into the description to improve SEO ranking and match competitor language.\n\n`
+    
+    if (competitorContentInsights.allKeywords.length > 0) {
+      context += `KEYWORDS USED BY COMPETITORS (incorporate naturally):\n`
+      context += competitorContentInsights.allKeywords.slice(0, 15).join(', ') + '\n\n'
+    }
+    
+    if (competitorContentInsights.allKeyPhrases.length > 0) {
+      context += `KEY PHRASES FROM COMPETITORS (use these phrases naturally):\n`
+      competitorContentInsights.allKeyPhrases.slice(0, 10).forEach((phrase, i) => {
+        context += `${i + 1}. "${phrase}"\n`
+      })
+      context += '\n'
+    }
+    
+    if (competitorContentInsights.commonFeatures.length > 0) {
+      context += `FEATURES COMPETITORS EMPHASIZE (mention if relevant):\n`
+      competitorContentInsights.commonFeatures.slice(0, 8).forEach((feature, i) => {
+        context += `${i + 1}. ${feature}\n`
+      })
+      context += '\n'
+    }
+    
+    if (competitorContentInsights.commonBenefits.length > 0) {
+      context += `BENEFITS COMPETITORS HIGHLIGHT (include if applicable):\n`
+      competitorContentInsights.commonBenefits.slice(0, 6).forEach((benefit, i) => {
+        context += `${i + 1}. ${benefit}\n`
+      })
+      context += '\n'
+    }
+    
+    context += `IMPORTANT: Use these competitor insights to:\n`
+    context += `- Match their keyword usage (but write better, more comprehensive content)\n`
+    context += `- Ensure we rank for the same search terms they target\n`
+    context += `- Differentiate by providing more detailed, valuable information\n`
+    context += `- Incorporate phrases naturally - don't keyword stuff\n\n`
   }
 
   return context
@@ -498,12 +547,151 @@ export async function generateProductDescription(
       }
     }
 
+    // 5.5. Get competitor links and scrape their content for keyword insights
+    let competitorContentInsights: {
+      allKeywords: string[]
+      allKeyPhrases: string[]
+      commonFeatures: string[]
+      commonBenefits: string[]
+      contentStructureInsights: string[]
+    } | null = null
+    
+    try {
+      // Fetch competitor links for this product
+      let competitorUrls: string[] = []
+      
+      if (isParent) {
+        // For parent products, get competitor links for ALL child products
+        console.log(`[AI GENERATION] Fetching competitor links for parent product and ${childProducts.length} children...`)
+        
+        // Get links for parent
+        const { data: parentLinks } = await supabase
+          .from('competitor_product_links')
+          .select('competitor_url, is_active')
+          .eq('product_id', productId)
+          .eq('is_active', true)
+        
+        if (parentLinks && parentLinks.length > 0) {
+          competitorUrls.push(...parentLinks.map((l: any) => l.competitor_url))
+        }
+        
+        // Get links for all children
+        const childIds = childProducts.map((c: any) => c.id)
+        if (childIds.length > 0) {
+          const { data: childLinks } = await supabase
+            .from('competitor_product_links')
+            .select('competitor_url, is_active')
+            .in('product_id', childIds)
+            .eq('is_active', true)
+          
+          if (childLinks && childLinks.length > 0) {
+            competitorUrls.push(...childLinks.map((l: any) => l.competitor_url))
+          }
+        }
+      } else {
+        // For child/single products, get competitor links for this product
+        const { data: links } = await supabase
+          .from('competitor_product_links')
+          .select('competitor_url, is_active')
+          .eq('product_id', productId)
+          .eq('is_active', true)
+        
+        if (links && links.length > 0) {
+          competitorUrls = links.map((l: any) => l.competitor_url)
+        }
+      }
+      
+      // Remove duplicates
+      competitorUrls = Array.from(new Set(competitorUrls))
+      
+      if (competitorUrls.length > 0) {
+        console.log(`[AI GENERATION] Found ${competitorUrls.length} competitor URLs, scraping content...`)
+        
+        // Scrape competitor content (limit to 5 URLs to avoid rate limits)
+        const urlsToScrape = competitorUrls.slice(0, 5)
+        const competitorContents = await scrapeMultipleCompetitorContents(urlsToScrape)
+        
+        // Aggregate content
+        const validContents = competitorContents.filter(c => !c.error && c.keywords.length > 0)
+        if (validContents.length > 0) {
+          competitorContentInsights = aggregateCompetitorContent(validContents)
+          console.log(`[AI GENERATION] Extracted ${competitorContentInsights.allKeywords.length} keywords and ${competitorContentInsights.allKeyPhrases.length} phrases from competitors`)
+        }
+      } else {
+        console.log(`[AI GENERATION] No competitor links found for this product`)
+      }
+    } catch (competitorError: any) {
+      // Fail gracefully - don't break generation if competitor scraping fails
+      console.warn(`[AI GENERATION] Competitor content scraping failed (non-fatal):`, competitorError?.message || competitorError)
+      // Continue without competitor insights
+    }
+
     // 6. Build context
-    const context = buildContext(product, sourceMaterials, relevantChunks, queriesToUse)
+    const context = buildContext(product, sourceMaterials, relevantChunks, queriesToUse, competitorContentInsights)
 
     // 7. Build prompts with product type awareness
     const systemPrompt = `You are an expert product copywriter specializing in creating authentic, 
 human-written product descriptions for cabinet hardware and related products that rank high in search engines and AI search systems.
+
+CRITICAL: PRODUCT DESCRIPTION STRUCTURE (MUST FOLLOW THIS EXACT STRUCTURE):
+You MUST follow this exact structure for optimal SEO and AI search ranking. This structure is proven to work best for e-commerce:
+
+1. **Introduction/Overview Section** (<h2>Bevezetés</h2> or <h2>Áttekintés</h2>)
+   - 2-3 paragraphs introducing the product
+   - Include the main product name and primary keyword in the first paragraph
+   - Mention key variant options (if parent product) or specific variant details (if child product)
+   - Hook the reader with benefits or unique selling points
+   - Use natural Hungarian language, not keyword stuffing
+
+2. **Key Features Section** (<h2>Főbb jellemzők</h2> or <h2>Kiemelt tulajdonságok</h2>)
+   - 3-5 key features in bullet points or short paragraphs
+   - Focus on features that differentiate this product
+   - Include technical specifications naturally (dimensions, capacity, material, etc.)
+   - Use competitor keywords/phrases naturally if provided
+
+3. **Benefits Section** (<h2>Előnyök</h2> or <h2>Miért válassza ezt a terméket?</h2>)
+   - 3-4 main benefits for the customer
+   - Focus on user experience and practical advantages
+   - Use emotional triggers and practical benefits
+   - Connect features to real-world use cases
+
+4. **Specifications/Technical Details Section** (<h2>Specifikációk</h2> or <h2>Technikai adatok</h2>)
+   - Detailed technical information
+   - Dimensions, materials, capacities, load ratings, etc.
+   - Use a table or organized list format
+   - Note: ShopRenter automatically creates a parameter table below the description, so focus on explaining specifications, not just listing them
+
+5. **Use Cases/Applications Section** (<h2>Alkalmazási területek</h2> or <h2>Használati lehetőségek</h2>)
+   - Where and how this product is used
+   - Different application scenarios
+   - Compatibility information
+   - Installation contexts
+
+6. **Installation/Usage Section** (<h2>Beszerelés</h2> or <h2>Használat</h2>)
+   - Installation requirements and steps (if applicable)
+   - Usage tips and best practices
+   - Maintenance information
+   - Compatibility notes
+
+7. **Conclusion/Summary Section** (<h2>Összefoglalás</h2> or <h2>Összegzés</h2>)
+   - 1-2 paragraphs summarizing key points
+   - Reinforce main benefits and value proposition
+   - Call to action or final recommendation
+   - Natural closing
+
+8. **Q&A Section** (<h2>Gyakran ismételt kérdések</h2> or <h2>Gyakori kérdések</h2>)
+   - 3-5 relevant questions customers ask
+   - Practical questions: installation, compatibility, maintenance, usage
+   - Format: <h3>Question</h3> <p>Answer</p>
+   - Answers should be helpful and specific
+
+STRUCTURE REQUIREMENTS:
+- Use HTML headings (<h2> for main sections, <h3> for subsections/questions)
+- Each section should be 2-4 paragraphs or equivalent content
+- Total length: 500-1000 words
+- Maintain natural flow between sections
+- Use paragraphs, bullet points, and lists appropriately
+- Ensure ShopRenter's automatic parameter table complements (not duplicates) your specifications section
 
 SEARCH CONSOLE OPTIMIZATION:
 - If Search Console queries are provided, you MUST naturally incorporate the top search queries into the description
@@ -512,6 +700,13 @@ SEARCH CONSOLE OPTIMIZATION:
 - Use exact query phrases naturally - integrate them organically into sentences
 - Balance keyword optimization with natural, readable Hungarian text
 - The goal is to improve CTR and ranking for actual search queries people use
+
+COMPETITOR KEYWORD INTEGRATION:
+- If competitor content analysis is provided, incorporate their keywords and phrases naturally
+- Match competitor language patterns but write better, more comprehensive content
+- Use competitor phrases organically - don't keyword stuff
+- Differentiate by providing more detailed, valuable information than competitors
+- Ensure we rank for the same search terms competitors target
 
 CRITICAL: PRODUCT TYPE UNDERSTANDING
 **YOU MUST FIRST IDENTIFY THE EXACT PRODUCT TYPE FROM THE PRODUCT NAME AND SKU.**
@@ -749,25 +944,39 @@ ${queriesToUse && queriesToUse.length > 0 ? `
    - Use relevant industry keywords naturally (fiókrendszer, csukló, csúszka, stb.)
 `}
 
-7. **Content Quality**:
+7. **Competitor Content Integration** (CRITICAL):
+${competitorContentInsights ? `
+   - Competitor content analysis has been provided showing keywords, phrases, features, and benefits competitors use
+   - You MUST incorporate competitor keywords and phrases naturally throughout the description
+   - Match competitor language patterns but write BETTER, more comprehensive content
+   - Use competitor phrases organically - integrate them into natural sentences
+   - Differentiate by providing more detailed, valuable information than competitors
+   - Ensure we rank for the same search terms competitors target
+   - Focus on competitor key phrases in the Introduction, Features, and Benefits sections
+   - DO NOT copy competitor content - use their keywords to write superior content
+   - If competitors have separate URLs for each variant (child products), aggregate their keywords for parent product descriptions
+` : `
+   - No competitor content analysis available - write based on product information and source materials
+`}
+
+8. **Content Quality**:
    - Make it sound like it was written by a knowledgeable Hungarian expert
    - Include specific details from the source materials above (translated to Hungarian)
    - Optimize for Hungarian search engines without keyword stuffing
    - Write naturally in Hungarian - avoid AI detection patterns
    - Include emotional triggers and benefits in Hungarian
-   - Make it unique compared to competitors
-   - Length: 500-1000 words
-   - Structure: Use headings, bullet points, and paragraphs naturally (in Hungarian)
+   - Make it unique compared to competitors (better, more detailed)
+   - Length: 500-1000 words (distributed across all 8 sections)
+   - Structure: Follow the exact 8-section structure defined above
    - Use varied sentence lengths (short, medium, long)
    - Include rhetorical questions: "Mire figyeljünk?" "Miért válasszuk ezt?"
    - Add personal voice: "én", "mi", "tapasztalat" occasionally
 
-8. **Focus Areas** (all in Hungarian):
-   - Specifications (méretek, anyag, kapacitás, stb.)
-   - Installation (beszerelés, szerelési útmutató)
-   - Use cases (használati lehetőségek, alkalmazási területek)
-   - Benefits (előnyök, miért válassza ezt)
-   - Applications (konyha, iroda, garázs, stb.)
+9. **ShopRenter Integration Note**:
+   - ShopRenter automatically creates a parameter table below the description based on product attributes
+   - Your "Specifications" section should EXPLAIN and CONTEXTUALIZE the technical data, not just list it
+   - Focus on benefits, use cases, and explanations rather than raw data
+   - The parameter table will handle the raw specification listing
 
 ${generationInstructions ? `\n\nADDITIONAL GENERATION INSTRUCTIONS (CRITICAL - MUST FOLLOW):
 ${generationInstructions}

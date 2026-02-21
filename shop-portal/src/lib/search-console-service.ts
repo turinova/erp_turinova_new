@@ -35,6 +35,28 @@ export interface IndexingStatus {
   indexingState: string | null
   hasIssues: boolean
   issues: any[] | null
+  // Enhanced fields from URL Inspection API
+  pageFetchState?: string | null
+  pageFetchError?: string | null
+  mobileUsabilityIssues?: Array<{
+    issue: string
+    severity: 'ERROR' | 'WARNING'
+    description: string
+  }> | null
+  mobileUsabilityPassed?: boolean
+  coreWebVitals?: {
+    lcp?: number | null // Largest Contentful Paint (seconds)
+    inp?: number | null // Interaction to Next Paint (milliseconds)
+    cls?: number | null // Cumulative Layout Shift
+  } | null
+  structuredDataIssues?: Array<{
+    type: string
+    severity: 'ERROR' | 'WARNING'
+    message: string
+  }> | null
+  richResultsEligible?: string[] | null
+  sitemapStatus?: string | null
+  sitemapUrl?: string | null
 }
 
 /**
@@ -219,7 +241,16 @@ export async function checkUrlIndexingStatus(
         coverageState: null,
         indexingState: null,
         hasIssues: false,
-        issues: null
+        issues: null,
+        pageFetchState: null,
+        pageFetchError: null,
+        mobileUsabilityIssues: null,
+        mobileUsabilityPassed: false,
+        coreWebVitals: null,
+        structuredDataIssues: null,
+        richResultsEligible: null,
+        sitemapStatus: null,
+        sitemapUrl: null
       }
     }
 
@@ -227,27 +258,134 @@ export async function checkUrlIndexingStatus(
     const coverageState = indexStatus?.coverageState || null
     const indexingState = indexStatus?.indexingState || null
     const lastCrawlTime = indexStatus?.lastCrawlTime || null
+    const pageFetchState = indexStatus?.pageFetchState || null
 
     // Determine if indexed
     const isIndexed = coverageState === 'Submitted and indexed' || 
                      coverageState === 'Indexed, not submitted in sitemap'
 
-    // Check for issues
-    const issues = indexStatus?.pageFetchState === 'SUCCESS' ? null : [
-      {
-        state: indexStatus?.pageFetchState,
+    // Extract page fetch error
+    // Only treat as error if it's an actual error state (not SUCCESS or PASS)
+    const successStates = ['SUCCESS', 'PASS']
+    let pageFetchError: string | null = null
+    if (pageFetchState && !successStates.includes(pageFetchState)) {
+      pageFetchError = indexStatus?.pageFetchState || null
+      // Try to get more details from verdict or details
+      if (indexStatus?.verdict) {
+        pageFetchError = indexStatus.verdict
+      }
+    }
+
+    // Extract mobile usability issues
+    const mobileUsabilityResult = inspectionResult.mobileUsabilityResult
+    let mobileUsabilityIssues: IndexingStatus['mobileUsabilityIssues'] = null
+    let mobileUsabilityPassed = false
+    
+    if (mobileUsabilityResult) {
+      mobileUsabilityPassed = mobileUsabilityResult.mobileUsabilityState === 'MOBILE_FRIENDLY'
+      
+      if (mobileUsabilityResult.issues && mobileUsabilityResult.issues.length > 0) {
+        mobileUsabilityIssues = mobileUsabilityResult.issues.map((issue: any) => ({
+          issue: issue.issue || 'Unknown issue',
+          severity: issue.severity || 'WARNING',
+          description: issue.issueMessage || ''
+        }))
+      }
+    }
+
+    // Extract Core Web Vitals (if available in inspection result)
+    // Note: CWV might not always be available in URL Inspection API
+    // It's more commonly available in PageSpeed Insights API
+    let coreWebVitals: IndexingStatus['coreWebVitals'] = null
+    // The URL Inspection API doesn't directly provide CWV, but we can check if it's mentioned
+    // For now, we'll leave this null and can enhance later with PageSpeed Insights API if needed
+
+    // Extract structured data issues
+    const richResultsResult = inspectionResult.richResultsResult
+    let structuredDataIssues: IndexingStatus['structuredDataIssues'] = null
+    let richResultsEligible: string[] | null = null
+
+    if (richResultsResult) {
+      // Get detected items (rich result types)
+      if (richResultsResult.detectedItems && richResultsResult.detectedItems.length > 0) {
+        richResultsEligible = richResultsResult.detectedItems.map((item: any) => 
+          item.richResultType || item.richResultItem?.richResultType || 'Unknown'
+        ).filter((type: string) => type !== 'Unknown')
+      }
+
+      // Get issues
+      if (richResultsResult.issues && richResultsResult.issues.length > 0) {
+        structuredDataIssues = richResultsResult.issues.map((issue: any) => ({
+          type: issue.richResultType || 'Unknown',
+          severity: issue.severity || 'WARNING',
+          message: issue.issueMessage || issue.message || ''
+        }))
+      }
+    }
+
+    // Extract sitemap information
+    // Note: Sitemap info might be in indexStatus.sitemap or inspectionResult.sitemap
+    const sitemapInfo = indexStatus?.sitemap || inspectionResult?.sitemap || null
+    let sitemapStatus: string | null = null
+    let sitemapUrl: string | null = null
+    
+    if (sitemapInfo) {
+      sitemapStatus = 'IN_SITEMAP'
+      if (typeof sitemapInfo === 'string') {
+        sitemapUrl = sitemapInfo
+      } else if (sitemapInfo.url) {
+        sitemapUrl = sitemapInfo.url
+      } else if (Array.isArray(sitemapInfo) && sitemapInfo.length > 0) {
+        // If it's an array, take the first sitemap URL
+        sitemapUrl = typeof sitemapInfo[0] === 'string' ? sitemapInfo[0] : sitemapInfo[0]?.url || null
+      }
+    } else {
+      sitemapStatus = 'NOT_IN_SITEMAP'
+    }
+
+    // Check for issues (combine all issue types)
+    const allIssues: any[] = []
+    
+    if (pageFetchState && pageFetchState !== 'SUCCESS') {
+      allIssues.push({
+        type: 'page_fetch',
+        severity: 'ERROR',
+        state: pageFetchState,
         verdict: indexStatus?.verdict,
         details: indexStatus?.details
-      }
-    ]
+      })
+    }
+
+    if (mobileUsabilityIssues && mobileUsabilityIssues.length > 0) {
+      allIssues.push(...mobileUsabilityIssues.map(issue => ({
+        type: 'mobile_usability',
+        ...issue
+      })))
+    }
+
+    if (structuredDataIssues && structuredDataIssues.length > 0) {
+      allIssues.push(...structuredDataIssues.map(issue => ({
+        type: 'structured_data',
+        ...issue
+      })))
+    }
 
     return {
       isIndexed,
       lastCrawled: lastCrawlTime || null,
       coverageState,
       indexingState,
-      hasIssues: issues !== null && issues.length > 0,
-      issues
+      hasIssues: allIssues.length > 0,
+      issues: allIssues.length > 0 ? allIssues : null,
+      pageFetchState,
+      pageFetchError,
+      mobileUsabilityIssues,
+      mobileUsabilityPassed,
+      coreWebVitals,
+      structuredDataIssues,
+      richResultsEligible,
+      sitemapStatus,
+      sitemapUrl
     }
   } catch (error: any) {
     console.error('Error checking indexing status:', error)
@@ -265,7 +403,16 @@ export async function checkUrlIndexingStatus(
       coverageState: null,
       indexingState: null,
       hasIssues: false,
-      issues: null
+      issues: null,
+      pageFetchState: null,
+      pageFetchError: null,
+      mobileUsabilityIssues: null,
+      mobileUsabilityPassed: false,
+      coreWebVitals: null,
+      structuredDataIssues: null,
+      richResultsEligible: null,
+      sitemapStatus: null,
+      sitemapUrl: null
     }
   }
 }

@@ -61,6 +61,28 @@ interface IndexingStatus {
   has_issues: boolean
   issues: any[] | null
   last_checked: string
+  // Enhanced fields
+  page_fetch_state?: string | null
+  page_fetch_error?: string | null
+  mobile_usability_issues?: Array<{
+    issue: string
+    severity: 'ERROR' | 'WARNING'
+    description: string
+  }> | null
+  mobile_usability_passed?: boolean
+  core_web_vitals?: {
+    lcp?: number | null
+    inp?: number | null
+    cls?: number | null
+  } | null
+  structured_data_issues?: Array<{
+    type: string
+    severity: 'ERROR' | 'WARNING'
+    message: string
+  }> | null
+  rich_results_eligible?: string[] | null
+  sitemap_status?: string | null
+  sitemap_url?: string | null
 }
 
 interface SearchConsoleData {
@@ -291,7 +313,89 @@ export default function SearchConsoleTab({ productId, productUrl }: SearchConsol
                 </Typography>
               </Grid>
             )}
-            {data.indexingStatus.has_issues && (
+            {/* Page Fetch State */}
+            {(() => {
+              const successStates = ['SUCCESS', 'PASS']
+              const fetchState = data.indexingStatus.page_fetch_state
+              const fetchError = data.indexingStatus.page_fetch_error
+              
+              // Only show error if state is an actual error (not SUCCESS or PASS)
+              // Also check that error message is not a success state (handles old data)
+              const isError = fetchState && 
+                             !successStates.includes(fetchState) &&
+                             (!fetchError || !successStates.includes(fetchError))
+              
+              return isError ? (
+                <Grid item xs={12}>
+                  <Alert severity="error" sx={{ mb: 1 }}>
+                    <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 0.5 }}>
+                      Oldal betöltési hiba
+                    </Typography>
+                    <Typography variant="body2">
+                      {fetchError || fetchState}
+                    </Typography>
+                  </Alert>
+                </Grid>
+              ) : null
+            })()}
+            
+            {/* Mobile Usability */}
+            {data.indexingStatus.mobile_usability_issues && data.indexingStatus.mobile_usability_issues.length > 0 && (
+              <Grid item xs={12}>
+                <Alert severity={data.indexingStatus.mobile_usability_passed ? "info" : "warning"} sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 0.5 }}>
+                    Mobil használhatósági problémák ({data.indexingStatus.mobile_usability_issues.length})
+                  </Typography>
+                  {data.indexingStatus.mobile_usability_issues.map((issue: any, idx: number) => (
+                    <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+                      • {issue.issue}: {issue.description}
+                    </Typography>
+                  ))}
+                </Alert>
+              </Grid>
+            )}
+            
+            {/* Structured Data Issues */}
+            {data.indexingStatus.structured_data_issues && data.indexingStatus.structured_data_issues.length > 0 && (
+              <Grid item xs={12}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 0.5 }}>
+                    Strukturált adat hibák ({data.indexingStatus.structured_data_issues.length})
+                  </Typography>
+                  {data.indexingStatus.structured_data_issues.map((issue: any, idx: number) => (
+                    <Typography key={idx} variant="body2" sx={{ mb: 0.5 }}>
+                      • {issue.type}: {issue.message}
+                    </Typography>
+                  ))}
+                </Alert>
+              </Grid>
+            )}
+            
+            {/* Rich Results Eligible */}
+            {data.indexingStatus.rich_results_eligible && data.indexingStatus.rich_results_eligible.length > 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="body2" fontWeight={600}>Rich Results típusok:</Typography>
+                  {data.indexingStatus.rich_results_eligible.map((type: string, idx: number) => (
+                    <Chip key={idx} label={type} size="small" color="success" variant="outlined" />
+                  ))}
+                </Box>
+              </Grid>
+            )}
+            
+            {/* Sitemap Status */}
+            {data.indexingStatus.sitemap_status && (
+              <Grid item xs={12} sm={6}>
+                <Typography variant="body2" color="text.secondary">
+                  Sitemap: {data.indexingStatus.sitemap_status === 'IN_SITEMAP' ? '✓ Sitemap-ben' : '✗ Nincs sitemap-ben'}
+                </Typography>
+              </Grid>
+            )}
+            
+            {data.indexingStatus.has_issues && 
+             !data.indexingStatus.page_fetch_state && 
+             !data.indexingStatus.mobile_usability_issues && 
+             !data.indexingStatus.structured_data_issues && (
               <Grid item xs={12}>
                 <Alert severity="warning">
                   Problémák találhatók az indexelés során. Ellenőrizze a Search Console-t részletekért.

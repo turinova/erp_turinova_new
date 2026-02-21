@@ -4,7 +4,8 @@ import { cookies } from 'next/headers'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync } from '@/lib/sync-progress-store'
-import { updateCanonicalUrlForChild } from '@/lib/canonical-url-service'
+import { extractImagesFromProductExtend, fetchProductImages } from '@/lib/shoprenter-image-service'
+import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -67,6 +68,102 @@ function extractUrlAlias(product: any): { slug: string | null; id: string | null
   }
   
   return { slug: null, id: null }
+}
+
+/**
+ * Fetch AttributeDescription for an attribute to get display name
+ */
+async function fetchAttributeDescription(
+  apiBaseUrl: string,
+  authHeader: string,
+  attributeId: string,
+  attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT',
+  languageId: string = 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' // Hungarian default
+): Promise<{ display_name: string | null; prefix: string | null; postfix: string | null }> {
+  try {
+    // Build query parameter based on attribute type
+    let queryParam = ''
+    if (attributeType === 'LIST') {
+      queryParam = `listAttributeId=${encodeURIComponent(attributeId)}`
+    } else if (attributeType === 'TEXT') {
+      queryParam = `textAttributeId=${encodeURIComponent(attributeId)}`
+    } else if (attributeType === 'INTEGER' || attributeType === 'FLOAT') {
+      queryParam = `numberAttributeId=${encodeURIComponent(attributeId)}`
+    } else {
+      return { display_name: null, prefix: null, postfix: null }
+    }
+
+    const url = `${apiBaseUrl}/attributeDescriptions?${queryParam}&languageId=${encodeURIComponent(languageId)}&full=1`
+    
+    console.log(`[SYNC] Fetching AttributeDescription from: ${url}`)
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': authHeader
+      },
+      signal: AbortSignal.timeout(5000)
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      const items = data.items || data.response?.items || []
+      
+      // Get first matching description (should be only one per language)
+      if (items.length > 0) {
+        let desc = items[0]
+        
+        // If item only has href (not full data), fetch it individually
+        if (desc.href && !desc.name && !desc.id) {
+          console.log(`[SYNC] AttributeDescription item only has href, fetching full data: ${desc.href}`)
+          try {
+            const fullResponse = await fetch(desc.href, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeader
+              },
+              signal: AbortSignal.timeout(5000)
+            })
+            
+            if (fullResponse.ok) {
+              desc = await fullResponse.json()
+            }
+          } catch (fetchError) {
+            console.warn(`[SYNC] Failed to fetch full AttributeDescription from href:`, fetchError)
+          }
+        }
+        
+        // Log the full response structure to debug
+        console.log(`[SYNC] AttributeDescription response for ${attributeType} ${attributeId}:`, JSON.stringify(desc, null, 2).substring(0, 500))
+        
+        // Extract display name - according to API docs, it should be in 'name' field
+        const displayName = desc.name || null
+        const prefix = desc.prefix || null
+        const postfix = desc.postfix || null
+        
+        console.log(`[SYNC] Extracted from AttributeDescription: name="${displayName}", prefix="${prefix}", postfix="${postfix}"`)
+        
+        return {
+          display_name: displayName,
+          prefix: prefix,
+          postfix: postfix
+        }
+      } else {
+        console.warn(`[SYNC] No AttributeDescription found for ${attributeType} attribute ${attributeId} (language: ${languageId})`)
+      }
+    } else {
+      const errorText = await response.text().catch(() => 'Unknown error')
+      console.warn(`[SYNC] AttributeDescription API error for ${attributeType} ${attributeId}: ${response.status} - ${errorText.substring(0, 200)}`)
+    }
+  } catch (error) {
+    console.warn(`[SYNC] Failed to fetch AttributeDescription for ${attributeType} attribute ${attributeId}:`, error)
+  }
+
+  return { display_name: null, prefix: null, postfix: null }
 }
 
 /**
@@ -146,7 +243,12 @@ export async function POST(
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      console.error('[SYNC] Authentication failed:', userError?.message || 'No user found')
+      return NextResponse.json({ 
+        success: false,
+        error: 'Authentication failed. Please log out and log back in, then try again.',
+        details: userError?.message || 'Session expired or invalid'
+      }, { status: 401 })
     }
 
     // Get connection
@@ -201,7 +303,7 @@ export async function POST(
       }
 
       try {
-        await syncProductToDatabase(supabase, connection, data)
+        await syncProductToDatabase(supabase, connection, data, false, apiUrl, authHeader)
         return NextResponse.json({ success: true, synced: 1 })
       } catch (error) {
         return NextResponse.json({ 
@@ -387,7 +489,7 @@ export async function POST(
     // Return immediately and run sync in background
     // The frontend will poll for progress
     // Don't await - let it run in background
-    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader).catch(error => {
+    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader, request).catch(error => {
       console.error('Background sync error:', error)
       updateProgress(connectionId, {
         status: 'error',
@@ -437,7 +539,8 @@ async function processSyncInBackground(
   connectionId: string,
   forceSync: boolean,
   apiUrl: string,
-  authHeader: string
+  authHeader: string,
+  request: NextRequest
 ) {
   // Initialize variables at function scope so they're accessible in catch block
   let syncedCount = 0
@@ -571,7 +674,7 @@ async function processSyncInBackground(
             const product = batchItem.response?.body
             if (product && product.id) {
               try {
-                await syncProductToDatabase(supabase, connection, product, forceSync)
+                await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader)
                 syncedCount++
                 // Update progress after EVERY product for real-time updates
                 updateProgress(connectionId, {
@@ -580,6 +683,10 @@ async function processSyncInBackground(
                   status: 'syncing',
                   errors: errorCount
                 })
+                
+                // Small delay between products to prevent overwhelming the API
+                // This helps ensure rate limiter has time to process attribute requests
+                await new Promise(resolve => setTimeout(resolve, 50))
               } catch (error) {
                 errorCount++
                 const errorMsg = error instanceof Error ? error.message : 'Ismeretlen hiba'
@@ -705,6 +812,18 @@ async function processSyncInBackground(
                       .single()
                     
                     if (parentProduct) {
+                      // CRITICAL: Prevent self-referencing parent_product_id
+                      // A product cannot be its own parent
+                      if (parentProduct.id === product.id) {
+                        console.warn(`[SYNC] Product ${product.sku} has parent_product_id pointing to itself. Clearing invalid parent_product_id.`)
+                        // Clear the invalid parent_product_id
+                        await supabase
+                          .from('shoprenter_products')
+                          .update({ parent_product_id: null })
+                          .eq('id', product.id)
+                        continue
+                      }
+                      
                       // Update the child product with parent UUID
                       const { error: updateError } = await supabase
                         .from('shoprenter_products')
@@ -737,6 +856,7 @@ async function processSyncInBackground(
     } catch (parentUpdateError) {
       console.error(`[SYNC] Error updating parent relationships (non-fatal):`, parentUpdateError)
     }
+
 
     // Mark as complete
     updateProgress(connectionId, {
@@ -774,9 +894,15 @@ async function syncProductToDatabase(
   supabase: any,
   connection: any,
   product: any,
-  forceSync: boolean = false
+  forceSync: boolean = false,
+  apiBaseUrl?: string,
+  authHeaderParam?: string
 ) {
   try {
+    console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
+    console.log(`[SYNC] apiBaseUrl provided: ${!!apiBaseUrl}, value: ${apiBaseUrl || 'none'}`)
+    console.log(`[SYNC] authHeaderParam provided: ${!!authHeaderParam}, length: ${authHeaderParam?.length || 0}`)
+    
     // Validate product has required fields
     if (!product.id) {
       throw new Error('Termék hiányzik az ID mező')
@@ -829,14 +955,96 @@ async function syncProductToDatabase(
 
     // Extract product attributes (productAttributeExtend from ShopRenter)
     // This contains structured attributes like size, color, dimensions, etc.
+    // Fetch display names from AttributeDescription for each attribute
+    console.log(`[SYNC] Product ${product.sku} - Checking productAttributeExtend...`)
+    console.log(`[SYNC] productAttributeExtend exists: ${!!product.productAttributeExtend}`)
+    console.log(`[SYNC] productAttributeExtend isArray: ${Array.isArray(product.productAttributeExtend)}`)
+    console.log(`[SYNC] productAttributeExtend length: ${product.productAttributeExtend?.length || 0}`)
+    if (product.productAttributeExtend && product.productAttributeExtend.length > 0) {
+      console.log(`[SYNC] First attribute sample:`, JSON.stringify(product.productAttributeExtend[0], null, 2).substring(0, 500))
+    }
+    
     let productAttributes = null
-    if (product.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
-      // Store the full attribute structure for later use
-      productAttributes = product.productAttributeExtend.map((attr: any) => ({
-        type: attr.type, // LIST, INTEGER, FLOAT, TEXT
-        name: attr.name, // e.g., "size", "color", "weight"
-        value: attr.value // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
-      }))
+    if (product.productAttributeExtend && Array.isArray(product.productAttributeExtend) && product.productAttributeExtend.length > 0) {
+      console.log(`[SYNC] Processing ${product.productAttributeExtend.length} attributes for product ${product.sku}`)
+      
+      // Get rate limiter instance
+      const rateLimiter = getShopRenterRateLimiter()
+      
+      // Process attributes sequentially with rate limiting to respect ShopRenter's 3 req/sec limit
+      productAttributes = []
+      for (const attr of product.productAttributeExtend) {
+        // Extract attribute ID - can be in id field or href
+        let attributeId = attr.id || null
+        if (!attributeId && attr.href) {
+          // Extract ID from href like: "http://shopname.api.myshoprenter.hu/listAttributes/bGlzdEF0dHJpYnV0ZS1hdHRyaWJ1dGVfaWQ9Mg=="
+          const hrefParts = attr.href.split('/')
+          attributeId = hrefParts[hrefParts.length - 1] || null
+        }
+        
+        console.log(`[SYNC] Processing attribute: name="${attr.name}", type="${attr.type}", id="${attributeId}", href="${attr.href || 'none'}"`)
+        
+        // If we have an attribute ID, fetch the display name with rate limiting
+        let displayName = attr.name // Fallback to internal name
+        let prefix = null
+        let postfix = null
+        
+        if (attributeId && apiBaseUrl && authHeaderParam) {
+          try {
+            console.log(`[SYNC] Fetching AttributeDescription for attribute: name="${attr.name}", type="${attr.type}", id="${attributeId}"`)
+            // Use rate limiter to ensure we don't exceed 3 req/sec
+            const desc = await rateLimiter.execute(() =>
+              fetchAttributeDescription(
+                apiBaseUrl,
+                authHeaderParam,
+                attributeId,
+                attr.type as 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
+              )
+            )
+            if (desc.display_name) {
+              displayName = desc.display_name
+              prefix = desc.prefix
+              postfix = desc.postfix
+              console.log(`[SYNC] Successfully fetched display name for "${attr.name}": "${displayName}"`)
+            } else {
+              console.warn(`[SYNC] No display_name returned for attribute "${attr.name}" (id: ${attributeId})`)
+            }
+          } catch (error) {
+            console.warn(`[SYNC] Failed to fetch display name for attribute ${attr.name}:`, error)
+            // Continue with internal name as fallback
+          }
+        } else {
+          console.warn(`[SYNC] Skipping AttributeDescription fetch for "${attr.name}": attributeId=${attributeId}, apiBaseUrl=${!!apiBaseUrl}, authHeaderParam=${!!authHeaderParam}`)
+        }
+
+        productAttributes.push({
+          type: attr.type, // LIST, INTEGER, FLOAT, TEXT
+          name: attr.name, // Internal identifier (e.g., "meret", "szin")
+          display_name: displayName, // Display name (e.g., "Méret", "Szín") - PRIMARY
+          prefix: prefix, // Text before value
+          postfix: postfix, // Text after value
+          value: attr.value // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
+        })
+      }
+      
+      // Log what we're storing
+      console.log(`[SYNC] Processed ${productAttributes.length} attributes for product ${product.sku}:`)
+      productAttributes.forEach((attr: any) => {
+        console.log(`  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", type=${attr.type}`)
+      })
+    }
+
+    // Extract brand/manufacturer from productExtend
+    let brand = null
+    if (product.manufacturer) {
+      // manufacturer can be an object with name property, or just href
+      if (typeof product.manufacturer === 'object' && product.manufacturer.name) {
+        brand = product.manufacturer.name
+        console.log(`[SYNC] Extracted brand from manufacturer: "${brand}" for product ${product.sku}`)
+      } else if (product.manufacturer.href) {
+        // If only href is available, we could fetch it, but for now just log
+        console.log(`[SYNC] Manufacturer href found but no name for product ${product.sku}: ${product.manufacturer.href}`)
+      }
     }
 
     // Extract product data
@@ -848,6 +1056,7 @@ async function syncProductToDatabase(
       model_number: product.modelNumber || null, // Gyártói cikkszám (Manufacturer part number)
       gtin: product.gtin || null, // Vonalkód (Barcode/GTIN)
       name: null, // Will be set from description
+      brand: brand, // Brand/manufacturer name from ShopRenter
       status: product.status === '1' || product.status === 1 ? 1 : 0,
       // Pricing fields (Árazás)
       price: product.price ? parseFloat(product.price) : null, // Nettó ár
@@ -903,12 +1112,15 @@ async function syncProductToDatabase(
 
     const dbProduct = productResult.data
 
-    // Prepare auth for API calls
-    const credentials = `${connection.username}:${connection.password}`
-    const base64Credentials = Buffer.from(credentials).toString('base64')
-    const authHeader = `Basic ${base64Credentials}`
+    // Prepare auth for API calls (use provided authHeader or create new one)
+    let authHeader = authHeaderParam
+    if (!authHeader) {
+      const credentials = `${connection.username}:${connection.password}`
+      const base64Credentials = Buffer.from(credentials).toString('base64')
+      authHeader = `Basic ${base64Credentials}`
+    }
 
-    let apiUrl = connection.api_url.replace(/\/$/, '')
+    let apiUrl = apiBaseUrl || connection.api_url.replace(/\/$/, '')
     if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
       apiUrl = `http://${apiUrl}`
     }
@@ -1108,16 +1320,116 @@ async function syncProductToDatabase(
       }
     }
 
-    // Auto-update canonical URL if this is a child product
-    if (parentProductId) {
-      try {
-        await updateCanonicalUrlForChild(supabase, dbProduct.id)
-        console.log(`[SYNC] Updated canonical URL for child product ${product.sku}`)
-      } catch (canonicalError) {
-        // Non-fatal - log but don't fail the sync
-        console.warn(`[SYNC] Failed to update canonical URL for ${product.sku} (non-fatal):`, canonicalError)
+    // Extract and store product images
+    try {
+      const extractedImages = extractImagesFromProductExtend(product, product.id)
+      
+      if (extractedImages.length > 0) {
+        // Try to fetch images from ShopRenter API to get alt text and ShopRenter IDs
+        let shoprenterImages: any[] = []
+        try {
+          const shopName = extractShopNameFromUrl(connection.api_url)
+          if (shopName) {
+            // Use product.shoprenter_id (ShopRenter's ID), not our internal ID
+            shoprenterImages = await fetchProductImages(
+              {
+                apiUrl: connection.api_url,
+                username: connection.username,
+                password: connection.password,
+                shopName: shopName
+              },
+              product.id // This is the ShopRenter product ID from productExtend
+            )
+            console.log(`[SYNC] Fetched ${shoprenterImages.length} images from ShopRenter API for product ${product.sku}`)
+            if (shoprenterImages.length > 0) {
+              console.log(`[SYNC] ShopRenter images:`, shoprenterImages.map(img => ({ path: img.imagePath, alt: img.imageAlt, id: img.id })))
+            }
+            if (product.imageAlt) {
+              console.log(`[SYNC] Main image alt from productExtend: "${product.imageAlt}"`)
+            }
+          }
+        } catch (fetchError: any) {
+          // Non-fatal: continue with extracted images from allImages
+          console.warn(`[SYNC] Failed to fetch images from ShopRenter API for product ${product.sku}:`, fetchError?.message || fetchError)
+        }
+
+        // Delete existing images for this product (to handle removed images)
+        await supabase
+          .from('product_images')
+          .delete()
+          .eq('product_id', dbProduct.id)
+
+        // Insert/update images
+        for (const img of extractedImages) {
+          const imageData: any = {
+            product_id: dbProduct.id,
+            connection_id: connection.id,
+            image_path: img.imagePath,
+            image_url: img.imageUrl,
+            sort_order: img.sortOrder,
+            is_main_image: img.isMain,
+            last_synced_at: new Date().toISOString()
+          }
+
+          // For main image, check productExtend.imageAlt first (this is the main image alt text)
+          if (img.isMain && product.imageAlt) {
+            imageData.alt_text = product.imageAlt
+            imageData.alt_text_status = 'synced'
+            imageData.alt_text_synced_at = new Date().toISOString()
+            console.log(`[SYNC] Set main image alt text from productExtend: "${product.imageAlt}"`)
+          }
+
+          // Try to find matching ShopRenter image to get alt text and ID
+          // Use flexible matching: normalize paths for comparison
+          const normalizePath = (path: string) => {
+            if (!path) return ''
+            // Remove leading "data/" if present, normalize slashes
+            return path.replace(/^data\//, '').replace(/\\/g, '/').toLowerCase()
+          }
+
+          const normalizedExtractedPath = normalizePath(img.imagePath)
+          const matchingShopRenterImage = shoprenterImages.find((srImg: any) => {
+            const normalizedShopRenterPath = normalizePath(srImg.imagePath)
+            // Exact match or path ends match
+            return normalizedExtractedPath === normalizedShopRenterPath ||
+                   normalizedExtractedPath.endsWith(normalizedShopRenterPath) ||
+                   normalizedShopRenterPath.endsWith(normalizedExtractedPath)
+          })
+
+          if (matchingShopRenterImage) {
+            imageData.shoprenter_image_id = matchingShopRenterImage.id
+            // Only set alt text from productImages if we don't already have it from productExtend
+            if (!imageData.alt_text && matchingShopRenterImage.imageAlt) {
+              imageData.alt_text = matchingShopRenterImage.imageAlt
+              imageData.alt_text_status = 'synced'
+              imageData.alt_text_synced_at = new Date().toISOString()
+              console.log(`[SYNC] Set alt text from productImages for ${img.imagePath}: "${matchingShopRenterImage.imageAlt}"`)
+            } else if (!imageData.alt_text) {
+              imageData.alt_text_status = 'pending'
+            }
+          } else {
+            // No match found
+            if (!imageData.alt_text) {
+              imageData.alt_text_status = 'pending'
+            }
+            console.log(`[SYNC] No matching ShopRenter image found for ${img.imagePath} (extracted: "${normalizedExtractedPath}")`)
+          }
+
+          await supabase
+            .from('product_images')
+            .upsert(imageData, {
+              onConflict: 'product_id,image_path',
+              ignoreDuplicates: false
+            })
+        }
+
+        console.log(`[SYNC] Stored ${extractedImages.length} images for product ${product.sku}`)
       }
+    } catch (imageError: any) {
+      // Don't fail the entire sync if image extraction fails
+      console.warn(`[SYNC] Failed to extract/store images for product ${product.sku}:`, imageError?.message || imageError)
     }
+
   } catch (error) {
     console.error('Error in syncProductToDatabase:', error)
     throw error

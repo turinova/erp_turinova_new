@@ -8,6 +8,14 @@ const nextConfig = {
     // Allow TypeScript errors during build (temporary - will fix properly)
     ignoreBuildErrors: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/shoprenter/structured-data/:sku.jsonld',
+        destination: '/api/shoprenter/structured-data/:sku',
+      },
+    ]
+  },
 }
 
 module.exports = nextConfig

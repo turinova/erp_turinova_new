@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Box, 
@@ -40,9 +40,13 @@ import {
   Refresh as RefreshIcon,
   AutoAwesome as AutoAwesomeIcon,
   FamilyRestroom as FamilyRestroomIcon,
-  ArrowUpward as ArrowUpwardIcon
+  ArrowUpward as ArrowUpwardIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  Assessment as AssessmentIcon
 } from '@mui/icons-material'
+import { toast } from 'react-toastify'
 import type { ShopRenterProduct } from '@/lib/products-server'
+import ProductQualityScore from '@/components/ProductQualityScore'
 
 interface IndexingStatus {
   product_id: string
@@ -79,6 +83,9 @@ export default function ProductsTable({
   const [indexingStatuses, setIndexingStatuses] = useState<Map<string, IndexingStatus>>(new Map())
   const [isLoadingIndexStatus, setIsLoadingIndexStatus] = useState(false)
 
+  // Track which products are parents (have children)
+  const [parentProductIds, setParentProductIds] = useState<Set<string>>(new Set())
+
   // Search Console sync state
   const [isSyncingSearchConsole, setIsSyncingSearchConsole] = useState(false)
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 })
@@ -93,13 +100,22 @@ export default function ProductsTable({
     success: boolean
     suggestedSlug?: string
     currentSlug?: string | null
-    modelNumber?: string | null
-    sku?: string
-    error?: string
-    applied?: boolean
-    applyError?: string
   }> | null>(null)
   const [urlOptimizationDialogOpen, setUrlOptimizationDialogOpen] = useState(false)
+
+  // Image alt text bulk operations state
+  const [isGeneratingImageAltText, setIsGeneratingImageAltText] = useState(false)
+  const [isSyncingImageAltText, setIsSyncingImageAltText] = useState(false)
+  const [imageAltTextProgress, setImageAltTextProgress] = useState({ current: 0, total: 0 })
+  const [imageAltTextDialogOpen, setImageAltTextDialogOpen] = useState(false)
+  const [imageAltTextDialogType, setImageAltTextDialogType] = useState<'generate' | 'sync' | null>(null)
+
+  // Quality score state
+  const [qualityScores, setQualityScores] = useState<Map<string, any>>(new Map())
+  const [isCalculatingQualityScores, setIsCalculatingQualityScores] = useState(false)
+  const [qualityScoreProgress, setQualityScoreProgress] = useState({ current: 0, total: 0 })
+  const [qualityScoreDialogOpen, setQualityScoreDialogOpen] = useState(false)
+
 
   // Pagination state
   const [page, setPage] = useState(currentPage)
@@ -112,7 +128,40 @@ export default function ProductsTable({
   const [searchTotalCount, setSearchTotalCount] = useState(0)
   const [searchTotalPages, setSearchTotalPages] = useState(0)
 
-  // Search effect - fetch from API route
+  // Search function - can be called manually or via debounce
+  const performSearch = useCallback(async (term: string) => {
+    if (!term || term.length < 2) {
+      setSearchResults([])
+      setSearchTotalCount(0)
+      setSearchTotalPages(0)
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const response = await fetch(`/api/products/search?q=${encodeURIComponent(term)}&page=1&limit=${currentPageSize}`)
+      if (response.ok) {
+        const data = await response.json()
+        setSearchResults(data.products)
+        setSearchTotalCount(data.totalCount)
+        setSearchTotalPages(data.totalPages)
+      } else {
+        console.error('Search failed:', response.statusText)
+        setSearchResults([])
+        setSearchTotalCount(0)
+        setSearchTotalPages(0)
+      }
+    } catch (error) {
+      console.error('Error searching products:', error)
+      setSearchResults([])
+      setSearchTotalCount(0)
+      setSearchTotalPages(0)
+    } finally {
+      setIsSearching(false)
+    }
+  }, [currentPageSize])
+
+  // Search effect - fetch from API route with longer debounce
   useEffect(() => {
     if (!searchTerm || searchTerm.length < 2) {
       setSearchResults([])
@@ -121,33 +170,46 @@ export default function ProductsTable({
       return
     }
 
-    const searchTimeout = setTimeout(async () => {
-      setIsSearching(true)
-      try {
-        const response = await fetch(`/api/products/search?q=${encodeURIComponent(searchTerm)}&page=1&limit=${currentPageSize}`)
-        if (response.ok) {
-          const data = await response.json()
-          setSearchResults(data.products)
-          setSearchTotalCount(data.totalCount)
-          setSearchTotalPages(data.totalPages)
-        } else {
-          console.error('Search failed:', response.statusText)
-          setSearchResults([])
-          setSearchTotalCount(0)
-          setSearchTotalPages(0)
-        }
-      } catch (error) {
-        console.error('Error searching products:', error)
-        setSearchResults([])
-        setSearchTotalCount(0)
-        setSearchTotalPages(0)
-      } finally {
-        setIsSearching(false)
-      }
-    }, 300) // Debounce search
+    // Longer debounce delay (800ms) to allow user to finish typing
+    const searchTimeout = setTimeout(() => {
+      performSearch(searchTerm)
+    }, 800)
 
     return () => clearTimeout(searchTimeout)
-  }, [searchTerm, currentPageSize])
+  }, [searchTerm, performSearch])
+
+  // Fetch quality scores for displayed products
+  const fetchQualityScores = async (productIds: string[]) => {
+    if (productIds.length === 0) return
+    
+    try {
+      // Fetch scores in batches
+      const batchSize = 50
+      const scoresMap = new Map<string, any>(qualityScores)
+      
+      for (let i = 0; i < productIds.length; i += batchSize) {
+        const batch = productIds.slice(i, i + batchSize)
+        const promises = batch.map(async (productId) => {
+          try {
+            const response = await fetch(`/api/products/${productId}/quality-score`)
+            if (response.ok) {
+              const data = await response.json()
+              if (data.success && data.score) {
+                scoresMap.set(productId, data.score)
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching quality score for ${productId}:`, error)
+          }
+        })
+        await Promise.all(promises)
+      }
+      
+      setQualityScores(scoresMap)
+    } catch (error) {
+      console.error('Error fetching quality scores:', error)
+    }
+  }
 
   // Fetch indexing statuses for displayed products
   const fetchIndexingStatuses = async (productIds: string[]) => {
@@ -247,6 +309,82 @@ export default function ProductsTable({
     
     setUrlOptimizationDialogOpen(true)
   }
+
+  const handleBulkGenerateImageAltText = () => {
+    if (selectedIds.size === 0) return
+    setImageAltTextDialogType('generate')
+    setImageAltTextDialogOpen(true)
+  }
+
+  const handleBulkSyncImageAltText = () => {
+    if (selectedIds.size === 0) return
+    setImageAltTextDialogType('sync')
+    setImageAltTextDialogOpen(true)
+  }
+
+  const handleConfirmImageAltText = async () => {
+    setImageAltTextDialogOpen(false)
+    if (selectedIds.size === 0) return
+
+    const productIdsArray = Array.from(selectedIds)
+    
+    if (imageAltTextDialogType === 'generate') {
+      setIsGeneratingImageAltText(true)
+      setImageAltTextProgress({ current: 0, total: productIdsArray.length })
+      setSyncError(null)
+      setSyncSuccess(null)
+
+      try {
+        const response = await fetch('/api/products/bulk-generate-image-alt-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productIds: productIdsArray, onlyMissing: true })
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          setSyncSuccess(`${result.results.success} kép alt szövege generálva (${result.results.failed} hiba)`)
+          setImageAltTextProgress({ current: result.results.total, total: productIdsArray.length })
+        } else {
+          setSyncError(result.error || 'Hiba az alt szövegek generálásakor')
+        }
+      } catch (error) {
+        console.error('Error generating image alt text:', error)
+        setSyncError('Hiba az alt szövegek generálásakor')
+      } finally {
+        setIsGeneratingImageAltText(false)
+      }
+    } else if (imageAltTextDialogType === 'sync') {
+      setIsSyncingImageAltText(true)
+      setImageAltTextProgress({ current: 0, total: productIdsArray.length })
+      setSyncError(null)
+      setSyncSuccess(null)
+
+      try {
+        const response = await fetch('/api/products/bulk-sync-image-alt-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productIds: productIdsArray })
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          setSyncSuccess(`${result.results.success} kép alt szövege szinkronizálva (${result.results.failed} hiba)`)
+          setImageAltTextProgress({ current: result.results.total, total: productIdsArray.length })
+        } else {
+          setSyncError(result.error || 'Hiba az alt szövegek szinkronizálásakor')
+        }
+      } catch (error) {
+        console.error('Error syncing image alt text:', error)
+        setSyncError('Hiba az alt szövegek szinkronizálásakor')
+      } finally {
+        setIsSyncingImageAltText(false)
+      }
+    }
+  }
+
 
   const handleConfirmUrlOptimization = async () => {
     setUrlOptimizationDialogOpen(false) // Close confirmation dialog
@@ -372,9 +510,88 @@ export default function ProductsTable({
     }, 2000)
   }
 
+  // Handle bulk quality score calculation
+  const handleBulkCalculateQualityScores = async () => {
+    if (selectedIds.size === 0) return
+    
+    setQualityScoreDialogOpen(true)
+    setIsCalculatingQualityScores(true)
+    setQualityScoreProgress({ current: 0, total: selectedIds.size })
+    
+    try {
+      const productIdsArray = Array.from(selectedIds)
+      
+      // Process in batches of 10
+      const batchSize = 10
+      let processedCount = 0
+      
+      for (let i = 0; i < productIdsArray.length; i += batchSize) {
+        const batch = productIdsArray.slice(i, i + batchSize)
+        
+        const response = await fetch('/api/products/bulk-calculate-quality-scores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productIds: batch })
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to calculate quality scores')
+        }
+        
+        const data = await response.json()
+        processedCount += data.success || 0
+        setQualityScoreProgress({ current: processedCount, total: selectedIds.size })
+        
+        // Update quality scores in state
+        const newScores = new Map<string, any>(qualityScores)
+        for (const productId of batch) {
+          // Fetch updated score
+          try {
+            const scoreResponse = await fetch(`/api/products/${productId}/quality-score`)
+            if (scoreResponse.ok) {
+              const scoreData = await scoreResponse.json()
+              if (scoreData.success && scoreData.score) {
+                newScores.set(productId, scoreData.score)
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching updated score for ${productId}:`, error)
+          }
+        }
+        setQualityScores(newScores)
+        
+        // Small delay between batches
+        if (i + batchSize < productIdsArray.length) {
+          await new Promise(resolve => setTimeout(resolve, 500))
+        }
+      }
+      
+      toast.success(`${processedCount} termék minőségi pontszáma sikeresen kiszámolva`)
+    } catch (error) {
+      console.error('Error calculating quality scores:', error)
+      toast.error(error instanceof Error ? error.message : 'Hiba történt a minőségi pontszámok számítása során')
+    } finally {
+      setIsCalculatingQualityScores(false)
+      setQualityScoreDialogOpen(false)
+    }
+  }
+
   // Handle search input change
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
+  }
+
+  // Handle search input key press (Enter to search immediately)
+  const handleSearchKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      // Clear any pending debounced search
+      // The performSearch will be called immediately
+      if (searchTerm && searchTerm.length >= 2) {
+        performSearch(searchTerm)
+      }
+    }
   }
 
   // Handle page change - fetch from API route
@@ -425,6 +642,28 @@ export default function ProductsTable({
   const displayTotalCount = searchTerm && searchTerm.length >= 2 ? searchTotalCount : totalCount
   const displayTotalPages = searchTerm && searchTerm.length >= 2 ? searchTotalPages : totalPages
   const displayCurrentPage = searchTerm && searchTerm.length >= 2 ? 1 : page
+
+  // Fetch quality scores when products change
+  useEffect(() => {
+    if (displayProducts.length > 0) {
+      const productIds = displayProducts.map(p => p.id)
+      fetchQualityScores(productIds)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayProducts.length, displayProducts.map(p => p.id).join(',')])
+
+  // Identify parent products (products that have children)
+  useEffect(() => {
+    const parentIds = new Set<string>()
+    displayProducts.forEach(product => {
+      // Check if any other product has this product as parent
+      const hasChildren = displayProducts.some(p => p.parent_product_id === product.id)
+      if (hasChildren) {
+        parentIds.add(product.id)
+      }
+    })
+    setParentProductIds(parentIds)
+  }, [displayProducts])
 
   // Fetch indexing status when products change
   useEffect(() => {
@@ -511,7 +750,26 @@ export default function ProductsTable({
 
   // Get variant indicator chip
   const getVariantChip = (product: ShopRenterProduct) => {
-    if (product.parent_product_id) {
+    // Priority 1: Show "Szülő" for parent products (has children)
+    // A product that has children is a parent, even if it also has parent_product_id set incorrectly
+    if (parentProductIds.has(product.id)) {
+      return (
+        <Tooltip title="Ez egy szülő termék - van változatai">
+          <Chip 
+            icon={<ArrowDownwardIcon />}
+            label="Szülő" 
+            size="small" 
+            color="primary"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: '20px' }}
+          />
+        </Tooltip>
+      )
+    }
+    
+    // Priority 2: Show "Változat" only for child products (has parent_product_id but no children)
+    // Only show if it's not also a parent
+    if (product.parent_product_id && !parentProductIds.has(product.id)) {
       return (
         <Tooltip title="Ez egy változat termék - van szülő terméke">
           <Chip 
@@ -525,6 +783,8 @@ export default function ProductsTable({
         </Tooltip>
       )
     }
+    
+    // Regular product - no chip
     return null
   }
 
@@ -575,9 +835,10 @@ export default function ProductsTable({
       {/* Search Bar */}
       <TextField
         fullWidth
-        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján..."
+        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján... (Enter a kereséshez)"
         value={searchTerm}
         onChange={(e) => handleSearchChange(e.target.value)}
+        onKeyPress={handleSearchKeyPress}
         disabled={isSearching || isLoading}
         sx={{ mt: 2, mb: 2 }}
         InputProps={{
@@ -618,6 +879,42 @@ export default function ProductsTable({
               ? `SEO URL optimalizálás (${urlOptimizationProgress.current}/${urlOptimizationProgress.total})...` 
               : 'SEO URL optimalizálás'}
           </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="info"
+            startIcon={isGeneratingImageAltText ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+            onClick={handleBulkGenerateImageAltText}
+            disabled={isGeneratingImageAltText || isSyncingImageAltText || selectedIds.size === 0}
+          >
+            {isGeneratingImageAltText 
+              ? `Kép alt szöveg generálás (${imageAltTextProgress.current}/${imageAltTextProgress.total})...` 
+              : 'Kép alt szöveg generálás'}
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="success"
+            startIcon={isSyncingImageAltText ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+            onClick={handleBulkSyncImageAltText}
+            disabled={isGeneratingImageAltText || isSyncingImageAltText || selectedIds.size === 0}
+          >
+            {isSyncingImageAltText 
+              ? `Kép alt szöveg szinkronizálás (${imageAltTextProgress.current}/${imageAltTextProgress.total})...` 
+              : 'Kép alt szöveg szinkronizálás'}
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="warning"
+            startIcon={isCalculatingQualityScores ? <CircularProgress size={16} color="inherit" /> : <AssessmentIcon />}
+            onClick={handleBulkCalculateQualityScores}
+            disabled={isCalculatingQualityScores || selectedIds.size === 0}
+          >
+            {isCalculatingQualityScores 
+              ? `Minőségi pontszám számítás (${qualityScoreProgress.current}/${qualityScoreProgress.total})...` 
+              : 'Minőségi pontszám számítás'}
+          </Button>
         </Box>
       )}
 
@@ -626,6 +923,24 @@ export default function ProductsTable({
         <LinearProgress 
           variant="determinate" 
           value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}
+          sx={{ mb: 2 }}
+        />
+      )}
+
+      {/* Image alt text progress bar */}
+      {(isGeneratingImageAltText || isSyncingImageAltText) && (
+        <LinearProgress 
+          variant="determinate" 
+          value={imageAltTextProgress.total > 0 ? (imageAltTextProgress.current / imageAltTextProgress.total) * 100 : 0}
+          sx={{ mb: 2 }}
+        />
+      )}
+
+      {/* Quality score progress bar */}
+      {isCalculatingQualityScores && (
+        <LinearProgress 
+          variant="determinate" 
+          value={qualityScoreProgress.total > 0 ? (qualityScoreProgress.current / qualityScoreProgress.total) * 100 : 0}
           sx={{ mb: 2 }}
         />
       )}
@@ -676,12 +991,19 @@ export default function ProductsTable({
                   </Box>
                 </Tooltip>
               </TableCell>
+              <TableCell sx={{ fontWeight: 600 }} align="center" width={120}>
+                <Tooltip title="Minőségi pontszám - SEO és adatminőség értékelése">
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                    Minőség
+                  </Box>
+                </Tooltip>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {displayProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
                     {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 2 ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
@@ -729,6 +1051,13 @@ export default function ProductsTable({
                   </TableCell>
                   <TableCell align="center">
                     {getIndexingStatusIcon(product.id)}
+                  </TableCell>
+                  <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                    <ProductQualityScore 
+                      score={qualityScores.get(product.id) || null} 
+                      size="small"
+                      compact
+                    />
                   </TableCell>
                 </TableRow>
               ))
@@ -834,8 +1163,8 @@ export default function ProductsTable({
                       const product = products.find(p => p.id === result.productId)
                       // Use currentSlug from result if available, otherwise fall back to product data
                       const currentSlug = result.currentSlug !== undefined ? result.currentSlug : (product?.url_slug || null)
-                      // Display: model_number (gyártói cikkszám) from result or product, otherwise SKU, otherwise product ID
-                      const displayName = result.modelNumber || product?.model_number || result.sku || product?.sku || result.productId
+                      // Display: model_number (gyártói cikkszám) from product, otherwise SKU, otherwise product ID
+                      const displayName = product?.model_number || product?.sku || result.productId
                       return (
                         <TableRow key={result.productId}>
                           <TableCell>{displayName}</TableCell>
@@ -875,6 +1204,32 @@ export default function ProductsTable({
           </Button>
           <Button onClick={handleApplyUrlOptimizations} variant="contained" autoFocus>
             Alkalmazás ({urlOptimizationResults?.filter(r => r.success).length || 0} termék)
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Image Alt Text Dialog */}
+      <Dialog
+        open={imageAltTextDialogOpen}
+        onClose={() => setImageAltTextDialogOpen(false)}
+      >
+        <DialogTitle>
+          {imageAltTextDialogType === 'generate' ? 'Kép Alt Szöveg Generálás' : 'Kép Alt Szöveg Szinkronizálás'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {imageAltTextDialogType === 'generate' 
+              ? `${selectedIds.size} termék képeihez generálja az alt szövegeket? Ez több percig is eltarthat.`
+              : `${selectedIds.size} termék képeinek alt szövegét szinkronizálja a ShopRenter-be?`
+            }
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImageAltTextDialogOpen(false)}>
+            Mégse
+          </Button>
+          <Button onClick={handleConfirmImageAltText} variant="contained" autoFocus>
+            {imageAltTextDialogType === 'generate' ? 'Generálás' : 'Szinkronizálás'}
           </Button>
         </DialogActions>
       </Dialog>
