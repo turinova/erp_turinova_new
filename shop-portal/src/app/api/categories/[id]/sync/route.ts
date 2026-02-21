@@ -188,14 +188,61 @@ export async function POST(
       connection.api_url
     )
 
+    console.log(`[CATEGORY SYNC] Using ${useOAuth ? 'OAuth' : 'Basic Auth'} for ${shopName}`)
+    console.log(`[CATEGORY SYNC] API Base URL: ${apiBaseUrl}`)
+
+    // Validate authentication by testing a simple API call
+    const testUrl = `${apiBaseUrl}/categories?limit=1`
+    console.log(`[CATEGORY SYNC] Testing authentication: ${testUrl}`)
+    try {
+      const testResponse = await fetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        signal: AbortSignal.timeout(10000)
+      })
+      
+      if (!testResponse.ok) {
+        const testErrorText = await testResponse.text().catch(() => '')
+        console.error(`[CATEGORY SYNC] Authentication test failed: ${testResponse.status} - ${testErrorText.substring(0, 200)}`)
+        
+        if (testResponse.status === 401 || testResponse.status === 403) {
+          await supabase
+            .from('shoprenter_categories')
+            .update({
+              sync_status: 'error',
+              sync_error: `Hitelesítési hiba: ${testResponse.status}`,
+              last_synced_at: new Date().toISOString()
+            })
+            .eq('id', categoryId)
+          
+          return NextResponse.json({ 
+            success: false, 
+            error: `Hitelesítési hiba a ShopRenter API-val (${testResponse.status}). Ellenőrizze a kapcsolat beállításait (felhasználónév, jelszó, API URL).` 
+          }, { status: 401 })
+        }
+      } else {
+        console.log(`[CATEGORY SYNC] Authentication test successful`)
+      }
+    } catch (testError: any) {
+      console.error('[CATEGORY SYNC] Authentication test error:', testError)
+      // Continue - might be network issue, but log it
+    }
+
     // Get language ID
     const languageId = await getLanguageId(apiBaseUrl, authHeader, 'hu')
     if (!languageId) {
+      console.error('[CATEGORY SYNC] Failed to get language ID - this might indicate authentication issues')
       return NextResponse.json({ 
         success: false, 
-        error: 'Nem sikerült meghatározni a nyelv azonosítóját' 
+        error: 'Nem sikerült meghatározni a nyelv azonosítóját. Lehet, hogy hitelesítési probléma van.' 
       }, { status: 500 })
     }
+    
+    console.log(`[CATEGORY SYNC] Language ID: ${languageId}`)
 
     // Get Hungarian description (or first available)
     const descriptions = category.shoprenter_category_descriptions || []
@@ -241,30 +288,60 @@ export async function POST(
     }
     
     // Only update if there's something to update
+    let categoryUpdateSuccess = true
     if (Object.keys(categoryPayload).length > 0) {
       const categoryUpdateUrl = `${apiBaseUrl}/categories/${category.shoprenter_id}`
       console.log(`[CATEGORY SYNC] Updating category data: PUT ${categoryUpdateUrl}`)
       console.log(`[CATEGORY SYNC] Category payload:`, JSON.stringify(categoryPayload))
       
-      const categoryUpdateResponse = await rateLimiter.execute(async () => {
-        return fetch(categoryUpdateUrl, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authHeader
-          },
-          body: JSON.stringify(categoryPayload),
-          signal: AbortSignal.timeout(30000)
+      let categoryUpdateResponse: Response
+      try {
+        categoryUpdateResponse = await rateLimiter.execute(async () => {
+          return fetch(categoryUpdateUrl, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify(categoryPayload),
+            signal: AbortSignal.timeout(30000)
+          })
         })
-      })
+      } catch (fetchError: any) {
+        console.error('[CATEGORY SYNC] Fetch error during category update:', fetchError)
+        categoryUpdateSuccess = false
+        return NextResponse.json({ 
+          success: false, 
+          error: `Hálózati hiba a kategória frissítésekor: ${fetchError.message || 'Ismeretlen hiba'}` 
+        }, { status: 500 })
+      }
 
+      const categoryResponseText = await categoryUpdateResponse.text().catch(() => '')
+      console.log(`[CATEGORY SYNC] Category update response status: ${categoryUpdateResponse.status}`)
+      console.log(`[CATEGORY SYNC] Category update response body length: ${categoryResponseText.length} chars`)
+      
       if (!categoryUpdateResponse.ok) {
-        const errorText = await categoryUpdateResponse.text().catch(() => 'Unknown error')
-        console.warn(`[CATEGORY SYNC] Category data update failed: ${categoryUpdateResponse.status} - ${errorText.substring(0, 200)}`)
-        // Continue with description sync even if category update fails
+        const errorText = categoryResponseText || 'Unknown error'
+        console.error(`[CATEGORY SYNC] Category data update failed: ${categoryUpdateResponse.status} - ${errorText.substring(0, 500)}`)
+        categoryUpdateSuccess = false
+        return NextResponse.json({ 
+          success: false, 
+          error: `ShopRenter API hiba a kategória frissítésekor (${categoryUpdateResponse.status}): ${errorText.substring(0, 200)}` 
+        }, { status: categoryUpdateResponse.status })
+      }
+      
+      // Validate response - ShopRenter should return something even if empty
+      if (categoryResponseText && categoryResponseText.trim() !== '') {
+        try {
+          const categoryResult = JSON.parse(categoryResponseText)
+          console.log(`[CATEGORY SYNC] Category data updated successfully, response:`, JSON.stringify(categoryResult).substring(0, 200))
+        } catch (parseError) {
+          console.warn('[CATEGORY SYNC] Category update response is not valid JSON, but status was OK')
+        }
       } else {
-        console.log(`[CATEGORY SYNC] Category data updated successfully`)
+        console.warn('[CATEGORY SYNC] Category update returned empty response (status OK, but no data)')
+        // This might be OK for PUT requests, but log it
       }
     }
 
@@ -278,6 +355,8 @@ export async function POST(
     )
 
     // Prepare payload for ShopRenter
+    // NOTE: shortDescription and heading are NOT valid fields for categoryDescriptions API
+    // They only appear in categoryExtend responses but cannot be set via POST/PUT
     const payload: any = {
       name: huDescription.name || category.name || '',
       metaKeywords: huDescription.meta_keywords || null,
@@ -286,8 +365,6 @@ export async function POST(
       customTitle: huDescription.custom_title || null,
       robotsMetaTag: huDescription.robots_meta_tag || '0',
       footerSeoText: huDescription.footer_seo_text || null,
-      heading: huDescription.heading || null,
-      shortDescription: huDescription.short_description || null,
       category: {
         id: category.shoprenter_id
       },
@@ -296,12 +373,21 @@ export async function POST(
       }
     }
 
-    // Remove null values
+    // Remove null values (but keep empty strings and required fields)
     Object.keys(payload).forEach(key => {
       if (payload[key] === null) {
         delete payload[key]
       }
     })
+
+    // Ensure we have at least name and required fields
+    if (!payload.name && !payload.category?.id) {
+      console.error('[CATEGORY SYNC] Payload is missing required fields:', payload)
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Hiányzó kötelező mezők a szinkronizáláshoz' 
+      }, { status: 400 })
+    }
 
     // Determine endpoint - use PUT if we have description ID, POST if not
     let updateUrl: string
@@ -318,51 +404,166 @@ export async function POST(
     }
 
     console.log(`[CATEGORY SYNC] ${method} ${updateUrl}`)
-    console.log(`[CATEGORY SYNC] Payload:`, JSON.stringify(payload, null, 2).substring(0, 500))
+    console.log(`[CATEGORY SYNC] Payload:`, JSON.stringify(payload, null, 2))
+    console.log(`[CATEGORY SYNC] Description ID: ${descriptionId || 'none (will create new)'}`)
 
     // Push to ShopRenter
-    const pushResponse = await rateLimiter.execute(async () => {
-      return fetch(updateUrl, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(30000)
+    let pushResponse: Response
+    try {
+      pushResponse = await rateLimiter.execute(async () => {
+        return fetch(updateUrl, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(30000)
+        })
       })
-    })
+    } catch (fetchError: any) {
+      console.error('[CATEGORY SYNC] Fetch error during push:', fetchError)
+      return NextResponse.json({ 
+        success: false, 
+        error: `Hálózati hiba: ${fetchError.message || 'Ismeretlen hiba'}` 
+      }, { status: 500 })
+    }
+
+    const responseText = await pushResponse.text().catch(() => '')
+    console.log(`[CATEGORY SYNC] Push response status: ${pushResponse.status}`)
+    console.log(`[CATEGORY SYNC] Push response body length: ${responseText.length} chars`)
+    console.log(`[CATEGORY SYNC] Push response body: ${responseText.substring(0, 500)}`)
 
     if (!pushResponse.ok) {
-      const errorText = await pushResponse.text().catch(() => 'Unknown error')
-      console.error(`[CATEGORY SYNC] Push failed: ${pushResponse.status} - ${errorText}`)
+      console.error(`[CATEGORY SYNC] Push failed: ${pushResponse.status} - ${responseText}`)
+      
+      // Check for rate limiting (429) or blocking
+      if (pushResponse.status === 429) {
+        console.error('[CATEGORY SYNC] Rate limit exceeded! ShopRenter is blocking requests.')
+        await supabase
+          .from('shoprenter_categories')
+          .update({
+            sync_status: 'error',
+            sync_error: `Rate limit exceeded (429). ShopRenter is blocking requests. Please wait a few minutes before trying again.`,
+            last_synced_at: new Date().toISOString()
+          })
+          .eq('id', categoryId)
+        
+        return NextResponse.json({ 
+          success: false, 
+          error: 'ShopRenter rate limit exceeded (429). Kérjük, várjon néhány percet, majd próbálja újra.' 
+        }, { status: 429 })
+      }
+      
+      // Check for other blocking status codes
+      if (pushResponse.status === 403) {
+        console.error('[CATEGORY SYNC] Access forbidden (403). ShopRenter may be blocking the API key or IP.')
+        await supabase
+          .from('shoprenter_categories')
+          .update({
+            sync_status: 'error',
+            sync_error: `Access forbidden (403). ShopRenter may be blocking requests. Check API credentials.`,
+            last_synced_at: new Date().toISOString()
+          })
+          .eq('id', categoryId)
+      }
       
       // Update category sync status
       await supabase
         .from('shoprenter_categories')
         .update({
           sync_status: 'error',
-          sync_error: `Push failed: ${pushResponse.status} - ${errorText.substring(0, 200)}`,
+          sync_error: `Push failed: ${pushResponse.status} - ${responseText.substring(0, 200)}`,
           last_synced_at: new Date().toISOString()
         })
         .eq('id', categoryId)
 
       return NextResponse.json({ 
         success: false, 
-        error: `ShopRenter API hiba (${pushResponse.status}): ${errorText.substring(0, 200)}` 
+        error: `ShopRenter API hiba (${pushResponse.status}): ${responseText.substring(0, 200)}` 
       }, { status: pushResponse.status })
     }
 
-    const pushResult = await pushResponse.json().catch(() => null)
-    
+    // Validate response - ShopRenter should return data for POST/PUT
+    if (!responseText || responseText.trim() === '') {
+      console.error('[CATEGORY SYNC] Push response body is EMPTY - ShopRenter may have rejected the request silently')
+      console.error('[CATEGORY SYNC] This usually indicates an authentication or validation error')
+      
+      // Update category sync status
+      await supabase
+        .from('shoprenter_categories')
+        .update({
+          sync_status: 'error',
+          sync_error: 'ShopRenter returned empty response (possible auth/validation error)',
+          last_synced_at: new Date().toISOString()
+        })
+        .eq('id', categoryId)
+      
+      return NextResponse.json({ 
+        success: false, 
+        error: 'ShopRenter üres választ adott. Lehet, hogy hitelesítési vagy validációs hiba történt. Ellenőrizze a kapcsolat beállításait.' 
+      }, { status: 500 })
+    }
+
+    // Parse response
+    let pushResult: any = null
+    try {
+      pushResult = JSON.parse(responseText)
+      console.log(`[CATEGORY SYNC] Successfully parsed push response`)
+      
+      // Check if ShopRenter returned an error in the JSON
+      if (pushResult.error || pushResult.message?.toLowerCase().includes('error')) {
+        console.error('[CATEGORY SYNC] ShopRenter returned error in response:', pushResult)
+        await supabase
+          .from('shoprenter_categories')
+          .update({
+            sync_status: 'error',
+            sync_error: `ShopRenter error: ${JSON.stringify(pushResult).substring(0, 200)}`,
+            last_synced_at: new Date().toISOString()
+          })
+          .eq('id', categoryId)
+        
+        return NextResponse.json({ 
+          success: false, 
+          error: `ShopRenter hiba: ${pushResult.error || pushResult.message || 'Ismeretlen hiba'}` 
+        }, { status: 500 })
+      }
+    } catch (parseError: any) {
+      console.error('[CATEGORY SYNC] Failed to parse push response as JSON:', parseError.message)
+      console.error('[CATEGORY SYNC] Response text (first 1000 chars):', responseText.substring(0, 1000))
+      
+      // If we can't parse the response, it's likely an error
+      await supabase
+        .from('shoprenter_categories')
+        .update({
+          sync_status: 'error',
+          sync_error: `Invalid response from ShopRenter: ${responseText.substring(0, 200)}`,
+          last_synced_at: new Date().toISOString()
+        })
+        .eq('id', categoryId)
+      
+      return NextResponse.json({ 
+        success: false, 
+        error: `ShopRenter érvénytelen választ adott. Ellenőrizze a kapcsolat beállításait.` 
+      }, { status: 500 })
+    }
+
     // Extract description ID from response if we created it
     let finalDescriptionId = descriptionId
     if (!finalDescriptionId && pushResult?.id) {
       finalDescriptionId = pushResult.id
+      console.log(`[CATEGORY SYNC] Got new description ID from response: ${finalDescriptionId}`)
     } else if (!finalDescriptionId && pushResult?.href) {
       const parts = pushResult.href.split('/')
       finalDescriptionId = parts[parts.length - 1]
+      console.log(`[CATEGORY SYNC] Extracted description ID from href: ${finalDescriptionId}`)
+    }
+    
+    if (finalDescriptionId) {
+      console.log(`[CATEGORY SYNC] Using description ID: ${finalDescriptionId}`)
+    } else {
+      console.warn('[CATEGORY SYNC] No description ID available (may cause issues)')
     }
 
     // Update local database with ShopRenter description ID if we got it
@@ -375,7 +576,9 @@ export async function POST(
 
     // Now pull back from ShopRenter to verify
     const pullUrl = `${apiBaseUrl}/categoryExtend/${category.shoprenter_id}?full=1`
+    console.log(`[CATEGORY SYNC] Pulling back from ShopRenter to verify: ${pullUrl}`)
     
+    // Use rate limiter for pull request too
     const pullResponse = await rateLimiter.execute(async () => {
       return fetch(pullUrl, {
         method: 'GET',
@@ -388,78 +591,53 @@ export async function POST(
       })
     })
 
+    console.log(`[CATEGORY SYNC] Pull response status: ${pullResponse.status}`)
+
+    // Check for rate limiting or blocking on pull
+    if (pullResponse.status === 429) {
+      console.error('[CATEGORY SYNC] Rate limit exceeded on pull! ShopRenter is blocking requests.')
+      console.warn('[CATEGORY SYNC] Push was successful, but pull verification failed due to rate limiting.')
+      // Don't fail the entire sync, but log it
+    } else if (pullResponse.status === 403) {
+      console.error('[CATEGORY SYNC] Access forbidden (403) on pull. ShopRenter may be blocking the API key or IP.')
+      console.warn('[CATEGORY SYNC] Push was successful, but pull verification failed due to access forbidden.')
+    }
+
     if (pullResponse.ok) {
       const pullData = await pullResponse.json().catch(() => null)
       
-      if (pullData && pullData.id) {
-        // Extract category data from pulled response
-        const innerId = pullData.innerId || null
-        const picture = pullData.picture || null
-        const sortOrder = parseInt(pullData.sortOrder || '0', 10)
-        const status = pullData.status === '1' || pullData.status === 1 ? 1 : 0
-        const productsStatus = pullData.productsStatus === '1' || pullData.productsStatus === 1 ? 1 : 0
-        
-        // Extract URL alias
-        const urlAliasData = extractUrlAlias(pullData)
-        const categoryUrlFull = constructCategoryUrl(shopName, urlAliasData.slug)
-        
-        // Extract parent category ID
-        const parentCategoryShopRenterId = extractParentCategoryId(pullData)
-        
-        // Get category name from first description
-        let categoryName = null
-        if (pullData.categoryDescriptions && Array.isArray(pullData.categoryDescriptions) && pullData.categoryDescriptions.length > 0) {
-          categoryName = pullData.categoryDescriptions[0].name || null
+      if (pullData) {
+        console.log('[CATEGORY SYNC] Successfully pulled category data from ShopRenter, updating database...')
+        // Update local database with pulled data (sync from ShopRenter)
+        // This ensures local DB matches what's in ShopRenter
+        // Forward cookies from original request for authentication (same as products sync)
+        const cookieHeader = request.headers.get('cookie') || ''
+        const syncResponse = await fetch(`${request.nextUrl.origin}/api/connections/${connection.id}/sync-categories`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': cookieHeader
+          },
+          body: JSON.stringify({
+            category_id: category.shoprenter_id
+          })
+        })
+
+        // Don't fail if pull sync fails, we already pushed successfully
+        if (!syncResponse.ok) {
+          const errorText = await syncResponse.text().catch(() => 'Unknown error')
+          console.error(`[CATEGORY SYNC] Pull verification failed (${syncResponse.status}): ${errorText.substring(0, 500)}`)
+          console.error(`[CATEGORY SYNC] This means the push succeeded but the database update failed`)
+        } else {
+          console.log('[CATEGORY SYNC] Pull verification and database update successful')
         }
-        
-        // Find parent category if exists
-        let parentCategoryId = null
-        if (parentCategoryShopRenterId) {
-          const { data: parentCategory } = await supabase
-            .from('shoprenter_categories')
-            .select('id')
-            .eq('connection_id', connection.id)
-            .eq('shoprenter_id', parentCategoryShopRenterId)
-            .is('deleted_at', null)
-            .single()
-          
-          if (parentCategory) {
-            parentCategoryId = parentCategory.id
-          }
-        }
-        
-        // Update category with pulled data
-        const updateData = {
-          shoprenter_inner_id: innerId,
-          name: categoryName,
-          picture: picture,
-          sort_order: sortOrder,
-          status: status,
-          products_status: productsStatus,
-          parent_category_id: parentCategoryId,
-          parent_category_shoprenter_id: parentCategoryShopRenterId,
-          url_slug: urlAliasData.slug,
-          url_alias_id: urlAliasData.id,
-          category_url: categoryUrlFull,
-          date_created: pullData.dateCreated || null,
-          date_updated: pullData.dateUpdated || null,
-          sync_status: 'synced',
-          sync_error: null,
-          last_synced_at: new Date().toISOString()
-        }
-        
-        await supabase
-          .from('shoprenter_categories')
-          .update(updateData)
-          .eq('id', categoryId)
-        
-        // Sync category descriptions
-        if (pullData.categoryDescriptions && Array.isArray(pullData.categoryDescriptions)) {
-          await syncCategoryDescriptions(supabase, categoryId, pullData.categoryDescriptions)
-        }
+      } else {
+        console.warn('[CATEGORY SYNC] Pull response data was null or empty')
       }
     } else {
-      console.warn('[CATEGORY SYNC] Pull verification failed, but push was successful')
+      const errorText = await pullResponse.text().catch(() => 'Unknown error')
+      console.error(`[CATEGORY SYNC] Pull verification failed: ${pullResponse.status} - ${errorText.substring(0, 200)}`)
+      console.warn('[CATEGORY SYNC] Push was successful, but pull verification failed. Database may not be updated.')
     }
 
     // Update category sync status

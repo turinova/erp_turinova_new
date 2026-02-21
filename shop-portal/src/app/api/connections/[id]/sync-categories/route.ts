@@ -366,37 +366,104 @@ export async function POST(
       
       // Fetch category from ShopRenter
       const categoryUrl = `${apiUrl}/categoryExtend/${category_id}?full=1`
+      console.log(`[CATEGORY SYNC] Pulling category from ShopRenter: ${categoryUrl}`)
       
-      const response = await rateLimiter.execute(async () => {
-        return fetch(categoryUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authHeader
-          },
-          signal: AbortSignal.timeout(30000)
+      let response: Response
+      try {
+        response = await rateLimiter.execute(async () => {
+          return fetch(categoryUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(30000)
+          })
         })
-      })
+      } catch (fetchError: any) {
+        console.error('[CATEGORY SYNC] Fetch error:', fetchError)
+        return NextResponse.json({ 
+          success: false, 
+          error: `Network error: ${fetchError.message || 'Unknown error'}` 
+        }, { status: 500 })
+      }
+
+      console.log(`[CATEGORY SYNC] Response status: ${response.status}`)
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error')
+        console.error(`[CATEGORY SYNC] Failed to fetch category: ${response.status} - ${errorText.substring(0, 200)}`)
+        
+        // Check for rate limiting (429) or blocking
+        if (response.status === 429) {
+          console.error('[CATEGORY SYNC] Rate limit exceeded! ShopRenter is blocking requests.')
+          return NextResponse.json({ 
+            success: false, 
+            error: 'ShopRenter rate limit exceeded (429). Kérjük, várjon néhány percet, majd próbálja újra.' 
+          }, { status: 429 })
+        }
+        
+        // Check for other blocking status codes
+        if (response.status === 403) {
+          console.error('[CATEGORY SYNC] Access forbidden (403). ShopRenter may be blocking the API key or IP.')
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Access forbidden (403). ShopRenter may be blocking requests. Check API credentials.' 
+          }, { status: 403 })
+        }
+        
         return NextResponse.json({ 
           success: false, 
           error: `Failed to fetch category: ${response.status} - ${errorText.substring(0, 200)}` 
         }, { status: response.status })
       }
 
-      const categoryData = await response.json().catch(() => null)
-      if (!categoryData || !categoryData.id) {
+      const responseText = await response.text().catch(() => '')
+      console.log(`[CATEGORY SYNC] Response body length: ${responseText.length} chars`)
+      
+      if (!responseText || responseText.trim() === '') {
+        console.error('[CATEGORY SYNC] Empty response from ShopRenter - this usually indicates authentication error')
         return NextResponse.json({ 
           success: false, 
-          error: 'Invalid category data received' 
+          error: 'ShopRenter returned empty response. This usually indicates an authentication error. Please check your connection settings.' 
+        }, { status: 401 })
+      }
+      
+      let categoryData: any = null
+      
+      try {
+        categoryData = JSON.parse(responseText)
+        console.log(`[CATEGORY SYNC] Successfully parsed category data, ID: ${categoryData?.id || 'missing'}`)
+      } catch (parseError: any) {
+        console.error('[CATEGORY SYNC] Failed to parse response as JSON:', parseError.message)
+        console.error('[CATEGORY SYNC] Response text (first 1000 chars):', responseText.substring(0, 1000))
+        return NextResponse.json({ 
+          success: false, 
+          error: `Invalid JSON response from ShopRenter: ${parseError.message}` 
+        }, { status: 400 })
+      }
+
+      if (!categoryData || !categoryData.id) {
+        console.error('[CATEGORY SYNC] Missing category ID in response:', categoryData)
+        console.error('[CATEGORY SYNC] Full response structure:', JSON.stringify(categoryData).substring(0, 500))
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Invalid category data received (missing ID). ShopRenter may have returned an error response.' 
         }, { status: 400 })
       }
 
       // Sync the single category
-      await syncCategoryToDatabase(supabase, connection, categoryData, shopName, forceSync)
+      try {
+        await syncCategoryToDatabase(supabase, connection, categoryData, shopName, forceSync)
+        console.log(`[CATEGORY SYNC] Successfully synced category ${categoryData.id} to database`)
+      } catch (syncError: any) {
+        console.error('[CATEGORY SYNC] Error syncing category to database:', syncError)
+        return NextResponse.json({ 
+          success: false, 
+          error: `Database sync failed: ${syncError.message || 'Unknown error'}` 
+        }, { status: 500 })
+      }
 
       return NextResponse.json({
         success: true,
@@ -505,6 +572,19 @@ async function processSyncInBackground(
       
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error')
+        
+        // Check for rate limiting (429) or blocking
+        if (response.status === 429) {
+          console.error('[CATEGORY SYNC] Rate limit exceeded while fetching category list! ShopRenter is blocking requests.')
+          throw new Error(`Rate limit exceeded (429). ShopRenter is blocking requests. Please wait a few minutes before trying again.`)
+        }
+        
+        // Check for other blocking status codes
+        if (response.status === 403) {
+          console.error('[CATEGORY SYNC] Access forbidden (403) while fetching category list. ShopRenter may be blocking the API key or IP.')
+          throw new Error(`Access forbidden (403). ShopRenter may be blocking requests. Check API credentials.`)
+        }
+        
         throw new Error(`Failed to fetch categories: ${response.status} - ${errorText.substring(0, 200)}`)
       }
       
