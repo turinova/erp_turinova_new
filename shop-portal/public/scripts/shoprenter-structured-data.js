@@ -179,6 +179,14 @@
    * Main execution
    */
   function init() {
+    // Check if product.tpl script already injected structured data
+    // If so, skip this script (product.tpl solution takes precedence)
+    const productTplScript = document.getElementById('enhanced-structured-data');
+    if (productTplScript && productTplScript.textContent && productTplScript.textContent.trim() !== '') {
+      console.log('[ShopRenter Structured Data] Product.tpl script already injected structured data, skipping Script Tag API');
+      return;
+    }
+
     // Wait for ShopRenter object to be available
     if (typeof ShopRenter === 'undefined') {
       // Retry after a short delay

@@ -496,6 +496,62 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
+  // Delete structured data script tag
+  const handleDeleteScriptTag = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('Csak ShopRenter kapcsolatokhoz elérhető')
+      return
+    }
+
+    if (!confirm('Biztosan törölni szeretnéd a Structured Data Script tag-et a ShopRenter-ből?')) {
+      return
+    }
+
+    try {
+      setDeployingScriptTagId(connection.id)
+
+      // First, get the script tags to find the structured data one
+      const getResponse = await fetch(`/api/connections/${connection.id}/script-tag`)
+      const getResult = await getResponse.json()
+
+      if (!getResult.success || !getResult.scriptTags) {
+        toast.error('Nem sikerült lekérni a script tag-eket')
+        return
+      }
+
+      // Find the structured data script tag
+      const structuredDataTag = getResult.scriptTags.find((tag: any) => 
+        tag.src && tag.src.includes('shoprenter-structured-data.js')
+      )
+
+      if (!structuredDataTag || !structuredDataTag.id) {
+        toast.warning('Nem található Structured Data Script tag')
+        return
+      }
+
+      // Delete the script tag
+      const deleteResponse = await fetch(
+        `/api/connections/${connection.id}/script-tag?scriptTagId=${encodeURIComponent(structuredDataTag.id)}`,
+        {
+          method: 'DELETE'
+        }
+      )
+
+      const deleteResult = await deleteResponse.json()
+
+      if (deleteResult.success) {
+        toast.success('Structured data script sikeresen törölve a ShopRenter-ből!')
+      } else {
+        toast.error(`Script törlés sikertelen: ${deleteResult.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error) {
+      console.error('Error deleting script tag:', error)
+      toast.error('Hiba a script törlésekor')
+    } finally {
+      setDeployingScriptTagId(null)
+    }
+  }
+
   // Open edit dialog
   const handleOpenEditDialog = (connection: WebshopConnection) => {
     setEditingConnection(connection)
@@ -908,6 +964,20 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                 <CircularProgress size={20} />
                               ) : (
                                 <CodeIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Structured Data Script törlése">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleDeleteScriptTag(connection)}
+                              disabled={deployingScriptTagId === connection.id}
+                              color="error"
+                            >
+                              {deployingScriptTagId === connection.id ? (
+                                <CircularProgress size={20} />
+                              ) : (
+                                <DeleteIcon fontSize="small" />
                               )}
                             </IconButton>
                           </Tooltip>
