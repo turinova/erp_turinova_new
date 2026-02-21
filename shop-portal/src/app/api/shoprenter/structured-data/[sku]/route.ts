@@ -4,6 +4,30 @@ import { cookies } from 'next/headers'
 import { generateProductStructuredData } from '@/lib/structured-data-generator'
 
 /**
+ * CORS headers helper
+ */
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Max-Age': '86400', // 24 hours
+}
+
+/**
+ * OPTIONS /api/shoprenter/structured-data/[sku]
+ * Handle CORS preflight requests
+ */
+export async function OPTIONS(
+  request: NextRequest,
+  { params }: { params: Promise<{ sku: string }> }
+) {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  })
+}
+
+/**
  * GET /api/shoprenter/structured-data/[sku] or /api/shoprenter/structured-data/[sku].jsonld
  * Generate and return JSON-LD structured data for a product
  * This endpoint is public (no auth required) as it's called from ShopRenter frontend
@@ -18,7 +42,10 @@ export async function GET(
     if (!sku) {
       return NextResponse.json(
         { error: 'SKU is required' },
-        { status: 400 }
+        { 
+          status: 400,
+          headers: corsHeaders
+        }
       )
     }
 
@@ -30,12 +57,39 @@ export async function GET(
       decodedSku = decodedSku.slice(0, -7) // Remove '.jsonld'
     }
 
+    console.log('[STRUCTURED DATA] Looking for product with SKU:', decodedSku)
+
     // Create Supabase client (using anon key for public access)
     const cookieStore = await cookies()
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+    
+    // Debug: Log environment variables (without exposing full keys)
+    console.log('[STRUCTURED DATA] Environment check:', {
+      hasSupabaseUrl: !!supabaseUrl,
+      supabaseUrlPrefix: supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'MISSING',
+      hasAnonKey: !!supabaseAnonKey,
+      anonKeyPrefix: supabaseAnonKey ? supabaseAnonKey.substring(0, 20) + '...' : 'MISSING'
+    })
+    
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('[STRUCTURED DATA] Missing Supabase environment variables!')
+      return NextResponse.json(
+        { 
+          error: 'Server configuration error',
+          message: 'Supabase environment variables are not configured',
+          sku: decodedSku
+        },
+        { 
+          status: 500,
+          headers: corsHeaders
+        }
+      )
+    }
+    
     const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
+      supabaseUrl,
+      supabaseAnonKey,
       {
         cookies: {
           get(name: string) {
@@ -45,7 +99,9 @@ export async function GET(
       }
     )
 
-    // Fetch product by SKU
+    // First, try to find the product (maybe use maybeSingle to avoid errors)
+    console.log('[STRUCTURED DATA] Querying database for SKU:', decodedSku)
+    
     const { data: product, error: productError } = await supabase
       .from('shoprenter_products')
       .select(`
@@ -59,19 +115,93 @@ export async function GET(
         status,
         product_url,
         product_attributes,
-        parent_product_id
+        parent_product_id,
+        deleted_at,
+        connection_id
       `)
       .eq('sku', decodedSku)
-      .is('deleted_at', null)
-      .single()
+      .maybeSingle() // Use maybeSingle instead of single to avoid errors if not found
 
-    if (productError || !product) {
-      console.error('[STRUCTURED DATA] Product not found:', decodedSku, productError)
+    console.log('[STRUCTURED DATA] Query result:', {
+      hasProduct: !!product,
+      hasError: !!productError,
+      productId: product?.id,
+      productSku: product?.sku,
+      errorCode: productError?.code,
+      errorMessage: productError?.message
+    })
+
+    if (productError) {
+      console.error('[STRUCTURED DATA] Database error:', {
+        sku: decodedSku,
+        error: productError,
+        code: productError.code,
+        message: productError.message,
+        details: productError.details,
+        hint: productError.hint
+      })
+      
       return NextResponse.json(
-        { error: 'Product not found' },
-        { status: 404 }
+        { 
+          error: 'Database error',
+          sku: decodedSku,
+          message: productError.message,
+          code: productError.code
+        },
+        { 
+          status: 500,
+          headers: corsHeaders
+        }
       )
     }
+
+    if (!product) {
+      // Try to see if there are any products with similar SKUs (for debugging)
+      const { data: similarProducts } = await supabase
+        .from('shoprenter_products')
+        .select('sku, name, deleted_at')
+        .ilike('sku', `%${decodedSku}%`)
+        .limit(5)
+      
+      console.error('[STRUCTURED DATA] Product not found. Similar SKUs:', similarProducts)
+      
+      return NextResponse.json(
+        { 
+          error: 'Product not found',
+          sku: decodedSku,
+          message: 'No product found with this SKU in the database',
+          similarSkus: similarProducts?.map(p => p.sku) || []
+        },
+        { 
+          status: 404,
+          headers: corsHeaders
+        }
+      )
+    }
+
+    // Check if product is deleted
+    if (product.deleted_at) {
+      console.error('[STRUCTURED DATA] Product is deleted:', decodedSku, product.deleted_at)
+      return NextResponse.json(
+        { 
+          error: 'Product not found',
+          sku: decodedSku,
+          message: 'Product has been deleted',
+          deletedAt: product.deleted_at
+        },
+        { 
+          status: 404,
+          headers: corsHeaders
+        }
+      )
+    }
+
+    console.log('[STRUCTURED DATA] ✅ Found product:', {
+      id: product.id,
+      sku: product.sku,
+      name: product.name,
+      connectionId: product.connection_id
+    })
 
     // Fetch description (Hungarian) - include name field
     const { data: description } = await supabase
@@ -213,16 +343,17 @@ export async function GET(
       headers: {
         'Content-Type': 'application/ld+json',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600', // Cache for 1 hour
-        'Access-Control-Allow-Origin': '*', // Allow CORS from ShopRenter domains
-        'Access-Control-Allow-Methods': 'GET',
-        'Access-Control-Allow-Headers': 'Content-Type'
+        ...corsHeaders
       }
     })
   } catch (error) {
     console.error('[STRUCTURED DATA] Error generating structured data:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { 
+        status: 500,
+        headers: corsHeaders
+      }
     )
   }
 }

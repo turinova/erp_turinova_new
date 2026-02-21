@@ -84,36 +84,49 @@
   }
 
   /**
-   * Check if structured data already exists
+   * Remove all existing Product/ProductGroup structured data (including ShopRenter's default)
    */
-  function hasExistingStructuredData() {
+  function removeExistingProductStructuredData() {
     const existingScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    let removedCount = 0;
     
-    // Check if any existing script contains our product data
-    for (let script of existingScripts) {
+    existingScripts.forEach(script => {
       try {
         const data = JSON.parse(script.textContent || '{}');
-        if (data['@type'] === 'Product' && data.sku) {
-          // Check if it's our enhanced version (has additionalProperty)
-          if (data.additionalProperty && Array.isArray(data.additionalProperty)) {
-            return true;
-          }
+        // Remove any Product or ProductGroup structured data
+        if (data['@type'] === 'Product' || data['@type'] === 'ProductGroup') {
+          script.remove();
+          removedCount++;
+          console.log('[ShopRenter Structured Data] Removed existing', data['@type'], 'structured data');
         }
       } catch (e) {
-        // Ignore parse errors
+        // Ignore parse errors, but still check if it's our enhanced version
+        if (script.hasAttribute('data-enhanced')) {
+          script.remove();
+          removedCount++;
+        }
       }
+    });
+    
+    if (removedCount > 0) {
+      console.log('[ShopRenter Structured Data] Removed', removedCount, 'existing structured data script(s)');
     }
+  }
 
-    return false;
+  /**
+   * Check if our enhanced structured data already exists
+   */
+  function hasOurEnhancedStructuredData() {
+    const existingScripts = document.querySelectorAll('script[type="application/ld+json"][data-enhanced="true"]');
+    return existingScripts.length > 0;
   }
 
   /**
    * Inject JSON-LD structured data into page
    */
   function injectStructuredData(jsonLd) {
-    // Remove any existing enhanced structured data we may have added
-    const existingScripts = document.querySelectorAll('script[type="application/ld+json"][data-enhanced="true"]');
-    existingScripts.forEach(script => script.remove());
+    // Remove ALL existing Product/ProductGroup structured data (including ShopRenter's default)
+    removeExistingProductStructuredData();
 
     // Create new script tag
     const script = document.createElement('script');
@@ -178,8 +191,9 @@
       return;
     }
 
-    // Check if we already have enhanced structured data
-    if (hasExistingStructuredData()) {
+    // Check if we already have our enhanced structured data (skip if already injected)
+    if (hasOurEnhancedStructuredData()) {
+      console.log('[ShopRenter Structured Data] Enhanced structured data already exists, skipping');
       return;
     }
 
@@ -190,11 +204,17 @@
       return;
     }
 
+    console.log('[ShopRenter Structured Data] Fetching structured data for product:', productIdentifier);
+
     // Fetch and inject structured data
     fetchStructuredData(productIdentifier)
       .then(jsonLd => {
         if (jsonLd) {
+          console.log('[ShopRenter Structured Data] Successfully fetched structured data, injecting...');
           injectStructuredData(jsonLd);
+          console.log('[ShopRenter Structured Data] Enhanced structured data injected successfully');
+        } else {
+          console.warn('[ShopRenter Structured Data] No structured data returned from API');
         }
       })
       .catch(error => {
@@ -210,6 +230,9 @@
     init();
   }
 
-  // Also try after a delay in case ShopRenter loads later
+  // Also try after delays in case ShopRenter loads later
+  // Try multiple times to catch ShopRenter's schema after it loads
   setTimeout(init, 500);
+  setTimeout(init, 1000);
+  setTimeout(init, 2000);
 })();
