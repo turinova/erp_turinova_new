@@ -95,12 +95,61 @@ export function generateProductStructuredData(
 
   // Add description
   if (product.description?.description) {
-    // Strip HTML tags for plain text description
-    const plainDescription = product.description.description
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
+    // Convert HTML to plain text: strip tags, decode entities, clean whitespace
+    let plainDescription = product.description.description
+    
+    // First, strip HTML tags
+    plainDescription = plainDescription.replace(/<[^>]*>/g, '')
+    
+    // Decode HTML entities to plain text (server-side compatible)
+    // This handles all common HTML entities including numeric and hex entities
+    const decodeHtmlEntities = (text: string): string => {
+      return text
+        // Common named entities
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&apos;/g, "'")
+        .replace(/&hellip;/g, '...')
+        .replace(/&mdash;/g, '—')
+        .replace(/&ndash;/g, '–')
+        .replace(/&copy;/g, '©')
+        .replace(/&reg;/g, '®')
+        .replace(/&trade;/g, '™')
+        .replace(/&euro;/g, '€')
+        .replace(/&pound;/g, '£')
+        .replace(/&yen;/g, '¥')
+        .replace(/&cent;/g, '¢')
+        // Decode numeric entities (e.g., &#8217;, &#160;)
+        .replace(/&#(\d+);/g, (_, dec) => {
+          const code = parseInt(dec, 10)
+          // Only decode valid character codes (0-1114111)
+          if (code >= 0 && code <= 1114111) {
+            return String.fromCharCode(code)
+          }
+          return ''
+        })
+        // Decode hex entities (e.g., &#x27;, &#xA0;)
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+          const code = parseInt(hex, 16)
+          // Only decode valid character codes (0-1114111)
+          if (code >= 0 && code <= 1114111) {
+            return String.fromCharCode(code)
+          }
+          return ''
+        })
+    }
+    
+    plainDescription = decodeHtmlEntities(plainDescription)
+    
+    // Clean up whitespace: replace multiple spaces/newlines/tabs with single space
+    plainDescription = plainDescription
+      .replace(/\s+/g, ' ')  // Multiple whitespace to single space
       .trim()
-      .substring(0, 5000) // Limit length
+      .substring(0, 5000) // Limit length (Schema.org recommends reasonable length)
     
     if (plainDescription) {
       schema.description = plainDescription

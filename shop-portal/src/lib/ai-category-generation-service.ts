@@ -35,7 +35,7 @@ export async function generateCategoryDescription(
   const {
     language = 'hu',
     temperature = 0.7,
-    maxTokens = 2000,
+    maxTokens = 800, // Reduced from 2000 - shorter descriptions for category pages
     useProductData = true,
     generationInstructions
   } = options
@@ -46,15 +46,30 @@ export async function generateCategoryDescription(
       .from('shoprenter_categories')
       .select(`
         *,
-        shoprenter_category_descriptions(*),
-        webshop_connections(shop_name, api_url)
+        shoprenter_category_descriptions(*)
       `)
       .eq('id', categoryId)
       .is('deleted_at', null)
       .single()
 
-    if (categoryError || !category) {
+    if (categoryError) {
+      console.error('[AI CATEGORY GENERATION] Error fetching category:', categoryError)
+      throw new Error(`Category query failed: ${categoryError.message}`)
+    }
+
+    if (!category) {
       throw new Error('Category not found')
+    }
+
+    // Get connection separately (optional, for shop URL)
+    let connection: any = null
+    if (category.connection_id) {
+      const { data: connData } = await supabase
+        .from('webshop_connections')
+        .select('name, api_url')
+        .eq('id', category.connection_id)
+        .single()
+      connection = connData
     }
 
     // 2. Get products in category (if useProductData is true)
@@ -71,12 +86,14 @@ export async function generateCategoryDescription(
             name,
             status,
             price,
+            product_url,
             product_attributes,
-            shoprenter_product_descriptions(name, description)
+            shoprenter_product_descriptions(name, description, short_description)
           )
         `)
         .eq('category_id', categoryId)
         .is('deleted_at', null)
+        .is('shoprenter_products.deleted_at', null)
         .limit(50) // Limit to 50 products for analysis
 
       products = (relations || [])
@@ -85,60 +102,101 @@ export async function generateCategoryDescription(
         .filter((p: any) => p.status === 1) // Only active products
 
       productsAnalyzed = products.length
+      
+      console.log(`[AI CATEGORY GENERATION] Found ${productsAnalyzed} products in category for analysis`)
     }
 
     // 3. Build context from products
     let productContext = ''
     let commonFeatures: string[] = []
     let productTypes: string[] = []
+    let productDescriptions: string[] = []
 
     if (products.length > 0) {
-      // Extract product names, SKUs, and key attributes
+      // Extract product names, SKUs, key attributes, and descriptions
       const productSummaries = products.map((product: any) => {
         const name = product.name || product.shoprenter_product_descriptions?.[0]?.name || product.sku
         const sku = product.sku || ''
         const attrs = product.product_attributes || []
+        const description = product.shoprenter_product_descriptions?.[0]?.description || ''
+        const shortDescription = product.shoprenter_product_descriptions?.[0]?.short_description || ''
+        const productUrl = product.product_url
         
         // Extract key attributes
         const keyAttrs = attrs
           .filter((attr: any) => attr.display_name && attr.value)
-          .map((attr: any) => `${attr.display_name}: ${Array.isArray(attr.value) ? attr.value.join(', ') : attr.value}`)
-          .slice(0, 3) // Limit to 3 key attributes
+          .map((attr: any) => {
+            const value = Array.isArray(attr.value) 
+              ? attr.value.map((v: any) => typeof v === 'object' && v.value ? v.value : v).join(', ')
+              : attr.value
+            return `${attr.display_name}: ${value}`
+          })
+          .slice(0, 5) // Increased to 5 key attributes
+        
+        // Extract description snippets (first 200 chars, strip HTML)
+        const descSnippet = (description || shortDescription || '')
+          .replace(/<[^>]*>/g, '')
+          .replace(/&nbsp;/g, ' ')
+          .trim()
+          .substring(0, 200)
+        
+        if (descSnippet) {
+          productDescriptions.push(descSnippet)
+        }
         
         return {
           name,
           sku,
-          attributes: keyAttrs
+          attributes: keyAttrs,
+          description: descSnippet,
+          url: productUrl
         }
       })
 
-      // Build product list context
-      productContext = `\n\nTERMÉKEK EBBEN A KATEGÓRIÁBAN (${products.length} termék):\n`
-      productSummaries.forEach((p, idx) => {
-        productContext += `${idx + 1}. ${p.name} (SKU: ${p.sku})\n`
+      // Build comprehensive product list context
+      productContext = `\n\n=== TERMÉKEK EBBEN A KATEGÓRIÁBAN (${products.length} termék) ===\n`
+      productContext += `Az alábbi termékek tartoznak ebbe a kategóriába. Használd ezt az információt a kategória leírásának írásához:\n\n`
+      
+      productSummaries.slice(0, 20).forEach((p, idx) => {
+        productContext += `Termék ${idx + 1}: ${p.name} (SKU: ${p.sku})\n`
         if (p.attributes.length > 0) {
-          productContext += `   Főbb jellemzők: ${p.attributes.join(', ')}\n`
+          productContext += `   Főbb jellemzők: ${p.attributes.join('; ')}\n`
         }
+        if (p.description) {
+          productContext += `   Leírás részlet: ${p.description}...\n`
+        }
+        if (p.url) {
+          productContext += `   URL: ${p.url}\n`
+        }
+        productContext += `\n`
       })
+      
+      if (products.length > 20) {
+        productContext += `... és még ${products.length - 20} termék.\n\n`
+      }
 
-      // Identify common features
+      // Identify common features from attributes
       const allAttributes = products
         .flatMap((p: any) => p.product_attributes || [])
-        .filter((attr: any) => attr.display_name)
-        .map((attr: any) => attr.display_name)
+        .filter((attr: any) => attr.display_name && attr.value)
+        .map((attr: any) => ({
+          name: attr.display_name,
+          value: attr.value
+        }))
 
       // Count attribute frequency
       const attributeCounts: Record<string, number> = {}
-      allAttributes.forEach((attr: string) => {
-        attributeCounts[attr] = (attributeCounts[attr] || 0) + 1
+      allAttributes.forEach((attr: any) => {
+        attributeCounts[attr.name] = (attributeCounts[attr.name] || 0) + 1
       })
 
-      // Get most common attributes (appearing in at least 30% of products)
-      const threshold = Math.ceil(products.length * 0.3)
+      // Get most common attributes (appearing in at least 25% of products, lowered threshold)
+      const threshold = Math.max(2, Math.ceil(products.length * 0.25))
       commonFeatures = Object.entries(attributeCounts)
         .filter(([_, count]) => count >= threshold)
+        .sort(([_, a], [__, b]) => b - a) // Sort by frequency
         .map(([attr, _]) => attr)
-        .slice(0, 10)
+        .slice(0, 15) // Increased to 15 common features
 
       // Identify product types (from names/SKUs)
       const nameWords = products
@@ -181,46 +239,41 @@ export async function generateCategoryDescription(
     }
 
     // 6. Build system prompt
-    const systemPrompt = `You are an expert SEO copywriter specializing in creating comprehensive, 
+    const systemPrompt = `You are an expert SEO copywriter specializing in creating concise, 
 SEO-optimized category descriptions for e-commerce websites in Hungarian.
 
 CRITICAL REQUIREMENTS:
 1. Write EXCLUSIVELY in Hungarian - no English, no mixed languages
-2. Create a comprehensive category description (300-600 words)
-3. Use natural, conversational Hungarian tone
-4. Include relevant keywords naturally (no keyword stuffing)
-5. Structure the description with HTML headings (<h2>, <h3>)
-6. Mention product types and common features if product data is provided
-7. Include internal links to related categories when relevant (format: <a href="URL">Category Name</a>)
-8. Make it SEO-friendly and engaging for customers
+2. Create a SHORT, concise category description (100-200 words maximum)
+3. This description appears ABOVE product listings, so it must be brief and not take up too much space
+4. Use natural, conversational Hungarian tone
+5. Include relevant keywords naturally (no keyword stuffing)
+6. NO HTML headings - just plain paragraphs or simple formatting
+7. Mention key product types and common features if product data is provided (briefly)
+8. Make it SEO-friendly and engaging but keep it SHORT
 
-DESCRIPTION STRUCTURE:
-1. **Introduction** (<h2>Bevezetés</h2> or <h2>Áttekintés</h2>)
-   - Introduce the category
-   - Explain what products are available
-   - Hook the reader
+DESCRIPTION STRUCTURE (keep it brief):
+1. **Brief Introduction** (2-3 sentences)
+   - Introduce the category concisely
+   - Mention what types of products are available
+   - Hook the reader quickly
 
-2. **Product Types** (<h2>Terméktípusok</h2> or <h2>Elérhető termékek</h2>)
-   - List main product types/variants in category
-   - Mention key features if product data provided
+2. **Key Features/Benefits** (2-3 sentences)
+   - Highlight 2-3 most common features or benefits
+   - Keep it brief - don't list everything
+   - Focus on what makes this category valuable
 
-3. **Common Features/Benefits** (<h2>Főbb jellemzők</h2> or <h2>Kiemelt előnyök</h2>)
-   - Highlight common features across products
-   - Mention benefits for customers
+3. **Brief Use Case** (1-2 sentences, optional)
+   - Quick mention of where/how products are used
+   - Only if it adds value
 
-4. **Use Cases** (<h2>Alkalmazási területek</h2> or <h2>Használati lehetőségek</h2>)
-   - Where and how products in this category are used
-   - Different application scenarios
-
-5. **Conclusion** (<h2>Összefoglalás</h2>)
-   - Summarize key points
-   - Reinforce value proposition
-
-INTERNAL LINKING:
-- Include 2-4 natural internal links to related categories if relevant
-- Use format: <a href="https://shopname.shoprenter.hu/category-slug">Category Name</a>
-- Links should be contextually relevant
-- Don't over-link - only when it adds value
+IMPORTANT: 
+- Total length: 100-200 words maximum
+- NO long paragraphs - keep sentences short
+- NO extensive lists
+- NO multiple sections with headings
+- Just 2-4 short paragraphs total
+- This appears above products, so brevity is key
 
 LANGUAGE REQUIREMENTS:
 - Write ONLY in Hungarian
@@ -228,7 +281,13 @@ LANGUAGE REQUIREMENTS:
 - Use industry-specific terminology in Hungarian
 - Natural, human-like writing style
 
-Write ONLY the category description in HTML format. Do not include meta tags or other fields.`
+FORMATTING:
+- Use simple HTML: <p> tags for paragraphs, <strong> for emphasis if needed
+- NO headings (<h2>, <h3>) - keep it simple
+- NO lists - just flowing text
+- Keep paragraphs short (2-3 sentences each)
+
+Write ONLY the short category description in simple HTML format (just <p> tags). Do not include meta tags or other fields.`
 
     // 7. Build user prompt
     let userPrompt = `Generate a comprehensive category description for: ${currentName}\n\n`
@@ -246,38 +305,114 @@ Write ONLY the category description in HTML format. Do not include meta tags or 
     }
 
     if (commonFeatures.length > 0) {
-      userPrompt += `\n\nKÖZÖS JELLEMZŐK A KATEGÓRIÁBAN:\n`
-      commonFeatures.forEach(feature => {
-        userPrompt += `- ${feature}\n`
+      userPrompt += `\n\n=== KÖZÖS JELLEMZŐK A KATEGÓRIÁBAN ===\n`
+      userPrompt += `Az alábbi jellemzők gyakran előfordulnak a kategória termékeinél. Említsd ezeket a leírásban:\n`
+      commonFeatures.forEach((feature, idx) => {
+        userPrompt += `${idx + 1}. ${feature}\n`
       })
+      userPrompt += `\n`
     }
 
     if (productTypes.length > 0) {
-      userPrompt += `\n\nTERMÉKTÍPUSOK:\n`
-      productTypes.forEach(type => {
-        userPrompt += `- ${type}\n`
+      userPrompt += `\n\n=== TERMÉKTÍPUSOK ===\n`
+      userPrompt += `A kategóriában található főbb terméktípusok:\n`
+      productTypes.forEach((type, idx) => {
+        userPrompt += `${idx + 1}. ${type}\n`
       })
+      userPrompt += `\n`
+    }
+    
+    if (productDescriptions.length > 0) {
+      // Extract common themes from product descriptions
+      const allDescText = productDescriptions.join(' ').toLowerCase()
+      const commonWords = allDescText
+        .split(/\s+/)
+        .filter((word: string) => word.length > 4)
+        .filter((word: string) => !['termék', 'kategória', 'leírás', 'részlet'].includes(word))
+      
+      const wordCounts: Record<string, number> = {}
+      commonWords.forEach((word: string) => {
+        wordCounts[word] = (wordCounts[word] || 0) + 1
+      })
+      
+      const topWords = Object.entries(wordCounts)
+        .sort(([_, a], [__, b]) => b - a)
+        .slice(0, 10)
+        .map(([word, _]) => word)
+      
+      if (topWords.length > 0) {
+        userPrompt += `\n\n=== GYAKORI KULCSSZAVAK A TERMÉKLEÍRÁSOKBAN ===\n`
+        userPrompt += `A termékleírásokban gyakran előforduló kulcsszavak (használd ezeket természetesen):\n`
+        userPrompt += topWords.join(', ') + '\n\n'
+      }
     }
 
     if (generationInstructions) {
       userPrompt += `\n\nSPECIAL INSTRUCTIONS:\n${generationInstructions}\n`
     }
 
-    userPrompt += `\n\nGenerate a comprehensive, SEO-optimized category description in Hungarian following the structure above.`
+    userPrompt += `\n\nCRITICAL: Generate a SHORT, concise category description (100-200 words maximum) in Hungarian. 
+This description appears ABOVE product listings, so it must be brief and not take up too much space.
+- Keep it to 2-4 short paragraphs
+- NO HTML headings
+- Focus on the most important information
+- Be concise and to the point`
 
-    // 8. Call Claude AI
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
-      max_tokens: maxTokens,
-      temperature: temperature,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt
+    // 8. Call Claude AI with model fallback (same as product generation)
+    // Updated to use new generation model identifiers (claude-sonnet-4-6, etc.)
+    const modelsToTry = [
+      'claude-sonnet-4-6',              // Default: good quality/price balance
+      'claude-opus-4-6',                // Max quality option
+      'claude-haiku-4-5-20251001',      // Cheap/fast fallback
+      'claude-sonnet-4-5-20250929',     // Older fallback option
+      'claude-sonnet-4-20250514'        // Older fallback option
+    ]
+
+    let message: any = null
+    let modelUsed = ''
+    let lastError: any = null
+
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[AI CATEGORY GENERATION] Trying model: ${model}`)
+        message = await anthropic.messages.create({
+          model: model,
+          max_tokens: maxTokens,
+          temperature: temperature,
+          system: systemPrompt,
+          messages: [
+            {
+              role: 'user',
+              content: userPrompt
+            }
+          ]
+        })
+        modelUsed = model
+        console.log(`[AI CATEGORY GENERATION] Success with model: ${model}`)
+        break // Success, exit loop
+      } catch (error: any) {
+        lastError = error
+        console.error(`[AI CATEGORY GENERATION] Model ${model} failed:`, {
+          status: error.status,
+          message: error.message,
+          error: error.error
+        })
+
+        // If it's a 404 (model not found), try next model
+        if (error.status === 404) {
+          continue
         }
-      ]
-    })
+
+        // If it's authentication or rate limit, stop trying
+        if (error.status === 401 || error.status === 429) {
+          throw error
+        }
+      }
+    }
+
+    if (!message) {
+      throw new Error(`All Claude models failed. Last error: ${lastError?.message || 'Unknown error'}`)
+    }
 
     // 9. Extract description
     const description = message.content
@@ -293,7 +428,7 @@ Write ONLY the category description in HTML format. Do not include meta tags or 
       .insert({
         category_id: categoryId,
         generated_description: description,
-        model: 'claude-3-5-sonnet-20241022',
+        model: modelUsed || modelsToTry[0], // Use the model that actually worked
         tokens_used: tokensUsed,
         source_products_count: productsAnalyzed,
         generation_instructions: generationInstructions || null,

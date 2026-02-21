@@ -73,11 +73,32 @@ export default function CategoryEditForm({ category: initialCategory }: Category
   const [descriptions, setDescriptions] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [pulling, setPulling] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   const [generatedDescription, setGeneratedDescription] = useState<string | null>(null)
   const [products, setProducts] = useState<any[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
+  
+  // Meta generation state
+  const [generatingMeta, setGeneratingMeta] = useState<{
+    name: boolean
+    meta_title: boolean
+    meta_description: boolean
+  }>({
+    name: false,
+    meta_title: false,
+    meta_description: false
+  })
+  
+  // Form state for descriptions
+  const [formData, setFormData] = useState({
+    name: '',
+    meta_title: '',
+    meta_description: '',
+    description: ''
+  })
+  const [saving, setSaving] = useState(false)
 
   // Load category descriptions
   useEffect(() => {
@@ -131,6 +152,53 @@ export default function CategoryEditForm({ category: initialCategory }: Category
     setTabValue(newValue)
   }
 
+  // Pull category from ShopRenter (fetch latest data)
+  const handlePullFromShopRenter = async () => {
+    try {
+      setPulling(true)
+
+      // Get connection_id from category
+      const connectionId = (category as any).connection_id
+      if (!connectionId) {
+        toast.error('Nincs kapcsolat ID a kategóriához')
+        return
+      }
+
+      // Get shoprenter_id from category
+      const shoprenterId = (category as any).shoprenter_id
+      if (!shoprenterId) {
+        toast.error('Nincs ShopRenter ID a kategóriához')
+        return
+      }
+
+      const response = await fetch(`/api/connections/${connectionId}/sync-categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          category_id: shoprenterId,
+          force: false
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Kategória sikeresen frissítve ShopRenter-ből!')
+        // Refresh the page to show updated data
+        router.refresh()
+      } else {
+        toast.error(`Frissítés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error) {
+      console.error('Error pulling category from ShopRenter:', error)
+      toast.error('Hiba a kategória frissítésekor')
+    } finally {
+      setPulling(false)
+    }
+  }
+
   const handleSync = async () => {
     try {
       setSyncing(true)
@@ -143,7 +211,8 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         throw new Error(error.error || 'Sync failed')
       }
 
-      toast.success('Kategória szinkronizálása sikeres')
+      const result = await response.json()
+      toast.success(result.message || 'Kategória szinkronizálása sikeres')
       router.refresh()
     } catch (error: any) {
       toast.error(`Szinkronizálás hiba: ${error.message}`)
@@ -183,8 +252,139 @@ export default function CategoryEditForm({ category: initialCategory }: Category
   }
 
   const handleSaveDescription = async () => {
-    // TODO: Implement save description
-    toast.info('Leírás mentése hamarosan elérhető')
+    if (!generatedDescription) {
+      toast.error('Nincs generált leírás a mentéshez')
+      return
+    }
+
+    try {
+      setGenerating(true)
+
+      // Get current description to find language_id
+      const currentDesc = descriptions.find(
+        (desc: any) => desc.language_id === 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' // Hungarian
+      ) || descriptions[0]
+
+      const response = await fetch(`/api/categories/${category.id}/descriptions`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          language_id: currentDesc?.language_id || 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==',
+          description: generatedDescription,
+          // Preserve existing name, meta_title, meta_description if they exist
+          name: currentDesc?.name || null,
+          custom_title: currentDesc?.custom_title || null,
+          meta_description: currentDesc?.meta_description || null
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Leírás sikeresen mentve!')
+        setGenerationDialogOpen(false)
+        setGeneratedDescription(null)
+        // Update form data with saved description
+        setFormData(prev => ({ ...prev, description: generatedDescription }))
+        // Reload descriptions
+        router.refresh()
+      } else {
+        toast.error(`Mentés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error: any) {
+      console.error('Error saving description:', error)
+      toast.error(`Hiba a leírás mentésekor: ${error.message}`)
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleSaveAllDescriptions = async () => {
+    try {
+      setSaving(true)
+
+      // Get current description to find language_id
+      const currentDesc = descriptions.find(
+        (desc: any) => desc.language_id === 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' // Hungarian
+      ) || descriptions[0]
+
+      const response = await fetch(`/api/categories/${category.id}/descriptions`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          language_id: currentDesc?.language_id || 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==',
+          name: formData.name || currentDesc?.name || null,
+          custom_title: formData.meta_title || currentDesc?.custom_title || null,
+          meta_description: formData.meta_description || currentDesc?.meta_description || null,
+          description: formData.description || currentDesc?.description || null
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Kategória leírások sikeresen mentve!')
+        router.refresh()
+      } else {
+        toast.error(`Mentés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error: any) {
+      console.error('Error saving descriptions:', error)
+      toast.error(`Hiba a leírások mentésekor: ${error.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleGenerateMeta = async (field: 'name' | 'meta_title' | 'meta_description' | 'all') => {
+    try {
+      const fieldsToGenerate = field === 'all' ? ['name', 'meta_title', 'meta_description'] : [field]
+      
+      // Set loading states
+      if (field === 'all') {
+        setGeneratingMeta({ name: true, meta_title: true, meta_description: true })
+      } else {
+        setGeneratingMeta(prev => ({ ...prev, [field]: true }))
+      }
+
+      const response = await fetch(`/api/categories/${category.id}/generate-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: fieldsToGenerate })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Update form data with generated values
+        const updates: any = {}
+        if (result.name) updates.name = result.name
+        if (result.meta_title) updates.meta_title = result.meta_title
+        if (result.meta_description) updates.meta_description = result.meta_description
+
+        setFormData(prev => ({ ...prev, ...updates }))
+        
+        const fieldNames = {
+          name: 'Név',
+          meta_title: 'Meta cím',
+          meta_description: 'Meta leírás',
+          all: 'Meta mezők'
+        }
+        
+        toast.success(`${fieldNames[field]} sikeresen generálva`)
+      } else {
+        toast.error(result.error || 'Hiba a meta mezők generálása során')
+      }
+    } catch (error) {
+      console.error('Error generating meta fields:', error)
+      toast.error('Hiba a meta mezők generálása során')
+    } finally {
+      setGeneratingMeta({ name: false, meta_title: false, meta_description: false })
+    }
   }
 
   const currentDescription = descriptions.find((d: any) => d.language_id?.includes('hu') || d.language_id === 'hu') || descriptions[0]
@@ -192,26 +392,36 @@ export default function CategoryEditForm({ category: initialCategory }: Category
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h5">
+        <Typography variant="h4" component="h1">
           {category.name || 'Kategória szerkesztése'}
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
             variant="outlined"
+            color="info"
+            startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
+            onClick={handlePullFromShopRenter}
+            disabled={pulling || syncing}
+            title="Frissítés ShopRenter-ből (lekéri a legfrissebb adatokat)"
+          >
+            {pulling ? 'Frissítés...' : 'Frissítés ShopRenter-ből'}
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
             onClick={handleSync}
-            disabled={syncing}
+            disabled={syncing || pulling}
+            title="Szinkronizálás ShopRenter-be (elküldi a helyi változtatásokat)"
           >
-            {syncing ? 'Szinkronizálás...' : 'Szinkronizálás'}
+            Szinkronizálás
           </Button>
           <Button
             variant="contained"
-            startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
-            onClick={handleGenerateDescription}
-            disabled={generating}
-            color="primary"
+            startIcon={saving ? <CircularProgress size={20} /> : <SaveIcon />}
+            onClick={handleSaveAllDescriptions}
+            disabled={saving}
           >
-            {generating ? 'Generálás...' : 'AI Leírás generálása'}
+            Mentés
           </Button>
         </Box>
       </Box>
@@ -281,30 +491,68 @@ export default function CategoryEditForm({ category: initialCategory }: Category
           {currentDescription ? (
             <Grid container spacing={3}>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Név"
-                  value={currentDescription.name || ''}
-                  disabled
-                />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Név"
+                    value={formData.name || currentDescription.name || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={generatingMeta.name ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={() => handleGenerateMeta('name')}
+                    disabled={generatingMeta.name}
+                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap' }}
+                  >
+                    AI
+                  </Button>
+                </Box>
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Meta Title"
-                  value={currentDescription.custom_title || ''}
-                  disabled
-                />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Meta Title"
+                    value={formData.meta_title || currentDescription.custom_title || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))}
+                    helperText={`${(formData.meta_title || currentDescription.custom_title || '').length} karakter (50-60 optimális)`}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={generatingMeta.meta_title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={() => handleGenerateMeta('meta_title')}
+                    disabled={generatingMeta.meta_title}
+                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap' }}
+                  >
+                    AI
+                  </Button>
+                </Box>
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Meta Description"
-                  value={currentDescription.meta_description || ''}
-                  multiline
-                  rows={3}
-                  disabled
-                />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Meta Description"
+                    value={formData.meta_description || currentDescription.meta_description || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))}
+                    multiline
+                    rows={3}
+                    helperText={`${(formData.meta_description || currentDescription.meta_description || '').length} karakter (150-160 optimális)`}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={generatingMeta.meta_description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={() => handleGenerateMeta('meta_description')}
+                    disabled={generatingMeta.meta_description}
+                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
+                  >
+                    AI
+                  </Button>
+                </Box>
               </Grid>
               <Grid item xs={12}>
                 <TextField
@@ -317,19 +565,21 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Leírás
-                </Typography>
-                <Box
-                  sx={{
-                    border: '1px solid',
-                    borderColor: 'divider',
-                    borderRadius: 1,
-                    p: 2,
-                    minHeight: 200,
-                    bgcolor: 'grey.50'
-                  }}
-                  dangerouslySetInnerHTML={{ __html: currentDescription.description || '<p>Nincs leírás</p>' }}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Leírás</Typography>
+                  <Button
+                    variant="outlined"
+                    startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+                    onClick={handleGenerateDescription}
+                    disabled={generating}
+                  >
+                    {generating ? 'Generálás...' : 'AI Leírás generálása'}
+                  </Button>
+                </Box>
+                <HtmlEditor
+                  value={formData.description || currentDescription.description || ''}
+                  onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                  placeholder="Kategória leírása..."
                 />
               </Grid>
             </Grid>
@@ -464,15 +714,20 @@ export default function CategoryEditForm({ category: initialCategory }: Category
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setGenerationDialogOpen(false)}>
+          <Button 
+            onClick={() => setGenerationDialogOpen(false)}
+            disabled={generating}
+          >
             Mégse
           </Button>
           <Button
             onClick={handleSaveDescription}
             variant="contained"
-            startIcon={<SaveIcon />}
+            color="primary"
+            disabled={!generatedDescription || generating}
+            startIcon={generating ? <CircularProgress size={16} /> : <SaveIcon />}
           >
-            Mentés
+            {generating ? 'Mentés...' : 'Mentés'}
           </Button>
         </DialogActions>
       </Dialog>

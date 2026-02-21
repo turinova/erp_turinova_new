@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { getCategoryById } from '@/lib/categories-server'
+import { getCategoryById, getCategoryWithDescriptions } from '@/lib/categories-server'
 import { getConnectionById } from '@/lib/connections-server'
-import { Buffer } from 'buffer'
-import { extractShopNameFromUrl } from '@/lib/shoprenter-api'
+import {
+  extractShopNameFromUrl,
+  getShopRenterAuthHeader,
+  getLanguageId,
+  getCategoryDescriptionId
+} from '@/lib/shoprenter-api'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 
 /**
@@ -124,7 +128,7 @@ async function syncCategoryDescriptions(
 
 /**
  * POST /api/categories/[id]/sync
- * Sync single category from ShopRenter
+ * Sync category TO ShopRenter (push local changes) and then pull back to verify
  */
 export async function POST(
   request: NextRequest,
@@ -158,8 +162,8 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get category
-    const category = await getCategoryById(categoryId)
+    // Get category with descriptions
+    const category = await getCategoryWithDescriptions(categoryId)
     if (!category) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 })
     }
@@ -176,23 +180,204 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid API URL format' }, { status: 400 })
     }
 
-    // Use Basic Auth
-    const credentials = `${connection.username}:${connection.password}`
-    const base64Credentials = Buffer.from(credentials).toString('base64')
-    const authHeader = `Basic ${base64Credentials}`
+    // Get authentication
+    const { authHeader, apiBaseUrl, useOAuth } = await getShopRenterAuthHeader(
+      shopName,
+      connection.username,
+      connection.password,
+      connection.api_url
+    )
 
-    let apiUrl = connection.api_url.replace(/\/$/, '')
-    if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-      apiUrl = `http://${apiUrl}`
+    // Get language ID
+    const languageId = await getLanguageId(apiBaseUrl, authHeader, 'hu')
+    if (!languageId) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Nem sikerült meghatározni a nyelv azonosítóját' 
+      }, { status: 500 })
+    }
+
+    // Get Hungarian description (or first available)
+    const descriptions = category.shoprenter_category_descriptions || []
+    const huDescription = descriptions.find((d: any) => d.language_id === languageId) || descriptions[0]
+    
+    if (!huDescription) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Nincs leírás a kategóriához. Kérjük, mentse el a leírást először.' 
+      }, { status: 400 })
     }
 
     const rateLimiter = getShopRenterRateLimiter()
 
-    // Fetch category from ShopRenter
-    const categoryUrl = `${apiUrl}/categoryExtend/${category.shoprenter_id}?full=1`
+    // First, update category basic data (status, sortOrder, etc.) if changed
+    const categoryPayload: any = {}
     
-    const response = await rateLimiter.execute(async () => {
-      return fetch(categoryUrl, {
+    // Add status if exists
+    if (category.status !== null && category.status !== undefined) {
+      categoryPayload.status = String(category.status)
+    }
+    
+    // Add sortOrder if exists
+    if (category.sort_order !== null && category.sort_order !== undefined) {
+      categoryPayload.sortOrder = String(category.sort_order)
+    }
+    
+    // Add productsStatus if exists
+    if (category.products_status !== null && category.products_status !== undefined) {
+      categoryPayload.productsStatus = String(category.products_status)
+    }
+    
+    // Add picture if exists
+    if (category.picture !== null && category.picture !== undefined) {
+      categoryPayload.picture = category.picture
+    }
+    
+    // Add parent category if exists
+    if (category.parent_category_shoprenter_id) {
+      categoryPayload.parentCategory = {
+        id: category.parent_category_shoprenter_id
+      }
+    }
+    
+    // Only update if there's something to update
+    if (Object.keys(categoryPayload).length > 0) {
+      const categoryUpdateUrl = `${apiBaseUrl}/categories/${category.shoprenter_id}`
+      console.log(`[CATEGORY SYNC] Updating category data: PUT ${categoryUpdateUrl}`)
+      console.log(`[CATEGORY SYNC] Category payload:`, JSON.stringify(categoryPayload))
+      
+      const categoryUpdateResponse = await rateLimiter.execute(async () => {
+        return fetch(categoryUpdateUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          body: JSON.stringify(categoryPayload),
+          signal: AbortSignal.timeout(30000)
+        })
+      })
+
+      if (!categoryUpdateResponse.ok) {
+        const errorText = await categoryUpdateResponse.text().catch(() => 'Unknown error')
+        console.warn(`[CATEGORY SYNC] Category data update failed: ${categoryUpdateResponse.status} - ${errorText.substring(0, 200)}`)
+        // Continue with description sync even if category update fails
+      } else {
+        console.log(`[CATEGORY SYNC] Category data updated successfully`)
+      }
+    }
+
+    // Get category description ID
+    const descriptionId = await getCategoryDescriptionId(
+      apiBaseUrl,
+      authHeader,
+      category.shoprenter_id,
+      languageId,
+      huDescription.shoprenter_id
+    )
+
+    // Prepare payload for ShopRenter
+    const payload: any = {
+      name: huDescription.name || category.name || '',
+      metaKeywords: huDescription.meta_keywords || null,
+      metaDescription: huDescription.meta_description || null,
+      description: huDescription.description || null,
+      customTitle: huDescription.custom_title || null,
+      robotsMetaTag: huDescription.robots_meta_tag || '0',
+      footerSeoText: huDescription.footer_seo_text || null,
+      heading: huDescription.heading || null,
+      shortDescription: huDescription.short_description || null,
+      category: {
+        id: category.shoprenter_id
+      },
+      language: {
+        id: languageId
+      }
+    }
+
+    // Remove null values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === null) {
+        delete payload[key]
+      }
+    })
+
+    // Determine endpoint - use PUT if we have description ID, POST if not
+    let updateUrl: string
+    let method: string
+
+    if (descriptionId) {
+      // Update existing description
+      updateUrl = `${apiBaseUrl}/categoryDescriptions/${descriptionId}`
+      method = 'PUT'
+    } else {
+      // Create new description
+      updateUrl = `${apiBaseUrl}/categoryDescriptions`
+      method = 'POST'
+    }
+
+    console.log(`[CATEGORY SYNC] ${method} ${updateUrl}`)
+    console.log(`[CATEGORY SYNC] Payload:`, JSON.stringify(payload, null, 2).substring(0, 500))
+
+    // Push to ShopRenter
+    const pushResponse = await rateLimiter.execute(async () => {
+      return fetch(updateUrl, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30000)
+      })
+    })
+
+    if (!pushResponse.ok) {
+      const errorText = await pushResponse.text().catch(() => 'Unknown error')
+      console.error(`[CATEGORY SYNC] Push failed: ${pushResponse.status} - ${errorText}`)
+      
+      // Update category sync status
+      await supabase
+        .from('shoprenter_categories')
+        .update({
+          sync_status: 'error',
+          sync_error: `Push failed: ${pushResponse.status} - ${errorText.substring(0, 200)}`,
+          last_synced_at: new Date().toISOString()
+        })
+        .eq('id', categoryId)
+
+      return NextResponse.json({ 
+        success: false, 
+        error: `ShopRenter API hiba (${pushResponse.status}): ${errorText.substring(0, 200)}` 
+      }, { status: pushResponse.status })
+    }
+
+    const pushResult = await pushResponse.json().catch(() => null)
+    
+    // Extract description ID from response if we created it
+    let finalDescriptionId = descriptionId
+    if (!finalDescriptionId && pushResult?.id) {
+      finalDescriptionId = pushResult.id
+    } else if (!finalDescriptionId && pushResult?.href) {
+      const parts = pushResult.href.split('/')
+      finalDescriptionId = parts[parts.length - 1]
+    }
+
+    // Update local database with ShopRenter description ID if we got it
+    if (finalDescriptionId && !huDescription.shoprenter_id) {
+      await supabase
+        .from('shoprenter_category_descriptions')
+        .update({ shoprenter_id: finalDescriptionId })
+        .eq('id', huDescription.id)
+    }
+
+    // Now pull back from ShopRenter to verify
+    const pullUrl = `${apiBaseUrl}/categoryExtend/${category.shoprenter_id}?full=1`
+    
+    const pullResponse = await rateLimiter.execute(async () => {
+      return fetch(pullUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -203,100 +388,93 @@ export async function POST(
       })
     })
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error')
-      return NextResponse.json({ 
-        success: false, 
-        error: `API error: ${response.status} - ${errorText.substring(0, 200)}` 
-      }, { status: response.status })
-    }
-
-    const categoryData = await response.json().catch(() => null)
-    if (!categoryData || !categoryData.id) {
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Invalid category data received' 
-      }, { status: 400 })
-    }
-
-    // Extract category data
-    const innerId = categoryData.innerId || null
-    const picture = categoryData.picture || null
-    const sortOrder = parseInt(categoryData.sortOrder || '0', 10)
-    const status = categoryData.status === '1' || categoryData.status === 1 ? 1 : 0
-    const productsStatus = categoryData.productsStatus === '1' || categoryData.productsStatus === 1 ? 1 : 0
-    
-    // Extract URL alias
-    const urlAliasData = extractUrlAlias(categoryData)
-    const categoryUrlFull = constructCategoryUrl(shopName, urlAliasData.slug)
-    
-    // Extract parent category ID
-    const parentCategoryShopRenterId = extractParentCategoryId(categoryData)
-    
-    // Get category name from first description
-    let categoryName = null
-    if (categoryData.categoryDescriptions && Array.isArray(categoryData.categoryDescriptions) && categoryData.categoryDescriptions.length > 0) {
-      categoryName = categoryData.categoryDescriptions[0].name || null
-    }
-    
-    // Find parent category if exists
-    let parentCategoryId = null
-    if (parentCategoryShopRenterId) {
-      const { data: parentCategory } = await supabase
-        .from('shoprenter_categories')
-        .select('id')
-        .eq('connection_id', connection.id)
-        .eq('shoprenter_id', parentCategoryShopRenterId)
-        .is('deleted_at', null)
-        .single()
+    if (pullResponse.ok) {
+      const pullData = await pullResponse.json().catch(() => null)
       
-      if (parentCategory) {
-        parentCategoryId = parentCategory.id
+      if (pullData && pullData.id) {
+        // Extract category data from pulled response
+        const innerId = pullData.innerId || null
+        const picture = pullData.picture || null
+        const sortOrder = parseInt(pullData.sortOrder || '0', 10)
+        const status = pullData.status === '1' || pullData.status === 1 ? 1 : 0
+        const productsStatus = pullData.productsStatus === '1' || pullData.productsStatus === 1 ? 1 : 0
+        
+        // Extract URL alias
+        const urlAliasData = extractUrlAlias(pullData)
+        const categoryUrlFull = constructCategoryUrl(shopName, urlAliasData.slug)
+        
+        // Extract parent category ID
+        const parentCategoryShopRenterId = extractParentCategoryId(pullData)
+        
+        // Get category name from first description
+        let categoryName = null
+        if (pullData.categoryDescriptions && Array.isArray(pullData.categoryDescriptions) && pullData.categoryDescriptions.length > 0) {
+          categoryName = pullData.categoryDescriptions[0].name || null
+        }
+        
+        // Find parent category if exists
+        let parentCategoryId = null
+        if (parentCategoryShopRenterId) {
+          const { data: parentCategory } = await supabase
+            .from('shoprenter_categories')
+            .select('id')
+            .eq('connection_id', connection.id)
+            .eq('shoprenter_id', parentCategoryShopRenterId)
+            .is('deleted_at', null)
+            .single()
+          
+          if (parentCategory) {
+            parentCategoryId = parentCategory.id
+          }
+        }
+        
+        // Update category with pulled data
+        const updateData = {
+          shoprenter_inner_id: innerId,
+          name: categoryName,
+          picture: picture,
+          sort_order: sortOrder,
+          status: status,
+          products_status: productsStatus,
+          parent_category_id: parentCategoryId,
+          parent_category_shoprenter_id: parentCategoryShopRenterId,
+          url_slug: urlAliasData.slug,
+          url_alias_id: urlAliasData.id,
+          category_url: categoryUrlFull,
+          date_created: pullData.dateCreated || null,
+          date_updated: pullData.dateUpdated || null,
+          sync_status: 'synced',
+          sync_error: null,
+          last_synced_at: new Date().toISOString()
+        }
+        
+        await supabase
+          .from('shoprenter_categories')
+          .update(updateData)
+          .eq('id', categoryId)
+        
+        // Sync category descriptions
+        if (pullData.categoryDescriptions && Array.isArray(pullData.categoryDescriptions)) {
+          await syncCategoryDescriptions(supabase, categoryId, pullData.categoryDescriptions)
+        }
       }
+    } else {
+      console.warn('[CATEGORY SYNC] Pull verification failed, but push was successful')
     }
-    
-    // Update category
-    const updateData = {
-      shoprenter_inner_id: innerId,
-      name: categoryName,
-      picture: picture,
-      sort_order: sortOrder,
-      status: status,
-      products_status: productsStatus,
-      parent_category_id: parentCategoryId,
-      parent_category_shoprenter_id: parentCategoryShopRenterId,
-      url_slug: urlAliasData.slug,
-      url_alias_id: urlAliasData.id,
-      category_url: categoryUrlFull,
-      date_created: categoryData.dateCreated || null,
-      date_updated: categoryData.dateUpdated || null,
-      sync_status: 'synced',
-      sync_error: null,
-      last_synced_at: new Date().toISOString()
-    }
-    
-    const { data: updatedCategory, error: updateError } = await supabase
+
+    // Update category sync status
+    await supabase
       .from('shoprenter_categories')
-      .update(updateData)
+      .update({
+        sync_status: 'synced',
+        sync_error: null,
+        last_synced_at: new Date().toISOString()
+      })
       .eq('id', categoryId)
-      .select()
-      .single()
-    
-    if (updateError) {
-      return NextResponse.json({ 
-        success: false, 
-        error: `Failed to update category: ${updateError.message}` 
-      }, { status: 500 })
-    }
-    
-    // Sync category descriptions
-    if (categoryData.categoryDescriptions && Array.isArray(categoryData.categoryDescriptions)) {
-      await syncCategoryDescriptions(supabase, categoryId, categoryData.categoryDescriptions)
-    }
-    
-    return NextResponse.json({
+
+    return NextResponse.json({ 
       success: true,
-      category: updatedCategory
+      message: 'Kategória sikeresen szinkronizálva a webshopba'
     })
   } catch (error: any) {
     console.error('[CATEGORY SYNC] Error:', error)

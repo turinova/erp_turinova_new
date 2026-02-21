@@ -234,3 +234,81 @@ export async function getProductDescriptionId(
     return null
   }
 }
+
+/**
+ * Get or construct category description ID
+ * Returns the ShopRenter category description ID, or null if it needs to be created
+ */
+export async function getCategoryDescriptionId(
+  apiBaseUrl: string,
+  authHeader: string,
+  categoryId: string,
+  languageId: string,
+  existingDescriptionId?: string | null
+): Promise<string | null> {
+  // If we have existing ID, use it
+  if (existingDescriptionId) {
+    return existingDescriptionId
+  }
+
+  try {
+    // Try to fetch category descriptions for this category
+    // Use categoryExtend to get category with descriptions
+    const categoryUrl = `${apiBaseUrl}/categoryExtend/${categoryId}?full=1`
+    const response = await fetch(categoryUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': authHeader
+      },
+      signal: AbortSignal.timeout(10000)
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      
+      // categoryExtend returns category with nested categoryDescriptions
+      // The structure can be: data.categoryDescriptions or data.response.categoryDescriptions
+      // Or it might be an array directly
+      let descriptions: any[] = []
+      
+      if (Array.isArray(data.categoryDescriptions)) {
+        descriptions = data.categoryDescriptions
+      } else if (data.categoryDescriptions?.items) {
+        descriptions = data.categoryDescriptions.items
+      } else if (data.response?.categoryDescriptions) {
+        descriptions = Array.isArray(data.response.categoryDescriptions) 
+          ? data.response.categoryDescriptions 
+          : data.response.categoryDescriptions.items || []
+      }
+      
+      // Find description for this language
+      for (const desc of descriptions) {
+        // Check if language matches - language can be an object with id/href or just an id string
+        let descLanguageId: string | null = null
+        if (typeof desc.language === 'string') {
+          descLanguageId = desc.language
+        } else if (desc.language?.id) {
+          descLanguageId = desc.language.id
+        } else if (desc.language?.href) {
+          descLanguageId = desc.language.href.split('/').pop() || null
+        }
+        
+        if (descLanguageId === languageId) {
+          if (desc.id) return desc.id
+          if (desc.href) {
+            const parts = desc.href.split('/')
+            return parts[parts.length - 1]
+          }
+        }
+      }
+    }
+
+    // If not found, return null to indicate we need to create it
+    return null
+  } catch (error) {
+    console.error('Error getting category description ID:', error)
+    return null
+  }
+}

@@ -290,6 +290,7 @@ async function updateParentCategoryRelations(supabase: any, connectionId: string
 /**
  * POST /api/connections/[id]/sync-categories
  * Sync categories from ShopRenter to database
+ * If category_id is provided in body, sync only that category
  */
 export async function POST(
   request: NextRequest,
@@ -298,6 +299,17 @@ export async function POST(
   const { id: connectionId } = await params
   
   try {
+    let category_id: string | undefined
+    let forceSync = false
+    try {
+      const body = await request.json().catch(() => ({}))
+      category_id = body?.category_id
+      forceSync = body?.force === true
+    } catch {
+      // Body might be empty, that's OK
+      category_id = undefined
+    }
+
     const cookieStore = await cookies()
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
     const supabase = createServerClient(
@@ -348,10 +360,54 @@ export async function POST(
       apiUrl = `http://${apiUrl}`
     }
 
+    // If category_id is provided, sync only that category
+    if (category_id) {
+      const rateLimiter = getShopRenterRateLimiter()
+      
+      // Fetch category from ShopRenter
+      const categoryUrl = `${apiUrl}/categoryExtend/${category_id}?full=1`
+      
+      const response = await rateLimiter.execute(async () => {
+        return fetch(categoryUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          signal: AbortSignal.timeout(30000)
+        })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error')
+        return NextResponse.json({ 
+          success: false, 
+          error: `Failed to fetch category: ${response.status} - ${errorText.substring(0, 200)}` 
+        }, { status: response.status })
+      }
+
+      const categoryData = await response.json().catch(() => null)
+      if (!categoryData || !categoryData.id) {
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Invalid category data received' 
+        }, { status: 400 })
+      }
+
+      // Sync the single category
+      await syncCategoryToDatabase(supabase, connection, categoryData, shopName, forceSync)
+
+      return NextResponse.json({
+        success: true,
+        message: 'Category synced successfully'
+      })
+    }
+
     // Clear any previous progress
     clearProgress(`categories-${connectionId}`)
 
-    // Start background sync process
+    // Start background sync process for all categories
     processSyncInBackground(
       supabase,
       connection,
