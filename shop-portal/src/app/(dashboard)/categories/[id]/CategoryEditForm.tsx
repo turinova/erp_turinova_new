@@ -80,6 +80,13 @@ export default function CategoryEditForm({ category: initialCategory }: Category
   const [products, setProducts] = useState<any[]>([])
   const [loadingProducts, setLoadingProducts] = useState(false)
   
+  // URL alias state
+  const [urlSlug, setUrlSlug] = useState<string>('')
+  const [categoryUrl, setCategoryUrl] = useState<string | null>(null)
+  const [loadingUrlAlias, setLoadingUrlAlias] = useState(false)
+  const [generatingUrlSlug, setGeneratingUrlSlug] = useState(false)
+  const [originalUrlSlug, setOriginalUrlSlug] = useState<string>('')
+  
   // Meta generation state
   const [generatingMeta, setGeneratingMeta] = useState<{
     name: boolean
@@ -117,6 +124,29 @@ export default function CategoryEditForm({ category: initialCategory }: Category
       loadProducts()
     }
   }, [tabValue, category.id])
+
+  // Load URL alias on mount
+  useEffect(() => {
+    const loadUrlAlias = async () => {
+      try {
+        setLoadingUrlAlias(true)
+        const response = await fetch(`/api/categories/${category.id}/url-alias`)
+        const result = await response.json()
+        
+        if (result.success && result.data) {
+          setUrlSlug(result.data.urlSlug || '')
+          setOriginalUrlSlug(result.data.urlSlug || '')
+          setCategoryUrl(result.data.categoryUrl || null)
+        }
+      } catch (error) {
+        console.error('Error loading URL alias:', error)
+      } finally {
+        setLoadingUrlAlias(false)
+      }
+    }
+    
+    loadUrlAlias()
+  }, [category.id])
 
   const loadCategoryDescriptions = async () => {
     try {
@@ -182,18 +212,33 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         })
       })
 
-      const result = await response.json()
-
-      if (result.success) {
-        toast.success('Kategória sikeresen frissítve ShopRenter-ből!')
-        // Refresh the page to show updated data
-        router.refresh()
-      } else {
-        toast.error(`Frissítés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
+      let result: any = null
+      try {
+        const responseText = await response.text()
+        if (responseText) {
+          result = JSON.parse(responseText)
+        } else {
+          console.warn('Empty response from pull endpoint')
+          throw new Error('Üres válasz érkezett a szervertől')
+        }
+      } catch (parseError: any) {
+        console.error('Failed to parse pull response:', parseError)
+        throw new Error(`Nem sikerült feldolgozni a szerver válaszát: ${parseError.message}`)
       }
-    } catch (error) {
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Frissítés sikertelen')
+      }
+
+      toast.success(result.message || 'Kategória sikeresen frissítve ShopRenter-ből!')
+      if (result.warning) {
+        toast.warning(result.warning)
+      }
+      // Refresh the page to show updated data
+      router.refresh()
+    } catch (error: any) {
       console.error('Error pulling category from ShopRenter:', error)
-      toast.error('Hiba a kategória frissítésekor')
+      toast.error(`Frissítés hiba: ${error.message || 'Ismeretlen hiba'}`)
     } finally {
       setPulling(false)
     }
@@ -206,16 +251,32 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         method: 'POST'
       })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Sync failed')
+      let result: any = null
+      try {
+        const responseText = await response.text()
+        if (responseText) {
+          result = JSON.parse(responseText)
+        } else {
+          console.warn('Empty response from sync endpoint')
+          throw new Error('Üres válasz érkezett a szervertől')
+        }
+      } catch (parseError: any) {
+        console.error('Failed to parse sync response:', parseError)
+        throw new Error(`Nem sikerült feldolgozni a szerver válaszát: ${parseError.message}`)
       }
 
-      const result = await response.json()
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Szinkronizálás sikertelen')
+      }
+
       toast.success(result.message || 'Kategória szinkronizálása sikeres')
+      if (result.warning) {
+        toast.warning(result.warning)
+      }
       router.refresh()
     } catch (error: any) {
-      toast.error(`Szinkronizálás hiba: ${error.message}`)
+      console.error('Error syncing category:', error)
+      toast.error(`Szinkronizálás hiba: ${error.message || 'Ismeretlen hiba'}`)
     } finally {
       setSyncing(false)
     }
@@ -387,6 +448,72 @@ export default function CategoryEditForm({ category: initialCategory }: Category
     }
   }
 
+  const handleGenerateUrlSlug = async () => {
+    try {
+      setGeneratingUrlSlug(true)
+      const response = await fetch(`/api/categories/${category.id}/url-alias/generate`, {
+        method: 'POST'
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        setUrlSlug(result.data.suggestedSlug)
+        setCategoryUrl(result.data.previewUrl)
+        toast.success('AI által generált URL slug betöltve')
+      } else {
+        toast.error(result.error || 'Hiba az AI generálás során')
+      }
+    } catch (error) {
+      console.error('Error generating URL slug:', error)
+      toast.error('Hiba az URL slug generálásakor')
+    } finally {
+      setGeneratingUrlSlug(false)
+    }
+  }
+
+  const handleSaveUrlAlias = async () => {
+    if (!urlSlug.trim()) {
+      toast.error('URL slug megadása kötelező')
+      return
+    }
+
+    try {
+      setLoadingUrlAlias(true)
+      const response = await fetch(`/api/categories/${category.id}/url-alias`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ urlSlug: urlSlug.trim() })
+      })
+      
+      const result = await response.json()
+      
+      if (result.success) {
+        setOriginalUrlSlug(urlSlug.trim())
+        setCategoryUrl(result.data.categoryUrl)
+        toast.success('URL slug sikeresen frissítve! A régi URL automatikusan átirányítja az újat.')
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba az URL slug mentésekor')
+      }
+    } catch (error) {
+      console.error('Error saving URL alias:', error)
+      toast.error('Hiba az URL slug mentésekor')
+    } finally {
+      setLoadingUrlAlias(false)
+    }
+  }
+
+  const handleRestoreOriginalUrl = () => {
+    setUrlSlug(originalUrlSlug)
+    if (originalUrlSlug) {
+      const shopName = categoryUrl?.match(/https?:\/\/([^.]+)/)?.[1] || 'turinovakft'
+      setCategoryUrl(`https://${shopName}.shoprenter.hu/${originalUrlSlug}`)
+    }
+  }
+
   const currentDescription = descriptions.find((d: any) => d.language_id?.includes('hu') || d.language_id === 'hu') || descriptions[0]
 
   return (
@@ -460,12 +587,108 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                 disabled
               />
             </Grid>
+            <Grid item xs={12}>
+              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 3 }}>
+                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                  🌐 SEO URL (slug)
+                </Typography>
+                
+                {loadingUrlAlias && !urlSlug ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={20} />
+                    <Typography variant="body2">URL betöltése...</Typography>
+                  </Box>
+                ) : (
+                  <>
+                    {categoryUrl && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          Jelenlegi URL:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                          {categoryUrl}
+                        </Typography>
+                      </Box>
+                    )}
+                    
+                    <TextField
+                      fullWidth
+                      label="SEO URL (slug)"
+                      value={urlSlug}
+                      onChange={(e) => {
+                        setUrlSlug(e.target.value)
+                        // Update preview URL
+                        if (e.target.value.trim()) {
+                          const shopName = categoryUrl?.match(/https?:\/\/([^.]+)/)?.[1] || 'turinovakft'
+                          setCategoryUrl(`https://${shopName}.shoprenter.hu/${e.target.value.trim()}`)
+                        }
+                      }}
+                      helperText="Az URL slug (pl: konyhai-butorok)"
+                      InputProps={{
+                        endAdornment: (
+                          <Button
+                            size="small"
+                            startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                            onClick={handleGenerateUrlSlug}
+                            disabled={generatingUrlSlug}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {generatingUrlSlug ? '' : 'AI'}
+                          </Button>
+                        )
+                      }}
+                      sx={{ mb: 2 }}
+                    />
+                    
+                    {urlSlug && urlSlug !== originalUrlSlug && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                          Új URL előnézet:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'primary.main' }}>
+                          {categoryUrl || `https://turinovakft.hu/${urlSlug}`}
+                        </Typography>
+                      </Box>
+                    )}
+                    
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Button
+                        variant="contained"
+                        startIcon={loadingUrlAlias ? <CircularProgress size={16} /> : <SaveIcon />}
+                        onClick={handleSaveUrlAlias}
+                        disabled={loadingUrlAlias || !urlSlug.trim() || urlSlug.trim() === originalUrlSlug}
+                      >
+                        {loadingUrlAlias ? 'Mentés...' : 'Mentés'}
+                      </Button>
+                      
+                      {urlSlug !== originalUrlSlug && (
+                        <Button
+                          variant="outlined"
+                          startIcon={<RefreshIcon />}
+                          onClick={handleRestoreOriginalUrl}
+                          disabled={loadingUrlAlias}
+                        >
+                          Eredeti visszaállítása
+                        </Button>
+                      )}
+                    </Box>
+                    
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      <Typography variant="caption">
+                        ✅ URL változtatás után automatikus 301 redirect beállítva a régi URL-ről az újra.
+                      </Typography>
+                    </Alert>
+                  </>
+                )}
+              </Box>
+            </Grid>
             <Grid item xs={12} md={6}>
               <TextField
                 fullWidth
-                label="Kategória URL"
+                label="Kategória URL (read-only)"
                 value={category.category_url || ''}
                 disabled
+                helperText="Ez a mező csak olvasható, a fenti slug mezőből frissül"
               />
             </Grid>
             <Grid item xs={12} md={6}>
