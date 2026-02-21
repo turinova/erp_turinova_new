@@ -20,7 +20,7 @@ import {
   Alert,
   Chip
 } from '@mui/material'
-import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon } from '@mui/icons-material'
+import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import NextLink from 'next/link'
 import type { ProductWithDescriptions } from '@/lib/products-server'
@@ -91,6 +91,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [qualityScore, setQualityScore] = useState<any>(null)
   const [loadingQualityScore, setLoadingQualityScore] = useState(false)
   const [calculatingQualityScore, setCalculatingQualityScore] = useState(false)
+
+  // Categories state
+  const [categories, setCategories] = useState<any[]>([])
+  const [loadingCategories, setLoadingCategories] = useState(false)
 
   // Meta generation state
   const [generatingMeta, setGeneratingMeta] = useState<{
@@ -408,6 +412,27 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
     
     loadQualityScore()
+  }, [product.id])
+
+  // Load categories
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        setLoadingCategories(true)
+        const response = await fetch(`/api/products/${product.id}/categories`)
+        const result = await response.json()
+        
+        if (result.categories) {
+          setCategories(result.categories)
+        }
+      } catch (error) {
+        console.error('Error loading categories:', error)
+      } finally {
+        setLoadingCategories(false)
+      }
+    }
+    
+    loadCategories()
   }, [product.id])
 
   // Calculate quality score
@@ -977,6 +1002,75 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       </Box>
                     </Box>
                   )}
+                </Box>
+              </Grid>
+            )}
+            {/* Categories Display */}
+            {!loadingCategories && categories.length > 0 && (
+              <Grid item xs={12}>
+                <Box sx={{ 
+                  p: 1.5, 
+                  bgcolor: 'background.default', 
+                  border: '1px solid', 
+                  borderColor: 'divider',
+                  borderRadius: 1
+                }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <CategoryIcon fontSize="small" color="primary" />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      Kategóriák ({categories.length})
+                    </Typography>
+                  </Box>
+                  
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {categories.map((category: any) => {
+                      const catName = category.shoprenter_category_descriptions?.[0]?.name || category.name || 'Kategória'
+                      const catUrl = category.category_url
+                      
+                      return (
+                        <Chip
+                          key={category.id}
+                          label={catName}
+                          size="small"
+                          sx={{ 
+                            height: '28px',
+                            fontSize: '0.75rem',
+                            '&:hover': { bgcolor: 'action.hover' }
+                          }}
+                          icon={catUrl ? <OpenInNewIcon fontSize="small" /> : undefined}
+                          onClick={catUrl ? () => window.open(catUrl, '_blank') : undefined}
+                          component={catUrl ? 'a' : 'div'}
+                          href={catUrl || undefined}
+                          target={catUrl ? '_blank' : undefined}
+                          rel={catUrl ? 'noopener noreferrer' : undefined}
+                          clickable={!!catUrl}
+                          variant="outlined"
+                          color="primary"
+                        />
+                      )
+                    })}
+                  </Box>
+                  
+                  {categories.some((cat: any) => !cat.category_url) && (
+                    <Alert severity="info" sx={{ mt: 1.5, fontSize: '0.75rem' }}>
+                      Néhány kategóriának nincs URL-je. Az AI generálás csak azokhoz a kategóriákhoz ad hivatkozást, amelyeknek van URL-je.
+                    </Alert>
+                  )}
+                </Box>
+              </Grid>
+            )}
+            {!loadingCategories && categories.length === 0 && (
+              <Grid item xs={12}>
+                <Alert severity="warning" sx={{ fontSize: '0.875rem' }}>
+                  Ez a termék nincs kategóriákhoz rendelve. A termék szinkronizálása után a kategóriák automatikusan megjelennek itt.
+                  Az AI generálás csak akkor ad hivatkozásokat, ha a termékhez kategóriák vannak rendelve.
+                </Alert>
+              </Grid>
+            )}
+            {loadingCategories && (
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress size={24} />
                 </Box>
               </Grid>
             )}

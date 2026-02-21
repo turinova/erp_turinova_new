@@ -251,9 +251,11 @@ async function findRelevantChunks(
 }
 
 /**
- * Build context from source materials, chunks, search queries, and competitor insights
+ * Build context from source materials, chunks, search queries, competitor insights, and categories
+ * Returns context string and metadata about categories/products for linking
  */
-function buildContext(
+async function buildContext(
+  supabase: any,
   product: any,
   sourceMaterials: any[],
   relevantChunks: any[],
@@ -265,11 +267,136 @@ function buildContext(
     commonBenefits: string[]
     contentStructureInsights: string[]
   } | null
-): string {
+): Promise<{ context: string; categories: any[]; relatedProducts: any[] }> {
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
   context += `- Name: ${product.name || 'N/A'}\n`
-  context += `- Category: ${product.category || 'N/A'}\n`
+  
+  // Get product categories for internal linking
+  const { data: categoryRelations, error: categoryError } = await supabase
+    .from('shoprenter_product_category_relations')
+    .select(`
+      shoprenter_categories(
+        id,
+        name,
+        url_slug,
+        category_url,
+        shoprenter_category_descriptions(name, description)
+      )
+    `)
+    .eq('product_id', product.id)
+    .is('deleted_at', null)
+  
+  if (categoryError) {
+    console.warn(`[AI GENERATION] Error fetching categories for product ${product.sku}:`, categoryError)
+  }
+  
+  const categories = (categoryRelations || [])
+    .map(rel => rel.shoprenter_categories)
+    .filter(Boolean)
+  
+  console.log(`[AI GENERATION] Found ${categories.length} categories for product ${product.sku}`)
+  
+  let relatedProducts: any[] = []
+  
+  if (categories.length > 0) {
+    context += `- Categories: ${categories.map((c: any) => c.name || 'N/A').join(', ')}\n`
+    
+    context += `\n\n=== PRODUCT CATEGORIES (MANDATORY FOR INTERNAL LINKING) ===\n`
+    context += `**YOU MUST INCLUDE INTERNAL LINKS TO THESE CATEGORIES IN YOUR DESCRIPTION**\n\n`
+    categories.forEach((cat: any, index: number) => {
+      const catName = cat.shoprenter_category_descriptions?.[0]?.name || cat.name || 'Kategória'
+      const catUrl = cat.category_url || (cat.url_slug ? `https://shopname.shoprenter.hu/${cat.url_slug}` : null)
+      const catDescription = cat.shoprenter_category_descriptions?.[0]?.description || ''
+      
+      context += `Category ${index + 1}: ${catName}\n`
+      if (catUrl) {
+        context += `  → URL: ${catUrl}\n`
+        context += `  → Slug: ${cat.url_slug || 'N/A'}\n`
+      } else {
+        context += `  → WARNING: No URL available for this category\n`
+      }
+      if (catDescription) {
+        context += `  → Description: ${catDescription.substring(0, 300)}...\n`
+      }
+      context += `\n`
+    })
+    context += `**MANDATORY INSTRUCTIONS FOR CATEGORY LINKS:**\n`
+    context += `- You MUST include 2-4 internal links to these categories in your description\n`
+    context += `- Links MUST use the exact URLs provided above (format: <a href="EXACT_URL">Category Name</a>)\n`
+    context += `- Links should appear naturally in the text, not as a list\n`
+    context += `- Examples: "További információ a [Category Name] kategóriában", "Részletek: [Category Name]", "Nézd meg a [Category Name] kategóriát"\n`
+    context += `- DO NOT skip adding these links - they are required for SEO\n\n`
+    
+    // Get related products from the same categories (for context and potential linking)
+    const categoryIds = categories.map((c: any) => c.id).filter(Boolean)
+    if (categoryIds.length > 0) {
+      const { data: relatedProductRelations } = await supabase
+        .from('shoprenter_product_category_relations')
+        .select(`
+          shoprenter_products!inner(
+            id,
+            sku,
+            name,
+            product_url,
+            status,
+            shoprenter_product_descriptions(name, description)
+          )
+        `)
+        .in('category_id', categoryIds)
+        .neq('product_id', product.id) // Exclude current product
+        .is('deleted_at', null)
+        .is('shoprenter_products.deleted_at', null)
+        .eq('shoprenter_products.status', 1) // Only active products
+        .limit(10) // Limit to 10 related products for context
+      
+      relatedProducts = (relatedProductRelations || [])
+        .map(rel => rel.shoprenter_products)
+        .filter(Boolean)
+        .filter((p: any) => p.id !== product.id) // Double-check exclude current product
+      
+      if (relatedProducts.length > 0) {
+        console.log(`[AI GENERATION] Found ${relatedProducts.length} related products for product ${product.sku}`)
+        
+        context += `\n\n=== RELATED PRODUCTS IN SAME CATEGORIES (FOR CONTEXT AND LINKING) ===\n`
+        context += `These are other products in the same categories. Use this knowledge to:\n`
+        context += `- Understand the product category better\n`
+        context += `- Mention related/complementary products naturally\n`
+        context += `- **ADD INTERNAL LINKS to related products when contextually relevant**\n\n`
+        
+        relatedProducts.slice(0, 10).forEach((relatedProduct: any, index: number) => {
+          const prodName = relatedProduct.shoprenter_product_descriptions?.[0]?.name || relatedProduct.name || relatedProduct.sku
+          const prodUrl = relatedProduct.product_url
+          const prodSku = relatedProduct.sku
+          
+          context += `Related Product ${index + 1}: ${prodName} (SKU: ${prodSku})\n`
+          if (prodUrl) {
+            context += `  → URL: ${prodUrl}\n`
+          } else {
+            context += `  → WARNING: No URL available for this product\n`
+          }
+          if (relatedProduct.shoprenter_product_descriptions?.[0]?.description) {
+            context += `  → Description preview: ${relatedProduct.shoprenter_product_descriptions[0].description.substring(0, 150)}...\n`
+          }
+          context += `\n`
+        })
+        
+        context += `**INSTRUCTIONS FOR RELATED PRODUCT LINKS:**\n`
+        context += `- When mentioning complementary products or alternatives, ADD INTERNAL LINKS (1-3 links recommended)\n`
+        context += `- Links MUST use exact product URLs provided above (format: <a href="EXACT_URL">Product Name</a>)\n`
+        context += `- Examples: "Hasonló termékek: [link]", "Kiegészítő termékek: [link]", "Alternatív megoldások: [link]"\n`
+        context += `- Links should be contextually relevant and add value to the reader\n`
+        context += `- DO NOT skip adding product links when they make sense contextually\n\n`
+      } else {
+        console.log(`[AI GENERATION] No related products found for product ${product.sku}`)
+      }
+    }
+  } else {
+    context += `- Category: N/A\n`
+    console.warn(`[AI GENERATION] No categories found for product ${product.sku} - internal links will not be available`)
+    context += `\nNOTE: No product categories found. Internal category links cannot be added.\n`
+    context += `To enable internal linking, ensure product-category relations are synced from ShopRenter.\n\n`
+  }
 
   if (sourceMaterials.length > 0) {
     context += `\n\nSOURCE MATERIALS PROVIDED:\n`
@@ -367,7 +494,7 @@ function buildContext(
     context += `- Incorporate phrases naturally - don't keyword stuff\n\n`
   }
 
-  return context
+  return { context, categories: categories || [], relatedProducts: relatedProducts || [] }
 }
 
 /**
@@ -626,8 +753,8 @@ export async function generateProductDescription(
       // Continue without competitor insights
     }
 
-    // 6. Build context
-    const context = buildContext(product, sourceMaterials, relevantChunks, queriesToUse, competitorContentInsights)
+    // 6. Build context (now async to fetch categories)
+    const { context, categories, relatedProducts } = await buildContext(supabase, product, sourceMaterials, relevantChunks, queriesToUse, competitorContentInsights)
 
     // 7. Build prompts with product type awareness
     const systemPrompt = `You are an expert product copywriter specializing in creating authentic, 
@@ -761,6 +888,37 @@ OTHER CRITICAL INSTRUCTIONS:
 11. **MANDATORY: Write ONLY in Hungarian - no English, no mixed languages**
 12. Use rhetorical questions naturally: "Mire figyeljünk?" "Miért válasszuk ezt?"
 13. Include personal voice elements: "én", "mi", "tapasztalat" occasionally
+
+CRITICAL: INTERNAL LINKING REQUIREMENTS (MANDATORY):
+**YOU MUST INCLUDE INTERNAL LINKS IN YOUR DESCRIPTION WHEN CATEGORIES OR RELATED PRODUCTS ARE PROVIDED**
+
+1. **Category Links (MANDATORY when categories are provided):**
+   - You MUST include 2-4 internal links to related categories
+   - Use format: <a href="EXACT_CATEGORY_URL">Category Name</a>
+   - Links should be contextually relevant (e.g., "Részletek a [Category Name] kategóriában", "További információ: [Category Name]")
+   - Links MUST use the exact URLs provided in the context above
+   - DO NOT skip category links - they are required for SEO
+   - Links should appear naturally in paragraphs, not as a list
+
+2. **Product Links (RECOMMENDED when related products are provided):**
+   - Include 1-3 internal links to related/complementary products when contextually relevant
+   - Product link format: <a href="EXACT_PRODUCT_URL">Product Name</a>
+   - Product links should be natural (e.g., "Hasonló termékek: [link]", "Kiegészítő termékek: [link]", "Alternatív megoldások: [link]")
+   - Links MUST use the exact product URLs provided in the context above
+   - Only add product links when they make contextual sense
+
+3. **Link Placement:**
+   - Links should appear naturally in the text, not as a separate list
+   - Integrate links into sentences and paragraphs
+   - Balance category links and product links - don't use all of one type
+   - Place links where they add value to the reader
+
+4. **URL Format:**
+   - Use EXACT URLs as provided in the context (do not modify or construct URLs)
+   - If a URL is provided, use it exactly as shown
+   - If no URL is provided for a category/product, skip linking to that item
+
+**REMINDER: Internal linking is critical for SEO. When categories or related products are provided in the context, you MUST include links to them in your description.**
 
 CRITICAL: COMPLETION REQUIREMENTS:
 1. **ALWAYS complete the description fully** - never cut off mid-sentence or mid-section
@@ -983,7 +1141,23 @@ ${generationInstructions}
 
 These instructions override or supplement the standard requirements above. Pay special attention to these custom instructions when generating the description.` : ''}
 
-Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <li> tags), written entirely in Hungarian, nothing else.`
+**FINAL REMINDER - INTERNAL LINKING:**
+${categories.length > 0 ? `
+- You MUST include 2-4 internal links to the categories provided above
+- Use the exact category URLs from the context
+- Links should appear naturally in your description
+- DO NOT skip adding category links - they are required
+` : ''}
+${relatedProducts && relatedProducts.length > 0 ? `
+- You SHOULD include 1-3 internal links to related products when contextually relevant
+- Use the exact product URLs from the context
+- Links should appear naturally when mentioning complementary products
+` : ''}
+${categories.length === 0 && (!relatedProducts || relatedProducts.length === 0) ? `
+- No categories or related products available for internal linking
+` : ''}
+
+Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <li>, <a> tags), written entirely in Hungarian, nothing else.`
 
     // 8. Generate description using Claude
     // Verify API key is set

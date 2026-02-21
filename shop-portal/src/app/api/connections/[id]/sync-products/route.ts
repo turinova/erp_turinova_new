@@ -1184,6 +1184,39 @@ async function syncProductToDatabase(
             descriptions = [descData]
           }
 
+          // FIRST: Extract product name from descriptions (before smart sync check)
+          let productNameToUpdate: string | null = null
+          for (const desc of descriptions) {
+            // Determine language code - handle multiple formats
+            let languageCode = 'hu' // Default
+            if (desc.language?.innerId) {
+              languageCode = desc.language.innerId === '1' || desc.language.innerId === 1 ? 'hu' : 'en'
+            } else if (desc.language?.id) {
+              languageCode = 'hu'
+            }
+            
+            // Extract name - prefer Hungarian, fallback to any language
+            if (desc.name && desc.name.trim()) {
+              if (languageCode === 'hu') {
+                productNameToUpdate = desc.name.trim()
+                break // Hungarian found, use it
+              } else if (!productNameToUpdate) {
+                // Fallback to first available name
+                productNameToUpdate = desc.name.trim()
+              }
+            }
+          }
+          
+          // Update product name immediately (before smart sync checks)
+          if (productNameToUpdate) {
+            await supabase
+              .from('shoprenter_products')
+              .update({ name: productNameToUpdate })
+              .eq('id', dbProduct.id)
+            console.log(`[SYNC] Updated product name for ${product.sku}: ${productNameToUpdate}`)
+          }
+
+          // NOW process descriptions (with smart sync)
           for (const desc of descriptions) {
             // Determine language code - handle multiple formats
             let languageCode = 'hu' // Default
@@ -1228,15 +1261,7 @@ async function syncProductToDatabase(
               shoprenter_id: desc.id || null
             }
 
-            // Update product name if it's Hungarian
-            if (descDataToSave.language_code === 'hu' && descDataToSave.name) {
-              await supabase
-                .from('shoprenter_products')
-                .update({ name: descDataToSave.name })
-                .eq('id', dbProduct.id)
-            }
-
-            // Upsert description
+            // Upsert description (name already updated above)
             if (existingDesc) {
               await supabase
                 .from('shoprenter_product_descriptions')
@@ -1257,6 +1282,40 @@ async function syncProductToDatabase(
 
     // If productDescriptions is an array (from productExtend)
     if (Array.isArray(product.productDescriptions)) {
+      // FIRST: Extract product name from descriptions (before smart sync check)
+      let productNameToUpdate: string | null = null
+      
+      for (const desc of product.productDescriptions) {
+        // Determine language code
+        let languageCode = 'hu' // Default
+        if (desc.language?.innerId) {
+          languageCode = desc.language.innerId === '1' || desc.language.innerId === 1 ? 'hu' : 'en'
+        } else if (desc.language?.id) {
+          languageCode = 'hu'
+        }
+        
+        // Extract name - prefer Hungarian, fallback to any language
+        if (desc.name && desc.name.trim()) {
+          if (languageCode === 'hu') {
+            productNameToUpdate = desc.name.trim()
+            break // Hungarian found, use it
+          } else if (!productNameToUpdate) {
+            // Fallback to first available name
+            productNameToUpdate = desc.name.trim()
+          }
+        }
+      }
+      
+      // Update product name immediately (before smart sync checks)
+      if (productNameToUpdate) {
+        await supabase
+          .from('shoprenter_products')
+          .update({ name: productNameToUpdate })
+          .eq('id', dbProduct.id)
+        console.log(`[SYNC] Updated product name for ${product.sku}: ${productNameToUpdate}`)
+      }
+      
+      // NOW process descriptions (with smart sync)
       for (const desc of product.productDescriptions) {
         // Determine language code
         let languageCode = 'hu' // Default
@@ -1300,13 +1359,7 @@ async function syncProductToDatabase(
           shoprenter_id: desc.id || null
         }
 
-        if (descDataToSave.language_code === 'hu' && descDataToSave.name) {
-          await supabase
-            .from('shoprenter_products')
-            .update({ name: descDataToSave.name })
-            .eq('id', dbProduct.id)
-        }
-
+        // Upsert description (name already updated above)
         if (existingDesc) {
           await supabase
             .from('shoprenter_product_descriptions')
@@ -1428,6 +1481,130 @@ async function syncProductToDatabase(
     } catch (imageError: any) {
       // Don't fail the entire sync if image extraction fails
       console.warn(`[SYNC] Failed to extract/store images for product ${product.sku}:`, imageError?.message || imageError)
+    }
+
+    // Sync product-category relations
+    try {
+      if (product.productCategoryRelations && Array.isArray(product.productCategoryRelations) && product.productCategoryRelations.length > 0) {
+        console.log(`[SYNC] Processing ${product.productCategoryRelations.length} product-category relations for product ${product.sku}`)
+        
+        for (const relation of product.productCategoryRelations) {
+          try {
+            // Extract IDs from hrefs
+            const productShopRenterId = relation.product?.href?.match(/\/products\/([^\/\?]+)/)?.[1] || 
+                                       relation.product?.id || 
+                                       product.id // Fallback to current product ID
+            
+            const categoryShopRenterId = relation.category?.href?.match(/\/categories\/([^\/\?]+)/)?.[1] || 
+                                        relation.category?.id || 
+                                        null
+            
+            if (!categoryShopRenterId) {
+              console.warn(`[SYNC] Skipping product-category relation for product ${product.sku}: missing category ID`)
+              continue
+            }
+
+            // Find category in database
+            const { data: categoryInDb } = await supabase
+              .from('shoprenter_categories')
+              .select('id')
+              .eq('connection_id', connection.id)
+              .eq('shoprenter_id', categoryShopRenterId)
+              .is('deleted_at', null)
+              .single()
+
+            if (!categoryInDb) {
+              console.warn(`[SYNC] Category ${categoryShopRenterId} not found in database for product ${product.sku} relation. Category may need to be synced first.`)
+              continue
+            }
+
+            // Prepare relation data
+            const relationData = {
+              connection_id: connection.id,
+              shoprenter_id: relation.id || `${productShopRenterId}-${categoryShopRenterId}`,
+              product_id: dbProduct.id,
+              category_id: categoryInDb.id,
+              product_shoprenter_id: productShopRenterId,
+              category_shoprenter_id: categoryShopRenterId,
+              deleted_at: null
+            }
+
+            // Check if relation exists
+            const { data: existingRelation } = await supabase
+              .from('shoprenter_product_category_relations')
+              .select('id')
+              .eq('connection_id', connection.id)
+              .eq('shoprenter_id', relationData.shoprenter_id)
+              .single()
+
+            if (existingRelation) {
+              // Update existing relation
+              const { error: updateError } = await supabase
+                .from('shoprenter_product_category_relations')
+                .update({
+                  product_id: relationData.product_id,
+                  category_id: relationData.category_id,
+                  product_shoprenter_id: relationData.product_shoprenter_id,
+                  category_shoprenter_id: relationData.category_shoprenter_id,
+                  deleted_at: null
+                })
+                .eq('id', existingRelation.id)
+
+              if (updateError) {
+                console.error(`[SYNC] Failed to update product-category relation for product ${product.sku}:`, updateError)
+              } else {
+                console.log(`[SYNC] Updated product-category relation: product ${product.sku} -> category ${categoryShopRenterId}`)
+              }
+            } else {
+              // Try to find by product_id + category_id (unique constraint)
+              const { data: existingByProductCategory } = await supabase
+                .from('shoprenter_product_category_relations')
+                .select('id')
+                .eq('product_id', dbProduct.id)
+                .eq('category_id', categoryInDb.id)
+                .single()
+
+              if (existingByProductCategory) {
+                // Update existing relation by product+category
+                const { error: updateError } = await supabase
+                  .from('shoprenter_product_category_relations')
+                  .update({
+                    shoprenter_id: relationData.shoprenter_id,
+                    product_shoprenter_id: relationData.product_shoprenter_id,
+                    category_shoprenter_id: relationData.category_shoprenter_id,
+                    deleted_at: null
+                  })
+                  .eq('id', existingByProductCategory.id)
+
+                if (updateError) {
+                  console.error(`[SYNC] Failed to update product-category relation (by product+category) for product ${product.sku}:`, updateError)
+                } else {
+                  console.log(`[SYNC] Updated product-category relation (by product+category): product ${product.sku} -> category ${categoryShopRenterId}`)
+                }
+              } else {
+                // Insert new relation
+                const { error: insertError } = await supabase
+                  .from('shoprenter_product_category_relations')
+                  .insert(relationData)
+
+                if (insertError) {
+                  console.error(`[SYNC] Failed to insert product-category relation for product ${product.sku}:`, insertError)
+                } else {
+                  console.log(`[SYNC] Inserted product-category relation: product ${product.sku} -> category ${categoryShopRenterId}`)
+                }
+              }
+            }
+          } catch (relationError: any) {
+            console.warn(`[SYNC] Error processing product-category relation for product ${product.sku}:`, relationError?.message || relationError)
+            // Continue with next relation
+          }
+        }
+      } else {
+        console.log(`[SYNC] No product-category relations found for product ${product.sku}`)
+      }
+    } catch (relationSyncError: any) {
+      // Don't fail the entire sync if relation sync fails
+      console.warn(`[SYNC] Failed to sync product-category relations for product ${product.sku}:`, relationSyncError?.message || relationSyncError)
     }
 
   } catch (error) {

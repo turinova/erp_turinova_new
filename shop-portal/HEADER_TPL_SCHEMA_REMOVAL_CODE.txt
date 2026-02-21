@@ -1,0 +1,809 @@
+{% if section.settings.status %}
+    {# ============================================
+       ENHANCED STRUCTURED DATA - MUST BE FIRST
+       This code removes ShopRenter's default schema
+       and injects our enhanced schema from API
+       ============================================ #}
+    <script type="application/ld+json" id="enhanced-structured-data"></script>
+    <script>
+    (function() {
+        'use strict';
+        
+        const API_URL = 'https://shop.turinova.hu';
+        let schemaReplaced = false;
+        let removalObserver = null;
+        let injectionObserver = null;
+        
+        /**
+         * Check if a script contains Product or ProductGroup schema
+         */
+        function isProductSchema(script) {
+            // Skip our enhanced schema
+            if (script.id === 'enhanced-structured-data' || script.hasAttribute('data-enhanced')) {
+                return false;
+            }
+            
+            try {
+                const content = script.textContent || script.innerHTML || '';
+                if (!content.trim()) {
+                    return false;
+                }
+                
+                const data = JSON.parse(content);
+                return data['@type'] === 'Product' || data['@type'] === 'ProductGroup';
+            } catch(e) {
+                // If it's not valid JSON, check if it looks like a product schema
+                const content = (script.textContent || script.innerHTML || '').toLowerCase();
+                return content.includes('"@type":"product') || content.includes('"@type":"productgroup');
+            }
+        }
+        
+        /**
+         * Aggressively remove ALL Product/ProductGroup schemas except ours
+         */
+        function removeShopRenterSchemas() {
+            // Check both head and body
+            const containers = [document.head, document.body].filter(Boolean);
+            let removedCount = 0;
+            
+            containers.forEach(function(container) {
+                if (!container) return;
+                
+                // Use querySelectorAll to find all JSON-LD scripts
+                const scripts = container.querySelectorAll('script[type="application/ld+json"]');
+                
+                for (let i = 0; i < scripts.length; i++) {
+                    const script = scripts[i];
+                    
+                    // Skip our enhanced schema
+                    if (script.id === 'enhanced-structured-data' || script.hasAttribute('data-enhanced')) {
+                        continue;
+                    }
+                    
+                    // Check if it's a Product/ProductGroup schema
+                    if (isProductSchema(script)) {
+                        script.remove();
+                        removedCount++;
+                        console.log('[Enhanced Schema] Removed ShopRenter schema');
+                    }
+                }
+            });
+            
+            return removedCount;
+        }
+        
+        /**
+         * Set up continuous monitoring to prevent ShopRenter schemas from being added
+         */
+        function setupContinuousMonitoring() {
+            // Stop existing observers
+            if (removalObserver) {
+                removalObserver.disconnect();
+            }
+            if (injectionObserver) {
+                injectionObserver.disconnect();
+            }
+            
+            // Observer for removing schemas that get added
+            removalObserver = new MutationObserver(function(mutations) {
+                if (!schemaReplaced) {
+                    const removed = removeShopRenterSchemas();
+                    if (removed > 0) {
+                        console.log('[Enhanced Schema] Removed', removed, 'ShopRenter schema(s) via MutationObserver');
+                    }
+                }
+            });
+            
+            // Observer specifically for script tag additions
+            injectionObserver = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    mutation.addedNodes.forEach(function(node) {
+                        if (node.nodeType === 1 && node.tagName === 'SCRIPT') {
+                            if (node.type === 'application/ld+json' && isProductSchema(node)) {
+                                // Immediately remove if it's a Product schema
+                                if (node.id !== 'enhanced-structured-data' && !node.hasAttribute('data-enhanced')) {
+                                    node.remove();
+                                    console.log('[Enhanced Schema] Prevented ShopRenter schema injection');
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+            
+            // Observe head and body for changes
+            if (document.head) {
+                removalObserver.observe(document.head, { 
+                    childList: true, 
+                    subtree: true,
+                    characterData: true
+                });
+                injectionObserver.observe(document.head, { 
+                    childList: true 
+                });
+            }
+            
+            if (document.body) {
+                removalObserver.observe(document.body, { 
+                    childList: true, 
+                    subtree: true,
+                    characterData: true
+                });
+                injectionObserver.observe(document.body, { 
+                    childList: true 
+                });
+            }
+        }
+        
+        /**
+         * Main function to fetch and inject our enhanced schema
+         */
+        function replaceSchema() {
+            if (schemaReplaced) {
+                return;
+            }
+            
+            // Always remove ShopRenter schemas first
+            removeShopRenterSchemas();
+            
+            // Check if ShopRenter is available
+            if (typeof ShopRenter === 'undefined' || !ShopRenter.product || !ShopRenter.product.sku) {
+                // Retry after short delay
+                setTimeout(replaceSchema, 100);
+                return;
+            }
+            
+            const sku = ShopRenter.product.sku;
+            
+            // Fetch enhanced structured data
+            fetch(API_URL + '/api/shoprenter/structured-data/' + encodeURIComponent(sku) + '.jsonld')
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(jsonLd) {
+                    // Remove ShopRenter schemas again (in case they were added during fetch)
+                    removeShopRenterSchemas();
+                    
+                    // Get or create our schema script tag
+                    let script = document.getElementById('enhanced-structured-data');
+                    if (!script) {
+                        script = document.createElement('script');
+                        script.type = 'application/ld+json';
+                        script.id = 'enhanced-structured-data';
+                        script.setAttribute('data-enhanced', 'true');
+                        
+                        // Insert at the beginning of head for priority
+                        const head = document.head || document.getElementsByTagName('head')[0];
+                        if (head) {
+                            head.insertBefore(script, head.firstChild);
+                        } else if (document.body) {
+                            document.body.insertBefore(script, document.body.firstChild);
+                        }
+                    }
+                    
+                    // Inject our enhanced schema
+                    if (jsonLd) {
+                        script.textContent = JSON.stringify(jsonLd);
+                        schemaReplaced = true;
+                        console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku);
+                        
+                        // Final cleanup - remove any remaining ShopRenter schemas
+                        setTimeout(removeShopRenterSchemas, 100);
+                    }
+                })
+                .catch(function(error) {
+                    console.error('[Enhanced Schema] ❌ Failed to load:', error);
+                });
+        }
+        
+        /**
+         * Initialize - run immediately
+         */
+        function init() {
+            // Remove any existing schemas immediately
+            removeShopRenterSchemas();
+            
+            // Set up continuous monitoring
+            if (typeof MutationObserver !== 'undefined') {
+                setupContinuousMonitoring();
+            }
+            
+            // Start trying to replace schema
+            replaceSchema();
+        }
+        
+        // Run IMMEDIATELY, even before DOM is ready
+        if (document.readyState === 'loading') {
+            // Run immediately
+            init();
+            
+            // Also run when DOM is ready
+            document.addEventListener('DOMContentLoaded', function() {
+                init();
+                setupContinuousMonitoring();
+            });
+        } else {
+            // DOM already ready
+            init();
+        }
+        
+        // Keep trying with delays to catch late-loading schemas
+        setTimeout(init, 100);
+        setTimeout(init, 500);
+        setTimeout(init, 1000);
+        setTimeout(init, 2000);
+        setTimeout(init, 3000);
+        
+        // Also monitor window load event
+        window.addEventListener('load', function() {
+            removeShopRenterSchemas();
+            replaceSchema();
+        });
+        
+    })();
+    </script>
+    
+    {{ language('common/header') }}
+    {{ 'header.css' | asset_url | stylesheet_tag }}
+    {% set categorySettings = config.getConfigByGroup('category') %}
+    {% set categoryModuleShowName =  categorySettings['show_name'] %}
+    {% set categoryModuleName = 'view_name|' ~ language.getActId() %}
+
+    <header class="header d-grid align-items-center{% if not categoryModuleShowName %} hamburger-icon-without-title{% endif %}{% if section.settings.sticky_header_status %} js-sticky-header--active{% endif %}">
+        {% if viewHelper.isPositionEmpty('header-top') %}
+            <div id="js-header-top-element" class="header-top-element header-top-position__container">
+                {{ viewHelper.loadPosition('header-top') }}
+            </div>
+        {% endif %}
+        <div id="js-header-element" class="container header-container">
+            <div class="header-row d-flex flex-wrap align-items-center justify-content-between">
+                {% if config.get('category_status') %}
+                <div id="js-mobile-navbar" class="header-height-70 d-flex d-lg-none align-items-center header-mobile-navbar">
+                    <button id="hamburger-button-desktop"
+                            class="js-hamburger-trigger header-hamburger-button btn position-relative d-flex justify-content-start align-items-center"
+                            aria-label="{% if categoryModuleShowName and categorySettings[categoryModuleName] is defined %} {{ categorySettings[categoryModuleName] }} {% else %} {{button_accessibility_mobile_menu|trans}} {% endif %}"
+                            aria-haspopup="dialog"
+                            aria-controls="js-mobile-nav"
+                    >
+                            <span class="hamburger-icon position-relative">
+                                {% include "snippets/icon_hamburger.tpl" %}
+                            </span>
+                    </button>
+                </div>
+                {% endif %}
+                <a href="/" class="header-logo header-height-100 d-flex align-items-center header-global-on-color" title="{{ text_home|trans }}">
+                    {% if 'no_image' in (section.settings.logo_image) %}
+                        <span class="animate-underline-link header-logo-name">
+                            {{ shop.title }}
+                        </span>
+                    {% else %}
+                        {{ section.settings.logo_image | image_url(width = section.settings.logo_width, height = section.settings.logo_height) | image_tag(
+                            width = section.settings.logo_width,
+                            height = section.settings.logo_height,
+                            class = "header-logo-img",
+                            alt = text_home|trans )
+                        }}
+                    {% endif %}
+                </a>
+                {% if section.settings.show_search %}
+                    <div class="dropdown search-module d-flex header-navbar-top-right-item" role="search">
+                        <div class="input-group">
+                            <input class="search-module__input form-control form-control-lg disableAutocomplete"
+                                   type="search"
+                                   placeholder="{{ text_keyword|trans }}"
+                                   autocomplete="off"
+                                   value=""
+                                   id="filter_keyword"
+                                   aria-label="{{ 'text_accessibility_search_input'|trans }}"
+                                   role="combobox"
+                                   aria-controls="results"
+                                   aria-expanded="false"
+                            />
+                            <span class="search-button-append position-absolute d-flex h-100">
+                                    <button class="btn header-search-button" type="button" onclick="moduleSearch();" aria-label="{{ 'button_accessibility_search'|trans }}">
+                                        {{ include('snippets/icon_search.tpl') }}
+                                    </button>
+                                </span>
+                        </div>
+                        <input type="hidden" id="filter_description" value="{{ section.settings.search_description ? 1 : 0 }}"/>
+                        <input type="hidden" id="search_shopname" value="{{ shop.name }}"/>
+                        <div role="status"
+                             aria-live="polite"
+                             aria-atomic="true"
+                             class="visually-hidden"
+                             id="js-search-autosuggest-feedback"
+                        ></div>
+                        <div id="results" class="dropdown-menu search-results"></div>
+                    </div>
+                {% endif %}
+                {% if config.get('wishlist_status') %}
+                    {% set wishlistSettings = config.getConfigByGroup('wishlist') %}
+                    {% set wishlistModuleShowName =  wishlistSettings['show_name'] %}
+                    {% set wishlistModuleName = 'view_name|' ~ language.getActId() %}
+
+                    <div id="header-wishlist" class="header-box-icon header-height-100 d-flex align-items-center justify-content-center{% if wishlistModuleShowName %} header-wishlist-module-name-active{% endif %}">
+                            <span class="header-wishlist-icon header-global-on-color position-absolute">
+                                {{ include('snippets/icon_header_wishlist.tpl') }}
+                            </span>
+                            {% if wishlistModuleShowName %}
+                                {% if wishlistSettings[wishlistModuleName] is defined %}
+                                    <span class="header-wishlist-title d-none d-lg-flex align-items-center justify-content-center" aria-hidden="true">{{ wishlistSettings[wishlistModuleName] }}</span>
+                                {% endif %}
+                            {% endif %}
+                        {{ viewHelper.loadModule('module/wishlist') }}
+                        <style>
+                            .js-add-to-wishlist .icon-heart {
+                                transition: opacity 0.3s, color 0.3s;
+                            }
+
+                            .icon-heart__filled {
+                                opacity: 0;
+                                position: absolute;
+                                left: 0;
+                            }
+
+                            .js-product-on-wishlist .icon-heart__unfilled {
+                                opacity: 0;
+                            }
+
+                            .js-product-on-wishlist .icon-heart__filled {
+                                opacity: 1;
+                            }
+                        </style>
+                    </div>
+                {% endif %}
+                {% if section.settings.show_phone or section.settings.show_mail %}
+                    {% set header_phone = section.settings.custom_phone ? section.settings.custom_phone : config.get('config_telephone') %}
+                    {% set header_mail = section.settings.custom_mail ? section.settings.custom_mail : config.get('config_email') %}
+                    <div class="header-contact-wrapper header-height-100 d-none d-lg-flex align-items-center">
+                        <div class="header-contact-wrapper-left header-global-on-color">
+                            <span>{{ include('snippets/icon_contact.tpl') }}</span>
+                        </div>
+                        <div class="header-contact-wrapper-right">
+                            {% if section.settings.show_phone %}
+                                <a class="header-contact-link header-contact-phone-link header-global-on-color animate-underline-link" href="tel:{{ header_phone }}">{{ header_phone }}</a>
+                            {% endif %}
+                            {% if section.settings.show_mail %}
+                                <a class="header-contact-link header-contact-mail-link header-global-on-color animate-underline-link" href="mailto:{{ header_mail }}">{{ header_mail }}</a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endif %}
+                {% if section.settings.show_login %}
+                    {% if config.get('config_checkout_mode') != 'only_guest' %}
+                        <div id="header-login" class="d-none d-xl-flex align-items-center justify-content-center{% if customer.isLogged() %} dropdown dropright logged-dropdown js-dropdown{% endif %}">
+                            <div class="header-user-account position-relative header-global-on-color d-flex align-items-center justify-content-center">
+                                    <span class="header-login-box-left header-global-on-color  header-user-icon">
+                                        {{ include('snippets/icon_user.tpl') }}
+                                    </span>
+                                    <span class="header-login-box-right d-flex flex-column justify-content-center align-items-start">
+                                    {% if customer.isLogged() %}
+                                        <button
+                                            id="account-logged-dropdown-button"
+                                            class="btn header-logged-text animate-underline-link d-flex-center js-dropdown-toggle"
+                                            aria-haspopup="true"
+                                            aria-expanded="false"
+                                        >
+                                            {{ text_account|trans }}
+                                            {% include "snippets/icon_arrow.tpl" with {direction: 'down', width: '8', height: '8'} %}
+                                        </button>
+                                    {% else %}
+                                        <a href="{{ routes.login_url }}" class="header-login-box-link header-global-on-color animate-underline-link">{{ text_login|trans }}</a>
+                                        <a href="{{ routes.register_url }}" class="header-login-box-link header-global-on-color animate-underline-link">{{ text_create|trans }}</a>
+                                    {% endif %}
+                                    </span>
+                            </div>
+                            {% if customer.isLogged() %}
+                                <ul
+                                    class="login-menu-list js-login-menu-list dropdown-hover-menu js-dropdown-menu"
+                                    aria-labelledby="account-logged-dropdown-button"
+                                >
+                                    <li class="dropdown-item login-menu-list__item">
+                                        <a href="{{ routes.account_url }}" title="{{ text_account|trans }}" class="login-menu-list__link js-login-menu-list__link animate-underline-link js-dropdown-item">
+                                            {{ text_account|trans }}
+                                        </a>
+                                    </li>
+                                    <li class="dropdown-item login-menu-list__item">
+                                        <a href="{{ routes.account_history_url }}" title="{{ text_history|trans }}" class="login-menu-list__link animate-underline-link js-dropdown-item">
+                                            {{ text_history|trans }}
+                                        </a>
+                                    </li>
+                                    {% if config.get('wishlist_base_status') %}
+                                        <li class="dropdown-item login-menu-list__item">
+                                            <a href="{{ routes.wishlist_url }}"
+                                               title="{{ text_my_wishlist|trans }}" class="login-menu-list__link animate-underline-link js-dropdown-item">
+                                                {{ text_my_wishlist|trans }}
+                                            </a>
+                                        </li>
+                                    {% endif %}
+                                    <li class="dropdown-item login-menu-list__item">
+                                        <a href="{{ routes.logout_url }}" title="{{ text_logout|trans }}" class="login-menu-list__link animate-underline-link js-dropdown-item">
+                                            {{ text_logout|trans }}
+                                        </a>
+                                    </li>
+                                </ul>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                {% endif %}
+                <div class="header-newline-separator d-none d-lg-block w-100"></div>
+                {% if config.get("config_show_mobile_menu_desktop", 1) %}
+                    {% if config.get('category_status') %}
+                        <div class="header-height-70 align-items-center header-mobile-navbar d-none d-lg-flex">
+                            <button id="hamburger-button-desktop" class="js-hamburger-trigger header-hamburger-button btn position-relative d-flex justify-content-start align-items-center"
+                                    aria-label="{% if categoryModuleShowName and categorySettings[categoryModuleName] is defined %} {{ categorySettings[categoryModuleName] }} {% else %} {{button_accessibility_mobile_menu|trans}} {% endif %}">
+                                <span class="hamburger-icon position-relative">
+                                    {% include "snippets/icon_hamburger.tpl" %}
+                                </span>
+                                {% if categoryModuleShowName %}
+                                    {% if categorySettings[categoryModuleName] is defined %}
+                                        <span class="category-title text-start d-none d-xl-block">{{ categorySettings[categoryModuleName] }}</span>
+                                    {% endif %}
+
+                                    <span class="hamburger-icon-arrow d-none d-xl-block">
+                                        {% include "snippets/icon_arrow.tpl" with {direction: 'down', width: '6', height: '13'} %}
+                                    </span>
+                                {% endif %}
+                            </button>
+                        </div>
+                    {% endif %}
+                {% else %}
+                    {% if config.get('category_status') %}
+                        <div class="header-height-70 align-items-center header-mobile-navbar d-none d-lg-flex">
+                            {{ viewHelper.loadModule('module/category') }}
+                        </div>
+                    {% endif %}
+                {% endif %}
+                <div id="js-header-bottom-center-element" class="header-bottom-center d-none d-lg-flex align-items-center justify-content-between">
+                    <nav class="header__headerlinks d-none d-lg-flex" aria-label="{{ 'text_accessibility_headerlinks_title'|trans }}">
+                        <ul class="list-unstyled headermenu-list">
+                            {{ viewHelper.loadModule('module/headerlinks') }}
+                        </ul>
+                    </nav>
+                    {% if (config.get('currenciesselect_status') or config.get('languageselect_status')) and
+                        (config.get('currenciesselect_position') == 'header' or config.get('languageselect_position') == 'header') %}
+                        <div class="header-localization-wrapper header-height-70 d-none d-xl-flex align-items-center">
+                            {% include "snippets/localization.tpl" with { position: 'header' } %}
+                        </div>
+                    {% endif %}
+                </div>
+                {% if config.get('cart_status') %}
+                    {{ include('snippets/mini_cart.tpl') }}
+                {% endif %}
+            </div>
+        </div>
+    </header>
+{% endif %}
+{% if section.settings.sticky_header_status %}
+    {{ 'component-header-sticky.css' | asset_url | stylesheet_tag }}
+    {{ 'headroom/0.12.0/js/headroom.min.js' | global_asset_url | script_tag(defer = true) }}
+    <script>
+        window.addEventListener("load", () => {
+            updateHeaderHeights();
+            initHeadroom();
+        });
+
+        window.addEventListener("orientationchange", () => {
+            requestAnimationFrame(updateHeaderHeights);
+        });
+
+        function updateHeaderHeights() {
+            const headerElement = document.getElementById("section-header");
+            if (!headerElement) return;
+
+            const headerTopElement = document.getElementById("js-header-top-element");
+
+            const headerTotalHeight = headerElement.offsetHeight;
+            headerElement.style.setProperty("--header-element-height", `${headerTotalHeight}px`);
+
+            if (headerTopElement) {
+                const headerTopElementHeight = headerTopElement.offsetHeight;
+                headerElement.style.setProperty("--header-top-element-height", `${headerTopElementHeight}px`);
+            }
+        }
+
+        function initHeadroom() {
+            const header = document.querySelector("#section-header");
+            if (typeof Headroom === "function" && Headroom.cutsTheMustard) {
+                const headroom = new Headroom(header, {
+                    tolerance: 5,
+                    offset: 200,
+                    classes: {
+                        initial: "header-sticky",
+                        pinned: "slide-up",
+                        unpinned: "slide-down"
+                    }
+                });
+                headroom.init();
+            }
+        }
+    </script>
+{% endif %}
+{% if section.settings.show_search %}
+    {% jshrink %}
+        <script>
+            function moduleSearch(obj) {
+                let url;
+                let selector;
+                let filter_keyword;
+                let filter_description;
+
+                if (typeof window.BASEURL === "undefined") {
+                    url = 'index.php?route=product/list';
+                } else {
+                    url = `${window.BASEURL}/index.php?route=product/list`;
+                }
+
+                selector = '#filter_keyword';
+                if (obj) selector = `.${obj}`;
+
+                filter_keyword = document.querySelector(selector).value;
+
+                if (filter_keyword) {
+                    url += `&keyword=${encodeURIComponent(filter_keyword)}`;
+                }
+
+                filter_description = document.getElementById('filter_description').value;
+
+                if (filter_description) {
+                    url += `&description=${filter_description}`;
+                }
+                window.location = url;
+            }
+
+            const autosuggest = async (searchInputElement, resultElement, a11yFeedbackElement) => {
+                const searchQuery = encodeURIComponent(document.getElementById('filter_keyword').value);
+                let searchInDesc = '';
+
+                if (document.getElementById('filter_description').value == 1) {
+                    searchInDesc = '&description=1';
+                }
+
+                try {
+                    const response = await fetch(`index.php?route=product/list/suggest${searchInDesc}&keyword=${searchQuery}`);
+                    const data = await response.text();
+
+                    if (data) {
+                        resultElement.innerHTML = data;
+                        resultElement.style.display = 'block';
+
+                        searchInputElement.setAttribute('aria-expanded', 'true');
+                        a11yFeedbackElement.textContent = '{{ 'text_accessibility_search-suggestion_feedback'|trans }}'
+
+                    } else {
+                        resultElement.style.display = 'none';
+                        searchInputElement.setAttribute('aria-expanded', 'false');
+                    }
+                } catch (error) {
+                    console.error('Error during fetch:', error);
+                }
+            };
+
+            document.addEventListener('DOMContentLoaded', () => {
+                let lastValue = "";
+                let value;
+                let timeout;
+                const filterKeyword = document.getElementById('filter_keyword');
+                const resultElement = document.getElementById('results');
+                const a11ySuggestionFeedbackElement = document.getElementById('js-search-autosuggest-feedback');
+
+                filterKeyword.addEventListener('keyup', () => {
+                    value = filterKeyword.value;
+
+                    if (value !== lastValue) {
+                        lastValue = value;
+
+                        if (timeout) {
+                            clearTimeout(timeout);
+                        }
+
+                        timeout = setTimeout(() => {
+                            autosuggest(filterKeyword, resultElement, a11ySuggestionFeedbackElement);
+                        }, 500);
+                    }
+                });
+
+                filterKeyword.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        moduleSearch();
+                    }
+                });
+
+                document.addEventListener('keydown', function(event) {
+                    if (event.key === 'Escape') {
+                        if (resultElement.contains(document.activeElement)) {
+                            resultElement.style.display = 'none';
+                            filterKeyword.setAttribute('aria-expanded', 'false');
+                            filterKeyword.focus();
+                            a11ySuggestionFeedbackElement.textContent = "";
+                        }
+                    }
+                });
+            });
+        </script>
+    {% endjshrink %}
+{% endif %}
+
+{% schema %}
+    {
+        "attributes": {
+            "name": {
+                "hu": "Fejléc",
+                "en": "Header"
+            }
+        },
+        "settings": [
+            {
+                "type": "checkbox",
+                "name": "status",
+                "label": {
+                    "hu": "Állapot",
+                    "en": "Status"
+                },
+                "default": true
+            },
+            {
+                "type": "select",
+                "name": "position",
+                "label": {
+                    "hu": "Pozició",
+                    "en": "Position"
+                },
+                "default": "header",
+                "options": [
+                    {
+                    "value": "header",
+                    "label": {
+                        "hu": "Fejléc",
+                        "en": "Header"
+                        }
+                    }
+                ]
+            },
+            {
+                "type": "checkbox",
+                "name": "show_phone",
+                "multilang": false,
+                "label": {
+                    "hu": "Telefonszám megjelenítése",
+                    "en": "Display of telephone number"
+                },
+                "default": true,
+                "help": {
+                    "hu": "Az alapértelmezett telefonszám az Általános beállításokban megadott szám. Ha azonban a lenti Egyedi telefonszám mező kitöltésre kerül, az ott megadott szám fog megjelenni.",
+                    "en": "Global settings set phone number "
+                }
+            },
+            {
+                "type": "text",
+                "name": "custom_phone",
+                "required": false,
+                "label": {
+                    "hu": "Egyedi telefonszám",
+                    "en": "Phone number"
+                },
+                "help": {
+                    "hu": "Egyedi telefonszám. Amennyiben eltérő telefonszámot szeretnénk megjeleníteni az Általános beállításokban megadottól, azt ebben a mezőben adhatjuk meg.",
+                    "en": "Custom phone number"
+                },
+                "default": ""
+            },
+            {
+                "type": "checkbox",
+                "name": "show_mail",
+                "multilang": false,
+                "label": {
+                    "hu": "E-mail cím megjelenítése",
+                    "en": "Display of email"
+                },
+                "default": false,
+                "help": {
+                    "hu": "Az alapértelmezett e-mail cím az Általános beállításokban megadott e-mail cím. Ha azonban a lenti  Egyedi e-mail cím mező kitöltésre kerül, az ott megadott e-mail cím fog megjelenni.",
+                    "en": "Global settings set email addres"
+                }
+            },
+            {
+                "type": "text",
+                "name": "custom_mail",
+                "required": false,
+                "label": {
+                    "hu": "E-mail cím",
+                    "en": "E-mail"
+                },
+                "help": {
+                    "hu": "Egyedi e-mail cím. Amennyiben eltérő e-mail címet szeretnénk megjeleníteni az Általános beállításokban megadottól, azt ebben a mezőben adhatjuk meg.",
+                    "en": "Custom e-mail"
+                },
+                "default": ""
+            },
+            {
+                "type": "checkbox",
+                "name": "show_login",
+                "multilang": false,
+                "label": {
+                    "hu": "Belépés megjelenítése",
+                    "en": "Display of login"
+                },
+                "default": true
+            },
+            {
+                "type": "checkbox",
+                "name": "show_search",
+                "multilang": false,
+                "label": {
+                    "hu": "Keresés megjelenítése",
+                    "en": "Display of search"
+                },
+                "default": true
+            },
+            {
+                "type": "checkbox",
+                "name": "search_description",
+                "multilang": false,
+                "label": {
+                    "hu": "Keresés modul keressen termékleírásokban",
+                    "en": "Search module find in product description"
+                    },
+                "default": false
+            },
+            {
+                "type": "image",
+                "name": "logo_image",
+                "required": true,
+                "label": {
+                    "hu": "Fejléc logó",
+                    "en": "Header logo"
+
+                },
+                "help": {
+                    "hu": "Javasolt: 150x40px, SVG formátum. Ez a kép jelenik meg mobilon is",
+                    "en": "150x40px, SVG format"
+                },
+                "default": "no_image.jpg"
+            },
+            {
+                "type": "number",
+                "name": "logo_width",
+                "required": true,
+                "label": {
+                    "hu": "Fejléc logó szélesség",
+                    "en": "Header logo width"
+
+                },
+                "help": {
+                    "hu": "Csak magát az értéket kell megadni mértékegység nélkül. Pl.: 150",
+                    "en": "Only value: 150"
+                },
+                "default": "150"
+            },
+            {
+                "type": "number",
+                "name": "logo_height",
+                "required": true,
+                "label": {
+                    "hu": "Fejléc logó magasság",
+                    "en": "Header logo height"
+
+                },
+                "help": {
+                    "hu": "Csak magát az értéket kell megadni mértékegység nélkül. Pl.: 40",
+                    "en": "Only value: 40"
+                },
+                "default": "40"
+            },
+            {
+                "type": "checkbox",
+                "name": "sticky_header_status",
+                "multilang": false,
+                "label": {
+                    "hu": "Sticky fejléc",
+                    "en": "Sticky header"
+                },
+                "default": true
+            }
+        ]
+    }
+{% endschema %}

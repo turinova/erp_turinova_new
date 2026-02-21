@@ -76,6 +76,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         clearInterval(pollIntervalRef.current)
         pollIntervalRef.current = null
       }
+      if (categoryPollIntervalRef.current) {
+        clearInterval(categoryPollIntervalRef.current)
+        categoryPollIntervalRef.current = null
+      }
     }
   }, [])
 
@@ -301,6 +305,16 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     elapsed?: number
   } | null>(null)
   
+  const [syncingCategoriesConnectionId, setSyncingCategoriesConnectionId] = useState<string | null>(null)
+  const [categorySyncProgress, setCategorySyncProgress] = useState<{
+    current: number
+    total: number
+    synced: number
+    status?: string
+    errors?: number
+  } | null>(null)
+  const categoryPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  
   const [newConnection, setNewConnection] = useState({
     name: '',
     connection_type: 'shoprenter' as 'shoprenter' | 'unas' | 'shopify',
@@ -519,19 +533,41 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         return
       }
 
+      console.log('[Delete Script Tag] Available script tags:', getResult.scriptTags)
+
       // Find the structured data script tag
+      // Try multiple ways to identify it since API might not return full data
       const structuredDataTag = getResult.scriptTags.find((tag: any) => 
-        tag.src && tag.src.includes('shoprenter-structured-data.js')
+        (tag.src && tag.src.includes('shoprenter-structured-data.js')) ||
+        (tag.href && tag.href.includes('shoprenter-structured-data.js'))
       )
 
-      if (!structuredDataTag || !structuredDataTag.id) {
+      if (!structuredDataTag) {
         toast.warning('Nem található Structured Data Script tag')
         return
       }
 
+      // Extract ID from tag (could be in id field or href)
+      let scriptTagId = structuredDataTag.id
+      if (!scriptTagId && structuredDataTag.href) {
+        // Extract ID from href: /scriptTags/c2NyaXB0VGFnLWlkPTY=
+        const match = structuredDataTag.href.match(/\/scriptTags\/([^\/\?]+)/)
+        if (match && match[1]) {
+          scriptTagId = match[1]
+        }
+      }
+
+      if (!scriptTagId) {
+        toast.error('Nem sikerült meghatározni a script tag ID-t. Próbáld meg a ShopRenter admin felületén törölni.')
+        console.error('[Delete Script Tag] No ID found in tag:', structuredDataTag)
+        return
+      }
+
+      console.log('[Delete Script Tag] Deleting script tag with ID:', scriptTagId)
+
       // Delete the script tag
       const deleteResponse = await fetch(
-        `/api/connections/${connection.id}/script-tag?scriptTagId=${encodeURIComponent(structuredDataTag.id)}`,
+        `/api/connections/${connection.id}/script-tag?scriptTagId=${encodeURIComponent(scriptTagId)}`,
         {
           method: 'DELETE'
         }
@@ -709,6 +745,94 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     setSyncDialogConnection(connection)
     setForceSync(false)
     setSyncDialogOpen(true)
+  }
+
+  // Handle sync categories button click
+  const handleSyncCategoriesClick = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('Csak ShopRenter kapcsolatokhoz szinkronizálható kategóriák')
+      return
+    }
+
+    try {
+      setSyncingCategoriesConnectionId(connection.id)
+      setCategorySyncProgress({ current: 0, total: 0, synced: 0, status: 'starting' })
+      
+      // Start sync
+      const response = await fetch(`/api/connections/${connection.id}/sync-categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        const errorResult = await response.json()
+        throw new Error(errorResult.error || 'Kategória szinkronizálás sikertelen')
+      }
+
+      // Wait a moment for sync to initialize
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // Start polling for category sync progress
+      const startCategoryPolling = () => {
+        if (categoryPollIntervalRef.current) {
+          clearInterval(categoryPollIntervalRef.current)
+        }
+
+        categoryPollIntervalRef.current = setInterval(async () => {
+          try {
+            const progressResponse = await fetch(`/api/connections/${connection.id}/sync-categories`)
+            if (progressResponse.ok) {
+              const data = await progressResponse.json()
+              if (data.progress) {
+                setCategorySyncProgress({
+                  current: data.progress.current || 0,
+                  total: data.progress.total || 0,
+                  synced: data.progress.synced || 0,
+                  status: data.progress.status || 'syncing',
+                  errors: data.progress.errors || 0
+                })
+
+                // Stop polling if completed, stopped, or error
+                if (data.progress.status === 'completed' || 
+                    data.progress.status === 'stopped' || 
+                    data.progress.status === 'error') {
+                  if (categoryPollIntervalRef.current) {
+                    clearInterval(categoryPollIntervalRef.current)
+                    categoryPollIntervalRef.current = null
+                  }
+                  
+                  if (data.progress.status === 'completed') {
+                    toast.success(`Kategóriák szinkronizálása befejeződött: ${data.progress.synced} kategória`)
+                  } else if (data.progress.status === 'error') {
+                    toast.error('Kategória szinkronizálás hiba történt')
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching category sync progress:', error)
+          }
+        }, 2000) // Poll every 2 seconds
+      }
+
+      startCategoryPolling()
+
+      // Safety timeout
+      setTimeout(() => {
+        if (categoryPollIntervalRef.current) {
+          clearInterval(categoryPollIntervalRef.current)
+          categoryPollIntervalRef.current = null
+        }
+      }, 10 * 60 * 1000) // 10 minutes
+
+    } catch (error) {
+      console.error('Error syncing categories:', error)
+      toast.error(`Hiba a kategóriák szinkronizálásakor: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
+      setSyncingCategoriesConnectionId(null)
+      setCategorySyncProgress(null)
+    }
   }
 
   // Handle sync products (actual sync)
@@ -903,8 +1027,16 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                       {syncingConnectionId === connection.id && syncProgress && (
                         <Chip
                           size="small"
-                          label={`Szinkronizálás: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')} (${Math.round((syncProgress.synced / syncProgress.total) * 100)}%)`}
+                          label={`Termékek: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')} (${Math.round((syncProgress.synced / syncProgress.total) * 100)}%)`}
                           color="primary"
+                          variant="outlined"
+                        />
+                      )}
+                      {syncingCategoriesConnectionId === connection.id && categorySyncProgress && (
+                        <Chip
+                          size="small"
+                          label={`Kategóriák: ${categorySyncProgress.synced.toLocaleString('hu-HU')}/${categorySyncProgress.total.toLocaleString('hu-HU')} (${categorySyncProgress.total > 0 ? Math.round((categorySyncProgress.synced / categorySyncProgress.total) * 100) : 0}%)`}
+                          color="success"
                           variant="outlined"
                         />
                       )}
@@ -947,6 +1079,20 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                               color="secondary"
                             >
                               {syncingConnectionId === connection.id ? (
+                                <CircularProgress size={20} />
+                              ) : (
+                                <SyncIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Kategóriák szinkronizálása">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleSyncCategoriesClick(connection)}
+                              disabled={syncingCategoriesConnectionId === connection.id}
+                              color="success"
+                            >
+                              {syncingCategoriesConnectionId === connection.id ? (
                                 <CircularProgress size={20} />
                               ) : (
                                 <SyncIcon fontSize="small" />

@@ -19,6 +19,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Termékek',
           href: '/products'
+        },
+        {
+          label: 'Kategóriák',
+          href: '/categories'
         }
       ]
     },

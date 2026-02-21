@@ -26,7 +26,8 @@ export async function getScriptTags(connection: ShopRenterConnection): Promise<S
     const apiBaseUrl = connection.api_url
     const authHeader = connection.auth_header
 
-    const response = await fetch(`${apiBaseUrl}/scriptTags`, {
+    // Use full=1 parameter to get complete data (id, src, etc.) instead of just href links
+    const response = await fetch(`${apiBaseUrl}/scriptTags?full=1`, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
@@ -40,17 +41,49 @@ export async function getScriptTags(connection: ShopRenterConnection): Promise<S
 
     const data = await response.json()
     
-    // ShopRenter returns items in a collection format
+    console.log('[Script Tag] Raw API response:', JSON.stringify(data, null, 2))
+    
+    // ShopRenter API can return data in different formats:
+    // 1. { items: [...] } - collection format
+    // 2. { response: { items: [...] } } - nested response
+    // 3. Direct array - if API returns array directly
+    // 4. { scriptTags: [...] } - custom format (based on user's response)
+    
+    let items: any[] = []
+    
     if (data.items && Array.isArray(data.items)) {
-      return data.items.map((item: any) => ({
-        id: item.id,
-        src: item.src,
-        event: item.event || 'ONLOAD',
-        displayScope: item.displayScope || 'ALL',
-        displayArea: item.displayArea || 'HEADER',
-        dateCreated: item.dateCreated,
-        dateUpdated: item.dateUpdated
-      }))
+      items = data.items
+    } else if (data.response && data.response.items && Array.isArray(data.response.items)) {
+      items = data.response.items
+    } else if (data.scriptTags && Array.isArray(data.scriptTags)) {
+      items = data.scriptTags
+    } else if (Array.isArray(data)) {
+      items = data
+    }
+    
+    // Map items to ScriptTag format
+    if (items.length > 0) {
+      return items.map((item: any) => {
+        // If item only has href (no full data), we need to extract id from href
+        let scriptTagId = item.id
+        if (!scriptTagId && item.href) {
+          // Extract ID from href: /scriptTags/c2NyaXB0VGFnLWlkPTY=
+          const match = item.href.match(/\/scriptTags\/([^\/\?]+)/)
+          if (match && match[1]) {
+            scriptTagId = match[1]
+          }
+        }
+        
+        return {
+          id: scriptTagId,
+          src: item.src || '',
+          event: item.event || 'ONLOAD',
+          displayScope: item.displayScope || 'ALL',
+          displayArea: item.displayArea || 'HEADER',
+          dateCreated: item.dateCreated,
+          dateUpdated: item.dateUpdated
+        }
+      })
     }
 
     return []
