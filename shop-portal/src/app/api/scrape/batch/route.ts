@@ -243,16 +243,28 @@ export async function POST(request: Request) {
     }
 
     // Initialize browser ONCE for all requests
-    const browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
-      ]
-    })
+    let browser
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu'
+        ]
+      })
+    } catch (error: any) {
+      // If Playwright's browser is missing, provide a helpful error message
+      if (error.message?.includes('Executable doesn\'t exist') || error.message?.includes('browserType.launch')) {
+        return NextResponse.json({ 
+          error: 'Playwright browser not installed. Please run: npx playwright install chromium',
+          details: error.message
+        }, { status: 500 })
+      }
+      throw error
+    }
 
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY

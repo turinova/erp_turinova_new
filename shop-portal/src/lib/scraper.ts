@@ -103,16 +103,32 @@ interface PageContent {
  * Fetch page content using Playwright headless browser
  */
 export async function fetchPageContent(url: string): Promise<PageContent> {
-  const browser = await chromium.launch({
-    headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--disable-gpu'
-    ]
-  })
+  let browser
+  
+  try {
+    // Try to launch with Playwright's bundled Chromium
+    browser = await chromium.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu'
+      ]
+    })
+  } catch (error: any) {
+    // If Playwright's browser is missing, provide a helpful error message
+    if (error.message?.includes('Executable doesn\'t exist') || error.message?.includes('browserType.launch')) {
+      const helpfulError = new Error(
+        'Playwright browser not installed. Please run: npx playwright install chromium\n' +
+        'Original error: ' + error.message
+      )
+      helpfulError.stack = error.stack
+      throw helpfulError
+    }
+    throw error
+  }
 
   try {
     const context = await browser.newContext({
