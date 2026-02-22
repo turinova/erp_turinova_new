@@ -502,8 +502,17 @@ export default function CompetitorLinksManager({ initialLinks, competitors }: Pr
 
         if (response.ok) {
           const result = await response.json()
-          successCount += result.stats?.successful || 0
-          errorCount += result.stats?.failed || 0
+          // Count actual results instead of relying on stats (more accurate)
+          if (result.results && Array.isArray(result.results)) {
+            const batchSuccess = result.results.filter((r: any) => r.success).length
+            const batchFailed = result.results.filter((r: any) => !r.success).length
+            successCount += batchSuccess
+            errorCount += batchFailed
+          } else {
+            // Fallback to stats if results array is missing
+            successCount += result.stats?.successful || 0
+            errorCount += result.stats?.failed || 0
+          }
         } else {
           // If batch fails, count all as errors
           errorCount += batch.length

@@ -105,7 +105,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           impact: 'flip_to_win',
           revenueImpact: priceChange, // Negative (revenue loss per unit)
           priority: 'high',
-          reason: `Losing by ${percentDiff.toFixed(1)}% - Small reduction will flip to win`
+          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk - Kis csökkentéssel győzhetünk`
         })
       }
       
@@ -132,7 +132,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
             impact: 'still_win',
             revenueImpact: priceChange, // Positive (revenue gain per unit)
             priority: 'medium',
-            reason: `Winning by ${Math.abs(percentDiff).toFixed(1)}% - Safe to increase while staying competitive`
+            reason: `${Math.abs(percentDiff).toFixed(1)}%-kal olcsóbbak vagyunk - Biztonságosan emelhetjük az árat`
           })
         }
       }
@@ -159,7 +159,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           impact: 'flip_to_win',
           revenueImpact: priceChange,
           priority: 'high',
-          reason: `Losing by ${percentDiff.toFixed(1)}% - Moderate reduction needed to win`
+          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk - Mérsékelt csökkentés szükséges a győzelemhez`
         })
       }
       
@@ -185,7 +185,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           impact: 'still_win',
           revenueImpact: priceChange,
           priority: 'medium',
-          reason: 'Competitor out of stock - Opportunity to increase price'
+          reason: 'Versenytárs nincs raktáron - Lehetőség az ár emelésére'
         })
       }
     })

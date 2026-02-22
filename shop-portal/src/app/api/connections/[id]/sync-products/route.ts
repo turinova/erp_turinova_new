@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
-import { updateProgress, clearProgress, shouldStopSync } from '@/lib/sync-progress-store'
+import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
 import { extractImagesFromProductExtend, fetchProductImages } from '@/lib/shoprenter-image-service'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 
@@ -71,7 +71,109 @@ function extractUrlAlias(product: any): { slug: string | null; id: string | null
 }
 
 /**
+ * Batch fetch AttributeDescriptions for multiple attributes
+ * This is much faster than fetching them individually
+ */
+async function batchFetchAttributeDescriptions(
+  apiBaseUrl: string,
+  authHeader: string,
+  attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }>
+): Promise<Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>> {
+  const results = new Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>()
+  
+  if (attributeRequests.length === 0) {
+    return results
+  }
+
+  try {
+    // Build batch requests for attribute descriptions
+    const batchRequests = attributeRequests.map(req => {
+      let queryParam = ''
+      if (req.attributeType === 'LIST') {
+        queryParam = `listAttributeId=${encodeURIComponent(req.attributeId)}`
+      } else if (req.attributeType === 'TEXT') {
+        queryParam = `textAttributeId=${encodeURIComponent(req.attributeId)}`
+      } else if (req.attributeType === 'INTEGER' || req.attributeType === 'FLOAT') {
+        queryParam = `numberAttributeId=${encodeURIComponent(req.attributeId)}`
+      }
+      
+      const languageId = 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' // Hungarian default
+      return {
+        method: 'GET',
+        uri: `${apiBaseUrl}/attributeDescriptions?${queryParam}&languageId=${encodeURIComponent(languageId)}&full=1`
+      }
+    })
+
+    // Filter out invalid requests
+    const validRequests = batchRequests.filter(req => req.uri.includes('AttributeId='))
+    
+    if (validRequests.length === 0) {
+      return results
+    }
+
+    // Split into batches of 200 (ShopRenter limit)
+    const BATCH_SIZE = 200
+    for (let i = 0; i < validRequests.length; i += BATCH_SIZE) {
+      const batch = validRequests.slice(i, i + BATCH_SIZE)
+      const correspondingAttributeRequests = attributeRequests.slice(i, i + BATCH_SIZE)
+      
+      const batchPayload = {
+        data: {
+          requests: batch
+        }
+      }
+
+      const batchResponse = await fetch(`${apiBaseUrl}/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify(batchPayload),
+        signal: AbortSignal.timeout(60000) // 1 minute
+      })
+
+      if (batchResponse.ok) {
+        const batchData = await batchResponse.json()
+        const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+        
+        for (let j = 0; j < batchResponses.length && j < correspondingAttributeRequests.length; j++) {
+          const batchItem = batchResponses[j]
+          const attrReq = correspondingAttributeRequests[j]
+          const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+          
+          if (statusCode >= 200 && statusCode < 300) {
+            const data = batchItem.response?.body
+            const items = data?.items || data?.response?.items || []
+            
+            if (items.length > 0) {
+              const desc = items[0]
+              results.set(attrReq.attributeId, {
+                display_name: desc.name || null,
+                prefix: desc.prefix || null,
+                postfix: desc.postfix || null
+              })
+            } else {
+              results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+            }
+          } else {
+            results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[SYNC] Error batch fetching attribute descriptions:', error)
+    // Return empty results on error - will fall back to internal names
+  }
+
+  return results
+}
+
+/**
  * Fetch AttributeDescription for an attribute to get display name
+ * (Kept for backward compatibility, but batchFetchAttributeDescriptions is preferred)
  */
 async function fetchAttributeDescription(
   apiBaseUrl: string,
@@ -563,206 +665,259 @@ async function processSyncInBackground(
     })
 
     console.log(`[SYNC] Background process started for ${allProductIds.length} products in ${batches.length} batches`)
+    console.log(`[SYNC] Using optimized parallel batch processing (2 concurrent batches)`)
 
-    // Process batches sequentially (as recommended by ShopRenter)
-    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    // Process batches in parallel groups (2-3 at a time) for better performance
+    const CONCURRENT_BATCHES = 2 // Process 2 batches in parallel
+    const processSingleBatch = async (batch: string[], batchIndex: number) => {
+      const batchResults = {
+        synced: 0,
+        errors: 0,
+        errorMessages: [] as string[]
+      }
+        
       // Check if sync should stop
       if (shouldStopSync(connectionId)) {
-        console.log(`[SYNC] Sync stopped by user at batch ${batchIndex + 1}/${totalBatches}`)
-        updateProgress(connectionId, {
-          status: 'stopped',
-          synced: syncedCount,
-          current: syncedCount + errorCount,
-          errors: errorCount
-        })
-        return // Exit the sync process
+        return batchResults
       }
 
-      const batch = batches[batchIndex]
-      
-      console.log(`[SYNC] Processing batch ${batchIndex + 1}/${totalBatches} with ${batch.length} items`)
-      
-      // Update progress at start of each batch (show current state)
-      updateProgress(connectionId, {
-        synced: syncedCount,
-        current: syncedCount + errorCount,
-        status: 'syncing',
-        errors: errorCount
-      })
-      
-      // Build batch request
-      const batchRequests = batch.map(productId => ({
-        method: 'GET',
-        uri: `${apiUrl}/productExtend/${productId}?full=1`
-      }))
-
-      const batchPayload = {
-        data: {
-          requests: batchRequests
-        }
-      }
-
-      // Send batch request
-      const batchResponse = await fetch(`${apiUrl}/batch`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify(batchPayload),
-        signal: AbortSignal.timeout(600000) // 10 minutes for batch processing (increased for large batches)
-      })
-
-      if (!batchResponse.ok) {
-        const errorText = await batchResponse.text().catch(() => 'Unknown error')
-        errors.push(`Batch ${batchIndex + 1} hiba: ${batchResponse.status} - ${errorText.substring(0, 200)}`)
-        errorCount += batch.length
-        continue
-      }
-
-      // Parse batch response
-      let batchData
       try {
-        const batchText = await batchResponse.text()
-        if (!batchText || batchText.trim().length === 0) {
-          errors.push(`Batch ${batchIndex + 1}: Üres válasz`)
-          errorCount += batch.length
-          continue
-        }
-        batchData = JSON.parse(batchText)
-      } catch (parseError) {
-        errors.push(`Batch ${batchIndex + 1}: JSON parse hiba - ${parseError instanceof Error ? parseError.message : 'Ismeretlen'}`)
-        errorCount += batch.length
-        continue
-      }
+        // Build batch request
+        const batchRequests = batch.map(productId => ({
+          method: 'GET',
+          uri: `${apiUrl}/productExtend/${productId}?full=1`
+        }))
 
-      // Check again before processing batch items
-      if (shouldStopSync(connectionId)) {
-        console.log(`[SYNC] Sync stopped by user during batch ${batchIndex + 1} processing`)
-        updateProgress(connectionId, {
-          status: 'stopped',
-          synced: syncedCount,
-          current: syncedCount + errorCount,
-          errors: errorCount
+        const batchPayload = {
+          data: {
+            requests: batchRequests
+          }
+        }
+
+        // Send batch request
+        const batchResponse = await fetch(`${apiUrl}/batch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          body: JSON.stringify(batchPayload),
+          signal: AbortSignal.timeout(600000) // 10 minutes
         })
-        return // Exit the sync process
-      }
 
-      // Process batch responses
-      const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
-      
-      console.log(`[SYNC] Processing batch ${batchIndex + 1}/${totalBatches} with ${batchResponses.length} items`)
-      
-      for (const batchItem of batchResponses) {
-        // Check if sync should stop before each item
-        if (shouldStopSync(connectionId)) {
-          console.log(`[SYNC] Sync stopped by user during item processing`)
-          updateProgress(connectionId, {
-            status: 'stopped',
-            synced: syncedCount,
-            current: syncedCount + errorCount,
-            errors: errorCount
-          })
-          return // Exit the sync process
+        if (!batchResponse.ok) {
+          const errorText = await batchResponse.text().catch(() => 'Unknown error')
+          batchResults.errors += batch.length
+          batchResults.errorMessages.push(`Batch ${batchIndex + 1} hiba: ${batchResponse.status} - ${errorText.substring(0, 200)}`)
+          return batchResults
         }
 
+        // Parse batch response
+        let batchData
         try {
+          const batchText = await batchResponse.text()
+          if (!batchText || batchText.trim().length === 0) {
+            batchResults.errors += batch.length
+            batchResults.errorMessages.push(`Batch ${batchIndex + 1}: Üres válasz`)
+            return batchResults
+          }
+          batchData = JSON.parse(batchText)
+        } catch (parseError) {
+          batchResults.errors += batch.length
+          batchResults.errorMessages.push(`Batch ${batchIndex + 1}: JSON parse hiba - ${parseError instanceof Error ? parseError.message : 'Ismeretlen'}`)
+          return batchResults
+        }
+
+        // Process batch responses
+        const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+        
+        // Collect all attribute IDs from this batch for batch fetching
+        const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> = []
+
+        for (let i = 0; i < batchResponses.length; i++) {
+          const batchItem = batchResponses[i]
+          const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+          
+          if (statusCode >= 200 && statusCode < 300) {
+            const product = batchItem.response?.body
+            if (product && product.id && product.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
+              product.productAttributeExtend.forEach((attr: any) => {
+                let attributeId = attr.id || null
+                if (!attributeId && attr.href) {
+                  const hrefParts = attr.href.split('/')
+                  attributeId = hrefParts[hrefParts.length - 1] || null
+                }
+                
+                if (attributeId) {
+                  attributeRequests.push({
+                    attributeId,
+                    attributeType: attr.type as 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
+                  })
+                }
+              })
+            }
+          }
+        }
+
+        // Batch fetch all attribute descriptions at once
+        let attributeDescriptionsMap = new Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>()
+        if (attributeRequests.length > 0 && apiUrl && authHeader) {
+          console.log(`[SYNC] Batch fetching ${attributeRequests.length} attribute descriptions for batch ${batchIndex + 1}`)
+          attributeDescriptionsMap = await batchFetchAttributeDescriptions(
+            apiUrl,
+            authHeader,
+            attributeRequests
+          )
+          console.log(`[SYNC] Fetched ${attributeDescriptionsMap.size} attribute descriptions`)
+        }
+
+        // Collect all valid products for batch processing
+        const productsToSync: Array<{ product: any; batchItem: any }> = []
+        for (const batchItem of batchResponses) {
           const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
           
           if (statusCode >= 200 && statusCode < 300) {
             const product = batchItem.response?.body
             if (product && product.id) {
-              try {
-                await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader)
-                syncedCount++
-                // Update progress after EVERY product for real-time updates
-                updateProgress(connectionId, {
-                  synced: syncedCount,
-                  current: syncedCount + errorCount,
-                  status: 'syncing',
-                  errors: errorCount
-                })
-                
-                // Small delay between products to prevent overwhelming the API
-                // This helps ensure rate limiter has time to process attribute requests
-                await new Promise(resolve => setTimeout(resolve, 50))
-              } catch (error) {
-                errorCount++
-                const errorMsg = error instanceof Error ? error.message : 'Ismeretlen hiba'
-                errors.push(`Termék ${product.sku || product.id}: ${errorMsg}`)
-                console.error(`[SYNC] Error syncing product ${product.sku || product.id}:`, errorMsg)
-                // Update progress even on error
-                updateProgress(connectionId, {
-                  current: syncedCount + errorCount,
-                  errors: errorCount
-                })
-              }
+              productsToSync.push({ product, batchItem })
             } else {
-              errorCount++
-              errors.push(`Termék: Hiányzó adatok a válaszban`)
-              updateProgress(connectionId, {
-                current: syncedCount + errorCount,
-                errors: errorCount
-              })
+              batchResults.errors++
+              batchResults.errorMessages.push(`Termék: Hiányzó adatok a válaszban`)
             }
           } else {
-            errorCount++
+            batchResults.errors++
             const errorMsg = batchItem.response?.body?.message || `HTTP ${statusCode}`
-            errors.push(`Termék ${batchItem.uri}: ${errorMsg}`)
-            console.warn(`[SYNC] Product sync failed with status ${statusCode}: ${errorMsg}`)
-            updateProgress(connectionId, {
-              current: syncedCount + errorCount,
-              errors: errorCount
-            })
+            batchResults.errorMessages.push(`Termék ${batchItem.uri}: ${errorMsg}`)
           }
-        } catch (itemError) {
-          // Handle errors in processing individual items - don't stop the entire sync
-          errorCount++
-          const errorMsg = itemError instanceof Error ? itemError.message : 'Ismeretlen hiba'
-          errors.push(`Termék feldolgozási hiba: ${errorMsg}`)
-          console.error(`[SYNC] Error processing batch item:`, itemError)
-          updateProgress(connectionId, {
-            current: syncedCount + errorCount,
-            errors: errorCount
-          })
         }
+
+        // Process products sequentially to avoid overwhelming the API with image requests
+        // The rate limiter will handle the 3 req/sec limit, but sequential processing prevents
+        // too many requests from queuing up at once
+        for (const { product, batchItem } of productsToSync) {
+          if (shouldStopSync(connectionId)) {
+            return batchResults
+          }
+
+          try {
+            await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap)
+            batchResults.synced++
+            // Update progress after each product for real-time updates
+            // Note: We need to track the total synced count across all batches
+            // This will be aggregated at the batch group level
+          } catch (error) {
+            batchResults.errors++
+            const errorMsg = error instanceof Error ? error.message : 'Ismeretlen hiba'
+            batchResults.errorMessages.push(`Termék ${product.sku || product.id}: ${errorMsg}`)
+          }
+        }
+      } catch (batchError) {
+        batchResults.errors += batch.length
+        batchResults.errorMessages.push(`Batch ${batchIndex + 1} hiba: ${batchError instanceof Error ? batchError.message : 'Ismeretlen hiba'}`)
       }
+
+      return batchResults
+    }
+
+    // Process batches in parallel groups
+    for (let i = 0; i < batches.length; i += CONCURRENT_BATCHES) {
+      // Check if sync should stop
+      if (shouldStopSync(connectionId)) {
+        console.log(`[SYNC] Sync stopped by user at batch group ${Math.floor(i / CONCURRENT_BATCHES) + 1}`)
+        updateProgress(connectionId, {
+          status: 'stopped',
+          synced: syncedCount,
+          current: syncedCount + errorCount,
+          errors: errorCount
+        })
+        break
+      }
+
+      const batchGroup = batches.slice(i, i + CONCURRENT_BATCHES)
+      const groupIndex = Math.floor(i / CONCURRENT_BATCHES)
       
-      console.log(`[SYNC] Batch ${batchIndex + 1}/${totalBatches} completed: ${syncedCount} synced, ${errorCount} errors`)
-
-      // Update progress after each batch
-      updateProgress(connectionId, {
-        synced: syncedCount,
-        current: syncedCount + errorCount,
-        status: 'syncing', // Keep status as 'syncing' until complete
-        errors: errorCount
+      console.log(`[SYNC] Processing batch group ${groupIndex + 1}/${Math.ceil(batches.length / CONCURRENT_BATCHES)} (${batchGroup.length} batches in parallel)`)
+      
+    // Process batches in parallel, but update progress as each completes
+    // This gives us both speed (parallel) and frequent progress updates
+    const groupResults = { synced: 0, errors: 0, errorMessages: [] as string[] }
+    
+    // Create promises that update progress when each batch completes
+    const batchPromises = batchGroup.map(async (batch, batchIdx) => {
+      const batchIndex = i + batchIdx
+      const result = await processSingleBatch(batch, batchIndex)
+      
+      // Update local counters for logging
+      syncedCount += result.synced
+      errorCount += result.errors
+      errors.push(...result.errorMessages)
+      
+      // Atomically increment progress to avoid race conditions
+      incrementProgress(connectionId, {
+        synced: result.synced,
+        errors: result.errors
       })
-
-      // Minimal delay between batches (ShopRenter recommends waiting for response, not fixed delays)
-      if (batchIndex < batches.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 50))
+      
+      // Get updated progress for logging
+      const currentProgress = getProgress(connectionId)
+      const currentSynced = currentProgress?.synced || 0
+      
+      console.log(`[SYNC] Batch ${batchIndex + 1} completed: ${result.synced} synced, ${result.errors} errors (Total: ${currentSynced}/${totalProducts})`)
+      
+      return result
+    })
+    
+    // Wait for all batches to complete
+    const batchResultsArray = await Promise.all(batchPromises)
+    
+    // Aggregate for logging (counters already updated above)
+    groupResults.synced = batchResultsArray.reduce((sum, r) => sum + r.synced, 0)
+    groupResults.errors = batchResultsArray.reduce((sum, r) => sum + r.errors, 0)
+    groupResults.errorMessages = batchResultsArray.flatMap(r => r.errorMessages)
+      
+      console.log(`[SYNC] Batch group ${groupIndex + 1} completed: ${groupResults.synced} synced, ${groupResults.errors} errors`)
+      
+      // Small delay between batch groups to respect overall rate limits
+      if (i + CONCURRENT_BATCHES < batches.length) {
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
     }
 
     // Post-sync: Update parent_product_id for products that were synced before their parent
-    console.log(`[SYNC] Updating parent-child relationships for products synced before their parent...`)
+    // Only run if there are products with missing parents (optimization)
+    console.log(`[SYNC] Checking if post-sync parent update is needed...`)
     try {
-      // Get all products for this connection that might have parents
-      // We'll re-fetch their parentProduct from ShopRenter and update if parent now exists
-      const { data: allProducts, error: productsError } = await supabase
+      // Check if any products have missing parents
+      const { data: productsWithMissingParents, error: checkError } = await supabase
         .from('shoprenter_products')
-        .select('id, shoprenter_id, sku, parent_product_id')
+        .select('id')
         .eq('connection_id', connection.id)
+        .not('parent_category_shoprenter_id', 'is', null)
+        .is('parent_product_id', null)
+        .limit(1)
         .is('deleted_at', null)
       
-      if (productsError) {
-        console.error(`[SYNC] Error fetching products for parent update:`, productsError)
-      } else if (allProducts && allProducts.length > 0) {
-        let updatedCount = 0
-        const batchSize = 50 // Process in smaller batches to avoid timeout
+      if (checkError) {
+        console.error(`[SYNC] Error checking for missing parents:`, checkError)
+      } else if (productsWithMissingParents && productsWithMissingParents.length > 0) {
+        console.log(`[SYNC] Found products with missing parents, running post-sync update...`)
         
-        for (let i = 0; i < allProducts.length; i += batchSize) {
+        // Get all products for this connection that might have parents
+        // We'll re-fetch their parentProduct from ShopRenter and update if parent now exists
+        const { data: allProducts, error: productsError } = await supabase
+          .from('shoprenter_products')
+          .select('id, shoprenter_id, sku, parent_product_id')
+          .eq('connection_id', connection.id)
+          .is('deleted_at', null)
+        
+        if (productsError) {
+          console.error(`[SYNC] Error fetching products for parent update:`, productsError)
+        } else if (allProducts && allProducts.length > 0) {
+          let updatedCount = 0
+          const batchSize = 50 // Process in smaller batches to avoid timeout
+          
+          for (let i = 0; i < allProducts.length; i += batchSize) {
           const batch = allProducts.slice(i, i + batchSize)
           
           // Build batch request to fetch parentProduct for each product
@@ -849,9 +1004,12 @@ async function processSyncInBackground(
           if (i + batchSize < allProducts.length) {
             await new Promise(resolve => setTimeout(resolve, 100))
           }
+          }
+          
+          console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
         }
-        
-        console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
+      } else {
+        console.log(`[SYNC] No products with missing parents found, skipping post-sync update`)
       }
     } catch (parentUpdateError) {
       console.error(`[SYNC] Error updating parent relationships (non-fatal):`, parentUpdateError)
@@ -889,6 +1047,7 @@ async function processSyncInBackground(
 
 /**
  * Sync a single product to database
+ * @param attributeDescriptionsMap Optional map of attributeId -> {display_name, prefix, postfix} for batch-fetched attributes
  */
 async function syncProductToDatabase(
   supabase: any,
@@ -896,7 +1055,8 @@ async function syncProductToDatabase(
   product: any,
   forceSync: boolean = false,
   apiBaseUrl?: string,
-  authHeaderParam?: string
+  authHeaderParam?: string,
+  attributeDescriptionsMap?: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>
 ) {
   try {
     console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
@@ -929,22 +1089,30 @@ async function syncProductToDatabase(
     
     // If this product has a parent, find the parent product in our database
     if (parentShopRenterId) {
-      // Log for debugging
-      console.log(`[SYNC] Product ${product.sku} has parent in ShopRenter: ${parentShopRenterId}`)
-      
-      const { data: parentProduct, error: parentError } = await supabase
-        .from('shoprenter_products')
-        .select('id, sku')
-        .eq('connection_id', connection.id)
-        .eq('shoprenter_id', parentShopRenterId)
-        .single()
-      
-      if (parentError) {
-        // Parent not found yet - will be updated in post-sync step
-        console.log(`[SYNC] Product ${product.sku} has parent ${parentShopRenterId} but parent not found in database yet (will be updated in post-sync)`)
-      } else if (parentProduct) {
-        parentProductId = parentProduct.id
-        console.log(`[SYNC] Product ${product.sku} is a child of parent ${parentProduct.sku} (${parentProduct.id})`)
+      // CRITICAL: Check if ShopRenter is saying this product is its own parent (invalid)
+      if (parentShopRenterId === product.id) {
+        console.warn(`[SYNC] Product ${product.sku} has parent pointing to itself in ShopRenter API. Ignoring invalid parent.`)
+        parentProductId = null
+      } else {
+        // Log for debugging
+        console.log(`[SYNC] Product ${product.sku} has parent in ShopRenter: ${parentShopRenterId}`)
+        
+        const { data: parentProduct, error: parentError } = await supabase
+          .from('shoprenter_products')
+          .select('id, sku')
+          .eq('connection_id', connection.id)
+          .eq('shoprenter_id', parentShopRenterId)
+          .single()
+        
+        if (parentError) {
+          // Parent not found yet - will be updated in post-sync step
+          console.log(`[SYNC] Product ${product.sku} has parent ${parentShopRenterId} but parent not found in database yet (will be updated in post-sync)`)
+        } else if (parentProduct) {
+          // The parent lookup is already validated at the top (parentShopRenterId !== product.id)
+          // So we can safely set the parent ID here
+          parentProductId = parentProduct.id
+          console.log(`[SYNC] Product ${product.sku} is a child of parent ${parentProduct.sku} (${parentProduct.id})`)
+        }
       }
     } else {
       // Log when no parent is found in API response
@@ -968,10 +1136,7 @@ async function syncProductToDatabase(
     if (product.productAttributeExtend && Array.isArray(product.productAttributeExtend) && product.productAttributeExtend.length > 0) {
       console.log(`[SYNC] Processing ${product.productAttributeExtend.length} attributes for product ${product.sku}`)
       
-      // Get rate limiter instance
-      const rateLimiter = getShopRenterRateLimiter()
-      
-      // Process attributes sequentially with rate limiting to respect ShopRenter's 3 req/sec limit
+      // Process attributes - use pre-fetched descriptions if available, otherwise fall back to internal name
       productAttributes = []
       for (const attr of product.productAttributeExtend) {
         // Extract attribute ID - can be in id field or href
@@ -982,17 +1147,23 @@ async function syncProductToDatabase(
           attributeId = hrefParts[hrefParts.length - 1] || null
         }
         
-        console.log(`[SYNC] Processing attribute: name="${attr.name}", type="${attr.type}", id="${attributeId}", href="${attr.href || 'none'}"`)
-        
-        // If we have an attribute ID, fetch the display name with rate limiting
+        // Get display name from pre-fetched map if available
         let displayName = attr.name // Fallback to internal name
         let prefix = null
         let postfix = null
         
-        if (attributeId && apiBaseUrl && authHeaderParam) {
+        if (attributeId && attributeDescriptionsMap && attributeDescriptionsMap.has(attributeId)) {
+          const desc = attributeDescriptionsMap.get(attributeId)!
+          if (desc.display_name) {
+            displayName = desc.display_name
+            prefix = desc.prefix
+            postfix = desc.postfix
+            console.log(`[SYNC] Using pre-fetched display name for "${attr.name}": "${displayName}"`)
+          }
+        } else if (attributeId && apiBaseUrl && authHeaderParam && !attributeDescriptionsMap) {
+          // Fallback: fetch individually only if batch map not provided (backward compatibility)
           try {
-            console.log(`[SYNC] Fetching AttributeDescription for attribute: name="${attr.name}", type="${attr.type}", id="${attributeId}"`)
-            // Use rate limiter to ensure we don't exceed 3 req/sec
+            const rateLimiter = getShopRenterRateLimiter()
             const desc = await rateLimiter.execute(() =>
               fetchAttributeDescription(
                 apiBaseUrl,
@@ -1005,16 +1176,10 @@ async function syncProductToDatabase(
               displayName = desc.display_name
               prefix = desc.prefix
               postfix = desc.postfix
-              console.log(`[SYNC] Successfully fetched display name for "${attr.name}": "${displayName}"`)
-            } else {
-              console.warn(`[SYNC] No display_name returned for attribute "${attr.name}" (id: ${attributeId})`)
             }
           } catch (error) {
             console.warn(`[SYNC] Failed to fetch display name for attribute ${attr.name}:`, error)
-            // Continue with internal name as fallback
           }
-        } else {
-          console.warn(`[SYNC] Skipping AttributeDescription fetch for "${attr.name}": attributeId=${attributeId}, apiBaseUrl=${!!apiBaseUrl}, authHeaderParam=${!!authHeaderParam}`)
         }
 
         productAttributes.push({

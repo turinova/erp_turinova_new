@@ -2,6 +2,7 @@
 // Handles fetching and syncing product images via ShopRenter API
 
 import { extractShopNameFromUrl, getShopRenterAuthHeader } from './shoprenter-api'
+import { getShopRenterRateLimiter } from './shoprenter-rate-limiter'
 
 export interface ShopRenterImage {
   id: string // ShopRenter productImage ID
@@ -35,19 +36,24 @@ export async function fetchProductImages(
     config.apiUrl
   )
 
+  // Get rate limiter to respect ShopRenter's 3 req/sec limit
+  const rateLimiter = getShopRenterRateLimiter()
+
   try {
-    // Fetch product images using productId filter
-    const response = await fetch(
-      `${apiBaseUrl}/productImages?productId=${encodeURIComponent(productShopRenterId)}&full=1&limit=200`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': authHeader
-        },
-        signal: AbortSignal.timeout(30000)
-      }
+    // Fetch product images using productId filter with rate limiting
+    const response = await rateLimiter.execute(() =>
+      fetch(
+        `${apiBaseUrl}/productImages?productId=${encodeURIComponent(productShopRenterId)}&full=1&limit=200`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          signal: AbortSignal.timeout(30000)
+        }
+      )
     )
 
     if (!response.ok) {
@@ -66,23 +72,25 @@ export async function fetchProductImages(
     const images: ShopRenterImage[] = []
     
     for (const item of data.response.items) {
-      // If item is just an href (no imagePath), fetch the full object
+      // If item is just an href (no imagePath), fetch the full object with rate limiting
       if (item.href && !item.imagePath) {
         try {
           // Extract the ID from href and fetch with full=1
           const itemId = item.href.split('/').pop()
           if (itemId) {
-            const itemResponse = await fetch(
-              `${apiBaseUrl}/productImages/${encodeURIComponent(itemId)}?full=1`,
-              {
-                method: 'GET',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Accept': 'application/json',
-                  'Authorization': authHeader
-                },
-                signal: AbortSignal.timeout(10000)
-              }
+            const itemResponse = await rateLimiter.execute(() =>
+              fetch(
+                `${apiBaseUrl}/productImages/${encodeURIComponent(itemId)}?full=1`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': authHeader
+                  },
+                  signal: AbortSignal.timeout(10000)
+                }
+              )
             )
             
             if (itemResponse.ok) {
@@ -144,19 +152,24 @@ export async function syncImageAltText(
     config.apiUrl
   )
 
+  // Get rate limiter to respect ShopRenter's 3 req/sec limit
+  const rateLimiter = getShopRenterRateLimiter()
+
   try {
-    // First, get the current image data to preserve other fields
-    const getResponse = await fetch(
-      `${apiBaseUrl}/productImages/${encodeURIComponent(imageShopRenterId)}?full=1`,
-      {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': authHeader
-        },
-        signal: AbortSignal.timeout(30000)
-      }
+    // First, get the current image data to preserve other fields with rate limiting
+    const getResponse = await rateLimiter.execute(() =>
+      fetch(
+        `${apiBaseUrl}/productImages/${encodeURIComponent(imageShopRenterId)}?full=1`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          signal: AbortSignal.timeout(30000)
+        }
+      )
     )
 
     if (!getResponse.ok) {
@@ -176,19 +189,21 @@ export async function syncImageAltText(
       }
     }
 
-    // PUT request to update the image
-    const putResponse = await fetch(
-      `${apiBaseUrl}/productImages/${encodeURIComponent(imageShopRenterId)}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': authHeader
-        },
-        body: JSON.stringify(updatePayload),
-        signal: AbortSignal.timeout(30000)
-      }
+    // PUT request to update the image with rate limiting
+    const putResponse = await rateLimiter.execute(() =>
+      fetch(
+        `${apiBaseUrl}/productImages/${encodeURIComponent(imageShopRenterId)}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          body: JSON.stringify(updatePayload),
+          signal: AbortSignal.timeout(30000)
+        }
+      )
     )
 
     if (!putResponse.ok) {

@@ -47,6 +47,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useMemo, Fragment } from 'react'
 import dynamic from 'next/dynamic'
 import PriceOptimizer from './PriceOptimizer'
+import ExpensiveProductsTab from './ExpensiveProductsTab'
 
 // Dynamically import ApexCharts to avoid SSR issues
 const Chart = dynamic(() => import('react-apexcharts'), { ssr: false })
@@ -400,6 +401,21 @@ export default function CompetitorDashboard({ initialData, metrics, competitorSt
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab label="Áttekintés" />
           <Tab label="Ár Optimalizálás" />
+          <Tab 
+            label={
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                Drágább Termékek
+                {metrics.moreExpensive > 0 && (
+                  <Chip 
+                    label={metrics.moreExpensive} 
+                    size="small" 
+                    color="error"
+                    sx={{ height: 20, fontSize: '0.75rem' }}
+                  />
+                )}
+              </Box>
+            } 
+          />
         </Tabs>
       </Box>
 
@@ -929,6 +945,10 @@ export default function CompetitorDashboard({ initialData, metrics, competitorSt
 
       {activeTab === 1 && (
         <PriceOptimizer priceComparisons={filteredData} />
+      )}
+
+      {activeTab === 2 && (
+        <ExpensiveProductsTab priceComparisons={filteredData} />
       )}
     </Box>
   )

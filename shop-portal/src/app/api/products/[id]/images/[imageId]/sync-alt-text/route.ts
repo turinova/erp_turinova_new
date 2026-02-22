@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { getConnectionById } from '@/lib/connections-server'
 import { syncImageAltText, fetchProductImages } from '@/lib/shoprenter-image-service'
 import { extractShopNameFromUrl, getShopRenterAuthHeader } from '@/lib/shoprenter-api'
+import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 
 /**
  * POST /api/products/[id]/images/[imageId]/sync-alt-text
@@ -189,30 +190,31 @@ export async function POST(
     let shoprenterImageId = image.shoprenter_image_id
     
     if (!shoprenterImageId) {
-      // Fetch images from ShopRenter to get the ID
       const shopName = extractShopNameFromUrl(connection.api_url)
       if (!shopName) {
         return NextResponse.json({ error: 'Invalid shop name' }, { status: 400 })
       }
 
-      const shoprenterImages = await fetchProductImages(
-        {
-          apiUrl: connection.api_url,
-          username: connection.username,
-          password: connection.password,
-          shopName: shopName
-        },
-        product.shoprenter_id
+      const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
+        shopName,
+        connection.username,
+        connection.password,
+        connection.api_url
       )
 
-      // Find matching image by path using flexible matching
+      const rateLimiter = getShopRenterRateLimiter()
+
+      // Enhanced path normalization (handles both data/ and non-data/ prefixes)
       const normalizePath = (path: string) => {
         if (!path) return ''
-        // Remove leading "data/" if present, normalize slashes
-        return path.replace(/^data\//, '').replace(/\\/g, '/').toLowerCase()
+        // Remove leading "data/" if present, normalize slashes, lowercase, trim
+        return path
+          .replace(/^data\//, '')
+          .replace(/\\/g, '/')
+          .toLowerCase()
+          .trim()
       }
 
-      // Extract filename from path for matching
       const getFilename = (path: string) => {
         if (!path) return ''
         const normalized = normalizePath(path)
@@ -220,41 +222,327 @@ export async function POST(
         return parts[parts.length - 1] || normalized
       }
 
-      const imageFilename = getFilename(image.image_path)
       const normalizedImagePath = normalizePath(image.image_path)
+      const imageFilename = getFilename(image.image_path)
       
-      const matchingImage = shoprenterImages.find((img: any) => {
-        const normalizedShopRenterPath = normalizePath(img.imagePath)
-        const shopRenterFilename = getFilename(img.imagePath)
-        
-        // Try multiple matching strategies:
-        // 1. Exact normalized path match
-        // 2. Filename match (most reliable when paths differ)
-        // 3. Path ends match
-        return normalizedImagePath === normalizedShopRenterPath ||
-               imageFilename === shopRenterFilename ||
-               normalizedImagePath.endsWith(normalizedShopRenterPath) ||
-               normalizedShopRenterPath.endsWith(normalizedImagePath) ||
-               normalizedImagePath.includes(shopRenterFilename) ||
-               normalizedShopRenterPath.includes(imageFilename)
-      })
+      // Prepare multiple search path variations (ShopRenter might store paths with different formats)
+      const originalPathNoData = image.image_path.replace(/^data\//, '')
+      const searchPaths = [
+        image.image_path, // Original path (preserves case, may have data/)
+        normalizedImagePath, // Normalized (lowercase, no data/)
+        originalPathNoData, // Original without data/ prefix (preserves case)
+        `data/${normalizedImagePath}`, // Normalized with data/ prefix
+        `data/${originalPathNoData}`, // Original with data/ prefix (preserves case)
+      ].filter((path, index, self) => self.indexOf(path) === index && path) // Remove duplicates and empty strings
 
-      if (matchingImage) {
-        shoprenterImageId = matchingImage.id
+      // Strategy 1: Try direct search by imagePath (ShopRenter API supports this)
+      // Try multiple path variations since ShopRenter might store paths differently
+      let searchSuccess = false
+      for (const searchPath of searchPaths) {
+        if (searchSuccess) break
         
-        // Update database with ShopRenter ID
-        await supabase
-          .from('product_images')
-          .update({ shoprenter_image_id: shoprenterImageId })
-          .eq('id', imageId)
+        try {
+          const searchResponse = await rateLimiter.execute(() =>
+            fetch(
+              `${apiBaseUrl}/productImages?productId=${encodeURIComponent(product.shoprenter_id)}&imagePath=${encodeURIComponent(searchPath)}&full=1&limit=10`,
+              {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                signal: AbortSignal.timeout(30000)
+              }
+            )
+          )
+
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json()
+            if (searchData.response?.items && searchData.response.items.length > 0) {
+              // Found by direct search - get the first match
+              const foundItem = searchData.response.items[0]
+              
+              // If item is just an href, fetch the full object
+              if (foundItem.href && !foundItem.imagePath) {
+                const itemId = foundItem.href.split('/').pop()
+                if (itemId) {
+                  const itemResponse = await rateLimiter.execute(() =>
+                    fetch(
+                      `${apiBaseUrl}/productImages/${encodeURIComponent(itemId)}?full=1`,
+                      {
+                        method: 'GET',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Accept': 'application/json',
+                          'Authorization': authHeader
+                        },
+                        signal: AbortSignal.timeout(10000)
+                      }
+                    )
+                  )
+                  
+                  if (itemResponse.ok) {
+                    const itemData = await itemResponse.json()
+                    shoprenterImageId = itemData.id || itemId
+                  }
+                }
+              } else {
+                shoprenterImageId = foundItem.id || foundItem.href?.split('/').pop()
+              }
+
+              if (shoprenterImageId) {
+                await supabase
+                  .from('product_images')
+                  .update({ shoprenter_image_id: shoprenterImageId })
+                  .eq('id', imageId)
+                
+                console.log(`[SYNC ALT TEXT] Found image via direct search (path: ${searchPath}): ${shoprenterImageId} for path: ${image.image_path}`)
+                searchSuccess = true
+                break
+              }
+            }
+          }
+        } catch (searchError: any) {
+          // Continue to next path variation
+          console.log(`[SYNC ALT TEXT] Search failed for path "${searchPath}":`, searchError?.message)
+        }
+      }
+      
+      if (!searchSuccess) {
+        console.warn(`[SYNC ALT TEXT] Direct search failed for all path variations, trying fallback`)
+      }
+
+      // Strategy 2: Fallback - fetch all images and match by path
+      if (!shoprenterImageId) {
+        let shoprenterImages: any[] = []
+        try {
+          shoprenterImages = await fetchProductImages(
+            {
+              apiUrl: connection.api_url,
+              username: connection.username,
+              password: connection.password,
+              shopName: shopName
+            },
+            product.shoprenter_id
+          )
+        } catch (fetchError: any) {
+          console.warn(`[SYNC ALT TEXT] Failed to fetch productImages:`, fetchError?.message)
+          shoprenterImages = []
+        }
         
-        console.log(`[SYNC ALT TEXT] Found matching ShopRenter image: ${shoprenterImageId} for path: ${image.image_path}`)
-      } else {
-        console.error(`[SYNC ALT TEXT] No matching ShopRenter image found for path: ${image.image_path}`)
-        console.error(`[SYNC ALT TEXT] Available ShopRenter images:`, shoprenterImages.map(img => img.imagePath))
-        return NextResponse.json({ 
-          error: `Image not found in ShopRenter. Searched for: ${image.image_path}. Please sync the product first.` 
-        }, { status: 404 })
+        // If no images found in productImages API, the image might only exist in allImages
+        // In that case, we need to create the productImage record first
+        if (shoprenterImages.length === 0) {
+          console.log(`[SYNC ALT TEXT] No images in productImages API, image may only exist in allImages. Attempting to create productImage record.`)
+          
+          // Try to create the productImage record
+          // Use the original path without data/ prefix for creation (preserves case)
+          const imagePathForCreation = originalPathNoData || normalizedImagePath
+          
+          try {
+            const createResponse = await rateLimiter.execute(() =>
+              fetch(
+                `${apiBaseUrl}/productImages`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': authHeader
+                  },
+                  body: JSON.stringify({
+                    imagePath: imagePathForCreation,
+                    imageAlt: image.alt_text || '',
+                    sortOrder: image.sort_order || 0,
+                    product: {
+                      id: product.shoprenter_id
+                    }
+                  }),
+                  signal: AbortSignal.timeout(30000)
+                }
+              )
+            )
+            
+            if (createResponse.ok) {
+              const createdData = await createResponse.json()
+              shoprenterImageId = createdData.id || createdData.href?.split('/').pop()
+              
+              if (shoprenterImageId) {
+                await supabase
+                  .from('product_images')
+                  .update({ shoprenter_image_id: shoprenterImageId })
+                  .eq('id', imageId)
+                
+                console.log(`[SYNC ALT TEXT] Created productImage record: ${shoprenterImageId} for path: ${image.image_path}`)
+                
+                // Now sync the alt text using the syncImageAltText function
+                const syncResult = await syncImageAltText(
+                  {
+                    apiUrl: connection.api_url,
+                    username: connection.username,
+                    password: connection.password,
+                    shopName: shopName
+                  },
+                  shoprenterImageId,
+                  image.alt_text || ''
+                )
+                
+                if (syncResult.success) {
+                  await supabase
+                    .from('product_images')
+                    .update({
+                      alt_text_status: 'synced',
+                      alt_text_synced_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', imageId)
+                  
+                  return NextResponse.json({
+                    success: true,
+                    message: 'Image record created and alt text synced successfully'
+                  })
+                } else {
+                  return NextResponse.json({
+                    success: false,
+                    error: syncResult.error || 'Failed to sync alt text after creating image record'
+                  }, { status: 500 })
+                }
+              }
+            } else {
+              const errorText = await createResponse.text().catch(() => 'Unknown error')
+              
+              // If we get a 409 "Resource exists" error, extract the ID from the error response
+              if (createResponse.status === 409) {
+                try {
+                  const errorData = JSON.parse(errorText)
+                  if (errorData.id) {
+                    shoprenterImageId = errorData.id
+                    console.log(`[SYNC ALT TEXT] Image exists (409), extracted ID from error: ${shoprenterImageId}`)
+                    
+                    await supabase
+                      .from('product_images')
+                      .update({ shoprenter_image_id: shoprenterImageId })
+                      .eq('id', imageId)
+                    
+                    // Now sync the alt text using the extracted ID
+                    const syncResult = await syncImageAltText(
+                      {
+                        apiUrl: connection.api_url,
+                        username: connection.username,
+                        password: connection.password,
+                        shopName: shopName
+                      },
+                      shoprenterImageId,
+                      image.alt_text || ''
+                    )
+                    
+                    if (syncResult.success) {
+                      await supabase
+                        .from('product_images')
+                        .update({
+                          alt_text_status: 'synced',
+                          alt_text_synced_at: new Date().toISOString(),
+                          updated_at: new Date().toISOString()
+                        })
+                        .eq('id', imageId)
+                      
+                      return NextResponse.json({
+                        success: true,
+                        message: 'Image found (already exists) and alt text synced successfully'
+                      })
+                    } else {
+                      return NextResponse.json({
+                        success: false,
+                        error: syncResult.error || 'Failed to sync alt text after finding existing image'
+                      }, { status: 500 })
+                    }
+                  }
+                } catch (parseError) {
+                  console.error(`[SYNC ALT TEXT] Failed to parse 409 error response:`, parseError)
+                }
+              }
+              
+              console.error(`[SYNC ALT TEXT] Failed to create productImage: ${createResponse.status} - ${errorText}`)
+              // Continue to matching logic below if we couldn't extract the ID
+            }
+          } catch (createError: any) {
+            console.error(`[SYNC ALT TEXT] Error creating productImage:`, createError?.message)
+            // Continue to matching logic below
+          }
+        }
+
+        const matchingImage = shoprenterImages.find((img: any) => {
+          const normalizedShopRenterPath = normalizePath(img.imagePath)
+          const shopRenterFilename = getFilename(img.imagePath)
+          
+          // Also try case-insensitive matching with original paths
+          const originalImagePath = image.image_path.replace(/^data\//, '').replace(/\\/g, '/')
+          const originalShopRenterPath = img.imagePath.replace(/^data\//, '').replace(/\\/g, '/')
+          
+          // Multiple matching strategies (in order of reliability):
+          // 1. Exact normalized path match (case-insensitive)
+          // 2. Exact original path match (case-sensitive)
+          // 3. Case-insensitive original path match
+          // 4. Filename match (most reliable when paths differ)
+          // 5. Path ends match (handles different prefixes)
+          // 6. Filename in path (handles subdirectory differences)
+          return normalizedImagePath === normalizedShopRenterPath ||
+                 originalImagePath === originalShopRenterPath ||
+                 originalImagePath.toLowerCase() === originalShopRenterPath.toLowerCase() ||
+                 imageFilename === shopRenterFilename ||
+                 imageFilename.toLowerCase() === shopRenterFilename.toLowerCase() ||
+                 normalizedImagePath.endsWith(normalizedShopRenterPath) ||
+                 normalizedShopRenterPath.endsWith(normalizedImagePath) ||
+                 normalizedImagePath.includes(shopRenterFilename) ||
+                 normalizedShopRenterPath.includes(imageFilename)
+        })
+
+        if (matchingImage) {
+          shoprenterImageId = matchingImage.id
+          
+          await supabase
+            .from('product_images')
+            .update({ shoprenter_image_id: shoprenterImageId })
+            .eq('id', imageId)
+          
+          console.log(`[SYNC ALT TEXT] Found matching ShopRenter image: ${shoprenterImageId} for path: ${image.image_path}`)
+        } else {
+          // Log detailed diagnostic information
+          console.error(`[SYNC ALT TEXT] No matching ShopRenter image found for path: ${image.image_path}`)
+          console.error(`[SYNC ALT TEXT] Normalized search path: ${normalizedImagePath}`)
+          console.error(`[SYNC ALT TEXT] Search filename: ${imageFilename}`)
+          console.error(`[SYNC ALT TEXT] Tried search paths:`, searchPaths)
+          console.error(`[SYNC ALT TEXT] Available ShopRenter images (${shoprenterImages.length}):`, shoprenterImages.map(img => ({
+            id: img.id,
+            path: img.imagePath,
+            normalized: normalizePath(img.imagePath),
+            filename: getFilename(img.imagePath),
+            sortOrder: img.sortOrder
+          })))
+          
+          // Try to find by filename only (most lenient match)
+          const filenameMatch = shoprenterImages.find((img: any) => {
+            const shopRenterFilename = getFilename(img.imagePath)
+            return imageFilename === shopRenterFilename
+          })
+          
+          if (filenameMatch) {
+            console.warn(`[SYNC ALT TEXT] Found match by filename only (paths differ): ${filenameMatch.imagePath} vs ${image.image_path}`)
+            shoprenterImageId = filenameMatch.id
+            
+            await supabase
+              .from('product_images')
+              .update({ shoprenter_image_id: shoprenterImageId })
+              .eq('id', imageId)
+            
+            console.log(`[SYNC ALT TEXT] Using filename match: ${shoprenterImageId}`)
+          } else {
+            return NextResponse.json({ 
+              error: `Image not found in ShopRenter. Searched for: ${image.image_path} (normalized: ${normalizedImagePath}). Tried ${searchPaths.length} path variations. Please sync the product first.` 
+            }, { status: 404 })
+          }
+        }
       }
     }
 

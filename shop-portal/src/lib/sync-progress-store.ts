@@ -54,6 +54,36 @@ export function updateProgress(
 }
 
 /**
+ * Atomically increment progress counters
+ * This prevents race conditions when multiple batches update progress simultaneously
+ */
+export function incrementProgress(
+  connectionId: string,
+  increments: { synced?: number; errors?: number }
+) {
+  const store = getProgressStore()
+  const existing = store.get(connectionId) || {
+    total: 0,
+    synced: 0,
+    current: 0,
+    status: 'starting',
+    errors: 0,
+    startTime: Date.now()
+  }
+
+  const updated = {
+    ...existing,
+    synced: existing.synced + (increments.synced || 0),
+    errors: existing.errors + (increments.errors || 0),
+    current: existing.current + (increments.synced || 0) + (increments.errors || 0),
+    status: existing.status === 'completed' ? existing.status : 'syncing'
+  }
+
+  store.set(connectionId, updated)
+  console.log(`[PROGRESS] Incremented progress for ${connectionId}: +${increments.synced || 0} synced, +${increments.errors || 0} errors (Total: ${updated.synced}/${updated.total})`)
+}
+
+/**
  * Get progress for a connection
  */
 export function getProgress(connectionId: string): SyncProgress | undefined {
