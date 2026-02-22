@@ -6,6 +6,9 @@
 import { chromium } from 'playwright'
 import Anthropic from '@anthropic-ai/sdk'
 
+// Check if we're in production (Vercel)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1'
+
 /**
  * Retry helper with exponential backoff for API calls
  */
@@ -106,17 +109,55 @@ export async function fetchPageContent(url: string): Promise<PageContent> {
   let browser
   
   try {
-    // Try to launch with Playwright's bundled Chromium
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
-      ]
-    })
+    if (isProduction) {
+      // Production (Vercel): Use @sparticuz/chromium for serverless compatibility
+      const chromiumPackage = await import('@sparticuz/chromium')
+      
+      browser = await chromium.launch({
+        executablePath: await chromiumPackage.default.executablePath(),
+        headless: chromiumPackage.default.headless,
+        args: [
+          ...chromiumPackage.default.args,
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-extensions',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-background-networking',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-ipc-flooding-protection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-sync',
+          '--disable-translate',
+          '--metrics-recording-only',
+          '--mute-audio',
+          '--no-first-run',
+          '--safebrowsing-disable-auto-update',
+          '--enable-automation',
+          '--password-store=basic',
+          '--use-mock-keychain',
+        ],
+      })
+    } else {
+      // Development: Use Playwright's bundled Chromium
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--disable-gpu'
+        ]
+      })
+    }
   } catch (error: any) {
     // If Playwright's browser is missing, provide a helpful error message
     if (error.message?.includes('Executable doesn\'t exist') || error.message?.includes('browserType.launch')) {
