@@ -210,6 +210,22 @@ export async function GET(
       .eq('product_id', product.id)
       .eq('language_code', 'hu')
       .maybeSingle()
+    
+    // Log description info for debugging
+    if (description) {
+      console.log('[STRUCTURED DATA API] Description length from DB:', description.description?.length || 0)
+      console.log('[STRUCTURED DATA API] Description contains FAQ:', 
+        description.description?.includes('Gyakran ismételt kérdések') || 
+        description.description?.includes('GYIK') || 
+        false
+      )
+      if (description.description) {
+        const last200 = description.description.substring(Math.max(0, description.description.length - 200))
+        console.log('[STRUCTURED DATA API] Description ends with:', last200)
+      }
+    } else {
+      console.log('[STRUCTURED DATA API] No description found in database')
+    }
 
     // Fetch images (use image_url if available, fallback to constructing from image_path)
     const { data: images } = await supabase

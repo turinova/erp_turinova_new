@@ -54,67 +54,132 @@ export interface StructuredDataOptions {
 }
 
 /**
+ * Decode HTML entities in a string
+ * Handles both named entities (&lt;, &gt;) and numeric entities (&#8217;, &#x27;)
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    // Common named entities
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&hellip;/g, '...')
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&copy;/g, '©')
+    .replace(/&reg;/g, '®')
+    .replace(/&trade;/g, '™')
+    .replace(/&euro;/g, '€')
+    .replace(/&pound;/g, '£')
+    .replace(/&yen;/g, '¥')
+    .replace(/&cent;/g, '¢')
+    // Decode numeric entities (e.g., &#8217;, &#160;)
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = parseInt(dec, 10)
+      if (code >= 0 && code <= 1114111) {
+        return String.fromCharCode(code)
+      }
+      return ''
+    })
+    // Decode hex entities (e.g., &#x27;, &#xA0;)
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16)
+      if (code >= 0 && code <= 1114111) {
+        return String.fromCharCode(code)
+      }
+      return ''
+    })
+}
+
+/**
  * Extract FAQ questions and answers from description HTML
  */
 function extractFAQFromDescription(description: string): Array<{ question: string; answer: string }> {
-  if (!description) return []
+  if (!description) {
+    console.log('[FAQ EXTRACTION] No description provided')
+    return []
+  }
+  
+  console.log('[FAQ EXTRACTION] Starting extraction. Description length:', description.length)
+  
+  // CRITICAL: Decode HTML entities FIRST (description may be stored with encoded entities)
+  // Check if description has encoded entities
+  const hasEncodedEntities = description.includes('&lt;') || description.includes('&gt;') || description.includes('&quot;')
+  console.log('[FAQ EXTRACTION] Has encoded HTML entities:', hasEncodedEntities)
+  
+  // Decode HTML entities to get actual HTML tags
+  const decodedDescription = decodeHtmlEntities(description)
+  
+  console.log('[FAQ EXTRACTION] Decoded description length:', decodedDescription.length)
+  console.log('[FAQ EXTRACTION] Contains "Gyakran ismételt kérdések":', decodedDescription.includes('Gyakran ismételt kérdések'))
+  console.log('[FAQ EXTRACTION] Contains "GYIK":', decodedDescription.includes('GYIK'))
+  console.log('[FAQ EXTRACTION] Contains "Gyakori kérdések":', decodedDescription.includes('Gyakori kérdések'))
   
   const faqs: Array<{ question: string; answer: string }> = []
   
-  // Look for FAQ section - Hungarian headings (case-insensitive)
-  const faqSectionMatch = description.match(
-    /<h2[^>]*>(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK)[^<]*<\/h2>(.*?)(?=<h2|$)/is
-  )
+  // Try multiple patterns to find FAQ section - more flexible matching
+  // Now using decoded description with actual HTML tags
+  const patterns = [
+    // Pattern 1: Standard format with optional text before/after heading keywords
+    /<h2[^>]*>(?:.*?)?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK)(?:.*?)?<\/h2>(.*?)(?=<h2|<\/body>|$)/is,
+    // Pattern 2: More flexible - heading text can appear anywhere in h2 tag
+    /<h2[^>]*>.*?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK).*?<\/h2>(.*?)(?=<h2|$)/is,
+    // Pattern 3: If FAQ is the last section (no following h2), capture everything after heading
+    /<h2[^>]*>.*?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK).*?<\/h2>(.*)/is,
+  ]
   
-  if (!faqSectionMatch) return []
+  let faqContent = ''
+  let matchedPattern = 0
   
-  const faqContent = faqSectionMatch[1]
+  for (let i = 0; i < patterns.length; i++) {
+    const match = decodedDescription.match(patterns[i])
+    if (match && match[1] && match[1].trim().length > 0) {
+      faqContent = match[1]
+      matchedPattern = i + 1
+      console.log(`[FAQ EXTRACTION] Found FAQ section with pattern ${matchedPattern}, content length:`, faqContent.length)
+      break
+    }
+  }
   
-  // Helper function to decode HTML entities and strip tags
+  if (!faqContent) {
+    // Log diagnostic information
+    const last500Chars = decodedDescription.substring(Math.max(0, decodedDescription.length - 500))
+    console.log('[FAQ EXTRACTION] No FAQ section found. Last 500 chars of decoded description:', last500Chars)
+    console.log('[FAQ EXTRACTION] Description ends with:', decodedDescription.substring(Math.max(0, decodedDescription.length - 100)))
+    return []
+  }
+  
+  // Helper function to clean text: decode entities, strip HTML tags, normalize whitespace
   const cleanText = (text: string): string => {
-    return text
-      .replace(/<[^>]*>/g, '') // Strip HTML tags
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&apos;/g, "'")
-      .replace(/&hellip;/g, '...')
-      .replace(/&mdash;/g, '—')
-      .replace(/&ndash;/g, '–')
-      // Decode numeric entities
-      .replace(/&#(\d+);/g, (_, dec) => {
-        const code = parseInt(dec, 10)
-        if (code >= 0 && code <= 1114111) {
-          return String.fromCharCode(code)
-        }
-        return ''
-      })
-      // Decode hex entities
-      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
-        const code = parseInt(hex, 16)
-        if (code >= 0 && code <= 1114111) {
-          return String.fromCharCode(code)
-        }
-        return ''
-      })
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim()
+    // First decode HTML entities (in case they're still encoded)
+    let cleaned = decodeHtmlEntities(text)
+    // Then strip HTML tags
+    cleaned = cleaned.replace(/<[^>]*>/g, '')
+    // Normalize whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim()
+    return cleaned
   }
   
   // Extract Q&A pairs: <h3>Question</h3> <p>Answer</p> or <h3>Question</h3> followed by <p>Answer</p>
   // Pattern matches h3 followed by one or more p tags (handles multi-paragraph answers)
   const qaPattern = /<h3[^>]*>(.*?)<\/h3>\s*(<p[^>]*>.*?<\/p>(?:\s*<p[^>]*>.*?<\/p>)*)/gis
   let match
+  let qaCount = 0
   
   while ((match = qaPattern.exec(faqContent)) !== null) {
+    qaCount++
     const question = cleanText(match[1])
     
     // Extract all paragraphs for the answer
     const answerParagraphs = match[2].match(/<p[^>]*>(.*?)<\/p>/gis)
-    if (!answerParagraphs) continue
+    if (!answerParagraphs) {
+      console.log(`[FAQ EXTRACTION] Q&A ${qaCount}: No answer paragraphs found for question:`, question.substring(0, 50))
+      continue
+    }
     
     const answer = answerParagraphs
       .map(p => {
@@ -127,9 +192,13 @@ function extractFAQFromDescription(description: string): Array<{ question: strin
     // Only add if both question and answer are meaningful
     if (question && answer && question.length > 10 && answer.length > 20) {
       faqs.push({ question, answer })
+      console.log(`[FAQ EXTRACTION] Extracted FAQ ${faqs.length}:`, question.substring(0, 60) + '...')
+    } else {
+      console.log(`[FAQ EXTRACTION] Q&A ${qaCount} rejected - Question length:`, question.length, 'Answer length:', answer.length)
     }
   }
   
+  console.log(`[FAQ EXTRACTION] Total FAQs extracted: ${faqs.length} out of ${qaCount} Q&A pairs found`)
   return faqs
 }
 
@@ -168,6 +237,22 @@ export function generateProductStructuredData(
   const currency = options.currency || 'HUF'
   const shopUrl = options.shopUrl || ''
   const shopName = options.shopName || ''
+
+  // IMPORTANT: Extract FAQ from ORIGINAL description BEFORE any processing
+  // This ensures we get the full description even if it gets truncated later
+  const originalDescription = product.description?.description || ''
+  console.log('[STRUCTURED DATA] Product SKU:', product.sku)
+  console.log('[STRUCTURED DATA] Original description length:', originalDescription.length)
+  console.log('[STRUCTURED DATA] Description exists:', !!originalDescription)
+  
+  const faqs = extractFAQFromDescription(originalDescription)
+  const faqSchema = generateFAQPageSchema(faqs, product.product_url)
+  
+  if (faqSchema) {
+    console.log('[STRUCTURED DATA] FAQPage schema generated with', faqs.length, 'questions')
+  } else {
+    console.log('[STRUCTURED DATA] No FAQPage schema generated (no FAQs found)')
+  }
 
   // Determine if this is a parent product with variants
   const isSelfReferencing = product.parent_product_id === product.id
@@ -535,16 +620,14 @@ export function generateProductStructuredData(
     schema.url = product.product_url
   }
 
-  // Extract FAQ from description and generate FAQPage schema
-  const description = product.description?.description || ''
-  const faqs = extractFAQFromDescription(description)
-  const faqSchema = generateFAQPageSchema(faqs, product.product_url)
-  
   // Return both schemas if FAQ exists, otherwise just Product schema
+  // FAQ extraction was done at the beginning of the function
   if (faqSchema) {
+    console.log('[STRUCTURED DATA] Returning array with Product and FAQPage schemas')
     return [schema, faqSchema] // Return array of schemas
   }
   
+  console.log('[STRUCTURED DATA] Returning single Product schema (no FAQ)')
   return schema // Return single schema if no FAQ
 }
 
