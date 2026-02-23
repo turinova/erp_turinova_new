@@ -58,6 +58,7 @@ interface PriceRecommendation {
   modelNumber: string | null
   currentPrice: number
   competitorPrice: number
+  competitorName: string
   currentPercentDiff: number
   recommendedPrice: number
   priceChange: number
@@ -77,15 +78,39 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
   const router = useRouter()
 
   // Calculate price recommendations
+  // Industry standard: Only optimize against the CHEAPEST competitor (the one we're losing to)
   const recommendations = useMemo(() => {
     const recs: PriceRecommendation[] = []
 
+    // Group comparisons by productId to find the cheapest competitor for each product
+    const productGroups = new Map<string, PriceComparison[]>()
+    
     priceComparisons.forEach(item => {
-      const { linkId, ourPrice, competitorPrice, percentDiff, productId, sku, productName, modelNumber, inStock } = item
+      if (!productGroups.has(item.productId)) {
+        productGroups.set(item.productId, [])
+      }
+      productGroups.get(item.productId)!.push(item)
+    })
+
+    // For each product, find the cheapest competitor and optimize against that
+    productGroups.forEach((comparisons, productId) => {
+      // Find the cheapest competitor (lowest price)
+      const cheapestComparison = comparisons.reduce((cheapest, current) => {
+        if (!cheapest) return current
+        if (!current.competitorPrice) return cheapest
+        if (!cheapest.competitorPrice) return current
+        return current.competitorPrice < cheapest.competitorPrice ? current : cheapest
+      })
+
+      if (!cheapestComparison || !cheapestComparison.competitorPrice || !cheapestComparison.ourPrice) {
+        return // Skip if no valid price data
+      }
+
+      const { linkId, ourPrice, competitorPrice, percentDiff, sku, productName, modelNumber, inStock, competitorName } = cheapestComparison
       
-      // Quick wins: Products losing by 2-5% (easy fix)
+      // Quick wins: Products losing by 2-5% to cheapest competitor (easy fix)
       if (percentDiff > 2 && percentDiff <= 5) {
-        const recommendedPrice = Math.round(competitorPrice * 0.98) // 2% below competitor
+        const recommendedPrice = Math.round(competitorPrice * 0.98) // 2% below cheapest competitor
         const priceChange = recommendedPrice - ourPrice
         const priceChangePercent = ((priceChange / ourPrice) * 100)
         
@@ -97,6 +122,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           modelNumber,
           currentPrice: ourPrice,
           competitorPrice,
+          competitorName,
           currentPercentDiff: percentDiff,
           recommendedPrice,
           priceChange,
@@ -105,13 +131,13 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           impact: 'flip_to_win',
           revenueImpact: priceChange, // Negative (revenue loss per unit)
           priority: 'high',
-          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk - Kis csökkentéssel győzhetünk`
+          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk a legolcsóbb versenytárshoz képest (${competitorName}) - Kis csökkentéssel győzhetünk`
         })
       }
       
-      // Safe increases: Products winning by 10%+ (can increase safely)
+      // Safe increases: Products winning by 10%+ against cheapest competitor (can increase safely)
       if (percentDiff < -10) {
-        const recommendedPrice = Math.round(competitorPrice * 0.95) // Still 5% below competitor
+        const recommendedPrice = Math.round(competitorPrice * 0.95) // Still 5% below cheapest competitor
         const priceChange = recommendedPrice - ourPrice
         const priceChangePercent = ((priceChange / ourPrice) * 100)
         
@@ -124,6 +150,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
             modelNumber,
             currentPrice: ourPrice,
             competitorPrice,
+            competitorName,
             currentPercentDiff: percentDiff,
             recommendedPrice,
             priceChange,
@@ -132,14 +159,14 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
             impact: 'still_win',
             revenueImpact: priceChange, // Positive (revenue gain per unit)
             priority: 'medium',
-            reason: `${Math.abs(percentDiff).toFixed(1)}%-kal olcsóbbak vagyunk - Biztonságosan emelhetjük az árat`
+            reason: `${Math.abs(percentDiff).toFixed(1)}%-kal olcsóbbak vagyunk a legolcsóbb versenytárshoz képest (${competitorName}) - Biztonságosan emelhetjük az árat`
           })
         }
       }
       
-      // Moderate fixes: Products losing by 5-10% (moderate reduction needed)
+      // Moderate fixes: Products losing by 5-10% to cheapest competitor (moderate reduction needed)
       if (percentDiff > 5 && percentDiff <= 10) {
-        const recommendedPrice = Math.round(competitorPrice * 0.97) // 3% below competitor
+        const recommendedPrice = Math.round(competitorPrice * 0.97) // 3% below cheapest competitor
         const priceChange = recommendedPrice - ourPrice
         const priceChangePercent = ((priceChange / ourPrice) * 100)
         
@@ -151,6 +178,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           modelNumber,
           currentPrice: ourPrice,
           competitorPrice,
+          competitorName,
           currentPercentDiff: percentDiff,
           recommendedPrice,
           priceChange,
@@ -159,11 +187,38 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           impact: 'flip_to_win',
           revenueImpact: priceChange,
           priority: 'high',
-          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk - Mérsékelt csökkentés szükséges a győzelemhez`
+          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk a legolcsóbb versenytárshoz képest (${competitorName}) - Mérsékelt csökkentés szükséges a győzelemhez`
         })
       }
       
-      // Opportunity: Competitor out of stock (can increase price)
+      // Large gaps: Products losing by >10% to cheapest competitor (significant reduction needed)
+      if (percentDiff > 10) {
+        const recommendedPrice = Math.round(competitorPrice * 0.98) // 2% below cheapest competitor
+        const priceChange = recommendedPrice - ourPrice
+        const priceChangePercent = ((priceChange / ourPrice) * 100)
+        
+        recs.push({
+          linkId,
+          productId,
+          sku,
+          productName,
+          modelNumber,
+          currentPrice: ourPrice,
+          competitorPrice,
+          competitorName,
+          currentPercentDiff: percentDiff,
+          recommendedPrice,
+          priceChange,
+          priceChangePercent,
+          recommendationType: 'decrease',
+          impact: 'flip_to_win',
+          revenueImpact: priceChange,
+          priority: 'high',
+          reason: `${percentDiff.toFixed(1)}%-kal drágábbak vagyunk a legolcsóbb versenytárshoz képest (${competitorName}) - Jelentős csökkentés szükséges`
+        })
+      }
+      
+      // Opportunity: Cheapest competitor out of stock (can increase price if we're already cheaper)
       if (inStock === false && percentDiff < 0) {
         const recommendedPrice = Math.round(ourPrice * 1.05) // 5% increase
         const priceChange = recommendedPrice - ourPrice
@@ -177,6 +232,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           modelNumber,
           currentPrice: ourPrice,
           competitorPrice,
+          competitorName,
           currentPercentDiff: percentDiff,
           recommendedPrice,
           priceChange,
@@ -185,7 +241,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           impact: 'still_win',
           revenueImpact: priceChange,
           priority: 'medium',
-          reason: 'Versenytárs nincs raktáron - Lehetőség az ár emelésére'
+          reason: `Legolcsóbb versenytárs (${competitorName}) nincs raktáron - Lehetőség az ár emelésére`
         })
       }
     })
@@ -343,7 +399,10 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
           <AlertTitle>Gyors győzelmek elérhetők!</AlertTitle>
           <Typography variant="body2">
             {quickWins.length} terméknél kis ár csökkentéssel ({formatPrice(Math.round(quickWins.reduce((sum, r) => sum + Math.abs(r.priceChange), 0) / quickWins.length))} átlag) 
-            győzhetünk a versenytársakkal szemben.
+            győzhetünk a legolcsóbb versenytársakkal szemben.
+          </Typography>
+          <Typography variant="caption" sx={{ display: 'block', mt: 1, opacity: 0.9 }}>
+            Megjegyzés: Az optimalizálás a legolcsóbb versenytárs árához viszonyítva történik (iparági szabvány).
           </Typography>
         </Alert>
       )}
@@ -373,7 +432,7 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
                 <TableRow>
                   <TableCell sx={{ fontWeight: 600 }}>Termék</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Jelenlegi ár</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }} align="right">Versenyár</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Legolcsóbb versenyár</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Különbség</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Javasolt ár</TableCell>
                   <TableCell sx={{ fontWeight: 600 }} align="right">Változás</TableCell>
@@ -406,6 +465,9 @@ export default function PriceOptimizer({ priceComparisons }: Props) {
                     <TableCell align="right">
                       <Typography variant="body2">
                         {formatPrice(rec.competitorPrice)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        ({rec.competitorName})
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
