@@ -355,10 +355,10 @@ export async function GET(
     )
 
     // Handle both single schema and array of schemas (Product + FAQPage)
-    // Return as JSON-LD with proper headers
+    // Return as JSON-LD with proper headers and UTF-8 encoding
     return NextResponse.json(structuredData, {
       headers: {
-        'Content-Type': 'application/ld+json',
+        'Content-Type': 'application/ld+json; charset=UTF-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600', // Cache for 1 hour
         ...corsHeaders
       }
