@@ -74,7 +74,7 @@ function extractUrlAlias(product: any): { slug: string | null; id: string | null
  * Batch fetch AttributeDescriptions for multiple attributes
  * This is much faster than fetching them individually
  */
-async function batchFetchAttributeDescriptions(
+export async function batchFetchAttributeDescriptions(
   apiBaseUrl: string,
   authHeader: string,
   attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }>
@@ -1049,7 +1049,7 @@ async function processSyncInBackground(
  * Sync a single product to database
  * @param attributeDescriptionsMap Optional map of attributeId -> {display_name, prefix, postfix} for batch-fetched attributes
  */
-async function syncProductToDatabase(
+export async function syncProductToDatabase(
   supabase: any,
   connection: any,
   product: any,
@@ -1314,6 +1314,51 @@ async function syncProductToDatabase(
           signal: AbortSignal.timeout(10000)
         })
 
+        // Handle ShopRenter API errors according to documentation
+        // Reference: https://doc.shoprenter.hu/development/api/02_status_codes.html
+        if (!descResponse.ok) {
+          const errorText = await descResponse.text().catch(() => 'Unknown error')
+          let errorMessage = `ShopRenter API error (${descResponse.status})`
+          
+          // Parse error response if JSON
+          try {
+            const errorJson = JSON.parse(errorText)
+            errorMessage = errorJson.message || errorJson.error || errorMessage
+          } catch {
+            if (errorText) {
+              errorMessage = `${errorMessage}: ${errorText.substring(0, 200)}`
+            }
+          }
+          
+          // Handle specific ShopRenter error codes
+          if (descResponse.status === 401) {
+            console.error(`[SYNC] Authentication failed (401) for product ${product.sku}: ${errorMessage}`)
+            // Continue - don't block sync for auth errors on descriptions
+          } else if (descResponse.status === 404) {
+            console.warn(`[SYNC] Product descriptions not found (404) for product ${product.sku} - this may be normal`)
+            // Continue - 404 is acceptable if product has no descriptions
+          } else if (descResponse.status === 429) {
+            console.error(`[SYNC] Rate limit exceeded (429) for product ${product.sku}: ${errorMessage}`)
+            // This is a critical error - should stop sync
+            throw new Error(`ShopRenter rate limit exceeded (429). Please wait before retrying.`)
+          } else if (descResponse.status === 403) {
+            console.error(`[SYNC] Access forbidden (403) for product ${product.sku}: ${errorMessage}`)
+            // Continue - but log the error
+          } else if (descResponse.status >= 500) {
+            console.error(`[SYNC] ShopRenter server error (${descResponse.status}) for product ${product.sku}: ${errorMessage}`)
+            // Continue - server errors are temporary
+          } else {
+            console.error(`[SYNC] ShopRenter API error (${descResponse.status}) for product ${product.sku}: ${errorMessage}`)
+          }
+          
+          // Skip description processing if error is critical
+          if (descResponse.status === 429) {
+            return // Exit early for rate limiting
+          }
+          // For other errors, continue but skip description processing
+          return
+        }
+
         if (descResponse.ok) {
           // Check content type
           const descContentType = descResponse.headers.get('content-type')
@@ -1374,11 +1419,44 @@ async function syncProductToDatabase(
           
           // Update product name immediately (before smart sync checks)
           if (productNameToUpdate) {
-            await supabase
+            const { data: updateData, error: updateError } = await supabase
               .from('shoprenter_products')
               .update({ name: productNameToUpdate })
               .eq('id', dbProduct.id)
-            console.log(`[SYNC] Updated product name for ${product.sku}: ${productNameToUpdate}`)
+            
+            if (updateError) {
+              console.error(`[SYNC] Failed to update product name for ${product.sku}:`, updateError)
+              console.error(`[SYNC] Update error details:`, {
+                code: updateError.code,
+                message: updateError.message,
+                details: updateError.details,
+                hint: updateError.hint
+              })
+            } else {
+              console.log(`[SYNC] Updated product name for ${product.sku}: ${productNameToUpdate}`)
+              
+              // CRITICAL: Also update description name for Hungarian description
+              // This ensures the UI shows the correct name even if smart sync skips description content
+              const { data: huDesc, error: huDescError } = await supabase
+                .from('shoprenter_product_descriptions')
+                .select('id')
+                .eq('product_id', dbProduct.id)
+                .eq('language_code', 'hu')
+                .maybeSingle()
+              
+              if (huDesc && !huDescError) {
+                const { error: descUpdateError } = await supabase
+                  .from('shoprenter_product_descriptions')
+                  .update({ name: productNameToUpdate })
+                  .eq('id', huDesc.id)
+                
+                if (descUpdateError) {
+                  console.error(`[SYNC] Failed to update description name for ${product.sku}:`, descUpdateError)
+                } else {
+                  console.log(`[SYNC] Updated description name for ${product.sku}: ${productNameToUpdate}`)
+                }
+              }
+            }
           }
 
           // NOW process descriptions (with smart sync)
@@ -1473,11 +1551,44 @@ async function syncProductToDatabase(
       
       // Update product name immediately (before smart sync checks)
       if (productNameToUpdate) {
-        await supabase
+        const { data: updateData, error: updateError } = await supabase
           .from('shoprenter_products')
           .update({ name: productNameToUpdate })
           .eq('id', dbProduct.id)
-        console.log(`[SYNC] Updated product name for ${product.sku}: ${productNameToUpdate}`)
+        
+        if (updateError) {
+          console.error(`[SYNC] Failed to update product name for ${product.sku}:`, updateError)
+          console.error(`[SYNC] Update error details:`, {
+            code: updateError.code,
+            message: updateError.message,
+            details: updateError.details,
+            hint: updateError.hint
+          })
+        } else {
+          console.log(`[SYNC] Updated product name for ${product.sku}: ${productNameToUpdate}`)
+          
+          // CRITICAL: Also update description name for Hungarian description
+          // This ensures the UI shows the correct name even if smart sync skips description content
+          const { data: huDesc, error: huDescError } = await supabase
+            .from('shoprenter_product_descriptions')
+            .select('id')
+            .eq('product_id', dbProduct.id)
+            .eq('language_code', 'hu')
+            .maybeSingle()
+          
+          if (huDesc && !huDescError) {
+            const { error: descUpdateError } = await supabase
+              .from('shoprenter_product_descriptions')
+              .update({ name: productNameToUpdate })
+              .eq('id', huDesc.id)
+            
+            if (descUpdateError) {
+              console.error(`[SYNC] Failed to update description name for ${product.sku}:`, descUpdateError)
+            } else {
+              console.log(`[SYNC] Updated description name for ${product.sku}: ${productNameToUpdate}`)
+            }
+          }
+        }
       }
       
       // NOW process descriptions (with smart sync)

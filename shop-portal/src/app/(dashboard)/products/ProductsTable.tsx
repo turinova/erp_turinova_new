@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { 
   Box, 
@@ -108,7 +108,31 @@ export default function ProductsTable({
   const [isSyncingImageAltText, setIsSyncingImageAltText] = useState(false)
   const [imageAltTextProgress, setImageAltTextProgress] = useState({ current: 0, total: 0 })
   const [imageAltTextDialogOpen, setImageAltTextDialogOpen] = useState(false)
-  const [imageAltTextDialogType, setImageAltTextDialogType] = useState<'generate' | 'sync' | null>(null)
+  const [imageAltTextDialogType, setImageAltTextDialogType] = useState<'generate' | 'sync'>('generate')
+
+  // Bulk sync from ShopRenter state
+  const [isSyncingFromShopRenter, setIsSyncingFromShopRenter] = useState(false)
+  const [shopRenterSyncProgress, setShopRenterSyncProgress] = useState({ current: 0, total: 0 })
+
+  // Bulk sync to ShopRenter state
+  const [isSyncingToShopRenter, setIsSyncingToShopRenter] = useState(false)
+  const [shopRenterSyncToProgress, setShopRenterSyncToProgress] = useState({ current: 0, total: 0 })
+
+  // Refs for polling intervals
+  const syncFromShopRenterIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const syncToShopRenterIntervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      if (syncFromShopRenterIntervalRef.current) {
+        clearInterval(syncFromShopRenterIntervalRef.current)
+      }
+      if (syncToShopRenterIntervalRef.current) {
+        clearInterval(syncToShopRenterIntervalRef.current)
+      }
+    }
+  }, [])
 
   // Quality score state
   const [qualityScores, setQualityScores] = useState<Map<string, any>>(new Map())
@@ -304,22 +328,150 @@ export default function ProductsTable({
     }
   }
 
-  const handleBulkUrlOptimization = async () => {
+  const handleBulkSyncFromShopRenter = async () => {
     if (selectedIds.size === 0) return
     
-    setUrlOptimizationDialogOpen(true)
+    setIsSyncingFromShopRenter(true)
+    setShopRenterSyncProgress({ current: 0, total: selectedIds.size })
+    setSyncError(null)
+    setSyncSuccess(null)
+
+    try {
+      const productIdsArray = Array.from(selectedIds)
+      
+      // Start sync and get progress key
+      const response = await fetch('/api/products/bulk-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: productIdsArray })
+      })
+
+      const result = await response.json()
+
+      if (!result.success || !result.progressKey) {
+        setSyncError(result.error || 'Hiba a szinkronizálás indításakor')
+        setIsSyncingFromShopRenter(false)
+        return
+      }
+
+      const progressKey = result.progressKey
+      setShopRenterSyncProgress({ current: 0, total: result.total || selectedIds.size })
+
+      // Clear any existing interval
+      if (syncFromShopRenterIntervalRef.current) {
+        clearInterval(syncFromShopRenterIntervalRef.current)
+      }
+
+      // Poll for progress
+      syncFromShopRenterIntervalRef.current = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`/api/products/bulk-sync-progress?key=${encodeURIComponent(progressKey)}`)
+          if (progressResponse.ok) {
+            const progressData = await progressResponse.json()
+            if (progressData.success && progressData.progress) {
+              const { current, total, synced, errors, status } = progressData.progress
+              setShopRenterSyncProgress({ current, total })
+
+              // Check if completed
+              if (status === 'completed' || status === 'error' || status === 'stopped') {
+                if (syncFromShopRenterIntervalRef.current) {
+                  clearInterval(syncFromShopRenterIntervalRef.current)
+                  syncFromShopRenterIntervalRef.current = null
+                }
+                setIsSyncingFromShopRenter(false)
+                
+                if (status === 'completed') {
+                  setSyncSuccess(`${synced} termék szinkronizálva ShopRenter-ből (${errors} hiba)`)
+                  // Refresh the page to show updated data
+                  setTimeout(() => {
+                    window.location.reload()
+                  }, 2000)
+                } else if (status === 'error') {
+                  setSyncError(`Hiba történt: ${errors} termék sikertelen`)
+                }
+              }
+            }
+          }
+        } catch (pollError) {
+          console.error('Error polling progress:', pollError)
+        }
+      }, 1000) // Poll every second
+    } catch (error) {
+      console.error('Error syncing products from ShopRenter:', error)
+      setSyncError('Hiba a termékek szinkronizálásakor')
+      setIsSyncingFromShopRenter(false)
+    }
   }
 
-  const handleBulkGenerateImageAltText = () => {
+  const handleBulkSyncToShopRenter = async () => {
     if (selectedIds.size === 0) return
-    setImageAltTextDialogType('generate')
-    setImageAltTextDialogOpen(true)
-  }
+    
+    setIsSyncingToShopRenter(true)
+    setShopRenterSyncToProgress({ current: 0, total: selectedIds.size })
+    setSyncError(null)
+    setSyncSuccess(null)
 
-  const handleBulkSyncImageAltText = () => {
-    if (selectedIds.size === 0) return
-    setImageAltTextDialogType('sync')
-    setImageAltTextDialogOpen(true)
+    try {
+      const productIdsArray = Array.from(selectedIds)
+      
+      // Start sync and get progress key
+      const response = await fetch('/api/products/bulk-sync-to-shoprenter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds: productIdsArray })
+      })
+
+      const result = await response.json()
+
+      if (!result.success || !result.progressKey) {
+        setSyncError(result.error || 'Hiba a szinkronizálás indításakor')
+        setIsSyncingToShopRenter(false)
+        return
+      }
+
+      const progressKey = result.progressKey
+      setShopRenterSyncToProgress({ current: 0, total: result.total || selectedIds.size })
+
+      // Clear any existing interval
+      if (syncToShopRenterIntervalRef.current) {
+        clearInterval(syncToShopRenterIntervalRef.current)
+      }
+
+      // Poll for progress
+      syncToShopRenterIntervalRef.current = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`/api/products/bulk-sync-progress?key=${encodeURIComponent(progressKey)}`)
+          if (progressResponse.ok) {
+            const progressData = await progressResponse.json()
+            if (progressData.success && progressData.progress) {
+              const { current, total, synced, errors, status } = progressData.progress
+              setShopRenterSyncToProgress({ current, total })
+
+              // Check if completed
+              if (status === 'completed' || status === 'error' || status === 'stopped') {
+                if (syncToShopRenterIntervalRef.current) {
+                  clearInterval(syncToShopRenterIntervalRef.current)
+                  syncToShopRenterIntervalRef.current = null
+                }
+                setIsSyncingToShopRenter(false)
+                
+                if (status === 'completed') {
+                  setSyncSuccess(`${synced} termék szinkronizálva ShopRenter-be (${errors} hiba)`)
+                } else if (status === 'error') {
+                  setSyncError(`Hiba történt: ${errors} termék sikertelen`)
+                }
+              }
+            }
+          }
+        } catch (pollError) {
+          console.error('Error polling progress:', pollError)
+        }
+      }, 1000) // Poll every second
+    } catch (error) {
+      console.error('Error syncing products to ShopRenter:', error)
+      setSyncError('Hiba a termékek szinkronizálásakor')
+      setIsSyncingToShopRenter(false)
+    }
   }
 
   const handleConfirmImageAltText = async () => {
@@ -870,42 +1022,6 @@ export default function ProductsTable({
           <Button
             variant="contained"
             size="small"
-            color="secondary"
-            startIcon={isOptimizingUrls ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-            onClick={handleBulkUrlOptimization}
-            disabled={isOptimizingUrls || selectedIds.size === 0}
-          >
-            {isOptimizingUrls 
-              ? `SEO URL optimalizálás (${urlOptimizationProgress.current}/${urlOptimizationProgress.total})...` 
-              : 'SEO URL optimalizálás'}
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
-            color="info"
-            startIcon={isGeneratingImageAltText ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-            onClick={handleBulkGenerateImageAltText}
-            disabled={isGeneratingImageAltText || isSyncingImageAltText || selectedIds.size === 0}
-          >
-            {isGeneratingImageAltText 
-              ? `Kép alt szöveg generálás (${imageAltTextProgress.current}/${imageAltTextProgress.total})...` 
-              : 'Kép alt szöveg generálás'}
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
-            color="success"
-            startIcon={isSyncingImageAltText ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
-            onClick={handleBulkSyncImageAltText}
-            disabled={isGeneratingImageAltText || isSyncingImageAltText || selectedIds.size === 0}
-          >
-            {isSyncingImageAltText 
-              ? `Kép alt szöveg szinkronizálás (${imageAltTextProgress.current}/${imageAltTextProgress.total})...` 
-              : 'Kép alt szöveg szinkronizálás'}
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
             color="warning"
             startIcon={isCalculatingQualityScores ? <CircularProgress size={16} color="inherit" /> : <AssessmentIcon />}
             onClick={handleBulkCalculateQualityScores}
@@ -914,6 +1030,30 @@ export default function ProductsTable({
             {isCalculatingQualityScores 
               ? `Minőségi pontszám számítás (${qualityScoreProgress.current}/${qualityScoreProgress.total})...` 
               : 'Minőségi pontszám számítás'}
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="primary"
+            startIcon={isSyncingFromShopRenter ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+            onClick={handleBulkSyncFromShopRenter}
+            disabled={isSyncingFromShopRenter || isSyncingToShopRenter || selectedIds.size === 0}
+          >
+            {isSyncingFromShopRenter 
+              ? `ShopRenter-ből: ${shopRenterSyncProgress.current}/${shopRenterSyncProgress.total}` 
+              : `ShopRenter-ből szinkronizálás (${selectedIds.size})`}
+          </Button>
+          <Button
+            variant="contained"
+            size="small"
+            color="success"
+            startIcon={isSyncingToShopRenter ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+            onClick={handleBulkSyncToShopRenter}
+            disabled={isSyncingFromShopRenter || isSyncingToShopRenter || selectedIds.size === 0}
+          >
+            {isSyncingToShopRenter 
+              ? `ShopRenter-be: ${shopRenterSyncToProgress.current}/${shopRenterSyncToProgress.total}` 
+              : `ShopRenter-be szinkronizálás (${selectedIds.size})`}
           </Button>
         </Box>
       )}
@@ -941,6 +1081,22 @@ export default function ProductsTable({
         <LinearProgress 
           variant="determinate" 
           value={qualityScoreProgress.total > 0 ? (qualityScoreProgress.current / qualityScoreProgress.total) * 100 : 0}
+          sx={{ mb: 2 }}
+        />
+      )}
+
+      {/* ShopRenter sync progress bars */}
+      {isSyncingFromShopRenter && (
+        <LinearProgress 
+          variant="determinate" 
+          value={shopRenterSyncProgress.total > 0 ? (shopRenterSyncProgress.current / shopRenterSyncProgress.total) * 100 : 0}
+          sx={{ mb: 2 }}
+        />
+      )}
+      {isSyncingToShopRenter && (
+        <LinearProgress 
+          variant="determinate" 
+          value={shopRenterSyncToProgress.total > 0 ? (shopRenterSyncToProgress.current / shopRenterSyncToProgress.total) * 100 : 0}
           sx={{ mb: 2 }}
         />
       )}
