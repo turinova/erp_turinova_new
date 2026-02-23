@@ -243,9 +243,10 @@ export async function GET(
     const isChild = product.parent_product_id && !isSelfReferencing
     
     if (isChild) {
+      // Fetch parent with attributes needed for productGroupID generation
       const { data: parentData } = await supabase
         .from('shoprenter_products')
-        .select('id, sku, name')
+        .select('id, sku, name, product_attributes')
         .eq('id', product.parent_product_id)
         .is('deleted_at', null)
         .single()
@@ -261,7 +262,7 @@ export async function GET(
     if (!product.parent_product_id || isSelfReferencing) {
       const { data: childrenData } = await supabase
         .from('shoprenter_products')
-        .select('id, sku, name, product_attributes')
+        .select('id, sku, name, model_number, gtin, price, status, product_url, product_attributes')
         .eq('parent_product_id', product.id)
         .neq('id', product.id) // Exclude parent from children
         .is('deleted_at', null)
@@ -320,6 +321,28 @@ export async function GET(
       .eq('id', product.connection_id)
       .single()
 
+    // Extract shop URL for constructing absolute image URLs
+    const shopUrl = connection?.api_url ? extractShopUrl(connection.api_url) : ''
+
+    // Update children images to be absolute URLs
+    if (children.length > 0 && shopUrl) {
+      children = children.map((child: any) => {
+        if (child.images && Array.isArray(child.images)) {
+          child.images = child.images.map((imgUrl: string) => {
+            if (!imgUrl) return imgUrl
+            // If already absolute, return as is
+            if (imgUrl.startsWith('http://') || imgUrl.startsWith('https://')) {
+              return imgUrl
+            }
+            // Construct absolute URL from image_path
+            const cleanPath = imgUrl.replace(/^data\//, '').replace(/^\//, '')
+            return `${shopUrl}/${cleanPath}`
+          }).filter((url: string) => url)
+        }
+        return child
+      })
+    }
+
     // Generate structured data
     // Use description.name as fallback if product.name is null
     const structuredData = generateProductStructuredData(
@@ -331,11 +354,10 @@ export async function GET(
           // Use image_url if available, otherwise construct from image_path
           let imageUrl = img.image_url
           if (!imageUrl && img.image_path) {
-            // Construct full URL from image_path (assuming ShopRenter CDN)
-            const shopUrl = connection?.api_url ? extractShopUrl(connection.api_url) : ''
+            // Construct full URL from image_path (using shopUrl already extracted)
             if (shopUrl) {
               // Remove 'data/' prefix if present and construct full URL
-              const cleanPath = img.image_path.replace(/^data\//, '')
+              const cleanPath = img.image_path.replace(/^data\//, '').replace(/^\//, '')
               imageUrl = `${shopUrl}/${cleanPath}`
             }
           }
@@ -349,7 +371,7 @@ export async function GET(
       },
       {
         currency: 'HUF', // Default to HUF, could be fetched from connection
-        shopUrl: connection?.api_url ? extractShopUrl(connection.api_url) : '',
+        shopUrl: shopUrl, // Use already extracted shopUrl
         shopName: connection?.shop_name || ''
       }
     )
