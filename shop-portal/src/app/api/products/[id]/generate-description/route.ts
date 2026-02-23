@@ -59,10 +59,11 @@ export async function POST(
     const options = {
       useSourceMaterials: body.useSourceMaterials !== false,
       temperature: body.temperature || 0.7,
-      maxTokens: body.maxTokens || 4000, // Increased default to 4000 for comprehensive descriptions
+      maxTokens: body.maxTokens || 8000, // Increased default to 8000 to prevent description cutoff
       language: body.language || 'hu',
       generationInstructions: generationInstructions || undefined,
-      useSearchConsoleQueries: body.useSearchConsoleQueries !== false // Default to true
+      useSearchConsoleQueries: body.useSearchConsoleQueries !== false, // Default to true
+      useCompetitorContent: body.useCompetitorContent === true // Default to false for speed (can be enabled for better SEO)
     }
 
     // Generate description

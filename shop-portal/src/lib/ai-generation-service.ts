@@ -38,10 +38,11 @@ function getAnthropicClient() {
 export interface GenerationOptions {
   useSourceMaterials?: boolean // Use RAG with source materials
   temperature?: number // 0.0-1.0, default 0.7
-  maxTokens?: number // Default 4000 (increased for comprehensive descriptions)
+  maxTokens?: number // Default 8000 (increased for comprehensive descriptions)
   language?: string // 'hu' or 'en', default 'hu'
   generationInstructions?: string // Custom instructions for generation
   useSearchConsoleQueries?: boolean // Use Search Console queries for optimization
+  useCompetitorContent?: boolean // Use competitor content scraping (default: false for speed)
   searchQueries?: Array<{ query: string; impressions: number; clicks: number; ctr: number; position: number }> // Top search queries
 }
 
@@ -266,11 +267,127 @@ async function buildContext(
     commonFeatures: string[]
     commonBenefits: string[]
     contentStructureInsights: string[]
-  } | null
+  } | null,
+  parentProduct?: any | null
 ): Promise<{ context: string; categories: any[]; relatedProducts: any[] }> {
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
   context += `- Name: ${product.name || 'N/A'}\n`
+  
+  // Helper function to format attribute value
+  const formatAttributeValue = (attr: any): string => {
+    if (!attr || attr.value === null || attr.value === undefined) {
+      return 'N/A'
+    }
+    
+    if (attr.type === 'LIST' && Array.isArray(attr.value)) {
+      // LIST attributes have array of values with language objects
+      const values = attr.value
+        .map((val: any) => {
+          if (typeof val === 'object' && val.value !== null && val.value !== undefined) {
+            return String(val.value)
+          } else if (typeof val === 'string') {
+            return val
+          }
+          return null
+        })
+        .filter((v: any) => v !== null && v !== '')
+      
+      if (values.length > 0) {
+        return values.join(', ')
+      }
+      return 'N/A'
+    } else if (attr.type === 'TEXT' && Array.isArray(attr.value)) {
+      // TEXT attributes also have array structure
+      const values = attr.value
+        .map((val: any) => {
+          if (typeof val === 'object' && val.value !== null && val.value !== undefined) {
+            return String(val.value)
+          } else if (typeof val === 'string') {
+            return val
+          }
+          return null
+        })
+        .filter((v: any) => v !== null && v !== '')
+      
+      if (values.length > 0) {
+        return values.join(', ')
+      }
+      return 'N/A'
+    } else if (attr.value !== null && attr.value !== undefined) {
+      // INTEGER, FLOAT attributes have single value
+      return String(attr.value)
+    }
+    return 'N/A'
+  }
+  
+  // Include product attributes (for BOTH parent and child products)
+  console.log(`[AI GENERATION] Checking product attributes for ${product.sku}:`, {
+    hasAttributes: !!product.product_attributes,
+    isArray: Array.isArray(product.product_attributes),
+    isNull: product.product_attributes === null,
+    isUndefined: product.product_attributes === undefined,
+    type: typeof product.product_attributes,
+    length: product.product_attributes?.length,
+    firstAttribute: product.product_attributes?.[0]
+  })
+  
+  if (product.product_attributes && Array.isArray(product.product_attributes) && product.product_attributes.length > 0) {
+    context += `\n\n=== PRODUCT ATTRIBUTES (THIS PRODUCT) ===\n`
+    let attributeCount = 0
+    product.product_attributes.forEach((attr: any, index: number) => {
+      // Check if attribute has a valid value
+      const hasValue = attr && (
+        (attr.value !== null && attr.value !== undefined) ||
+        (Array.isArray(attr.value) && attr.value.length > 0)
+      )
+      
+      if (hasValue) {
+        const displayName = attr.display_name || attr.name || 'N/A'
+        const value = formatAttributeValue(attr)
+        const prefix = attr.prefix ? `${attr.prefix} ` : ''
+        const postfix = attr.postfix ? ` ${attr.postfix}` : ''
+        context += `- ${displayName}: ${prefix}${value}${postfix}\n`
+        attributeCount++
+        console.log(`[AI GENERATION] Added attribute ${index + 1}: ${displayName} = ${value}`)
+      } else {
+        console.log(`[AI GENERATION] Skipping attribute ${index + 1} (${attr?.name || 'unknown'}) - no valid value:`, attr)
+      }
+    })
+    if (attributeCount > 0) {
+      console.log(`[AI GENERATION] Successfully added ${attributeCount} product attributes to context for ${product.sku}`)
+    } else {
+      console.warn(`[AI GENERATION] No valid attributes found (all had null/undefined/empty values) for ${product.sku}`)
+    }
+  } else {
+    console.warn(`[AI GENERATION] No product attributes found for ${product.sku}. Reason:`, {
+      isNull: product.product_attributes === null,
+      isUndefined: product.product_attributes === undefined,
+      isArray: Array.isArray(product.product_attributes),
+      isEmptyArray: Array.isArray(product.product_attributes) && product.product_attributes.length === 0,
+      type: typeof product.product_attributes,
+      value: typeof product.product_attributes === 'string' ? product.product_attributes.substring(0, 200) : product.product_attributes
+    })
+  }
+  
+  // Include parent product attributes if this is a child product
+  if (parentProduct && parentProduct.product_attributes && Array.isArray(parentProduct.product_attributes) && parentProduct.product_attributes.length > 0) {
+    context += `\n\n=== PARENT PRODUCT ATTRIBUTES (INHERITED FROM PARENT: ${parentProduct.sku}) ===\n`
+    context += `These attributes are shared by all variants of the parent product. Include these in your description as they apply to this variant as well.\n\n`
+    parentProduct.product_attributes.forEach((attr: any) => {
+      if (attr.value !== null && attr.value !== undefined) {
+        const displayName = attr.display_name || attr.name || 'N/A'
+        const value = formatAttributeValue(attr)
+        const prefix = attr.prefix ? `${attr.prefix} ` : ''
+        const postfix = attr.postfix ? ` ${attr.postfix}` : ''
+        context += `- ${displayName}: ${prefix}${value}${postfix}\n`
+      }
+    })
+    context += `\nIMPORTANT: When writing the description, include both:\n`
+    context += `1. Attributes from the parent product (shared by all variants)\n`
+    context += `2. Attributes specific to this variant (from THIS PRODUCT above)\n`
+    context += `This ensures the description is comprehensive and includes all relevant product information.\n`
+  }
   
   // Get product categories for internal linking
   const { data: categoryRelations, error: categoryError } = await supabase
@@ -508,44 +625,89 @@ export async function generateProductDescription(
     const {
       useSourceMaterials = true,
       temperature = 0.7,
-      maxTokens = 4000, // Increased from 2000 to allow comprehensive descriptions (500-1000 words)
+      maxTokens = 8000, // Increased to 8000 to allow comprehensive descriptions without cutoff (500-1000 words)
       language = 'hu',
       generationInstructions,
       useSearchConsoleQueries = false, // Set to true to enable Search Console query optimization
+      useCompetitorContent = false, // Default to false for speed (can be enabled for better SEO)
       searchQueries
     } = options
 
   try {
-    // 1. Get product data
-    const { data: product, error: productError } = await supabase
-      .from('shoprenter_products')
-      .select('*')
-      .eq('id', productId)
-      .single()
+    // 1. Get product data and related data in parallel for speed
+    const ninetyDaysAgo = new Date()
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+    
+    const [
+      productResult,
+      sourcesResult,
+      childrenResult,
+      searchQueriesResult
+    ] = await Promise.all([
+      // Main product
+      supabase
+        .from('shoprenter_products')
+        .select('*')
+        .eq('id', productId)
+        .single(),
+      // Source materials (if enabled)
+      useSourceMaterials
+        ? supabase
+            .from('product_source_materials')
+            .select('*')
+            .eq('product_id', productId)
+            .eq('processing_status', 'processed')
+            .order('priority', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      // Children (to check if parent)
+      supabase
+        .from('shoprenter_products')
+        .select('id, sku, name, model_number, price, product_attributes')
+        .eq('parent_product_id', productId)
+        .eq('status', 1),
+      // Search Console queries (if enabled)
+      useSearchConsoleQueries && !searchQueries
+        ? supabase
+            .from('product_search_queries')
+            .select('query, impressions, clicks, ctr, position')
+            .eq('product_id', productId)
+            .gte('date', ninetyDaysAgo.toISOString().split('T')[0])
+            .order('impressions', { ascending: false })
+            .limit(20)
+        : Promise.resolve({ data: [] })
+    ])
 
+    const { data: product, error: productError } = productResult
     if (productError || !product) {
       throw new Error('Product not found')
     }
 
+    // Parse product_attributes if it's a JSON string (JSONB should be parsed, but sometimes it's a string)
+    if (product.product_attributes) {
+      if (typeof product.product_attributes === 'string') {
+        try {
+          product.product_attributes = JSON.parse(product.product_attributes)
+          console.log(`[AI GENERATION] Parsed product_attributes JSON string for ${product.sku}`)
+        } catch (e) {
+          console.warn(`[AI GENERATION] Failed to parse product_attributes JSON for ${product.sku}:`, e)
+          product.product_attributes = null
+        }
+      }
+      // Ensure it's an array (sometimes JSONB might return an object)
+      if (!Array.isArray(product.product_attributes)) {
+        console.warn(`[AI GENERATION] product_attributes is not an array for ${product.sku}, type:`, typeof product.product_attributes)
+        product.product_attributes = null
+      }
+    }
+
     // 2. Get source materials
-    let sourceMaterials: any[] = []
+    let sourceMaterials: any[] = sourcesResult.data || []
     let relevantChunks: any[] = []
 
-    if (useSourceMaterials) {
-      const { data: sources } = await supabase
-        .from('product_source_materials')
-        .select('*')
-        .eq('product_id', productId)
-        .eq('processing_status', 'processed')
-        .order('priority', { ascending: false })
-
-      sourceMaterials = sources || []
-
+    if (useSourceMaterials && sourceMaterials.length > 0) {
       // 3. Find relevant chunks using semantic search
-      if (sourceMaterials.length > 0) {
-        const query = `Product description for ${product.sku} ${product.name || ''} cabinet hardware`
-        relevantChunks = await findRelevantChunks(supabase, productId, query, 10)
-      }
+      const query = `Product description for ${product.sku} ${product.name || ''} cabinet hardware`
+      relevantChunks = await findRelevantChunks(supabase, productId, query, 10)
     }
 
     // 4. Detect product type
@@ -554,42 +716,64 @@ export async function generateProductDescription(
 
     // 4.5. Check parent-child relationships
     let parentProduct: any = null
-    let childProducts: any[] = []
+    let childProducts: any[] = childrenResult.data || []
     let isParent = false
     let isChild = false
     
-    // Check if this is a child product (has parent)
+    // Check if this is a child product (has parent) - fetch parent in parallel if needed
     if (product.parent_product_id) {
       isChild = true
       const { data: parent } = await supabase
         .from('shoprenter_products')
-        .select('id, sku, name, model_number')
+        .select('id, sku, name, model_number, product_attributes')
         .eq('id', product.parent_product_id)
         .single()
       
       if (parent) {
+        // Parse parent product_attributes if it's a JSON string
+        if (parent.product_attributes && typeof parent.product_attributes === 'string') {
+          try {
+            parent.product_attributes = JSON.parse(parent.product_attributes)
+            console.log(`[AI GENERATION] Parsed parent product_attributes JSON string for ${parent.sku}`)
+          } catch (e) {
+            console.warn(`[AI GENERATION] Failed to parse parent product_attributes JSON for ${parent.sku}:`, e)
+            parent.product_attributes = null
+          }
+        }
+        // Ensure it's an array
+        if (parent.product_attributes && !Array.isArray(parent.product_attributes)) {
+          console.warn(`[AI GENERATION] Parent product_attributes is not an array for ${parent.sku}`)
+          parent.product_attributes = null
+        }
+        
         parentProduct = parent
         console.log(`[AI GENERATION] Product is a child/variant of parent: ${parent.sku} (${parent.name})`)
+        if (parent.product_attributes && Array.isArray(parent.product_attributes) && parent.product_attributes.length > 0) {
+          console.log(`[AI GENERATION] Parent product has ${parent.product_attributes.length} attributes`)
+        }
       }
     }
     
     // Check if this is a parent product (has children)
-    const { data: children } = await supabase
-      .from('shoprenter_products')
-      .select('id, sku, name, model_number, price, product_attributes')
-      .eq('parent_product_id', productId)
-      .eq('status', 1) // Only active children
-    
-    if (children && children.length > 0) {
+    if (childProducts && childProducts.length > 0) {
       isParent = true
-      childProducts = children
-      console.log(`[AI GENERATION] Product is a parent with ${children.length} child variants`)
+      console.log(`[AI GENERATION] Product is a parent with ${childProducts.length} child variants`)
       
       // Extract variant attributes for better AI context
       const variantAttributes: Record<string, Set<string | number>> = {}
       const variantPrices: number[] = []
       
-      children.forEach((child: any) => {
+      childProducts.forEach((child: any) => {
+        // Parse child product_attributes if it's a JSON string
+        if (child.product_attributes && typeof child.product_attributes === 'string') {
+          try {
+            child.product_attributes = JSON.parse(child.product_attributes)
+          } catch (e) {
+            console.warn(`[AI GENERATION] Failed to parse child product_attributes JSON for ${child.sku}:`, e)
+            child.product_attributes = null
+          }
+        }
+        
         // Collect prices
         if (child.price) {
           variantPrices.push(parseFloat(child.price))
@@ -606,14 +790,23 @@ export async function generateProductDescription(
             if (attr.type === 'LIST' && Array.isArray(attr.value)) {
               // LIST attributes have array of values with language objects
               attr.value.forEach((val: any) => {
-                if (typeof val === 'object' && val.value) {
-                  variantAttributes[attr.name].add(val.value)
+                if (typeof val === 'object' && val.value !== null && val.value !== undefined) {
+                  variantAttributes[attr.name].add(String(val.value))
+                } else if (typeof val === 'string') {
+                  variantAttributes[attr.name].add(val)
+                }
+              })
+            } else if (attr.type === 'TEXT' && Array.isArray(attr.value)) {
+              // TEXT attributes also have array structure
+              attr.value.forEach((val: any) => {
+                if (typeof val === 'object' && val.value !== null && val.value !== undefined) {
+                  variantAttributes[attr.name].add(String(val.value))
                 } else if (typeof val === 'string') {
                   variantAttributes[attr.name].add(val)
                 }
               })
             } else if (attr.value !== null && attr.value !== undefined) {
-              // INTEGER, FLOAT, TEXT attributes have single value
+              // INTEGER, FLOAT attributes have single value
               variantAttributes[attr.name].add(attr.value)
             }
           })
@@ -639,42 +832,38 @@ export async function generateProductDescription(
       ;(product as any).variantPriceRange = variantPrices.length > 0
         ? { min: Math.min(...variantPrices), max: Math.max(...variantPrices) }
         : null
+      
+      // Log variant attributes extracted
+      console.log(`[AI GENERATION] Extracted variant attributes from ${childProducts.length} children:`, {
+        attributeCount: Object.keys(variantInfo).length,
+        attributes: Object.keys(variantInfo),
+        variantInfo: variantInfo
+      })
+      
+      if ((product as any).variantPriceRange) {
+        console.log(`[AI GENERATION] Variant price range: ${(product as any).variantPriceRange.min} - ${(product as any).variantPriceRange.max} HUF`)
+      }
+    }
+    
+    // CRITICAL: For parent products, ensure parent product attributes are ALWAYS included
+    // The parent product's own attributes should be in the context (from buildContext)
+    // But we also want to make sure they're emphasized in the prompt
+    if (isParent && product.product_attributes && Array.isArray(product.product_attributes) && product.product_attributes.length > 0) {
+      console.log(`[AI GENERATION] Parent product has ${product.product_attributes.length} attributes - these will be included in description`)
     }
 
-    // 5. Get Search Console queries if enabled and not provided
-    // IMPORTANT: Make this fail gracefully - don't break generation if Search Console fails
+    // 5. Get Search Console queries (already fetched in parallel above)
     let queriesToUse = searchQueries
-    if (useSearchConsoleQueries && !queriesToUse) {
-      try {
-        // Fetch top queries from database (last 90 days)
-        const ninetyDaysAgo = new Date()
-        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
-        
-        const { data: queries, error: queryError } = await supabase
-          .from('product_search_queries')
-          .select('query, impressions, clicks, ctr, position')
-          .eq('product_id', productId)
-          .gte('date', ninetyDaysAgo.toISOString().split('T')[0])
-          .order('impressions', { ascending: false })
-          .limit(20)
-        
-        if (queryError) {
-          console.warn(`[AI GENERATION] Search Console query error (non-fatal):`, queryError)
-          // Continue without Search Console queries
-        } else if (queries && queries.length > 0) {
-          queriesToUse = queries
-          console.log(`[AI GENERATION] Found ${queries.length} Search Console queries for optimization`)
-        } else {
-          console.log(`[AI GENERATION] No Search Console queries found - continuing without them`)
-        }
-      } catch (searchConsoleError: any) {
-        // Fail gracefully - don't break generation if Search Console fails
-        console.warn(`[AI GENERATION] Search Console query failed (non-fatal):`, searchConsoleError?.message || searchConsoleError)
-        // Continue without Search Console queries
+    if (useSearchConsoleQueries && !queriesToUse && searchQueriesResult.data) {
+      if (searchQueriesResult.data.length > 0) {
+        queriesToUse = searchQueriesResult.data
+        console.log(`[AI GENERATION] Found ${queriesToUse.length} Search Console queries for optimization`)
+      } else {
+        console.log(`[AI GENERATION] No Search Console queries found - continuing without them`)
       }
     }
 
-    // 5.5. Get competitor links and scrape their content for keyword insights
+    // 5.5. Get competitor links and scrape their content for keyword insights (OPTIONAL - can be disabled for speed)
     let competitorContentInsights: {
       allKeywords: string[]
       allKeyPhrases: string[]
@@ -683,78 +872,85 @@ export async function generateProductDescription(
       contentStructureInsights: string[]
     } | null = null
     
-    try {
-      // Fetch competitor links for this product
-      let competitorUrls: string[] = []
-      
-      if (isParent) {
-        // For parent products, get competitor links for ALL child products
-        console.log(`[AI GENERATION] Fetching competitor links for parent product and ${childProducts.length} children...`)
+    if (useCompetitorContent) {
+      try {
+        // Fetch competitor links for this product
+        let competitorUrls: string[] = []
         
-        // Get links for parent
-        const { data: parentLinks } = await supabase
-          .from('competitor_product_links')
-          .select('competitor_url, is_active')
-          .eq('product_id', productId)
-          .eq('is_active', true)
-        
-        if (parentLinks && parentLinks.length > 0) {
-          competitorUrls.push(...parentLinks.map((l: any) => l.competitor_url))
-        }
-        
-        // Get links for all children
-        const childIds = childProducts.map((c: any) => c.id)
-        if (childIds.length > 0) {
-          const { data: childLinks } = await supabase
+        if (isParent) {
+          // For parent products, get competitor links for ALL child products
+          console.log(`[AI GENERATION] Fetching competitor links for parent product and ${childProducts.length} children...`)
+          
+          const childIds = childProducts.map((c: any) => c.id)
+          
+          // Fetch parent and child links in parallel
+          const [parentLinksResult, childLinksResult] = await Promise.all([
+            supabase
+              .from('competitor_product_links')
+              .select('competitor_url, is_active')
+              .eq('product_id', productId)
+              .eq('is_active', true),
+            childIds.length > 0
+              ? supabase
+                  .from('competitor_product_links')
+                  .select('competitor_url, is_active')
+                  .in('product_id', childIds)
+                  .eq('is_active', true)
+              : Promise.resolve({ data: [] })
+          ])
+          
+          if (parentLinksResult.data && parentLinksResult.data.length > 0) {
+            competitorUrls.push(...parentLinksResult.data.map((l: any) => l.competitor_url))
+          }
+          
+          if (childLinksResult.data && childLinksResult.data.length > 0) {
+            competitorUrls.push(...childLinksResult.data.map((l: any) => l.competitor_url))
+          }
+        } else {
+          // For child/single products, get competitor links for this product
+          const { data: links } = await supabase
             .from('competitor_product_links')
             .select('competitor_url, is_active')
-            .in('product_id', childIds)
+            .eq('product_id', productId)
             .eq('is_active', true)
           
-          if (childLinks && childLinks.length > 0) {
-            competitorUrls.push(...childLinks.map((l: any) => l.competitor_url))
+          if (links && links.length > 0) {
+            competitorUrls = links.map((l: any) => l.competitor_url)
           }
         }
-      } else {
-        // For child/single products, get competitor links for this product
-        const { data: links } = await supabase
-          .from('competitor_product_links')
-          .select('competitor_url, is_active')
-          .eq('product_id', productId)
-          .eq('is_active', true)
         
-        if (links && links.length > 0) {
-          competitorUrls = links.map((l: any) => l.competitor_url)
+        // Remove duplicates
+        competitorUrls = Array.from(new Set(competitorUrls))
+        
+        if (competitorUrls.length > 0) {
+          console.log(`[AI GENERATION] Found ${competitorUrls.length} competitor URLs, scraping content (with caching)...`)
+          
+          // Scrape competitor content (limit to 5 URLs to avoid rate limits, with caching)
+          const urlsToScrape = competitorUrls.slice(0, 5)
+          const { scrapeMultipleCompetitorContents } = await import('./competitor-content-scraper')
+          const competitorContents = await scrapeMultipleCompetitorContents(urlsToScrape, supabase)
+          
+          // Aggregate content
+          const validContents = competitorContents.filter(c => !c.error && c.keywords.length > 0)
+          if (validContents.length > 0) {
+            const { aggregateCompetitorContent } = await import('./competitor-content-scraper')
+            competitorContentInsights = aggregateCompetitorContent(validContents)
+            console.log(`[AI GENERATION] Extracted ${competitorContentInsights.allKeywords.length} keywords and ${competitorContentInsights.allKeyPhrases.length} phrases from competitors`)
+          }
+        } else {
+          console.log(`[AI GENERATION] No competitor links found for this product`)
         }
+      } catch (competitorError: any) {
+        // Fail gracefully - don't break generation if competitor scraping fails
+        console.warn(`[AI GENERATION] Competitor content scraping failed (non-fatal):`, competitorError?.message || competitorError)
+        // Continue without competitor insights
       }
-      
-      // Remove duplicates
-      competitorUrls = Array.from(new Set(competitorUrls))
-      
-      if (competitorUrls.length > 0) {
-        console.log(`[AI GENERATION] Found ${competitorUrls.length} competitor URLs, scraping content...`)
-        
-        // Scrape competitor content (limit to 5 URLs to avoid rate limits)
-        const urlsToScrape = competitorUrls.slice(0, 5)
-        const competitorContents = await scrapeMultipleCompetitorContents(urlsToScrape)
-        
-        // Aggregate content
-        const validContents = competitorContents.filter(c => !c.error && c.keywords.length > 0)
-        if (validContents.length > 0) {
-          competitorContentInsights = aggregateCompetitorContent(validContents)
-          console.log(`[AI GENERATION] Extracted ${competitorContentInsights.allKeywords.length} keywords and ${competitorContentInsights.allKeyPhrases.length} phrases from competitors`)
-        }
-      } else {
-        console.log(`[AI GENERATION] No competitor links found for this product`)
-      }
-    } catch (competitorError: any) {
-      // Fail gracefully - don't break generation if competitor scraping fails
-      console.warn(`[AI GENERATION] Competitor content scraping failed (non-fatal):`, competitorError?.message || competitorError)
-      // Continue without competitor insights
+    } else {
+      console.log(`[AI GENERATION] Competitor content scraping disabled (useCompetitorContent=false) - skipping for speed`)
     }
 
     // 6. Build context (now async to fetch categories)
-    const { context, categories, relatedProducts } = await buildContext(supabase, product, sourceMaterials, relevantChunks, queriesToUse, competitorContentInsights)
+    const { context, categories, relatedProducts } = await buildContext(supabase, product, sourceMaterials, relevantChunks, queriesToUse, competitorContentInsights, parentProduct)
 
     // 7. Build prompts with product type awareness
     const systemPrompt = `You are an expert product copywriter specializing in creating authentic, 
@@ -763,7 +959,18 @@ human-written product descriptions for cabinet hardware and related products tha
 CRITICAL: PRODUCT DESCRIPTION STRUCTURE (MUST FOLLOW THIS EXACT STRUCTURE):
 You MUST follow this exact structure for optimal SEO and AI search ranking. This structure is proven to work best for e-commerce:
 
+**SEO-OPTIMIZED HEADING REQUIREMENTS:**
+- Use descriptive, keyword-rich headings that match search intent
+- Headings should be 40-60 characters for optimal SEO
+- Include primary keywords naturally in headings
+- Use proper heading hierarchy: <h2> for main sections, <h3> for subsections
+- Headings should be specific and descriptive (not generic)
+- Example good heading: <h2>SLIM Duplafalú Fiókoldal DF-A+ - Prémium Minőség</h2>
+- Example bad heading: <h2>Termékleírás</h2> (too generic, no keywords)
+
 1. **Introduction/Overview Section** (<h2>Bevezetés</h2> or <h2>Áttekintés</h2>)
+   - **CRITICAL**: Heading MUST include the product name and primary keyword
+   - Example: <h2>${product.name || product.sku} - Prémium Minőségű Fiókrendszer</h2>
    - 2-3 paragraphs introducing the product
    - Include the main product name and primary keyword in the first paragraph
    - Mention key variant options (if parent product) or specific variant details (if child product)
@@ -771,42 +978,51 @@ You MUST follow this exact structure for optimal SEO and AI search ranking. This
    - Use natural Hungarian language, not keyword stuffing
 
 2. **Key Features Section** (<h2>Főbb jellemzők</h2> or <h2>Kiemelt tulajdonságok</h2>)
+   - **CRITICAL**: Heading should be keyword-rich, e.g., <h2>Főbb jellemzők és előnyök</h2>
    - 3-5 key features in bullet points or short paragraphs
    - Focus on features that differentiate this product
    - Include technical specifications naturally (dimensions, capacity, material, etc.)
    - Use competitor keywords/phrases naturally if provided
+   - **MANDATORY**: Include ALL product attributes from the context (dimensions, materials, capacities, etc.)
 
 3. **Benefits Section** (<h2>Előnyök</h2> or <h2>Miért válassza ezt a terméket?</h2>)
+   - **CRITICAL**: Use benefit-focused heading, e.g., <h2>Előnyök és használati lehetőségek</h2>
    - 3-4 main benefits for the customer
    - Focus on user experience and practical advantages
    - Use emotional triggers and practical benefits
    - Connect features to real-world use cases
 
 4. **Specifications/Technical Details Section** (<h2>Specifikációk</h2> or <h2>Technikai adatok</h2>)
+   - **CRITICAL**: Heading should be specific, e.g., <h2>Technikai specifikációk és méretek</h2>
    - Detailed technical information
+   - **MANDATORY**: Include ALL product attributes from context (dimensions, materials, capacities, load ratings, etc.)
    - Dimensions, materials, capacities, load ratings, etc.
    - Use a table or organized list format
    - Note: ShopRenter automatically creates a parameter table below the description, so focus on explaining specifications, not just listing them
 
 5. **Use Cases/Applications Section** (<h2>Alkalmazási területek</h2> or <h2>Használati lehetőségek</h2>)
+   - **CRITICAL**: Use application-focused heading, e.g., <h2>Alkalmazási területek és használat</h2>
    - Where and how this product is used
    - Different application scenarios
    - Compatibility information
    - Installation contexts
 
 6. **Installation/Usage Section** (<h2>Beszerelés</h2> or <h2>Használat</h2>)
+   - **CRITICAL**: Use installation-focused heading, e.g., <h2>Beszerelés és használat</h2>
    - Installation requirements and steps (if applicable)
    - Usage tips and best practices
    - Maintenance information
    - Compatibility notes
 
 7. **Conclusion/Summary Section** (<h2>Összefoglalás</h2> or <h2>Összegzés</h2>)
+   - **CRITICAL**: Use summary-focused heading, e.g., <h2>Összefoglalás és ajánlás</h2>
    - 1-2 paragraphs summarizing key points
    - Reinforce main benefits and value proposition
    - Call to action or final recommendation
    - Natural closing
 
 8. **Q&A Section** (<h2>Gyakran ismételt kérdések</h2> or <h2>Gyakori kérdések</h2>)
+   - **CRITICAL**: Use FAQ-focused heading, e.g., <h2>Gyakran ismételt kérdések (GYIK)</h2>
    - 3-5 relevant questions customers ask
    - Practical questions: installation, compatibility, maintenance, usage
    - Format: <h3>Question</h3> <p>Answer</p>
@@ -814,11 +1030,38 @@ You MUST follow this exact structure for optimal SEO and AI search ranking. This
 
 STRUCTURE REQUIREMENTS:
 - Use HTML headings (<h2> for main sections, <h3> for subsections/questions)
+- **CRITICAL**: All headings MUST be keyword-rich and descriptive (40-60 characters)
+- **CRITICAL**: Include primary keywords naturally in headings
 - Each section should be 2-4 paragraphs or equivalent content
 - Total length: 500-1000 words
 - Maintain natural flow between sections
 - Use paragraphs, bullet points, and lists appropriately
 - Ensure ShopRenter's automatic parameter table complements (not duplicates) your specifications section
+- **MANDATORY**: Include ALL product attributes from context in the appropriate sections
+
+**CRITICAL SIZE/DIMENSION LISTING RULE (GLOBAL - APPLIES TO ALL SECTIONS):**
+- When listing available sizes from a range attribute (e.g., "Névleges hossz: 300 - 550 mm"), you MUST include the STARTING size in the list
+- If a range is "X - Y mm", list ALL sizes: X, X+50, X+100, ... Y (include X, do NOT skip it)
+- Example: Range "300 - 550 mm" → List: "300, 350, 400, 450, 500, 550mm" (NOT "350, 400, 450, 500, 550mm")
+- This applies to ALL mentions of sizes throughout the description (introduction, features, specifications, FAQ)
+- Double-check: If you mention a range, verify the starting size is in your size list
+- When you write "300mm-től 550mm-ig", you MUST list "300, 350, 400, 450, 500, 550mm" - never skip 300mm!
+
+**CRITICAL: NO ASSUMPTIONS RULE (GLOBAL - APPLIES TO ALL FEATURES):**
+- **DO NOT mention features unless they are 100% confirmed in the product data**
+- Only mention features that are EXPLICITLY stated in:
+  - Product attributes (from "PRODUCT ATTRIBUTES (THIS PRODUCT)" section)
+  - Source materials (if provided)
+  - Product context (name, SKU, model number)
+- **DO NOT make assumptions** based on:
+  - Product type (e.g., "all drawer systems have soft close" - WRONG)
+  - Competitor content (competitors may have features this product doesn't)
+  - General knowledge (what's typical for this product category)
+- **DO NOT describe features as "additional" or "optional"** unless explicitly stated - if a feature is mentioned, it's included/standard
+- Example WRONG: "Soft close is an additional feature" when soft close is already standard - if it's mentioned, it's included
+- Example WRONG: Assuming a drawer has soft close just because it's a premium drawer system
+- Example CORRECT: Only mention "soft close" if it appears in product attributes or source materials
+- **If you're not 100% sure about a feature, DO NOT mention it** - it's better to omit than to be incorrect
 
 SEARCH CONSOLE OPTIMIZATION:
 - If Search Console queries are provided, you MUST naturally incorporate the top search queries into the description
@@ -852,13 +1095,32 @@ CRITICAL INSTRUCTIONS - LANGUAGE REQUIREMENT:
 - Write naturally in Hungarian - do not use literal translations
 - The entire description must be in Hungarian, no English words unless they are brand names or technical terms commonly used in Hungarian
 
+**CRITICAL HUNGARIAN GRAMMAR RULES - COMMON MISTAKES TO AVOID:**
+- **"hol" vs "hova"**: Use "hova" for direction/destination, "hol" for location
+  - CORRECT: "Hova illik legjobban?" (Where does it fit best?) or "Hol használható legjobban?" (Where can it be used best?)
+  - WRONG: "Hol illik legjobban?" - This is grammatically incorrect
+  - CORRECT: "Hol alkalmazható?" (Where can it be applied?) - "hol" is correct here because it's asking about location
+  - When asking "where does it fit/go", use "hova". When asking "where is it used/applied", use "hol"
+- **Proper question forms**: 
+  - "Hova illik?" (Where does it fit?) - direction
+  - "Hol használható?" (Where can it be used?) - location
+  - "Hol alkalmazható?" (Where can it be applied?) - location
+- **Avoid literal translations from English**: Don't translate word-by-word, use natural Hungarian phrasing
+- **Use proper Hungarian sentence structure**: Subject-verb-object order, proper case endings
+- **Double-check prepositions**: "hova" (where to), "hol" (where), "honnan" (where from)
+
 LOGICAL CONSISTENCY REQUIREMENTS:
 1. **Product Type Validation**: Ensure your description matches the product type indicated by the name/SKU
-2. **Feature Accuracy**: Only mention features that make sense for the product type:
-   - Trash bins: capacity (liters), dimensions, material, lid type, mounting options, sorting compartments
-   - Drawer systems: drawer capacity, rail type, installation width, number of drawers, material, finish
-   - Hinges: opening angle, mounting type, material, finish, adjustability, soft close
-   - Slides: load capacity, extension type, mounting width, material, soft close, installation
+2. **Feature Accuracy - NO ASSUMPTIONS**: 
+   - **CRITICAL**: Only mention features that are EXPLICITLY confirmed in the product data (attributes, source materials, context)
+   - **DO NOT make assumptions** about features based on product type, competitor content, or general knowledge
+   - **DO NOT mention features** unless they are 100% confirmed - if you're not sure, omit it
+   - Only mention features that make sense for the product type AND are confirmed in the data:
+   - Trash bins: capacity (liters), dimensions, material, lid type, mounting options, sorting compartments - ONLY if explicitly stated
+   - Drawer systems: drawer capacity, rail type, installation width, number of drawers, material, finish - ONLY if explicitly stated
+   - Hinges: opening angle, mounting type, material, finish, adjustability, soft close - ONLY if explicitly stated
+   - Slides: load capacity, extension type, mounting width, material, soft close, installation - ONLY if explicitly stated
+   - **DO NOT describe features as "additional" or "optional"** unless explicitly stated - if mentioned, it's included/standard
 3. **Dimension Interpretation**: 
    - "H400" = Height 400mm (magasság 400mm)
    - "400-tól" = Width from 400mm (minimum szélesség 400mm-tól)
@@ -992,8 +1254,19 @@ ${isParent ? `
 - This is a PARENT product with ${childProducts.length} child variants available
 - Child variants: ${childProducts.map(c => `${c.sku} (${c.name || c.model_number || 'N/A'})`).join(', ')}
 
+**CRITICAL: PARENT PRODUCT ATTRIBUTES MUST BE INCLUDED**
+- The parent product's own attributes are provided in the context above under "PRODUCT ATTRIBUTES (THIS PRODUCT)"
+- **YOU MUST include ALL parent product attributes in the description** (dimensions, materials, capacities, load ratings, etc.)
+- These attributes apply to ALL variants and are essential product information
+- **CRITICAL FOR SIZE/DIMENSION ATTRIBUTES**: If the parent product has size/dimension attributes (e.g., "meret", "fiok_hossz", "Névleges hossz"), these are the SOURCE OF TRUTH for available sizes
+- Example: If parent has "Névleges hossz: 300 - 550 mm", then ALL sizes from 300mm to 550mm are available, even if not all child variants exist
+- Example: If parent has "Méret: 300", mention "300mm" as an available size option
+- Include them in the "Specifications/Technical Details" section and mention them naturally throughout
+- Example: If parent has "Méret: 300mm", mention "300mm szélességű" or "300mm méretben elérhető" in the description
+- Example: If parent has "Teherbírás: 35 kg", mention "35 kg teherbírás" in features/benefits sections
+
 ${(product as any).variantAttributes && Object.keys((product as any).variantAttributes).length > 0 ? `
-**VARIANT ATTRIBUTES (What makes variants different):**
+**VARIANT ATTRIBUTES (What makes variants different - SUPPLEMENTARY INFO ONLY):**
 ${Object.entries((product as any).variantAttributes).map(([attrName, values]) => {
   // Translate common attribute names to Hungarian
   const attrNames: Record<string, string> = {
@@ -1011,12 +1284,21 @@ ${Object.entries((product as any).variantAttributes).map(([attrName, values]) =>
   const huName = attrNames[attrName.toLowerCase()] || attrName
   return `- ${huName}: ${values}`
 }).join('\n')}
+- **IMPORTANT**: These variant attributes are extracted from existing child products, but they may not represent ALL available options
+- **CRITICAL**: For size/dimension information, ALWAYS use the parent product's own attributes (from "PRODUCT ATTRIBUTES (THIS PRODUCT)" above) as the SOURCE OF TRUTH
+- If parent has "Névleges hossz: 300 - 550 mm", then mention ALL sizes from 300mm to 550mm, not just the sizes found in child variants
+- **CRITICAL SIZE LISTING RULE**: When listing available sizes from a range (e.g., "300 - 550 mm"), you MUST include the STARTING size (300mm) in the list
+- Example CORRECT: "300mm-től 550mm-ig terjedő hosszban érhető el (300, 350, 400, 450, 500 és 550 mm-es változatokban)"
+- Example WRONG: "300mm-től 550mm-ig terjedő hosszban érhető el (350, 400, 450, 500 és 550 mm-es változatokban)" - MISSING 300mm!
+- If parent has "Méret: 300", then 300mm IS available and must be mentioned
 - **CRITICAL**: Mention ALL variant options together, NOT just one specific variant
 - **DO NOT highlight a single color/variant** - talk about all colors/variants as a group
 - Example for colors: "A termék több színben elérhető: fekete, fehér, szürke és barna kivitelben" (NOT "fekete gránit mosogató")
-- Example for sizes: "A termék több méretben elérhető: 400mm, 500mm, 600mm" (NOT "400mm méretű")
+- Example for sizes: "A termék több méretben elérhető: 300mm, 350mm, 400mm, 450mm, 500mm, 550mm" (use parent's "Névleges hossz" or "Méret" attribute, not just child variants)
 - Write as if describing the product family, not a specific variant
-` : ''}
+` : `
+**NOTE: No variant attributes extracted from children. This may indicate children don't have attributes or they need to be synced.**
+`}
 
 ${(product as any).variantPriceRange ? `
 **PRICE RANGE:**
@@ -1034,6 +1316,7 @@ ${(product as any).variantPriceRange ? `
   - DO NOT write as if this is a specific variant - write as the main product family
   - If you mention colors, mention ALL available colors, not just one
   - If you mention sizes, mention ALL available sizes, not just one
+  - **MANDATORY**: Include ALL parent product attributes from context in the description
 ` : ''}
 
 ${isChild && parentProduct ? `
@@ -1045,6 +1328,9 @@ ${isChild && parentProduct ? `
 - Focus on the specific variant's features and benefits
 - Mention the variant-specific details (e.g., "40kg teherbírású változat", "fekete színű", "400mm szélességű")
 - Make it clear this is a specific option within a product family
+- **CRITICAL**: Include BOTH parent product attributes (shared by all variants) AND this variant's specific attributes in the description
+- The parent product attributes are provided in the context above - use them to provide comprehensive product information
+- Combine parent attributes (general product features) with variant-specific attributes (what makes this variant unique)
 ` : ''}
 
 ${context}
@@ -1059,33 +1345,66 @@ CRITICAL REQUIREMENTS:
    - If this is a hinge, focus on: opening angle, mounting, adjustability
    - DO NOT mix features from different product types
 
-2. **Dimension Accuracy**: 
+2. **Product Attributes Inclusion (MANDATORY)**: 
+   - **CRITICAL**: ALL product attributes from the context MUST be included in the description
+   - For PARENT products: Include ALL parent product attributes (dimensions, materials, capacities, load ratings, etc.)
+   - **CRITICAL FOR SIZE ATTRIBUTES**: For size/dimension attributes (e.g., "meret", "fiok_hossz", "Névleges hossz"), use the parent product's OWN attributes as the SOURCE OF TRUTH
+   - **CRITICAL SIZE LISTING RULE**: When a range is given (e.g., "Névleges hossz: 300 - 550 mm"), you MUST include the STARTING size (300mm) when listing available sizes
+   - If parent has "Névleges hossz: 300 - 550 mm", mention ALL sizes from 300mm to 550mm (300, 350, 400, 450, 500, 550mm) - DO NOT skip 300mm!
+   - **ALWAYS include the starting size**: If range is "300 - 550 mm", list "300, 350, 400, 450, 500, 550mm" - NOT "350, 400, 450, 500, 550mm"
+   - If parent has "Méret: 300", then 300mm IS available and must be mentioned
+   - Do NOT rely only on variant attributes extracted from children - they may not represent all available options
+   - Attributes are provided in the "PRODUCT ATTRIBUTES (THIS PRODUCT)" section above
+   - Include attributes naturally in the "Specifications/Technical Details" section
+   - Also mention key attributes in the "Key Features" and "Benefits" sections
+   - Example: If "Méret: 300" is in attributes, mention "300mm szélességű" or "300mm méretben elérhető"
+   - Example CORRECT: If "Névleges hossz: 300 - 550 mm" is in attributes, mention "300mm-től 550mm-ig terjedő hosszban érhető el (300, 350, 400, 450, 500 és 550 mm-es változatokban)"
+   - Example WRONG: "300mm-től 550mm-ig terjedő hosszban érhető el (350, 400, 450, 500 és 550 mm-es változatokban)" - This is INCORRECT because 300mm is missing!
+   - Example: If "Teherbírás: 35 kg" is in attributes, mention "35 kg teherbírás" in features
+   - DO NOT skip any attributes - they are essential product information
+
+3. **Dimension Accuracy**: 
    - Interpret "H400" as height 400mm (magasság 400mm)
    - Interpret "400-tól" as minimum width 400mm (minimum szélesség 400mm-tól)
    - Interpret "13L" as 13 liters capacity (13 liter kapacitás)
-   - Include these dimensions in the description if present in the product name
+   - Include these dimensions in the description if present in the product name or attributes
 
-3. **Feature Accuracy**: 
-   - Only mention features that exist for ${productType.type}s
-   - Trash bins: capacity, material, lid, mounting (under-sink, wall-mounted), sorting compartments
-   - Drawer systems: drawer capacity, rail type, installation width, number of drawers
-   - Hinges: opening angle, mounting type, adjustability, soft close
+4. **Feature Accuracy - NO ASSUMPTIONS RULE**: 
+   - **CRITICAL**: Only mention features that are EXPLICITLY stated in the product attributes or context provided
+   - **DO NOT make assumptions** about features based on product type, competitor content, or general knowledge
+   - **DO NOT mention features** unless they are 100% confirmed in the product data (attributes, source materials, or context)
+   - Example WRONG: Saying "soft close is an additional feature" when soft close is already included/standard - if it's not explicitly mentioned, don't assume it's optional
+   - Example WRONG: Assuming a drawer system has soft close just because it's a drawer system - only mention if explicitly stated
+   - Example CORRECT: Only mention "soft close" if it appears in product attributes, source materials, or context
+   - If you're not 100% sure about a feature, DO NOT mention it - it's better to omit than to be wrong
+   - Only mention features that exist for ${productType.type}s AND are confirmed in the product data
+   - Trash bins: capacity, material, lid, mounting (under-sink, wall-mounted), sorting compartments - ONLY if explicitly stated
+   - Drawer systems: drawer capacity, rail type, installation width, number of drawers - ONLY if explicitly stated
+   - Hinges: opening angle, mounting type, adjustability, soft close - ONLY if explicitly stated
    - DO NOT mention features that don't apply (e.g., rails for trash bins, capacity for hinges)
+   - **MANDATORY**: Use the product attributes from context to ensure accuracy - if it's not in attributes, don't assume it exists
 
-4. **Logical Consistency**: 
+5. **Logical Consistency**: 
    - Every sentence must make logical sense for a ${productType.type}
    - Installation method must match the product type
    - Use cases must match the product type
    - Benefits must match the product type
+   - **MANDATORY**: All attributes mentioned must match the product type
 
-5. **Language Requirement**:
+6. **Language Requirement - Proper Hungarian Grammar**:
    - Write EXCLUSIVELY in Hungarian - this is mandatory
    - Translate all information from source materials to Hungarian
    - Use Hungarian terminology and expressions
    - Write naturally in Hungarian, not as a translation
    - No English words except brand names or universally used technical terms
+   - **CRITICAL GRAMMAR RULES**:
+     - Use "hova" for direction/destination questions (e.g., "Hova illik legjobban?" NOT "Hol illik legjobban?")
+     - Use "hol" for location questions (e.g., "Hol használható?" "Hol alkalmazható?")
+     - Avoid literal translations - use natural Hungarian phrasing
+     - Check prepositions: "hova" (where to), "hol" (where), "honnan" (where from)
+     - Use proper Hungarian sentence structure and case endings
 
-6. **Search Console Query Optimization** (CRITICAL):
+7. **Search Console Query Optimization** (CRITICAL):
 ${queriesToUse && queriesToUse.length > 0 ? `
    - The following search queries are what people ACTUALLY use to find this product:
    - You MUST naturally incorporate these keywords and phrases into the description
@@ -1102,7 +1421,7 @@ ${queriesToUse && queriesToUse.length > 0 ? `
    - Use relevant industry keywords naturally (fiókrendszer, csukló, csúszka, stb.)
 `}
 
-7. **Competitor Content Integration** (CRITICAL):
+8. **Competitor Content Integration** (CRITICAL):
 ${competitorContentInsights ? `
    - Competitor content analysis has been provided showing keywords, phrases, features, and benefits competitors use
    - You MUST incorporate competitor keywords and phrases naturally throughout the description
@@ -1117,7 +1436,7 @@ ${competitorContentInsights ? `
    - No competitor content analysis available - write based on product information and source materials
 `}
 
-8. **Content Quality**:
+9. **Content Quality**:
    - Make it sound like it was written by a knowledgeable Hungarian expert
    - Include specific details from the source materials above (translated to Hungarian)
    - Optimize for Hungarian search engines without keyword stuffing
@@ -1130,7 +1449,7 @@ ${competitorContentInsights ? `
    - Include rhetorical questions: "Mire figyeljünk?" "Miért válasszuk ezt?"
    - Add personal voice: "én", "mi", "tapasztalat" occasionally
 
-9. **ShopRenter Integration Note**:
+10. **ShopRenter Integration Note**:
    - ShopRenter automatically creates a parameter table below the description based on product attributes
    - Your "Specifications" section should EXPLAIN and CONTEXTUALIZE the technical data, not just list it
    - Focus on benefits, use cases, and explanations rather than raw data

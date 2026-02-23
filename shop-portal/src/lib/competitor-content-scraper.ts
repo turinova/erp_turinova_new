@@ -24,9 +24,81 @@ export interface CompetitorContent {
 }
 
 /**
+ * Get cached competitor content if available and not expired
+ */
+export async function getCachedCompetitorContent(
+  url: string, 
+  supabase: any
+): Promise<CompetitorContent | null> {
+  if (!supabase) return null
+  
+  try {
+    const { data: cached } = await supabase
+      .from('competitor_content_cache')
+      .select('content')
+      .eq('url', url)
+      .gt('expires_at', new Date().toISOString())
+      .single()
+    
+    if (cached && cached.content) {
+      console.log(`[COMPETITOR SCRAPER] Using cached content for ${url}`)
+      return cached.content as CompetitorContent
+    }
+  } catch (error) {
+    // Cache miss or error - continue to scrape
+    console.log(`[COMPETITOR SCRAPER] Cache miss for ${url}:`, error)
+  }
+  
+  return null
+}
+
+/**
+ * Cache competitor content for future use
+ */
+export async function cacheCompetitorContent(
+  url: string, 
+  content: CompetitorContent, 
+  supabase: any
+): Promise<void> {
+  if (!supabase || content.error) return
+  
+  try {
+    const expiresAt = new Date()
+    expiresAt.setDate(expiresAt.getDate() + 7) // Cache for 7 days
+    
+    await supabase
+      .from('competitor_content_cache')
+      .upsert({
+        url,
+        content,
+        scraped_at: new Date().toISOString(),
+        expires_at: expiresAt.toISOString(),
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'url'
+      })
+    
+    console.log(`[COMPETITOR SCRAPER] Cached content for ${url} (expires: ${expiresAt.toISOString()})`)
+  } catch (error) {
+    console.warn(`[COMPETITOR SCRAPER] Failed to cache content for ${url}:`, error)
+    // Don't throw - caching failure shouldn't break scraping
+  }
+}
+
+/**
  * Extract content and keywords from a competitor product page using AI
  */
-export async function scrapeCompetitorContent(url: string): Promise<CompetitorContent> {
+export async function scrapeCompetitorContent(
+  url: string, 
+  supabase?: any
+): Promise<CompetitorContent> {
+  // Check cache first
+  if (supabase) {
+    const cached = await getCachedCompetitorContent(url, supabase)
+    if (cached) {
+      return cached
+    }
+  }
   try {
     // Fetch page content
     const pageContent = await fetchPageContent(url)
@@ -124,7 +196,7 @@ Return ONLY valid JSON, no markdown, no code blocks. Example format:
       }
     }
 
-    return {
+    const result = {
       url,
       title: pageContent.title,
       keywords: extracted.keywords || [],
@@ -135,6 +207,13 @@ Return ONLY valid JSON, no markdown, no code blocks. Example format:
       specifications: extracted.specifications || {},
       contentStructure: extracted.contentStructure || { headings: [], sections: [] }
     }
+    
+    // Cache the result if scraping was successful
+    if (supabase && !result.error) {
+      await cacheCompetitorContent(url, result, supabase)
+    }
+    
+    return result
   } catch (error: any) {
     console.error(`Error scraping competitor content from ${url}:`, error)
     return {
@@ -181,20 +260,57 @@ function extractBasicKeywords(text: string): string[] {
 
 /**
  * Scrape multiple competitor URLs and aggregate content
+ * Uses browser reuse for better performance while respecting rate limits
  */
-export async function scrapeMultipleCompetitorContents(urls: string[]): Promise<CompetitorContent[]> {
+export async function scrapeMultipleCompetitorContents(
+  urls: string[], 
+  supabase?: any
+): Promise<CompetitorContent[]> {
   const results: CompetitorContent[] = []
   
-  // Process with limited concurrency to avoid rate limits
+  // Check cache for all URLs first
+  if (supabase) {
+    const cachePromises = urls.map(url => getCachedCompetitorContent(url, supabase))
+    const cachedResults = await Promise.all(cachePromises)
+    
+    const uncachedUrls: string[] = []
+    cachedResults.forEach((cached, index) => {
+      if (cached) {
+        results.push(cached)
+      } else {
+        uncachedUrls.push(urls[index])
+      }
+    })
+    
+    // If all URLs are cached, return early
+    if (uncachedUrls.length === 0) {
+      console.log(`[COMPETITOR SCRAPER] All ${urls.length} URLs found in cache`)
+      return results
+    }
+    
+    // Only scrape uncached URLs
+    urls = uncachedUrls
+    console.log(`[COMPETITOR SCRAPER] ${results.length} cached, ${urls.length} to scrape`)
+  }
+  
+  if (urls.length === 0) {
+    return results
+  }
+  
+  // Reuse browser instance for all scrapes (faster than launching per URL)
+  // Note: fetchPageContent uses Playwright internally, so we can't directly reuse browser here
+  // But we keep the concurrency and delays to respect rate limits
+  
+  // Process with limited concurrency to avoid rate limits (KEEP AT 2 - safe)
   const CONCURRENCY = 2
   for (let i = 0; i < urls.length; i += CONCURRENCY) {
     const batch = urls.slice(i, i + CONCURRENCY)
     const batchResults = await Promise.all(
-      batch.map(url => scrapeCompetitorContent(url))
+      batch.map(url => scrapeCompetitorContent(url, supabase))
     )
     results.push(...batchResults)
     
-    // Delay between batches
+    // Delay between batches (KEEP AT 2000ms - safe for rate limits)
     if (i + CONCURRENCY < urls.length) {
       await new Promise(resolve => setTimeout(resolve, 2000))
     }
