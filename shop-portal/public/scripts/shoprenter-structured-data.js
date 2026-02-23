@@ -84,7 +84,8 @@
   }
 
   /**
-   * Remove all existing Product/ProductGroup structured data (including ShopRenter's default)
+   * Remove all existing Product/ProductGroup/FAQPage structured data (including ShopRenter's default)
+   * Also removes any scripts with data-enhanced="true" to prevent duplicates
    */
   function removeExistingProductStructuredData() {
     const existingScripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -93,17 +94,22 @@
     existingScripts.forEach(script => {
       try {
         const data = JSON.parse(script.textContent || '{}');
-        // Remove any Product or ProductGroup structured data
-        if (data['@type'] === 'Product' || data['@type'] === 'ProductGroup') {
+        // Remove any Product, ProductGroup, or FAQPage structured data
+        // Also remove any script with data-enhanced attribute (our enhanced schemas)
+        if (data['@type'] === 'Product' || 
+            data['@type'] === 'ProductGroup' || 
+            data['@type'] === 'FAQPage' ||
+            script.hasAttribute('data-enhanced')) {
           script.remove();
           removedCount++;
-          console.log('[ShopRenter Structured Data] Removed existing', data['@type'], 'structured data');
+          console.log('[ShopRenter Structured Data] Removed existing', data['@type'] || 'enhanced', 'structured data');
         }
       } catch (e) {
         // Ignore parse errors, but still check if it's our enhanced version
         if (script.hasAttribute('data-enhanced')) {
           script.remove();
           removedCount++;
+          console.log('[ShopRenter Structured Data] Removed existing enhanced structured data (parse error)');
         }
       }
     });
@@ -115,10 +121,29 @@
 
   /**
    * Check if our enhanced structured data already exists
+   * Checks for both data-enhanced attribute and FAQPage schemas (which we inject)
    */
   function hasOurEnhancedStructuredData() {
-    const existingScripts = document.querySelectorAll('script[type="application/ld+json"][data-enhanced="true"]');
-    return existingScripts.length > 0;
+    // Check for scripts with data-enhanced attribute
+    const enhancedScripts = document.querySelectorAll('script[type="application/ld+json"][data-enhanced="true"]');
+    if (enhancedScripts.length > 0) {
+      return true;
+    }
+    
+    // Also check for FAQPage schemas (which we inject)
+    const allScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (let script of allScripts) {
+      try {
+        const data = JSON.parse(script.textContent || '{}');
+        if (data['@type'] === 'FAQPage') {
+          return true; // FAQPage exists, so we've already injected
+        }
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
+    return false;
   }
 
   /**
@@ -187,15 +212,30 @@
     });
   }
 
+  // Flag to prevent multiple simultaneous executions
+  let isInitializing = false;
+  let hasInitialized = false;
+
   /**
    * Main execution
    */
   function init() {
+    // Prevent multiple simultaneous executions
+    if (isInitializing) {
+      return;
+    }
+    
+    // If we've already successfully initialized, skip
+    if (hasInitialized) {
+      return;
+    }
+
     // Check if product.tpl script already injected structured data
     // If so, skip this script (product.tpl solution takes precedence)
     const productTplScript = document.getElementById('enhanced-structured-data');
     if (productTplScript && productTplScript.textContent && productTplScript.textContent.trim() !== '') {
       console.log('[ShopRenter Structured Data] Product.tpl script already injected structured data, skipping Script Tag API');
+      hasInitialized = true;
       return;
     }
 
@@ -214,6 +254,7 @@
     // Check if we already have our enhanced structured data (skip if already injected)
     if (hasOurEnhancedStructuredData()) {
       console.log('[ShopRenter Structured Data] Enhanced structured data already exists, skipping');
+      hasInitialized = true;
       return;
     }
 
@@ -224,6 +265,8 @@
       return;
     }
 
+    // Set flag to prevent concurrent executions
+    isInitializing = true;
     console.log('[ShopRenter Structured Data] Fetching structured data for product:', productIdentifier);
 
     // Fetch and inject structured data
@@ -233,12 +276,15 @@
           console.log('[ShopRenter Structured Data] Successfully fetched structured data, injecting...');
           injectStructuredData(jsonLd);
           console.log('[ShopRenter Structured Data] Enhanced structured data injected successfully');
+          hasInitialized = true;
         } else {
           console.warn('[ShopRenter Structured Data] No structured data returned from API');
         }
+        isInitializing = false;
       })
       .catch(error => {
         console.error('[ShopRenter Structured Data] Error:', error);
+        isInitializing = false;
       });
   }
 
