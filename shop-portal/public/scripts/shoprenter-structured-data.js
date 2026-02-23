@@ -127,19 +127,55 @@
     // Check for scripts with data-enhanced attribute
     const enhancedScripts = document.querySelectorAll('script[type="application/ld+json"][data-enhanced="true"]');
     if (enhancedScripts.length > 0) {
-      return true;
+      // Also verify they contain valid structured data
+      for (let script of enhancedScripts) {
+        try {
+          const content = script.textContent || '';
+          if (content.trim()) {
+            const data = JSON.parse(content);
+            // Check if it's an array with FAQPage or a single FAQPage
+            if (Array.isArray(data)) {
+              const hasFAQPage = data.some(item => item && item['@type'] === 'FAQPage');
+              if (hasFAQPage) {
+                return true; // FAQPage found in array
+              }
+            } else if (data && data['@type'] === 'FAQPage') {
+              return true; // Single FAQPage found
+            }
+          }
+        } catch (e) {
+          // If parse fails, check string content
+          const content = script.textContent || '';
+          if (content.includes('"@type":"FAQPage"') || content.includes('FAQPage')) {
+            return true;
+          }
+        }
+      }
     }
     
-    // Also check for FAQPage schemas (which we inject)
+    // Also check for FAQPage schemas in ANY script (which we inject)
     const allScripts = document.querySelectorAll('script[type="application/ld+json"]');
     for (let script of allScripts) {
       try {
-        const data = JSON.parse(script.textContent || '{}');
-        if (data['@type'] === 'FAQPage') {
-          return true; // FAQPage exists, so we've already injected
+        const content = script.textContent || '';
+        if (!content.trim()) continue;
+        
+        const data = JSON.parse(content);
+        // Check if it's an array with FAQPage or a single FAQPage
+        if (Array.isArray(data)) {
+          const hasFAQPage = data.some(item => item && item['@type'] === 'FAQPage');
+          if (hasFAQPage) {
+            return true; // FAQPage found in array
+          }
+        } else if (data && data['@type'] === 'FAQPage') {
+          return true; // Single FAQPage found
         }
       } catch (e) {
-        // Ignore parse errors
+        // If parse fails, check string content for FAQPage
+        const content = script.textContent || '';
+        if (content.includes('"@type":"FAQPage"') || content.includes('FAQPage')) {
+          return true;
+        }
       }
     }
     
@@ -234,6 +270,32 @@
     // If so, skip this script (product.tpl solution takes precedence)
     const productTplScript = document.getElementById('enhanced-structured-data');
     if (productTplScript && productTplScript.textContent && productTplScript.textContent.trim() !== '') {
+      // Also check if it contains FAQPage to avoid duplicates
+      try {
+        const content = productTplScript.textContent;
+        const data = JSON.parse(content);
+        // If it's an array, check if any item is FAQPage
+        if (Array.isArray(data)) {
+          const hasFAQPage = data.some(item => item && item['@type'] === 'FAQPage');
+          if (hasFAQPage) {
+            console.log('[ShopRenter Structured Data] Product.tpl script already injected structured data with FAQPage, skipping Script Tag API');
+            hasInitialized = true;
+            return;
+          }
+        } else if (data && data['@type'] === 'FAQPage') {
+          console.log('[ShopRenter Structured Data] Product.tpl script already injected FAQPage, skipping Script Tag API');
+          hasInitialized = true;
+          return;
+        }
+      } catch (e) {
+        // If parse fails, check string content for FAQPage
+        if (productTplScript.textContent.includes('"@type":"FAQPage"') || 
+            productTplScript.textContent.includes('FAQPage')) {
+          console.log('[ShopRenter Structured Data] Product.tpl script already contains FAQPage, skipping Script Tag API');
+          hasInitialized = true;
+          return;
+        }
+      }
       console.log('[ShopRenter Structured Data] Product.tpl script already injected structured data, skipping Script Tag API');
       hasInitialized = true;
       return;
@@ -272,6 +334,14 @@
     // Fetch and inject structured data
     fetchStructuredData(productIdentifier)
       .then(jsonLd => {
+        // Double-check before injecting (another script might have injected while we were fetching)
+        if (hasOurEnhancedStructuredData()) {
+          console.log('[ShopRenter Structured Data] Enhanced structured data was injected by another script while fetching, skipping injection');
+          hasInitialized = true;
+          isInitializing = false;
+          return;
+        }
+        
         if (jsonLd) {
           console.log('[ShopRenter Structured Data] Successfully fetched structured data, injecting...');
           injectStructuredData(jsonLd);

@@ -168,13 +168,49 @@
                 // Remove ShopRenter schemas again (in case they were added during fetch)
                 removeShopRenterSchemas();
                 
-                // Get or create our schema script tag
-                let script = document.getElementById('enhanced-structured-data');
-                if (!script) {
-                    script = document.createElement('script');
+                // Also remove any existing FAQPage schemas to prevent duplicates
+                const allScripts = document.querySelectorAll('script[type="application/ld+json"]');
+                allScripts.forEach(script => {
+                    try {
+                        const content = script.textContent || '';
+                        if (!content.trim()) return;
+                        
+                        const data = JSON.parse(content);
+                        // Remove if it's a FAQPage or contains FAQPage in array
+                        if (Array.isArray(data)) {
+                            const hasFAQPage = data.some(item => item && item['@type'] === 'FAQPage');
+                            if (hasFAQPage && script.id !== 'enhanced-structured-data' && !script.hasAttribute('data-enhanced')) {
+                                script.remove();
+                                console.log('[Enhanced Schema] Removed existing FAQPage schema');
+                            }
+                        } else if (data && data['@type'] === 'FAQPage' && script.id !== 'enhanced-structured-data' && !script.hasAttribute('data-enhanced')) {
+                            script.remove();
+                            console.log('[Enhanced Schema] Removed existing FAQPage schema');
+                        }
+                    } catch (e) {
+                        // Ignore parse errors
+                    }
+                });
+                
+                // Remove any existing enhanced-structured-data scripts
+                const existingEnhanced = document.getElementById('enhanced-structured-data');
+                if (existingEnhanced) {
+                    existingEnhanced.remove();
+                }
+                
+                // Handle both single schema and array of schemas (e.g., [Product, FAQPage])
+                const schemasToInject = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
+                
+                // Create separate script tags for each schema (Google's preferred method)
+                schemasToInject.forEach((schema, index) => {
+                    const script = document.createElement('script');
                     script.type = 'application/ld+json';
-                    script.id = 'enhanced-structured-data';
                     script.setAttribute('data-enhanced', 'true');
+                    if (index === 0) {
+                        // First schema gets the main ID for compatibility
+                        script.id = 'enhanced-structured-data';
+                    }
+                    script.textContent = JSON.stringify(schema);
                     
                     // Insert at the beginning of head for priority
                     const head = document.head || document.getElementsByTagName('head')[0];
@@ -183,17 +219,13 @@
                     } else if (document.body) {
                         document.body.insertBefore(script, document.body.firstChild);
                     }
-                }
+                });
                 
-                // Inject our enhanced schema
-                if (jsonLd) {
-                    script.textContent = JSON.stringify(jsonLd);
-                    schemaReplaced = true;
-                    console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku);
-                    
-                    // Final cleanup - remove any remaining ShopRenter schemas
-                    setTimeout(removeShopRenterSchemas, 100);
-                }
+                schemaReplaced = true;
+                console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku, `(${schemasToInject.length} schema(s))`);
+                
+                // Final cleanup - remove any remaining ShopRenter schemas
+                setTimeout(removeShopRenterSchemas, 100);
             })
             .catch(error => {
                 console.error('[Enhanced Schema] ❌ Failed to load:', error);
