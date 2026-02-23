@@ -123,25 +123,37 @@
 
   /**
    * Inject JSON-LD structured data into page
+   * Handles both single schema objects and arrays of schemas (e.g., [Product, FAQPage])
    */
   function injectStructuredData(jsonLd) {
     // Remove ALL existing Product/ProductGroup structured data (including ShopRenter's default)
     removeExistingProductStructuredData();
 
-    // Create new script tag
-    const script = document.createElement('script');
-    script.type = 'application/ld+json';
-    script.setAttribute('data-enhanced', 'true');
-    script.textContent = JSON.stringify(jsonLd);
+    // Handle both single schema and array of schemas
+    // If it's an array, we can inject multiple script tags OR use a single script with array
+    // Using single script with array is more efficient and valid JSON-LD
+    const schemasToInject = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
+    
+    // Create script tag(s) for each schema
+    schemasToInject.forEach((schema, index) => {
+      const script = document.createElement('script');
+      script.type = 'application/ld+json';
+      script.setAttribute('data-enhanced', 'true');
+      if (index === 0) {
+        // First schema gets the main ID for compatibility
+        script.id = 'enhanced-structured-data';
+      }
+      script.textContent = JSON.stringify(schema);
 
-    // Insert into head (preferred location for structured data)
-    const head = document.head || document.getElementsByTagName('head')[0];
-    if (head) {
-      head.appendChild(script);
-    } else {
-      // Fallback to body if head not available
-      document.body.appendChild(script);
-    }
+      // Insert into head (preferred location for structured data)
+      const head = document.head || document.getElementsByTagName('head')[0];
+      if (head) {
+        head.appendChild(script);
+      } else {
+        // Fallback to body if head not available
+        document.body.appendChild(script);
+      }
+    });
   }
 
   /**

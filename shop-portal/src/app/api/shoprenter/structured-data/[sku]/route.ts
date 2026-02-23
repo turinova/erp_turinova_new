@@ -338,6 +338,7 @@ export async function GET(
       }
     )
 
+    // Handle both single schema and array of schemas (Product + FAQPage)
     // Return as JSON-LD with proper headers
     return NextResponse.json(structuredData, {
       headers: {

@@ -54,12 +54,117 @@ export interface StructuredDataOptions {
 }
 
 /**
+ * Extract FAQ questions and answers from description HTML
+ */
+function extractFAQFromDescription(description: string): Array<{ question: string; answer: string }> {
+  if (!description) return []
+  
+  const faqs: Array<{ question: string; answer: string }> = []
+  
+  // Look for FAQ section - Hungarian headings (case-insensitive)
+  const faqSectionMatch = description.match(
+    /<h2[^>]*>(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK)[^<]*<\/h2>(.*?)(?=<h2|$)/is
+  )
+  
+  if (!faqSectionMatch) return []
+  
+  const faqContent = faqSectionMatch[1]
+  
+  // Helper function to decode HTML entities and strip tags
+  const cleanText = (text: string): string => {
+    return text
+      .replace(/<[^>]*>/g, '') // Strip HTML tags
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&hellip;/g, '...')
+      .replace(/&mdash;/g, '—')
+      .replace(/&ndash;/g, '–')
+      // Decode numeric entities
+      .replace(/&#(\d+);/g, (_, dec) => {
+        const code = parseInt(dec, 10)
+        if (code >= 0 && code <= 1114111) {
+          return String.fromCharCode(code)
+        }
+        return ''
+      })
+      // Decode hex entities
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+        const code = parseInt(hex, 16)
+        if (code >= 0 && code <= 1114111) {
+          return String.fromCharCode(code)
+        }
+        return ''
+      })
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim()
+  }
+  
+  // Extract Q&A pairs: <h3>Question</h3> <p>Answer</p> or <h3>Question</h3> followed by <p>Answer</p>
+  // Pattern matches h3 followed by one or more p tags (handles multi-paragraph answers)
+  const qaPattern = /<h3[^>]*>(.*?)<\/h3>\s*(<p[^>]*>.*?<\/p>(?:\s*<p[^>]*>.*?<\/p>)*)/gis
+  let match
+  
+  while ((match = qaPattern.exec(faqContent)) !== null) {
+    const question = cleanText(match[1])
+    
+    // Extract all paragraphs for the answer
+    const answerParagraphs = match[2].match(/<p[^>]*>(.*?)<\/p>/gis)
+    if (!answerParagraphs) continue
+    
+    const answer = answerParagraphs
+      .map(p => {
+        const pMatch = p.match(/<p[^>]*>(.*?)<\/p>/is)
+        return pMatch ? cleanText(pMatch[1]) : ''
+      })
+      .filter(p => p.length > 0)
+      .join(' ')
+    
+    // Only add if both question and answer are meaningful
+    if (question && answer && question.length > 10 && answer.length > 20) {
+      faqs.push({ question, answer })
+    }
+  }
+  
+  return faqs
+}
+
+/**
+ * Generate FAQPage schema from FAQ questions and answers
+ */
+function generateFAQPageSchema(
+  faqs: Array<{ question: string; answer: string }>,
+  productUrl: string | null
+): object | null {
+  if (!faqs || faqs.length === 0) return null
+  
+  return {
+    '@context': 'https://schema.org/',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map(faq => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: faq.answer
+      }
+    })),
+    ...(productUrl ? { url: productUrl } : {})
+  }
+}
+
+/**
  * Generate enhanced JSON-LD structured data for a product
+ * Returns either a single Product/ProductGroup schema, or an array of [Product, FAQPage] schemas
  */
 export function generateProductStructuredData(
   product: StructuredDataProduct,
   options: StructuredDataOptions = {}
-): object {
+): object | Array<object> {
   const currency = options.currency || 'HUF'
   const shopUrl = options.shopUrl || ''
   const shopName = options.shopName || ''
@@ -430,7 +535,17 @@ export function generateProductStructuredData(
     schema.url = product.product_url
   }
 
-  return schema
+  // Extract FAQ from description and generate FAQPage schema
+  const description = product.description?.description || ''
+  const faqs = extractFAQFromDescription(description)
+  const faqSchema = generateFAQPageSchema(faqs, product.product_url)
+  
+  // Return both schemas if FAQ exists, otherwise just Product schema
+  if (faqSchema) {
+    return [schema, faqSchema] // Return array of schemas
+  }
+  
+  return schema // Return single schema if no FAQ
 }
 
 /**
