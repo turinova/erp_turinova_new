@@ -5,6 +5,7 @@ import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync } from '@/lib/sync-progress-store'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
+import { getLanguageId, getShopRenterAuthHeader, extractShopNameFromUrl as extractShopNameFromUrlLib } from '@/lib/shoprenter-api'
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -103,7 +104,8 @@ async function syncCategoryToDatabase(
   connection: any,
   category: any, // categoryExtend from ShopRenter
   shopName: string,
-  forceSync: boolean = false
+  forceSync: boolean = false,
+  hungarianLanguageId?: string // Optional Hungarian language ID for name extraction
 ) {
   try {
     // Extract category data
@@ -121,10 +123,40 @@ async function syncCategoryToDatabase(
     // Extract parent category ID
     const parentCategoryShopRenterId = extractParentCategoryId(category)
     
-    // Get category name from first description (if available)
+    // Get category name - PREFER HUNGARIAN (like products do)
     let categoryName = null
     if (category.categoryDescriptions && Array.isArray(category.categoryDescriptions) && category.categoryDescriptions.length > 0) {
-      categoryName = category.categoryDescriptions[0].name || null
+      // First, try to find Hungarian description
+      if (hungarianLanguageId) {
+        const huDesc = category.categoryDescriptions.find((desc: any) => {
+          const descLangId = desc.language?.id || desc.language?.href?.match(/\/languages\/([^\/\?]+)/)?.[1]
+          return descLangId === hungarianLanguageId
+        })
+        if (huDesc && huDesc.name && huDesc.name.trim()) {
+          categoryName = huDesc.name.trim()
+        }
+      }
+      
+      // If no Hungarian found, check by innerId (1 = Hungarian)
+      if (!categoryName) {
+        const huDesc = category.categoryDescriptions.find((desc: any) => {
+          const innerId = desc.language?.innerId
+          return (innerId === '1' || innerId === 1) && desc.name && desc.name.trim()
+        })
+        if (huDesc) {
+          categoryName = huDesc.name.trim()
+        }
+      }
+      
+      // Fallback to first available name
+      if (!categoryName) {
+        for (const desc of category.categoryDescriptions) {
+          if (desc.name && desc.name.trim()) {
+            categoryName = desc.name.trim()
+            break
+          }
+        }
+      }
     }
     
     // Prepare category data
@@ -167,10 +199,56 @@ async function syncCategoryToDatabase(
         .single()
       
       if (error) {
-        throw new Error(`Failed to update category: ${error.message}`)
+        // Detailed error logging
+        console.error(`[CATEGORY SYNC] Failed to update category ${shoprenterId}:`, {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        throw new Error(`Failed to update category: ${error.message || 'Unknown error'} (code: ${error.code || 'N/A'})`)
       }
       
       categoryResult = data
+      
+      // CRITICAL: Also update description name for Hungarian description
+      // This ensures the UI shows the correct name even if smart sync skips description content
+      if (categoryName && categoryResult) {
+        // Find Hungarian description by language_id
+        let huDescQuery = supabase
+          .from('shoprenter_category_descriptions')
+          .select('id')
+          .eq('category_id', categoryResult.id)
+        
+        if (hungarianLanguageId) {
+          huDescQuery = huDescQuery.eq('language_id', hungarianLanguageId)
+        } else {
+          // Fallback: try to find by checking if language_id contains 'hu' or is the Hungarian base64 ID
+          // Hungarian language ID is typically: bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==
+          huDescQuery = huDescQuery.or('language_id.eq.bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==,language_id.ilike.%hu%')
+        }
+        
+        const { data: huDesc, error: huDescError } = await huDescQuery.maybeSingle()
+        
+        if (huDesc && !huDescError) {
+          const { error: descUpdateError } = await supabase
+            .from('shoprenter_category_descriptions')
+            .update({ name: categoryName })
+            .eq('id', huDesc.id)
+          
+          if (descUpdateError) {
+            console.error(`[CATEGORY SYNC] Failed to update Hungarian description name for category ${shoprenterId}:`, {
+              code: descUpdateError.code,
+              message: descUpdateError.message,
+              details: descUpdateError.details,
+              hint: descUpdateError.hint
+            })
+            // Don't throw - this is not critical, just log it
+          } else {
+            console.log(`[CATEGORY SYNC] Updated Hungarian description name for category ${shoprenterId}: ${categoryName}`)
+          }
+        }
+      }
     } else {
       // Insert new category
       const { data, error } = await supabase
@@ -180,7 +258,14 @@ async function syncCategoryToDatabase(
         .single()
       
       if (error) {
-        throw new Error(`Failed to insert category: ${error.message}`)
+        // Detailed error logging
+        console.error(`[CATEGORY SYNC] Failed to insert category ${shoprenterId}:`, {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        })
+        throw new Error(`Failed to insert category: ${error.message || 'Unknown error'} (code: ${error.code || 'N/A'})`)
       }
       
       categoryResult = data
@@ -189,6 +274,43 @@ async function syncCategoryToDatabase(
     // Sync category descriptions
     if (category.categoryDescriptions && Array.isArray(category.categoryDescriptions)) {
       await syncCategoryDescriptions(supabase, categoryResult.id, category.categoryDescriptions)
+      
+      // After syncing descriptions, ensure Hungarian description name matches category name
+      if (categoryName && categoryResult) {
+        // Find Hungarian description by language_id
+        let huDescQuery = supabase
+          .from('shoprenter_category_descriptions')
+          .select('id')
+          .eq('category_id', categoryResult.id)
+        
+        if (hungarianLanguageId) {
+          huDescQuery = huDescQuery.eq('language_id', hungarianLanguageId)
+        } else {
+          // Fallback: try to find by checking if language_id contains 'hu' or is the Hungarian base64 ID
+          huDescQuery = huDescQuery.or('language_id.eq.bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==,language_id.ilike.%hu%')
+        }
+        
+        const { data: huDesc, error: huDescError } = await huDescQuery.maybeSingle()
+        
+        if (huDesc && !huDescError) {
+          const { error: descUpdateError } = await supabase
+            .from('shoprenter_category_descriptions')
+            .update({ name: categoryName })
+            .eq('id', huDesc.id)
+          
+          if (descUpdateError) {
+            console.error(`[CATEGORY SYNC] Failed to update Hungarian description name after sync for category ${shoprenterId}:`, {
+              code: descUpdateError.code,
+              message: descUpdateError.message,
+              details: descUpdateError.details,
+              hint: descUpdateError.hint
+            })
+            // Don't throw - this is not critical, just log it
+          } else {
+            console.log(`[CATEGORY SYNC] Updated Hungarian description name after sync for category ${shoprenterId}: ${categoryName}`)
+          }
+        }
+      }
     }
     
     // Update parent category relationship (after all categories are synced, we'll do a second pass)
@@ -240,7 +362,18 @@ async function syncCategoryDescriptions(
         })
       
       if (error) {
-        console.error(`[CATEGORY SYNC] Error syncing description ${descriptionData.shoprenter_id}:`, error)
+        // Detailed error logging
+        console.error(`[CATEGORY SYNC] Error syncing description ${descriptionData.shoprenter_id}:`, {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          descriptionData: {
+            category_id: descriptionData.category_id,
+            language_id: descriptionData.language_id,
+            shoprenter_id: descriptionData.shoprenter_id
+          }
+        })
       }
     } catch (error) {
       console.error('[CATEGORY SYNC] Error processing description:', error)
@@ -453,9 +586,29 @@ export async function POST(
         }, { status: 400 })
       }
 
+      // Get Hungarian language ID for name extraction
+      let hungarianLanguageId: string | undefined
+      try {
+        const { authHeader: authHeaderForLang, apiBaseUrl } = await getShopRenterAuthHeader(
+          shopName,
+          connection.username,
+          connection.password,
+          connection.api_url
+        )
+        hungarianLanguageId = await getLanguageId(apiBaseUrl, authHeaderForLang, 'hu')
+        if (hungarianLanguageId) {
+          console.log(`[CATEGORY SYNC] Hungarian language ID: ${hungarianLanguageId}`)
+        } else {
+          console.warn('[CATEGORY SYNC] Could not get Hungarian language ID, will use fallback logic')
+        }
+      } catch (langError: any) {
+        console.warn('[CATEGORY SYNC] Error getting Hungarian language ID:', langError?.message)
+        // Continue without it - fallback logic will handle it
+      }
+
       // Sync the single category
       try {
-        await syncCategoryToDatabase(supabase, connection, categoryData, shopName, forceSync)
+        await syncCategoryToDatabase(supabase, connection, categoryData, shopName, forceSync, hungarianLanguageId)
         console.log(`[CATEGORY SYNC] Successfully synced category ${categoryData.id} to database`)
       } catch (syncError: any) {
         console.error('[CATEGORY SYNC] Error syncing category to database:', syncError)
@@ -534,6 +687,26 @@ async function processSyncInBackground(
   let syncedCount = 0
   let errorCount = 0
   const errors: string[] = []
+  
+  // Get Hungarian language ID for name extraction
+  let hungarianLanguageId: string | undefined
+  try {
+    const { authHeader: authHeaderForLang, apiBaseUrl } = await getShopRenterAuthHeader(
+      shopName,
+      connection.username,
+      connection.password,
+      connection.api_url
+    )
+    hungarianLanguageId = await getLanguageId(apiBaseUrl, authHeaderForLang, 'hu')
+    if (hungarianLanguageId) {
+      console.log(`[CATEGORY SYNC] Hungarian language ID: ${hungarianLanguageId}`)
+    } else {
+      console.warn('[CATEGORY SYNC] Could not get Hungarian language ID, will use fallback logic')
+    }
+  } catch (langError: any) {
+    console.warn('[CATEGORY SYNC] Error getting Hungarian language ID:', langError?.message)
+    // Continue without it - fallback logic will handle it
+  }
   
   try {
     // Step 1: Fetch all category IDs
@@ -767,7 +940,7 @@ async function processSyncInBackground(
           }
           
           // Sync category
-          await syncCategoryToDatabase(supabase, connection, category, shopName)
+          await syncCategoryToDatabase(supabase, connection, category, shopName, false, hungarianLanguageId)
           syncedCount++
           console.log(`[CATEGORY SYNC] Successfully synced category ${category.id}`)
           

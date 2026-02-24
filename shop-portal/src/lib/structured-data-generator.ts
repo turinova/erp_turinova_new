@@ -580,7 +580,7 @@ function getGroupLevelProperties(
 
 /**
  * Create a concise schema description (200-250 chars) from HTML description
- * Aggressively removes all HTML and creates clean plain text
+ * Aggressively removes all HTML, CSS, and JavaScript to create clean plain text
  * GLOBAL FIX - works for all product types
  */
 function createSchemaDescription(htmlDescription: string): string {
@@ -589,8 +589,18 @@ function createSchemaDescription(htmlDescription: string): string {
   // First, decode HTML entities (handles &lt; &gt; etc.)
   let plain = decodeHtmlEntities(htmlDescription)
   
+  // Remove <style> tags and their content (CSS)
+  plain = plain.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+  
+  // Remove <script> tags and their content (JavaScript)
+  plain = plain.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+  
   // Strip ALL HTML tags (including broken ones like </p><p>)
   plain = plain.replace(/<[^>]*>/g, ' ')
+  
+  // Remove CSS-like patterns (e.g., body{font-family:...} or font-family:Roboto;)
+  plain = plain.replace(/\{[^}]*\}/g, ' ') // Remove { ... } blocks (CSS rules)
+  plain = plain.replace(/[a-z-]+:\s*[^;]+;?/gi, ' ') // Remove CSS properties (e.g., font-family:Roboto;)
   
   // Remove any remaining HTML entity fragments
   plain = plain.replace(/&[a-z]+;/gi, ' ')
@@ -1124,21 +1134,24 @@ export function generateProductStructuredData(
   if (faqSchema) {
     console.log('[STRUCTURED DATA] Returning array with Product and FAQPage schemas')
     
-    // Use @graph structure for better entity linking (optional but recommended)
-    const graphSchemas: any[] = [schema]
-    if (faqSchema) {
-      graphSchemas.push(faqSchema)
-    }
-    
     // Return as @graph if we have multiple schemas with @id
     if (schema['@id'] && faqSchema['@id']) {
+      // Remove @context from individual schemas when using @graph
+      // @context should only be at the root level
+      const schemaWithoutContext = { ...schema }
+      delete schemaWithoutContext['@context']
+      
+      const faqSchemaWithoutContext = { ...faqSchema }
+      delete faqSchemaWithoutContext['@context']
+      
       return {
         '@context': 'https://schema.org/',
-        '@graph': graphSchemas
+        '@graph': [schemaWithoutContext, faqSchemaWithoutContext]
       }
     }
     
-    return [schema, faqSchema] // Fallback: return array of schemas
+    // Fallback: return array of schemas (keep @context in each for standalone use)
+    return [schema, faqSchema]
   }
   
   console.log('[STRUCTURED DATA] Returning single Product schema (no FAQ)')
