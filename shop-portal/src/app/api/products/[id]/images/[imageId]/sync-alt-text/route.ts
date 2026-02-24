@@ -566,6 +566,191 @@ export async function POST(
     )
 
     if (!syncResult.success) {
+      // If image not found (404), clear invalid ID and use path-based approach
+      if (syncResult.error?.includes('IMAGE_NOT_FOUND')) {
+        console.warn(`[SYNC ALT TEXT] Image ID ${shoprenterImageId} not found in ShopRenter (404), clearing invalid ID and using path-based search`)
+        
+        // Clear the invalid shoprenter_image_id
+        await supabase
+          .from('product_images')
+          .update({ shoprenter_image_id: null })
+          .eq('id', imageId)
+        
+        // Now trigger the path-based search/create logic by setting shoprenterImageId to null
+        // and falling through to the path-based logic below
+        shoprenterImageId = null
+        
+        // Re-run the path-based search/create logic (code continues below)
+        // We need to extract the shopName and auth setup again
+        const shopNameForRetry = extractShopNameFromUrl(connection.api_url)
+        if (!shopNameForRetry) {
+          return NextResponse.json({ error: 'Invalid shop name' }, { status: 400 })
+        }
+
+        const { authHeader: retryAuthHeader, apiBaseUrl: retryApiBaseUrl } = await getShopRenterAuthHeader(
+          shopNameForRetry,
+          connection.username,
+          connection.password,
+          connection.api_url
+        )
+
+        const retryRateLimiter = getShopRenterRateLimiter()
+
+        // Use the same path normalization and search logic
+        const normalizePath = (path: string) => {
+          if (!path) return ''
+          return path
+            .replace(/^data\//, '')
+            .replace(/\\/g, '/')
+            .toLowerCase()
+            .trim()
+        }
+
+        const getFilename = (path: string) => {
+          if (!path) return ''
+          const normalized = normalizePath(path)
+          const parts = normalized.split('/')
+          return parts[parts.length - 1] || normalized
+        }
+
+        const normalizedImagePath = normalizePath(image.image_path)
+        const imageFilename = getFilename(image.image_path)
+        const originalPathNoData = image.image_path.replace(/^data\//, '')
+        const searchPaths = [
+          image.image_path,
+          normalizedImagePath,
+          originalPathNoData,
+          `data/${normalizedImagePath}`,
+          `data/${originalPathNoData}`,
+        ].filter((path, index, self) => self.indexOf(path) === index && path)
+
+        // Try to find or create the image
+        let foundImageId: string | null = null
+        
+        // Try direct search
+        for (const searchPath of searchPaths) {
+          try {
+            const searchResponse = await retryRateLimiter.execute(() =>
+              fetch(
+                `${retryApiBaseUrl}/productImages?productId=${encodeURIComponent(product.shoprenter_id)}&imagePath=${encodeURIComponent(searchPath)}&full=1&limit=10`,
+                {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': retryAuthHeader
+                  },
+                  signal: AbortSignal.timeout(30000)
+                }
+              )
+            )
+
+            if (searchResponse.ok) {
+              const searchData = await searchResponse.json()
+              if (searchData.response?.items && searchData.response.items.length > 0) {
+                const foundItem = searchData.response.items[0]
+                foundImageId = foundItem.id || foundItem.href?.split('/').pop()
+                if (foundImageId) break
+              }
+            }
+          } catch (e) {
+            // Continue to next path
+          }
+        }
+
+        // If still not found, try to create it
+        if (!foundImageId) {
+          try {
+            const createResponse = await retryRateLimiter.execute(() =>
+              fetch(
+                `${retryApiBaseUrl}/productImages`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': retryAuthHeader
+                  },
+                  body: JSON.stringify({
+                    imagePath: originalPathNoData || normalizedImagePath,
+                    imageAlt: image.alt_text || '',
+                    sortOrder: image.sort_order || 0,
+                    product: {
+                      id: product.shoprenter_id
+                    }
+                  }),
+                  signal: AbortSignal.timeout(30000)
+                }
+              )
+            )
+            
+            if (createResponse.ok) {
+              const createdData = await createResponse.json()
+              foundImageId = createdData.id || createdData.href?.split('/').pop()
+            } else if (createResponse.status === 409) {
+              // Image exists, extract ID from error
+              const errorText = await createResponse.text().catch(() => '{}')
+              try {
+                const errorData = JSON.parse(errorText)
+                if (errorData.id) {
+                  foundImageId = errorData.id
+                }
+              } catch (e) {
+                // Ignore parse error
+              }
+            }
+          } catch (e) {
+            // Creation failed
+          }
+        }
+
+        if (foundImageId) {
+          // Update database with new ID and sync
+          await supabase
+            .from('product_images')
+            .update({ shoprenter_image_id: foundImageId })
+            .eq('id', imageId)
+          
+          // Now sync with the found/created ID
+          const retrySyncResult = await syncImageAltText(
+            {
+              apiUrl: connection.api_url,
+              username: connection.username,
+              password: connection.password,
+              shopName: shopNameForRetry
+            },
+            foundImageId,
+            image.alt_text
+          )
+
+          if (retrySyncResult.success) {
+            await supabase
+              .from('product_images')
+              .update({
+                alt_text_status: 'synced',
+                alt_text_synced_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', imageId)
+            
+            return NextResponse.json({
+              success: true,
+              message: 'Image found/created and alt text synced successfully'
+            })
+          } else {
+            return NextResponse.json({
+              success: false,
+              error: retrySyncResult.error || 'Failed to sync alt text after finding/creating image'
+            }, { status: 500 })
+          }
+        } else {
+          return NextResponse.json({
+            success: false,
+            error: `Image not found in ShopRenter and could not be created. Searched for: ${image.image_path}`
+          }, { status: 404 })
+        }
+      }
+      
       console.error(`[SYNC ALT TEXT] Failed to sync: ${syncResult.error}`)
       // Update status to error
       await supabase

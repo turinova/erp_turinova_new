@@ -174,6 +174,10 @@ export async function syncImageAltText(
 
     if (!getResponse.ok) {
       const errorText = await getResponse.text().catch(() => 'Unknown error')
+      // Return specific error for 404 so caller can handle it (e.g., try to find/create image)
+      if (getResponse.status === 404) {
+        throw new Error(`IMAGE_NOT_FOUND: Image ${imageShopRenterId} not found in ShopRenter. ${errorText}`)
+      }
       throw new Error(`Failed to fetch image data: ${getResponse.status} - ${errorText}`)
     }
 

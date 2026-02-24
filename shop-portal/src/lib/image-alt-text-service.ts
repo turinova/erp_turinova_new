@@ -149,53 +149,80 @@ ${imageContextHint}
 
 Generate a concise, SEO-friendly alt text (max 125 characters) in Hungarian.`
 
-  try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6', // Use the same model as AI generation service
-      max_tokens: 150,
-      temperature: 0.7,
-      system: systemPrompt,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt
-        }
-      ]
-    })
+  // Retry logic for overloaded API errors
+  const maxRetries = 5
+  const baseDelayMs = 1000 // Start with 1 second
+  let lastError: any = null
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await client.messages.create({
+        model: 'claude-sonnet-4-6', // Use the same model as AI generation service
+        max_tokens: 150,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ]
+      })
 
-    // Extract alt text from response
-    let altText = ''
-    if (response.content && response.content.length > 0) {
-      const textContent = response.content.find(block => block.type === 'text')
-      if (textContent && textContent.type === 'text') {
-        altText = textContent.text.trim()
-        
-        // Remove quotes if present
-        altText = altText.replace(/^["']|["']$/g, '')
-        
-        // Truncate to 125 characters if needed
-        if (altText.length > 125) {
-          altText = altText.substring(0, 122) + '...'
+      // Extract alt text from response
+      let altText = ''
+      if (response.content && response.content.length > 0) {
+        const textContent = response.content.find(block => block.type === 'text')
+        if (textContent && textContent.type === 'text') {
+          altText = textContent.text.trim()
+          
+          // Remove quotes if present
+          altText = altText.replace(/^["']|["']$/g, '')
+          
+          // Truncate to 125 characters if needed
+          if (altText.length > 125) {
+            altText = altText.substring(0, 122) + '...'
+          }
         }
       }
-    }
 
-    if (!altText) {
-      throw new Error('Failed to generate alt text: Empty response from AI')
-    }
+      if (!altText) {
+        throw new Error('Failed to generate alt text: Empty response from AI')
+      }
 
-    // Calculate tokens used
-    const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0)
+      // Calculate tokens used
+      const tokensUsed = (response.usage?.input_tokens || 0) + (response.usage?.output_tokens || 0)
 
-    return {
-      altText,
-      tokensUsed,
-      modelUsed: 'claude-sonnet-4-6'
+      return {
+        altText,
+        tokensUsed,
+        modelUsed: 'claude-sonnet-4-6'
+      }
+    } catch (error: any) {
+      lastError = error
+      
+      // Check if it's an overloaded error or rate limit
+      const isRetryable = 
+        error?.message?.includes('overloaded') ||
+        error?.message?.includes('Overloaded') ||
+        error?.status === 529 ||
+        error?.status === 429 ||
+        error?.error?.type === 'overloaded_error'
+      
+      if (!isRetryable || attempt === maxRetries - 1) {
+        console.error('[IMAGE ALT TEXT] Generation error:', error)
+        throw new Error(`Failed to generate alt text: ${error?.message || 'Unknown error'}`)
+      }
+      
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+      const delay = baseDelayMs * Math.pow(2, attempt)
+      console.log(`[IMAGE ALT TEXT] API overloaded, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
+      await new Promise(resolve => setTimeout(resolve, delay))
     }
-  } catch (error: any) {
-    console.error('[IMAGE ALT TEXT] Generation error:', error)
-    throw new Error(`Failed to generate alt text: ${error?.message || 'Unknown error'}`)
   }
+  
+  // Should never reach here, but just in case
+  throw lastError || new Error('Failed to generate alt text: Unknown error')
 }
 
 /**
