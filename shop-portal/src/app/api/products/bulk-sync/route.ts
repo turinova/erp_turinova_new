@@ -304,17 +304,21 @@ async function processBulkSyncInBackground(
                   attributeDescriptionsMap
                 )
                 batchResults.synced++
+                // Update progress after each product for real-time updates
+                incrementProgress(progressKey, {
+                  synced: 1,
+                  errors: 0
+                })
               } catch (error: any) {
                 console.error(`[BULK SYNC] Error syncing product ${dbId}:`, error)
                 batchResults.errors++
+                // Update progress even on error
+                incrementProgress(progressKey, {
+                  synced: 0,
+                  errors: 1
+                })
               }
             }
-
-            // Update progress
-            incrementProgress(progressKey, {
-              synced: batchResults.synced,
-              errors: batchResults.errors
-            })
 
             totalSynced += batchResults.synced
             totalErrors += batchResults.errors
