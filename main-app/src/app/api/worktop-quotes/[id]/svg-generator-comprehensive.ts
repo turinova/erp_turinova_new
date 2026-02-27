@@ -154,7 +154,8 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         l4Dimension: 0, // L4 - CLOSEST
         cutoutVertical: 0, // Cutout labels - after L values
         edgeLabel: 0, // 3. oldal - after cutout
-        bDimension: 0 // B dimension - FARTHEST (last)
+        bDimension: 0, // B dimension - FARTHEST (last)
+        cMinusBDimension: 0 // C-B dimension (Összemarás Balos) - FARTHEST (after B)
       },
       // TOP SIDE
       top: {
@@ -171,7 +172,8 @@ export function generateWorktopSvg(config: WorktopConfig): string {
         cutoutHorizontal: 0, // Cutout labels - after L values
         edgeLabel: 0, // 4. oldal - after cutout
         aDimension: 0, // A dimension (Levágás) - FARTHEST (last)
-        dDimension: 0 // D dimension (Összemarás) - FARTHEST (last)
+        dDimension: 0, // D dimension (Összemarás) - FARTHEST (last)
+        aMinusDDimension: 0 // A-D dimension (Összemarás jobbos) - FARTHEST (after D)
       }
     }
     
@@ -321,6 +323,18 @@ export function generateWorktopSvg(config: WorktopConfig): string {
     if (showLeftPerpendicularRect && dValue > 0) {
       offsets.bottom.dDimension = bottomCurrentOffset
       bottomCurrentOffset += 40 + LABEL_HEIGHT // Further reduced: 60 -> 40
+    }
+    
+    // A-D dimension (Összemarás jobbos only, on 4. oldal - main worktop bottom edge) - FARTHEST (after D)
+    if (isJobbos && showLeftPerpendicularRect && aValue > 0 && dValue > 0) {
+      offsets.bottom.aMinusDDimension = bottomCurrentOffset
+      bottomCurrentOffset += 40 + LABEL_HEIGHT
+    }
+    
+    // C-B dimension (Összemarás Balos only, on 5. oldal - perpendicular rectangle right edge) - FARTHEST (after B)
+    if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect && cValue > 0 && bValue > 0) {
+      offsets.right.cMinusBDimension = rightCurrentOffset
+      rightCurrentOffset += 60 + DIMENSION_LINE_OFFSET + 30
     }
     
     return offsets
@@ -1303,6 +1317,48 @@ export function generateWorktopSvg(config: WorktopConfig): string {
           <line x1="0" y1="${bottomY2}" x2="${dimensionLineX}" y2="${bottomY2}" stroke="#000000" stroke-width="1.5"/>
           <line x1="${dimensionLineX}" y1="${topY}" x2="${dimensionLineX}" y2="${bottomY2}" stroke="#000000" stroke-width="1.5"/>
           <text x="${labelX}" y="${(topY + bottomY2) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${labelX} ${(topY + bottomY2) / 2})" font-size="${fontSize}" font-weight="500" fill="#000000">C: ${cValue}mm</text>
+        </g>
+      `)
+    }
+    
+    // A-D dimension for Összemarás jobbos (on 4. oldal - main worktop bottom edge)
+    if (isJobbos && showLeftPerpendicularRect && aValue > 0 && dValue > 0) {
+      const mainWorktopBottomStartX = leftPerpendicularRectWidth // x = D
+      const mainWorktopBottomEndX = leftPerpendicularRectWidth + worktopWidth // x = D + A
+      const bottomY = worktopLength
+      const aMinusD = aValue - dValue
+      
+      const extensionLineOffset = labelOffsets.bottom.aMinusDDimension
+      const dimensionLineY = bottomY + extensionLineOffset
+      const labelY = dimensionLineY + 60
+      
+      labels.push(`
+        <g>
+          <line x1="${mainWorktopBottomStartX}" y1="${bottomY}" x2="${mainWorktopBottomStartX}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
+          <line x1="${mainWorktopBottomEndX}" y1="${bottomY}" x2="${mainWorktopBottomEndX}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
+          <line x1="${mainWorktopBottomStartX}" y1="${dimensionLineY}" x2="${mainWorktopBottomEndX}" y2="${dimensionLineY}" stroke="#000000" stroke-width="1.5"/>
+          <text x="${(mainWorktopBottomStartX + mainWorktopBottomEndX) / 2}" y="${labelY}" text-anchor="middle" dominant-baseline="middle" font-size="${fontSize}" font-weight="500" fill="#000000">A-D: ${aMinusD}mm</text>
+        </g>
+      `)
+    }
+    
+    // C-B dimension for Összemarás Balos (on 5. oldal - perpendicular rectangle right edge)
+    if (assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect && cValue > 0 && bValue > 0) {
+      const perpendicularRectRightEdgeX = leftPerpendicularRectWidth // x = D
+      const perpendicularRectTopY = worktopLength
+      const perpendicularRectBottomY = worktopLength + leftPerpendicularRectHeight
+      const cMinusB = cValue - bValue
+      
+      const extensionLineOffset = labelOffsets.right.cMinusBDimension
+      const dimensionLineX = perpendicularRectRightEdgeX + extensionLineOffset
+      const labelX = dimensionLineX + 50
+      
+      labels.push(`
+        <g>
+          <line x1="${perpendicularRectRightEdgeX}" y1="${perpendicularRectTopY}" x2="${dimensionLineX}" y2="${perpendicularRectTopY}" stroke="#000000" stroke-width="1.5"/>
+          <line x1="${perpendicularRectRightEdgeX}" y1="${perpendicularRectBottomY}" x2="${dimensionLineX}" y2="${perpendicularRectBottomY}" stroke="#000000" stroke-width="1.5"/>
+          <line x1="${dimensionLineX}" y1="${perpendicularRectTopY}" x2="${dimensionLineX}" y2="${perpendicularRectBottomY}" stroke="#000000" stroke-width="1.5"/>
+          <text x="${labelX}" y="${(perpendicularRectTopY + perpendicularRectBottomY) / 2}" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 ${labelX} ${(perpendicularRectTopY + perpendicularRectBottomY) / 2})" font-size="${fontSize}" font-weight="500" fill="#000000">C-B: ${cMinusB}mm</text>
         </g>
       `)
     }

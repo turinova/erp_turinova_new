@@ -6841,6 +6841,101 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   )
                                 })()}
 
+                                {/* C-B dimension - for Összemarás Balos on 5. oldal (perpendicular rectangle right edge) - positioned farthest */}
+                                {assemblyType === 'Összemarás Balos' && showLeftPerpendicularRect && cValue > 0 && bValue > 0 && (() => {
+                                  // For Balos: perpendicular rectangle right edge is at x=D
+                                  // 5. oldal is the perpendicular rectangle's right edge
+                                  // This edge goes from y=worktopLength (top of perpendicular rectangle) to y=worktopLength+C (bottom)
+                                  const perpendicularRectRightEdgeX = leftPerpendicularRectWidth // x = D
+                                  const perpendicularRectTopY = worktopLength
+                                  const perpendicularRectBottomY = worktopLength + leftPerpendicularRectHeight
+                                  
+                                  // Calculate C-B difference
+                                  const cMinusB = cValue - bValue
+                                  
+                                  // Calculate maximum offset needed for cutout dimension labels
+                                  const maxCutoutOffset = cutouts.length > 0 
+                                    ? 100 + ((cutouts.length - 1) * 120) + 50 + 40
+                                    : 0
+                                  
+                                  // Position farthest from edge (after B dimension)
+                                  // B dimension uses: extensionLineOffset (calculated above) + 50 (label offset)
+                                  // We need to get the B dimension's position to place C-B after it
+                                  const startY = showVerticalCut ? verticalCutHeight : 0
+                                  const bottomY = worktopLength
+                                  const mainWorktopOffsetX = 0 // For Balos, main worktop is at x=0
+                                  const rightEdge = mainWorktopOffsetX + worktopWidth
+                                  
+                                  const l7L8BaseOffset = edgePosition2 ? 350 : 220
+                                  const l7L8DimensionLineOffset = Math.max(l7L8BaseOffset, maxCutoutOffset)
+                                  const l7L8LabelEndPosition = hasL7L8 
+                                    ? l7L8DimensionLineOffset + 50 + 200
+                                    : 0
+                                  const baseOffset = edgePosition3 ? 350 : 220
+                                  const spacingAfterL8 = hasL7L8 ? 300 : 0
+                                  const bExtensionLineOffset = Math.max(baseOffset, maxCutoutOffset, l7L8LabelEndPosition + spacingAfterL8)
+                                  const bDimensionLineX = rightEdge + bExtensionLineOffset
+                                  const bLabelX = bDimensionLineX + 50
+                                  
+                                  // C-B dimension positioned after B dimension (farthest)
+                                  // B label is rotated, so it extends horizontally - add spacing after it
+                                  const cMinusBExtensionLineOffset = bExtensionLineOffset + 50 + 200 + 300 // After B dimension line + rotated label width + spacing
+                                  const cMinusBDimensionLineX = perpendicularRectRightEdgeX + cMinusBExtensionLineOffset
+                                  const cMinusBLabelX = cMinusBDimensionLineX + 50
+                                  
+                                  // Ensure C-B label stays within card
+                                  const maxRightPosition = perpendicularRectRightEdgeX + labelPaddingRight - 100
+                                  const finalDimensionLineX = cMinusBLabelX > maxRightPosition ? maxRightPosition - 50 : cMinusBDimensionLineX
+                                  const finalLabelX = cMinusBLabelX > maxRightPosition ? maxRightPosition : cMinusBLabelX
+                                
+                                return (
+                                    <g>
+                                      {/* Extension lines - from top and bottom of perpendicular rectangle right edge */}
+                                      <line
+                                        x1={perpendicularRectRightEdgeX}
+                                        y1={perpendicularRectTopY}
+                                        x2={finalDimensionLineX}
+                                        y2={perpendicularRectTopY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      <line
+                                        x1={perpendicularRectRightEdgeX}
+                                        y1={perpendicularRectBottomY}
+                                        x2={finalDimensionLineX}
+                                        y2={perpendicularRectBottomY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Dimension line (vertical) */}
+                                      <line
+                                        x1={finalDimensionLineX}
+                                        y1={perpendicularRectTopY}
+                                        x2={finalDimensionLineX}
+                                        y2={perpendicularRectBottomY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Label to the right of dimension line */}
+                                      <text
+                                        x={finalLabelX}
+                                        y={(perpendicularRectTopY + perpendicularRectBottomY) / 2}
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        style={{
+                                          fontSize: '100px',
+                                          fontWeight: 500,
+                                          fill: '#1976d2',
+                                          pointerEvents: 'none'
+                                        }}
+                                        transform={`rotate(-90 ${finalLabelX} ${(perpendicularRectTopY + perpendicularRectBottomY) / 2})`}
+                                      >
+                                        C-B: {cMinusB}mm
+                                      </text>
+                                    </g>
+                                )
+                              })()}
+
                                 {/* D dimension - ISO standard dimensioning for Összemarás types (horizontal - left perpendicular rectangle width) */}
                                 {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && dValue > 0 && (() => {
                                   // For Balos and Összemarás: at bottom-left (0, worktopLength), extends to the right
@@ -6906,6 +7001,81 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                   }}
                                 >
                                         D: {dValue}mm
+                                      </text>
+                                    </g>
+                                )
+                              })()}
+
+                                {/* A-D dimension - for Összemarás jobbos on 4. oldal (main worktop bottom edge) - positioned farthest */}
+                                {isJobbos && showLeftPerpendicularRect && aValue > 0 && dValue > 0 && (() => {
+                                  // For jobbos: main worktop bottom edge starts at x=D and ends at x=D+A
+                                  // 4. oldal is the main worktop's bottom edge
+                                  const mainWorktopBottomStartX = leftPerpendicularRectWidth // x = D
+                                  const mainWorktopBottomEndX = leftPerpendicularRectWidth + worktopWidth // x = D + A
+                                  const bottomY = worktopLength
+                                  
+                                  // Calculate A-D difference
+                                  const aMinusD = aValue - dValue
+                                  
+                                  // Calculate maximum offset needed for cutout dimension labels
+                                  const maxCutoutOffset = cutouts.length > 0 
+                                    ? 100 + ((cutouts.length - 1) * 120) + 60 + 40
+                                    : 0
+                                  
+                                  // Position farthest from edge (after D dimension)
+                                  // D dimension uses: baseOffset (300 if edgePosition4, else 180) + 60 (label height)
+                                  const dBaseOffset = edgePosition4 ? 300 : 180
+                                  const dExtensionLineOffset = Math.max(dBaseOffset, maxCutoutOffset)
+                                  const dDimensionLineY = (isJobbos ? leftPerpendicularRectHeight : worktopLength + leftPerpendicularRectHeight) + dExtensionLineOffset
+                                  const dLabelY = dDimensionLineY + 60
+                                  
+                                  // A-D dimension positioned after D dimension (farthest)
+                                  const aMinusDExtensionLineOffset = dExtensionLineOffset + 60 + 60 + 40 // After D dimension line + label + spacing
+                                  const aMinusDDimensionLineY = bottomY + aMinusDExtensionLineOffset
+                                  const aMinusDLabelY = aMinusDDimensionLineY + 60
+                                
+                                return (
+                                    <g>
+                                      {/* Extension lines - from left and right edges of main worktop bottom edge */}
+                                      <line
+                                        x1={mainWorktopBottomStartX}
+                                        y1={bottomY}
+                                        x2={mainWorktopBottomStartX}
+                                        y2={aMinusDDimensionLineY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      <line
+                                        x1={mainWorktopBottomEndX}
+                                        y1={bottomY}
+                                        x2={mainWorktopBottomEndX}
+                                        y2={aMinusDDimensionLineY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Dimension line (horizontal) */}
+                                      <line
+                                        x1={mainWorktopBottomStartX}
+                                        y1={aMinusDDimensionLineY}
+                                        x2={mainWorktopBottomEndX}
+                                        y2={aMinusDDimensionLineY}
+                                        stroke="#000000"
+                                        strokeWidth="1.5"
+                                      />
+                                      {/* Label below dimension line */}
+                                      <text
+                                        x={(mainWorktopBottomStartX + mainWorktopBottomEndX) / 2}
+                                        y={aMinusDLabelY}
+                                        textAnchor="middle"
+                                        dominantBaseline="middle"
+                                        style={{
+                                          fontSize: '100px',
+                                          fontWeight: 500,
+                                          fill: '#1976d2',
+                                          pointerEvents: 'none'
+                                        }}
+                                      >
+                                        A-D: {aMinusD}mm
                                       </text>
                                     </g>
                                 )
