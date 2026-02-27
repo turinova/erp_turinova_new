@@ -1279,6 +1279,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       configsCount: number
       boardAssignments: Array<{ boardIndex: number, config: typeof relevantConfigs[0], length: number }> // Track which configs are on which board
       boardKeresztVagasCount: Map<number, number> // Track kereszt vágás count per board (boardIndex -> count)
+      pieceBoardAssignments: Map<string, number> // Track which board each piece is on: "configId-pieceIndex" -> boardIndex
+      configLengths: Array<{ config: typeof relevantConfigs[0], length: number, pieces: number[] }> // Store config lengths and pieces for calculation
     }>()
 
     materialGroups.forEach((group, materialId) => {
@@ -1423,7 +1425,9 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
         totalLengthNeeded,
         configsCount: configs.length,
         boardAssignments,
-        boardKeresztVagasCount
+        boardKeresztVagasCount,
+        pieceBoardAssignments,
+        configLengths
       })
     })
 
@@ -1442,6 +1446,30 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
       const boardInfo = materialBoardInfo.get(material.id)
       const configBoardAssignment = boardInfo?.boardAssignments.find(ba => ba.config.id === config.id)
       const boardIndex = configBoardAssignment?.boardIndex ?? -1
+      
+      // Helper function to calculate length used on a specific board
+      const calculateLengthUsedOnBoard = (targetBoardIndex: number): number => {
+        if (!boardInfo) return 0
+        // Calculate length used on THIS specific board by summing actual pieces on this board
+        // This is more accurate than using boardAssignments which only stores one board per config
+        let lengthUsed = 0
+        if (boardInfo.pieceBoardAssignments && boardInfo.configLengths) {
+          for (const { config: cfg, pieces } of boardInfo.configLengths) {
+            // Sum up pieces that are on this board
+            pieces.forEach((pieceLength, pieceIndex) => {
+              const pieceBoardIndex = boardInfo.pieceBoardAssignments!.get(`${cfg.id}-${pieceIndex}`)
+              if (pieceBoardIndex === targetBoardIndex) {
+                lengthUsed += pieceLength
+              }
+            })
+          }
+        } else {
+          // Fallback: use boardAssignments if pieceBoardAssignments not available
+          const configsOnTargetBoard = boardInfo.boardAssignments.filter(ba => ba.boardIndex === targetBoardIndex)
+          lengthUsed = configsOnTargetBoard.reduce((sum, ba) => sum + (ba.length || 0), 0)
+        }
+        return lengthUsed
+      }
       
       // Check if this config shares a board with others
       // For Balos/Jobbos, a config can span multiple boards, so we check if any board is shared
@@ -1496,10 +1524,13 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             
             // If configs share boards, check if total length < 3000mm
             if (sharesBoard && boardInfo) {
-              const totalLengthUsed = boardInfo.totalLengthNeeded
+              // Calculate length used on THIS specific board (not total across all boards)
+              const lengthUsedOnThisBoard = configsOnSameBoard.reduce((sum, ba) => {
+                return sum + (ba.length || 0)
+              }, 0)
               
               // If total length < 3000mm, calculate as if split (use multiplier)
-              if (totalLengthUsed < THRESHOLD_MM) {
+              if (lengthUsedOnThisBoard < THRESHOLD_MM) {
                 // Calculate each piece separately with multiplier
                 let costA = 0
                 let costCD = 0
@@ -1530,17 +1561,33 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               } else {
                 // Total length >= 3000mm: use full board pricing (proportional split)
                 const materialLengthMeters = material.length / 1000
-                const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+                // Calculate cost for THIS board only (1 board, not all boards)
+                const totalBoardCost = (material.price_per_m || 0) * materialLengthMeters
                 
-                // Calculate this config's total length (A + C-D)
-                const configLength = configBoardAssignment?.length || (aValue + cValue - dValue)
-                const configLengthMeters = configLength / 1000
+                // Calculate this config's length on THIS board (sum of pieces on this board)
+                let configLengthOnThisBoard = 0
+                if (boardInfo.pieceBoardAssignments && boardInfo.configLengths) {
+                  const configLengthData = boardInfo.configLengths.find(cl => cl.config.id === config.id)
+                  if (configLengthData) {
+                    configLengthData.pieces.forEach((pieceLength, pieceIndex) => {
+                      const pieceBoardIndex = boardInfo.pieceBoardAssignments!.get(`${config.id}-${pieceIndex}`)
+                      if (pieceBoardIndex === boardIndex) {
+                        configLengthOnThisBoard += pieceLength
+                      }
+                    })
+                  }
+                }
+                // Fallback to stored length if piece tracking not available
+                if (configLengthOnThisBoard === 0) {
+                  configLengthOnThisBoard = configBoardAssignment?.length || (aValue + cValue - dValue)
+                }
+                const configLengthMeters = configLengthOnThisBoard / 1000
                 
-                // Calculate proportional cost for this config
-                if (totalLengthUsed > 0) {
-                  const ratio = configLength / totalLengthUsed
+                // Calculate proportional cost for this config on this board
+                if (lengthUsedOnThisBoard > 0) {
+                  const ratio = configLengthOnThisBoard / lengthUsedOnThisBoard
                   cost = totalBoardCost * ratio
-                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(lengthUsedOnThisBoard / 1000).toFixed(2)}m × 1 tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
                 } else {
                   // Fallback: calculate normally
                   let costA = 0
@@ -1609,17 +1656,35 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             // If configs share boards, split cost proportionally
             if (sharesBoard && boardInfo) {
               const materialLengthMeters = material.length / 1000
-              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              // Calculate length used on THIS specific board (not total across all boards)
+              const lengthUsedOnThisBoard = calculateLengthUsedOnBoard(boardIndex)
+              // Calculate cost for THIS board only (1 board, not all boards)
+              const totalBoardCost = (material.price_per_m || 0) * materialLengthMeters
               
-              // Calculate this config's total length (A + C-D)
-              const configLength = configBoardAssignment?.length || (aValue + cValue - dValue)
-              const configLengthMeters = configLength / 1000
+              // Calculate this config's length on THIS board (sum of pieces on this board)
+              let configLengthOnThisBoard = 0
+              if (boardInfo.pieceBoardAssignments && boardInfo.configLengths) {
+                const configLengthData = boardInfo.configLengths.find(cl => cl.config.id === config.id)
+                if (configLengthData) {
+                  configLengthData.pieces.forEach((pieceLength, pieceIndex) => {
+                    const pieceBoardIndex = boardInfo.pieceBoardAssignments!.get(`${config.id}-${pieceIndex}`)
+                    if (pieceBoardIndex === boardIndex) {
+                      configLengthOnThisBoard += pieceLength
+                    }
+                  })
+                }
+              }
+              // Fallback to stored length if piece tracking not available
+              if (configLengthOnThisBoard === 0) {
+                configLengthOnThisBoard = configBoardAssignment?.length || (aValue + cValue - dValue)
+              }
+              const configLengthMeters = configLengthOnThisBoard / 1000
               
-              // Calculate proportional cost for this config
-              if (boardInfo.totalLengthNeeded > 0) {
-                const ratio = configLength / boardInfo.totalLengthNeeded
+              // Calculate proportional cost for this config on this board
+              if (lengthUsedOnThisBoard > 0) {
+                const ratio = configLengthOnThisBoard / lengthUsedOnThisBoard
                 cost = totalBoardCost * ratio
-                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(boardInfo.totalLengthNeeded / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(lengthUsedOnThisBoard / 1000).toFixed(2)}m × 1 tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
               } else {
                 // Fallback: use full board if calculation fails
                 const materialLengthMeters = material.length / 1000
@@ -1651,10 +1716,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             
             // If configs share boards, check if total length < 3000mm
             if (sharesBoard && boardInfo) {
-              const totalLengthUsed = boardInfo.totalLengthNeeded
+              // Calculate length used on THIS specific board (not total across all boards)
+              const lengthUsedOnThisBoard = calculateLengthUsedOnBoard(boardIndex)
               
               // If total length < 3000mm, calculate as if split (use multiplier)
-              if (totalLengthUsed < THRESHOLD_MM) {
+              if (lengthUsedOnThisBoard < THRESHOLD_MM) {
                 // Calculate each piece separately with multiplier
                 let costAD = 0
                 let costC = 0
@@ -1685,17 +1751,33 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               } else {
                 // Total length >= 3000mm: use full board pricing (proportional split)
                 const materialLengthMeters = material.length / 1000
-                const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+                // Calculate cost for THIS board only (1 board, not all boards)
+                const totalBoardCost = (material.price_per_m || 0) * materialLengthMeters
                 
-                // Calculate this config's total length (A-D + C)
-                const configLength = configBoardAssignment?.length || (aValue - dValue + cValue)
-                const configLengthMeters = configLength / 1000
+                // Calculate this config's length on THIS board (sum of pieces on this board)
+                let configLengthOnThisBoard = 0
+                if (boardInfo.pieceBoardAssignments && boardInfo.configLengths) {
+                  const configLengthData = boardInfo.configLengths.find(cl => cl.config.id === config.id)
+                  if (configLengthData) {
+                    configLengthData.pieces.forEach((pieceLength, pieceIndex) => {
+                      const pieceBoardIndex = boardInfo.pieceBoardAssignments!.get(`${config.id}-${pieceIndex}`)
+                      if (pieceBoardIndex === boardIndex) {
+                        configLengthOnThisBoard += pieceLength
+                      }
+                    })
+                  }
+                }
+                // Fallback to stored length if piece tracking not available
+                if (configLengthOnThisBoard === 0) {
+                  configLengthOnThisBoard = configBoardAssignment?.length || (aValue - dValue + cValue)
+                }
+                const configLengthMeters = configLengthOnThisBoard / 1000
                 
-                // Calculate proportional cost for this config
-                if (totalLengthUsed > 0) {
-                  const ratio = configLength / totalLengthUsed
+                // Calculate proportional cost for this config on this board
+                if (lengthUsedOnThisBoard > 0) {
+                  const ratio = configLengthOnThisBoard / lengthUsedOnThisBoard
                   cost = totalBoardCost * ratio
-                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(lengthUsedOnThisBoard / 1000).toFixed(2)}m × 1 tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
                 } else {
                   // Fallback: calculate normally
                   let costAD = 0
@@ -1764,17 +1846,35 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             // If configs share boards, split cost proportionally
             if (sharesBoard && boardInfo) {
               const materialLengthMeters = material.length / 1000
-              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              // Calculate length used on THIS specific board (not total across all boards)
+              const lengthUsedOnThisBoard = calculateLengthUsedOnBoard(boardIndex)
+              // Calculate cost for THIS board only (1 board, not all boards)
+              const totalBoardCost = (material.price_per_m || 0) * materialLengthMeters
               
-              // Calculate this config's total length (A-D + C)
-              const configLength = configBoardAssignment?.length || (aValue - dValue + cValue)
-              const configLengthMeters = configLength / 1000
+              // Calculate this config's length on THIS board (sum of pieces on this board)
+              let configLengthOnThisBoard = 0
+              if (boardInfo.pieceBoardAssignments && boardInfo.configLengths) {
+                const configLengthData = boardInfo.configLengths.find(cl => cl.config.id === config.id)
+                if (configLengthData) {
+                  configLengthData.pieces.forEach((pieceLength, pieceIndex) => {
+                    const pieceBoardIndex = boardInfo.pieceBoardAssignments!.get(`${config.id}-${pieceIndex}`)
+                    if (pieceBoardIndex === boardIndex) {
+                      configLengthOnThisBoard += pieceLength
+                    }
+                  })
+                }
+              }
+              // Fallback to stored length if piece tracking not available
+              if (configLengthOnThisBoard === 0) {
+                configLengthOnThisBoard = configBoardAssignment?.length || (aValue - dValue + cValue)
+              }
+              const configLengthMeters = configLengthOnThisBoard / 1000
               
-              // Calculate proportional cost for this config
-              if (boardInfo.totalLengthNeeded > 0) {
-                const ratio = configLength / boardInfo.totalLengthNeeded
+              // Calculate proportional cost for this config on this board
+              if (lengthUsedOnThisBoard > 0) {
+                const ratio = configLengthOnThisBoard / lengthUsedOnThisBoard
                 cost = totalBoardCost * ratio
-                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(boardInfo.totalLengthNeeded / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(lengthUsedOnThisBoard / 1000).toFixed(2)}m × 1 tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
               } else {
                 // Fallback: use full board if calculation fails
                 const materialLengthMeters = material.length / 1000
@@ -1806,10 +1906,11 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             
             // If configs share boards, check if total length < 3000mm
             if (sharesBoard && boardInfo) {
-              const totalLengthUsed = boardInfo.totalLengthNeeded
+              // Calculate length used on THIS specific board (not total across all boards)
+              const lengthUsedOnThisBoard = calculateLengthUsedOnBoard(boardIndex)
               
               // If total length < 3000mm, calculate as if split (use multiplier)
-              if (totalLengthUsed < THRESHOLD_MM) {
+              if (lengthUsedOnThisBoard < THRESHOLD_MM) {
                 // Use multiplier for this config's length
                 const baseCost = aMeters * (material.price_per_m || 0)
                 cost = baseCost * STOCK_MULTIPLIER
@@ -1817,17 +1918,18 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
               } else {
                 // Total length >= 3000mm: use full board pricing (proportional split)
                 const materialLengthMeters = material.length / 1000
-                const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+                // Calculate cost for THIS board only (1 board, not all boards)
+                const totalBoardCost = (material.price_per_m || 0) * materialLengthMeters
                 
-                // Calculate this config's length
-                const configLength = configBoardAssignment?.length || aValue
-                const configLengthMeters = configLength / 1000
+                // Calculate this config's length on THIS board (for Levágás, it's just A)
+                let configLengthOnThisBoard = configBoardAssignment?.length || aValue
+                const configLengthMeters = configLengthOnThisBoard / 1000
                 
-                // Calculate proportional cost for this config
-                if (totalLengthUsed > 0) {
-                  const ratio = configLength / totalLengthUsed
+                // Calculate proportional cost for this config on this board
+                if (lengthUsedOnThisBoard > 0) {
+                  const ratio = configLengthOnThisBoard / lengthUsedOnThisBoard
                   cost = totalBoardCost * ratio
-                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(totalLengthUsed / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                  detailsStr = `${configLengthMeters.toFixed(2)}m / ${(lengthUsedOnThisBoard / 1000).toFixed(2)}m × 1 tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
                 } else {
                   // Fallback: use full board if calculation fails
                   cost = (material.price_per_m || 0) * materialLengthMeters
@@ -1864,17 +1966,20 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
             // If configs share boards, split cost proportionally
             if (sharesBoard && boardInfo) {
               const materialLengthMeters = material.length / 1000
-              const totalBoardCost = boardInfo.boardsNeeded * (material.price_per_m || 0) * materialLengthMeters
+              // Calculate length used on THIS specific board (not total across all boards)
+              const lengthUsedOnThisBoard = calculateLengthUsedOnBoard(boardIndex)
+              // Calculate cost for THIS board only (1 board, not all boards)
+              const totalBoardCost = (material.price_per_m || 0) * materialLengthMeters
               
-              // Calculate this config's length
-              const configLength = configBoardAssignment?.length || aValue
-              const configLengthMeters = configLength / 1000
+              // Calculate this config's length on THIS board (for Levágás, it's just A)
+              let configLengthOnThisBoard = configBoardAssignment?.length || aValue
+              const configLengthMeters = configLengthOnThisBoard / 1000
               
-              // Calculate proportional cost for this config
-              if (boardInfo.totalLengthNeeded > 0) {
-                const ratio = configLength / boardInfo.totalLengthNeeded
+              // Calculate proportional cost for this config on this board
+              if (lengthUsedOnThisBoard > 0) {
+                const ratio = configLengthOnThisBoard / lengthUsedOnThisBoard
                 cost = totalBoardCost * ratio
-                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(boardInfo.totalLengthNeeded / 1000).toFixed(2)}m × ${boardInfo.boardsNeeded} tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
+                detailsStr = `${configLengthMeters.toFixed(2)}m / ${(lengthUsedOnThisBoard / 1000).toFixed(2)}m × 1 tábla × ${formatPrice(material.price_per_m || 0, currency)}/m × ${materialLengthMeters.toFixed(2)}m`
               } else {
                 // Fallback: use full board if calculation fails
                 const materialLengthMeters = material.length / 1000
