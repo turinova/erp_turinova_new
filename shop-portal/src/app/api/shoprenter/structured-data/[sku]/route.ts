@@ -372,7 +372,8 @@ export async function GET(
       {
         currency: 'HUF', // Default to HUF, could be fetched from connection
         shopUrl: shopUrl, // Use already extracted shopUrl
-        shopName: connection?.shop_name || ''
+        shopName: connection?.shop_name || '',
+        vatRate: 27 // Default 27% VAT for Hungary (matches website display)
       }
     )
 

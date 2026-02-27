@@ -62,6 +62,7 @@ export interface StructuredDataOptions {
   currency?: string
   shopUrl?: string
   shopName?: string
+  vatRate?: number  // VAT rate percentage (e.g., 27 for 27%). Defaults to 27% for Hungary
 }
 
 /**
@@ -664,6 +665,14 @@ export function generateProductStructuredData(
   const currency = options.currency || 'HUF'
   const shopUrl = options.shopUrl || ''
   const shopName = options.shopName || ''
+  const vatRate = options.vatRate || 27  // Default 27% VAT for Hungary
+  
+  // Helper function to calculate gross price from net price with Hungarian invoicing rounding
+  // Rounds to nearest whole number (e.g., 9646.92 → 9647, 9959.34 → 9959)
+  const calculateGrossPrice = (netPrice: number): number => {
+    const grossPrice = netPrice * (1 + vatRate / 100)
+    return Math.round(grossPrice)  // Round to nearest integer for invoicing
+  }
 
   // IMPORTANT: Extract FAQ from ORIGINAL description BEFORE any processing
   // This ensures we get the full description even if it gets truncated later
@@ -811,9 +820,12 @@ export function generateProductStructuredData(
       ? 'https://schema.org/InStock' 
       : 'https://schema.org/OutOfStock'
     
+    // Calculate gross price from net price (website displays gross prices)
+    const grossPrice = calculateGrossPrice(product.price)
+    
     const offer: any = {
       '@type': 'Offer',
-      price: product.price.toString(),
+      price: grossPrice.toString(),
       priceCurrency: currency,
       availability: availability,
       itemCondition: 'https://schema.org/NewCondition',
@@ -838,11 +850,14 @@ export function generateProductStructuredData(
       ? 'https://schema.org/InStock' 
       : 'https://schema.org/OutOfStock'
     
+    // Calculate gross price from net price (website displays gross prices)
+    const grossPrice = calculateGrossPrice(product.price)
+    
     // Create parent product variant with offer
     // Include all Product-specific fields (sku, gtin, model, image) in the variant
     const parentOffer: any = {
       '@type': 'Offer',
-      price: product.price.toString(),
+      price: grossPrice.toString(),
       priceCurrency: currency,
       availability: availability,
       itemCondition: 'https://schema.org/NewCondition',
@@ -1055,9 +1070,12 @@ export function generateProductStructuredData(
           ? 'https://schema.org/InStock' 
           : 'https://schema.org/OutOfStock'
         
+        // Calculate gross price from net price (website displays gross prices)
+        const grossPrice = calculateGrossPrice(child.price)
+        
         const childOffer: any = {
           '@type': 'Offer',
-          price: child.price.toString(),
+          price: grossPrice.toString(),
           priceCurrency: currency,
           availability: availability,
           itemCondition: 'https://schema.org/NewCondition',
