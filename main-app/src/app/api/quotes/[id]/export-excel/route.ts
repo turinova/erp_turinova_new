@@ -184,7 +184,22 @@ export async function GET(
     let currentRow = 3
     const panels = quote.quote_panels || []
 
-    panels.forEach((panel) => {
+    // Sort panels by Azonosító (machine_code) in ascending order
+    const sortedPanels = [...panels].sort((a, b) => {
+      // Get machine codes for comparison
+      const codeA = materialCodeMap.get(a.material_id) || ''
+      const codeB = materialCodeMap.get(b.material_id) || ''
+      
+      // Empty codes go to the end
+      if (!codeA && !codeB) return 0
+      if (!codeA) return 1
+      if (!codeB) return -1
+      
+      // Sort alphabetically by machine code (Azonosító) in ascending order
+      return codeA.localeCompare(codeB)
+    })
+
+    sortedPanels.forEach((panel) => {
       // Get machine code for this material
       const machineCode = materialCodeMap.get(panel.material_id) || ''
       
