@@ -101,9 +101,12 @@ export async function POST(
     const modelNumber = product.model_number || ''
     const currentSlug = product.url_slug || ''
 
+    const brand = product.brand || ''
+    
     const prompt = `Generate an SEO-optimized URL slug for this Hungarian e-commerce product:
 
 Product Name: ${productName}
+Brand: ${brand || '(nincs)'}
 Manufacturer Part Number: ${modelNumber || '(nincs)'}
 Category: ${categoryName || '(nincs)'}
 Top Search Keywords: ${topKeywords || '(nincs)'}
@@ -114,13 +117,15 @@ Requirements:
 - Maximum 60 characters
 - Use hyphens (-) between words
 - Include primary keyword from product name
+- Include brand if it's well-known and short (e.g., "blum", "hafele") - place at beginning if space allows
 - Include model number if it's unique and short
 - No stop words (a, az, és, vagy, van, volt, lesz)
 - Lowercase only
 - No special characters except hyphens
 - Make it readable and SEO-friendly
+- Brand format: "brand-product-name" (e.g., "blum-clip-top") if brand is well-known
 
-Return ONLY the slug, nothing else. Example: "blum-clip-top-blumotion-pant-110-fok-egyenes"`
+Return ONLY the slug, nothing else. Example: "blum-clip-top-blumotion-pant-110-fok-egyenes" or "hafele-csuklo-110-fok"`
 
     // Call Claude AI
     const anthropic = new Anthropic({

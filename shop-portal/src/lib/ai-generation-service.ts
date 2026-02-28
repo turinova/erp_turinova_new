@@ -273,6 +273,14 @@ async function buildContext(
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
   context += `- Name: ${product.name || 'N/A'}\n`
+  if (product.brand) {
+    context += `- Brand/Manufacturer: ${product.brand}\n`
+    context += `**IMPORTANT**: Mention the brand naturally in the introduction and throughout the description when relevant. For well-known brands (Blum, Hafele, Hettich, Grass), emphasize brand quality and trust.\n`
+  }
+  if (product.gtin) {
+    context += `- GTIN/Barcode: ${product.gtin}\n`
+    context += `**NOTE**: Include GTIN in technical specifications section if relevant for B2B customers or product identification.\n`
+  }
   
   // Helper function to format attribute value
   const formatAttributeValue = (attr: any): string => {
@@ -997,6 +1005,7 @@ You MUST follow this exact structure for optimal SEO and AI search ranking. This
    - Detailed technical information
    - **MANDATORY**: Include ALL product attributes from context (dimensions, materials, capacities, load ratings, etc.)
    - Dimensions, materials, capacities, load ratings, etc.
+   - **GTIN/Barcode**: If GTIN is provided in the context, include it in the technical specifications section (important for B2B customers and product identification)
    - Use a table or organized list format
    - Note: ShopRenter automatically creates a parameter table below the description, so focus on explaining specifications, not just listing them
 
@@ -1151,6 +1160,92 @@ OTHER CRITICAL INSTRUCTIONS:
 12. Use rhetorical questions naturally: "Mire figyeljünk?" "Miért válasszuk ezt?"
 13. Include personal voice elements: "én", "mi", "tapasztalat" occasionally
 
+**CONVERSION PSYCHOLOGY & COPYWRITING (USE ONLY WHEN DATA SUPPORTS):**
+1. **Pain Point Addressing**: Address real problems this product solves (based on product attributes and source materials)
+   - Only mention problems if the product actually solves them (e.g., if product has "soft close", mention noise reduction)
+   - Use natural Hungarian phrasing: "Fáradt a folyamatos zaj? Ez a termék megoldja!" (only if soft close is confirmed)
+   - NEVER make up problems or solutions - only use what's confirmed in product data
+
+2. **Emotional Triggers**: Use appropriate emotional language that matches product attributes
+   - Comfort: "kényelmes", "zökkenőmentes", "kellemes" (when product provides comfort)
+   - Security: "biztonságos", "megbízható", "tartós" (when durability/quality is confirmed)
+   - Quality: "prémium", "minőségi", "exkluzív" (when product attributes indicate quality)
+   - Simplicity: "egyszerű", "könnyű", "gyors" (when installation/usage is simple)
+   - **CRITICAL**: Only use emotional words that match actual product characteristics
+
+3. **Social Proof Language**: Use ONLY if there's actual evidence (never make up claims)
+   - If brand is well-known (Blum, Hafele, Hettich): "Prémium [brand] minőség" or "Tiszta [brand] termék"
+   - If product meets standards: "Ipari szabványoknak megfelelő" (only if confirmed in source materials)
+   - **NEVER write**: "Több ezer elégedett vásárló" or "Szakértők által ajánlott" unless this data is provided
+   - **NEVER make up statistics or testimonials**
+
+4. **Objection Handling**: Address concerns ONLY when product attributes support it
+   - Installation: "Egyszerű beszerelés" (only if installation is actually simple based on product type)
+   - Quality: "Prémium anyagok" (only if materials are confirmed premium)
+   - Durability: "Hosszú élettartam" (only if product attributes indicate durability)
+   - **NEVER address objections that don't apply to this product**
+
+5. **Power Words**: Use action-oriented, compelling words naturally
+   - "Fedezze fel", "Élvezze", "Tapasztalja meg" (natural Hungarian action words)
+   - "Garantált", "Biztosított" (only if warranty/guarantee is mentioned in context)
+   - "Optimalizált" (only if product is actually optimized for something specific)
+   - **CRITICAL**: Use power words naturally, don't force them
+
+**USER INTENT MATCHING:**
+1. **Address Multiple Intent Types Naturally**:
+   - Informational: Answer "Mi az X?" or "Hogyan működik az X?" questions naturally in text
+   - Transactional: Emphasize benefits, value proposition (when price/competitor data available)
+   - Commercial: Include natural comparisons when related products are mentioned in context
+   - **CRITICAL**: Match intent based on Search Console queries if provided - use actual search terms
+
+2. **Question-Answer Patterns**: Use natural Hungarian Q&A format
+   - "Mit jelent a soft close funkció?" → Answer naturally if soft close is confirmed
+   - "Milyen méretekben elérhető?" → List all sizes from product attributes
+   - "Hogyan szerelhető be?" → Provide guidance based on product type and source materials
+   - **CRITICAL**: Only answer questions that are relevant to this specific product
+
+**SEMANTIC SEO & ENTITY RELATIONSHIPS:**
+1. **Entity Recognition**: Naturally mention related entities when provided in context
+   - Related products: "Kiegészítő termékek: [related product names]" (only if related products are in context)
+   - Categories: "A [category] kategóriába tartozik" (only if categories are provided)
+   - Brands: "A [brand] márka terméke" (only if brand is provided and relevant)
+   - Materials: "Prémium [material] anyagból készült" (only if material is confirmed in attributes)
+   - **CRITICAL**: Never mention entities that aren't in the provided context
+
+2. **Topic Clusters**: Create natural content clusters around main topic
+   - Main topic: Product name/type (from product data)
+   - Subtopics: Features, benefits, applications (from product attributes)
+   - Related topics: Maintenance, compatibility, alternatives (only if mentioned in source materials)
+   - **CRITICAL**: Stay within the bounds of provided data
+
+3. **Synonym Usage**: Use natural Hungarian synonyms and related terms
+   - "fiók" = "fiókrendszer", "fiókcsúszka", "fiókoldal" (use naturally, don't force)
+   - "csukló" = "ajtócsukló", "szekrénycsukló" (use when contextually appropriate)
+   - Vary terminology naturally throughout - don't keyword stuff
+   - **CRITICAL**: Use synonyms that are actually used in Hungarian, not literal translations
+
+4. **Contextual Keywords (LSI)**: Use related terms naturally
+   - For "fiókcsúszka": naturally include "fiók", "csúszka", "szekrény", "konyha", "bútor" when contextually relevant
+   - For "csukló": naturally include "ajtó", "szekrény", "beszerelés", "beállítás" when relevant
+   - **CRITICAL**: Integrate naturally, don't force keyword inclusion
+
+**STORYTELLING & NARRATIVE (NATURAL, NOT FORCED):**
+1. **Opening Hook**: Start with compelling narrative that's based on product reality
+   - Problem-solution: "Tökéletes konyha szervezés..." (only if product actually helps with organization)
+   - Benefit-first: "Prémium minőség, amely évtizedekig szolgál..." (only if quality/durability is confirmed)
+   - Question: "Keresi a megbízható fiókrendszert?" (natural Hungarian question format)
+   - **CRITICAL**: Hook must be truthful and based on actual product characteristics
+
+2. **Journey Mapping**: Guide reader through product journey naturally
+   - Discovery → Understanding → Benefits → Application → Decision
+   - Use natural transitions: "Most, hogy megértettük a funkciókat..." (natural Hungarian)
+   - **CRITICAL**: Don't force a journey - let it flow naturally from product data
+
+3. **Use Case Stories**: Include real-world scenarios based on product attributes
+   - "Képzelje el: csendes, zökkenőmentes fiókzárás minden alkalommal" (only if soft close is confirmed)
+   - "Tökéletes választás modern konyhákhoz" (only if product is suitable for modern kitchens based on attributes)
+   - **CRITICAL**: Stories must be based on actual product features, not made up
+
 CRITICAL: INTERNAL LINKING REQUIREMENTS (MANDATORY):
 **YOU MUST INCLUDE INTERNAL LINKS IN YOUR DESCRIPTION WHEN CATEGORIES OR RELATED PRODUCTS ARE PROVIDED**
 
@@ -1217,9 +1312,52 @@ Before you write the description, ask yourself:
 3. Are the dimensions interpreted correctly?
 4. Is the installation method appropriate?
 5. Does every sentence logically fit this product type?
+6. **CRITICAL**: Are all emotional claims, benefits, and social proof statements backed by actual product data?
+7. **CRITICAL**: Are all pain points I mention actually solved by this product?
+8. **CRITICAL**: Are all use cases and applications realistic for this product type?
+9. **CRITICAL**: Is all Hungarian language natural and semantically correct?
 
 If you're unsure about the product type, focus on what you KNOW from the name/SKU and source materials, 
 and avoid making assumptions about features that don't match the product type.
+
+**HUNGARIAN LANGUAGE SEMANTICS (CRITICAL):**
+1. **Natural Word Order**: Use proper Hungarian sentence structure
+   - Subject-verb-object order
+   - Proper case endings (accusative, dative, instrumental, etc.)
+   - Natural adjective placement (usually before noun: "prémium minőség", not "minőség prémium")
+
+2. **Proper Compound Words**: Use correct Hungarian compound word forms
+   - "fiókcsúszka" (one word, not "fiók csúszka" when used as compound)
+   - "szekrénykellék" (one word when used as compound)
+   - "ajtócsukló" (one word)
+   - Check spelling of technical terms - Hungarian compounds are written together
+
+3. **Natural Phrasing**: Avoid literal English translations
+   - NOT: "Ez a termék tökéletes választás" (too literal, English structure)
+   - YES: "Tökéletes választás erre a célra" or "Ideális megoldás" (natural Hungarian)
+   - Use natural Hungarian idioms and expressions: "kiváló választás", "ideális megoldás", "tökéletes kiegészítő"
+
+4. **Proper Question Forms**: Use correct Hungarian question structures
+   - "Hova illik?" (where to - direction) vs "Hol használható?" (where - location)
+   - "Miért válassza?" (why choose) vs "Mikor használja?" (when use)
+   - "Milyen méretben?" (what size) vs "Mekkora méretben?" (how big size)
+   - Match question words to context and use proper Hungarian question patterns
+
+5. **Emotional Language**: Use Hungarian emotional expressions naturally
+   - "Kényelmes használat" (comfortable use - natural)
+   - "Prémium minőség" (premium quality - natural standalone)
+   - "Prémium minőségű termék" (premium quality product - with adjective ending)
+   - Match emotional words to Hungarian semantic patterns and proper adjective declensions
+
+6. **Verb Conjugation**: Use proper Hungarian verb forms
+   - "vásároljon" (formal imperative) vs "vásárolj" (informal)
+   - "fedezze fel" (formal) vs "fedezd fel" (informal)
+   - For e-commerce, use formal forms: "vásároljon", "fedezze fel", "rendeljen"
+
+7. **Preposition Usage**: Use correct Hungarian prepositions
+   - "konyhába" (into kitchen) vs "konyhában" (in kitchen)
+   - "szekrényhez" (to cabinet) vs "szekrényben" (in cabinet)
+   - Match prepositions to case endings and context
 
 FINAL QUALITY CHECK - BEFORE SUBMITTING:
 1. ✅ Is the description complete? (No cut-off sections, no empty paragraphs, no mid-sentence stops)
@@ -1230,6 +1368,10 @@ FINAL QUALITY CHECK - BEFORE SUBMITTING:
 6. ✅ Is the entire description in Hungarian with proper grammar?
 7. ✅ Does every section make logical sense for the product type?
 8. ✅ If this is a PARENT product: Did you mention ALL variants together, not highlight a single specific variant?
+9. ✅ **NO BULLSHITTING CHECK**: Are all claims backed by product data? (No made-up statistics, testimonials, or social proof)
+10. ✅ **HUNGARIAN SEMANTICS CHECK**: Is all language natural Hungarian? (No literal English translations, proper compound words, correct case endings)
+11. ✅ **EMOTIONAL CLAIMS CHECK**: Do all emotional words match actual product characteristics? (No "prémium" if product isn't premium, no "több ezer vásárló" unless data confirms)
+12. ✅ **PAIN POINT CHECK**: Are all pain points actually solved by this product? (No made-up problems or solutions)
 
 **CRITICAL: Your response MUST be complete. Do not stop mid-sentence or mid-section. Always include:**
 - A FULL conclusion/summary section ("Összefoglalás" or "Összegzés")

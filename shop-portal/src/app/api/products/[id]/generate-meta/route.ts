@@ -103,6 +103,26 @@ export async function POST(
       position: p.position || 0
     })) || []
 
+    // Get competitor price if available
+    let competitorPrice: number | null = null
+    try {
+      const { data: competitorData } = await supabase
+        .from('competitor_product_links')
+        .select('price')
+        .eq('product_id', productId)
+        .eq('is_active', true)
+        .not('price', 'is', null)
+        .order('price', { ascending: true })
+        .limit(1)
+        .single()
+      
+      if (competitorData?.price) {
+        competitorPrice = parseFloat(competitorData.price)
+      }
+    } catch (e) {
+      // Ignore errors - competitor price is optional
+    }
+
     // Build context
     const context: MetaGenerationContext = {
       product: {
@@ -111,6 +131,7 @@ export async function POST(
         name: product.name,
         model_number: product.model_number,
         price: product.price,
+        brand: product.brand || null,
         product_attributes: product.product_attributes
       },
       description: description?.description || null,
@@ -125,7 +146,8 @@ export async function POST(
         sku: c.sku,
         product_attributes: c.product_attributes
       })),
-      searchQueries: searchQueries.length > 0 ? searchQueries : undefined
+      searchQueries: searchQueries.length > 0 ? searchQueries : undefined,
+      competitorPrice: competitorPrice
     }
 
     // Generate requested fields

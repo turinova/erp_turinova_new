@@ -82,6 +82,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [productUrl, setProductUrl] = useState<string | null>(null)
   const [loadingUrlAlias, setLoadingUrlAlias] = useState(false)
   const [generatingUrlSlug, setGeneratingUrlSlug] = useState(false)
+  const [generatingTags, setGeneratingTags] = useState(false)
   const [originalUrlSlug, setOriginalUrlSlug] = useState<string>('')
   
   // Parent/Child relationships state
@@ -933,6 +934,29 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       toast.error('Hiba az URL slug generálásakor')
     } finally {
       setGeneratingUrlSlug(false)
+    }
+  }
+
+  const handleGenerateTags = async () => {
+    try {
+      setGeneratingTags(true)
+      const response = await fetch(`/api/products/${product.id}/tags/generate`, {
+        method: 'POST'
+      })
+      
+      const result = await response.json()
+      
+      if (result.success && result.tags) {
+        setProductTags(result.tags)
+        toast.success('AI által generált címkék betöltve')
+      } else {
+        toast.error(result.error || 'Hiba a címkék generálása során')
+      }
+    } catch (error) {
+      console.error('Error generating tags:', error)
+      toast.error('Hiba a címkék generálásakor')
+    } finally {
+      setGeneratingTags(false)
     }
   }
 
@@ -2300,6 +2324,21 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       onChange={(e) => setProductTags(e.target.value)}
                       helperText="Vesszővel elválasztott címkék (pl: konyha, bútor, modern). Ezek a címkék segítenek a termék kategorizálásában és keresésében."
                       placeholder="Pl.: konyha, bútor, modern, fehér"
+                      InputProps={{
+                        endAdornment: (
+                          <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                            <Button
+                              size="small"
+                              startIcon={generatingTags ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                              onClick={handleGenerateTags}
+                              disabled={generatingTags}
+                              sx={{ minWidth: 'auto', ml: 1 }}
+                            >
+                              {generatingTags ? '' : 'AI'}
+                            </Button>
+                          </FeatureGate>
+                        )
+                      }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           bgcolor: 'rgba(255, 255, 255, 0.9)',
