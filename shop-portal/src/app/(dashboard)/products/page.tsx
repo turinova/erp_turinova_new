@@ -1,7 +1,7 @@
 import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, Inventory as InventoryIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
-import { getAllProducts } from '@/lib/products-server'
+import { getAllProducts, getQualityScoresBatch, getIndexingStatusesBatch } from '@/lib/products-server'
 import ProductsTable from './ProductsTable'
 
 interface PageProps {
@@ -20,6 +20,17 @@ export default async function ProductsPage({ searchParams }: PageProps = {}) {
 
   // Fetch initial data (no search on initial load)
   const result = await getAllProducts(page, limit, '')
+
+  // Fetch quality scores and indexing statuses in batch (server-side)
+  const productIds = result.products.map(p => p.id)
+  const [initialQualityScores, initialIndexingStatuses] = await Promise.all([
+    getQualityScoresBatch(productIds),
+    getIndexingStatusesBatch(productIds)
+  ])
+
+  // Convert Maps to plain objects for serialization
+  const qualityScoresObj = Object.fromEntries(initialQualityScores)
+  const indexingStatusesObj = Object.fromEntries(initialIndexingStatuses)
 
   return (
     <Box sx={{ p: 3 }}>
@@ -47,6 +58,8 @@ export default async function ProductsPage({ searchParams }: PageProps = {}) {
 
       <ProductsTable 
         initialProducts={result.products}
+        initialQualityScores={qualityScoresObj}
+        initialIndexingStatuses={indexingStatusesObj}
         totalCount={result.totalCount}
         totalPages={result.totalPages}
         currentPage={result.currentPage}

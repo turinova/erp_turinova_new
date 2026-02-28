@@ -84,14 +84,18 @@ export default function ProductQualityScore({
     return <ErrorIcon fontSize="small" />
   }
 
-  const hasCriticalIssues = score.blocking_issues.length > 0
-  const criticalIssuesCount = score.issues.filter(i => i.severity === 'critical').length
-  const warningIssuesCount = score.issues.filter(i => i.severity === 'warning').length
+  // Safely handle missing issues arrays
+  const blockingIssues = score.blocking_issues || []
+  const issues = score.issues || []
+  
+  const hasCriticalIssues = blockingIssues.length > 0
+  const criticalIssuesCount = issues.filter(i => i.severity === 'critical').length
+  const warningIssuesCount = issues.filter(i => i.severity === 'warning').length
 
   if (compact) {
     // Get critical and warning issues separately
-    const criticalIssues = score.issues.filter(i => i.severity === 'critical')
-    const warningIssues = score.issues.filter(i => i.severity === 'warning')
+    const criticalIssues = issues.filter(i => i.severity === 'critical')
+    const warningIssues = issues.filter(i => i.severity === 'warning')
     
     return (
       <Tooltip 
@@ -182,7 +186,7 @@ export default function ProductQualityScore({
               {hasCriticalIssues && (
                 <>
                   <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5 }}>
-                    Kritikus problémák: {score.blocking_issues.join(', ')}
+                    Kritikus problémák: {blockingIssues.join(', ')}
                   </Typography>
                 </>
               )}
@@ -303,13 +307,13 @@ export default function ProductQualityScore({
             </Box>
           </Box>
 
-          {score.issues.length > 0 && (
+          {issues.length > 0 && (
             <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
                 Specifikus problémák:
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {score.issues.map((issue, index) => (
+                {issues.map((issue, index) => (
                   <Box 
                     key={index}
                     sx={{ 

@@ -124,9 +124,37 @@ export async function getAllProducts(
     }
 
     // Build single optimized query with count and data
+    // Only select necessary columns for list view (exclude large JSONB fields)
     let query = supabase
       .from('shoprenter_products')
-      .select('*', { count: 'exact' })
+      .select(`
+        id,
+        connection_id,
+        shoprenter_id,
+        shoprenter_inner_id,
+        sku,
+        model_number,
+        gtin,
+        name,
+        brand,
+        status,
+        price,
+        cost,
+        multiplier,
+        multiplier_lock,
+        competitor_tracking_enabled,
+        product_url,
+        url_slug,
+        url_alias_id,
+        last_url_synced_at,
+        last_synced_at,
+        sync_status,
+        sync_error,
+        parent_product_id,
+        created_at,
+        updated_at,
+        deleted_at
+      `, { count: 'exact' })
       .is('deleted_at', null)
 
     // Apply search filter - use ilike with trigram indexes for better performance
@@ -233,5 +261,125 @@ export async function getProductById(id: string): Promise<ProductWithDescription
   } catch (error) {
     console.error('Exception in getProductById:', error instanceof Error ? error.message : String(error))
     return null
+  }
+}
+
+/**
+ * Get quality scores for multiple products in batch (server-side)
+ */
+export async function getQualityScoresBatch(productIds: string[]): Promise<Map<string, any>> {
+  if (productIds.length === 0) {
+    return new Map()
+  }
+
+  try {
+    const cookieStore = await cookies()
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+    
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
+      console.error('Missing Supabase environment variables')
+      return new Map()
+    }
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      console.error('User not authenticated:', userError?.message || 'No user')
+      return new Map()
+    }
+
+    // Fetch quality scores in batch
+    const { data: scores, error: scoresError } = await supabase
+      .from('product_quality_scores')
+      .select('product_id, overall_score, content_score, image_score, technical_score, performance_score, completeness_score, competitive_score, priority_score, is_parent, blocking_issues, issues, last_calculated_at')
+      .in('product_id', productIds)
+
+    if (scoresError) {
+      console.error('Error fetching quality scores batch:', scoresError)
+      return new Map()
+    }
+
+    // Convert to Map
+    const scoresMap = new Map<string, any>()
+    for (const score of scores || []) {
+      scoresMap.set(score.product_id, score)
+    }
+
+    return scoresMap
+  } catch (error) {
+    console.error('Exception in getQualityScoresBatch:', error instanceof Error ? error.message : String(error))
+    return new Map()
+  }
+}
+
+/**
+ * Get indexing statuses for multiple products in batch (server-side)
+ */
+export async function getIndexingStatusesBatch(productIds: string[]): Promise<Map<string, any>> {
+  if (productIds.length === 0) {
+    return new Map()
+  }
+
+  try {
+    const cookieStore = await cookies()
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+    
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
+      console.error('Missing Supabase environment variables')
+      return new Map()
+    }
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseAnonKey,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    // Verify user is authenticated
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      console.error('User not authenticated:', userError?.message || 'No user')
+      return new Map()
+    }
+
+    // Fetch indexing statuses in batch
+    const { data: statuses, error: statusError } = await supabase
+      .from('product_indexing_status')
+      .select('product_id, is_indexed, last_checked, coverage_state')
+      .in('product_id', productIds)
+
+    if (statusError) {
+      console.error('Error fetching indexing statuses batch:', statusError)
+      return new Map()
+    }
+
+    // Convert to Map
+    const statusesMap = new Map<string, any>()
+    for (const status of statuses || []) {
+      statusesMap.set(status.product_id, status)
+    }
+
+    return statusesMap
+  } catch (error) {
+    console.error('Exception in getIndexingStatusesBatch:', error instanceof Error ? error.message : String(error))
+    return new Map()
   }
 }

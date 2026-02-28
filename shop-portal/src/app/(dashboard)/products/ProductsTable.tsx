@@ -57,6 +57,8 @@ interface IndexingStatus {
 
 interface ProductsTableProps {
   initialProducts: ShopRenterProduct[]
+  initialQualityScores?: Record<string, any>
+  initialIndexingStatuses?: Record<string, IndexingStatus>
   totalCount: number
   totalPages: number
   currentPage: number
@@ -66,6 +68,8 @@ interface ProductsTableProps {
 
 export default function ProductsTable({ 
   initialProducts,
+  initialQualityScores = {},
+  initialIndexingStatuses = {},
   totalCount,
   totalPages,
   currentPage,
@@ -79,8 +83,10 @@ export default function ProductsTable({
   // Selection state (for bulk operations)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
-  // Indexing status state
-  const [indexingStatuses, setIndexingStatuses] = useState<Map<string, IndexingStatus>>(new Map())
+  // Indexing status state - initialize with server-side data
+  const [indexingStatuses, setIndexingStatuses] = useState<Map<string, IndexingStatus>>(
+    new Map(Object.entries(initialIndexingStatuses))
+  )
   const [isLoadingIndexStatus, setIsLoadingIndexStatus] = useState(false)
 
   // Track which products are parents (have children)
@@ -134,8 +140,10 @@ export default function ProductsTable({
     }
   }, [])
 
-  // Quality score state
-  const [qualityScores, setQualityScores] = useState<Map<string, any>>(new Map())
+  // Quality score state - initialize with server-side data
+  const [qualityScores, setQualityScores] = useState<Map<string, any>>(
+    new Map(Object.entries(initialQualityScores))
+  )
   const [isCalculatingQualityScores, setIsCalculatingQualityScores] = useState(false)
   const [qualityScoreProgress, setQualityScoreProgress] = useState({ current: 0, total: 0 })
   const [qualityScoreDialogOpen, setQualityScoreDialogOpen] = useState(false)
@@ -154,7 +162,7 @@ export default function ProductsTable({
 
   // Search function - can be called manually or via debounce
   const performSearch = useCallback(async (term: string) => {
-    if (!term || term.length < 2) {
+    if (!term || term.length < 3) {
       setSearchResults([])
       setSearchTotalCount(0)
       setSearchTotalPages(0)
@@ -185,51 +193,48 @@ export default function ProductsTable({
     }
   }, [currentPageSize])
 
-  // Search effect - fetch from API route with longer debounce
+  // Search effect - fetch from API route with optimized debounce
   useEffect(() => {
-    if (!searchTerm || searchTerm.length < 2) {
+    if (!searchTerm || searchTerm.length < 3) {
       setSearchResults([])
       setSearchTotalCount(0)
       setSearchTotalPages(0)
       return
     }
 
-    // Longer debounce delay (800ms) to allow user to finish typing
+    // Optimized debounce delay (500ms) - faster response, minimum 3 characters
     const searchTimeout = setTimeout(() => {
       performSearch(searchTerm)
-    }, 800)
+    }, 500)
 
     return () => clearTimeout(searchTimeout)
   }, [searchTerm, performSearch])
 
-  // Fetch quality scores for displayed products
+  // Fetch quality scores for displayed products (batch API)
   const fetchQualityScores = async (productIds: string[]) => {
     if (productIds.length === 0) return
     
     try {
-      // Fetch scores in batches
-      const batchSize = 50
-      const scoresMap = new Map<string, any>(qualityScores)
+      // Use batch API instead of individual calls
+      const response = await fetch('/api/products/quality-scores-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds })
+      })
       
-      for (let i = 0; i < productIds.length; i += batchSize) {
-        const batch = productIds.slice(i, i + batchSize)
-        const promises = batch.map(async (productId) => {
-          try {
-            const response = await fetch(`/api/products/${productId}/quality-score`)
-            if (response.ok) {
-              const data = await response.json()
-              if (data.success && data.score) {
-                scoresMap.set(productId, data.score)
-              }
-            }
-          } catch (error) {
-            console.error(`Error fetching quality score for ${productId}:`, error)
-          }
-        })
-        await Promise.all(promises)
+      if (response.ok) {
+        const data = await response.json()
+        const scoresMap = new Map<string, any>(qualityScores)
+        
+        // Update map with batch results
+        for (const score of data.scores || []) {
+          scoresMap.set(score.product_id, score)
+        }
+        
+        setQualityScores(scoresMap)
+      } else {
+        console.error('Failed to fetch quality scores batch')
       }
-      
-      setQualityScores(scoresMap)
     } catch (error) {
       console.error('Error fetching quality scores:', error)
     }
@@ -987,7 +992,7 @@ export default function ProductsTable({
       {/* Search Bar */}
       <TextField
         fullWidth
-        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján... (Enter a kereséshez)"
+        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján... (minimum 3 karakter)"
         value={searchTerm}
         onChange={(e) => handleSearchChange(e.target.value)}
         onKeyPress={handleSearchKeyPress}
@@ -1131,7 +1136,6 @@ export default function ProductsTable({
               <TableCell sx={{ fontWeight: 600 }}>Név</TableCell>
               <TableCell sx={{ fontWeight: 600 }} align="right">Nettó ár</TableCell>
               <TableCell sx={{ fontWeight: 600 }}>Státusz</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Szinkron</TableCell>
               <TableCell sx={{ fontWeight: 600 }} align="center" width={100}>
                 <Tooltip title="Termék kapcsolatok">
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
@@ -1159,9 +1163,9 @@ export default function ProductsTable({
           <TableBody>
             {displayProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
-                    {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 2 ? 'Nincs találat' : 'Nincsenek termékek')}
+                    {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 3 ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -1201,7 +1205,6 @@ export default function ProductsTable({
                     </Typography>
                   </TableCell>
                   <TableCell>{getStatusChip(product)}</TableCell>
-                  <TableCell>{getSyncStatusChip(product)}</TableCell>
                   <TableCell align="center">
                     {getVariantChip(product)}
                   </TableCell>
