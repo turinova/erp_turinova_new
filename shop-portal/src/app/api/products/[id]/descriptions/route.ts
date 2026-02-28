@@ -13,7 +13,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { language_code, name, meta_title, meta_keywords, meta_description, short_description, description, generation_instructions } = body
+    const { language_code, name, meta_title, meta_keywords, meta_description, short_description, description, parameters, generation_instructions } = body
 
     const cookieStore = await cookies()
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
@@ -57,6 +57,7 @@ export async function PUT(
       meta_description: meta_description || null,
       short_description: short_description || null,
       description: description || null,
+      parameters: parameters || null, // Add parameters field
       generation_instructions: generation_instructions || null,
       updated_at: new Date().toISOString()
     }

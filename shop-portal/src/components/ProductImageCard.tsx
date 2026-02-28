@@ -134,47 +134,49 @@ export default function ProductImageCard({
       <Box sx={{ position: 'relative' }}>
         {image.is_main_image && (
           <Chip
-            label="Fő kép"
+            label="Fő"
             size="small"
             color="primary"
-            sx={{ position: 'absolute', top: 8, left: 8, zIndex: 1 }}
+            sx={{ position: 'absolute', top: 4, left: 4, zIndex: 1, height: '20px', fontSize: '0.65rem' }}
           />
         )}
         <CardMedia
           component="img"
-          height="200"
+          height="120"
           image={imageUrl || ''}
           alt={image.alt_text || image.image_path}
           sx={{ objectFit: 'contain', bgcolor: 'grey.100' }}
         />
       </Box>
-      <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
-        <Typography variant="caption" color="text.secondary" gutterBottom>
-          {image.image_path}
+      <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 1.5, '&:last-child': { pb: 1.5 } }}>
+        <Typography variant="caption" color="text.secondary" gutterBottom sx={{ fontSize: '0.7rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {image.image_path?.split('/').pop() || image.image_path}
         </Typography>
 
-        <Box sx={{ mt: 2, mb: 2 }}>
+        <Box sx={{ mt: 1, mb: 1 }}>
           {isEditing ? (
             <Box>
               <TextField
                 fullWidth
                 multiline
-                rows={3}
+                rows={2}
                 value={altText}
                 onChange={(e) => setAltText(e.target.value)}
                 placeholder="Alt szöveg..."
                 size="small"
                 disabled={isUpdating}
+                sx={{ '& .MuiInputBase-input': { fontSize: '0.75rem' } }}
               />
-              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+              <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5 }}>
                 <Button
                   size="small"
                   variant="contained"
-                  startIcon={isUpdating ? <CircularProgress size={16} /> : <CheckIcon />}
+                  startIcon={isUpdating ? <CircularProgress size={12} /> : <CheckIcon />}
                   onClick={handleSave}
                   disabled={isUpdating}
+                  sx={{ fontSize: '0.7rem', minWidth: 'auto', px: 1 }}
                 >
-                  Mentés
+                  Ment
                 </Button>
                 <Button
                   size="small"
@@ -182,6 +184,7 @@ export default function ProductImageCard({
                   startIcon={<CloseIcon />}
                   onClick={handleCancel}
                   disabled={isUpdating}
+                  sx={{ fontSize: '0.7rem', minWidth: 'auto', px: 1 }}
                 >
                   Mégse
                 </Button>
@@ -189,15 +192,16 @@ export default function ProductImageCard({
             </Box>
           ) : (
             <Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                 <Chip
                   label={getStatusLabel(image.alt_text_status)}
                   size="small"
                   color={getStatusColor(image.alt_text_status) as any}
+                  sx={{ height: '20px', fontSize: '0.65rem' }}
                 />
                 <Tooltip title="Szerkesztés">
-                  <IconButton size="small" onClick={() => setIsEditing(true)}>
-                    <EditIcon fontSize="small" />
+                  <IconButton size="small" onClick={() => setIsEditing(true)} sx={{ width: '24px', height: '24px' }}>
+                    <EditIcon sx={{ fontSize: '14px' }} />
                   </IconButton>
                 </Tooltip>
               </Box>
@@ -205,8 +209,14 @@ export default function ProductImageCard({
                 variant="body2"
                 color={image.alt_text ? 'text.primary' : 'text.secondary'}
                 sx={{
-                  minHeight: '60px',
-                  fontStyle: image.alt_text ? 'normal' : 'italic'
+                  minHeight: '40px',
+                  fontSize: '0.75rem',
+                  fontStyle: image.alt_text ? 'normal' : 'italic',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical'
                 }}
               >
                 {image.alt_text || 'Nincs alt szöveg'}
@@ -215,27 +225,29 @@ export default function ProductImageCard({
           )}
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 1, mt: 'auto' }}>
+        <Box sx={{ display: 'flex', gap: 0.5, mt: 'auto' }}>
           <Button
             size="small"
             variant="outlined"
-            startIcon={isGenerating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+            startIcon={isGenerating ? <CircularProgress size={12} /> : <AutoAwesomeIcon />}
             onClick={handleGenerate}
             disabled={isGenerating || isSyncing || isEditing}
             fullWidth
+            sx={{ fontSize: '0.7rem', minHeight: '28px' }}
           >
-            Generálás
+            AI
           </Button>
           <Button
             size="small"
             variant="outlined"
             color="success"
-            startIcon={isSyncing ? <CircularProgress size={16} /> : <SyncIcon />}
+            startIcon={isSyncing ? <CircularProgress size={12} /> : <SyncIcon />}
             onClick={handleSync}
             disabled={isSyncing || isGenerating || isEditing || !image.alt_text || image.alt_text_status === 'synced'}
             fullWidth
+            sx={{ fontSize: '0.7rem', minHeight: '28px' }}
           >
-            Szinkron
+            Sync
           </Button>
         </Box>
       </CardContent>

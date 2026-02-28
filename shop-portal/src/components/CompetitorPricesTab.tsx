@@ -329,13 +329,10 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h6">Versenytárs árak</Typography>
-          <Typography variant="body2" color="text.secondary">
-            Kövesse nyomon versenytársai árait ehhez a termékhez
-          </Typography>
-        </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+          Kövesse nyomon versenytársai árait ehhez a termékhez
+        </Typography>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button
             variant="outlined"

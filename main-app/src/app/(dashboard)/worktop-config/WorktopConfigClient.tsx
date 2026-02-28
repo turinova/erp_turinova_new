@@ -7038,8 +7038,8 @@ export default function WorktopConfigClient({ initialCustomers, initialLinearMat
                                         C-B: {cMinusB}mm
                                       </text>
                                     </g>
-                                )
-                              })()}
+                                  )
+                                })()}
 
                                 {/* D dimension - ISO standard dimensioning for Összemarás types (horizontal - left perpendicular rectangle width) */}
                                 {(assemblyType === 'Összemarás Balos' || assemblyType === 'Összemarás jobbos' || assemblyType === 'Összemarás U alak (Nem működik még)') && showLeftPerpendicularRect && dValue > 0 && (() => {

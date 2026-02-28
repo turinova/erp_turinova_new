@@ -313,10 +313,10 @@ async function processBulkSyncInBackground(
                 console.error(`[BULK SYNC] Error syncing product ${dbId}:`, error)
                 batchResults.errors++
                 // Update progress even on error
-                incrementProgress(progressKey, {
+            incrementProgress(progressKey, {
                   synced: 0,
                   errors: 1
-                })
+            })
               }
             }
 

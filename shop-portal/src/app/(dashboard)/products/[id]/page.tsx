@@ -34,7 +34,7 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
         </Link>
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <EditIcon fontSize="small" />
-          {product.sku}
+          {product.sku} - {product.name || 'Névtelen termék'}
         </Typography>
       </Breadcrumbs>
 

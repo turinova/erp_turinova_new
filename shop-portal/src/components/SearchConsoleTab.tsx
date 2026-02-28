@@ -187,18 +187,18 @@ export default function SearchConsoleTab({ productId, productUrl }: SearchConsol
   if (!data) {
     return (
       <Box>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">Search Console adatok</Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 2 }}>
           <Button
-            variant="contained"
-            startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
+            variant="outlined"
+            size="small"
+            startIcon={syncing ? <CircularProgress size={16} /> : <SyncIcon />}
             onClick={handleSync}
             disabled={syncing}
           >
             {syncing ? 'Szinkronizálás...' : 'Adatok szinkronizálása'}
           </Button>
         </Box>
-        <Alert severity="info">
+        <Alert severity="info" sx={{ fontSize: '0.875rem' }}>
           Még nincsenek Search Console adatok. Kattintson a "Adatok szinkronizálása" gombra az adatok lekéréséhez.
         </Alert>
       </Box>
@@ -207,13 +207,15 @@ export default function SearchConsoleTab({ productId, productUrl }: SearchConsol
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h6">Search Console adatok</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+          A Search Console adatok segítenek optimalizálni a termék SEO teljesítményét
+        </Typography>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <select
             value={days}
             onChange={(e) => setDays(parseInt(e.target.value))}
-            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc', fontSize: '0.875rem' }}
           >
             <option value={7}>Utolsó 7 nap</option>
             <option value={30}>Utolsó 30 nap</option>

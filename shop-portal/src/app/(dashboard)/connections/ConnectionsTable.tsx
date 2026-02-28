@@ -26,7 +26,12 @@ import {
   IconButton,
   Tooltip,
   FormControlLabel,
-  Switch
+  Switch,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert
 } from '@mui/material'
 import { 
   Search as SearchIcon, 
@@ -40,7 +45,8 @@ import {
   Sync as SyncIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  Code as CodeIcon
+  Code as CodeIcon,
+  Receipt as ReceiptIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -62,6 +68,13 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncDialogConnection, setSyncDialogConnection] = useState<WebshopConnection | null>(null)
   const [forceSync, setForceSync] = useState(false)
+  const [vatMappingDialogOpen, setVatMappingDialogOpen] = useState(false)
+  const [vatMappingConnection, setVatMappingConnection] = useState<WebshopConnection | null>(null)
+  const [vatRates, setVatRates] = useState<Array<{ id: string; name: string; kulcs: number }>>([])
+  const [shoprenterTaxClasses, setShoprenterTaxClasses] = useState<Array<{ id: string; name: string }>>([])
+  const [mappings, setMappings] = useState<Array<{ vat_id: string; shoprenter_tax_class_id: string; shoprenter_tax_class_name: string | null }>>([])
+  const [loadingVatMapping, setLoadingVatMapping] = useState(false)
+  const [savingMapping, setSavingMapping] = useState(false)
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null)
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
@@ -711,6 +724,103 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     return types[type] || type
   }
 
+  // Handle VAT mapping button click
+  const handleVatMappingClick = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('ÁFA leképezés csak ShopRenter kapcsolatokhoz érhető el')
+      return
+    }
+
+    setVatMappingConnection(connection)
+    setLoadingVatMapping(true)
+    setVatMappingDialogOpen(true)
+
+    try {
+      const response = await fetch(`/api/connections/${connection.id}/tax-class-mappings`)
+      if (response.ok) {
+        const data = await response.json()
+        setVatRates(data.vatRates || [])
+        setShoprenterTaxClasses(data.shoprenterTaxClasses || [])
+        setMappings(data.mappings || [])
+      } else {
+        toast.error('Hiba az ÁFA leképezések betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading VAT mappings:', error)
+      toast.error('Hiba az ÁFA leképezések betöltésekor')
+    } finally {
+      setLoadingVatMapping(false)
+    }
+  }
+
+  // Handle save VAT mapping
+  const handleSaveVatMapping = async (vatId: string, taxClassId: string) => {
+    if (!vatMappingConnection) return
+
+    setSavingMapping(true)
+    try {
+      const taxClass = shoprenterTaxClasses.find(tc => tc.id === taxClassId)
+      const response = await fetch(`/api/connections/${vatMappingConnection.id}/tax-class-mappings`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          vat_id: vatId,
+          shoprenter_tax_class_id: taxClassId,
+          shoprenter_tax_class_name: taxClass?.name || null
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update mappings
+        setMappings(prev => {
+          const existing = prev.find(m => m.vat_id === vatId)
+          if (existing) {
+            return prev.map(m => m.vat_id === vatId ? { ...m, shoprenter_tax_class_id: taxClassId, shoprenter_tax_class_name: taxClass?.name || null } : m)
+          } else {
+            return [...prev, { vat_id: vatId, shoprenter_tax_class_id: taxClassId, shoprenter_tax_class_name: taxClass?.name || null }]
+          }
+        })
+        toast.success('ÁFA leképezés sikeresen mentve')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Hiba a mentés során')
+      }
+    } catch (error) {
+      console.error('Error saving VAT mapping:', error)
+      toast.error(`Hiba a mentés során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
+    } finally {
+      setSavingMapping(false)
+    }
+  }
+
+  // Handle delete VAT mapping
+  const handleDeleteVatMapping = async (vatId: string) => {
+    if (!vatMappingConnection) return
+
+    setSavingMapping(true)
+    try {
+      const response = await fetch(`/api/connections/${vatMappingConnection.id}/tax-class-mappings?vat_id=${vatId}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        setMappings(prev => prev.filter(m => m.vat_id !== vatId))
+        toast.success('ÁFA leképezés sikeresen törölve')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Hiba a törlés során')
+      }
+    } catch (error) {
+      console.error('Error deleting VAT mapping:', error)
+      toast.error(`Hiba a törlés során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
+    } finally {
+      setSavingMapping(false)
+    }
+  }
+
   // Handle sync products button click - show dialog first
   const handleSyncProductsClick = async (connection: WebshopConnection) => {
     // If sync is already in progress for this connection, reopen the modal
@@ -1128,6 +1238,17 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                             </IconButton>
                           </Tooltip>
                         </>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
+                        <Tooltip title="ÁFA leképezés">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleVatMappingClick(connection)}
+                            color="secondary"
+                          >
+                            <ReceiptIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
                       )}
                       <Tooltip title="Szerkesztés">
                         <IconButton
@@ -1794,6 +1915,143 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         </DialogActions>
       </Dialog>
 
+      {/* VAT Mapping Dialog */}
+      <Dialog
+        open={vatMappingDialogOpen}
+        onClose={() => setVatMappingDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <ReceiptIcon />
+            <Typography variant="h6">ÁFA leképezés</Typography>
+          </Box>
+          {vatMappingConnection && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {vatMappingConnection.name}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {loadingVatMapping ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                  Mi az ÁFA leképezés?
+                </Typography>
+                <Typography variant="body2">
+                  Az ÁFA leképezés összekapcsolja az ERP rendszerben lévő ÁFA kulcsokat a ShopRenter webshopban lévő adóosztályokkal.
+                  Ez biztosítja, hogy amikor termékeket szinkronizál, a megfelelő ÁFA kulcs kerüljön beállításra a ShopRenter oldalon is.
+                </Typography>
+              </Alert>
+
+              <TableContainer component={Paper} elevation={1}>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: 'action.hover' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>ERP ÁFA kulcs</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="center">ShopRenter adóosztály</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="center" width="200">Művelet</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {vatRates.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 4 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Nincs ÁFA kulcs létrehozva. Kérjük, hozzon létre ÁFA kulcsokat az "Áfák" oldalon.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      vatRates.map((vat) => {
+                        const mapping = mappings.find(m => m.vat_id === vat.id)
+                        const mappedTaxClass = mapping
+                          ? shoprenterTaxClasses.find(tc => tc.id === mapping.shoprenter_tax_class_id)
+                          : null
+
+                        return (
+                          <TableRow key={vat.id} hover>
+                            <TableCell>
+                              <Box>
+                                <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                                  {vat.name}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {vat.kulcs}%
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell align="center">
+                              {mappedTaxClass ? (
+                                <Chip
+                                  label={mappedTaxClass.name}
+                                  color="success"
+                                  size="small"
+                                />
+                              ) : (
+                                <Chip
+                                  label="Nincs leképezve"
+                                  color="default"
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell align="center">
+                              <FormControl size="small" sx={{ minWidth: 200 }}>
+                                <Select
+                                  value={mapping?.shoprenter_tax_class_id || ''}
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      handleSaveVatMapping(vat.id, e.target.value)
+                                    } else if (mapping) {
+                                      handleDeleteVatMapping(vat.id)
+                                    }
+                                  }}
+                                  disabled={savingMapping}
+                                  displayEmpty
+                                >
+                                  <MenuItem value="">
+                                    <em>Nincs leképezve</em>
+                                  </MenuItem>
+                                  {shoprenterTaxClasses.map((tc) => (
+                                    <MenuItem key={tc.id} value={tc.id}>
+                                      {tc.name}
+                                    </MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {shoprenterTaxClasses.length === 0 && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    Nem sikerült betölteni a ShopRenter adóosztályokat. Kérjük, ellenőrizze a kapcsolat beállításait.
+                  </Typography>
+                </Alert>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setVatMappingDialogOpen(false)}>
+            Bezárás
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   )
 }

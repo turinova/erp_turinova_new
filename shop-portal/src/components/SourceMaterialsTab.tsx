@@ -21,7 +21,8 @@ import {
   CircularProgress,
   Chip,
   Alert,
-  LinearProgress
+  LinearProgress,
+  Grid
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -32,7 +33,9 @@ import {
   Description as DescriptionIcon,
   CheckCircle,
   Error as ErrorIcon,
-  HourglassEmpty
+  HourglassEmpty,
+  Star as StarIcon,
+  Label as LabelIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
@@ -264,10 +267,43 @@ export default function SourceMaterialsTab({ productId }: SourceMaterialsTabProp
     )
   }
 
+  // Sort sources by priority (descending) and then by created_at
+  const sortedSources = [...sources].sort((a, b) => {
+    if (b.priority !== a.priority) {
+      return b.priority - a.priority
+    }
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'pdf':
+        return '#f44336' // Red
+      case 'url':
+        return '#2196f3' // Blue
+      case 'text':
+        return '#4caf50' // Green
+      default:
+        return '#757575' // Grey
+    }
+  }
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'pdf':
+        return <DescriptionIcon />
+      case 'url':
+        return <LinkIcon />
+      case 'text':
+        return <TextIcon />
+      default:
+        return <DescriptionIcon />
+    }
+  }
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Forrásanyagok</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -277,75 +313,177 @@ export default function SourceMaterialsTab({ productId }: SourceMaterialsTabProp
         </Button>
       </Box>
 
-      {sources.length === 0 ? (
+      {sortedSources.length === 0 ? (
         <Alert severity="info">
           Még nincsenek forrásanyagok. Adjon hozzá PDF-t, URL-t vagy szöveget az AI generáláshoz.
         </Alert>
       ) : (
-        <List>
-          {sources.map((source) => (
-            <Paper key={source.id} sx={{ mb: 2 }}>
-              <ListItem>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
-                  {source.source_type === 'pdf' && <DescriptionIcon />}
-                  {source.source_type === 'url' && <LinkIcon />}
-                  {source.source_type === 'text' && <TextIcon />}
-                  
-                  <Box sx={{ flex: 1 }}>
-                    <ListItemText
-                      primary={source.title || `Forrásanyag (${source.source_type})`}
-                      secondaryTypographyProps={{ component: 'div' }}
-                      secondary={
-                        <Box component="div">
-                          <Typography variant="caption" display="block">
-                            Típus: {source.source_type === 'pdf' ? 'PDF' : source.source_type === 'url' ? 'URL' : 'Szöveg'}
+        <Box>
+          {/* Header row */}
+          <Paper 
+            elevation={0}
+            sx={{ 
+              p: 1.5,
+              mb: 1,
+              bgcolor: 'grey.50',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1
+            }}
+          >
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={1}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Típus</Typography>
+              </Grid>
+              <Grid item xs={4}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Cím / Leírás</Typography>
+              </Grid>
+              <Grid item xs={1.5}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Prioritás</Typography>
+              </Grid>
+              <Grid item xs={2}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Státusz</Typography>
+              </Grid>
+              <Grid item xs={2}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Információ</Typography>
+              </Grid>
+              <Grid item xs={1.5}>
+                <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>Műveletek</Typography>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* Data rows */}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {sortedSources.map((source) => {
+              // Priority-based background color (subtle)
+              const getPriorityBgColor = (priority: number) => {
+                if (priority >= 8) return 'rgba(255, 152, 0, 0.05)' // Orange
+                if (priority >= 5) return 'rgba(76, 175, 80, 0.05)' // Green
+                return 'rgba(158, 158, 158, 0.03)' // Grey
+              }
+
+              return (
+                <Paper 
+                  key={source.id} 
+                  elevation={0}
+                  sx={{ 
+                    p: 1.5,
+                    bgcolor: getPriorityBgColor(source.priority),
+                    border: '1px solid',
+                    borderLeft: `4px solid ${getTypeColor(source.source_type)}`,
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    '&:hover': {
+                      borderColor: getTypeColor(source.source_type),
+                      boxShadow: 1,
+                      bgcolor: getPriorityBgColor(source.priority)
+                    },
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Grid container spacing={2} alignItems="center">
+                    {/* Type Icon */}
+                    <Grid item xs={1}>
+                      <Box sx={{ 
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: '32px',
+                        height: '32px',
+                        mx: 'auto',
+                        color: getTypeColor(source.source_type)
+                      }}>
+                        {getTypeIcon(source.source_type)}
+                      </Box>
+                    </Grid>
+
+                    {/* Title */}
+                    <Grid item xs={4}>
+                      <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.875rem' }}>
+                        {source.title || `Forrásanyag (${source.source_type})`}
+                      </Typography>
+                      {source.processing_error && (
+                        <Typography variant="caption" color="error" sx={{ fontSize: '0.7rem', display: 'block', mt: 0.5 }}>
+                          {source.processing_error}
+                        </Typography>
+                      )}
+                    </Grid>
+
+                    {/* Priority */}
+                    <Grid item xs={1.5}>
+                      <Chip
+                        icon={<StarIcon />}
+                        label={source.priority}
+                        size="small"
+                        variant="outlined"
+                        sx={{ 
+                          height: '24px', 
+                          fontSize: '0.7rem',
+                          fontWeight: 500,
+                          borderColor: source.priority >= 8 ? '#ff9800' : source.priority >= 5 ? '#4caf50' : '#9e9e9e',
+                          color: source.priority >= 8 ? '#ff9800' : source.priority >= 5 ? '#4caf50' : '#9e9e9e'
+                        }}
+                      />
+                    </Grid>
+
+                    {/* Status */}
+                    <Grid item xs={2}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {getStatusIcon(source.processing_status)}
+                        <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+                          {getStatusLabel(source.processing_status)}
+                        </Typography>
+                      </Box>
+                    </Grid>
+
+                    {/* Info */}
+                    <Grid item xs={2}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                          {source.source_type === 'pdf' ? 'PDF' : source.source_type === 'url' ? 'URL' : 'Szöveg'}
+                        </Typography>
+                        {source.processing_status === 'processed' && source.extracted_text && (
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                            {source.extracted_text.split(/\s+/).length} szó
                           </Typography>
-                          <Box sx={{ display: 'flex', gap: 1, mt: 0.5, alignItems: 'center' }}>
-                            {getStatusIcon(source.processing_status)}
-                            <Typography variant="caption">
-                              {getStatusLabel(source.processing_status)}
-                            </Typography>
-                            {source.processing_status === 'processed' && source.extracted_text && (
-                              <Typography variant="caption" color="text.secondary">
-                                • {source.extracted_text.split(/\s+/).length} szó
-                              </Typography>
-                            )}
-                          </Box>
-                          {source.processing_error && (
-                            <Alert severity="error" sx={{ mt: 1 }}>
-                              {source.processing_error}
-                            </Alert>
-                          )}
-                          {source.processing_status === 'pending' && source.source_type !== 'text' && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={() => processSource(source.id)}
-                              disabled={processingId === source.id}
-                              sx={{ mt: 1 }}
-                            >
-                              {processingId === source.id ? 'Feldolgozás...' : 'Feldolgozás indítása'}
-                            </Button>
-                          )}
-                        </Box>
-                      }
-                    />
-                  </Box>
-                  
-                  <ListItemSecondaryAction>
-                    <IconButton
-                      edge="end"
-                      onClick={() => handleDelete(source.id)}
-                      disabled={deletingId === source.id}
-                    >
-                      {deletingId === source.id ? <CircularProgress size={20} /> : <DeleteIcon />}
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </Box>
-              </ListItem>
-            </Paper>
-          ))}
-        </List>
+                        )}
+                      </Box>
+                    </Grid>
+
+                    {/* Actions */}
+                    <Grid item xs={1.5}>
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', justifyContent: 'flex-end' }}>
+                        {source.processing_status === 'pending' && source.source_type !== 'text' && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => processSource(source.id)}
+                            disabled={processingId === source.id}
+                            sx={{ fontSize: '0.7rem', minHeight: '28px', px: 1 }}
+                          >
+                            {processingId === source.id ? '...' : 'Feldolgozás'}
+                          </Button>
+                        )}
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDelete(source.id)}
+                          disabled={deletingId === source.id}
+                          sx={{ 
+                            color: 'text.secondary',
+                            '&:hover': { bgcolor: 'error.light', color: 'error.main' }
+                          }}
+                        >
+                          {deletingId === source.id ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}
+                        </IconButton>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              )
+            })}
+          </Box>
+        </Box>
       )}
 
       {/* Add Source Dialog */}

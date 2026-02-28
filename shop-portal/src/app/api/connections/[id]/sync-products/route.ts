@@ -1212,6 +1212,116 @@ export async function syncProductToDatabase(
       }
     }
 
+    // Extract taxClass and map to VAT
+    let vat_id: string | null = null
+    let shoprenter_tax_class_id: string | null = null
+    let gross_price: number | null = null
+
+    // Log taxClass extraction for debugging
+    console.log(`[SYNC] Product ${product.sku} - Checking taxClass...`)
+    console.log(`[SYNC] product.taxClass:`, JSON.stringify(product.taxClass, null, 2))
+    
+    // Handle taxClass - can be in different formats
+    let taxClassId: string | null = null
+    if (product.taxClass) {
+      if (typeof product.taxClass === 'string') {
+        taxClassId = product.taxClass
+      } else if (product.taxClass.id) {
+        taxClassId = product.taxClass.id
+      } else if (product.taxClass.href) {
+        // Extract ID from href like: "http://shopname.api.myshoprenter.hu/taxClasses/dGF4Q2xhc3MtdGF4X2NsYXNzX2lkPTEw"
+        const hrefMatch = product.taxClass.href.match(/\/taxClasses\/([^\/\?]+)/)
+        if (hrefMatch && hrefMatch[1]) {
+          taxClassId = hrefMatch[1]
+        }
+      }
+    }
+
+    if (taxClassId) {
+      shoprenter_tax_class_id = taxClassId
+      console.log(`[SYNC] Product ${product.sku} - Found taxClass ID: ${taxClassId}`)
+      
+      // Find mapping: ShopRenter taxClass → ERP vat_id
+      const { data: mapping, error: mappingError } = await supabase
+        .from('shoprenter_tax_class_mappings')
+        .select('vat_id')
+        .eq('connection_id', connection.id)
+        .eq('shoprenter_tax_class_id', taxClassId)
+        .single()
+      
+      if (mappingError) {
+        console.warn(`[SYNC] Product ${product.sku} - No VAT mapping found for taxClass ${taxClassId}:`, mappingError.message)
+      } else if (mapping) {
+        vat_id = mapping.vat_id
+        console.log(`[SYNC] Product ${product.sku} - Mapped taxClass ${taxClassId} to vat_id: ${vat_id}`)
+      } else {
+        console.warn(`[SYNC] Product ${product.sku} - No VAT mapping found for taxClass ${taxClassId}`)
+      }
+    } else {
+      console.log(`[SYNC] Product ${product.sku} - No taxClass found in product data`)
+    }
+
+    // Calculate gross_price from net + VAT
+    const netPrice = product.price ? parseFloat(product.price) : null
+    
+    // Log cost and multiplier for debugging
+    if (product.cost) {
+      console.log(`[SYNC] Product ${product.sku} - Cost from ShopRenter: ${product.cost}`)
+    }
+    if (product.multiplier) {
+      console.log(`[SYNC] Product ${product.sku} - Multiplier from ShopRenter: ${product.multiplier}, Locked: ${product.multiplierLock}`)
+    }
+    
+    // Edge case handling for PULL (ShopRenter → ERP)
+    let finalCost = product.cost ? parseFloat(product.cost) : null
+    let finalMultiplier = product.multiplier ? parseFloat(product.multiplier) : 1.0
+    let finalPrice = netPrice
+
+    if (finalPrice && finalPrice > 0) {
+      // Case 2: Has cost, no multiplier (or multiplier is 1.0) -> calculate multiplier
+      if (finalCost && finalCost > 0 && (!product.multiplier || parseFloat(product.multiplier) === 1.0)) {
+        finalMultiplier = finalPrice / finalCost
+        console.log(`[SYNC] Product ${product.sku} - Calculated multiplier from cost: ${finalMultiplier.toFixed(3)} (price: ${finalPrice}, cost: ${finalCost})`)
+      }
+      
+      // Case 3: No cost, has multiplier (and multiplier is not 1.0) -> calculate cost
+      if (!finalCost && finalMultiplier > 0 && finalMultiplier !== 1.0) {
+        finalCost = finalPrice / finalMultiplier
+        console.log(`[SYNC] Product ${product.sku} - Calculated cost from multiplier: ${finalCost.toFixed(2)} (price: ${finalPrice}, multiplier: ${finalMultiplier})`)
+      }
+      
+      // Case 4: Has both, but don't match -> validate and fix
+      if (finalCost && finalCost > 0 && finalMultiplier > 0) {
+        const expectedPrice = finalCost * finalMultiplier
+        const difference = Math.abs(finalPrice - expectedPrice)
+        
+        if (difference > 0.01) {
+          console.warn(`[SYNC] Product ${product.sku} - ⚠️ Price mismatch: cost (${finalCost}) × multiplier (${finalMultiplier}) = ${expectedPrice.toFixed(2)}, but price is ${finalPrice}`)
+          // Fix multiplier to match price / cost (more reliable than fixing price)
+          finalMultiplier = finalPrice / finalCost
+          console.log(`[SYNC] Product ${product.sku} - Fixed multiplier to: ${finalMultiplier.toFixed(3)}`)
+        }
+      }
+    } else {
+      // Case 5: No price -> clear cost and multiplier
+      finalCost = null
+      finalMultiplier = 1.0
+      console.log(`[SYNC] Product ${product.sku} - No price found, clearing cost and multiplier`)
+    }
+    
+    if (finalPrice && vat_id) {
+      // Fetch VAT rate
+      const { data: vat } = await supabase
+        .from('vat')
+        .select('kulcs')
+        .eq('id', vat_id)
+        .single()
+      
+      if (vat) {
+        gross_price = Math.round(finalPrice * (1 + vat.kulcs / 100))
+      }
+    }
+
     // Extract product data
     const productData = {
       connection_id: connection.id,
@@ -1223,11 +1333,15 @@ export async function syncProductToDatabase(
       name: null, // Will be set from description
       brand: brand, // Brand/manufacturer name from ShopRenter
       status: product.status === '1' || product.status === 1 ? 1 : 0,
-      // Pricing fields (Árazás)
-      price: product.price ? parseFloat(product.price) : null, // Nettó ár
-      cost: product.cost ? parseFloat(product.cost) : null, // Beszerzési ár
-      multiplier: product.multiplier ? parseFloat(product.multiplier) : 1.0, // Árazási szorzó
+      // Pricing fields (Árazás) - using calculated values
+      price: finalPrice, // Nettó ár
+      cost: finalCost, // Beszerzési ár (calculated if needed)
+      multiplier: Math.round(finalMultiplier * 1000) / 1000, // Árazási szorzó (calculated if needed, rounded to 3 decimals)
       multiplier_lock: product.multiplierLock === '1' || product.multiplierLock === 1 || product.multiplierLock === true, // Szorzó zárolás
+      // VAT fields
+      vat_id: vat_id,
+      gross_price: gross_price,
+      shoprenter_tax_class_id: shoprenter_tax_class_id,
       // Parent-child relationship
       parent_product_id: parentProductId, // UUID of parent product in our database
       // Product attributes (size, color, dimensions, etc.)
@@ -1632,6 +1746,7 @@ export async function syncProductToDatabase(
           meta_description: desc.metaDescription || null,
           short_description: desc.shortDescription || null,
           description: desc.description || null,
+          parameters: desc.parameters || null, // Add parameters field
           shoprenter_id: desc.id || null
         }
 
@@ -1712,17 +1827,56 @@ export async function syncProductToDatabase(
           // Use flexible matching: normalize paths for comparison
           const normalizePath = (path: string) => {
             if (!path) return ''
-            // Remove leading "data/" if present, normalize slashes
-            return path.replace(/^data\//, '').replace(/\\/g, '/').toLowerCase()
+            // Remove leading "data/" if present, normalize slashes, remove query params
+            return path
+              .replace(/^data\//, '')
+              .replace(/\\/g, '/')
+              .split('?')[0] // Remove query params
+              .toLowerCase()
+              .trim()
+          }
+
+          // Extract filename from path for better matching
+          const getFilename = (path: string) => {
+            if (!path) return ''
+            const normalized = normalizePath(path)
+            const parts = normalized.split('/')
+            return parts[parts.length - 1] || normalized
           }
 
           const normalizedExtractedPath = normalizePath(img.imagePath)
+          const extractedFilename = getFilename(img.imagePath)
+          
+          // Try multiple matching strategies
           const matchingShopRenterImage = shoprenterImages.find((srImg: any) => {
             const normalizedShopRenterPath = normalizePath(srImg.imagePath)
-            // Exact match or path ends match
-            return normalizedExtractedPath === normalizedShopRenterPath ||
-                   normalizedExtractedPath.endsWith(normalizedShopRenterPath) ||
-                   normalizedShopRenterPath.endsWith(normalizedExtractedPath)
+            const shoprenterFilename = getFilename(srImg.imagePath)
+            
+            // Strategy 1: Exact normalized path match
+            if (normalizedExtractedPath === normalizedShopRenterPath) {
+              return true
+            }
+            
+            // Strategy 2: Filename match (most reliable for secondary images)
+            if (extractedFilename && shoprenterFilename && extractedFilename === shoprenterFilename) {
+              return true
+            }
+            
+            // Strategy 3: Path ends match (one contains the other)
+            if (normalizedExtractedPath && normalizedShopRenterPath) {
+              if (normalizedExtractedPath.endsWith(normalizedShopRenterPath) ||
+                  normalizedShopRenterPath.endsWith(normalizedExtractedPath)) {
+                return true
+              }
+            }
+            
+            // Strategy 4: Check if sortOrder matches (for secondary images)
+            // This is a fallback if path matching fails
+            if (!img.isMain && srImg.sortOrder && img.sortOrder === srImg.sortOrder) {
+              return true
+            }
+            
+            return false
           })
 
           if (matchingShopRenterImage) {
@@ -1732,16 +1886,32 @@ export async function syncProductToDatabase(
               imageData.alt_text = matchingShopRenterImage.imageAlt
               imageData.alt_text_status = 'synced'
               imageData.alt_text_synced_at = new Date().toISOString()
-              console.log(`[SYNC] Set alt text from productImages for ${img.imagePath}: "${matchingShopRenterImage.imageAlt}"`)
+              console.log(`[SYNC] ✓ Matched and set alt text from productImages for ${img.isMain ? 'main' : 'secondary'} image ${img.imagePath}: "${matchingShopRenterImage.imageAlt}"`)
             } else if (!imageData.alt_text) {
               imageData.alt_text_status = 'pending'
+              console.log(`[SYNC] ⚠ Matched ShopRenter image for ${img.imagePath} but no alt text available`)
+            } else {
+              console.log(`[SYNC] ✓ Matched ShopRenter image for ${img.imagePath} (alt text already set from productExtend)`)
             }
           } else {
-            // No match found
+            // No match found - log details for debugging
             if (!imageData.alt_text) {
               imageData.alt_text_status = 'pending'
             }
-            console.log(`[SYNC] No matching ShopRenter image found for ${img.imagePath} (extracted: "${normalizedExtractedPath}")`)
+            console.log(`[SYNC] ⚠ No matching ShopRenter image found for ${img.isMain ? 'main' : 'secondary'} image:`)
+            console.log(`[SYNC]   - Extracted path: "${img.imagePath}" (normalized: "${normalizedExtractedPath}", filename: "${extractedFilename}")`)
+            console.log(`[SYNC]   - Sort order: ${img.sortOrder}`)
+            if (shoprenterImages.length > 0) {
+              console.log(`[SYNC]   - Available ShopRenter images:`, shoprenterImages.map((sr: any) => ({
+                path: sr.imagePath,
+                normalized: normalizePath(sr.imagePath),
+                filename: getFilename(sr.imagePath),
+                sortOrder: sr.sortOrder,
+                alt: sr.imageAlt || '(no alt)'
+              })))
+            } else {
+              console.log(`[SYNC]   - No ShopRenter images fetched from API`)
+            }
           }
 
           await supabase
@@ -1881,6 +2051,87 @@ export async function syncProductToDatabase(
     } catch (relationSyncError: any) {
       // Don't fail the entire sync if relation sync fails
       console.warn(`[SYNC] Failed to sync product-category relations for product ${product.sku}:`, relationSyncError?.message || relationSyncError)
+    }
+
+    // Sync product tags (productTags)
+    try {
+      if (product.productTags && Array.isArray(product.productTags) && product.productTags.length > 0) {
+        console.log(`[SYNC] Processing ${product.productTags.length} product tags for product ${product.sku}`)
+        
+        for (const tagData of product.productTags) {
+          try {
+            // Determine language code
+            let languageCode = 'hu' // Default
+            if (tagData.language?.innerId) {
+              languageCode = tagData.language.innerId === '1' || tagData.language.innerId === 1 ? 'hu' : 'en'
+            } else if (tagData.language?.id) {
+              // Try to extract from href
+              const langMatch = tagData.language.href?.match(/language[_-]language_id=(\d+)/i)
+              if (langMatch) {
+                languageCode = langMatch[1] === '1' ? 'hu' : 'en'
+              }
+            }
+
+            // Get tags string (comma-separated)
+            const tagsString = tagData.tags || ''
+            
+            if (!tagsString || tagsString.trim().length === 0) {
+              console.log(`[SYNC] Skipping empty product tags for product ${product.sku}, language ${languageCode}`)
+              continue
+            }
+
+            // Check if tag entry already exists
+            const { data: existingTag } = await supabase
+              .from('product_tags')
+              .select('*')
+              .eq('product_id', dbProduct.id)
+              .eq('language_code', languageCode)
+              .is('deleted_at', null)
+              .single()
+
+            const tagDataToSave = {
+              product_id: dbProduct.id,
+              connection_id: connection.id,
+              language_code: languageCode,
+              tags: tagsString.trim(),
+              shoprenter_id: tagData.id || tagData.href?.split('/').pop() || null
+            }
+
+            if (existingTag) {
+              // Update existing tag entry
+              const { error: updateError } = await supabase
+                .from('product_tags')
+                .update(tagDataToSave)
+                .eq('id', existingTag.id)
+
+              if (updateError) {
+                console.error(`[SYNC] Failed to update product tags for product ${product.sku}, language ${languageCode}:`, updateError)
+              } else {
+                console.log(`[SYNC] Updated product tags for product ${product.sku}, language ${languageCode}: "${tagsString}"`)
+              }
+            } else {
+              // Insert new tag entry
+              const { error: insertError } = await supabase
+                .from('product_tags')
+                .insert(tagDataToSave)
+
+              if (insertError) {
+                console.error(`[SYNC] Failed to insert product tags for product ${product.sku}, language ${languageCode}:`, insertError)
+              } else {
+                console.log(`[SYNC] Inserted product tags for product ${product.sku}, language ${languageCode}: "${tagsString}"`)
+              }
+            }
+          } catch (tagError: any) {
+            console.warn(`[SYNC] Error processing product tag for product ${product.sku}:`, tagError?.message || tagError)
+            // Continue with next tag
+          }
+        }
+      } else {
+        console.log(`[SYNC] No product tags found for product ${product.sku}`)
+      }
+    } catch (tagSyncError: any) {
+      // Don't fail the entire sync if tag sync fails
+      console.warn(`[SYNC] Failed to sync product tags for product ${product.sku}:`, tagSyncError?.message || tagSyncError)
     }
 
   } catch (error) {
