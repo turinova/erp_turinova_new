@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateProductDescription } from '@/lib/ai-generation-service'
 import { trackAIUsage } from '@/lib/ai-usage-tracker'
+import { checkCreditsForAIFeature } from '@/lib/credit-checker'
 
 /**
  * POST /api/products/[id]/generate-description
@@ -37,6 +38,21 @@ export async function POST(
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check credits before generation
+    const creditCheck = await checkCreditsForAIFeature(user.id, 'product_description')
+    if (!creditCheck.hasEnough) {
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient credits',
+        credits: {
+          available: creditCheck.available,
+          required: creditCheck.required,
+          limit: creditCheck.limit,
+          used: creditCheck.used
+        }
+      }, { status: 402 }) // 402 Payment Required
     }
 
     // Get request body
@@ -89,13 +105,15 @@ export async function POST(
       // Continue anyway - generation was successful
     }
 
-    // Track AI usage
+    // Track AI usage (credits will be calculated automatically)
     await trackAIUsage({
       userId: user.id,
       featureType: 'product_description',
       tokensUsed: result.tokensUsed,
       modelUsed: result.modelUsed,
       productId: id,
+      creditsUsed: 5, // Explicitly set for product description
+      creditType: 'ai_generation',
       metadata: {
         wordCount: result.wordCount,
         sourceMaterialsUsed: result.sourceMaterialsUsed.length,

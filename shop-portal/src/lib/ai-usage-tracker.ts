@@ -1,14 +1,17 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { calculateCreditsForAI, AIFeatureType } from './credit-calculator'
 
 export interface TrackUsageParams {
   userId: string
-  featureType: 'product_description' | 'meta_title' | 'meta_keywords' | 'meta_description' | 'url_slug' | 'category_description' | 'category_meta'
+  featureType: AIFeatureType
   tokensUsed: number
   modelUsed: string
   productId?: string
   categoryId?: string
   metadata?: Record<string, any>
+  creditsUsed?: number // Optional - will be calculated if not provided
+  creditType?: 'ai_generation' | 'competitor_scrape' // Default: 'ai_generation'
 }
 
 export async function trackAIUsage(params: TrackUsageParams) {
@@ -32,8 +35,15 @@ export async function trackAIUsage(params: TrackUsageParams) {
 
     // Estimate cost (adjust based on your AI provider pricing)
     const costEstimate = estimateCost(params.tokensUsed, params.modelUsed)
+    
+    // Calculate credits if not provided
+    const creditsUsed = params.creditsUsed ?? calculateCreditsForAI(params.featureType)
+    
+    // Determine credit type
+    const creditType = params.creditType || 
+      (params.featureType.includes('competitor') ? 'competitor_scrape' : 'ai_generation')
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('ai_usage_logs')
       .insert({
         user_id: params.userId,
@@ -43,12 +53,30 @@ export async function trackAIUsage(params: TrackUsageParams) {
         tokens_used: params.tokensUsed,
         model_used: params.modelUsed,
         cost_estimate: costEstimate,
+        credits_used: creditsUsed,
+        credit_type: creditType,
         metadata: params.metadata || {}
       })
+      .select()
 
     if (error) {
       console.error('Error tracking AI usage:', error)
+      console.error('Failed to insert usage log:', {
+        userId: params.userId,
+        featureType: params.featureType,
+        creditsUsed,
+        creditType,
+        error: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint
+      })
       // Don't throw - usage tracking shouldn't break the feature
+    } else {
+      console.log(`[AI USAGE TRACKED] User ${params.userId}: ${params.featureType} - ${creditsUsed} credits (${creditType})`)
+      if (data && data.length > 0) {
+        console.log(`[AI USAGE TRACKED] Inserted log ID: ${data[0].id}`)
+      }
     }
   } catch (error) {
     console.error('Error in trackAIUsage:', error)

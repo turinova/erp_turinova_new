@@ -34,25 +34,25 @@ const Providers = async (props: Props) => {
     <AuthProvider>
       <PermissionProvider>
         <SubscriptionProvider>
-          <VerticalNavProvider>
-            <SettingsProvider settingsCookie={settingsCookie} mode={mode}>
-              <ThemeProvider direction={direction}>
-                {children}
-                <ToastContainer
-                  position="top-right"
-                  autoClose={3000}
-                  hideProgressBar={false}
-                  newestOnTop={false}
-                  closeOnClick
-                  rtl={false}
-                  pauseOnFocusLoss
-                  draggable
-                  pauseOnHover
-                  theme="light"
-                />
-              </ThemeProvider>
-            </SettingsProvider>
-          </VerticalNavProvider>
+        <VerticalNavProvider>
+          <SettingsProvider settingsCookie={settingsCookie} mode={mode}>
+            <ThemeProvider direction={direction}>
+              {children}
+              <ToastContainer
+                position="top-right"
+                autoClose={3000}
+                hideProgressBar={false}
+                newestOnTop={false}
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+              />
+            </ThemeProvider>
+          </SettingsProvider>
+        </VerticalNavProvider>
         </SubscriptionProvider>
       </PermissionProvider>
     </AuthProvider>

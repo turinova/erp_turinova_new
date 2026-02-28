@@ -3,6 +3,34 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateAllMetaFields, generateMetaTitle, generateMetaKeywords, generateMetaDescription, MetaGenerationContext } from '@/lib/meta-seo-generation-service'
 import { trackAIUsage } from '@/lib/ai-usage-tracker'
+import { checkAvailableCredits } from '@/lib/credit-checker'
+
+// Helper to get current month credit usage (for response)
+async function getCurrentMonthCreditUsage(userId: string): Promise<number> {
+  const cookieStore = await cookies()
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    supabaseAnonKey!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
+        },
+      },
+    }
+  )
+
+  const { data } = await supabase
+    .rpc('get_user_credit_usage_current_month', { user_uuid: userId })
+
+  return data?.[0]?.total_credits_used || 0
+}
 
 /**
  * POST /api/products/[id]/generate-meta
@@ -42,6 +70,29 @@ export async function POST(
   try {
     const body = await request.json()
     const { fields = ['title', 'keywords', 'description'] } = body // Default to all fields
+
+    // Calculate total credits needed
+    let totalCreditsNeeded = 0
+    if (fields.includes('title')) totalCreditsNeeded += 1
+    if (fields.includes('keywords')) totalCreditsNeeded += 1
+    if (fields.includes('description')) totalCreditsNeeded += 1
+
+    // Check credits before generation
+    if (totalCreditsNeeded > 0) {
+      const creditCheck = await checkAvailableCredits(user.id, totalCreditsNeeded)
+      if (!creditCheck.hasEnough) {
+        return NextResponse.json({
+          success: false,
+          error: 'Insufficient credits',
+          credits: {
+            available: creditCheck.available,
+            required: creditCheck.required,
+            limit: creditCheck.limit,
+            used: creditCheck.used
+          }
+        }, { status: 402 }) // 402 Payment Required
+      }
+    }
 
     // Fetch product data
     const { data: product, error: productError } = await supabase
@@ -164,6 +215,8 @@ export async function POST(
         tokensUsed: 200,
         modelUsed: 'claude-sonnet-4-6',
         productId: productId,
+        creditsUsed: 1,
+        creditType: 'ai_generation',
         metadata: { generated: true }
       })
     }
@@ -178,6 +231,8 @@ export async function POST(
         tokensUsed: 150,
         modelUsed: 'claude-sonnet-4-6',
         productId: productId,
+        creditsUsed: 1,
+        creditType: 'ai_generation',
         metadata: { generated: true }
       })
     }
@@ -192,13 +247,20 @@ export async function POST(
         tokensUsed: 250,
         modelUsed: 'claude-sonnet-4-6',
         productId: productId,
+        creditsUsed: 1,
+        creditType: 'ai_generation',
         metadata: { generated: true }
       })
     }
 
+    // Return success with credit info for frontend refresh
     return NextResponse.json({
       success: true,
-      ...result
+      ...result,
+      credits: {
+        used: await getCurrentMonthCreditUsage(user.id),
+        // Note: Frontend should refresh subscription context to get updated credit usage
+      }
     })
   } catch (error) {
     console.error('Error in POST /api/products/[id]/generate-meta:', error)

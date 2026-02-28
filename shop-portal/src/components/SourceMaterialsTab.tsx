@@ -406,7 +406,7 @@ export default function SourceMaterialsTab({ productId }: SourceMaterialsTabProp
                       {source.processing_error && (
                         <Typography variant="caption" color="error" sx={{ fontSize: '0.7rem', display: 'block', mt: 0.5 }}>
                           {source.processing_error}
-                        </Typography>
+                          </Typography>
                       )}
                     </Grid>
 
@@ -430,10 +430,10 @@ export default function SourceMaterialsTab({ productId }: SourceMaterialsTabProp
                     {/* Status */}
                     <Grid item xs={2}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {getStatusIcon(source.processing_status)}
+                            {getStatusIcon(source.processing_status)}
                         <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                          {getStatusLabel(source.processing_status)}
-                        </Typography>
+                              {getStatusLabel(source.processing_status)}
+                            </Typography>
                       </Box>
                     </Grid>
 
@@ -443,43 +443,43 @@ export default function SourceMaterialsTab({ productId }: SourceMaterialsTabProp
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                           {source.source_type === 'pdf' ? 'PDF' : source.source_type === 'url' ? 'URL' : 'Szöveg'}
                         </Typography>
-                        {source.processing_status === 'processed' && source.extracted_text && (
+                            {source.processing_status === 'processed' && source.extracted_text && (
                           <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                             {source.extracted_text.split(/\s+/).length} szó
-                          </Typography>
-                        )}
-                      </Box>
+                              </Typography>
+                            )}
+                          </Box>
                     </Grid>
 
                     {/* Actions */}
                     <Grid item xs={1.5}>
                       <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', justifyContent: 'flex-end' }}>
-                        {source.processing_status === 'pending' && source.source_type !== 'text' && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => processSource(source.id)}
-                            disabled={processingId === source.id}
+                          {source.processing_status === 'pending' && source.source_type !== 'text' && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => processSource(source.id)}
+                              disabled={processingId === source.id}
                             sx={{ fontSize: '0.7rem', minHeight: '28px', px: 1 }}
-                          >
+                            >
                             {processingId === source.id ? '...' : 'Feldolgozás'}
-                          </Button>
-                        )}
-                        <IconButton
+                            </Button>
+                          )}
+                    <IconButton
                           size="small"
-                          onClick={() => handleDelete(source.id)}
-                          disabled={deletingId === source.id}
+                      onClick={() => handleDelete(source.id)}
+                      disabled={deletingId === source.id}
                           sx={{ 
                             color: 'text.secondary',
                             '&:hover': { bgcolor: 'error.light', color: 'error.main' }
                           }}
-                        >
+                    >
                           {deletingId === source.id ? <CircularProgress size={16} /> : <DeleteIcon fontSize="small" />}
-                        </IconButton>
-                      </Box>
+                    </IconButton>
+                </Box>
                     </Grid>
                   </Grid>
-                </Paper>
+            </Paper>
               )
             })}
           </Box>

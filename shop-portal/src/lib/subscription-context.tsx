@@ -30,6 +30,11 @@ export interface AIUsageStats {
   percentage_used: number
   total_cost: number
   usage_count: number
+  // Credit usage (new unified system)
+  credit_used?: number
+  credit_limit?: number | null
+  credit_remaining?: number | null
+  credit_percentage?: number
 }
 
 interface SubscriptionContextType {
@@ -51,10 +56,11 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const loadSubscription = async () => {
     try {
-      const res = await fetch('/api/subscription/current')
+      // Add cache busting timestamp to ensure fresh data
+      const res = await fetch(`/api/subscription/current?t=${Date.now()}`)
       if (res.ok) {
         const data = await res.json()
-        if (data.success) {
+        if (data.success && data.subscription) {
           setSubscription(data.subscription)
         } else {
           setSubscription(null)
@@ -70,11 +76,35 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
   const loadUsage = async () => {
     try {
-      const res = await fetch('/api/subscription/usage')
+      // Add cache busting timestamp to ensure fresh data
+      const res = await fetch(`/api/subscription/usage?t=${Date.now()}`)
       if (res.ok) {
         const data = await res.json()
         if (data.success) {
-          setAiUsage(data.usage)
+          // Get credit limit - ALWAYS prioritize subscription plan (most up-to-date, especially after test-override)
+          // Fallback to creditUsage only if subscription plan doesn't have it
+          let creditLimit: number | null = null
+          if (data.subscription?.plan?.ai_credits_per_month !== undefined) {
+            creditLimit = data.subscription.plan.ai_credits_per_month
+          } else if (data.creditUsage?.credit_limit !== undefined) {
+            creditLimit = data.creditUsage.credit_limit
+          }
+          
+          const totalCreditsUsed = data.creditUsage?.total_credits_used || 0
+          
+          // Merge credit usage into aiUsage
+          const usage = {
+            ...data.usage,
+            credit_used: totalCreditsUsed,
+            credit_limit: creditLimit !== undefined && creditLimit !== null ? creditLimit : null,
+            credit_remaining: creditLimit !== null && creditLimit !== Infinity && creditLimit !== undefined
+              ? Math.max(0, creditLimit - totalCreditsUsed)
+              : null,
+            credit_percentage: creditLimit !== null && creditLimit !== Infinity && creditLimit !== undefined && creditLimit > 0
+              ? Math.min(100, (totalCreditsUsed / creditLimit) * 100)
+              : 0
+          }
+          setAiUsage(usage)
         } else {
           setAiUsage(null)
         }
@@ -105,8 +135,20 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const canUseAI = (): boolean => {
     if (!hasFeature('ai_generation')) return false
     if (!aiUsage) return false
-    if (aiUsage.monthly_limit === null) return true // Unlimited
-    return aiUsage.current_month < aiUsage.monthly_limit
+    
+    // Use credit system (new unified system)
+    // If credit_limit is null or Infinity, it's unlimited
+    if (aiUsage.credit_limit === null || aiUsage.credit_limit === Infinity) return true
+    
+    // Check if user has available credits
+    const creditUsed = aiUsage.credit_used || 0
+    const creditLimit = aiUsage.credit_limit || 0
+    const creditRemaining = aiUsage.credit_remaining !== null && aiUsage.credit_remaining !== undefined
+      ? aiUsage.credit_remaining
+      : Math.max(0, creditLimit - creditUsed)
+    
+    // Allow if there are remaining credits
+    return creditRemaining > 0
   }
 
   return (

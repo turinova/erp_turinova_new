@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSubscription } from '@/lib/subscription-context'
 import { useRouter } from 'next/navigation'
 import { Box, Button, Paper, Typography, CircularProgress, Tooltip } from '@mui/material'
@@ -15,6 +15,8 @@ interface FeatureGateProps {
 }
 
 export function FeatureGate({ feature, children, showUpgrade = true, disabled = false, compact = false }: FeatureGateProps) {
+  const [refreshKey, setRefreshKey] = useState(0)
+  
   let subscriptionContext
   try {
     subscriptionContext = useSubscription()
@@ -28,8 +30,20 @@ export function FeatureGate({ feature, children, showUpgrade = true, disabled = 
     )
   }
 
-  const { hasFeature, subscription, loading, canUseAI } = subscriptionContext
+  const { hasFeature, subscription, loading, canUseAI, aiUsage, refreshUsage } = subscriptionContext
   const router = useRouter()
+
+  // Listen for credit limit updates
+  useEffect(() => {
+    const handleCreditLimitUpdate = () => {
+      console.log('[FeatureGate] Credit limit updated, refreshing usage...')
+      refreshUsage()
+      setRefreshKey(prev => prev + 1)
+    }
+
+    window.addEventListener('creditLimitUpdated', handleCreditLimitUpdate)
+    return () => window.removeEventListener('creditLimitUpdated', handleCreditLimitUpdate)
+  }, [refreshUsage])
 
   if (loading) {
     return (
@@ -52,6 +66,16 @@ export function FeatureGate({ feature, children, showUpgrade = true, disabled = 
   if (feature === 'ai_generation') {
     const hasAIFeature = hasFeature('ai_generation')
     const canUse = canUseAI ? canUseAI() : false
+    
+    // Debug logging
+    if (!canUse && hasAIFeature) {
+      console.log('[FeatureGate] AI feature disabled due to credit limit:', {
+        hasAIFeature,
+        canUse,
+        aiUsage: subscriptionContext.aiUsage
+      })
+    }
+    
     if (!hasAIFeature || !canUse) {
       // If compact mode, show tooltip on disabled children
       if (compact) {

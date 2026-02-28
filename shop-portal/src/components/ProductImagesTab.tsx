@@ -224,38 +224,38 @@ export default function ProductImagesTab({ productId, hideBulkActions = false }:
   return (
     <Box>
       {!hideBulkActions && (
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h6">
-            Termékképek ({images.length})
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <Button
-              variant="outlined"
-              startIcon={generatingAll ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-              onClick={() => setGenerateAllDialogOpen(true)}
-              disabled={generatingAll || syncingAll || pendingCount === 0}
-            >
-              Összes generálása ({pendingCount})
-            </Button>
-            <Button
-              variant="outlined"
-              color="success"
-              startIcon={syncingAll ? <CircularProgress size={16} /> : <SyncIcon />}
-              onClick={() => setSyncAllDialogOpen(true)}
-              disabled={generatingAll || syncingAll || unsyncedCount === 0}
-            >
-              Összes szinkronizálása ({unsyncedCount})
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={<RefreshIcon />}
-              onClick={fetchImages}
-              disabled={generatingAll || syncingAll}
-            >
-              Frissítés
-            </Button>
-          </Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h6">
+          Termékképek ({images.length})
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={generatingAll ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+            onClick={() => setGenerateAllDialogOpen(true)}
+            disabled={generatingAll || syncingAll || pendingCount === 0}
+          >
+            Összes generálása ({pendingCount})
+          </Button>
+          <Button
+            variant="outlined"
+            color="success"
+            startIcon={syncingAll ? <CircularProgress size={16} /> : <SyncIcon />}
+            onClick={() => setSyncAllDialogOpen(true)}
+            disabled={generatingAll || syncingAll || unsyncedCount === 0}
+          >
+            Összes szinkronizálása ({unsyncedCount})
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<RefreshIcon />}
+            onClick={fetchImages}
+            disabled={generatingAll || syncingAll}
+          >
+            Frissítés
+          </Button>
         </Box>
+      </Box>
       )}
 
       <Grid container spacing={1.5}>

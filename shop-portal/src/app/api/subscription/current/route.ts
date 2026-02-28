@@ -74,7 +74,8 @@ export async function GET(request: NextRequest) {
         slug: planData.slug,
         price_monthly: planData.price_monthly,
         price_yearly: planData.price_yearly,
-        features: planData.features
+        features: planData.features,
+        ai_credits_per_month: planData.ai_credits_per_month // Include credit limit
       }
     }
 

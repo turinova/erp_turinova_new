@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Anthropic from '@anthropic-ai/sdk'
 import { trackAIUsage } from '@/lib/ai-usage-tracker'
+import { checkCreditsForAIFeature } from '@/lib/credit-checker'
 
 /**
  * POST /api/products/[id]/tags/generate
@@ -272,6 +273,8 @@ Generate 5-10 highly relevant tags in Hungarian, comma-separated.`
       tokensUsed: estimatedTokens,
       modelUsed: 'claude-haiku-4-5-20251001',
       productId: id,
+      creditsUsed: 1,
+      creditType: 'ai_generation',
       metadata: { generated: true }
     })
 

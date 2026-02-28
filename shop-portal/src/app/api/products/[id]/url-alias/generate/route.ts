@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Anthropic from '@anthropic-ai/sdk'
 import { trackAIUsage } from '@/lib/ai-usage-tracker'
+import { checkCreditsForAIFeature } from '@/lib/credit-checker'
 
 /**
  * POST /api/products/[id]/url-alias/generate
@@ -32,6 +33,21 @@ export async function POST(
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check credits before generation
+    const creditCheck = await checkCreditsForAIFeature(user.id, 'url_slug')
+    if (!creditCheck.hasEnough) {
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient credits',
+        credits: {
+          available: creditCheck.available,
+          required: creditCheck.required,
+          limit: creditCheck.limit,
+          used: creditCheck.used
+        }
+      }, { status: 402 }) // 402 Payment Required
     }
 
     // Get product with descriptions
@@ -171,6 +187,8 @@ Return ONLY the slug, nothing else. Example: "blum-clip-top-blumotion-pant-110-f
       tokensUsed: estimatedTokens,
       modelUsed: 'claude-haiku-4-5-20251001',
       productId: id,
+      creditsUsed: 1,
+      creditType: 'ai_generation',
       metadata: { generated: true }
     })
 

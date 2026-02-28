@@ -22,7 +22,8 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  Tooltip
 } from '@mui/material'
 import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
@@ -885,6 +886,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
       const result = await response.json()
 
+      if (response.status === 402) {
+        // Insufficient credits
+        const credits = result.credits || {}
+        toast.error(
+          `Nincs elég credit! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+
       if (result.success) {
         // Update form data with generated values
         const updates: any = {}
@@ -893,6 +904,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         if (result.meta_description) updates.meta_description = result.meta_description
 
         setFormData(prev => ({ ...prev, ...updates }))
+        
+        // Trigger credit usage refresh in navbar
+        window.dispatchEvent(new Event('creditUsageUpdated'))
         
         const fieldNames = {
           title: 'Meta cím',
@@ -922,9 +936,23 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       
       const result = await response.json()
       
+      if (response.status === 402) {
+        // Insufficient credits
+        const credits = result.credits || {}
+        toast.error(
+          `Nincs elég credit! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+      
       if (result.success && result.data) {
         setUrlSlug(result.data.suggestedSlug)
         setProductUrl(result.data.previewUrl)
+        
+        // Trigger credit usage refresh in navbar
+        window.dispatchEvent(new Event('creditUsageUpdated'))
+        
         toast.success('AI által generált URL slug betöltve')
       } else {
         toast.error(result.error || 'Hiba az AI generálás során')
@@ -946,8 +974,22 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       
       const result = await response.json()
       
+      if (response.status === 402) {
+        // Insufficient credits
+        const credits = result.credits || {}
+        toast.error(
+          `Nincs elég credit! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+      
       if (result.success && result.tags) {
         setProductTags(result.tags)
+        
+        // Trigger credit usage refresh in navbar
+        window.dispatchEvent(new Event('creditUsageUpdated'))
+        
         toast.success('AI által generált címkék betöltve')
       } else {
         toast.error(result.error || 'Hiba a címkék generálása során')
@@ -1021,6 +1063,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
       const result = await response.json()
 
+      if (response.status === 402) {
+        // Insufficient credits
+        const credits = result.credits || {}
+        toast.error(
+          `Nincs elég credit! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+
       if (result.success) {
         // Update the description field with generated content
         setFormData(prev => ({
@@ -1038,6 +1090,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         // Update product type and warnings
         setGeneratedProductType(result.productType || null)
         setGenerationWarnings(result.validationWarnings || [])
+        
+        // Trigger credit usage refresh in navbar
+        window.dispatchEvent(new Event('creditUsageUpdated'))
         
         // Show success message with product type info
         let successMessage = `Leírás sikeresen generálva! (${result.metrics.wordCount} szó, ${result.metrics.tokensUsed} token`
@@ -2161,16 +2216,18 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     Részletes leírás
                   </Typography>
                   <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
-                    <Button
-                      variant="outlined"
-                      size="small"
-                      startIcon={generating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                      onClick={() => setGenerationDialogOpen(true)}
-                      disabled={generating}
-                      sx={{ ml: 'auto' }}
-                    >
-                      {generating ? 'Generálás...' : 'AI'}
-                    </Button>
+                    <Tooltip title="AI generálás (5 credits)">
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={generating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                        onClick={() => setGenerationDialogOpen(true)}
+                        disabled={generating}
+                        sx={{ ml: 'auto' }}
+                      >
+                        {generating ? 'Generálás...' : 'AI'}
+                      </Button>
+                    </Tooltip>
                   </FeatureGate>
                 </Box>
                 <Box sx={{ position: 'relative', zIndex: 1 }}>
@@ -2327,15 +2384,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       InputProps={{
                         endAdornment: (
                           <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
-                            <Button
-                              size="small"
-                              startIcon={generatingTags ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                              onClick={handleGenerateTags}
-                              disabled={generatingTags}
-                              sx={{ minWidth: 'auto', ml: 1 }}
-                            >
-                              {generatingTags ? '' : 'AI'}
-                            </Button>
+                            <Tooltip title="AI generálás (1 credit)">
+                              <Button
+                                size="small"
+                                startIcon={generatingTags ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                                onClick={handleGenerateTags}
+                                disabled={generatingTags}
+                                sx={{ minWidth: 'auto', ml: 1 }}
+                              >
+                                {generatingTags ? '' : 'AI'}
+                              </Button>
+                            </Tooltip>
                           </FeatureGate>
                         )
                       }}
@@ -2420,15 +2479,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         InputProps={{
                           endAdornment: (
                             <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
-                              <Button
-                                size="small"
-                                startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                                onClick={handleGenerateUrlSlug}
-                                disabled={generatingUrlSlug}
-                                sx={{ minWidth: 'auto' }}
-                              >
-                                {generatingUrlSlug ? '' : 'AI'}
-                              </Button>
+                              <Tooltip title="AI generálás (1 credit)">
+                                <Button
+                                  size="small"
+                                  startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                                  onClick={handleGenerateUrlSlug}
+                                  disabled={generatingUrlSlug}
+                                  sx={{ minWidth: 'auto' }}
+                                >
+                                  {generatingUrlSlug ? '' : 'AI'}
+                                </Button>
+                              </Tooltip>
                             </FeatureGate>
                           )
                         }}
@@ -2520,15 +2581,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     InputProps={{
                       endAdornment: (
                         <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
-                          <Button
-                            size="small"
-                            startIcon={generatingMeta.title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                            onClick={() => handleGenerateMeta('title')}
-                            disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
-                            sx={{ minWidth: 'auto', ml: 1 }}
-                          >
-                            {generatingMeta.title ? '' : 'AI'}
-                          </Button>
+                          <Tooltip title="AI generálás (1 credit)">
+                            <Button
+                              size="small"
+                              startIcon={generatingMeta.title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                              onClick={() => handleGenerateMeta('title')}
+                              disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                              sx={{ minWidth: 'auto', ml: 1 }}
+                            >
+                              {generatingMeta.title ? '' : 'AI'}
+                            </Button>
+                          </Tooltip>
                         </FeatureGate>
                       )
                     }}
@@ -2577,15 +2640,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     InputProps={{
                       endAdornment: (
                         <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
-                          <Button
-                            size="small"
-                            startIcon={generatingMeta.keywords ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                            onClick={() => handleGenerateMeta('keywords')}
-                            disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
-                            sx={{ minWidth: 'auto', ml: 1 }}
-                          >
-                            {generatingMeta.keywords ? '' : 'AI'}
-                          </Button>
+                          <Tooltip title="AI generálás (1 credit)">
+                            <Button
+                              size="small"
+                              startIcon={generatingMeta.keywords ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                              onClick={() => handleGenerateMeta('keywords')}
+                              disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                              sx={{ minWidth: 'auto', ml: 1 }}
+                            >
+                              {generatingMeta.keywords ? '' : 'AI'}
+                            </Button>
+                          </Tooltip>
                         </FeatureGate>
                       )
                     }}
@@ -2641,15 +2706,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     InputProps={{
                       endAdornment: (
                         <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
-                          <Button
-                            size="small"
-                            startIcon={generatingMeta.description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                            onClick={() => handleGenerateMeta('description')}
-                            disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
-                            sx={{ minWidth: 'auto', ml: 1, alignSelf: 'flex-start', mt: 1 }}
-                          >
-                            {generatingMeta.description ? '' : 'AI'}
-                          </Button>
+                          <Tooltip title="AI generálás (1 credit)">
+                            <Button
+                              size="small"
+                              startIcon={generatingMeta.description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                              onClick={() => handleGenerateMeta('description')}
+                              disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                              sx={{ minWidth: 'auto', ml: 1, alignSelf: 'flex-start', mt: 1 }}
+                            >
+                              {generatingMeta.description ? '' : 'AI'}
+                            </Button>
+                          </Tooltip>
                         </FeatureGate>
                       )
                     }}
@@ -3002,15 +3069,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Button onClick={() => setGenerationDialogOpen(false)} disabled={generating}>
             Mégse
           </Button>
-          <Button
-            onClick={handleGenerateDescription}
-            variant="contained"
-            color="primary"
-            disabled={generating}
-            startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
-          >
-            {generating ? 'Generálás...' : 'Generálás'}
-          </Button>
+          <Tooltip title="AI generálás (5 credits)">
+            <Button
+              onClick={handleGenerateDescription}
+              variant="contained"
+              color="primary"
+              disabled={generating}
+              startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+            >
+              {generating ? 'Generálás...' : 'Generálás'}
+            </Button>
+          </Tooltip>
         </DialogActions>
       </Dialog>
     </Box>

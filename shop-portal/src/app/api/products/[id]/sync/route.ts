@@ -165,7 +165,7 @@ export async function POST(
         }
       }
     }
-
+    
     // Add pricing fields
     // IMPORTANT: ShopRenter calculates: price * multiplier * VAT
     // In ERP: cost * multiplier = price (net price already includes multiplier)

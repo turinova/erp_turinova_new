@@ -249,6 +249,16 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
 
       const result = await response.json()
 
+      if (response.status === 402) {
+        // Insufficient credits
+        const credits = result.credits || {}
+        toast.error(
+          `Nincs elég credit az ár ellenőrzéshez! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Hiba az ár ellenőrzése során')
       }
@@ -343,16 +353,18 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
             Frissítés
           </Button>
           {links.length > 0 && (
-            <Button
-              variant="outlined"
-              color="secondary"
-              startIcon={scrapingLinkId ? <CircularProgress size={18} /> : <SearchIcon />}
-              onClick={handleScrapeAll}
-              disabled={!!scrapingLinkId}
-              size="small"
-            >
-              {scrapingLinkId ? 'Ellenőrzés...' : 'Mind ellenőrzése'}
-            </Button>
+            <Tooltip title={`Mind ellenőrzése (${links.filter(l => l.is_active).length * 2} credits)`}>
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={scrapingLinkId ? <CircularProgress size={18} /> : <SearchIcon />}
+                onClick={handleScrapeAll}
+                disabled={!!scrapingLinkId}
+                size="small"
+              >
+                {scrapingLinkId ? 'Ellenőrzés...' : 'Mind ellenőrzése'}
+              </Button>
+            </Tooltip>
           )}
           <Button
             variant="contained"
@@ -541,7 +553,7 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
                       )}
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Ár ellenőrzése (AI)">
+                      <Tooltip title="Ár ellenőrzése (AI) - 2 credits">
                         <IconButton 
                           size="small" 
                           color="primary"

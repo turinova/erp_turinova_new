@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { scrapeCompetitorPrice, ScrapeConfig } from '@/lib/scraper'
+import { checkAvailableCredits } from '@/lib/credit-checker'
+import { calculateCreditsForCompetitor } from '@/lib/credit-calculator'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
 
 /**
  * POST /api/products/[id]/competitor-links/[linkId]/scrape
@@ -35,6 +38,22 @@ export async function POST(
   }
 
   try {
+    // Check credits before scraping (price scrape = 2 credits)
+    const creditsNeeded = calculateCreditsForCompetitor('price')
+    const creditCheck = await checkAvailableCredits(user.id, creditsNeeded)
+    if (!creditCheck.hasEnough) {
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient credits for scraping',
+        credits: {
+          available: creditCheck.available,
+          required: creditCheck.required,
+          limit: creditCheck.limit,
+          used: creditCheck.used
+        }
+      }, { status: 402 }) // 402 Payment Required
+    }
+
     // Get the competitor link with competitor details (including scrape_config)
     const { data: link, error: linkError } = await supabase
       .from('competitor_product_links')
@@ -168,6 +187,24 @@ export async function POST(
 
     console.log(`Updated scrape_config for ${link.competitor.name}: ${successCount} successful scrapes`)
 
+    // Track credit usage for competitor scraping
+    await trackAIUsage({
+      userId: user.id,
+      featureType: 'competitor_price_scrape',
+      tokensUsed: scrapeResult.aiModelUsed ? 500 : 0, // Estimate tokens for AI extraction
+      modelUsed: scrapeResult.aiModelUsed || 'playwright',
+      productId: productId,
+      creditsUsed: creditsNeeded,
+      creditType: 'competitor_scrape',
+      metadata: {
+        linkId,
+        competitorId: link.competitor_id,
+        competitorName: link.competitor?.name,
+        price: scrapeResult.price,
+        success: true
+      }
+    })
+
     return NextResponse.json({
       success: true,
       message: 'Ár sikeresen ellenőrizve',
@@ -183,6 +220,10 @@ export async function POST(
         productName: scrapeResult.productName,
         scrapeDurationMs: scrapeResult.scrapeDurationMs,
         confidence: scrapeResult.extractedData?.confidence
+      },
+      credits: {
+        used: creditsNeeded,
+        remaining: creditCheck.available - creditsNeeded
       }
     })
   } catch (error: any) {

@@ -13,31 +13,74 @@ import {
   Chip,
   Alert,
   CircularProgress,
+  TextField,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TableRow
+  TableRow,
+  Collapse,
+  IconButton,
+  TablePagination
 } from '@mui/material'
 import {
   CheckCircle as CheckCircleIcon,
   Lock as LockIcon,
   TrendingUp as TrendingUpIcon,
-  CreditCard as CreditCardIcon
+  CreditCard as CreditCardIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Description as DescriptionIcon,
+  Title as TitleIcon,
+  Search as SearchIcon,
+  Link as LinkIcon,
+  LocalOffer as LocalOfferIcon,
+  Assessment as AssessmentIcon
 } from '@mui/icons-material'
 import { useSubscription } from '@/lib/subscription-context'
 import { toast } from 'react-toastify'
+import NextLink from 'next/link'
+
+interface UsageLog {
+  id: string
+  feature_type: string
+  credits_used: number
+  credit_type: string
+  created_at: string
+  product_id: string | null
+  product_name: string | null
+  product_sku: string | null
+}
 
 export default function SubscriptionPageClient() {
   const { subscription, aiUsage, loading, refreshSubscription, refreshUsage } = useSubscription()
   const [plans, setPlans] = useState<any[]>([])
   const [loadingPlans, setLoadingPlans] = useState(true)
   const [upgradingPlanId, setUpgradingPlanId] = useState<string | null>(null)
+  
+  // Test Mode state (only in development)
+  const [testCreditLimit, setTestCreditLimit] = useState<string>('')
+  const [testModeLoading, setTestModeLoading] = useState(false)
+  
+  // Usage logs state
+  const [usageLogs, setUsageLogs] = useState<UsageLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [logsExpanded, setLogsExpanded] = useState(false)
+  const [logsPage, setLogsPage] = useState(0)
+  const [logsTotal, setLogsTotal] = useState(0)
+  const [logsLimit] = useState(20) // Items per page
 
   useEffect(() => {
     loadPlans()
   }, [])
+
+  useEffect(() => {
+    if (logsExpanded && usageLogs.length === 0) {
+      loadUsageLogs()
+    }
+  }, [logsExpanded])
 
   const loadPlans = async () => {
     try {
@@ -52,6 +95,80 @@ export default function SubscriptionPageClient() {
       toast.error('Hiba a csomagok betöltésekor')
     } finally {
       setLoadingPlans(false)
+    }
+  }
+
+  const loadUsageLogs = async (page: number = 0) => {
+    try {
+      setLoadingLogs(true)
+      const offset = page * logsLimit
+      const res = await fetch(`/api/subscription/usage-logs?limit=${logsLimit}&offset=${offset}`)
+      const data = await res.json()
+      if (data.success) {
+        setUsageLogs(data.logs || [])
+        setLogsTotal(data.total || 0)
+        setLogsPage(page)
+      } else {
+        toast.error('Hiba a használati logok betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading usage logs:', error)
+      toast.error('Hiba a használati logok betöltésekor')
+    } finally {
+      setLoadingLogs(false)
+    }
+  }
+
+  const getFeatureLabel = (featureType: string): string => {
+    const labels: Record<string, string> = {
+      'meta_title': 'Meta cím',
+      'meta_keywords': 'Meta kulcsszavak',
+      'meta_description': 'Meta leírás',
+      'url_slug': 'URL slug',
+      'product_description': 'Részletes leírás',
+      'product_tags': 'Termék címkék',
+      'competitor_price_scrape': 'Versenyár ellenőrzés'
+    }
+    return labels[featureType] || featureType
+  }
+
+  const getFeatureIcon = (featureType: string) => {
+    switch (featureType) {
+      case 'meta_title':
+        return <TitleIcon fontSize="small" />
+      case 'meta_keywords':
+        return <SearchIcon fontSize="small" />
+      case 'meta_description':
+        return <DescriptionIcon fontSize="small" />
+      case 'url_slug':
+        return <LinkIcon fontSize="small" />
+      case 'product_description':
+        return <DescriptionIcon fontSize="small" />
+      case 'product_tags':
+        return <LocalOfferIcon fontSize="small" />
+      case 'competitor_price_scrape':
+        return <AssessmentIcon fontSize="small" />
+      default:
+        return <AutoAwesomeIcon fontSize="small" />
+    }
+  }
+
+  const getFeatureColor = (featureType: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
+    switch (featureType) {
+      case 'product_description':
+        return 'primary'
+      case 'meta_title':
+      case 'meta_keywords':
+      case 'meta_description':
+        return 'info'
+      case 'url_slug':
+        return 'secondary'
+      case 'product_tags':
+        return 'success'
+      case 'competitor_price_scrape':
+        return 'warning'
+      default:
+        return 'default'
     }
   }
 
@@ -83,6 +200,69 @@ export default function SubscriptionPageClient() {
     }
   }
 
+  // Test Mode handlers
+  const handleTestCreditOverride = async () => {
+    if (process.env.NODE_ENV !== 'development') return
+    
+    setTestModeLoading(true)
+    try {
+      const res = await fetch('/api/subscription/test-override', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          creditLimit: testCreditLimit === '' ? null : parseInt(testCreditLimit) 
+        })
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success(`Test Turitoken limit applied! Plan: ${data.planSlug || 'unknown'}, Limit: ${data.creditLimit ?? 'default'}`)
+        // Small delay to ensure DB update is committed
+        await new Promise(resolve => setTimeout(resolve, 300))
+        // Refresh subscription first (this loads the updated plan with new credit limit)
+        await refreshSubscription()
+        // Then refresh usage (this will use the updated subscription plan credit limit)
+        await new Promise(resolve => setTimeout(resolve, 200))
+        await refreshUsage()
+        // Force a page refresh of credit balance components
+        window.dispatchEvent(new Event('creditLimitUpdated'))
+      } else {
+        toast.error(data.error || 'Failed to apply test limit')
+      }
+    } catch (error) {
+      console.error('Error applying test credit limit:', error)
+      toast.error('Hiba a test limit alkalmazásakor')
+    } finally {
+      setTestModeLoading(false)
+    }
+  }
+
+  const handleResetCreditUsage = async () => {
+    if (process.env.NODE_ENV !== 'development') return
+    
+    if (!confirm('Are you sure you want to reset Turitoken usage for this month?')) {
+      return
+    }
+    
+    setTestModeLoading(true)
+    try {
+      const res = await fetch('/api/subscription/test-reset-usage', {
+        method: 'POST'
+      })
+      const data = await res.json()
+      if (data.success) {
+        toast.success('Turitoken usage reset!')
+        await refreshUsage()
+      } else {
+        toast.error(data.error || 'Failed to reset usage')
+      }
+    } catch (error) {
+      console.error('Error resetting Turitoken usage:', error)
+      toast.error('Hiba a Turitoken usage reset során')
+    } finally {
+      setTestModeLoading(false)
+    }
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" component="h1" sx={{ mb: 3, fontWeight: 700 }}>
@@ -90,6 +270,79 @@ export default function SubscriptionPageClient() {
       </Typography>
 
       <Grid container spacing={3}>
+        {/* Test Mode Panel (Development Only) */}
+        {process.env.NODE_ENV === 'development' && (
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3, mb: 3, bgcolor: 'warning.light', border: '2px dashed', borderColor: 'warning.main' }}>
+              <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
+                🧪 Test Mode - Turitoken System Testing
+              </Typography>
+              
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Override Turitoken Limit"
+                    type="number"
+                    value={testCreditLimit}
+                    onChange={(e) => setTestCreditLimit(e.target.value)}
+                    helperText="Set custom Turitoken limit for testing (leave empty to use plan default)"
+                    InputProps={{
+                      endAdornment: (
+                        <Button 
+                          size="small" 
+                          onClick={handleTestCreditOverride}
+                          variant="outlined"
+                          disabled={testModeLoading}
+                          sx={{ ml: 1 }}
+                        >
+                          {testModeLoading ? <CircularProgress size={16} /> : 'Apply'}
+                        </Button>
+                      )
+                    }}
+                  />
+                </Grid>
+                
+                <Grid item xs={12} md={6}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    color="warning"
+                    onClick={handleResetCreditUsage}
+                    disabled={testModeLoading}
+                    sx={{ height: '56px' }}
+                  >
+                    {testModeLoading ? <CircularProgress size={20} /> : 'Reset Turitoken Usage (This Month)'}
+                  </Button>
+                </Grid>
+                
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    Quick Test Scenarios:
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('0')}>
+                      No Turitoken (0)
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('1')}>
+                      Low Turitoken (1)
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('5')}>
+                      One Description (5)
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('10')}>
+                      Edge Case (10)
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('')}>
+                      Reset to Plan Default
+                    </Button>
+                  </Box>
+                </Grid>
+              </Grid>
+            </Paper>
+          </Grid>
+        )}
+
         {/* Current Subscription Card */}
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 3, mb: 3 }}>
@@ -162,57 +415,175 @@ export default function SubscriptionPageClient() {
 
           {/* AI Usage Stats */}
           {subscription && subscription.plan.features.ai_generation && aiUsage && (
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
-                AI használati statisztikák
-              </Typography>
+            <>
+              {/* Credit Usage Stats */}
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                  AI Turitoken használat
+                </Typography>
 
-              <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Használt tokenek (ez hónap)
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {aiUsage.current_month.toLocaleString('hu-HU')} / {aiUsage.monthly_limit ? aiUsage.monthly_limit.toLocaleString('hu-HU') : '∞'}
-                  </Typography>
+                <Box sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Használt Turitoken (ez hónap)
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {aiUsage.credit_used || 0} / {aiUsage.credit_limit !== null && aiUsage.credit_limit !== Infinity ? aiUsage.credit_limit.toLocaleString('hu-HU') : '∞'}
+                    </Typography>
+                  </Box>
+                  {aiUsage.credit_limit !== null && aiUsage.credit_limit !== Infinity && (
+                    <LinearProgress
+                      variant="determinate"
+                      value={aiUsage.credit_percentage || 0}
+                      sx={{ height: 8, borderRadius: 1 }}
+                      color={(aiUsage.credit_percentage || 0) > 90 ? 'error' : (aiUsage.credit_percentage || 0) > 70 ? 'warning' : 'primary'}
+                    />
+                  )}
                 </Box>
-                {aiUsage.monthly_limit !== null && (
-                  <LinearProgress
-                    variant="determinate"
-                    value={aiUsage.percentage_used}
-                    sx={{ height: 8, borderRadius: 1 }}
-                    color={aiUsage.percentage_used > 90 ? 'error' : aiUsage.percentage_used > 70 ? 'warning' : 'primary'}
-                  />
-                )}
-              </Box>
 
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Maradék
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    {aiUsage.remaining !== null ? aiUsage.remaining.toLocaleString('hu-HU') : '∞'}
-                  </Typography>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  <Grid item xs={6}>
+                    <Typography variant="caption" color="text.secondary">
+                      Maradék Turitoken
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {aiUsage.credit_remaining !== null && aiUsage.credit_remaining !== Infinity ? aiUsage.credit_remaining.toLocaleString('hu-HU') : '∞'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="caption" color="text.secondary">
+                      Turitoken limit
+                    </Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {aiUsage.credit_limit !== null && aiUsage.credit_limit !== Infinity ? aiUsage.credit_limit.toLocaleString('hu-HU') : 'Korlátlan'}
+                    </Typography>
+                  </Grid>
                 </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Becsült költség
+              </Paper>
+
+              {/* Usage Logs Table */}
+              <Paper sx={{ p: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Turitoken használati log (ez hónap)
                   </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    ${aiUsage.total_cost.toFixed(4)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={6}>
-                  <Typography variant="caption" color="text.secondary">
-                    Generálások száma
-                  </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    {aiUsage.usage_count}
-                  </Typography>
-                </Grid>
-              </Grid>
-            </Paper>
+                  <IconButton
+                    onClick={() => {
+                      setLogsExpanded(!logsExpanded)
+                      if (!logsExpanded && usageLogs.length === 0) {
+                        loadUsageLogs(0)
+                      }
+                    }}
+                    size="small"
+                  >
+                    {logsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </IconButton>
+                </Box>
+
+                <Collapse in={logsExpanded}>
+                  {loadingLogs ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : usageLogs.length === 0 ? (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Még nincs Turitoken használati log ebben a hónapban.
+                    </Alert>
+                  ) : (
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Dátum</TableCell>
+                            <TableCell>Funkció</TableCell>
+                            <TableCell>Termék</TableCell>
+                            <TableCell align="right">Turitoken</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {usageLogs.map((log) => (
+                            <TableRow key={log.id} hover>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {new Date(log.created_at).toLocaleString('hu-HU', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  icon={getFeatureIcon(log.feature_type)}
+                                  label={getFeatureLabel(log.feature_type)}
+                                  size="small"
+                                  color={getFeatureColor(log.feature_type)}
+                                  variant="outlined"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                {log.product_id && log.product_name ? (
+                                  <NextLink
+                                    href={`/products/${log.product_id}`}
+                                    style={{
+                                      textDecoration: 'none',
+                                      color: 'inherit'
+                                    }}
+                                  >
+                                    <Typography 
+                                      variant="body2"
+                                      sx={{
+                                        color: 'primary.main',
+                                        '&:hover': {
+                                          textDecoration: 'underline'
+                                        }
+                                      }}
+                                    >
+                                      {log.product_name}
+                                    </Typography>
+                                    {log.product_sku && (
+                                      <Typography variant="caption" color="text.secondary" display="block">
+                                        {log.product_sku}
+                                      </Typography>
+                                    )}
+                                  </NextLink>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">
+                                    N/A
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell align="right">
+                                <Chip
+                                  label={`-${log.credits_used}`}
+                                  color="error"
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      <TablePagination
+                        component="div"
+                        count={logsTotal}
+                        page={logsPage}
+                        onPageChange={(event, newPage) => {
+                          loadUsageLogs(newPage)
+                        }}
+                        rowsPerPage={logsLimit}
+                        rowsPerPageOptions={[]}
+                        labelRowsPerPage="Sorok oldalanként:"
+                        labelDisplayedRows={({ from, to, count }) => `${from}-${to} / ${count !== -1 ? count : `több mint ${to}`}`}
+                      />
+                    </TableContainer>
+                  )}
+                </Collapse>
+              </Paper>
+            </>
           )}
         </Grid>
 
@@ -260,8 +631,8 @@ export default function SubscriptionPageClient() {
                         )}
                         <Typography variant="caption">
                           AI generálás
-                          {plan.features.ai_monthly_limit && ` (${plan.features.ai_monthly_limit.toLocaleString('hu-HU')} token/hó)`}
-                          {plan.features.ai_monthly_limit === null && ' (korlátlan)'}
+                          {plan.ai_credits_per_month !== undefined && plan.ai_credits_per_month !== null && plan.ai_credits_per_month !== Infinity && ` (${plan.ai_credits_per_month} Turitoken/hó)`}
+                          {(plan.ai_credits_per_month === null || plan.ai_credits_per_month === Infinity) && ' (korlátlan Turitoken)'}
                         </Typography>
                       </Box>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
