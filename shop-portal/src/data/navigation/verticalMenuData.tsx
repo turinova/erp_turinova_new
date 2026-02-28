@@ -55,6 +55,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#8E44AD', // Purple for settings
       children: [
         {
+          label: 'Előfizetésem',
+          href: '/subscription'
+        },
+        {
           label: 'Felhasználók',
           href: '/users'
         },

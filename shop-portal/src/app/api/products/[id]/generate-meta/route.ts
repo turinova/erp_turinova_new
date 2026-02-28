@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateAllMetaFields, generateMetaTitle, generateMetaKeywords, generateMetaDescription, MetaGenerationContext } from '@/lib/meta-seo-generation-service'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
 
 /**
  * POST /api/products/[id]/generate-meta
@@ -129,17 +130,48 @@ export async function POST(
 
     // Generate requested fields
     const result: any = {}
+    let totalTokensUsed = 0
 
     if (fields.includes('title')) {
       result.meta_title = await generateMetaTitle(context)
+      // Estimate tokens: ~200 tokens for meta title generation
+      totalTokensUsed += 200
+      await trackAIUsage({
+        userId: user.id,
+        featureType: 'meta_title',
+        tokensUsed: 200,
+        modelUsed: 'claude-sonnet-4-6',
+        productId: productId,
+        metadata: { generated: true }
+      })
     }
 
     if (fields.includes('keywords')) {
       result.meta_keywords = await generateMetaKeywords(context)
+      // Estimate tokens: ~150 tokens for meta keywords generation
+      totalTokensUsed += 150
+      await trackAIUsage({
+        userId: user.id,
+        featureType: 'meta_keywords',
+        tokensUsed: 150,
+        modelUsed: 'claude-sonnet-4-6',
+        productId: productId,
+        metadata: { generated: true }
+      })
     }
 
     if (fields.includes('description')) {
       result.meta_description = await generateMetaDescription(context)
+      // Estimate tokens: ~250 tokens for meta description generation
+      totalTokensUsed += 250
+      await trackAIUsage({
+        userId: user.id,
+        featureType: 'meta_description',
+        tokensUsed: 250,
+        modelUsed: 'claude-sonnet-4-6',
+        productId: productId,
+        metadata: { generated: true }
+      })
     }
 
     return NextResponse.json({

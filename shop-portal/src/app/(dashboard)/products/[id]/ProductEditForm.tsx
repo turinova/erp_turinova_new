@@ -34,6 +34,8 @@ import SearchConsoleTab from '@/components/SearchConsoleTab'
 import CompetitorPricesTab from '@/components/CompetitorPricesTab'
 import ProductImagesTab from '@/components/ProductImagesTab'
 import ProductQualityScore from '@/components/ProductQualityScore'
+import { FeatureGate } from '@/components/FeatureGate'
+import { useSubscription } from '@/lib/subscription-context'
 
 interface ProductEditFormProps {
   product: ProductWithDescriptions
@@ -63,6 +65,7 @@ function TabPanel(props: TabPanelProps) {
 
 export default function ProductEditForm({ product }: ProductEditFormProps) {
   const router = useRouter()
+  const { hasFeature: hasFeatureAccess, canUseAI } = useSubscription()
   const [tabValue, setTabValue] = useState(0)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -2033,24 +2036,27 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       }}
                     />
                   </Grid>
-                  {productData.cost && 
-                   productData.price && 
-                   (typeof productData.cost === 'number' ? productData.cost > 0 : parseFloat(String(productData.cost)) > 0) &&
-                   (typeof productData.price === 'number' ? productData.price > 0 : parseFloat(String(productData.price)) > 0) && (
-                    <Grid item xs={12}>
-                      <Alert severity="info" icon={<InfoIcon />}>
-                        <Typography variant="body2">
-                          <strong>Számítás:</strong> Nettó ár ({(() => {
-                            const price = typeof productData.price === 'number' ? productData.price : parseFloat(String(productData.price));
-                            return price.toLocaleString('hu-HU');
-                          })()} Ft) ÷ Beszerzési ár ({(() => {
-                            const cost = typeof productData.cost === 'number' ? productData.cost : parseFloat(String(productData.cost));
-                            return cost.toLocaleString('hu-HU');
-                          })()} Ft) = Szorzó ({parseFloat(productData.multiplier.toString() || '1').toFixed(3)})
-                        </Typography>
-                      </Alert>
-                    </Grid>
-                  )}
+                  {(() => {
+                    const cost = productData.cost !== null && productData.cost !== undefined && productData.cost !== '' 
+                      ? (typeof productData.cost === 'number' ? productData.cost : parseFloat(String(productData.cost)))
+                      : null;
+                    const price = productData.price !== null && productData.price !== undefined && productData.price !== ''
+                      ? (typeof productData.price === 'number' ? productData.price : parseFloat(String(productData.price)))
+                      : null;
+                    
+                    if (cost && price && cost > 0 && price > 0 && !isNaN(cost) && !isNaN(price)) {
+                      return (
+                        <Grid item xs={12}>
+                          <Alert severity="info" icon={<InfoIcon />}>
+                            <Typography variant="body2">
+                              <strong>Számítás:</strong> Nettó ár ({price.toLocaleString('hu-HU')} Ft) ÷ Beszerzési ár ({cost.toLocaleString('hu-HU')} Ft) = Szorzó ({parseFloat(productData.multiplier.toString() || '1').toFixed(3)})
+                            </Typography>
+                          </Alert>
+                        </Grid>
+                      );
+                    }
+                    return null;
+                  })()}
                 </Grid>
               </Paper>
             </Grid>
@@ -2130,16 +2136,18 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   <Typography variant="h6" sx={{ fontWeight: 700, color: '#7b1fa2' }}>
                     Részletes leírás
                   </Typography>
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={generating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                    onClick={() => setGenerationDialogOpen(true)}
-                    disabled={generating}
-                    sx={{ ml: 'auto' }}
-                  >
-                    {generating ? 'Generálás...' : 'AI'}
-                  </Button>
+                  <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={generating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                      onClick={() => setGenerationDialogOpen(true)}
+                      disabled={generating}
+                      sx={{ ml: 'auto' }}
+                    >
+                      {generating ? 'Generálás...' : 'AI'}
+                    </Button>
+                  </FeatureGate>
                 </Box>
                 <Box sx={{ position: 'relative', zIndex: 1 }}>
                   <TextField
@@ -2372,15 +2380,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         helperText="Az URL slug (pl: blum-clip-top-blumotion-pant-110-fok)"
                         InputProps={{
                           endAdornment: (
-                            <Button
-                              size="small"
-                              startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                              onClick={handleGenerateUrlSlug}
-                              disabled={generatingUrlSlug}
-                              sx={{ minWidth: 'auto' }}
-                            >
-                              {generatingUrlSlug ? '' : 'AI'}
-                            </Button>
+                            <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                              <Button
+                                size="small"
+                                startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                                onClick={handleGenerateUrlSlug}
+                                disabled={generatingUrlSlug}
+                                sx={{ minWidth: 'auto' }}
+                              >
+                                {generatingUrlSlug ? '' : 'AI'}
+                              </Button>
+                            </FeatureGate>
                           )
                         }}
                         sx={{ mb: 2,
@@ -2470,15 +2480,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     helperText={`A keresőmotorokban megjelenő cím (50-60 karakter optimális, max 70) - Jelenleg: ${formData.meta_title.length} karakter`}
                     InputProps={{
                       endAdornment: (
-                        <Button
-                          size="small"
-                          startIcon={generatingMeta.title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                          onClick={() => handleGenerateMeta('title')}
-                          disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
-                          sx={{ minWidth: 'auto', ml: 1 }}
-                        >
-                          {generatingMeta.title ? '' : 'AI'}
-                        </Button>
+                        <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                          <Button
+                            size="small"
+                            startIcon={generatingMeta.title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                            onClick={() => handleGenerateMeta('title')}
+                            disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                            sx={{ minWidth: 'auto', ml: 1 }}
+                          >
+                            {generatingMeta.title ? '' : 'AI'}
+                          </Button>
+                        </FeatureGate>
                       )
                     }}
                   />
@@ -2525,15 +2537,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     helperText="Vesszővel elválasztott kulcsszavak (5-10 kulcsszó optimális)"
                     InputProps={{
                       endAdornment: (
-                        <Button
-                          size="small"
-                          startIcon={generatingMeta.keywords ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                          onClick={() => handleGenerateMeta('keywords')}
-                          disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
-                          sx={{ minWidth: 'auto', ml: 1 }}
-                        >
-                          {generatingMeta.keywords ? '' : 'AI'}
-                        </Button>
+                        <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                          <Button
+                            size="small"
+                            startIcon={generatingMeta.keywords ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                            onClick={() => handleGenerateMeta('keywords')}
+                            disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                            sx={{ minWidth: 'auto', ml: 1 }}
+                          >
+                            {generatingMeta.keywords ? '' : 'AI'}
+                          </Button>
+                        </FeatureGate>
                       )
                     }}
                   />
@@ -2587,15 +2601,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     helperText={`A keresőmotorokban megjelenő leírás (150-160 karakter optimális, max 160) - Jelenleg: ${formData.meta_description.length} karakter. Használhatod a [PRODUCT], [CATEGORY], [PRICE], [SKU], [SERIAL] címkéket.`}
                     InputProps={{
                       endAdornment: (
-                        <Button
-                          size="small"
-                          startIcon={generatingMeta.description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                          onClick={() => handleGenerateMeta('description')}
-                          disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
-                          sx={{ minWidth: 'auto', ml: 1, alignSelf: 'flex-start', mt: 1 }}
-                        >
-                          {generatingMeta.description ? '' : 'AI'}
-                        </Button>
+                        <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                          <Button
+                            size="small"
+                            startIcon={generatingMeta.description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                            onClick={() => handleGenerateMeta('description')}
+                            disabled={generatingMeta.title || generatingMeta.keywords || generatingMeta.description}
+                            sx={{ minWidth: 'auto', ml: 1, alignSelf: 'flex-start', mt: 1 }}
+                          >
+                            {generatingMeta.description ? '' : 'AI'}
+                          </Button>
+                        </FeatureGate>
                       )
                     }}
                   />
@@ -2640,11 +2656,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         </TabPanel>
 
         <TabPanel value={tabValue} index={3}>
-          <SourceMaterialsTab productId={product.id} />
+          <FeatureGate feature="ai_generation">
+            <SourceMaterialsTab productId={product.id} />
+          </FeatureGate>
         </TabPanel>
 
         <TabPanel value={tabValue} index={4}>
-          <Grid container spacing={3}>
+          <FeatureGate feature="analytics">
+            <Grid container spacing={3}>
             {/* Quality Score Section - Blue Theme */}
             <Grid item xs={12}>
               <Paper 
@@ -2781,6 +2800,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               </Paper>
             </Grid>
           </Grid>
+          </FeatureGate>
         </TabPanel>
       </Paper>
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateProductDescription } from '@/lib/ai-generation-service'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
 
 /**
  * POST /api/products/[id]/generate-description
@@ -87,6 +88,20 @@ export async function POST(
       console.error('Error saving generation history:', genError)
       // Continue anyway - generation was successful
     }
+
+    // Track AI usage
+    await trackAIUsage({
+      userId: user.id,
+      featureType: 'product_description',
+      tokensUsed: result.tokensUsed,
+      modelUsed: result.modelUsed,
+      productId: id,
+      metadata: {
+        wordCount: result.wordCount,
+        sourceMaterialsUsed: result.sourceMaterialsUsed.length,
+        searchQueriesUsed: result.searchQueriesUsed?.length || 0
+      }
+    })
 
     return NextResponse.json({
       success: true,

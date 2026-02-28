@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Anthropic from '@anthropic-ai/sdk'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
 
 /**
  * POST /api/products/[id]/url-alias/generate
@@ -153,6 +154,20 @@ Return ONLY the slug, nothing else. Example: "blum-clip-top-blumotion-pant-110-f
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
       .substring(0, 60) // Enforce max length
+
+    // Track AI usage
+    const estimatedTokens = message.usage?.input_tokens && message.usage?.output_tokens
+      ? message.usage.input_tokens + message.usage.output_tokens
+      : 100 // Fallback estimate
+
+    await trackAIUsage({
+      userId: user.id,
+      featureType: 'url_slug',
+      tokensUsed: estimatedTokens,
+      modelUsed: 'claude-haiku-4-5-20251001',
+      productId: id,
+      metadata: { generated: true }
+    })
 
     return NextResponse.json({
       success: true,
