@@ -78,9 +78,21 @@ export default function ProductImagesTab({ productId, hideBulkActions = false }:
       )
       const data = await response.json()
 
+      if (response.status === 402) {
+        // Insufficient credits
+        const credits = data.credits || {}
+        toast.error(
+          `Nincs elég Turitoken az alt szöveg generálásához! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+
       if (data.success) {
         toast.success('Alt szöveg sikeresen generálva')
         await fetchImages()
+        // Dispatch event to update credit balance in UI
+        window.dispatchEvent(new Event('creditUsageUpdated'))
       } else {
         toast.error(data.error || 'Hiba az alt szöveg generálásakor')
       }

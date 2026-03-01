@@ -263,6 +263,9 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
         throw new Error(result.error || 'Hiba az ár ellenőrzése során')
       }
 
+      // Dispatch event to update credit balance in UI
+      window.dispatchEvent(new Event('creditUsageUpdated'))
+
       // Show success toast with price info
       const grossText = result.scrapeResult.priceGross 
         ? `Bruttó: ${new Intl.NumberFormat('hu-HU').format(result.scrapeResult.priceGross)} Ft`
@@ -353,7 +356,7 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
             Frissítés
           </Button>
           {links.length > 0 && (
-            <Tooltip title={`Mind ellenőrzése (${links.filter(l => l.is_active).length * 2} credits)`}>
+            <Tooltip title={`Mind ellenőrzése (${links.filter(l => l.is_active).length * 2} Turitoken)`}>
               <Button
                 variant="outlined"
                 color="secondary"
@@ -553,7 +556,7 @@ export default function CompetitorPricesTab({ productId, productPrice, productNa
                       )}
                     </TableCell>
                     <TableCell align="right">
-                      <Tooltip title="Ár ellenőrzése (AI) - 2 credits">
+                      <Tooltip title="Ár ellenőrzése (AI) - 2 Turitoken">
                         <IconButton 
                           size="small" 
                           color="primary"

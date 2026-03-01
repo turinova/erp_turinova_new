@@ -188,11 +188,69 @@ export async function POST(
     }
     
     try {
+      // Try normalized URL first
       indexingStatus = await checkUrlIndexingStatus(searchConsoleConfig, normalizedProductUrl)
       console.log('[SEARCH CONSOLE SYNC] Indexing status fetched:', indexingStatus.isIndexed)
+      
+      // If URL Inspection says "unknown" but we have performance data, infer it's indexed
+      if (!indexingStatus.isIndexed && 
+          indexingStatus.coverageState === 'URL is unknown to Google' && 
+          performanceData.length > 0) {
+        console.log('[SEARCH CONSOLE SYNC] URL Inspection says unknown, but performance data exists - inferring indexed status')
+        indexingStatus = {
+          ...indexingStatus,
+          isIndexed: true,
+          coverageState: 'Indexed (inferred from performance data)',
+          indexingState: indexingStatus.indexingState || 'INDEXING_ALLOWED',
+          hasIssues: false, // Clear issues when we infer indexed status
+          issues: null,
+          pageFetchState: indexingStatus.pageFetchState === 'SUCCESS' || indexingStatus.pageFetchState === 'PASS' 
+            ? indexingStatus.pageFetchState 
+            : 'SUCCESS', // Set to SUCCESS if not already a success state
+          pageFetchError: null, // Clear error when we infer indexed status
+          // Keep other fields from the original response
+        }
+      }
+      
+      // If still not indexed, try original URL as fallback
+      if (!indexingStatus.isIndexed && product.product_url !== normalizedProductUrl) {
+        console.log('[SEARCH CONSOLE SYNC] Trying original URL for indexing status:', product.product_url)
+        try {
+          const originalIndexingStatus = await checkUrlIndexingStatus(searchConsoleConfig, product.product_url)
+          if (originalIndexingStatus.isIndexed) {
+            console.log('[SEARCH CONSOLE SYNC] Original URL is indexed, using that status')
+            indexingStatus = originalIndexingStatus
+          }
+        } catch (originalError) {
+          console.warn('[SEARCH CONSOLE SYNC] Failed to check original URL:', originalError)
+        }
+      }
     } catch (error) {
       console.error('[SEARCH CONSOLE SYNC] Error fetching indexing status:', error)
-      // Continue even if indexing status fails
+      // If we have performance data, infer indexed status even on error
+      if (performanceData.length > 0) {
+        console.log('[SEARCH CONSOLE SYNC] Error but performance data exists - inferring indexed status')
+        indexingStatus = {
+          isIndexed: true,
+          lastCrawled: null,
+          coverageState: 'Indexed (inferred from performance data)',
+          indexingState: 'INDEXING_ALLOWED',
+          hasIssues: false,
+          issues: null,
+          pageFetchState: 'SUCCESS', // Set to SUCCESS when inferred from performance data
+          pageFetchError: null,
+          mobileUsabilityIssues: null,
+          mobileUsabilityPassed: true, // Assume passed if indexed
+          coreWebVitals: null,
+          structuredDataIssues: null,
+          richResultsEligible: null,
+          sitemapStatus: null,
+          sitemapUrl: null
+        }
+      } else {
+        // Continue even if indexing status fails
+        indexingStatus = null
+      }
     }
 
     // Store performance data
@@ -236,31 +294,33 @@ export async function POST(
       }
     }
 
-    // Store indexing status with enhanced data
-    await supabase
-      .from('product_indexing_status')
-      .upsert({
-        product_id: productId,
-        connection_id: connection.id,
-        is_indexed: indexingStatus.isIndexed,
-        last_crawled: indexingStatus.lastCrawled,
-        coverage_state: indexingStatus.coverageState,
-        indexing_state: indexingStatus.indexingState,
-        has_issues: indexingStatus.hasIssues,
-        issues: indexingStatus.issues,
-        // Enhanced fields
-        page_fetch_state: indexingStatus.pageFetchState || null,
-        page_fetch_error: indexingStatus.pageFetchError || null,
-        mobile_usability_issues: indexingStatus.mobileUsabilityIssues || null,
-        mobile_usability_passed: indexingStatus.mobileUsabilityPassed || false,
-        core_web_vitals: indexingStatus.coreWebVitals || null,
-        structured_data_issues: indexingStatus.structuredDataIssues || null,
-        rich_results_eligible: indexingStatus.richResultsEligible || null,
-        sitemap_status: indexingStatus.sitemapStatus || null,
-        sitemap_url: indexingStatus.sitemapUrl || null,
-        last_checked: new Date().toISOString(),
-        check_count: 1 // Will be incremented by trigger or manually
-      }, { onConflict: 'product_id' })
+    // Store indexing status with enhanced data (only if we have indexing status)
+    if (indexingStatus) {
+      await supabase
+        .from('product_indexing_status')
+        .upsert({
+          product_id: productId,
+          connection_id: connection.id,
+          is_indexed: indexingStatus.isIndexed,
+          last_crawled: indexingStatus.lastCrawled,
+          coverage_state: indexingStatus.coverageState,
+          indexing_state: indexingStatus.indexingState,
+          has_issues: indexingStatus.hasIssues,
+          issues: indexingStatus.issues,
+          // Enhanced fields
+          page_fetch_state: indexingStatus.pageFetchState || null,
+          page_fetch_error: indexingStatus.pageFetchError || null,
+          mobile_usability_issues: indexingStatus.mobileUsabilityIssues || null,
+          mobile_usability_passed: indexingStatus.mobileUsabilityPassed || false,
+          core_web_vitals: indexingStatus.coreWebVitals || null,
+          structured_data_issues: indexingStatus.structuredDataIssues || null,
+          rich_results_eligible: indexingStatus.richResultsEligible || null,
+          sitemap_status: indexingStatus.sitemapStatus || null,
+          sitemap_url: indexingStatus.sitemapUrl || null,
+          last_checked: new Date().toISOString(),
+          check_count: 1 // Will be incremented by trigger or manually
+        }, { onConflict: 'product_id' })
+    }
 
     // Get aggregated stats
     const totalImpressions = performanceData.reduce((sum, p) => sum + p.impressions, 0)
@@ -279,12 +339,12 @@ export async function POST(
         avgCtr,
         avgPosition,
         uniqueQueries: queriesData.length,
-        isIndexed: indexingStatus.isIndexed,
-        coverageState: indexingStatus.coverageState
+        isIndexed: indexingStatus?.isIndexed ?? (performanceData.length > 0), // Infer from performance data if no indexing status
+        coverageState: indexingStatus?.coverageState || (performanceData.length > 0 ? 'Indexed (inferred from performance data)' : null)
       },
       performanceData: performanceData.length,
       queriesData: queriesData.length,
-      indexingStatus
+      indexingStatus: indexingStatus || null
     })
 
   } catch (error) {

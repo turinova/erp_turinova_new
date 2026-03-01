@@ -260,9 +260,47 @@ export async function checkUrlIndexingStatus(
     const lastCrawlTime = indexStatus?.lastCrawlTime || null
     const pageFetchState = indexStatus?.pageFetchState || null
 
-    // Determine if indexed
-    const isIndexed = coverageState === 'Submitted and indexed' || 
-                     coverageState === 'Indexed, not submitted in sitemap'
+    // Determine if indexed - check multiple indicators
+    let isIndexed = false
+
+    // Method 1: Check coverageState (primary indicator)
+    if (coverageState) {
+      const coverageLower = coverageState.toLowerCase()
+      isIndexed = coverageLower.includes('indexed') || 
+                  coverageLower === 'submitted and indexed' ||
+                  coverageLower === 'indexed, not submitted in sitemap'
+    }
+
+    // Method 2: Check indexingState + lastCrawlTime (secondary indicator)
+    // If indexing is allowed and page was crawled, it's likely indexed
+    if (!isIndexed && indexingState === 'INDEXING_ALLOWED' && lastCrawlTime) {
+      isIndexed = true
+    }
+
+    // Method 3: Check pageFetchState + lastCrawlTime (fallback indicator)
+    // If page was successfully fetched and crawled, it's likely indexed
+    if (!isIndexed && pageFetchState && lastCrawlTime) {
+      const fetchStateLower = pageFetchState.toLowerCase()
+      if (fetchStateLower === 'success' || fetchStateLower === 'pass') {
+        isIndexed = true
+      }
+    }
+
+    // Log indexing determination for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[SEARCH CONSOLE] Indexing status determination:', {
+        coverageState,
+        indexingState,
+        pageFetchState,
+        lastCrawlTime: lastCrawlTime ? 'present' : 'missing',
+        isIndexed,
+        method: isIndexed 
+          ? (coverageState?.toLowerCase().includes('indexed') ? 'coverageState' 
+             : indexingState === 'INDEXING_ALLOWED' ? 'indexingState' 
+             : 'pageFetchState')
+          : 'none'
+      })
+    }
 
     // Extract page fetch error
     // Only treat as error if it's an actual error state (not SUCCESS or PASS)

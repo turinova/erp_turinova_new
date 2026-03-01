@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateImageAltText } from '@/lib/image-alt-text-service'
+import { checkAvailableCredits } from '@/lib/credit-checker'
+import { calculateCreditsForAI } from '@/lib/credit-calculator'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
 
 /**
  * POST /api/products/[id]/images/[imageId]/generate-alt-text
@@ -39,6 +42,21 @@ export async function POST(
   }
 
   try {
+    // Check credits before generation (image alt text = 1 credit)
+    const creditsNeeded = calculateCreditsForAI('image_alt_text')
+    const creditCheck = await checkAvailableCredits(user.id, creditsNeeded)
+    if (!creditCheck.hasEnough) {
+      return NextResponse.json({
+        success: false,
+        error: 'Nincs elég Turitoken az alt szöveg generálásához',
+        credits: {
+          available: creditCheck.available,
+          required: creditCheck.required,
+          limit: creditCheck.limit,
+          used: creditCheck.used
+        }
+      }, { status: 402 }) // 402 Payment Required
+    }
     // Get product with attributes
     const { data: product, error: productError } = await supabase
       .from('shoprenter_products')
@@ -164,11 +182,32 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update image' }, { status: 500 })
     }
 
+    // Track credit usage for image alt text generation
+    await trackAIUsage({
+      userId: user.id,
+      featureType: 'image_alt_text',
+      tokensUsed: result.tokensUsed,
+      modelUsed: result.modelUsed,
+      productId: productId,
+      creditsUsed: creditsNeeded,
+      creditType: 'ai_generation',
+      metadata: {
+        imageId,
+        imagePath: image.image_path,
+        isMainImage: image.is_main_image,
+        success: true
+      }
+    })
+
     return NextResponse.json({
       success: true,
       altText: result.altText,
       tokensUsed: result.tokensUsed,
-      modelUsed: result.modelUsed
+      modelUsed: result.modelUsed,
+      credits: {
+        used: creditsNeeded,
+        remaining: creditCheck.available - creditsNeeded
+      }
     })
   } catch (error) {
     console.error('Error generating alt text:', error)

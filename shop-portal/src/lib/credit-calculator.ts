@@ -12,6 +12,7 @@ export type AIFeatureType =
   | 'product_description'
   | 'category_description'
   | 'category_meta'
+  | 'image_alt_text'
   | 'competitor_price_scrape'
   | 'competitor_content_scrape'
 
@@ -31,6 +32,7 @@ export function calculateCreditsForAI(
     'product_description': 5, // More expensive - large token usage
     'category_description': 3,
     'category_meta': 1,
+    'image_alt_text': 1, // Image alt text generation
     'competitor_price_scrape': 2, // Playwright + AI extraction
     'competitor_content_scrape': 3, // HTML fetch + AI analysis
   }

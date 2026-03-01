@@ -281,6 +281,17 @@ export default function SearchConsoleTab({ productId, productUrl }: SearchConsol
         </Grid>
       </Grid>
 
+      {/* Show info message if indexed but no traffic */}
+      {data.indexingStatus?.is_indexed && 
+       data.stats.totalImpressions === 0 && 
+       data.stats.totalClicks === 0 && 
+       data.performance && data.performance.length > 0 && (
+        <Alert severity="info" sx={{ mb: 3, fontSize: '0.875rem' }}>
+          A termék indexelve van a Google Search Console-ban, de jelenleg nincs forgalom az elmúlt {days} napban. 
+          Ez normális lehet új termékeknél vagy termékeknél, amelyek még nem szerepelnek a keresési eredményekben.
+        </Alert>
+      )}
+
       {/* Indexing Status */}
       {data.indexingStatus && (
         <Paper sx={{ p: 2, mb: 3 }}>
@@ -318,14 +329,16 @@ export default function SearchConsoleTab({ productId, productUrl }: SearchConsol
             {/* Page Fetch State */}
             {(() => {
               const successStates = ['SUCCESS', 'PASS']
+              const neutralStates = ['UNSPECIFIED', 'NEUTRAL', 'PAGE_FETCH_STATE_UNSPECIFIED']
               const fetchState = data.indexingStatus.page_fetch_state
               const fetchError = data.indexingStatus.page_fetch_error
               
-              // Only show error if state is an actual error (not SUCCESS or PASS)
-              // Also check that error message is not a success state (handles old data)
+              // Only show error if state is an actual error (not SUCCESS, PASS, or neutral/unspecified states)
+              // Also check that error message is not a success or neutral state (handles old data)
               const isError = fetchState && 
                              !successStates.includes(fetchState) &&
-                             (!fetchError || !successStates.includes(fetchError))
+                             !neutralStates.some(state => fetchState?.includes(state)) &&
+                             (!fetchError || (!successStates.includes(fetchError) && !neutralStates.some(state => fetchError?.includes(state))))
               
               return isError ? (
                 <Grid item xs={12}>

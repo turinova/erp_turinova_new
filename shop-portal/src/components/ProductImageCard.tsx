@@ -226,17 +226,19 @@ export default function ProductImageCard({
         </Box>
 
         <Box sx={{ display: 'flex', gap: 0.5, mt: 'auto' }}>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={isGenerating ? <CircularProgress size={12} /> : <AutoAwesomeIcon />}
-            onClick={handleGenerate}
-            disabled={isGenerating || isSyncing || isEditing}
-            fullWidth
-            sx={{ fontSize: '0.7rem', minHeight: '28px' }}
-          >
-            AI
-          </Button>
+          <Tooltip title="Kép alt szöveg generálása - 1 Turitoken">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={isGenerating ? <CircularProgress size={12} /> : <AutoAwesomeIcon />}
+              onClick={handleGenerate}
+              disabled={isGenerating || isSyncing || isEditing}
+              fullWidth
+              sx={{ fontSize: '0.7rem', minHeight: '28px' }}
+            >
+              AI
+            </Button>
+          </Tooltip>
           <Button
             size="small"
             variant="outlined"
