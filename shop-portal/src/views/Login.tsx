@@ -100,62 +100,91 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
       // Add a small delay to prevent rapid-fire requests
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
+      // Use new two-step authentication API
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+        }),
       })
 
-      if (error) {
-        console.error('Login error:', error)
-        if (error.message.includes('429') || error.message.includes('rate limit')) {
-          toast.error('Túl sok bejelentkezési kísérlet. Kérjük, várjon egy kicsit és próbálja újra.')
-        } else if (error.message.includes('Invalid login credentials') || error.message.includes('Invalid email or password')) {
-          toast.error('Hibás e-mail cím vagy jelszó!')
-        } else if (error.message.includes('Email not confirmed')) {
-          toast.error('Kérjük, erősítse meg az e-mail címét!')
-        } else {
-          toast.error('Bejelentkezési hiba történt. Kérjük, próbálja újra!')
-        }
-      } else if (data.user) {
-        console.log('Login successful, user:', data.user.email)
-        toast.success('Sikeres bejelentkezés!')
-        setUser(data.user)
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        const errorMessage = data.error || 'Bejelentkezési hiba történt'
         
-        // Redirect to first permitted page after successful login
-        const verifyAndRedirect = async () => {
-          try {
-            // Wait a moment for session to be established
-            await new Promise(resolve => setTimeout(resolve, 200))
-            
-            // Verify session exists
-            const { data: { session } } = await supabase.auth.getSession()
-            if (session) {
-              // Fetch user permissions to find first accessible page
-              const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
-              if (permissionsResponse.ok) {
-                const permissions = await permissionsResponse.json()
-                const firstAllowed = permissions.find((p: any) => p.can_access === true)
-                const redirectPath = firstAllowed?.page_path || '/login'
-                
-                console.log('Redirecting to first permitted page:', redirectPath)
-                router.push(redirectPath)
-              } else {
-                // Fallback: force page reload to let middleware handle redirect
-                window.location.href = '/'
-              }
+        if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+          toast.error('Túl sok bejelentkezési kísérlet. Kérjük, várjon egy kicsit és próbálja újra.')
+        } else if (errorMessage.includes('Invalid') || errorMessage.includes('credentials')) {
+          toast.error('Hibás e-mail cím vagy jelszó!')
+        } else if (errorMessage.includes('not found')) {
+          toast.error('Felhasználó nem található!')
+        } else {
+          toast.error(errorMessage)
+        }
+        return
+      }
+
+      // Login successful
+      console.log('Login successful, user:', data.user.email, 'Type:', data.type)
+      toast.success('Sikeres bejelentkezés!')
+      
+      // Store user info
+      setUser(data.user)
+      
+      // For tenant users, we need to establish a session in the tenant database
+      if (data.type === 'tenant' && data.tenant) {
+        // Sign in to tenant database using the regular Supabase client
+        // This will establish the session cookies
+        const { error: tenantAuthError } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
+        })
+
+        if (tenantAuthError) {
+          console.error('Error signing in to tenant database:', tenantAuthError)
+          // Continue anyway - the authentication was successful
+        }
+      }
+      
+      // Redirect to first permitted page after successful login
+      const verifyAndRedirect = async () => {
+        try {
+          // Wait a moment for session to be established
+          await new Promise(resolve => setTimeout(resolve, 300))
+          
+          // Verify session exists
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session) {
+            // Fetch user permissions to find first accessible page
+            const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
+            if (permissionsResponse.ok) {
+              const permissions = await permissionsResponse.json()
+              const firstAllowed = permissions.find((p: any) => p.can_access === true)
+              const redirectPath = firstAllowed?.page_path || '/login'
+              
+              console.log('Redirecting to first permitted page:', redirectPath)
+              router.push(redirectPath)
             } else {
-              // Fallback: force page reload if session not found
+              // Fallback: force page reload to let middleware handle redirect
               window.location.href = '/'
             }
-          } catch (error) {
-            console.error('Session verification error:', error)
-            // Fallback: let middleware handle redirect
+          } else {
+            // Fallback: force page reload if session not found
             window.location.href = '/'
           }
+        } catch (error) {
+          console.error('Session verification error:', error)
+          // Fallback: let middleware handle redirect
+          window.location.href = '/'
         }
-        
-        verifyAndRedirect()
       }
+      
+      verifyAndRedirect()
     } catch (error) {
       console.error('Login exception:', error)
       toast.error('Váratlan hiba történt')

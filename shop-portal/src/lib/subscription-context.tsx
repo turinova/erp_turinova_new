@@ -81,28 +81,27 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       if (res.ok) {
         const data = await res.json()
         if (data.success) {
-          // Get credit limit - ALWAYS prioritize subscription plan (most up-to-date, especially after test-override)
-          // Fallback to creditUsage only if subscription plan doesn't have it
-          let creditLimit: number | null = null
-          if (data.subscription?.plan?.ai_credits_per_month !== undefined) {
-            creditLimit = data.subscription.plan.ai_credits_per_month
-          } else if (data.creditUsage?.credit_limit !== undefined) {
-            creditLimit = data.creditUsage.credit_limit
-          }
+          // Get credit limit - ALWAYS use creditUsage.credit_limit (effective limit = plan + bonus + purchased)
+          // This is calculated in the API route and includes bonus_credits and purchased_credits
+          const creditLimit = data.creditUsage?.credit_limit !== undefined 
+            ? data.creditUsage.credit_limit 
+            : null
           
           const totalCreditsUsed = data.creditUsage?.total_credits_used || 0
+          const creditRemaining = data.creditUsage?.credit_remaining !== undefined
+            ? data.creditUsage.credit_remaining
+            : null
+          const creditPercentage = data.creditUsage?.credit_percentage !== undefined
+            ? data.creditUsage.credit_percentage
+            : 0
           
           // Merge credit usage into aiUsage
           const usage = {
             ...data.usage,
             credit_used: totalCreditsUsed,
-            credit_limit: creditLimit !== undefined && creditLimit !== null ? creditLimit : null,
-            credit_remaining: creditLimit !== null && creditLimit !== Infinity && creditLimit !== undefined
-              ? Math.max(0, creditLimit - totalCreditsUsed)
-              : null,
-            credit_percentage: creditLimit !== null && creditLimit !== Infinity && creditLimit !== undefined && creditLimit > 0
-              ? Math.min(100, (totalCreditsUsed / creditLimit) * 100)
-              : 0
+            credit_limit: creditLimit,
+            credit_remaining: creditRemaining,
+            credit_percentage: creditPercentage
           }
           setAiUsage(usage)
         } else {

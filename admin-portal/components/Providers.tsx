@@ -5,7 +5,6 @@ import type { ChildrenType, Direction } from '@core/types'
 import { VerticalNavProvider } from '@menu/contexts/verticalNavContext'
 import { SettingsProvider } from '@core/contexts/settingsContext'
 import { AuthProvider } from '@/contexts/AuthContext'
-import { PermissionProvider } from '@/permissions/PermissionProvider'
 import ThemeProvider from '@components/theme'
 
 // Util Imports
@@ -25,15 +24,13 @@ const Providers = async (props: Props) => {
 
   return (
     <AuthProvider>
-      <PermissionProvider>
-        <VerticalNavProvider>
-          <SettingsProvider settingsCookie={settingsCookie} mode={mode}>
-            <ThemeProvider direction={direction}>
-              {children}
-            </ThemeProvider>
-          </SettingsProvider>
-        </VerticalNavProvider>
-      </PermissionProvider>
+      <VerticalNavProvider>
+        <SettingsProvider settingsCookie={settingsCookie} mode={mode}>
+          <ThemeProvider direction={direction}>
+            {children}
+          </ThemeProvider>
+        </SettingsProvider>
+      </VerticalNavProvider>
     </AuthProvider>
   )
 }

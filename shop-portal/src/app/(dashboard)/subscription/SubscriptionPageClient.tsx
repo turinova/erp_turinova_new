@@ -13,7 +13,6 @@ import {
   Chip,
   Alert,
   CircularProgress,
-  TextField,
   Table,
   TableBody,
   TableCell,
@@ -52,6 +51,8 @@ interface UsageLog {
   product_id: string | null
   product_name: string | null
   product_sku: string | null
+  user_email?: string | null
+  user_id_in_tenant_db?: string | null
 }
 
 export default function SubscriptionPageClient() {
@@ -60,10 +61,6 @@ export default function SubscriptionPageClient() {
   const [loadingPlans, setLoadingPlans] = useState(true)
   const [upgradingPlanId, setUpgradingPlanId] = useState<string | null>(null)
   
-  // Test Mode state (only in development)
-  const [testCreditLimit, setTestCreditLimit] = useState<string>('')
-  const [testModeLoading, setTestModeLoading] = useState(false)
-  
   // Usage logs state
   const [usageLogs, setUsageLogs] = useState<UsageLog[]>([])
   const [loadingLogs, setLoadingLogs] = useState(false)
@@ -71,9 +68,15 @@ export default function SubscriptionPageClient() {
   const [logsPage, setLogsPage] = useState(0)
   const [logsTotal, setLogsTotal] = useState(0)
   const [logsLimit] = useState(20) // Items per page
+  
+  // Token packs state
+  const [tokenPacks, setTokenPacks] = useState<any[]>([])
+  const [loadingTokenPacks, setLoadingTokenPacks] = useState(false)
+  const [purchasingPackId, setPurchasingPackId] = useState<string | null>(null)
 
   useEffect(() => {
     loadPlans()
+    loadTokenPacks()
   }, [])
 
   useEffect(() => {
@@ -95,6 +98,57 @@ export default function SubscriptionPageClient() {
       toast.error('Hiba a csomagok betöltésekor')
     } finally {
       setLoadingPlans(false)
+    }
+  }
+
+  const loadTokenPacks = async () => {
+    try {
+      setLoadingTokenPacks(true)
+      const res = await fetch('/api/subscription/token-packs')
+      const data = await res.json()
+      if (data.success) {
+        setTokenPacks(data.tokenPacks || [])
+      }
+    } catch (error) {
+      console.error('Error loading token packs:', error)
+    } finally {
+      setLoadingTokenPacks(false)
+    }
+  }
+
+  const handlePurchaseTokens = async (tokenPackId: string) => {
+    setPurchasingPackId(tokenPackId)
+    try {
+      const res = await fetch('/api/subscription/purchase-tokens', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tokenPackId }),
+      })
+
+      const data = await res.json()
+      if (data.success) {
+        toast.success(data.message || `${data.purchasedCredits} Turitoken hozzáadva!`, {
+          position: "top-right",
+          autoClose: 5000,
+        })
+        // Refresh usage to show updated credits
+        await refreshUsage()
+      } else {
+        toast.error(data.error || 'Hiba történt a vásárlás során', {
+          position: "top-right",
+          autoClose: 5000,
+        })
+      }
+    } catch (error) {
+      console.error('Error purchasing tokens:', error)
+      toast.error('Hiba történt a vásárlás során', {
+        position: "top-right",
+        autoClose: 5000,
+      })
+    } finally {
+      setPurchasingPackId(null)
     }
   }
 
@@ -200,68 +254,6 @@ export default function SubscriptionPageClient() {
     }
   }
 
-  // Test Mode handlers
-  const handleTestCreditOverride = async () => {
-    if (process.env.NODE_ENV !== 'development') return
-    
-    setTestModeLoading(true)
-    try {
-      const res = await fetch('/api/subscription/test-override', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          creditLimit: testCreditLimit === '' ? null : parseInt(testCreditLimit) 
-        })
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast.success(`Test Turitoken limit applied! Plan: ${data.planSlug || 'unknown'}, Limit: ${data.creditLimit ?? 'default'}`)
-        // Small delay to ensure DB update is committed
-        await new Promise(resolve => setTimeout(resolve, 300))
-        // Refresh subscription first (this loads the updated plan with new credit limit)
-        await refreshSubscription()
-        // Then refresh usage (this will use the updated subscription plan credit limit)
-        await new Promise(resolve => setTimeout(resolve, 200))
-        await refreshUsage()
-        // Force a page refresh of credit balance components
-        window.dispatchEvent(new Event('creditLimitUpdated'))
-      } else {
-        toast.error(data.error || 'Failed to apply test limit')
-      }
-    } catch (error) {
-      console.error('Error applying test credit limit:', error)
-      toast.error('Hiba a test limit alkalmazásakor')
-    } finally {
-      setTestModeLoading(false)
-    }
-  }
-
-  const handleResetCreditUsage = async () => {
-    if (process.env.NODE_ENV !== 'development') return
-    
-    if (!confirm('Are you sure you want to reset Turitoken usage for this month?')) {
-      return
-    }
-    
-    setTestModeLoading(true)
-    try {
-      const res = await fetch('/api/subscription/test-reset-usage', {
-        method: 'POST'
-      })
-      const data = await res.json()
-      if (data.success) {
-        toast.success('Turitoken usage reset!')
-        await refreshUsage()
-      } else {
-        toast.error(data.error || 'Failed to reset usage')
-      }
-    } catch (error) {
-      console.error('Error resetting Turitoken usage:', error)
-      toast.error('Hiba a Turitoken usage reset során')
-    } finally {
-      setTestModeLoading(false)
-    }
-  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -270,79 +262,6 @@ export default function SubscriptionPageClient() {
       </Typography>
 
       <Grid container spacing={3}>
-        {/* Test Mode Panel (Development Only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <Grid item xs={12}>
-            <Paper sx={{ p: 3, mb: 3, bgcolor: 'warning.light', border: '2px dashed', borderColor: 'warning.main' }}>
-              <Typography variant="h6" sx={{ mb: 2, fontWeight: 700 }}>
-                🧪 Test Mode - Turitoken System Testing
-              </Typography>
-              
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
-                  <TextField
-                    fullWidth
-                    label="Override Turitoken Limit"
-                    type="number"
-                    value={testCreditLimit}
-                    onChange={(e) => setTestCreditLimit(e.target.value)}
-                    helperText="Set custom Turitoken limit for testing (leave empty to use plan default)"
-                    InputProps={{
-                      endAdornment: (
-                        <Button 
-                          size="small" 
-                          onClick={handleTestCreditOverride}
-                          variant="outlined"
-                          disabled={testModeLoading}
-                          sx={{ ml: 1 }}
-                        >
-                          {testModeLoading ? <CircularProgress size={16} /> : 'Apply'}
-                        </Button>
-                      )
-                    }}
-                  />
-                </Grid>
-                
-                <Grid item xs={12} md={6}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    color="warning"
-                    onClick={handleResetCreditUsage}
-                    disabled={testModeLoading}
-                    sx={{ height: '56px' }}
-                  >
-                    {testModeLoading ? <CircularProgress size={20} /> : 'Reset Turitoken Usage (This Month)'}
-                  </Button>
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                    Quick Test Scenarios:
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('0')}>
-                      No Turitoken (0)
-                    </Button>
-                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('1')}>
-                      Low Turitoken (1)
-                    </Button>
-                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('5')}>
-                      One Description (5)
-                    </Button>
-                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('10')}>
-                      Edge Case (10)
-                    </Button>
-                    <Button size="small" variant="outlined" onClick={() => setTestCreditLimit('')}>
-                      Reset to Plan Default
-                    </Button>
-                  </Box>
-                </Grid>
-              </Grid>
-            </Paper>
-          </Grid>
-        )}
-
         {/* Current Subscription Card */}
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 3, mb: 3 }}>
@@ -461,6 +380,74 @@ export default function SubscriptionPageClient() {
                 </Grid>
               </Paper>
 
+              {/* Token Packs Purchase Section */}
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 700, mb: 2 }}>
+                  További Turitoken vásárlása
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Vásároljon további Turitokent, amelyek a következő hónapban is használhatók.
+                </Typography>
+
+                {loadingTokenPacks ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                    <CircularProgress size={24} />
+                  </Box>
+                ) : tokenPacks.length === 0 ? (
+                  <Alert severity="info">
+                    Jelenleg nincs elérhető token csomag.
+                  </Alert>
+                ) : (
+                  <Grid container spacing={2}>
+                    {tokenPacks.map((pack) => (
+                      <Grid item xs={12} sm={6} md={4} key={pack.id}>
+                        <Card
+                          variant="outlined"
+                          sx={{
+                            p: 2,
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            '&:hover': {
+                              boxShadow: 3,
+                              borderColor: 'primary.main'
+                            }
+                          }}
+                        >
+                          <Box sx={{ flexGrow: 1 }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                              {pack.name}
+                            </Typography>
+                            <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main', mb: 1 }}>
+                              {pack.price_huf.toLocaleString('hu-HU')} Ft
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                              {pack.credits} Turitoken
+                            </Typography>
+                            <Chip
+                              label={`${Math.round(pack.price_huf / pack.credits)} Ft/Turitoken`}
+                              size="small"
+                              color="primary"
+                              variant="outlined"
+                            />
+                          </Box>
+                          <Button
+                            variant="contained"
+                            fullWidth
+                            sx={{ mt: 2 }}
+                            onClick={() => handlePurchaseTokens(pack.id)}
+                            disabled={purchasingPackId === pack.id}
+                            startIcon={purchasingPackId === pack.id ? <CircularProgress size={20} /> : <CreditCardIcon />}
+                          >
+                            {purchasingPackId === pack.id ? 'Vásárlás...' : 'Vásárlás'}
+                          </Button>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </Paper>
+
               {/* Usage Logs Table */}
               <Paper sx={{ p: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -497,6 +484,7 @@ export default function SubscriptionPageClient() {
                             <TableCell>Dátum</TableCell>
                             <TableCell>Funkció</TableCell>
                             <TableCell>Termék</TableCell>
+                            <TableCell>Felhasználó</TableCell>
                             <TableCell align="right">Turitoken</TableCell>
                           </TableRow>
                         </TableHead>
@@ -554,6 +542,11 @@ export default function SubscriptionPageClient() {
                                     N/A
                                   </Typography>
                                 )}
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2">
+                                  {log.user_email || 'N/A'}
+                                </Typography>
                               </TableCell>
                               <TableCell align="right">
                                 <Chip

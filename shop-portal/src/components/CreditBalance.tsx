@@ -45,23 +45,31 @@ export function CreditBalance({ compact = false }: { compact?: boolean }) {
     try {
       setLoading(true)
       
-      // Get credit limit - prioritize subscription plan (most up-to-date), fallback to aiUsage
-      let creditLimit: number | null = null
-      if (subscription?.plan?.ai_credits_per_month !== undefined && subscription.plan.ai_credits_per_month !== null) {
-        creditLimit = subscription.plan.ai_credits_per_month
-      } else if (aiUsage?.credit_limit !== undefined && aiUsage.credit_limit !== null) {
-        creditLimit = aiUsage.credit_limit
-      }
+      // ALWAYS use aiUsage.credit_limit (effective limit = plan + bonus + purchased)
+      // This is calculated in the API and includes bonus_credits and purchased_credits
+      const creditLimit = aiUsage?.credit_limit !== undefined 
+        ? aiUsage.credit_limit 
+        : null
       
-      // Get credit used from aiUsage
+      // Get credit used and remaining from aiUsage (already calculated correctly)
       const creditUsed = aiUsage?.credit_used || 0
-      
-      const available = creditLimit === null || creditLimit === Infinity 
-        ? Infinity 
-        : Math.max(0, creditLimit - creditUsed)
-      const percentage = creditLimit !== null && creditLimit !== Infinity && creditLimit > 0
-        ? (creditUsed / creditLimit) * 100 
+      const creditRemaining = aiUsage?.credit_remaining !== undefined
+        ? aiUsage.credit_remaining
+        : null
+      const creditPercentage = aiUsage?.credit_percentage !== undefined
+        ? aiUsage.credit_percentage
         : 0
+      
+      const available = creditRemaining !== null && creditRemaining !== Infinity
+        ? creditRemaining
+        : (creditLimit === null || creditLimit === Infinity 
+          ? Infinity 
+          : Math.max(0, creditLimit - creditUsed))
+      const percentage = creditPercentage > 0 
+        ? creditPercentage
+        : (creditLimit !== null && creditLimit !== Infinity && creditLimit > 0
+          ? (creditUsed / creditLimit) * 100 
+          : 0)
 
       setStats({
         used: creditUsed,

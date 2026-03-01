@@ -1,40 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getAdminSupabase } from '@/lib/tenant-supabase'
 
 export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: (cookiesToSet) => {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
+    // Get plans from Admin DB (subscription plans are managed there)
+    const adminSupabase = await getAdminSupabase()
 
-    // Get auth user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    console.log('[PLANS API] Fetching subscription plans from Admin DB')
 
     // Get all active plans
-    const { data: plans, error: plansError } = await supabase
+    const { data: plans, error: plansError } = await adminSupabase
       .from('subscription_plans')
       .select('*')
       .eq('is_active', true)
       .order('display_order', { ascending: true })
 
+    console.log('[PLANS API] Query result:', {
+      hasData: !!plans,
+      count: plans?.length || 0,
+      hasError: !!plansError,
+      error: plansError
+    })
+
     if (plansError) {
+      console.error('[PLANS API] Error fetching subscription plans:', plansError)
       return NextResponse.json({
         success: false,
         error: 'Failed to fetch plans'

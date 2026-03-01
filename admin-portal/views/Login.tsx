@@ -113,26 +113,51 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
         }
       } else if (data.user) {
         // Verify user is in admin_users table and is active
+        // Note: This requires an RLS policy that allows authenticated users to read their own record
         const { data: adminUser, error: adminError } = await supabase
           .from('admin_users')
-          .select('id, name, is_active')
+          .select('id, full_name, is_active')
           .eq('email', data.user.email)
           .eq('is_active', true)
           .single()
 
-        console.log('Admin user check:', { email: data.user.email, adminUser, adminError })
+        console.log('Admin user check:', { 
+          email: data.user.email, 
+          adminUser, 
+          adminError,
+          errorDetails: adminError ? {
+            message: adminError.message,
+            code: adminError.code,
+            details: adminError.details,
+            hint: adminError.hint
+          } : null
+        })
 
         if (adminError || !adminUser) {
           // Not an admin user, sign out
-          console.error('Admin verification failed:', adminError)
+          console.error('Admin verification failed:', {
+            error: adminError,
+            email: data.user.email,
+            hasUser: !!data.user,
+            userId: data.user?.id
+          })
           await supabase.auth.signOut()
-          toast.error('Nincs jogosultsága az adminisztrációs felület eléréséhez!')
+          
+          let errorMessage = 'Nincs jogosultsága az adminisztrációs felület eléréséhez!'
+          if (adminError?.code === 'PGRST301' || adminError?.message?.includes('No rows')) {
+            errorMessage += ' A felhasználót hozzá kell adni az admin_users táblához.'
+          } else if (adminError?.code === '42501' || adminError?.message?.includes('permission')) {
+            errorMessage += ' RLS hiba: futtassa a FIX_ADMIN_USERS_RLS.sql fájlt az Admin Database-ben.'
+          }
+          
+          toast.error(errorMessage)
           setIsLoading(false)
           return
         }
 
-        console.log('Admin login successful:', adminUser.name)
-        toast.success(`Üdvözöljük, ${adminUser.name}!`)
+        const displayName = adminUser.full_name || data.user.email || 'Admin'
+        console.log('Admin login successful:', displayName)
+        toast.success(`Üdvözöljük, ${displayName}!`)
         
         // Redirect to dashboard
         setTimeout(() => {

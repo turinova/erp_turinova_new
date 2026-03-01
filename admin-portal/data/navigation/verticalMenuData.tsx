@@ -9,9 +9,14 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       icon: 'ri-home-line',
     },
     {
-      label: 'Cégek',
-      href: '/companies',
+      label: 'Ügyfelek',
+      href: '/tenants',
       icon: 'ri-building-line',
+    },
+    {
+      label: 'Előfizetési tervek',
+      href: '/subscription-plans',
+      icon: 'ri-vip-card-line',
     }
   ]
 }

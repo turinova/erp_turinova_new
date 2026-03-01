@@ -63,11 +63,28 @@ VALUES ('admin@turinova.hu', 'Admin User', true);
 
 ## 🛠️ Development
 
-```bash
-cd admin-portal
-npm install
-npm run dev
-```
+### Setup
+
+1. **Create `.env.local` file** in the `admin-portal` directory:
+   ```bash
+   cd admin-portal
+   touch .env.local
+   ```
+
+2. **Add your Admin Database credentials** to `.env.local`:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=https://your-admin-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-admin-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-admin-service-role-key
+   ```
+   
+   These should point to your **Admin Database** (Turinova Admin Supabase project), NOT the tenant databases.
+
+3. **Install dependencies and run**:
+   ```bash
+   npm install
+   npm run dev
+   ```
 
 Server runs on: `http://localhost:3002`
 

@@ -1,13 +1,15 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getAdminSupabase, getTenantFromSession, getTenantSupabase } from './tenant-supabase'
 import { calculateCreditsForAI, AIFeatureType } from './credit-calculator'
 
 export interface TrackUsageParams {
   userId: string
+  userEmail?: string // Optional - will be fetched if not provided
   featureType: AIFeatureType
   tokensUsed: number
   modelUsed: string
   productId?: string
+  productName?: string // Optional - will be fetched if not provided
+  productSku?: string // Optional - will be fetched if not provided
   categoryId?: string
   metadata?: Record<string, any>
   creditsUsed?: number // Optional - will be calculated if not provided
@@ -16,22 +18,51 @@ export interface TrackUsageParams {
 
 export async function trackAIUsage(params: TrackUsageParams) {
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: (cookiesToSet) => {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
+    // Get tenant context
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      console.error('[AI USAGE TRACKER] No tenant context found, cannot track usage')
+      return
+    }
+
+    // Get Admin Supabase client (uses service role key)
+    const adminSupabase = await getAdminSupabase()
+
+    // Fetch product context if productId is provided but productName/SKU are missing
+    let productName = params.productName
+    let productSku = params.productSku
+    let userEmail = params.userEmail
+
+    if (params.productId && (!productName || !productSku)) {
+      try {
+        const tenantSupabase = await getTenantSupabase()
+        const { data: product } = await tenantSupabase
+          .from('shoprenter_products')
+          .select('name, sku')
+          .eq('id', params.productId)
+          .single()
+        
+        if (product) {
+          productName = product.name || productName
+          productSku = product.sku || productSku
+        }
+      } catch (error) {
+        console.warn('[AI USAGE TRACKER] Could not fetch product context:', error)
       }
-    )
+    }
+
+    // Fetch user email if not provided
+    if (!userEmail) {
+      try {
+        const tenantSupabase = await getTenantSupabase()
+        const { data: { user } } = await tenantSupabase.auth.getUser()
+        if (user?.email) {
+          userEmail = user.email
+        }
+      } catch (error) {
+        console.warn('[AI USAGE TRACKER] Could not fetch user email:', error)
+      }
+    }
 
     // Estimate cost (adjust based on your AI provider pricing)
     const costEstimate = estimateCost(params.tokensUsed, params.modelUsed)
@@ -43,25 +74,39 @@ export async function trackAIUsage(params: TrackUsageParams) {
     const creditType = params.creditType || 
       (params.featureType.includes('competitor') ? 'competitor_scrape' : 'ai_generation')
 
-    const { data, error } = await supabase
-      .from('ai_usage_logs')
+    // Build product context JSON
+    const productContext: Record<string, any> = {}
+    if (params.productId) {
+      productContext.product_id = params.productId
+      if (productName) productContext.product_name = productName
+      if (productSku) productContext.product_sku = productSku
+    }
+    if (params.categoryId) {
+      productContext.category_id = params.categoryId
+    }
+
+    // Insert into Admin DB
+    const { data, error } = await adminSupabase
+      .from('tenant_credit_usage_logs')
       .insert({
-        user_id: params.userId,
+        tenant_id: tenant.id,
+        user_id_in_tenant_db: params.userId,
+        user_email: userEmail || null,
         feature_type: params.featureType,
-        product_id: params.productId || null,
-        category_id: params.categoryId || null,
+        credits_used: creditsUsed,
+        credit_type: creditType,
+        product_context: productContext,
         tokens_used: params.tokensUsed,
         model_used: params.modelUsed,
         cost_estimate: costEstimate,
-        credits_used: creditsUsed,
-        credit_type: creditType,
         metadata: params.metadata || {}
       })
       .select()
 
     if (error) {
-      console.error('Error tracking AI usage:', error)
-      console.error('Failed to insert usage log:', {
+      console.error('[AI USAGE TRACKER] Error tracking AI usage:', error)
+      console.error('[AI USAGE TRACKER] Failed to insert usage log:', {
+        tenantId: tenant.id,
         userId: params.userId,
         featureType: params.featureType,
         creditsUsed,
@@ -73,13 +118,13 @@ export async function trackAIUsage(params: TrackUsageParams) {
       })
       // Don't throw - usage tracking shouldn't break the feature
     } else {
-      console.log(`[AI USAGE TRACKED] User ${params.userId}: ${params.featureType} - ${creditsUsed} credits (${creditType})`)
+      console.log(`[AI USAGE TRACKED] Tenant ${tenant.slug}, User ${params.userId}: ${params.featureType} - ${creditsUsed} credits (${creditType})`)
       if (data && data.length > 0) {
         console.log(`[AI USAGE TRACKED] Inserted log ID: ${data[0].id}`)
       }
     }
   } catch (error) {
-    console.error('Error in trackAIUsage:', error)
+    console.error('[AI USAGE TRACKER] Error in trackAIUsage:', error)
   }
 }
 

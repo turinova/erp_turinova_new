@@ -1,10 +1,10 @@
 /**
  * Credit Checker for AI Features
- * Checks if user has enough credits before allowing AI operations
+ * Checks if tenant has enough credits before allowing AI operations
+ * Credits are shared at tenant level, not per-user
  */
 
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantFromSession, getAdminSupabase } from './tenant-supabase'
 import { calculateCreditsForAI, AIFeatureType } from './credit-calculator'
 
 export interface CreditCheckResult {
@@ -16,117 +16,100 @@ export interface CreditCheckResult {
 }
 
 /**
- * Get user's subscription with plan details
+ * Get tenant's subscription with plan details from Admin DB
  */
-async function getUserSubscription(userId: string) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
-
-  // Get subscription with plan using RPC function
-  const { data, error } = await supabase
-    .rpc('get_user_subscription_with_plan', { user_uuid: userId })
-
-  if (error || !data || data.length === 0) {
-    return null
-  }
-
-  const subscription = data[0]
-  
-  // ALWAYS fetch plan details directly from subscription_plans table
-  // This ensures we get the most up-to-date ai_credits_per_month value
-  // (especially important after test-override)
-  if (subscription.plan_id) {
-    const { data: plan, error: planError } = await supabase
-      .from('subscription_plans')
-      .select('ai_credits_per_month, features, name, slug')
-      .eq('id', subscription.plan_id)
-      .single()
+async function getTenantSubscription(tenantId: string) {
+  try {
+    const adminSupabase = await getAdminSupabase()
     
-    if (plan && !planError) {
-      return {
-        ...subscription,
-        plan: {
-          ...subscription.plan,
-          ai_credits_per_month: plan.ai_credits_per_month, // Always use fresh value from DB
-          features: plan.features || subscription.plan?.features || subscription.features,
-          name: plan.name || subscription.plan?.name,
-          slug: plan.slug || subscription.plan?.slug
-        }
+    const { data: subscriptionData, error } = await adminSupabase
+      .from('tenant_subscriptions')
+      .select(`
+        *,
+        subscription_plans (*)
+      `)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'active')
+      .maybeSingle()
+
+    if (error || !subscriptionData || !subscriptionData.subscription_plans) {
+      return null
+    }
+
+    const plan = subscriptionData.subscription_plans as any
+    return {
+      ...subscriptionData,
+      bonus_credits: subscriptionData.bonus_credits || 0,
+      purchased_credits: subscriptionData.purchased_credits || 0,
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        slug: plan.slug,
+        ai_credits_per_month: plan.ai_credits_per_month,
+        features: plan.features || {}
       }
     }
+  } catch (error) {
+    console.error('[CREDIT CHECKER] Error fetching tenant subscription:', error)
+    return null
   }
-  
-  return subscription
 }
 
 /**
- * Get current month credit usage for a user
+ * Get current month credit usage for tenant (tenant-level aggregation)
  */
-async function getCurrentMonthCreditUsage(userId: string): Promise<number> {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: (cookiesToSet) => {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
+async function getCurrentMonthCreditUsage(tenantId: string): Promise<number> {
+  try {
+    const adminSupabase = await getAdminSupabase()
+    
+    const { data, error } = await adminSupabase
+      .rpc('get_tenant_credit_usage_current_month', { tenant_uuid: tenantId })
+
+    if (error || !data || data.length === 0) {
+      return 0
     }
-  )
 
-  const { data, error } = await supabase
-    .rpc('get_user_credit_usage_current_month', { user_uuid: userId })
-
-  if (error || !data || data.length === 0) {
+    return data[0].total_credits_used || 0
+  } catch (error) {
+    console.error('[CREDIT CHECKER] Error fetching credit usage:', error)
     return 0
   }
-
-  return data[0].total_credits_used || 0
 }
 
 /**
- * Check if user has enough credits for an operation
+ * Check if tenant has enough credits for an operation
+ * Note: Credits are shared at tenant level, not per-user
  */
 export async function checkAvailableCredits(
-  userId: string,
+  userId: string, // Still needed for logging, but credits are tenant-level
   requiredCredits: number
 ): Promise<CreditCheckResult> {
   try {
-    // Get user subscription
-    const subscription = await getUserSubscription(userId)
+    // Get tenant context
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      console.error('[CREDIT CHECKER] No tenant context found')
+      // Fail open - allow operation if tenant context missing
+      return {
+        hasEnough: true,
+        available: Infinity,
+        used: 0,
+        limit: Infinity,
+        required: requiredCredits
+      }
+    }
+
+    // Get tenant subscription from Admin DB
+    const subscription = await getTenantSubscription(tenant.id)
     
-    // Get credit limit from plan - ALWAYS prioritize plan.ai_credits_per_month (most up-to-date)
-    // This ensures test-override changes are immediately reflected
-    const limit = subscription?.plan?.ai_credits_per_month !== undefined
-      ? subscription.plan.ai_credits_per_month
-      : subscription?.features?.ai_credits_per_month !== undefined
-      ? subscription.features.ai_credits_per_month
-      : 0
+    // Calculate effective credit limit (plan + bonus + purchased)
+    const planLimit = subscription?.plan?.ai_credits_per_month || 0
+    const bonusCredits = subscription?.bonus_credits || 0
+    const purchasedCredits = subscription?.purchased_credits || 0
+    const effectiveLimit = planLimit + bonusCredits + purchasedCredits
     
-    // If limit is null (unlimited), allow operation
-    if (limit === null) {
+    // If plan limit is null (unlimited), allow operation
+    if (subscription?.plan?.ai_credits_per_month === null || subscription?.plan?.ai_credits_per_month === Infinity) {
       return {
         hasEnough: true,
         available: Infinity,
@@ -136,19 +119,19 @@ export async function checkAvailableCredits(
       }
     }
     
-    // Get current month usage
-    const used = await getCurrentMonthCreditUsage(userId)
-    const available = Math.max(0, limit - used)
+    // Get current month usage (tenant-level)
+    const used = await getCurrentMonthCreditUsage(tenant.id)
+    const available = Math.max(0, effectiveLimit - used)
     
     return {
       hasEnough: available >= requiredCredits,
       available,
       used,
-      limit,
+      limit: effectiveLimit,
       required: requiredCredits
     }
   } catch (error) {
-    console.error('Error checking credits:', error)
+    console.error('[CREDIT CHECKER] Error checking credits:', error)
     // On error, allow operation (fail open)
     return {
       hasEnough: true,
@@ -172,7 +155,7 @@ export async function checkCreditsForAIFeature(
 }
 
 /**
- * Get credit usage stats for display
+ * Get credit usage stats for display (tenant-level)
  */
 export async function getCreditUsageStats(userId: string): Promise<{
   used: number
@@ -180,32 +163,51 @@ export async function getCreditUsageStats(userId: string): Promise<{
   available: number
   percentage: number
 }> {
-  const subscription = await getUserSubscription(userId)
-  const limit = subscription?.plan?.ai_credits_per_month !== undefined
-    ? subscription.plan.ai_credits_per_month
-    : subscription?.features?.ai_credits_per_month !== undefined
-    ? subscription.features.ai_credits_per_month
-    : subscription?.features?.ai_monthly_limit !== undefined
-    ? subscription.features.ai_monthly_limit
-    : 0
-  
-  if (limit === null || limit === Infinity) {
+  try {
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      return {
+        used: 0,
+        limit: Infinity,
+        available: Infinity,
+        percentage: 0
+      }
+    }
+
+    const subscription = await getTenantSubscription(tenant.id)
+    
+    // Calculate effective credit limit (plan + bonus + purchased)
+    const planLimit = subscription?.plan?.ai_credits_per_month ?? null
+    const bonusCredits = subscription?.bonus_credits || 0
+    const purchasedCredits = subscription?.purchased_credits || 0
+    
+    if (planLimit === null || planLimit === Infinity) {
+      return {
+        used: 0,
+        limit: Infinity,
+        available: Infinity,
+        percentage: 0
+      }
+    }
+    
+    const effectiveLimit = planLimit + bonusCredits + purchasedCredits
+    const used = await getCurrentMonthCreditUsage(tenant.id)
+    const available = Math.max(0, effectiveLimit - used)
+    const percentage = effectiveLimit > 0 ? (used / effectiveLimit) * 100 : 0
+    
+    return {
+      used,
+      limit: effectiveLimit,
+      available,
+      percentage
+    }
+  } catch (error) {
+    console.error('[CREDIT CHECKER] Error getting credit stats:', error)
     return {
       used: 0,
       limit: Infinity,
       available: Infinity,
       percentage: 0
     }
-  }
-  
-  const used = await getCurrentMonthCreditUsage(userId)
-  const available = Math.max(0, limit - used)
-  const percentage = limit > 0 ? (used / limit) * 100 : 0
-  
-  return {
-    used,
-    limit,
-    available,
-    percentage
   }
 }

@@ -5,11 +5,8 @@ import CardContent from '@mui/material/CardContent'
 import Grid from '@mui/material/Grid'
 import Box from '@mui/material/Box'
 
-// Component Imports
-import DatabaseTemplateCard from './HomeClient'
-
 // Server Imports
-import { getCompanyStats } from '@/lib/supabase-server'
+import { getDashboardStats } from '@/lib/supabase-server'
 
 export const metadata = {
   title: 'Dashboard - Turinova Admin',
@@ -17,7 +14,7 @@ export const metadata = {
 }
 
 export default async function HomePage() {
-  const stats = await getCompanyStats()
+  const stats = await getDashboardStats()
 
   return (
     <div className='flex flex-col gap-6'>
@@ -31,15 +28,12 @@ export default async function HomePage() {
                 Üdvözöljük az Admin Portálon!
               </Typography>
               <Typography variant='body1' color='text.secondary'>
-                SaaS ügyfélkezelés és statisztikák
+                Tenant kezelés és statisztikák
               </Typography>
             </div>
           </Box>
         </CardContent>
       </Card>
-
-      {/* Database Template Card */}
-      <DatabaseTemplateCard />
 
       {/* Quick Stats Grid */}
       <Grid container spacing={6}>
@@ -59,10 +53,10 @@ export default async function HomePage() {
                 </Box>
                 <div>
                   <Typography variant='h5' className='font-bold'>
-                    {stats.totalCompanies}
+                    {stats.totalTenants}
                   </Typography>
                   <Typography variant='body2' color='text.secondary'>
-                    Összes Cég
+                    Összes Ügyfél
                   </Typography>
                 </div>
               </Box>
@@ -86,10 +80,10 @@ export default async function HomePage() {
                 </Box>
                 <div>
                   <Typography variant='h5' className='font-bold'>
-                    {stats.activeCompanies}
+                    {stats.activeTenants}
                   </Typography>
                   <Typography variant='body2' color='text.secondary'>
-                    Aktív Cégek
+                    Aktív Ügyfelek
                   </Typography>
                 </div>
               </Box>
@@ -109,14 +103,14 @@ export default async function HomePage() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <i className='ri-user-line text-2xl text-white' />
+                  <i className='ri-vip-card-line text-2xl text-white' />
                 </Box>
                 <div>
                   <Typography variant='h5' className='font-bold'>
-                    {stats.totalCustomers}
+                    {stats.totalSubscriptions}
                   </Typography>
                   <Typography variant='body2' color='text.secondary'>
-                    Összes Ügyfél
+                    Összes Előfizetés
                   </Typography>
                 </div>
               </Box>
@@ -136,14 +130,14 @@ export default async function HomePage() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <i className='ri-file-list-3-line text-2xl text-white' />
+                  <i className='ri-checkbox-circle-line text-2xl text-white' />
                 </Box>
                 <div>
                   <Typography variant='h5' className='font-bold'>
-                    {stats.totalQuotes}
+                    {stats.activeSubscriptions}
                   </Typography>
                   <Typography variant='body2' color='text.secondary'>
-                    Összes Árajánlat
+                    Aktív Előfizetések
                   </Typography>
                 </div>
               </Box>
@@ -163,41 +157,14 @@ export default async function HomePage() {
                   alignItems: 'center',
                   justifyContent: 'center'
                 }}>
-                  <i className='ri-calendar-line text-2xl text-white' />
+                  <i className='ri-coins-line text-2xl text-white' />
                 </Box>
                 <div>
                   <Typography variant='h5' className='font-bold'>
-                    {stats.quotesThisWeek}
+                    {stats.totalTuritokenUsed.toLocaleString('hu-HU')}
                   </Typography>
                   <Typography variant='body2' color='text.secondary'>
-                    Árajánlatok (7 nap)
-                  </Typography>
-                </div>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={4}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box sx={{ 
-                  backgroundColor: 'error.main', 
-                  borderRadius: 2, 
-                  p: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <i className='ri-user-add-line text-2xl text-white' />
-                </Box>
-                <div>
-                  <Typography variant='h5' className='font-bold'>
-                    {stats.newCustomersThisMonth}
-                  </Typography>
-                  <Typography variant='body2' color='text.secondary'>
-                    Új Ügyfelek (30 nap)
+                    Turitoken (ez hónap)
                   </Typography>
                 </div>
               </Box>
