@@ -4,6 +4,15 @@
 
 The structured data endpoint now requires tenant identification via a query parameter. This ensures that public requests from ShopRenter frontend query the correct tenant database.
 
+## Template Files
+
+**Ready-to-use template files are available in `shop-portal/templates/shoprenter/`:**
+
+- `product.tpl` - Complete product page template with multi-tenant support
+- `README.md` - Installation and setup instructions
+
+See the [Quick Start](#quick-start-recommended) section below for installation instructions.
+
 ## API Endpoint Changes
 
 The endpoint `/api/shoprenter/structured-data/[sku]` now accepts an optional `tenant` query parameter:
@@ -22,6 +31,22 @@ If the `tenant` parameter is **not** provided:
 - If no session exists, returns a 400 error asking for tenant parameter
 
 ## ShopRenter Template Modification
+
+### Quick Start (Recommended)
+
+A complete `product.tpl` template file is available in `shop-portal/templates/shoprenter/product.tpl`. 
+
+1. **Copy the template file** to your ShopRenter theme:
+   ```
+   Copy: shop-portal/templates/shoprenter/product.tpl
+   To: your-shoprenter-theme/product/product.tpl
+   ```
+
+2. **Add tenant slug to controller** (see Step 1 below)
+
+3. **Done!** The template already includes all necessary modifications.
+
+### Manual Setup (If you prefer to modify your existing template)
 
 ### Step 1: Add Tenant Slug Variable
 
@@ -43,7 +68,7 @@ $data['tenant_slug'] = TURINOVA_TENANT_SLUG;
 
 ### Step 2: Update the Template Script
 
-In your ShopRenter template file (e.g., `layout/1-column-no-container-layout.tpl` or wherever you have the structured data script), modify the JavaScript:
+If you're modifying your existing template file (e.g., `product/product.tpl`), update the JavaScript:
 
 **Find this section:**
 ```javascript
