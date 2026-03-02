@@ -1,6 +1,8 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react'
+import { usePathname } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 
 export interface SubscriptionPlan {
   id: string
@@ -53,8 +55,22 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null)
   const [aiUsage, setAiUsage] = useState<AIUsageStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const pathname = usePathname()
+  const { user, loading: authLoading } = useAuth()
+  const isMountedRef = useRef(false)
+  const loadingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const loadSubscription = async () => {
+    // Triple-check we're not on a public route and component is mounted
+    if (!isMountedRef.current || !pathname || pathname === '/login' || pathname === '/' || pathname?.startsWith('/api/') || pathname?.startsWith('/_next/')) {
+      return
+    }
+    
+    // Ensure user is authenticated
+    if (!user) {
+      return
+    }
+    
     try {
       // Add cache busting timestamp to ensure fresh data
       const res = await fetch(`/api/subscription/current?t=${Date.now()}`)
@@ -66,15 +82,42 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           setSubscription(null)
         }
       } else {
+        // Silently handle errors - don't log or show toasts for 401/404
+        // These are expected when user is not authenticated or has no subscription
+        if (res.status !== 401 && res.status !== 404) {
+          console.warn('Subscription API returned non-ok status:', res.status)
+        }
         setSubscription(null)
       }
     } catch (error) {
-      console.error('Error loading subscription:', error)
+      // Silently handle all network/fetch errors - don't log or show toasts
+      // These are expected during initial load, login, or when user is not authenticated
+      // Only log truly unexpected errors (not network-related)
+      if (error instanceof Error) {
+        const errorMsg = error.message.toLowerCase()
+        const isNetworkError = errorMsg.includes('fetch') || 
+                               errorMsg.includes('network') || 
+                               errorMsg.includes('failed to fetch') ||
+                               errorMsg.includes('load failed')
+        if (!isNetworkError) {
+          console.error('Error loading subscription:', error)
+        }
+      }
       setSubscription(null)
     }
   }
 
   const loadUsage = async () => {
+    // Triple-check we're not on a public route and component is mounted
+    if (!isMountedRef.current || !pathname || pathname === '/login' || pathname === '/' || pathname?.startsWith('/api/') || pathname?.startsWith('/_next/')) {
+      return
+    }
+    
+    // Ensure user is authenticated
+    if (!user) {
+      return
+    }
+    
     try {
       // Add cache busting timestamp to ensure fresh data
       const res = await fetch(`/api/subscription/usage?t=${Date.now()}`)
@@ -108,22 +151,132 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
           setAiUsage(null)
         }
       } else {
+        // Silently handle errors - don't log or show toasts for 401/404
+        // These are expected when user is not authenticated or has no subscription
+        if (res.status !== 401 && res.status !== 404) {
+          console.warn('Usage API returned non-ok status:', res.status)
+        }
         setAiUsage(null)
       }
     } catch (error) {
-      console.error('Error loading usage:', error)
+      // Silently handle all network/fetch errors - don't log or show toasts
+      // These are expected during initial load, login, or when user is not authenticated
+      // Only log truly unexpected errors (not network-related)
+      if (error instanceof Error) {
+        const errorMsg = error.message.toLowerCase()
+        const isNetworkError = errorMsg.includes('fetch') || 
+                               errorMsg.includes('network') || 
+                               errorMsg.includes('failed to fetch') ||
+                               errorMsg.includes('load failed')
+        if (!isNetworkError) {
+          console.error('Error loading usage:', error)
+        }
+      }
       setAiUsage(null)
     }
   }
 
   useEffect(() => {
-    const loadData = async () => {
+    // Mark component as mounted
+    isMountedRef.current = true
+    
+    // Early return if pathname is not yet available (during initial mount)
+    if (!pathname) {
       setLoading(true)
-      await Promise.all([loadSubscription(), loadUsage()])
-      setLoading(false)
+      return
     }
-    loadData()
-  }, [])
+
+    // Wait for auth to finish loading
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
+
+    // Only load subscription data if:
+    // 1. User is authenticated
+    // 2. Not on login page or other public routes
+    const isPublicRoute = pathname === '/login' || 
+                         pathname === '/' || 
+                         pathname?.startsWith('/api/') ||
+                         pathname?.startsWith('/_next/')
+    
+    if (!user || isPublicRoute) {
+      setLoading(false)
+      setSubscription(null)
+      setAiUsage(null)
+      // Clear any pending timeout
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+        loadingTimeoutRef.current = null
+      }
+      return
+    }
+
+    // Clear any existing timeout before setting a new one
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current)
+      loadingTimeoutRef.current = null
+    }
+
+    // Add a delay to ensure session is fully established after login
+    // This prevents errors during the redirect phase
+    loadingTimeoutRef.current = setTimeout(() => {
+      // Re-check conditions inside timeout (they might have changed)
+      const currentPathname = pathname
+      const currentUser = user
+      const currentIsPublicRoute = currentPathname === '/login' || 
+                                   currentPathname === '/' || 
+                                   currentPathname?.startsWith('/api/') ||
+                                   currentPathname?.startsWith('/_next/')
+      
+      if (!isMountedRef.current || !currentUser || currentIsPublicRoute) {
+        setLoading(false)
+        setSubscription(null)
+        setAiUsage(null)
+        loadingTimeoutRef.current = null
+        return
+      }
+
+      const loadData = async () => {
+        // Final check before making API calls
+        if (!isMountedRef.current || !currentUser || currentIsPublicRoute) {
+          return
+        }
+
+        setLoading(true)
+        try {
+          await Promise.all([loadSubscription(), loadUsage()])
+        } catch (error) {
+          // Silently handle ALL errors - don't show toasts or log network errors
+          // This prevents error flashes during login
+          if (error instanceof Error) {
+            const errorMsg = error.message.toLowerCase()
+            const isNetworkError = errorMsg.includes('fetch') || 
+                                 errorMsg.includes('network') || 
+                                 errorMsg.includes('failed to fetch') ||
+                                 errorMsg.includes('load failed')
+            if (!isNetworkError) {
+              console.error('Error loading subscription data:', error)
+            }
+          }
+        } finally {
+          if (isMountedRef.current) {
+            setLoading(false)
+          }
+          loadingTimeoutRef.current = null
+        }
+      }
+      loadData()
+    }, 300) // Delay to ensure session is ready after redirect
+
+    return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+        loadingTimeoutRef.current = null
+      }
+      isMountedRef.current = false
+    }
+  }, [user, pathname, authLoading])
 
   const hasFeature = (feature: string): boolean => {
     if (!subscription) return false

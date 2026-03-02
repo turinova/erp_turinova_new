@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 
 import type { User } from '@supabase/supabase-js'
-import { supabase } from '@/lib/supabase'
+import { getTenantSupabaseBrowser } from '@/lib/tenant-supabase'
 
 interface AuthContextType {
   user: User | null
@@ -21,6 +21,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
+    
+    // Get tenant-aware Supabase client
+    const supabase = getTenantSupabaseBrowser()
     
     // Get initial session
     const getInitialSession = async () => {
@@ -63,7 +66,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
+      // Get tenant-aware Supabase client
+      const supabase = getTenantSupabaseBrowser()
       await supabase.auth.signOut()
+      
+      // Clear tenant context from localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('tenant_context')
+      }
       
       // Clear local state
       setUser(null)

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 
 /**
@@ -13,24 +12,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -67,24 +50,8 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -131,9 +98,27 @@ export async function POST(
       const fileName = `${id}/${Date.now()}.${fileExt}`
       const filePath = `sources/${fileName}`
 
+      // Get tenant's service role key for storage operations
+      const { getTenantFromSession, getAdminSupabase } = await import('@/lib/tenant-supabase')
+      const tenant = await getTenantFromSession()
+      if (!tenant) {
+        return NextResponse.json({ error: 'No tenant context found' }, { status: 401 })
+      }
+      
+      const adminSupabase = await getAdminSupabase()
+      const { data: tenantData } = await adminSupabase
+        .from('tenants')
+        .select('supabase_url, supabase_service_role_key')
+        .eq('id', tenant.id)
+        .single()
+      
+      if (!tenantData?.supabase_service_role_key) {
+        return NextResponse.json({ error: 'Tenant service role key not found' }, { status: 500 })
+      }
+      
       const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
+        tenantData.supabase_url,
+        tenantData.supabase_service_role_key
       )
 
       const fileBuffer = Buffer.from(await file.arrayBuffer())

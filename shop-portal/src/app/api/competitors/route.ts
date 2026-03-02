@@ -1,26 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 
 /**
  * GET /api/competitors
  * Get all competitors
  */
 export async function GET(request: NextRequest) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+  const supabase = await getTenantSupabase()
 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   
@@ -51,20 +38,8 @@ export async function GET(request: NextRequest) {
  * Create a new competitor
  */
 export async function POST(request: NextRequest) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+  const supabase = await getTenantSupabase()
 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   

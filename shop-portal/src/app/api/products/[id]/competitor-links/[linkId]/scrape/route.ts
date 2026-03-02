@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { scrapeCompetitorPrice, ScrapeConfig } from '@/lib/scraper'
 import { checkAvailableCredits } from '@/lib/credit-checker'
 import { calculateCreditsForCompetitor } from '@/lib/credit-calculator'
@@ -16,20 +15,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string; linkId: string }> }
 ) {
   const { id: productId, linkId } = await params
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   

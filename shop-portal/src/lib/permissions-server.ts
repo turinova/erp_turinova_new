@@ -1,30 +1,15 @@
 // Server-side Permission System Utilities
 // For use in middleware and API routes only
 
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { UserPermission } from './permissions'
+import { getTenantSupabase } from './tenant-supabase'
 
 /**
  * Get user permissions from database (server-side only)
+ * Uses tenant-aware Supabase client
  */
 export async function getUserPermissionsFromDB(userId: string): Promise<UserPermission[]> {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data, error } = await supabase.rpc('get_user_permissions', {
     user_uuid: userId
@@ -63,20 +48,7 @@ export async function hasPagePermission(
       return permission?.can_access ?? false
     }
 
-    // Fallback to database check
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    // Fallback to database check (uses tenant-aware client)
     const permissions = await getUserPermissionsFromDB(userId)
     const permission = permissions.find(p => p.page_path === checkPath)
     return permission?.can_access ?? false
@@ -96,24 +68,10 @@ export async function getAllUserPermissions(userId: string): Promise<UserPermiss
 
 /**
  * Get all users with their permissions (server-side)
+ * Uses tenant-aware Supabase client
  */
 export async function getAllUsersWithPermissions(): Promise<any[]> {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   // Get all users from the public users table (excluding deleted users)
   const { data: users, error: usersError } = await supabase
@@ -132,24 +90,10 @@ export async function getAllUsersWithPermissions(): Promise<any[]> {
 
 /**
  * Get all pages for permission management (server-side)
+ * Uses tenant-aware Supabase client
  */
 export async function getAllPages(): Promise<any[]> {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: pages, error } = await supabase
     .from('pages')

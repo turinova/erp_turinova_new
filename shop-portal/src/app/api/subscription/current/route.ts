@@ -1,41 +1,62 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantFromSession, getAdminSupabase } from '@/lib/tenant-supabase'
-import { cookies } from 'next/headers'
+import { getTenantFromSession, getAdminSupabase, getTenantSupabase } from '@/lib/tenant-supabase'
 
 export async function GET(request: NextRequest) {
   try {
     // Get tenant context from session
     let tenant = await getTenantFromSession()
     
-    // If tenant not found from cookie, try to get user from tenant DB and lookup
+    // If tenant not found from cookie, try fallback: get user email and lookup tenant
     if (!tenant) {
-      // Try to get user from tenant database session
-      const cookieStore = await cookies()
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+      console.log('[SUBSCRIPTION API] Tenant context not in cookie, trying fallback...')
       
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabaseAnonKey) {
-        const { createServerClient } = await import('@supabase/ssr')
-        const tenantSupabase = createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL,
-          supabaseAnonKey,
-          {
-            cookies: {
-              getAll: () => cookieStore.getAll(),
-              setAll: () => {}, // Read-only
-            },
+      // Try to get user email from any available source
+      // First, try to get from default Supabase (for first tenant)
+      const { cookies } = await import('next/headers')
+      const cookieStore = await cookies()
+      const { createServerClient } = await import('@supabase/ssr')
+      const defaultSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const defaultSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+      
+      let userEmail: string | null = null
+      
+      // Try default Supabase first
+      if (defaultSupabaseUrl && defaultSupabaseAnonKey) {
+        try {
+          const defaultSupabase = createServerClient(
+            defaultSupabaseUrl,
+            defaultSupabaseAnonKey,
+            {
+              cookies: {
+                get(name: string) {
+                  return cookieStore.get(name)?.value
+                },
+                set() {},
+                remove() {},
+              },
+            }
+          )
+          
+          const { data: { user }, error: userError } = await defaultSupabase.auth.getUser()
+          if (!userError && user && user.email) {
+            userEmail = user.email
+            console.log('[SUBSCRIPTION API] Got user email from default Supabase:', userEmail)
           }
-        )
-
-        const { data: { user }, error: userError } = await tenantSupabase.auth.getUser()
-        
-        if (!userError && user && user.email) {
-          // Lookup tenant for this user in Admin DB
+        } catch (error) {
+          console.warn('[SUBSCRIPTION API] Could not get user from default Supabase:', error)
+        }
+      }
+      
+      // If we have user email, lookup tenant
+      if (userEmail) {
+        try {
           const adminSupabase = await getAdminSupabase()
           const { data: tenantData, error: tenantError } = await adminSupabase
-            .rpc('get_tenant_by_user_email', { user_email_param: user.email })
+            .rpc('get_tenant_by_user_email', { user_email_param: userEmail })
 
           if (!tenantError && tenantData && tenantData.length > 0) {
             const tenantInfo = tenantData[0]
+            console.log('[SUBSCRIPTION API] Found tenant via email lookup:', tenantInfo.tenant_name)
             tenant = {
               id: tenantInfo.tenant_id,
               name: tenantInfo.tenant_name,
@@ -45,8 +66,14 @@ export async function GET(request: NextRequest) {
               user_id_in_tenant_db: tenantInfo.user_id_in_tenant_db,
               user_role: tenantInfo.user_role
             }
+          } else {
+            console.warn('[SUBSCRIPTION API] No tenant found for email:', userEmail, tenantError)
           }
+        } catch (error) {
+          console.error('[SUBSCRIPTION API] Error looking up tenant:', error)
         }
+      } else {
+        console.warn('[SUBSCRIPTION API] Could not get user email for tenant lookup')
       }
     }
     
@@ -61,11 +88,12 @@ export async function GET(request: NextRequest) {
     console.log('[SUBSCRIPTION API] Looking up subscription for tenant:', tenant.id, tenant.slug)
 
     // First, try to get subscription without join to see if it exists
+    // Include both 'active' and 'trial' statuses
     const { data: subscriptionOnly, error: subOnlyError } = await adminSupabase
       .from('tenant_subscriptions')
       .select('*')
       .eq('tenant_id', tenant.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'trial'])
       .maybeSingle()
 
     console.log('[SUBSCRIPTION API] Subscription only query:', {
@@ -78,6 +106,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Get tenant subscription with plan details
+    // Include both 'active' and 'trial' statuses
     const { data: subscriptionData, error: subError } = await adminSupabase
       .from('tenant_subscriptions')
       .select(`
@@ -85,7 +114,7 @@ export async function GET(request: NextRequest) {
         subscription_plans (*)
       `)
       .eq('tenant_id', tenant.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'trial'])
       .maybeSingle()
 
     console.log('[SUBSCRIPTION API] Query result with join:', {
@@ -108,14 +137,87 @@ export async function GET(request: NextRequest) {
     }
 
     if (!subscriptionData) {
-      console.log('[SUBSCRIPTION API] No subscription data found')
+      console.log('[SUBSCRIPTION API] No active subscription data found for tenant:', tenant.id, tenant.slug)
+      
       // Try to find any subscription (not just active) for debugging
-      const { data: anySubscription } = await adminSupabase
+      const { data: anySubscription, error: anySubError } = await adminSupabase
         .from('tenant_subscriptions')
         .select('*')
         .eq('tenant_id', tenant.id)
         .maybeSingle()
-      console.log('[SUBSCRIPTION API] Any subscription found:', anySubscription)
+      
+      console.log('[SUBSCRIPTION API] Any subscription (any status) found:', {
+        hasData: !!anySubscription,
+        hasError: !!anySubError,
+        error: anySubError,
+        subscription: anySubscription ? {
+          id: anySubscription.id,
+          plan_id: anySubscription.plan_id,
+          status: anySubscription.status,
+          created_at: anySubscription.created_at
+        } : null
+      })
+      
+      // Also check if tenant exists in tenants table and has a plan_id
+      // This is a fallback - if subscription record doesn't exist but tenant has plan_id,
+      // we should create the subscription or return the plan info
+      const { data: tenantCheck, error: tenantCheckError } = await adminSupabase
+        .from('tenants')
+        .select('id, name, slug, subscription_plan_id')
+        .eq('id', tenant.id)
+        .single()
+      
+      console.log('[SUBSCRIPTION API] Tenant check:', {
+        hasData: !!tenantCheck,
+        hasError: !!tenantCheckError,
+        error: tenantCheckError,
+        tenant: tenantCheck ? {
+          id: tenantCheck.id,
+          name: tenantCheck.name,
+          slug: tenantCheck.slug,
+          subscription_plan_id: tenantCheck.subscription_plan_id
+        } : null
+      })
+      
+      // If tenant has a plan_id but no subscription record, try to get the plan and return it
+      // This handles cases where subscription wasn't created properly
+      if (tenantCheck && tenantCheck.subscription_plan_id) {
+        console.log('[SUBSCRIPTION API] Tenant has plan_id but no subscription record, fetching plan directly:', tenantCheck.subscription_plan_id)
+        
+        const { data: planData, error: planError } = await adminSupabase
+          .from('subscription_plans')
+          .select('*')
+          .eq('id', tenantCheck.subscription_plan_id)
+          .single()
+        
+        if (!planError && planData) {
+          console.log('[SUBSCRIPTION API] Found plan for tenant, returning subscription with plan')
+          
+          // Return subscription object with plan (even though subscription record doesn't exist)
+          // This allows the UI to work while we fix the missing subscription record
+          const subscription: any = {
+            id: null, // No subscription record ID
+            plan_id: planData.id,
+            status: 'active', // Assume active if plan is assigned
+            current_period_end: null,
+            plan: {
+              id: planData.id,
+              name: planData.name,
+              slug: planData.slug,
+              price_monthly: planData.price_monthly,
+              price_yearly: planData.price_yearly,
+              features: planData.features,
+              ai_credits_per_month: planData.ai_credits_per_month
+            }
+          }
+          
+          return NextResponse.json({
+            success: true,
+            subscription,
+            warning: 'Subscription record missing, using plan from tenant table'
+          })
+        }
+      }
       
       return NextResponse.json({
         success: true,

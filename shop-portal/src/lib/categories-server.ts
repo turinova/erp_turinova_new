@@ -3,32 +3,13 @@
  * Functions for working with categories in server components and API routes
  */
 
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from './tenant-supabase'
 
 /**
  * Get category by ID
  */
 export async function getCategoryById(categoryId: string) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: category, error } = await supabase
     .from('shoprenter_categories')
@@ -49,25 +30,7 @@ export async function getCategoryById(categoryId: string) {
  * Get category with descriptions
  */
 export async function getCategoryWithDescriptions(categoryId: string) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: category, error: categoryError } = await supabase
     .from('shoprenter_categories')
@@ -91,25 +54,7 @@ export async function getCategoryWithDescriptions(categoryId: string) {
  * Get categories for a connection
  */
 export async function getCategoriesForConnection(connectionId: string) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: categories, error } = await supabase
     .from('shoprenter_categories')
@@ -134,25 +79,7 @@ export async function getCategoriesForConnection(connectionId: string) {
  * Get products in a category
  */
 export async function getProductsInCategory(categoryId: string) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: relations, error: relationsError } = await supabase
     .from('shoprenter_product_category_relations')
@@ -189,25 +116,7 @@ export async function getProductsInCategory(categoryId: string) {
  * Get category hierarchy (parent chain)
  */
 export async function getCategoryHierarchy(categoryId: string): Promise<any[]> {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const hierarchy: any[] = []
   let currentCategoryId: string | null = categoryId
@@ -236,25 +145,7 @@ export async function getCategoryHierarchy(categoryId: string): Promise<any[]> {
  * Get categories for a product
  */
 export async function getCategoriesForProduct(productId: string) {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   const { data: relations, error } = await supabase
     .from('shoprenter_product_category_relations')

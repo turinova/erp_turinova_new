@@ -42,6 +42,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [user, setUser] = useState(null)
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
   // Vars
   const darkImg = '/images/pages/auth-v2-mask-1-dark.png'
@@ -69,9 +70,26 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
 
   // Check if user is already logged in
   useEffect(() => {
+    // Check for forced logout parameter
+    const urlParams = new URLSearchParams(window.location.search)
+    if (urlParams.get('logout') === 'true') {
+      // Clear all client-side storage
+      if (typeof window !== 'undefined') {
+        localStorage.clear()
+        sessionStorage.clear()
+        // Clear tenant context specifically
+        localStorage.removeItem('tenant_context')
+        // Remove the logout parameter from URL
+        window.history.replaceState({}, '', '/login')
+      }
+    }
+
     const checkUser = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        // Use tenant-aware client if available
+        const { getTenantSupabaseBrowser } = await import('@/lib/tenant-supabase')
+        const tenantSupabase = getTenantSupabaseBrowser()
+        const { data: { session } } = await tenantSupabase.auth.getSession()
 
         if (session?.user) {
           setUser(session.user)
@@ -85,7 +103,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
     }
 
     checkUser()
-  }, [supabase.auth, router])
+  }, [router])
 
   // Handle login
   const handleLogin = async (e: React.FormEvent) => {
@@ -117,38 +135,47 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
       if (!response.ok || !data.success) {
         const errorMessage = data.error || 'Bejelentkezési hiba történt'
         
+        // Only show error if it's a real authentication failure
+        // Don't show errors for network issues or temporary failures
         if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
           toast.error('Túl sok bejelentkezési kísérlet. Kérjük, várjon egy kicsit és próbálja újra.')
-        } else if (errorMessage.includes('Invalid') || errorMessage.includes('credentials')) {
-          toast.error('Hibás e-mail cím vagy jelszó!')
+        } else if (errorMessage.includes('Invalid') || errorMessage.includes('credentials') || errorMessage.includes('invalid_credentials')) {
+          // Only show error if response status is 401 (unauthorized)
+          // This prevents showing errors for temporary network issues
+          if (response.status === 401) {
+            toast.error('Hibás e-mail cím vagy jelszó!')
+          }
         } else if (errorMessage.includes('not found')) {
           toast.error('Felhasználó nem található!')
-        } else {
+        } else if (response.status !== 500 && response.status !== 0) {
+          // Don't show errors for server errors or network failures
           toast.error(errorMessage)
         }
+        setIsLoading(false)
         return
       }
 
       // Login successful
       console.log('Login successful, user:', data.user.email, 'Type:', data.type)
+      
+      // Set redirecting flag immediately to prevent any error toasts during redirect
+      setIsRedirecting(true)
+      
       toast.success('Sikeres bejelentkezés!')
       
       // Store user info
       setUser(data.user)
       
-      // For tenant users, we need to establish a session in the tenant database
+      // For tenant users, store tenant context in localStorage for client-side access
       if (data.type === 'tenant' && data.tenant) {
-        // Sign in to tenant database using the regular Supabase client
-        // This will establish the session cookies
-        const { error: tenantAuthError } = await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        })
-
-        if (tenantAuthError) {
-          console.error('Error signing in to tenant database:', tenantAuthError)
-          // Continue anyway - the authentication was successful
+        try {
+          localStorage.setItem('tenant_context', JSON.stringify(data.tenant))
+        } catch (error) {
+          console.warn('Failed to store tenant context in localStorage:', error)
         }
+        
+        // Note: The API route already signs in to the tenant database and establishes the session
+        // No need to sign in again here - this was causing duplicate sign-in attempts and errors
       }
       
       // Redirect to first permitted page after successful login
@@ -157,25 +184,39 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
           // Wait a moment for session to be established
           await new Promise(resolve => setTimeout(resolve, 300))
           
-          // Verify session exists
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session) {
-            // Fetch user permissions to find first accessible page
-            const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
-            if (permissionsResponse.ok) {
-              const permissions = await permissionsResponse.json()
-              const firstAllowed = permissions.find((p: any) => p.can_access === true)
-              const redirectPath = firstAllowed?.page_path || '/login'
-              
-              console.log('Redirecting to first permitted page:', redirectPath)
-              router.push(redirectPath)
+          // For tenant users, use tenant-aware client to verify session
+          if (data.type === 'tenant' && data.tenant) {
+            const { getTenantSupabaseBrowser } = await import('@/lib/tenant-supabase')
+            const tenantSupabase = getTenantSupabaseBrowser()
+            
+            // Verify session exists in tenant database
+            const { data: { session } } = await tenantSupabase.auth.getSession()
+            if (session) {
+              // Fetch user permissions to find first accessible page
+              const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
+              if (permissionsResponse.ok) {
+                const permissions = await permissionsResponse.json()
+                const firstAllowed = permissions.find((p: any) => p.can_access === true)
+                const redirectPath = firstAllowed?.page_path || '/home'
+                
+                console.log('Redirecting to first permitted page:', redirectPath)
+                router.push(redirectPath)
+              } else {
+                // Fallback: force page reload to let middleware handle redirect
+                window.location.href = '/'
+              }
             } else {
-              // Fallback: force page reload to let middleware handle redirect
+              // Fallback: force page reload if session not found
               window.location.href = '/'
             }
           } else {
-            // Fallback: force page reload if session not found
-            window.location.href = '/'
+            // For non-tenant users, use default client
+            const { data: { session } } = await supabase.auth.getSession()
+            if (session) {
+              window.location.href = '/'
+            } else {
+              window.location.href = '/'
+            }
           }
         } catch (error) {
           console.error('Session verification error:', error)

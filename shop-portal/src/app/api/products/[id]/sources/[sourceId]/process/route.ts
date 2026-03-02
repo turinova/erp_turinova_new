@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 import { extractPDFContent, scrapeURLContent } from '@/lib/content-extraction'
 import { chunkContent, generateEmbedding, generateEmbeddingsBatch } from '@/lib/chunking-service'
@@ -16,24 +15,8 @@ export async function POST(
 ) {
   try {
     const { id: productId, sourceId } = await params
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -65,10 +48,27 @@ export async function POST(
 
       // Extract content based on type
       if (sourceMaterial.source_type === 'pdf' && sourceMaterial.file_url) {
-        // Download PDF from storage
+        // Get tenant's service role key for storage operations
+        const { getTenantFromSession, getAdminSupabase } = await import('@/lib/tenant-supabase')
+        const tenant = await getTenantFromSession()
+        if (!tenant) {
+          return NextResponse.json({ error: 'No tenant context found' }, { status: 401 })
+        }
+        
+        const adminSupabase = await getAdminSupabase()
+        const { data: tenantData } = await adminSupabase
+          .from('tenants')
+          .select('supabase_url, supabase_service_role_key')
+          .eq('id', tenant.id)
+          .single()
+        
+        if (!tenantData?.supabase_service_role_key) {
+          return NextResponse.json({ error: 'Tenant service role key not found' }, { status: 500 })
+        }
+        
         const supabaseAdmin = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
+          tenantData.supabase_url,
+          tenantData.supabase_service_role_key
         )
 
         // Extract file path from URL

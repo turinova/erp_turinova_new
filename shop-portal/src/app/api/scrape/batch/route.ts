@@ -4,8 +4,7 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { chromium, Browser, BrowserContext } from 'playwright'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -232,13 +231,8 @@ export async function POST(request: Request) {
     }
 
     // Auth check
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      { cookies: { get(name: string) { return cookieStore.get(name)?.value } } }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 
 /**
  * PUT /api/products/[id]/competitor-links/[linkId]
@@ -11,20 +10,8 @@ export async function PUT(
   { params }: { params: Promise<{ id: string; linkId: string }> }
 ) {
   const { linkId } = await params
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+  const supabase = await getTenantSupabase()
 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   
@@ -76,20 +63,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; linkId: string }> }
 ) {
   const { linkId } = await params
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+  const supabase = await getTenantSupabase()
 
   const { data: { user }, error: userError } = await supabase.auth.getUser()
   

@@ -1,28 +1,14 @@
 import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, Receipt as ReceiptIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 import VatRatesTable from './VatRatesTable'
 
 export default async function VatRatesPage() {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-      },
-    }
-  )
-
   // Fetch all active VAT rates
   let vatRates: any[] = []
   try {
+    const supabase = await getTenantSupabase()
     const { data, error } = await supabase
       .from('vat')
       .select('id, name, kulcs, created_at, updated_at')

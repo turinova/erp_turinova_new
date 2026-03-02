@@ -40,7 +40,11 @@ import {
   Save as SaveIcon,
   Add as AddIcon,
   Refresh as RefreshIcon,
-  AccountBalanceWallet as CoinsIcon
+  AccountBalanceWallet as CoinsIcon,
+  Download as DownloadIcon,
+  CheckCircle as CheckCircleIcon,
+  Warning as WarningIcon,
+  Info as InfoIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
@@ -89,6 +93,14 @@ interface CreditUsageLog {
   } | null
 }
 
+interface TenantUser {
+  id: string
+  email: string
+  full_name: string | null
+  created_at: string
+  last_sign_in_at: string | null
+}
+
 interface TenantDetailClientProps {
   initialTenant: Tenant
 }
@@ -113,6 +125,8 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
   const [loadingPlans, setLoadingPlans] = useState(false)
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [loadingPurchases, setLoadingPurchases] = useState(false)
+  const [loadingUsers, setLoadingUsers] = useState(false)
+  const [users, setUsers] = useState<TenantUser[]>([])
   const [isSaving, setIsSaving] = useState(false)
   const [addCreditsOpen, setAddCreditsOpen] = useState(false)
   const [creditsToAdd, setCreditsToAdd] = useState<string>('')
@@ -125,7 +139,15 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
     loadSubscriptionPlans()
     loadCreditLogs()
     loadPurchases()
+    loadUsers() // Load users on mount to check setup status
   }, [])
+
+  // Reload users when Users tab is selected
+  useEffect(() => {
+    if (activeTab === 3) {
+      loadUsers()
+    }
+  }, [activeTab])
 
   const loadSubscriptionPlans = async () => {
     setLoadingPlans(true)
@@ -172,8 +194,30 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
     }
   }
 
+  const loadUsers = async () => {
+    setLoadingUsers(true)
+    try {
+      const res = await fetch(`/api/tenants/${tenant.id}/users`)
+      const data = await res.json()
+      if (data.success) {
+        setUsers(data.users || [])
+      } else {
+        toast.error(data.error || 'Hiba a felhasználók betöltése során')
+      }
+    } catch (error) {
+      console.error('Error loading users:', error)
+      toast.error('Hiba a felhasználók betöltése során')
+    } finally {
+      setLoadingUsers(false)
+    }
+  }
+
   const handleBack = () => {
     router.push('/tenants')
+  }
+
+  const handleDownloadTemplate = () => {
+    window.open('/api/tenants/template/download', '_blank')
   }
 
   const handleInputChange = (field: keyof Tenant, value: any) => {
@@ -417,6 +461,84 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
       {/* Tab 1: Overview */}
       {activeTab === 0 && (
         <Grid container spacing={3}>
+          {/* Setup Status */}
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Beállítási státusz</Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleDownloadTemplate}
+                  size="small"
+                >
+                  SQL Template letöltése
+                </Button>
+              </Box>
+              <Divider sx={{ mb: 3 }} />
+              
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {tenant.supabase_url && tenant.supabase_anon_key ? (
+                      <CheckCircleIcon color="success" />
+                    ) : (
+                      <WarningIcon color="warning" />
+                    )}
+                    <Typography variant="body2">
+                      Adatbázis kapcsolat
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {users.length > 0 ? (
+                      <CheckCircleIcon color="success" />
+                    ) : (
+                      <WarningIcon color="warning" />
+                    )}
+                    <Typography variant="body2">
+                      Admin felhasználó ({users.length})
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {tenant.subscription_plan ? (
+                      <CheckCircleIcon color="success" />
+                    ) : (
+                      <WarningIcon color="warning" />
+                    )}
+                    <Typography variant="body2">
+                      Előfizetési terv
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <InfoIcon color="info" />
+                    <Typography variant="body2">
+                      SQL Template futtatva
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+              
+              <Box sx={{ mt: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                <Typography variant="body2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  Következő lépések:
+                </Typography>
+                <Typography variant="body2" component="div">
+                  <ol style={{ margin: 0, paddingLeft: 20 }}>
+                    <li>Futtassa le a SQL template-et a tenant Supabase projektjében</li>
+                    <li>Hozzon létre admin felhasználót a Supabase Auth Dashboard-ban</li>
+                    <li>Rendeljen hozzá előfizetési tervet az Előfizetés fülön</li>
+                  </ol>
+                </Typography>
+              </Box>
+            </Paper>
+          </Grid>
+
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>Alapadatok</Typography>
@@ -851,13 +973,89 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
 
       {/* Tab 4: Users */}
       {activeTab === 3 && (
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" gutterBottom>Tenant felhasználók</Typography>
-          <Divider sx={{ mb: 3 }} />
-          <Typography variant="body2" color="text.secondary">
-            Felhasználók kezelése hamarosan...
-          </Typography>
-        </Paper>
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">Tenant felhasználók</Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  onClick={loadUsers}
+                  disabled={loadingUsers}
+                  size="small"
+                >
+                  Frissítés
+                </Button>
+              </Box>
+              <Divider sx={{ mb: 3 }} />
+              
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                <Typography variant="body2">
+                  <strong>Felhasználó létrehozása:</strong> Hozzon létre felhasználót a tenant Supabase projektjének Auth Dashboard-jában. 
+                  A felhasználó automatikusan szinkronizálódik a tenant adatbázisába a trigger segítségével.
+                </Typography>
+              </Box>
+
+              {loadingUsers ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                  <CircularProgress />
+                </Box>
+              ) : users.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <WarningIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    Nincs felhasználó
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Hozzon létre felhasználót a Supabase Auth Dashboard-ban
+                  </Typography>
+                </Box>
+              ) : (
+                <TableContainer>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Email</TableCell>
+                        <TableCell>Név</TableCell>
+                        <TableCell>Létrehozva</TableCell>
+                        <TableCell>Utolsó bejelentkezés</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {users.map((user) => (
+                        <TableRow key={user.id} hover>
+                          <TableCell>
+                            <Typography variant="body2" fontWeight="medium">
+                              {user.email}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {user.full_name || '-'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2">
+                              {new Date(user.created_at).toLocaleDateString('hu-HU')}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">
+                              {user.last_sign_in_at 
+                                ? new Date(user.last_sign_in_at).toLocaleDateString('hu-HU')
+                                : 'Még nem jelentkezett be'}
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+            </Paper>
+          </Grid>
+        </Grid>
       )}
 
       {/* Add Credits Dialog */}

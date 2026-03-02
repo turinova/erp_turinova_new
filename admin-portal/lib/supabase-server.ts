@@ -296,6 +296,22 @@ export async function createTenant(tenantData: any) {
       })
   }
 
+  // Mark all current migrations as applied (since new tenants use the template)
+  // This assumes the tenant database was set up using the complete template
+  // Note: This will only work after migration tracking system is set up in Admin DB
+  if (tenantData.mark_migrations_applied !== false) {
+    try {
+      // Dynamic import to avoid circular dependencies
+      const migrationModule = await import('./tenant-migrations')
+      if (migrationModule.markAllMigrationsApplied) {
+        await migrationModule.markAllMigrationsApplied(data.id)
+      }
+    } catch (error) {
+      console.warn('[Admin] Could not mark migrations as applied (migration tracking may not be set up yet):', error)
+      // Don't fail tenant creation if migration tracking fails
+    }
+  }
+
   return data
 }
 

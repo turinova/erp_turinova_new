@@ -24,8 +24,10 @@ SET ai_credits_per_month = 1000
 WHERE slug = 'enterprise'; -- ~200 descriptions or 1000 meta fields or 500 competitor scrapes
 
 -- 4. Create index for credit usage queries
-CREATE INDEX IF NOT EXISTS idx_ai_usage_user_month_credits 
-ON ai_usage_logs(user_id, DATE_TRUNC('month', created_at), credits_used);
+-- Note: Cannot create index on DATE_TRUNC('month', created_at) because DATE_TRUNC is not IMMUTABLE
+-- Use idx_ai_usage_user_date for month-based queries instead
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user_credits 
+ON ai_usage_logs(user_id, credits_used, created_at DESC);
 
 -- 5. Create function to get current month credit usage
 CREATE OR REPLACE FUNCTION get_user_credit_usage_current_month(user_uuid UUID)

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantFromSession, getAdminSupabase } from '@/lib/tenant-supabase'
-import { cookies } from 'next/headers'
+import { getTenantFromSession, getAdminSupabase, getTenantSupabase } from '@/lib/tenant-supabase'
 
 /**
  * GET /api/subscription/usage-logs
@@ -14,22 +13,9 @@ export async function GET(request: NextRequest) {
     
     // If tenant not found from cookie, try to get user from tenant DB and lookup
     if (!tenant) {
-      const cookieStore = await cookies()
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-      
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabaseAnonKey) {
-        const { createServerClient } = await import('@supabase/ssr')
-        const tenantSupabase = createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL,
-          supabaseAnonKey,
-          {
-            cookies: {
-              getAll: () => cookieStore.getAll(),
-              setAll: () => {}, // Read-only
-            },
-          }
-        )
-
+      try {
+        // Try to use tenant-aware client (will throw if no tenant context)
+        const tenantSupabase = await getTenantSupabase()
         const { data: { user }, error: userError } = await tenantSupabase.auth.getUser()
         
         if (!userError && user && user.email) {
@@ -50,6 +36,9 @@ export async function GET(request: NextRequest) {
             }
           }
         }
+      } catch (error) {
+        // getTenantSupabase() failed, tenant context not available
+        console.warn('[USAGE LOGS API] Could not get tenant context:', error)
       }
     }
     

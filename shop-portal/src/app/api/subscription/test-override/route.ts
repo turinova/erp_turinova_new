@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase, getAdminSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 
 /**
  * POST /api/subscription/test-override
  * Override credit limit for testing (development only)
+ * NOTE: This route uses tenant-level subscriptions in Admin DB
  */
 export async function POST(request: NextRequest) {
   // Only allow in development
@@ -13,64 +13,49 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: (cookiesToSet) => {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
+    const supabase = await getTenantSupabase()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    // Get tenant context
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      return NextResponse.json({ error: 'No tenant context' }, { status: 401 })
+    }
+
+    // Use Admin DB for tenant subscriptions
+    const adminSupabase = await getAdminSupabase()
+
     const body = await request.json()
     const { creditLimit } = body
 
-    // Get user's current subscription
-    const { data: subscriptionData } = await supabase
-      .rpc('get_user_subscription_with_plan', { user_uuid: user.id })
+    // Get tenant's current subscription from Admin DB
+    const { data: subscriptionData, error: subError } = await adminSupabase
+      .from('tenant_subscriptions')
+      .select(`
+        *,
+        subscription_plans (*)
+      `)
+      .eq('tenant_id', tenant.id)
+      .eq('status', 'active')
+      .maybeSingle()
 
-    if (!subscriptionData || subscriptionData.length === 0) {
-      return NextResponse.json({ error: 'No active subscription found' }, { status: 404 })
+    if (subError || !subscriptionData) {
+      return NextResponse.json({ error: 'No active subscription found for tenant' }, { status: 404 })
     }
 
-    const planId = subscriptionData[0].plan_id
-    const planSlug = subscriptionData[0].plan_slug
+    const planId = subscriptionData.plan_id
+    const plan = subscriptionData.subscription_plans as any
+    const planSlug = plan?.slug || 'unknown'
 
     // Update plan's credit limit temporarily (for testing)
-    // Note: This updates the actual plan, so it affects all users with this plan
-    // For production, you'd want a separate test_credit_limit column or user-specific override
+    // Note: This updates the actual plan in Admin DB, so it affects all tenants with this plan
     const updateValue = creditLimit === null ? null : (creditLimit === '' ? null : parseInt(String(creditLimit)))
     
-    // First, reset credit usage for current month (so the new limit is visible)
-    const { error: resetError } = await supabase
-      .from('ai_usage_logs')
-      .delete()
-      .eq('user_id', user.id)
-      .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-      .lt('created_at', new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString())
-
-    if (resetError) {
-      console.warn('Warning: Could not reset credit usage:', resetError)
-      // Continue anyway - the limit update is more important
-    } else {
-      console.log(`[TEST OVERRIDE] Reset credit usage for current month`)
-    }
-    
-    // Update plan's credit limit
-    const { error: updateError } = await supabase
+    // Update plan's credit limit in Admin DB
+    const { error: updateError } = await adminSupabase
       .from('subscription_plans')
       .update({ 
         ai_credits_per_month: updateValue
@@ -87,7 +72,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify the update by reading back the plan
-    const { data: updatedPlan, error: readError } = await supabase
+    const { data: updatedPlan, error: readError } = await adminSupabase
       .from('subscription_plans')
       .select('ai_credits_per_month, name, slug')
       .eq('id', planId)
@@ -105,7 +90,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Credit limit ${updateValue === null ? 'reset to plan default' : `set to ${updateValue}`}. Credit usage also reset.`,
+      message: `Credit limit ${updateValue === null ? 'reset to plan default' : `set to ${updateValue}`}`,
       planId,
       planSlug,
       creditLimit: updateValue,

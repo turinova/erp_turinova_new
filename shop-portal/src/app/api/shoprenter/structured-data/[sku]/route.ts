@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase, getAdminSupabase } from '@/lib/tenant-supabase'
+import { createClient } from '@supabase/supabase-js'
 import { generateProductStructuredData } from '@/lib/structured-data-generator'
 
 /**
@@ -59,25 +59,83 @@ export async function GET(
 
     console.log('[STRUCTURED DATA] Looking for product with SKU:', decodedSku)
 
-    // Create Supabase client (using anon key for public access)
-    const cookieStore = await cookies()
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+    // NOTE: This is a PUBLIC endpoint (no auth required) called from ShopRenter frontend
+    // Tenant identification is done via query parameter: ?tenant=tenant-slug
     
-    // Debug: Log environment variables (without exposing full keys)
-    console.log('[STRUCTURED DATA] Environment check:', {
-      hasSupabaseUrl: !!supabaseUrl,
-      supabaseUrlPrefix: supabaseUrl ? supabaseUrl.substring(0, 30) + '...' : 'MISSING',
-      hasAnonKey: !!supabaseAnonKey,
-      anonKeyPrefix: supabaseAnonKey ? supabaseAnonKey.substring(0, 20) + '...' : 'MISSING'
-    })
+    // Get tenant slug from query parameter (from ShopRenter template)
+    const tenantSlug = request.nextUrl.searchParams.get('tenant')
     
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('[STRUCTURED DATA] Missing Supabase environment variables!')
+    let supabase: any = null
+
+    if (tenantSlug) {
+      // Look up tenant by slug in Admin DB
+      console.log('[STRUCTURED DATA] Looking up tenant by slug:', tenantSlug)
+      const adminSupabase = await getAdminSupabase()
+      
+      const { data: tenant, error: tenantError } = await adminSupabase
+        .from('tenants')
+        .select('id, name, slug, supabase_url, supabase_anon_key')
+        .eq('slug', tenantSlug)
+        .eq('is_active', true)
+        .is('deleted_at', null)
+        .single()
+
+      if (tenantError || !tenant) {
+        console.error('[STRUCTURED DATA] Tenant not found:', tenantSlug, tenantError?.message)
+        return NextResponse.json(
+          { 
+            error: 'Tenant not found',
+            message: `No active tenant found with slug: ${tenantSlug}`,
+            sku: decodedSku
+          },
+          { 
+            status: 404,
+            headers: corsHeaders
+          }
+        )
+      }
+
+      // Create Supabase client for this tenant's database
+      supabase = createClient(
+        tenant.supabase_url,
+        tenant.supabase_anon_key,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        }
+      )
+
+      console.log('[STRUCTURED DATA] Using tenant database:', tenant.name, tenant.slug)
+    } else {
+      // Fallback: Try to get tenant context from session (for backward compatibility)
+      try {
+        supabase = await getTenantSupabase()
+        console.log('[STRUCTURED DATA] Using tenant context from session (fallback)')
+      } catch (error) {
+        // If tenant context not available and no tenant param, return error
+        console.error('[STRUCTURED DATA] No tenant identification provided')
+        return NextResponse.json(
+          { 
+            error: 'Tenant identification required',
+            message: 'Please provide tenant parameter in the request URL: ?tenant=tenant-slug',
+            sku: decodedSku
+          },
+          { 
+            status: 400,
+            headers: corsHeaders
+          }
+        )
+      }
+    }
+    
+    // If we got here, supabase should be set
+    if (!supabase) {
       return NextResponse.json(
         { 
           error: 'Server configuration error',
-          message: 'Supabase environment variables are not configured',
+          message: 'Failed to initialize database connection',
           sku: decodedSku
         },
         { 
@@ -86,18 +144,6 @@ export async function GET(
         }
       )
     }
-    
-    const supabase = createServerClient(
-      supabaseUrl,
-      supabaseAnonKey,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
 
     // First, try to find the product (maybe use maybeSingle to avoid errors)
     console.log('[STRUCTURED DATA] Querying database for SKU:', decodedSku)
@@ -316,8 +362,8 @@ export async function GET(
 
     // Get connection to fetch shop URL
     const { data: connection } = await supabase
-      .from('shoprenter_connections')
-      .select('api_url, shop_name')
+      .from('webshop_connections')
+      .select('api_url, name')
       .eq('id', product.connection_id)
       .single()
 
@@ -372,7 +418,7 @@ export async function GET(
       {
         currency: 'HUF', // Default to HUF, could be fetched from connection
         shopUrl: shopUrl, // Use already extracted shopUrl
-        shopName: connection?.shop_name || '',
+        shopName: connection?.name || '',
         vatRate: 27 // Default 27% VAT for Hungary (matches website display)
       }
     )

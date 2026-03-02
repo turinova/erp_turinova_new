@@ -45,26 +45,42 @@ export function CreditBalance({ compact = false }: { compact?: boolean }) {
     try {
       setLoading(true)
       
+      // Don't set stats if aiUsage is not loaded yet
+      if (!aiUsage) {
+        setStats(null)
+        return
+      }
+      
       // ALWAYS use aiUsage.credit_limit (effective limit = plan + bonus + purchased)
       // This is calculated in the API and includes bonus_credits and purchased_credits
-      const creditLimit = aiUsage?.credit_limit !== undefined 
+      // If credit_limit is null from API, it means unlimited (API sets it to null for unlimited plans)
+      const creditLimit = aiUsage.credit_limit !== undefined && aiUsage.credit_limit !== null
         ? aiUsage.credit_limit 
         : null
       
+      // Check if plan is truly unlimited
+      // API returns credit_limit: null for unlimited plans, OR we can check subscription plan
+      const planCredits = subscription?.plan?.ai_credits_per_month
+      const isUnlimited = creditLimit === null || 
+                         planCredits === null || 
+                         planCredits === Infinity
+      
       // Get credit used and remaining from aiUsage (already calculated correctly)
-      const creditUsed = aiUsage?.credit_used || 0
-      const creditRemaining = aiUsage?.credit_remaining !== undefined
+      const creditUsed = aiUsage.credit_used || 0
+      const creditRemaining = aiUsage.credit_remaining !== undefined
         ? aiUsage.credit_remaining
         : null
-      const creditPercentage = aiUsage?.credit_percentage !== undefined
+      const creditPercentage = aiUsage.credit_percentage !== undefined
         ? aiUsage.credit_percentage
         : 0
       
       const available = creditRemaining !== null && creditRemaining !== Infinity
         ? creditRemaining
-        : (creditLimit === null || creditLimit === Infinity 
+        : (isUnlimited
           ? Infinity 
-          : Math.max(0, creditLimit - creditUsed))
+          : (creditLimit !== null && creditLimit !== Infinity
+            ? Math.max(0, creditLimit - creditUsed)
+            : 0))
       const percentage = creditPercentage > 0 
         ? creditPercentage
         : (creditLimit !== null && creditLimit !== Infinity && creditLimit > 0
@@ -73,27 +89,38 @@ export function CreditBalance({ compact = false }: { compact?: boolean }) {
 
       setStats({
         used: creditUsed,
-        limit: creditLimit === null ? Infinity : creditLimit,
+        limit: isUnlimited ? Infinity : (creditLimit !== null ? creditLimit : 0),
         available,
         percentage
       })
     } catch (error) {
       console.error('Error loading credit stats:', error)
+      setStats(null)
     } finally {
       setLoading(false)
     }
   }
 
+  // Show nothing while loading
   if (loading) {
     return null
   }
-
+  
+  // If we have stats, show them even if subscription is null
+  // (subscription might be null but plan info comes from tenants table fallback)
   if (!stats) {
     return null
   }
 
-  // Unlimited plan
-  if (stats.limit === Infinity) {
+  // Unlimited plan - only show if we're certain it's unlimited
+  // Need both: stats showing Infinity AND subscription data confirming unlimited plan
+  // Also need to ensure subscription data is actually loaded (not null/undefined)
+  const planIsUnlimited = subscription?.plan?.ai_credits_per_month === null || 
+                          subscription?.plan?.ai_credits_per_month === Infinity
+  const hasSubscriptionData = subscription !== null && subscription !== undefined && subscription.plan !== null && subscription.plan !== undefined
+  
+  // Only show "Unlimited" if we have confirmed subscription data AND it's truly unlimited
+  if (stats.limit === Infinity && planIsUnlimited && hasSubscriptionData) {
     return (
       <Chip
         icon={<WalletIcon />}
@@ -103,6 +130,16 @@ export function CreditBalance({ compact = false }: { compact?: boolean }) {
         sx={{ ml: 1 }}
       />
     )
+  }
+  
+  // If we don't have subscription data but we have stats with a valid limit, still show it
+  // This handles cases where subscription API returns plan from tenants table fallback
+  // Only hide if we truly don't have any data (stats.limit is 0 or Infinity without confirmation)
+  if (!hasSubscriptionData && stats.limit === Infinity) {
+    // Don't show "Unlimited" without confirmation, but if we have a valid numeric limit, show it
+    if (stats.limit === Infinity) {
+      return null // Hide if truly unlimited but not confirmed
+    }
   }
 
   if (compact) {

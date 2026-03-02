@@ -55,12 +55,17 @@ export async function POST(request: NextRequest) {
     // Store tenant context in cookie if tenant user
     if (authResult.type === 'tenant' && authResult.tenant) {
       const tenantContextJson = storeTenantContext(authResult.tenant)
+      console.log('[LOGIN API] Setting tenant_context cookie for tenant:', authResult.tenant.name, authResult.tenant.slug)
       response.cookies.set('tenant_context', tenantContextJson, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7 // 7 days
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+        path: '/' // Ensure cookie is available for all paths
       })
+      console.log('[LOGIN API] Tenant context cookie set successfully')
+    } else {
+      console.warn('[LOGIN API] Not setting tenant_context cookie - type:', authResult.type, 'hasTenant:', !!authResult.tenant)
     }
 
     // For tenant users, we also need to establish a session in the tenant database

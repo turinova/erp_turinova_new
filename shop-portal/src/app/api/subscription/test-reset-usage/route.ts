@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase, getAdminSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 
 /**
  * POST /api/subscription/test-reset-usage
  * Reset credit usage for current month (development only)
+ * NOTE: This route uses tenant-level credit logs in Admin DB
  */
 export async function POST(request: NextRequest) {
   // Only allow in development
@@ -13,38 +13,35 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          getAll: () => cookieStore.getAll(),
-          setAll: (cookiesToSet) => {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
+    const supabase = await getTenantSupabase()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Delete all credit usage logs for current month
-    const { error: deleteError } = await supabase
-      .from('ai_usage_logs')
-      .delete()
-      .eq('user_id', user.id)
-      .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
-      .lt('created_at', new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString())
+    // Get tenant context
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      return NextResponse.json({ error: 'No tenant context' }, { status: 401 })
+    }
 
-    if (deleteError) {
-      console.error('Error resetting credit usage:', deleteError)
+    // Use Admin DB for tenant credit logs
+    const adminSupabase = await getAdminSupabase()
+
+    // Mark all credit usage logs for current month as reset (don't delete for audit)
+    const now = new Date()
+    const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString()
+
+    const { error: updateError } = await adminSupabase
+      .from('tenant_credit_usage_logs')
+      .update({ is_reset: true })
+      .eq('tenant_id', tenant.id)
+      .gte('created_at', firstDayOfMonth)
+      .lte('created_at', lastDayOfMonth)
+
+    if (updateError) {
+      console.error('Error resetting credit usage:', updateError)
       return NextResponse.json({ error: 'Failed to reset credit usage' }, { status: 500 })
     }
 

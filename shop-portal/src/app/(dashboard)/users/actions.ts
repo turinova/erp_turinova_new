@@ -1,8 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { getTenantFromSession, getAdminSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 
 // Create user action
@@ -14,14 +13,31 @@ export async function createUserAction(formData: { email: string; password: stri
       return { success: false, error: 'Email és jelszó megadása kötelező' }
     }
 
-    // Create admin client
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return { success: false, error: 'Service role key not configured' }
+    // Get tenant context - CRITICAL: No fallback to default database
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      return { success: false, error: 'Nincs aktív tenant munkamenet. Kérjük, jelentkezzen be újra.' }
     }
 
+    // Get tenant's service role key from Admin DB
+    const adminSupabase = await getAdminSupabase()
+    const { data: tenantData, error: tenantError } = await adminSupabase
+      .from('tenants')
+      .select('supabase_url, supabase_service_role_key')
+      .eq('id', tenant.id)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .single()
+
+    if (tenantError || !tenantData || !tenantData.supabase_service_role_key) {
+      console.error('Error fetching tenant service role key:', tenantError)
+      return { success: false, error: 'Nem sikerült lekérni a tenant adatokat' }
+    }
+
+    // Create admin client for TENANT database (not default)
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      tenantData.supabase_url,
+      tenantData.supabase_service_role_key,
       {
         auth: {
           autoRefreshToken: false,
@@ -47,6 +63,30 @@ export async function createUserAction(formData: { email: string; password: stri
       return { success: false, error: 'Failed to create user' }
     }
 
+    // CRITICAL: Add user to tenant_users table in Admin DB for login system
+    // This allows the login system to find which tenant the user belongs to
+    // Use upsert to handle case where user already exists (unique constraint on tenant_id, user_email)
+    const { error: tenantUserError } = await adminSupabase
+      .from('tenant_users')
+      .upsert({
+        tenant_id: tenant.id,
+        user_email: email.trim().toLowerCase(),
+        user_id_in_tenant_db: authData.user.id,
+        role: 'user', // Default role
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'tenant_id,user_email'
+      })
+
+    if (tenantUserError) {
+      console.error('Error adding user to tenant_users table:', tenantUserError)
+      // Don't fail the entire operation, but log the error
+      // The user was created in the tenant DB, but login might not work until this is fixed
+      console.warn('User created in tenant DB but not added to Admin DB tenant_users table. Login may fail.')
+    } else {
+      console.log('User successfully added/updated in tenant_users table in Admin DB')
+    }
+
     revalidatePath('/users')
     return { success: true, user: authData.user }
   } catch (error) {
@@ -62,28 +102,35 @@ export async function deleteUsersAction(userIds: string[]) {
       return { success: false, error: 'Nincs kiválasztott felhasználó' }
     }
 
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
-
-    // Create admin client
-    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return { success: false, error: 'Service role key not configured' }
+    // Get tenant context - CRITICAL: No fallback to default database
+    const tenant = await getTenantFromSession()
+    if (!tenant) {
+      return { success: false, error: 'Nincs aktív tenant munkamenet. Kérjük, jelentkezzen be újra.' }
     }
 
+    // Get tenant's service role key from Admin DB
+    const adminSupabase = await getAdminSupabase()
+    const { data: tenantData, error: tenantError } = await adminSupabase
+      .from('tenants')
+      .select('supabase_url, supabase_service_role_key')
+      .eq('id', tenant.id)
+      .eq('is_active', true)
+      .is('deleted_at', null)
+      .single()
+
+    if (tenantError || !tenantData || !tenantData.supabase_service_role_key) {
+      console.error('Error fetching tenant service role key:', tenantError)
+      return { success: false, error: 'Nem sikerült lekérni a tenant adatokat' }
+    }
+
+    // Create regular client for tenant database (for public.users operations)
+    const { getTenantSupabase } = await import('@/lib/tenant-supabase')
+    const supabase = await getTenantSupabase()
+
+    // Create admin client for tenant database (for auth.admin operations)
     const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      tenantData.supabase_url,
+      tenantData.supabase_service_role_key,
       {
         auth: {
           autoRefreshToken: false,
@@ -92,7 +139,7 @@ export async function deleteUsersAction(userIds: string[]) {
       }
     )
 
-    // Soft delete from public.users
+    // Soft delete from public.users in TENANT database
     const { error: deleteError } = await supabase
       .from('users')
       .update({ deleted_at: new Date().toISOString() })
@@ -102,7 +149,7 @@ export async function deleteUsersAction(userIds: string[]) {
       return { success: false, error: 'Failed to delete users' }
     }
 
-    // Ban users in auth.users
+    // Ban users in auth.users in TENANT database
     const banResults = await Promise.allSettled(
       userIds.map(userId =>
         supabaseAdmin.auth.admin.updateUserById(userId, { ban_duration: '876000h' })

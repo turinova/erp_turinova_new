@@ -1,8 +1,7 @@
 // Server-side Products Utilities
 // For use in server components and API routes
 
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from './tenant-supabase'
 
 export interface ShopRenterProduct {
   id: string
@@ -84,31 +83,7 @@ export async function getAllProducts(
   search: string = ''
 ): Promise<ProductsPaginationResult> {
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
-      console.error('Missing Supabase environment variables')
-      return {
-        products: [],
-        totalCount: 0,
-        totalPages: 0,
-        currentPage: page,
-        limit
-      }
-    }
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    const supabase = await getTenantSupabase()
 
     // Verify user is authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -216,19 +191,7 @@ export async function getAllProducts(
  */
 export async function getProductById(id: string): Promise<ProductWithDescriptions | null> {
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    const supabase = await getTenantSupabase()
 
     // Get product
     const { data: product, error: productError } = await supabase
@@ -273,25 +236,7 @@ export async function getQualityScoresBatch(productIds: string[]): Promise<Map<s
   }
 
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
-      console.error('Missing Supabase environment variables')
-      return new Map()
-    }
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    const supabase = await getTenantSupabase()
 
     // Verify user is authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -333,25 +278,7 @@ export async function getIndexingStatusesBatch(productIds: string[]): Promise<Ma
   }
 
   try {
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
-      console.error('Missing Supabase environment variables')
-      return new Map()
-    }
-
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      supabaseAnonKey,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    const supabase = await getTenantSupabase()
 
     // Verify user is authenticated
     const { data: { user }, error: userError } = await supabase.auth.getUser()

@@ -1,41 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantFromSession, getAdminSupabase, getTenantSupabase } from '@/lib/tenant-supabase'
-import { cookies } from 'next/headers'
 
 export async function GET(request: NextRequest) {
   try {
     // Get tenant context from session
     let tenant = await getTenantFromSession()
     
-    // If tenant not found from cookie, try to get user from tenant DB and lookup
+    // If tenant not found from cookie, try fallback: get user email and lookup tenant
     if (!tenant) {
-      // Try to get user from tenant database session
-      const cookieStore = await cookies()
-      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+      console.log('[USAGE API] Tenant context not in cookie, trying fallback...')
       
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL && supabaseAnonKey) {
-        const { createServerClient } = await import('@supabase/ssr')
-        const tenantSupabase = createServerClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL,
-          supabaseAnonKey,
-          {
-            cookies: {
-              getAll: () => cookieStore.getAll(),
-              setAll: () => {}, // Read-only
-            },
+      // Try to get user email from any available source
+      const { cookies } = await import('next/headers')
+      const cookieStore = await cookies()
+      const { createServerClient } = await import('@supabase/ssr')
+      const defaultSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+      const defaultSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+      
+      let userEmail: string | null = null
+      
+      // Try default Supabase first
+      if (defaultSupabaseUrl && defaultSupabaseAnonKey) {
+        try {
+          const defaultSupabase = createServerClient(
+            defaultSupabaseUrl,
+            defaultSupabaseAnonKey,
+            {
+              cookies: {
+                get(name: string) {
+                  return cookieStore.get(name)?.value
+                },
+                set() {},
+                remove() {},
+              },
+            }
+          )
+          
+          const { data: { user }, error: userError } = await defaultSupabase.auth.getUser()
+          if (!userError && user && user.email) {
+            userEmail = user.email
+            console.log('[USAGE API] Got user email from default Supabase:', userEmail)
           }
-        )
-
-        const { data: { user }, error: userError } = await tenantSupabase.auth.getUser()
-        
-        if (!userError && user && user.email) {
-          // Lookup tenant for this user in Admin DB
+        } catch (error) {
+          console.warn('[USAGE API] Could not get user from default Supabase:', error)
+        }
+      }
+      
+      // If we have user email, lookup tenant
+      if (userEmail) {
+        try {
           const adminSupabase = await getAdminSupabase()
           const { data: tenantData, error: tenantError } = await adminSupabase
-            .rpc('get_tenant_by_user_email', { user_email_param: user.email })
+            .rpc('get_tenant_by_user_email', { user_email_param: userEmail })
 
           if (!tenantError && tenantData && tenantData.length > 0) {
             const tenantInfo = tenantData[0]
+            console.log('[USAGE API] Found tenant via email lookup:', tenantInfo.tenant_name)
             tenant = {
               id: tenantInfo.tenant_id,
               name: tenantInfo.tenant_name,
@@ -45,8 +65,14 @@ export async function GET(request: NextRequest) {
               user_id_in_tenant_db: tenantInfo.user_id_in_tenant_db,
               user_role: tenantInfo.user_role
             }
+          } else {
+            console.warn('[USAGE API] No tenant found for email:', userEmail, tenantError)
           }
+        } catch (error) {
+          console.error('[USAGE API] Error looking up tenant:', error)
         }
+      } else {
+        console.warn('[USAGE API] Could not get user email for tenant lookup')
       }
     }
     
@@ -104,16 +130,50 @@ export async function GET(request: NextRequest) {
     }
 
     // Get tenant subscription from Admin DB to determine limit
-    // Reuse adminSupabase from above (line 62)
-    const { data: subscriptionData } = await adminSupabase
+    // Include both 'active' and 'trial' statuses
+    let subscriptionData: any = null
+    const { data: subscriptionQueryResult } = await adminSupabase
       .from('tenant_subscriptions')
       .select(`
         *,
         subscription_plans (*)
       `)
       .eq('tenant_id', tenant.id)
-      .eq('status', 'active')
+      .in('status', ['active', 'trial'])
       .maybeSingle()
+    
+    subscriptionData = subscriptionQueryResult
+
+    // Fallback: If no subscription record, check tenants table for plan_id
+    if (!subscriptionData) {
+      console.log('[USAGE API] No subscription record found, checking tenants table for plan_id')
+      const { data: tenantCheck } = await adminSupabase
+        .from('tenants')
+        .select('subscription_plan_id')
+        .eq('id', tenant.id)
+        .single()
+      
+      if (tenantCheck && tenantCheck.subscription_plan_id) {
+        console.log('[USAGE API] Tenant has plan_id, fetching plan directly:', tenantCheck.subscription_plan_id)
+        const { data: planData } = await adminSupabase
+          .from('subscription_plans')
+          .select('*')
+          .eq('id', tenantCheck.subscription_plan_id)
+          .single()
+        
+        if (planData) {
+          // Create a mock subscription object with the plan
+          subscriptionData = {
+            id: null,
+            plan_id: planData.id,
+            status: 'active',
+            bonus_credits: 0,
+            purchased_credits: 0,
+            subscription_plans: planData
+          }
+        }
+      }
+    }
 
     let monthlyLimit: number | null = null
     let creditLimit: number | null = null

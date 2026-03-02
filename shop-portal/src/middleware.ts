@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { hasPagePermission } from '@/lib/permissions-server'
 import { getFirstPermittedPage } from '@/lib/auth-redirect'
+import type { TenantContext } from '@/lib/tenant-supabase'
 
 export async function middleware(req: NextRequest) {
   // Skip middleware for API routes
@@ -35,16 +36,42 @@ export async function middleware(req: NextRequest) {
   // Define public routes that don't require authentication
   const publicRoutes = ['/', '/login']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
+  const isDev = process.env.NODE_ENV === 'development'
   
-  // Check if Supabase environment variables are set
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  // Support both ANON_KEY and PUBLISHABLE_DEFAULT_KEY (newer Supabase versions)
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  // Check for tenant context first (from login cookie)
+  const tenantContextCookie = req.cookies.get('tenant_context')
+  let tenantContext: TenantContext | null = null
+  
+  if (tenantContextCookie) {
+    try {
+      tenantContext = JSON.parse(tenantContextCookie.value) as TenantContext
+      // Validate tenant context
+      if (!tenantContext.id || !tenantContext.supabase_url || !tenantContext.supabase_anon_key) {
+        tenantContext = null
+        if (isDev) console.log('Middleware - Invalid tenant context, ignoring')
+      } else {
+        if (isDev) console.log('Middleware - Found tenant context:', tenantContext.name, tenantContext.slug)
+      }
+    } catch (error) {
+      if (isDev) console.warn('Middleware - Failed to parse tenant_context cookie:', error)
+      tenantContext = null
+    }
+  }
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  // Use tenant's Supabase URL if tenant context exists, otherwise use default
+  const defaultSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const defaultSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+
+  const effectiveSupabaseUrl = tenantContext?.supabase_url || defaultSupabaseUrl
+  const effectiveSupabaseAnonKey = tenantContext?.supabase_anon_key || defaultSupabaseAnonKey
+
+  if (!effectiveSupabaseUrl || !effectiveSupabaseAnonKey) {
     console.error('Missing Supabase environment variables!')
-    console.error('NEXT_PUBLIC_SUPABASE_URL:', supabaseUrl ? 'Set' : 'Missing')
-    console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY:', supabaseAnonKey ? 'Set' : 'Missing')
+    console.error('NEXT_PUBLIC_SUPABASE_URL:', defaultSupabaseUrl ? 'Set' : 'Missing')
+    console.error('NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY:', defaultSupabaseAnonKey ? 'Set' : 'Missing')
+    if (tenantContext) {
+      console.error('Tenant context found but missing Supabase credentials')
+    }
     console.error('Please check your .env.local file in the shop-portal folder')
     
     // Return a helpful error response
@@ -61,9 +88,10 @@ export async function middleware(req: NextRequest) {
   }
 
   // Create supabase client for authentication check (needed before public route check)
+  // Use tenant's database if tenant context exists
   const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
+    effectiveSupabaseUrl,
+    effectiveSupabaseAnonKey,
     {
       cookies: {
         getAll() {
@@ -81,7 +109,6 @@ export async function middleware(req: NextRequest) {
 
   // Try to get session with better error handling
   let session = null
-  const isDev = process.env.NODE_ENV === 'development'
   const SESSION_TIMEOUT = 2000 // 2 seconds timeout for critical operations
   
   // Timeout utility for middleware operations
@@ -143,7 +170,25 @@ export async function middleware(req: NextRequest) {
 
   // IMPORTANT: Check if authenticated user is trying to access /login BEFORE skipping public routes
   // This prevents authenticated users from accessing the login page
+  // Exception: Allow access if ?logout=true query parameter is present (for forced logout)
   if (session && session.user && req.nextUrl.pathname === '/login') {
+    const logoutParam = req.nextUrl.searchParams.get('logout')
+    if (logoutParam === 'true') {
+      // Force logout by clearing session cookies
+      if (isDev) console.log('Middleware - Forced logout requested, clearing session')
+      response.cookies.delete('sb-access-token')
+      response.cookies.delete('sb-refresh-token')
+      response.cookies.delete('tenant_context')
+      // Clear all Supabase auth cookies
+      const allCookies = req.cookies.getAll()
+      allCookies.forEach(cookie => {
+        if (cookie.name.startsWith('sb-') || cookie.name.includes('supabase')) {
+          response.cookies.delete(cookie.name)
+        }
+      })
+      // Allow access to login page
+      return response
+    }
     if (isDev) console.log('Middleware - Authenticated user trying to access /login, redirecting to first permitted page')
     const firstPage = await getCachedFirstPage(session.user.id)
     if (isDev) console.log('Middleware - Redirecting authenticated user from /login to:', firstPage)

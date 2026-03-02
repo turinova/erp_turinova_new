@@ -1,8 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 
 export interface ConnectionFormData {
   name: string
@@ -44,19 +43,8 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       }
     }
 
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -122,19 +110,8 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       }
     }
 
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -216,19 +193,8 @@ export async function deleteConnectionsAction(connectionIds: string[]) {
       return { success: false, error: 'Nincs kiválasztott kapcsolat' }
     }
 
-    const cookieStore = await cookies()
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      supabaseAnonKey!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
+    const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()

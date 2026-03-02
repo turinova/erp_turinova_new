@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user_date ON ai_usage_logs(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user_feature ON ai_usage_logs(user_id, feature_type, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_user_month ON ai_usage_logs(user_id, DATE_TRUNC('month', created_at));
+-- Note: Cannot create index on DATE_TRUNC('month', created_at) because DATE_TRUNC is not IMMUTABLE
+-- Use idx_ai_usage_user_date for month-based queries instead
 CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user ON user_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status, current_period_end);
 

@@ -14,9 +14,10 @@ CREATE TABLE IF NOT EXISTS public.competitor_content_cache (
 CREATE INDEX IF NOT EXISTS idx_competitor_content_cache_url 
 ON public.competitor_content_cache(url);
 
+-- Index on expires_at (cannot use NOW() in WHERE clause as it's not IMMUTABLE)
+-- Queries should filter by expires_at > NOW() in the WHERE clause instead
 CREATE INDEX IF NOT EXISTS idx_competitor_content_cache_expires 
-ON public.competitor_content_cache(expires_at) 
-WHERE expires_at > NOW();
+ON public.competitor_content_cache(expires_at);
 
 -- Add comment
 COMMENT ON TABLE public.competitor_content_cache IS 

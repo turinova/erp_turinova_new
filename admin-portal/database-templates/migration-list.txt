@@ -1,0 +1,76 @@
+# Tenant Database Migrations Included in Template
+# This list tracks all migrations included in tenant-database-template.sql
+# When adding new migrations, update this list and regenerate the template
+
+## Core System
+- 20250218_create_permission_system.sql
+- 20250218_create_webshop_connections.sql
+- 20250218_fix_rls_policies.sql
+
+## Products & Content
+- 20250219_create_products_tables.sql
+- 20250125_add_vat_support.sql
+- 20250126_add_parameters_and_product_tags.sql
+- 20250220_add_pricing_fields.sql
+- 20250220_add_price_gross_column.sql
+- 20250220_add_model_number.sql
+- 20250222_add_product_urls.sql
+- 20250224_add_url_alias_id.sql
+- 20250225_add_parent_product_support.sql
+- 20250226_fix_parent_canonical_urls.sql
+- 20250226_fix_self_referencing_parent_product_id.sql
+- 20250228_create_product_images_table.sql
+- 20250301_create_product_quality_scores.sql
+- 20250301_add_quality_scores_insert_update_policies.sql
+- 20250303_add_brand_field.sql
+- 20250303_allow_anon_read_products_for_api.sql
+
+## Categories
+- 20250304_create_categories_tables.sql
+- 20250305_update_categories_rls_to_match_products.sql
+
+## Competitors
+- 20250220_create_competitors_system.sql
+- 20250220_add_competitor_subpages.sql
+- 20250220_add_competitor_tracking_flag.sql
+- 20250306_create_competitor_content_cache.sql
+
+## AI & Descriptions
+- 20250221_create_ai_description_system.sql
+- 20250221_create_storage_bucket.sql
+- 20250222_add_generation_instructions.sql
+
+## Search Console
+- 20250222_add_search_console_config.sql
+- 20250222_create_search_console_tables.sql
+- 20250302_enhance_indexing_status.sql
+
+## Subscription & Credits
+- 20250127_add_subscription_system.sql
+- 20250128_add_unified_credit_system.sql
+
+## Permissions
+- 20250125_add_vat_page_to_permissions.sql
+- 20250127_add_subscription_page_to_permissions.sql
+- 20250220_add_competitor_subpages.sql
+
+## Performance & Indexes
+- 20250130_add_products_search_indexes.sql
+- 20250220_add_products_performance_indexes.sql
+
+## Cleanup
+- 20250220_cleanup_sitemap_tables.sql
+- 20250227_remove_seo_features.sql
+
+## Excluded Migrations (Admin DB or One-time Setup)
+- 20250131_create_admin_database_structure.sql (Admin DB only)
+- 20250131_create_tenant_subscription.sql (Admin DB only)
+- 20250131_create_tenant_credit_usage_logs_admin.sql (Admin DB only)
+- 20250131_create_get_tenant_by_user_email_function.sql (Admin DB only)
+- 20250131_create_tenant_credit_usage_function.sql (Admin DB only)
+- 20250131_create_default_tenant.sql (One-time setup)
+- 20250131_map_users_to_tenant.sql (One-time setup)
+- 20250131_map_your_users.sql (One-time setup)
+- 20250131_create_tenant_database_setup.sql (One-time setup)
+- 20250129_add_test_override_policy.sql (Development only)
+- 20250201_add_credit_balance_system.sql (Admin DB only)

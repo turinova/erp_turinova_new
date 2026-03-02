@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getTenantSupabaseBrowser } from '@/lib/tenant-supabase'
 import { UserPermission, PermissionCache, createPermissionCache, isPermissionCacheValid, hasPagePermission } from '@/lib/permissions'
 
 interface PermissionContextType {
@@ -29,6 +29,9 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
         setLoading(false)
         return
       }
+
+      // Get tenant-aware Supabase client
+      const supabase = getTenantSupabaseBrowser()
 
       // Get current user
       const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -122,6 +125,9 @@ export function PermissionProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     loadPermissions()
+
+    // Get tenant-aware Supabase client
+    const supabase = getTenantSupabaseBrowser()
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {

@@ -2,24 +2,10 @@ import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, TrendingUp as TrendingUpIcon, Link as LinkIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import CompetitorLinksManager from './CompetitorLinksManager'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 
 async function getLinksData() {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  const supabase = await getTenantSupabase()
 
   // Get all competitor links with product and competitor info
   const { data: links, error } = await supabase

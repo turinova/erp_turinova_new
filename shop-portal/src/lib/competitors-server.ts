@@ -1,8 +1,7 @@
 // Server-side Competitors Utilities
 // For use in server components and API routes
 
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getTenantSupabase } from './tenant-supabase'
 
 export interface Competitor {
   id: string
@@ -61,27 +60,10 @@ export interface CompetitorWithStats extends Competitor {
   last_price_check: string | null
 }
 
-// Helper to create Supabase client
+// Helper to create Supabase client (tenant-aware)
 const getSupabaseClient = async () => {
-  const cookieStore = await cookies()
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
-  
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !supabaseAnonKey) {
-    console.error('Missing Supabase environment variables')
-    throw new Error('Supabase environment variables are not set.')
-  }
-
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    supabaseAnonKey,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  // Use tenant-aware Supabase client - CRITICAL: No fallback to default database
+  return await getTenantSupabase()
 }
 
 /**
