@@ -18,19 +18,16 @@ your-shoprenter-theme/product/product.tpl
 
 **Important**: This will replace your existing `product.tpl` file. Make sure to backup your current template first!
 
-### Step 2: Add Tenant Slug to Controller
+### Step 2: Update Tenant Slug (if needed)
 
-In your ShopRenter product controller (typically `catalog/product.php` or similar), add the tenant slug to the template data:
+The template has the tenant slug hardcoded as `'tenant-1'`. If your tenant slug is different:
 
-```php
-// Add this to your $data array before rendering the template
-$data['tenant_slug'] = 'your-tenant-slug'; // Replace with your actual tenant slug from Admin DB
-
-// Or if you have a config/constant:
-// Define this in your ShopRenter config file
-define('TURINOVA_TENANT_SLUG', 'your-tenant-slug');
-$data['tenant_slug'] = TURINOVA_TENANT_SLUG;
-```
+1. Open `product.tpl` in your ShopRenter theme
+2. Find this line (around line 17):
+   ```javascript
+   const TENANT_SLUG = 'tenant-1'; // Hardcoded tenant slug - change this if needed
+   ```
+3. Replace `'tenant-1'` with your actual tenant slug (e.g., `'your-tenant-slug'`)
 
 **Important**: The tenant slug must match the `slug` field in the `tenants` table in your Admin Database.
 
@@ -56,11 +53,28 @@ $data['tenant_slug'] = TURINOVA_TENANT_SLUG;
 
 ## Troubleshooting
 
-- **400 Error (Tenant identification required)**: Ensure `tenant_slug` is correctly set in your ShopRenter controller and passed to the template
-- **404 Error (Tenant not found)**: Double-check that the `tenant_slug` matches an active tenant's slug in your Admin Database
+- **400 Error (Tenant identification required)**: Check that `TENANT_SLUG` is set correctly in the template file (line 17). It should not be an empty string.
+- **404 Error (Tenant not found)**: Double-check that the hardcoded `TENANT_SLUG` value in the template matches an active tenant's slug in your Admin Database. Verify the slug in the Admin Portal or query the Admin Database directly.
 - **500 Error (Internal server error)**: Check the `shop-portal` server logs for more details
 - **No structured data appearing**: Verify the script is loaded in `page_head` and that `ShopRenter.product.sku` is available. Check for JavaScript errors in the console
 
+## Finding Your Tenant Slug
+
+To find your tenant slug:
+
+1. Log into the Admin Portal (`admin.turinova.hu`)
+2. Go to "Ügyfelek" (Tenants)
+3. Find your tenant in the list
+4. The "Slug" column shows the tenant slug (e.g., `tenant-1`, `first-tenant`)
+
+Alternatively, query the Admin Database directly:
+
+```sql
+SELECT id, name, slug FROM tenants WHERE is_active = true AND deleted_at IS NULL;
+```
+
 ## Backward Compatibility
 
-If `tenant_slug` is not provided (empty string), the API will attempt to use session-based tenant context as a fallback. However, for public ShopRenter requests, the tenant parameter is **required** for proper multi-tenant isolation.
+The template uses a hardcoded tenant slug. If you need to support multiple tenants from the same ShopRenter installation, you would need to either:
+- Use a different template file per tenant, or
+- Modify the template to accept the tenant slug from a ShopRenter controller variable (requires controller access)

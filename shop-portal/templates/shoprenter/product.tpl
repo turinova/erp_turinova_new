@@ -14,7 +14,7 @@
         'use strict';
         
         const API_URL = 'https://shop.turinova.hu';
-        const TENANT_SLUG = '{{ tenant_slug|default('') }}'; // Tenant slug from ShopRenter controller
+        const TENANT_SLUG = 'tenant-1'; // Hardcoded tenant slug - change this if needed
         let schemaReplaced = false;
         
         // IMMEDIATELY remove any existing Product/ProductGroup schemas
