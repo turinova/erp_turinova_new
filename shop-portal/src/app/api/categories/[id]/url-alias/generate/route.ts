@@ -109,18 +109,56 @@ Requirements:
 
 Return ONLY the slug, nothing else. Example: "konyhai-butorok" or "konyhai-butorok-szekrenyek"`
 
-    // Call Claude AI
+    // Call Claude AI with retry logic for 529 (overloaded) errors
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY
     })
 
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 100,
-      messages: [
-        { role: 'user', content: prompt }
-      ]
-    })
+    let message: any = null
+    let lastError: any = null
+    const maxRetries = 5
+    const baseDelayMs = 1000
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        message = await anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 100,
+          messages: [
+            { role: 'user', content: prompt }
+          ]
+        })
+        break // Success, exit retry loop
+      } catch (error: any) {
+        lastError = error
+        
+        // Check if it's an overloaded error or rate limit
+        const isRetryable = 
+          error?.message?.includes('overloaded') ||
+          error?.message?.includes('Overloaded') ||
+          error?.status === 529 ||
+          error?.status === 429 ||
+          error?.error?.type === 'overloaded_error'
+        
+        if (!isRetryable || attempt === maxRetries - 1) {
+          // Not retryable or last attempt - throw error
+          console.error('[CATEGORY URL SLUG GENERATION] API error:', error)
+          throw new Error(`Failed to generate URL slug: ${error?.message || 'Unknown error'}`)
+        }
+        
+        // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+        const delay = baseDelayMs * Math.pow(2, attempt)
+        console.log(`[CATEGORY URL SLUG GENERATION] API overloaded (529), retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+
+    if (!message) {
+      return NextResponse.json(
+        { success: false, error: 'AI nem tudott URL slug-ot generálni (túlterhelt szolgáltatás)' },
+        { status: 503 } // Service Unavailable
+      )
+    }
 
     const generatedSlug = message.content[0].type === 'text' 
       ? message.content[0].text.trim()
