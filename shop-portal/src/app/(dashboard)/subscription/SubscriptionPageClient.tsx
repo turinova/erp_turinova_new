@@ -36,7 +36,8 @@ import {
   Search as SearchIcon,
   Link as LinkIcon,
   LocalOffer as LocalOfferIcon,
-  Assessment as AssessmentIcon
+  Assessment as AssessmentIcon,
+  Image as ImageIcon
 } from '@mui/icons-material'
 import { useSubscription } from '@/lib/subscription-context'
 import { toast } from 'react-toastify'
@@ -51,6 +52,8 @@ interface UsageLog {
   product_id: string | null
   product_name: string | null
   product_sku: string | null
+  category_id: string | null
+  category_name: string | null
   user_email?: string | null
   user_id_in_tenant_db?: string | null
 }
@@ -180,7 +183,9 @@ export default function SubscriptionPageClient() {
       'meta_description': 'Meta leírás',
       'url_slug': 'URL slug',
       'product_description': 'Részletes leírás',
+      'category_description': 'Kategória leírás',
       'product_tags': 'Termék címkék',
+      'image_alt_text': 'Kép alt szöveg',
       'competitor_price_scrape': 'Versenyár ellenőrzés'
     }
     return labels[featureType] || featureType
@@ -197,9 +202,12 @@ export default function SubscriptionPageClient() {
       case 'url_slug':
         return <LinkIcon fontSize="small" />
       case 'product_description':
+      case 'category_description':
         return <DescriptionIcon fontSize="small" />
       case 'product_tags':
         return <LocalOfferIcon fontSize="small" />
+      case 'image_alt_text':
+        return <ImageIcon fontSize="small" />
       case 'competitor_price_scrape':
         return <AssessmentIcon fontSize="small" />
       default:
@@ -210,12 +218,14 @@ export default function SubscriptionPageClient() {
   const getFeatureColor = (featureType: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
     switch (featureType) {
       case 'product_description':
+      case 'category_description':
         return 'primary'
       case 'meta_title':
       case 'meta_keywords':
       case 'meta_description':
         return 'info'
       case 'url_slug':
+      case 'image_alt_text':
         return 'secondary'
       case 'product_tags':
         return 'success'
@@ -512,7 +522,31 @@ export default function SubscriptionPageClient() {
                                 />
                               </TableCell>
                               <TableCell>
-                                {log.product_id && log.product_name ? (
+                                {log.category_id && log.category_name ? (
+                                  <NextLink
+                                    href={`/categories/${log.category_id}`}
+                                    style={{
+                                      textDecoration: 'none',
+                                      color: 'inherit'
+                                    }}
+                                  >
+                                    <Typography 
+                                      variant="body2"
+                                      sx={{
+                                        color: 'primary.main',
+                                        fontWeight: 500,
+                                        '&:hover': {
+                                          textDecoration: 'underline'
+                                        }
+                                      }}
+                                    >
+                                      📁 {log.category_name}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary" display="block">
+                                      Kategória
+                                    </Typography>
+                                  </NextLink>
+                                ) : log.product_id && log.product_name ? (
                                   <NextLink
                                     href={`/products/${log.product_id}`}
                                     style={{
@@ -550,7 +584,7 @@ export default function SubscriptionPageClient() {
                               </TableCell>
                               <TableCell align="right">
                                 <Chip
-                                  label={`-${log.credits_used}`}
+                                  label={`-${log.credits_used || 1}`}
                                   color="error"
                                   size="small"
                                   variant="outlined"

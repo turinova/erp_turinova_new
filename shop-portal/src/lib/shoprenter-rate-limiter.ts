@@ -50,15 +50,38 @@ export class ShopRenterRateLimiter {
   }
 }
 
-// Global rate limiter instance (shared across all requests)
-let globalRateLimiter: ShopRenterRateLimiter | null = null
+// Tenant-specific rate limiters (one per tenant)
+const tenantRateLimiters = new Map<string, ShopRenterRateLimiter>()
 
 /**
- * Get or create the global rate limiter instance
+ * Get or create a rate limiter instance for a specific tenant
+ * Each tenant has its own rate limiter to prevent one tenant from blocking others
+ * @param tenantId The tenant ID (UUID)
+ * @returns ShopRenterRateLimiter instance for the tenant
  */
-export function getShopRenterRateLimiter(): ShopRenterRateLimiter {
-  if (!globalRateLimiter) {
-    globalRateLimiter = new ShopRenterRateLimiter()
+export function getShopRenterRateLimiter(tenantId?: string): ShopRenterRateLimiter {
+  // If no tenant ID provided, use global fallback (backward compatibility)
+  if (!tenantId) {
+    // For backward compatibility, return a default limiter
+    // In production, tenant ID should always be provided
+    const defaultKey = 'default'
+    if (!tenantRateLimiters.has(defaultKey)) {
+      tenantRateLimiters.set(defaultKey, new ShopRenterRateLimiter())
+    }
+    return tenantRateLimiters.get(defaultKey)!
   }
-  return globalRateLimiter
+
+  // Get or create tenant-specific limiter
+  if (!tenantRateLimiters.has(tenantId)) {
+    tenantRateLimiters.set(tenantId, new ShopRenterRateLimiter())
+  }
+  return tenantRateLimiters.get(tenantId)!
+}
+
+/**
+ * Clear rate limiter for a specific tenant (useful for testing or cleanup)
+ * @param tenantId The tenant ID (UUID)
+ */
+export function clearTenantRateLimiter(tenantId: string): void {
+  tenantRateLimiters.delete(tenantId)
 }

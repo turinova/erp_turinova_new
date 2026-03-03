@@ -27,7 +27,8 @@ export interface ShopRenterImageServiceConfig {
  */
 export async function fetchProductImages(
   config: ShopRenterImageServiceConfig,
-  productShopRenterId: string
+  productShopRenterId: string,
+  tenantId?: string
 ): Promise<ShopRenterImage[]> {
   const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
     config.shopName,
@@ -36,8 +37,8 @@ export async function fetchProductImages(
     config.apiUrl
   )
 
-  // Get rate limiter to respect ShopRenter's 3 req/sec limit
-  const rateLimiter = getShopRenterRateLimiter()
+  // Get tenant-specific rate limiter to respect ShopRenter's 3 req/sec limit
+  const rateLimiter = getShopRenterRateLimiter(tenantId)
 
   try {
     // Fetch product images using productId filter with rate limiting
@@ -143,7 +144,8 @@ export async function fetchProductImages(
 export async function syncImageAltText(
   config: ShopRenterImageServiceConfig,
   imageShopRenterId: string,
-  altText: string
+  altText: string,
+  tenantId?: string
 ): Promise<{ success: boolean; error?: string }> {
   const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
     config.shopName,
@@ -152,8 +154,8 @@ export async function syncImageAltText(
     config.apiUrl
   )
 
-  // Get rate limiter to respect ShopRenter's 3 req/sec limit
-  const rateLimiter = getShopRenterRateLimiter()
+  // Get tenant-specific rate limiter to respect ShopRenter's 3 req/sec limit
+  const rateLimiter = getShopRenterRateLimiter(tenantId)
 
   try {
     // First, get the current image data to preserve other fields with rate limiting

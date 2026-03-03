@@ -27,7 +27,8 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Link as MuiLink
+  Link as MuiLink,
+  Tooltip
 } from '@mui/material'
 import { 
   Save as SaveIcon, 
@@ -35,7 +36,12 @@ import {
   AutoAwesome as AutoAwesomeIcon,
   Refresh as RefreshIcon,
   Inventory as InventoryIcon,
-  OpenInNew as OpenInNewIcon
+  OpenInNew as OpenInNewIcon,
+  Info as InfoIcon,
+  Description as DescriptionIcon,
+  Link as LinkIcon,
+  Title as TitleIcon,
+  TextFields as ShortTextIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import HtmlEditor from '@/components/HtmlEditor'
@@ -298,6 +304,9 @@ export default function CategoryEditForm({ category: initialCategory }: Category
 
       if (!response.ok) {
         const error = await response.json()
+        if (response.status === 402 && error.credits) {
+          throw new Error(`Nincs elég Turitoken! Szükséges: ${error.credits.required}, Elérhető: ${error.credits.available} / ${error.credits.limit}`)
+        }
         throw new Error(error.error || 'Generation failed')
       }
 
@@ -418,6 +427,14 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         body: JSON.stringify({ fields: fieldsToGenerate })
       })
 
+      if (!response.ok) {
+        const error = await response.json()
+        if (response.status === 402 && error.credits) {
+          throw new Error(`Nincs elég Turitoken! Szükséges: ${error.credits.required}, Elérhető: ${error.credits.available} / ${error.credits.limit}`)
+        }
+        throw new Error(error.error || 'Hiba a meta mezők generálása során')
+      }
+
       const result = await response.json()
 
       if (result.success) {
@@ -455,6 +472,14 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         method: 'POST'
       })
       
+      if (!response.ok) {
+        const error = await response.json()
+        if (response.status === 402 && error.credits) {
+          throw new Error(`Nincs elég Turitoken! Szükséges: ${error.credits.required}, Elérhető: ${error.credits.available} / ${error.credits.limit}`)
+        }
+        throw new Error(error.error || 'Hiba az AI generálás során')
+      }
+
       const result = await response.json()
       
       if (result.success && result.data) {
@@ -555,43 +580,127 @@ export default function CategoryEditForm({ category: initialCategory }: Category
 
       <Paper>
         <Tabs value={tabValue} onChange={handleTabChange}>
-          <Tab label="Alapadatok" />
-          <Tab label="Leírások" />
-          <Tab label="Termékek" />
+          <Tab 
+            icon={<InfoIcon />} 
+            iconPosition="start"
+            label="Alapadatok" 
+          />
+          <Tab 
+            icon={<DescriptionIcon />} 
+            iconPosition="start"
+            label="Leírások" 
+          />
+          <Tab 
+            icon={<InventoryIcon />} 
+            iconPosition="start"
+            label="Termékek" 
+          />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Kategória neve"
-                value={category.name || ''}
-                disabled
-                helperText="A név a ShopRenter-ből szinkronizálva"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Státusz"
-                value={category.status === 1 ? 'Aktív' : 'Inaktív'}
-                disabled
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="ShopRenter ID"
-                value={category.shoprenter_id || ''}
-                disabled
-              />
-            </Grid>
+            {/* Basic Information Section - White Background with Blue Border */}
             <Grid item xs={12}>
-              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 3 }}>
-                <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
-                  🌐 SEO URL (slug)
-                </Typography>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 3,
+                  bgcolor: 'white',
+                  border: '2px solid',
+                  borderColor: '#2196f3',
+                  borderRadius: 2,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: '#2196f3',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+                  }}>
+                    <InfoIcon sx={{ color: 'white', fontSize: '24px' }} />
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
+                    Alapinformációk
+                  </Typography>
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Kategória neve"
+                      value={category.name || ''}
+                      disabled
+                      helperText="A név a ShopRenter-ből szinkronizálva"
+                      sx={{
+                        '& .MuiInputBase-input.Mui-disabled': {
+                          WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
+                          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                          fontWeight: 500
+                        },
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)'
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Státusz"
+                      value={category.status === 1 ? 'Aktív' : 'Inaktív'}
+                      disabled
+                      sx={{
+                        '& .MuiInputBase-input.Mui-disabled': {
+                          WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
+                          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+                          fontWeight: 500
+                        },
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)'
+                        }
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
+            </Grid>
+            
+            {/* SEO URL Section - Green Theme */}
+            <Grid item xs={12}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 3,
+                  bgcolor: 'white',
+                  border: '2px solid',
+                  borderColor: '#4caf50',
+                  borderRadius: 2,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: '#4caf50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
+                  }}>
+                    <LinkIcon sx={{ color: 'white', fontSize: '24px' }} />
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32' }}>
+                    SEO URL (slug)
+                  </Typography>
+                </Box>
                 
                 {loadingUrlAlias && !urlSlug ? (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -626,18 +735,31 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                       helperText="Az URL slug (pl: konyhai-butorok)"
                       InputProps={{
                         endAdornment: (
-                          <Button
-                            size="small"
-                            startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                            onClick={handleGenerateUrlSlug}
-                            disabled={generatingUrlSlug}
-                            sx={{ minWidth: 'auto' }}
-                          >
-                            {generatingUrlSlug ? '' : 'AI'}
-                          </Button>
+                          <Tooltip title="AI generálás (1 Turitoken)">
+                            <Button
+                              size="small"
+                              startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                              onClick={handleGenerateUrlSlug}
+                              disabled={generatingUrlSlug}
+                              sx={{ minWidth: 'auto' }}
+                            >
+                              {generatingUrlSlug ? '' : 'AI'}
+                            </Button>
+                          </Tooltip>
                         )
                       }}
-                      sx={{ mb: 2 }}
+                      sx={{ 
+                        mb: 2,
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
                     />
                     
                     {urlSlug && urlSlug !== originalUrlSlug && (
@@ -680,32 +802,7 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                     </Alert>
                   </>
                 )}
-              </Box>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Kategória URL (read-only)"
-                value={category.category_url || ''}
-                disabled
-                helperText="Ez a mező csak olvasható, a fenti slug mezőből frissül"
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Szinkronizálás státusza"
-                value={category.sync_status || 'pending'}
-                disabled
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Utolsó szinkronizálás"
-                value={category.last_synced_at ? new Date(category.last_synced_at).toLocaleString('hu-HU') : 'Még nem szinkronizálva'}
-                disabled
-              />
+              </Paper>
             </Grid>
           </Grid>
         </TabPanel>
@@ -713,97 +810,258 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         <TabPanel value={tabValue} index={1}>
           {currentDescription ? (
             <Grid container spacing={3}>
+              {/* Name Section - Blue Theme */}
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                  <TextField
-                    fullWidth
-                    label="Név"
-                    value={formData.name || currentDescription.name || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={generatingMeta.name ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                    onClick={() => handleGenerateMeta('name')}
-                    disabled={generatingMeta.name}
-                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap' }}
-                  >
-                    AI
-                  </Button>
-                </Box>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#2196f3',
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#2196f3',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+                    }}>
+                      <TitleIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
+                      Kategória neve
+                    </Typography>
+                  </Box>
+                  <Box sx={{ position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField
+                        fullWidth
+                        label="Név"
+                        value={formData.name || currentDescription.name || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                      <Tooltip title="AI generálás (1 Turitoken)">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={generatingMeta.name ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                          onClick={() => handleGenerateMeta('name')}
+                          disabled={generatingMeta.name}
+                          sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
+                        >
+                          {generatingMeta.name ? '' : 'AI'}
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                </Paper>
               </Grid>
+
+              {/* Meta Title Section - Orange Theme */}
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                  <TextField
-                    fullWidth
-                    label="Meta Title"
-                    value={formData.meta_title || currentDescription.custom_title || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))}
-                    helperText={`${(formData.meta_title || currentDescription.custom_title || '').length} karakter (50-60 optimális)`}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={generatingMeta.meta_title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                    onClick={() => handleGenerateMeta('meta_title')}
-                    disabled={generatingMeta.meta_title}
-                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap' }}
-                  >
-                    AI
-                  </Button>
-                </Box>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#ff9800',
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#ff9800',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
+                    }}>
+                      <TitleIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100' }}>
+                      Meta Title
+                    </Typography>
+                  </Box>
+                  <Box sx={{ position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField
+                        fullWidth
+                        label="Meta Title"
+                        value={formData.meta_title || currentDescription.custom_title || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))}
+                        helperText={`${(formData.meta_title || currentDescription.custom_title || '').length} karakter (50-60 optimális)`}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                      <Tooltip title="AI generálás (1 Turitoken)">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={generatingMeta.meta_title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                          onClick={() => handleGenerateMeta('meta_title')}
+                          disabled={generatingMeta.meta_title}
+                          sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
+                        >
+                          {generatingMeta.meta_title ? '' : 'AI'}
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                </Paper>
               </Grid>
+
+              {/* Meta Description Section - Orange Theme */}
               <Grid item xs={12}>
-                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                  <TextField
-                    fullWidth
-                    label="Meta Description"
-                    value={formData.meta_description || currentDescription.meta_description || ''}
-                    onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))}
-                    multiline
-                    rows={3}
-                    helperText={`${(formData.meta_description || currentDescription.meta_description || '').length} karakter (150-160 optimális)`}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={generatingMeta.meta_description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                    onClick={() => handleGenerateMeta('meta_description')}
-                    disabled={generatingMeta.meta_description}
-                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
-                  >
-                    AI
-                  </Button>
-                </Box>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#ff9800',
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#ff9800',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
+                    }}>
+                      <ShortTextIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100' }}>
+                      Meta Description
+                    </Typography>
+                  </Box>
+                  <Box sx={{ position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <TextField
+                        fullWidth
+                        label="Meta Description"
+                        value={formData.meta_description || currentDescription.meta_description || ''}
+                        onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))}
+                        multiline
+                        rows={3}
+                        helperText={`${(formData.meta_description || currentDescription.meta_description || '').length} karakter (150-160 optimális)`}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                      <Tooltip title="AI generálás (1 Turitoken)">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={generatingMeta.meta_description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                          onClick={() => handleGenerateMeta('meta_description')}
+                          disabled={generatingMeta.meta_description}
+                          sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
+                        >
+                          {generatingMeta.meta_description ? '' : 'AI'}
+                        </Button>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                </Paper>
               </Grid>
+
+              {/* Description Section - Purple Theme */}
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Rövid leírás"
-                  value={currentDescription.short_description || ''}
-                  multiline
-                  rows={3}
-                  disabled
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6">Leírás</Typography>
-                  <Button
-                    variant="outlined"
-                    startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
-                    onClick={handleGenerateDescription}
-                    disabled={generating}
-                  >
-                    {generating ? 'Generálás...' : 'AI Leírás generálása'}
-                  </Button>
-                </Box>
-                <HtmlEditor
-                  value={formData.description || currentDescription.description || ''}
-                  onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                  placeholder="Kategória leírása..."
-                />
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#9c27b0',
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#9c27b0',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(156, 39, 176, 0.3)'
+                    }}>
+                      <DescriptionIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#7b1fa2' }}>
+                      Részletes leírás
+                    </Typography>
+                    <Tooltip title="AI generálás (3 Turitoken)">
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={generating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                        onClick={handleGenerateDescription}
+                        disabled={generating}
+                        sx={{ ml: 'auto' }}
+                      >
+                        {generating ? 'Generálás...' : 'AI'}
+                      </Button>
+                    </Tooltip>
+                  </Box>
+                  <Box sx={{ position: 'relative', zIndex: 1 }}>
+                    <HtmlEditor
+                      value={formData.description || currentDescription.description || ''}
+                      onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                      placeholder="Kategória leírása..."
+                    />
+                  </Box>
+                </Paper>
               </Grid>
             </Grid>
           ) : (

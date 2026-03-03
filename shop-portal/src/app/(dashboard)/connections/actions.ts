@@ -5,10 +5,11 @@ import { getTenantSupabase } from '@/lib/tenant-supabase'
 
 export interface ConnectionFormData {
   name: string
-  connection_type: 'shoprenter' | 'unas' | 'shopify'
-  api_url: string
-  username: string
-  password: string
+  connection_type: 'shoprenter' | 'szamlazz'
+  api_url?: string
+  username?: string
+  password?: string
+  agent_key?: string // For szamlazz.hu
   is_active?: boolean
   search_console_property_url?: string
   search_console_client_email?: string
@@ -25,6 +26,7 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       api_url, 
       username, 
       password, 
+      agent_key,
       is_active = true,
       search_console_property_url,
       search_console_client_email,
@@ -32,12 +34,23 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       search_console_enabled = false
     } = formData
 
-    if (!name || !connection_type || !api_url || !username || !password) {
-      return { success: false, error: 'Minden mező kitöltése kötelező' }
+    if (!name || !connection_type) {
+      return { success: false, error: 'A kapcsolat neve és típusa kötelező' }
     }
 
-    // Validate Search Console fields if enabled
-    if (search_console_enabled) {
+    // Validate based on connection type
+    if (connection_type === 'shoprenter') {
+      if (!api_url || !username || !password) {
+        return { success: false, error: 'ShopRenter kapcsolathoz az API URL, Client ID és Client Secret kötelező' }
+      }
+    } else if (connection_type === 'szamlazz') {
+      if (!agent_key) {
+        return { success: false, error: 'Szamlazz.hu kapcsolathoz az Agent Key kötelező' }
+      }
+    }
+
+    // Validate Search Console fields if enabled (only for ShopRenter)
+    if (search_console_enabled && connection_type === 'shoprenter') {
       if (!search_console_property_url || !search_console_client_email || !search_console_private_key) {
         return { success: false, error: 'Search Console mezők kitöltése kötelező, ha az integráció engedélyezve van' }
       }
@@ -52,21 +65,32 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       return { success: false, error: 'Unauthorized' }
     }
 
-    // TODO: Encrypt password in production
+    // Build insert data based on connection type
+    const insertData: any = {
+      name: name.trim(),
+      connection_type,
+      is_active,
+      search_console_enabled: search_console_enabled && connection_type === 'shoprenter' ? true : false
+    }
+
+    if (connection_type === 'shoprenter') {
+      insertData.api_url = api_url!.trim()
+      insertData.username = username!.trim()
+      insertData.password = password // Store as-is for now (TODO: encrypt)
+      insertData.search_console_property_url = search_console_enabled ? search_console_property_url?.trim() || null : null
+      insertData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
+      insertData.search_console_private_key = search_console_enabled ? search_console_private_key || null : null
+    } else if (connection_type === 'szamlazz') {
+      // For szamlazz, store agent_key in password field (temporary solution until schema is updated)
+      insertData.api_url = '' // Not used for szamlazz
+      insertData.username = '' // Not used for szamlazz
+      insertData.password = agent_key // Store agent_key in password field for now
+    }
+
+    // TODO: Encrypt password/agent_key in production
     const { data, error } = await supabase
       .from('webshop_connections')
-      .insert({
-        name: name.trim(),
-        connection_type,
-        api_url: api_url.trim(),
-        username: username.trim(),
-        password, // Store as-is for now (TODO: encrypt)
-        is_active,
-        search_console_property_url: search_console_enabled ? search_console_property_url?.trim() || null : null,
-        search_console_client_email: search_console_enabled ? search_console_client_email?.trim() || null : null,
-        search_console_private_key: search_console_enabled ? search_console_private_key || null : null,
-        search_console_enabled: search_console_enabled || false
-      })
+      .insert(insertData)
       .select()
       .single()
 
@@ -92,6 +116,7 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       api_url, 
       username, 
       password, 
+      agent_key,
       is_active = true,
       search_console_property_url,
       search_console_client_email,
@@ -99,12 +124,23 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       search_console_enabled = false
     } = formData
 
-    if (!name || !connection_type || !api_url || !username) {
-      return { success: false, error: 'Alap mezők kitöltése kötelező' }
+    if (!name || !connection_type) {
+      return { success: false, error: 'A kapcsolat neve és típusa kötelező' }
     }
 
-    // Validate Search Console fields if enabled
-    if (search_console_enabled) {
+    // Validate based on connection type
+    if (connection_type === 'shoprenter') {
+      if (!api_url || !username) {
+        return { success: false, error: 'ShopRenter kapcsolathoz az API URL és Client ID kötelező' }
+      }
+    } else if (connection_type === 'szamlazz') {
+      if (!agent_key) {
+        return { success: false, error: 'Szamlazz.hu kapcsolathoz az Agent Key kötelező' }
+      }
+    }
+
+    // Validate Search Console fields if enabled (only for ShopRenter)
+    if (search_console_enabled && connection_type === 'shoprenter') {
       if (!search_console_property_url || !search_console_client_email) {
         return { success: false, error: 'Search Console property URL és client email kötelező, ha az integráció engedélyezve van' }
       }
@@ -122,7 +158,7 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
     // Get existing connection to check if password/private key needs to be updated
     const { data: existingConnection } = await supabase
       .from('webshop_connections')
-      .select('password, search_console_private_key')
+      .select('password, search_console_private_key, connection_type')
       .eq('id', id)
       .single()
 
@@ -130,14 +166,16 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
     const updateData: any = {
       name: name.trim(),
       connection_type,
-      api_url: api_url.trim(),
-      username: username.trim(),
       is_active,
-      search_console_property_url: search_console_enabled ? search_console_property_url?.trim() || null : null,
-      search_console_client_email: search_console_enabled ? search_console_client_email?.trim() || null : null,
-      search_console_enabled: search_console_enabled || false,
       updated_at: new Date().toISOString()
     }
+
+    if (connection_type === 'shoprenter') {
+      updateData.api_url = api_url!.trim()
+      updateData.username = username!.trim()
+      updateData.search_console_enabled = search_console_enabled || false
+      updateData.search_console_property_url = search_console_enabled ? search_console_property_url?.trim() || null : null
+      updateData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
 
     // Only update password if provided (not empty)
     if (password && password.trim().length > 0) {
@@ -159,6 +197,16 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       // If private key not provided but exists, keep the existing one (don't update)
     } else {
       // If disabled, clear Search Console fields
+        updateData.search_console_property_url = null
+        updateData.search_console_client_email = null
+        updateData.search_console_private_key = null
+      }
+    } else if (connection_type === 'szamlazz') {
+      // For szamlazz, store agent_key in password field (temporary solution until schema is updated)
+      updateData.api_url = '' // Not used for szamlazz
+      updateData.username = '' // Not used for szamlazz
+      updateData.password = agent_key // Store agent_key in password field
+      updateData.search_console_enabled = false
       updateData.search_console_property_url = null
       updateData.search_console_client_email = null
       updateData.search_console_private_key = null

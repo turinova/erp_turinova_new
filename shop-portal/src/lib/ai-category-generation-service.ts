@@ -22,6 +22,7 @@ export interface GeneratedCategoryDescription {
   description: string
   tokensUsed: number
   productsAnalyzed: number
+  modelUsed?: string
 }
 
 /**
@@ -438,7 +439,8 @@ This description appears ABOVE product listings, so it must be brief and not tak
     return {
       description,
       tokensUsed,
-      productsAnalyzed
+      productsAnalyzed,
+      modelUsed: modelUsed || modelsToTry[0]
     }
   } catch (error: any) {
     console.error('[AI CATEGORY GENERATION] Error:', error)

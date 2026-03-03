@@ -90,7 +90,14 @@ interface CreditUsageLog {
     product_id?: string
     product_name?: string
     product_sku?: string
+    category_id?: string
+    category_name?: string
   } | null
+  category_id?: string | null
+  category_name?: string | null
+  product_id?: string | null
+  product_name?: string | null
+  product_sku?: string | null
 }
 
 interface TenantUser {
@@ -384,7 +391,9 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
       'meta_description': 'Meta leírás',
       'url_slug': 'URL slug',
       'product_description': 'Részletes leírás',
+      'category_description': 'Kategória leírás',
       'product_tags': 'Termék címkék',
+      'image_alt_text': 'Kép alt szöveg',
       'competitor_price_scrape': 'Versenyár ellenőrzés'
     }
     return labels[featureType] || featureType
@@ -393,6 +402,7 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
   const getFeatureColor = (featureType: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
     if (featureType.includes('competitor')) return 'warning'
     if (featureType.includes('description')) return 'primary'
+    if (featureType === 'image_alt_text') return 'secondary'
     return 'info'
   }
 
@@ -854,14 +864,23 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
                             </Typography>
                           </TableCell>
                           <TableCell>
-                            {log.product_context?.product_name ? (
+                            {log.category_id || log.product_context?.category_id ? (
+                              <Box>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  📁 {log.category_name || log.product_context?.category_name || 'Kategória'}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  Kategória
+                                </Typography>
+                              </Box>
+                            ) : log.product_id || log.product_context?.product_id || log.product_context?.product_name ? (
                               <Typography variant="body2">
-                                {log.product_context.product_name}
-                                {log.product_context.product_sku && (
+                                {log.product_name || log.product_context?.product_name}
+                                {log.product_sku || log.product_context?.product_sku ? (
                                   <Typography variant="caption" color="text.secondary" display="block">
-                                    {log.product_context.product_sku}
+                                    {log.product_sku || log.product_context?.product_sku}
                                   </Typography>
-                                )}
+                                ) : null}
                               </Typography>
                             ) : (
                               <Typography variant="body2" color="text.secondary">
@@ -871,7 +890,7 @@ export default function TenantDetailClient({ initialTenant }: TenantDetailClient
                           </TableCell>
                           <TableCell align="right">
                             <Chip
-                              label={`-${log.credits_used}`}
+                              label={`-${log.credits_used || 1}`}
                               color="error"
                               size="small"
                               variant="outlined"

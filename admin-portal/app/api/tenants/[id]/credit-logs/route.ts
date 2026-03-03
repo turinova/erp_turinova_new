@@ -60,11 +60,17 @@ export async function GET(
     const formattedLogs = logs?.map(log => ({
       id: log.id,
       feature_type: log.feature_type,
-      credits_used: log.credits_used,
+      credits_used: log.credits_used || 1, // Default to 1 if null/undefined
       credit_type: log.credit_type,
       created_at: log.created_at,
       user_email: log.user_email || null,
       product_context: log.product_context || null,
+      // Extract category and product info for easier access
+      category_id: log.product_context?.category_id || null,
+      category_name: log.product_context?.category_name || null,
+      product_id: log.product_context?.product_id || null,
+      product_name: log.product_context?.product_name || null,
+      product_sku: log.product_context?.product_sku || null,
     })) || []
 
     return NextResponse.json({ success: true, logs: formattedLogs, total: count })

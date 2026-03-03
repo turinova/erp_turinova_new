@@ -318,140 +318,540 @@ export async function POST(
         if (shoprenterImages.length === 0) {
           console.log(`[SYNC ALT TEXT] No images in productImages API, image may only exist in allImages. Attempting to create productImage record.`)
           
-          // Try to create the productImage record
-          // Use the original path without data/ prefix for creation (preserves case)
-          const imagePathForCreation = originalPathNoData || normalizedImagePath
+          // Normalize the path for ShopRenter API
+          // ShopRenter expects paths without leading slash, and may be case-sensitive
+          const normalizePathForShopRenter = (path: string) => {
+            if (!path) return ''
+            // Remove leading slash if present, remove data/ prefix, normalize slashes
+            return path
+              .replace(/^\//, '') // Remove leading slash
+              .replace(/^data\//, '') // Remove data/ prefix
+              .replace(/\\/g, '/') // Normalize slashes
+              .trim()
+          }
+          
+          // Try multiple path variations - ShopRenter might store paths differently
+          const originalPath = image.image_path
+          const pathVariations = [
+            normalizePathForShopRenter(originalPath), // Normalized (no leading slash, no data/)
+            originalPath.replace(/^data\//, '').replace(/\\/g, '/'), // Original without data/, normalized slashes
+            originalPath.replace(/^\/+/, '').replace(/^data\//, ''), // Remove leading slashes and data/
+            originalPath.replace(/\\/g, '/'), // Just normalize slashes
+            originalPath // Original as-is
+          ].filter((path, index, self) => self.indexOf(path) === index && path) // Remove duplicates and empty strings
+          
+          const imagePathForCreation = pathVariations[0] // Use first variation as primary
+          
+          if (!imagePathForCreation) {
+            return NextResponse.json({
+              success: false,
+              error: `Invalid image path: ${image.image_path}. Cannot create productImage record.`
+            }, { status: 400 })
+          }
+          
+          console.log(`[SYNC ALT TEXT] Will try to create productImage with path variations:`, pathVariations)
           
           try {
-            const createResponse = await rateLimiter.execute(() =>
-              fetch(
-                `${apiBaseUrl}/productImages`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'Authorization': authHeader
-                  },
-                  body: JSON.stringify({
-                    imagePath: imagePathForCreation,
-                    imageAlt: image.alt_text || '',
-                    sortOrder: image.sort_order || 0,
-                    product: {
-                      id: product.shoprenter_id
-                    }
-                  }),
-                  signal: AbortSignal.timeout(30000)
-                }
-              )
-            )
-            
-            if (createResponse.ok) {
-              const createdData = await createResponse.json()
-              shoprenterImageId = createdData.id || createdData.href?.split('/').pop()
-              
-              if (shoprenterImageId) {
-                await supabase
-                  .from('product_images')
-                  .update({ shoprenter_image_id: shoprenterImageId })
-                  .eq('id', imageId)
-                
-                console.log(`[SYNC ALT TEXT] Created productImage record: ${shoprenterImageId} for path: ${image.image_path}`)
-                
-                // Now sync the alt text using the syncImageAltText function
-                const syncResult = await syncImageAltText(
+            // First, try to GET the image by path to see if it exists
+            // ShopRenter might have the image but not return it in the list
+            let existingImageId: string | null = null
+            try {
+              // Try searching by path
+              const searchResponse = await rateLimiter.execute(() =>
+                fetch(
+                  `${apiBaseUrl}/productImages?productId=${encodeURIComponent(product.shoprenter_id)}&imagePath=${encodeURIComponent(imagePathForCreation)}&full=1&limit=10`,
                   {
-                    apiUrl: connection.api_url,
-                    username: connection.username,
-                    password: connection.password,
-                    shopName: shopName
-                  },
-                  shoprenterImageId,
-                  image.alt_text || ''
+                    method: 'GET',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Authorization': authHeader
+                    },
+                    signal: AbortSignal.timeout(10000)
+                  }
+                )
+              )
+              
+              if (searchResponse.ok) {
+                const searchData = await searchResponse.json()
+                if (searchData.response?.items && searchData.response.items.length > 0) {
+                  existingImageId = searchData.response.items[0].id || searchData.response.items[0].href?.split('/').pop()
+                  console.log(`[SYNC ALT TEXT] Found existing productImage via path search: ${existingImageId}`)
+                }
+              }
+            } catch (searchError) {
+              // Non-fatal, continue to create
+              console.log(`[SYNC ALT TEXT] Path search failed, will try to create:`, searchError)
+            }
+            
+            // If we found an existing image, use PUT to update it
+            if (existingImageId) {
+              shoprenterImageId = existingImageId
+              
+              // Verify it exists
+              const verifyResponse = await rateLimiter.execute(() =>
+                fetch(
+                  `${apiBaseUrl}/productImages/${encodeURIComponent(shoprenterImageId)}?full=1`,
+                  {
+                    method: 'GET',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Authorization': authHeader
+                    },
+                    signal: AbortSignal.timeout(10000)
+                  }
+                )
+              )
+              
+              if (verifyResponse.ok) {
+                // Image exists, update it with PUT
+                const putResponse = await rateLimiter.execute(() =>
+                  fetch(
+                    `${apiBaseUrl}/productImages/${encodeURIComponent(shoprenterImageId)}`,
+                    {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': authHeader
+                      },
+                      body: JSON.stringify({
+                        imagePath: imagePathForCreation,
+                        imageAlt: image.alt_text || '',
+                        sortOrder: image.sort_order?.toString() || '0',
+                        product: {
+                          id: product.shoprenter_id
+                        }
+                      }),
+                      signal: AbortSignal.timeout(30000)
+                    }
+                  )
                 )
                 
-                if (syncResult.success) {
+                if (putResponse.ok) {
                   await supabase
                     .from('product_images')
-                    .update({
-                      alt_text_status: 'synced',
-                      alt_text_synced_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString()
-                    })
+                    .update({ shoprenter_image_id: shoprenterImageId })
                     .eq('id', imageId)
                   
-                  return NextResponse.json({
-                    success: true,
-                    message: 'Image record created and alt text synced successfully'
-                  })
-                } else {
-                  return NextResponse.json({
-                    success: false,
-                    error: syncResult.error || 'Failed to sync alt text after creating image record'
-                  }, { status: 500 })
-                }
-              }
-            } else {
-              const errorText = await createResponse.text().catch(() => 'Unknown error')
-              
-              // If we get a 409 "Resource exists" error, extract the ID from the error response
-              if (createResponse.status === 409) {
-                try {
-                  const errorData = JSON.parse(errorText)
-                  if (errorData.id) {
-                    shoprenterImageId = errorData.id
-                    console.log(`[SYNC ALT TEXT] Image exists (409), extracted ID from error: ${shoprenterImageId}`)
-                    
+                  // Now sync the alt text
+                  const syncResult = await syncImageAltText(
+                    {
+                      apiUrl: connection.api_url,
+                      username: connection.username,
+                      password: connection.password,
+                      shopName: shopName
+                    },
+                    shoprenterImageId,
+                    image.alt_text || ''
+                  )
+                  
+                  if (syncResult.success) {
                     await supabase
                       .from('product_images')
-                      .update({ shoprenter_image_id: shoprenterImageId })
+                      .update({
+                        alt_text_status: 'synced',
+                        alt_text_synced_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      })
                       .eq('id', imageId)
                     
-                    // Now sync the alt text using the extracted ID
-                    const syncResult = await syncImageAltText(
-                      {
-                        apiUrl: connection.api_url,
-                        username: connection.username,
-                        password: connection.password,
-                        shopName: shopName
-                      },
-                      shoprenterImageId,
-                      image.alt_text || ''
-                    )
-                    
-                    if (syncResult.success) {
-                      await supabase
-                        .from('product_images')
-                        .update({
-                          alt_text_status: 'synced',
-                          alt_text_synced_at: new Date().toISOString(),
-                          updated_at: new Date().toISOString()
-                        })
-                        .eq('id', imageId)
+                    return NextResponse.json({
+                      success: true,
+                      message: 'Found existing productImage and synced alt text successfully'
+                    })
+                  } else {
+                    return NextResponse.json({
+                      success: false,
+                      error: syncResult.error || 'Failed to sync alt text after updating productImage'
+                    }, { status: 500 })
+                  }
+                } else {
+                  const putErrorText = await putResponse.text().catch(() => 'Unknown error')
+                  console.error(`[SYNC ALT TEXT] Failed to update productImage: ${putResponse.status} - ${putErrorText}`)
+                  // Clear the ID since update failed
+                  shoprenterImageId = null
+                  // Continue to create logic
+                }
+              } else {
+                // Verification failed, clear the ID
+                shoprenterImageId = null
+              }
+            }
+            
+            // If we didn't find existing image or update failed, try to create
+            if (!shoprenterImageId) {
+              const createResponse = await rateLimiter.execute(() =>
+                fetch(
+                  `${apiBaseUrl}/productImages`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Authorization': authHeader
+                    },
+                    body: JSON.stringify({
+                      imagePath: imagePathForCreation,
+                      imageAlt: image.alt_text || '',
+                      sortOrder: image.sort_order?.toString() || '0',
+                      product: {
+                        id: product.shoprenter_id
+                      }
+                    }),
+                    signal: AbortSignal.timeout(30000)
+                  }
+                )
+              )
+              
+              if (createResponse.ok) {
+                const createdData = await createResponse.json()
+                shoprenterImageId = createdData.id || createdData.href?.split('/').pop()
+                
+                if (shoprenterImageId) {
+                  // Verify the created image exists
+                  let imageVerified = false
+                  let retryCount = 0
+                  const maxRetries = 3
+                  
+                  while (!imageVerified && retryCount < maxRetries) {
+                    try {
+                      if (retryCount > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 500 * retryCount))
+                      }
                       
-                      return NextResponse.json({
-                        success: true,
-                        message: 'Image found (already exists) and alt text synced successfully'
-                      })
-                    } else {
-                      return NextResponse.json({
-                        success: false,
-                        error: syncResult.error || 'Failed to sync alt text after finding existing image'
-                      }, { status: 500 })
+                      const verifyResponse = await rateLimiter.execute(() =>
+                        fetch(
+                          `${apiBaseUrl}/productImages/${encodeURIComponent(shoprenterImageId)}?full=1`,
+                          {
+                            method: 'GET',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'Accept': 'application/json',
+                              'Authorization': authHeader
+                            },
+                            signal: AbortSignal.timeout(10000)
+                          }
+                        )
+                      )
+                      
+                      if (verifyResponse.ok) {
+                        imageVerified = true
+                        console.log(`[SYNC ALT TEXT] Verified created image exists: ${shoprenterImageId}`)
+                      } else if (verifyResponse.status === 404 && retryCount < maxRetries - 1) {
+                        retryCount++
+                        console.log(`[SYNC ALT TEXT] Image ${shoprenterImageId} not found yet, retrying (${retryCount}/${maxRetries})...`)
+                        continue
+                      } else {
+                        const errorText = await verifyResponse.text().catch(() => 'Unknown error')
+                        throw new Error(`Created image ${shoprenterImageId} not found: ${verifyResponse.status} - ${errorText}`)
+                      }
+                    } catch (verifyError: any) {
+                      if (retryCount < maxRetries - 1) {
+                        retryCount++
+                        console.log(`[SYNC ALT TEXT] Verification error, retrying (${retryCount}/${maxRetries}):`, verifyError?.message)
+                        continue
+                      } else {
+                        throw verifyError
+                      }
                     }
                   }
-                } catch (parseError) {
-                  console.error(`[SYNC ALT TEXT] Failed to parse 409 error response:`, parseError)
+                  
+                  if (!imageVerified) {
+                    await supabase
+                      .from('product_images')
+                      .update({ shoprenter_image_id: null })
+                      .eq('id', imageId)
+                    
+                    return NextResponse.json({
+                      success: false,
+                      error: `Image was created but could not be verified after ${maxRetries} attempts. The image file may exist in ShopRenter but cannot be registered in the productImages API.`
+                    }, { status: 500 })
+                  }
+                  
+                  // Image verified, update database and sync
+                  await supabase
+                    .from('product_images')
+                    .update({ shoprenter_image_id: shoprenterImageId })
+                    .eq('id', imageId)
+                  
+                  console.log(`[SYNC ALT TEXT] Created and verified productImage: ${shoprenterImageId}`)
+                  
+                  // Sync alt text
+                  const syncResult = await syncImageAltText(
+                    {
+                      apiUrl: connection.api_url,
+                      username: connection.username,
+                      password: connection.password,
+                      shopName: shopName
+                    },
+                    shoprenterImageId,
+                    image.alt_text || ''
+                  )
+                  
+                  if (syncResult.success) {
+                    await supabase
+                      .from('product_images')
+                      .update({
+                        alt_text_status: 'synced',
+                        alt_text_synced_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                      })
+                      .eq('id', imageId)
+                    
+                    return NextResponse.json({
+                      success: true,
+                      message: 'Image record created, verified, and alt text synced successfully'
+                    })
+                  } else {
+                    return NextResponse.json({
+                      success: false,
+                      error: syncResult.error || 'Failed to sync alt text after creating image record'
+                    }, { status: 500 })
+                  }
                 }
+              } else {
+                const errorText = await createResponse.text().catch(() => 'Unknown error')
+                
+                // Handle 409 - Resource exists
+                if (createResponse.status === 409) {
+                  try {
+                    const errorData = JSON.parse(errorText)
+                    let extractedId = errorData.id || errorData.href?.split('/').pop()
+                    
+                    if (extractedId) {
+                      console.log(`[SYNC ALT TEXT] Got 409, extracted ID: ${extractedId}, verifying it exists first`)
+                      
+                      // CRITICAL: Verify the extracted ID actually exists before trying to PUT
+                      // ShopRenter might return an ID that doesn't actually exist
+                      let idVerified = false
+                      try {
+                        const verifyGetResponse = await rateLimiter.execute(() =>
+                          fetch(
+                            `${apiBaseUrl}/productImages/${encodeURIComponent(extractedId)}?full=1`,
+                            {
+                              method: 'GET',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'Authorization': authHeader
+                              },
+                              signal: AbortSignal.timeout(10000)
+                            }
+                          )
+                        )
+                        
+                        if (verifyGetResponse.ok) {
+                          idVerified = true
+                          console.log(`[SYNC ALT TEXT] Verified extracted ID exists: ${extractedId}`)
+                        } else {
+                          const verifyErrorText = await verifyGetResponse.text().catch(() => 'Unknown error')
+                          console.error(`[SYNC ALT TEXT] Extracted ID ${extractedId} does not exist: ${verifyGetResponse.status} - ${verifyErrorText}`)
+                          
+                          // ID is invalid, try to search by path instead
+                          console.log(`[SYNC ALT TEXT] Trying to find image by path search instead`)
+                          try {
+                            const pathSearchResponse = await rateLimiter.execute(() =>
+                              fetch(
+                                `${apiBaseUrl}/productImages?productId=${encodeURIComponent(product.shoprenter_id)}&imagePath=${encodeURIComponent(imagePathForCreation)}&full=1&limit=10`,
+                                {
+                                  method: 'GET',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'Authorization': authHeader
+                                  },
+                                  signal: AbortSignal.timeout(10000)
+                                }
+                              )
+                            )
+                            
+                            if (pathSearchResponse.ok) {
+                              const pathSearchData = await pathSearchResponse.json()
+                              if (pathSearchData.response?.items && pathSearchData.response.items.length > 0) {
+                                const foundId = pathSearchData.response.items[0].id || pathSearchData.response.items[0].href?.split('/').pop()
+                                if (foundId) {
+                                  console.log(`[SYNC ALT TEXT] Found image via path search: ${foundId}`)
+                                  extractedId = foundId
+                                  idVerified = true
+                                }
+                              }
+                            }
+                          } catch (pathSearchError) {
+                            console.error(`[SYNC ALT TEXT] Path search failed:`, pathSearchError)
+                          }
+                        }
+                      } catch (verifyError) {
+                        console.error(`[SYNC ALT TEXT] Error verifying extracted ID:`, verifyError)
+                      }
+                      
+                      // Only try PUT if ID is verified
+                      if (idVerified) {
+                        // Try PUT to update the existing record
+                        const putResponse = await rateLimiter.execute(() =>
+                          fetch(
+                            `${apiBaseUrl}/productImages/${encodeURIComponent(extractedId)}`,
+                            {
+                              method: 'PUT',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'Authorization': authHeader
+                              },
+                              body: JSON.stringify({
+                                imagePath: imagePathForCreation,
+                                imageAlt: image.alt_text || '',
+                                sortOrder: image.sort_order?.toString() || '0',
+                                product: {
+                                  id: product.shoprenter_id
+                                }
+                              }),
+                              signal: AbortSignal.timeout(30000)
+                            }
+                          )
+                        )
+                        
+                        if (putResponse.ok) {
+                          shoprenterImageId = extractedId
+                          await supabase
+                            .from('product_images')
+                            .update({ shoprenter_image_id: shoprenterImageId })
+                            .eq('id', imageId)
+                          
+                          // Sync alt text
+                          const syncResult = await syncImageAltText(
+                            {
+                              apiUrl: connection.api_url,
+                              username: connection.username,
+                              password: connection.password,
+                              shopName: shopName
+                            },
+                            shoprenterImageId,
+                            image.alt_text || ''
+                          )
+                          
+                          if (syncResult.success) {
+                            await supabase
+                              .from('product_images')
+                              .update({
+                                alt_text_status: 'synced',
+                                alt_text_synced_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                              })
+                              .eq('id', imageId)
+                            
+                            return NextResponse.json({
+                              success: true,
+                              message: 'Updated existing productImage (409) and synced alt text successfully'
+                            })
+                          } else {
+                            return NextResponse.json({
+                              success: false,
+                              error: syncResult.error || 'Failed to sync alt text after updating productImage'
+                            }, { status: 500 })
+                          }
+                        } else {
+                          const putErrorText = await putResponse.text().catch(() => 'Unknown error')
+                          console.error(`[SYNC ALT TEXT] PUT failed for verified ID: ${putResponse.status} - ${putErrorText}`)
+                          
+                          // If PUT also returns 409, it means the resource structure is different
+                          // Try to sync alt text directly using the ID
+                          if (putResponse.status === 409) {
+                            console.log(`[SYNC ALT TEXT] PUT returned 409, trying to sync alt text directly`)
+                            const syncResult = await syncImageAltText(
+                              {
+                                apiUrl: connection.api_url,
+                                username: connection.username,
+                                password: connection.password,
+                                shopName: shopName
+                              },
+                              extractedId,
+                              image.alt_text || ''
+                            )
+                            
+                            if (syncResult.success) {
+                              shoprenterImageId = extractedId
+                              await supabase
+                                .from('product_images')
+                                .update({
+                                  shoprenter_image_id: shoprenterImageId,
+                                  alt_text_status: 'synced',
+                                  alt_text_synced_at: new Date().toISOString(),
+                                  updated_at: new Date().toISOString()
+                                })
+                                .eq('id', imageId)
+                              
+                              return NextResponse.json({
+                                success: true,
+                                message: 'Synced alt text directly (PUT returned 409, but sync succeeded)'
+                              })
+                            }
+                          }
+                          
+                          // If we have no images in productImages API and PUT failed, 
+                          // don't fall through to matching logic
+                          if (shoprenterImages.length === 0) {
+                            return NextResponse.json({
+                              success: false,
+                              error: `Cannot sync alt text: Image exists (409) but PUT update failed. Path: ${imagePathForCreation}. ShopRenter returned: ${putResponse.status} - ${putErrorText}. The resource may exist but cannot be updated via PUT.`
+                            }, { status: 500 })
+                          }
+                          // Continue to matching logic only if we have images to match against
+                        }
+                      } else {
+                        // ID verification failed, extracted ID is invalid
+                        console.error(`[SYNC ALT TEXT] Extracted ID ${extractedId} is invalid, cannot use it`)
+                        
+                        if (shoprenterImages.length === 0) {
+                          return NextResponse.json({
+                            success: false,
+                            error: `Cannot sync alt text: ShopRenter returned 409 but the extracted ID is invalid. Path: ${imagePathForCreation}. The image may exist in ShopRenter but the ID format is incorrect. Please try syncing the product again.`
+                          }, { status: 500 })
+                        }
+                        // Continue to matching logic only if we have images to match against
+                      }
+                    }
+                  } catch (parseError) {
+                    console.error(`[SYNC ALT TEXT] Failed to parse 409 error:`, parseError)
+                  }
+                }
+                
+                console.error(`[SYNC ALT TEXT] Failed to create productImage: ${createResponse.status} - ${errorText}`)
+                
+                // If we have no images in productImages API and creation failed, 
+                // don't fall through to matching logic - return a helpful error
+                if (shoprenterImages.length === 0) {
+                  return NextResponse.json({
+                    success: false,
+                    error: `Cannot sync alt text: Image exists in allImages but cannot be registered in productImages API. Path: ${imagePathForCreation}. ShopRenter returned: ${createResponse.status}. The image file may not exist in ShopRenter's file system, or the path format is incorrect. Please ensure the product is synced and the image file exists.`
+                  }, { status: 404 })
+                }
+                // Continue to matching logic below only if we have images to match against
               }
-              
-              console.error(`[SYNC ALT TEXT] Failed to create productImage: ${createResponse.status} - ${errorText}`)
-              // Continue to matching logic below if we couldn't extract the ID
             }
           } catch (createError: any) {
             console.error(`[SYNC ALT TEXT] Error creating productImage:`, createError?.message)
-            // Continue to matching logic below
+            
+            // If we have no images in productImages API and creation failed, 
+            // don't fall through to matching logic - return a helpful error
+            if (shoprenterImages.length === 0) {
+              return NextResponse.json({
+                success: false,
+                error: `Cannot sync alt text: Failed to create productImage record. Error: ${createError?.message || 'Unknown error'}. The image may only exist in allImages and cannot be registered in the productImages API. Please sync the product first.`
+              }, { status: 500 })
+            }
+            // Continue to matching logic below only if we have images to match against
           }
+        }
+
+        // Only try matching if we have images to match against
+        // If shoprenterImages is still empty after creation attempts, skip matching
+        if (shoprenterImages.length === 0 && !shoprenterImageId) {
+          return NextResponse.json({
+            success: false,
+            error: `Cannot sync alt text: Image not found in productImages API and could not be created. Path: ${image.image_path}. The image may only exist in allImages. Please ensure the product is synced and try again.`
+          }, { status: 404 })
         }
 
         const matchingImage = shoprenterImages.find((img: any) => {

@@ -45,8 +45,14 @@ import {
   Sync as SyncIcon,
   ExpandMore as ExpandMoreIcon,
   ExpandLess as ExpandLessIcon,
-  Code as CodeIcon,
-  Receipt as ReceiptIcon
+  Receipt as ReceiptIcon,
+  History as HistoryIcon,
+  Store as StoreIcon,
+  Cloud as CloudIcon,
+  Settings as SettingsIcon,
+  Info as InfoIcon,
+  Warning as WarningIcon,
+  Category as CategoryIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -61,13 +67,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const router = useRouter()
   const [connections] = useState<WebshopConnection[]>(initialConnections)
   const [selectedConnections, setSelectedConnections] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
   const [newConnectionDialogOpen, setNewConnectionDialogOpen] = useState(false)
   const [editConnectionDialogOpen, setEditConnectionDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncDialogConnection, setSyncDialogConnection] = useState<WebshopConnection | null>(null)
-  const [forceSync, setForceSync] = useState(false)
   const [vatMappingDialogOpen, setVatMappingDialogOpen] = useState(false)
   const [vatMappingConnection, setVatMappingConnection] = useState<WebshopConnection | null>(null)
   const [vatRates, setVatRates] = useState<Array<{ id: string; name: string; kulcs: number }>>([])
@@ -78,9 +82,48 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null)
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
-  const [deployingScriptTagId, setDeployingScriptTagId] = useState<string | null>(null)
+  const [syncHistoryDialogOpen, setSyncHistoryDialogOpen] = useState(false)
+  const [syncHistoryConnection, setSyncHistoryConnection] = useState<WebshopConnection | null>(null)
+  const [syncLogs, setSyncLogs] = useState<Array<{
+    id: string
+    sync_type: string
+    sync_direction: string
+    user_email: string | null
+    total_products: number
+    synced_count: number
+    error_count: number
+    skipped_count: number
+    started_at: string
+    completed_at: string | null
+    duration_seconds: number | null
+    status: string
+    error_message: string | null
+    metadata: any
+  }>>([])
+  const [loadingSyncLogs, setLoadingSyncLogs] = useState(false)
+  const [syncLogsTotal, setSyncLogsTotal] = useState(0)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentSyncingConnectionRef = useRef<WebshopConnection | null>(null)
+
+  // Load sync logs for a connection
+  const loadSyncLogs = async (connectionId: string) => {
+    setLoadingSyncLogs(true)
+    try {
+      const response = await fetch(`/api/connections/${connectionId}/sync-logs?limit=20&offset=0`)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setSyncLogs(data.logs || [])
+          setSyncLogsTotal(data.total || 0)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading sync logs:', error)
+      toast.error('Hiba történt a szinkronizálási előzmények betöltése során')
+    } finally {
+      setLoadingSyncLogs(false)
+    }
+  }
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -134,7 +177,9 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               total: progressData.progress.total || prev?.total || 0,
               synced: progressData.progress.synced || prev?.synced || 0,
               batchesProcessed: 0, // Not tracked in progress API
-              totalBatches: 0,
+              totalBatches: progressData.progress.totalBatches || prev?.totalBatches || 0,
+              currentBatch: progressData.progress.currentBatch || prev?.currentBatch,
+              batchProgress: progressData.progress.batchProgress || prev?.batchProgress,
               status: progressData.progress.status || prev?.status || 'syncing',
               elapsed: progressData.progress.elapsed || prev?.elapsed || 0
             }))
@@ -314,6 +359,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     synced: number
     batchesProcessed: number
     totalBatches: number
+    currentBatch?: number
+    batchProgress?: number
     status?: string
     elapsed?: number
   } | null>(null)
@@ -330,10 +377,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   
   const [newConnection, setNewConnection] = useState({
     name: '',
-    connection_type: 'shoprenter' as 'shoprenter' | 'unas' | 'shopify',
+    connection_type: 'shoprenter' as 'shoprenter' | 'szamlazz',
     api_url: '',
     username: '',
     password: '',
+    agent_key: '', // For szamlazz.hu
     is_active: true,
     search_console_property_url: '',
     search_console_client_email: '',
@@ -344,10 +392,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [editingConnection, setEditingConnection] = useState<WebshopConnection | null>(null)
   const [editFormData, setEditFormData] = useState({
     name: '',
-    connection_type: 'shoprenter' as 'shoprenter' | 'unas' | 'shopify',
+    connection_type: 'shoprenter' as 'shoprenter' | 'szamlazz',
     api_url: '',
     username: '',
     password: '',
+    agent_key: '', // For szamlazz.hu
     is_active: true,
     search_console_property_url: '',
     search_console_client_email: '',
@@ -361,23 +410,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
   const [isPending, startTransition] = useTransition()
 
-  // Filter connections based on search term
-  const filteredConnections = connections.filter(conn =>
-    conn.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conn.api_url.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    conn.username.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // No filtering needed - max 5-6 connections per tenant
+  const filteredConnections = connections
 
   // Selection handlers
-  const handleSelectAll = () => {
-    const filteredIds = filteredConnections.map(conn => conn.id)
-    if (selectedConnections.length === filteredIds.length && filteredIds.length > 0) {
-      setSelectedConnections([])
-    } else {
-      setSelectedConnections(filteredIds)
-    }
-  }
-
   const handleSelectConnection = (connectionId: string) => {
     setSelectedConnections(prev => 
       prev.includes(connectionId) 
@@ -385,9 +421,6 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         : [...prev, connectionId]
     )
   }
-
-  const isAllSelected = selectedConnections.length === filteredConnections.length && filteredConnections.length > 0
-  const isIndeterminate = selectedConnections.length > 0 && selectedConnections.length < filteredConnections.length
 
   // Extract shop name from API URL (for ShopRenter)
   const extractShopName = (apiUrl: string): string | null => {
@@ -417,19 +450,27 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         }
       }
 
+      // Build request body based on connection type
+      const requestBody: any = {
+        connection_id: connection.id,
+        connection_type: connection.connection_type
+      }
+
+      if (connection.connection_type === 'shoprenter') {
+        requestBody.api_url = connection.api_url
+        requestBody.username = connection.username // Client ID
+        requestBody.password = connection.password // Client Secret
+        requestBody.shop_name = shopName
+      } else if (connection.connection_type === 'szamlazz') {
+        requestBody.agent_key = connection.password // For szamlazz, agent_key is stored in password field
+      }
+
       const response = await fetch('/api/connections/test', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          connection_id: connection.id,
-          connection_type: connection.connection_type,
-          api_url: connection.api_url,
-          username: connection.username, // For ShopRenter: client_id
-          password: connection.password, // For ShopRenter: client_secret
-          shop_name: shopName // Extracted shop name for ShopRenter
-        })
+        body: JSON.stringify(requestBody)
       })
 
       const result = await response.json()
@@ -452,9 +493,22 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
   // Create new connection
   const handleCreateConnection = async () => {
-    if (!newConnection.name || !newConnection.api_url || !newConnection.username || !newConnection.password) {
-      toast.error('Minden mező kitöltése kötelező')
+    // Validate based on connection type
+    if (!newConnection.name) {
+      toast.error('A kapcsolat neve kötelező')
       return
+    }
+    
+    if (newConnection.connection_type === 'shoprenter') {
+      if (!newConnection.api_url || !newConnection.username || !newConnection.password) {
+        toast.error('ShopRenter kapcsolathoz az API URL, Client ID és Client Secret kötelező')
+        return
+      }
+    } else if (newConnection.connection_type === 'szamlazz') {
+      if (!newConnection.agent_key) {
+        toast.error('Szamlazz.hu kapcsolathoz az Agent Key kötelező')
+        return
+      }
     }
 
     try {
@@ -471,6 +525,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           api_url: '',
           username: '',
           password: '',
+          agent_key: '',
           is_active: true,
           search_console_property_url: '',
           search_console_client_email: '',
@@ -491,125 +546,17 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
-  // Deploy structured data script tag
-  const handleDeployScriptTag = async (connection: WebshopConnection) => {
-    if (connection.connection_type !== 'shoprenter') {
-      toast.error('Csak ShopRenter kapcsolatokhoz elérhető')
-      return
-    }
-
-    try {
-      setDeployingScriptTagId(connection.id)
-
-      const response = await fetch(`/api/connections/${connection.id}/script-tag`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        toast.success('Structured data script sikeresen telepítve ShopRenter-be!')
-      } else {
-        toast.error(`Script telepítés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
-      }
-    } catch (error) {
-      console.error('Error deploying script tag:', error)
-      toast.error('Hiba a script telepítésekor')
-    } finally {
-      setDeployingScriptTagId(null)
-    }
-  }
-
-  // Delete structured data script tag
-  const handleDeleteScriptTag = async (connection: WebshopConnection) => {
-    if (connection.connection_type !== 'shoprenter') {
-      toast.error('Csak ShopRenter kapcsolatokhoz elérhető')
-      return
-    }
-
-    if (!confirm('Biztosan törölni szeretnéd a Structured Data Script tag-et a ShopRenter-ből?')) {
-      return
-    }
-
-    try {
-      setDeployingScriptTagId(connection.id)
-
-      // First, get the script tags to find the structured data one
-      const getResponse = await fetch(`/api/connections/${connection.id}/script-tag`)
-      const getResult = await getResponse.json()
-
-      if (!getResult.success || !getResult.scriptTags) {
-        toast.error('Nem sikerült lekérni a script tag-eket')
-        return
-      }
-
-      console.log('[Delete Script Tag] Available script tags:', getResult.scriptTags)
-
-      // Find the structured data script tag
-      // Try multiple ways to identify it since API might not return full data
-      const structuredDataTag = getResult.scriptTags.find((tag: any) => 
-        (tag.src && tag.src.includes('shoprenter-structured-data.js')) ||
-        (tag.href && tag.href.includes('shoprenter-structured-data.js'))
-      )
-
-      if (!structuredDataTag) {
-        toast.warning('Nem található Structured Data Script tag')
-        return
-      }
-
-      // Extract ID from tag (could be in id field or href)
-      let scriptTagId = structuredDataTag.id
-      if (!scriptTagId && structuredDataTag.href) {
-        // Extract ID from href: /scriptTags/c2NyaXB0VGFnLWlkPTY=
-        const match = structuredDataTag.href.match(/\/scriptTags\/([^\/\?]+)/)
-        if (match && match[1]) {
-          scriptTagId = match[1]
-        }
-      }
-
-      if (!scriptTagId) {
-        toast.error('Nem sikerült meghatározni a script tag ID-t. Próbáld meg a ShopRenter admin felületén törölni.')
-        console.error('[Delete Script Tag] No ID found in tag:', structuredDataTag)
-        return
-      }
-
-      console.log('[Delete Script Tag] Deleting script tag with ID:', scriptTagId)
-
-      // Delete the script tag
-      const deleteResponse = await fetch(
-        `/api/connections/${connection.id}/script-tag?scriptTagId=${encodeURIComponent(scriptTagId)}`,
-        {
-          method: 'DELETE'
-        }
-      )
-
-      const deleteResult = await deleteResponse.json()
-
-      if (deleteResult.success) {
-        toast.success('Structured data script sikeresen törölve a ShopRenter-ből!')
-      } else {
-        toast.error(`Script törlés sikertelen: ${deleteResult.error || 'Ismeretlen hiba'}`)
-      }
-    } catch (error) {
-      console.error('Error deleting script tag:', error)
-      toast.error('Hiba a script törlésekor')
-    } finally {
-      setDeployingScriptTagId(null)
-    }
-  }
 
   // Open edit dialog
   const handleOpenEditDialog = (connection: WebshopConnection) => {
     setEditingConnection(connection)
     setEditFormData({
       name: connection.name,
-      connection_type: connection.connection_type,
-      api_url: connection.api_url,
-      username: connection.username,
+      connection_type: connection.connection_type as 'shoprenter' | 'szamlazz',
+      api_url: connection.api_url || '',
+      username: connection.username || '',
       password: '', // Don't pre-fill password for security
+      agent_key: connection.connection_type === 'szamlazz' ? connection.password || '' : '', // For szamlazz.hu, agent_key is stored in password field
       is_active: connection.is_active,
       search_console_property_url: connection.search_console_property_url || '',
       search_console_client_email: connection.search_console_client_email || '',
@@ -623,9 +570,21 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const handleUpdateConnection = async () => {
     if (!editingConnection) return
     
-    if (!editFormData.name || !editFormData.api_url || !editFormData.username) {
-      toast.error('Alap mezők kitöltése kötelező')
+    if (!editFormData.name) {
+      toast.error('A kapcsolat neve kötelező')
       return
+    }
+    
+    if (editFormData.connection_type === 'shoprenter') {
+      if (!editFormData.api_url || !editFormData.username) {
+        toast.error('ShopRenter kapcsolathoz az API URL és Client ID kötelező')
+        return
+      }
+    } else if (editFormData.connection_type === 'szamlazz') {
+      if (!editFormData.agent_key) {
+        toast.error('Szamlazz.hu kapcsolathoz az Agent Key kötelező')
+        return
+      }
     }
 
     try {
@@ -686,9 +645,18 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     if (!connection.last_test_status) {
       return (
         <Chip 
+          icon={<WarningIcon sx={{ fontSize: '18px !important' }} />}
           label="Nincs tesztelve" 
-          size="small" 
-          sx={{ bgcolor: 'grey.300', color: 'grey.700' }}
+          size="medium" 
+          sx={{ 
+            bgcolor: 'grey.100', 
+            color: 'grey.700',
+            fontWeight: 600,
+            height: '32px',
+            '& .MuiChip-icon': {
+              color: 'grey.600'
+            }
+          }}
         />
       )
     }
@@ -696,19 +664,37 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     if (connection.last_test_status === 'success') {
       return (
         <Chip 
-          icon={<CheckCircleIcon sx={{ color: 'success.main' }} />}
+          icon={<CheckCircleIcon sx={{ fontSize: '18px !important' }} />}
           label="Csatlakozva" 
-          size="small" 
+          size="medium" 
           color="success"
+          sx={{ 
+            fontWeight: 600,
+            height: '32px',
+            bgcolor: '#4caf50',
+            color: 'white',
+            '& .MuiChip-icon': {
+              color: 'white'
+            }
+          }}
         />
       )
     } else {
       return (
         <Chip 
-          icon={<CancelIcon sx={{ color: 'error.main' }} />}
+          icon={<CancelIcon sx={{ fontSize: '18px !important' }} />}
           label="Sikertelen" 
-          size="small" 
+          size="medium" 
           color="error"
+          sx={{ 
+            fontWeight: 600,
+            height: '32px',
+            bgcolor: '#f44336',
+            color: 'white',
+            '& .MuiChip-icon': {
+              color: 'white'
+            }
+          }}
         />
       )
     }
@@ -718,8 +704,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const formatConnectionType = (type: string) => {
     const types: Record<string, string> = {
       shoprenter: 'ShopRenter',
-      unas: 'Unas',
-      shopify: 'Shopify'
+      szamlazz: 'Szamlazz.hu'
     }
     return types[type] || type
   }
@@ -853,7 +838,6 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
     
     setSyncDialogConnection(connection)
-    setForceSync(false)
     setSyncDialogOpen(true)
   }
 
@@ -946,6 +930,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   }
 
   // Handle sync products (actual sync)
+  // Note: forceSync parameter is ignored for bulk sync - backend always uses forceSync=true
   const handleSyncProducts = async (connection: WebshopConnection, forceSync: boolean = false) => {
     if (connection.connection_type !== 'shoprenter') {
       toast.error('Csak ShopRenter kapcsolatokhoz szinkronizálható termékek')
@@ -1019,12 +1004,41 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
+  // Get connection type icon and color
+  const getConnectionTypeConfig = (type: string) => {
+    const configs: Record<string, { icon: React.ReactNode; color: string; borderColor: string; label: string }> = {
+      shoprenter: {
+        icon: <StoreIcon sx={{ color: 'white', fontSize: '24px' }} />,
+        color: '#2196f3',
+        borderColor: '#2196f3',
+        label: 'ShopRenter'
+      },
+      szamlazz: {
+        icon: <ReceiptIcon sx={{ color: 'white', fontSize: '24px' }} />,
+        color: '#ff9800',
+        borderColor: '#ff9800',
+        label: 'Szamlazz.hu'
+      }
+    }
+    return configs[type] || {
+      icon: <LinkIcon sx={{ color: 'white', fontSize: '24px' }} />,
+      color: '#757575',
+      borderColor: '#757575',
+      label: type
+    }
+  }
+
   return (
     <>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">
-          Webshop kapcsolatok kezelése
-        </Typography>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Kapcsolatok kezelése
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Webshopok, szállítási és számlázási partnerek kezelése
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
           {selectedConnections.length > 0 && (
             <Button
@@ -1042,259 +1056,356 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             startIcon={<AddIcon />}
             onClick={() => setNewConnectionDialogOpen(true)}
             color="primary"
+            sx={{ minWidth: 180 }}
           >
             Kapcsolat hozzáadása
           </Button>
         </Box>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-        <TextField
-          fullWidth
-          placeholder="Keresés név, API URL vagy felhasználónév szerint..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  checked={isAllSelected}
-                  indeterminate={isIndeterminate}
-                  onChange={handleSelectAll}
-                />
-              </TableCell>
-              <TableCell>Előtag</TableCell>
-              <TableCell>Típus</TableCell>
-              <TableCell>API URL</TableCell>
-              <TableCell>Felhasználónév</TableCell>
-              <TableCell>Státusz</TableCell>
-              <TableCell>Utolsó teszt</TableCell>
-              <TableCell>Műveletek</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredConnections.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                    <LinkIcon sx={{ fontSize: 48, color: 'grey.400' }} />
-                    <Typography variant="body1" color="text.secondary">
-                      Nincs elérhető kapcsolat
-                    </Typography>
-                    <Button
-                      variant="contained"
-                      startIcon={<AddIcon />}
-                      onClick={() => setNewConnectionDialogOpen(true)}
-                    >
-                      Első kapcsolat hozzáadása
-                    </Button>
-                  </Box>
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredConnections.map((connection) => (
-                <TableRow key={connection.id} hover>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={selectedConnections.includes(connection.id)}
-                      onChange={() => handleSelectConnection(connection.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {connection.name}
-                      </Typography>
-                      {!connection.is_active && (
-                        <Chip label="Inaktív" size="small" color="default" />
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Chip label={formatConnectionType(connection.connection_type)} size="small" />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
-                      {connection.api_url}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>{connection.username}</TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                      {getStatusIndicator(connection)}
-                      {syncingConnectionId === connection.id && syncProgress && (
-                        <Chip
-                          size="small"
-                          label={`Termékek: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')} (${Math.round((syncProgress.synced / syncProgress.total) * 100)}%)`}
-                          color="primary"
-                          variant="outlined"
-                        />
-                      )}
-                      {syncingCategoriesConnectionId === connection.id && categorySyncProgress && (
-                        <Chip
-                          size="small"
-                          label={`Kategóriák: ${categorySyncProgress.synced.toLocaleString('hu-HU')}/${categorySyncProgress.total.toLocaleString('hu-HU')} (${categorySyncProgress.total > 0 ? Math.round((categorySyncProgress.synced / categorySyncProgress.total) * 100) : 0}%)`}
-                          color="success"
-                          variant="outlined"
-                        />
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    {connection.last_tested_at ? (
-                      <Typography variant="caption" color="text.secondary">
-                        {new Date(connection.last_tested_at).toLocaleString('hu-HU')}
-                      </Typography>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">
-                        Még nem tesztelve
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', gap: 0.5 }}>
-                      <Tooltip title="Kapcsolat tesztelése">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleTestConnection(connection)}
-                          disabled={testingConnectionId === connection.id}
-                          color="primary"
-                        >
-                          {testingConnectionId === connection.id ? (
-                            <CircularProgress size={20} />
-                          ) : (
-                            <RefreshIcon fontSize="small" />
-                          )}
-                        </IconButton>
-                      </Tooltip>
-                      {connection.connection_type === 'shoprenter' && (
-                        <>
-                          <Tooltip title="Termékek szinkronizálása">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleSyncProductsClick(connection)}
-                              disabled={syncingConnectionId === connection.id}
-                              color="secondary"
-                            >
-                              {syncingConnectionId === connection.id ? (
-                                <CircularProgress size={20} />
-                              ) : (
-                                <SyncIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Kategóriák szinkronizálása">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleSyncCategoriesClick(connection)}
-                              disabled={syncingCategoriesConnectionId === connection.id}
-                              color="success"
-                            >
-                              {syncingCategoriesConnectionId === connection.id ? (
-                                <CircularProgress size={20} />
-                              ) : (
-                                <SyncIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Structured Data Script telepítése (JSON-LD)">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleDeployScriptTag(connection)}
-                              disabled={deployingScriptTagId === connection.id}
-                              color="info"
-                            >
-                              {deployingScriptTagId === connection.id ? (
-                                <CircularProgress size={20} />
-                              ) : (
-                                <CodeIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Structured Data Script törlése">
-                            <IconButton
-                              size="small"
-                              onClick={() => handleDeleteScriptTag(connection)}
-                              disabled={deployingScriptTagId === connection.id}
-                              color="error"
-                            >
-                              {deployingScriptTagId === connection.id ? (
-                                <CircularProgress size={20} />
-                              ) : (
-                                <DeleteIcon fontSize="small" />
-                              )}
-                            </IconButton>
-                          </Tooltip>
-                        </>
-                      )}
-                      {connection.connection_type === 'shoprenter' && (
-                        <Tooltip title="ÁFA leképezés">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleVatMappingClick(connection)}
-                            color="secondary"
-                          >
-                            <ReceiptIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      )}
-                      <Tooltip title="Szerkesztés">
-                        <IconButton
-                          size="small"
-                          onClick={() => handleOpenEditDialog(connection)}
-                          color="primary"
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Box>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* Sync Progress Panel - Persistent display under table */}
-      {syncingConnectionId && syncProgress && (
+      {filteredConnections.length === 0 ? (
         <Paper 
-          elevation={3} 
+          elevation={0}
           sx={{ 
-            mt: 3, 
-            p: 2,
-            borderLeft: `4px solid ${
-              syncProgress.status === 'completed' ? 'success.main' : 
-              syncProgress.status === 'error' ? 'error.main' : 
-              syncProgress.status === 'stopped' ? 'warning.main' : 
-              'primary.main'
-            }`
+            p: 6,
+            textAlign: 'center',
+            bgcolor: 'white',
+            border: '2px dashed',
+            borderColor: 'grey.300',
+            borderRadius: 2
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: syncPanelExpanded ? 2 : 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <SyncIcon 
-                color={
-                  syncProgress.status === 'completed' ? 'success' : 
-                  syncProgress.status === 'error' ? 'error' : 
-                  syncProgress.status === 'stopped' ? 'warning' : 
-                  'primary'
-                } 
-              />
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <Box sx={{ 
+              p: 2, 
+              borderRadius: '50%', 
+              bgcolor: 'grey.100',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <LinkIcon sx={{ fontSize: 48, color: 'grey.400' }} />
+            </Box>
+            <Typography variant="h6" color="text.secondary">
+              Nincs elérhető kapcsolat
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 400 }}>
+              Adjon hozzá webshopot, szállítási vagy számlázási partnert az integrációk kezeléséhez.
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setNewConnectionDialogOpen(true)}
+              sx={{ mt: 2 }}
+            >
+              Első kapcsolat hozzáadása
+            </Button>
+          </Box>
+        </Paper>
+      ) : (
+        <Grid container spacing={3}>
+          {filteredConnections.map((connection) => {
+            const typeConfig = getConnectionTypeConfig(connection.connection_type)
+            const isSyncing = syncingConnectionId === connection.id
+            const isSyncingCategories = syncingCategoriesConnectionId === connection.id
+            
+            return (
+              <Grid item xs={12} key={connection.id}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: typeConfig.borderColor,
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden',
+                    transition: 'all 0.2s ease',
+                    '&:hover': {
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      transform: 'translateY(-2px)'
+                    }
+                  }}
+                >
+                  {/* Header Section */}
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: typeConfig.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: `0 4px 12px ${typeConfig.color}40`
+                    }}>
+                      {typeConfig.icon}
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 0.5 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 700, color: typeConfig.borderColor }}>
+                          {connection.name}
+                        </Typography>
+                        <Chip 
+                          label={typeConfig.label} 
+                          size="small" 
+                          sx={{ 
+                            bgcolor: `${typeConfig.color}20`,
+                            color: typeConfig.borderColor,
+                            fontWeight: 600,
+                            height: '24px'
+                          }} 
+                        />
+                        {!connection.is_active && (
+                          <Chip 
+                            label="Inaktív" 
+                            size="small" 
+                            color="default"
+                            sx={{ height: '24px' }}
+                          />
+                        )}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                        {connection.api_url}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Checkbox
+                        checked={selectedConnections.includes(connection.id)}
+                        onChange={() => handleSelectConnection(connection.id)}
+                        size="small"
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => handleOpenEditDialog(connection)}
+                        sx={{ 
+                          color: typeConfig.borderColor,
+                          '&:hover': { bgcolor: `${typeConfig.color}10` }
+                        }}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Box>
+
+                  {/* Status and Info Section */}
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid item xs={12} md={6}>
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: 'rgba(0, 0, 0, 0.02)', 
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: 'divider'
+                      }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Kapcsolat státusza
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          {getStatusIndicator(connection)}
+                          {isSyncing && syncProgress && (
+                            <Chip
+                              size="small"
+                              label={`Szinkronizálás: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')}`}
+                              color="primary"
+                              sx={{ height: '24px', fontWeight: 600 }}
+                            />
+                          )}
+                          {isSyncingCategories && categorySyncProgress && (
+                            <Chip
+                              size="small"
+                              label={`Kategóriák: ${categorySyncProgress.synced.toLocaleString('hu-HU')}/${categorySyncProgress.total.toLocaleString('hu-HU')}`}
+                              color="success"
+                              sx={{ height: '24px', fontWeight: 600 }}
+                            />
+                          )}
+                        </Box>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Box sx={{ 
+                        p: 2, 
+                        bgcolor: 'rgba(0, 0, 0, 0.02)', 
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: 'divider'
+                      }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Utolsó tesztelés
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {connection.last_tested_at 
+                            ? new Date(connection.last_tested_at).toLocaleString('hu-HU')
+                            : 'Még nem tesztelve'
+                          }
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+
+                  {/* Actions Section */}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: 1.5,
+                    pt: 2,
+                    borderTop: '1px solid',
+                    borderColor: 'divider'
+                  }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={testingConnectionId === connection.id ? <CircularProgress size={16} /> : <RefreshIcon />}
+                      onClick={() => handleTestConnection(connection)}
+                      disabled={testingConnectionId === connection.id}
+                      sx={{ 
+                        borderColor: typeConfig.borderColor,
+                        color: typeConfig.borderColor,
+                        '&:hover': {
+                          borderColor: typeConfig.borderColor,
+                          bgcolor: `${typeConfig.color}10`
+                        }
+                      }}
+                    >
+                      {testingConnectionId === connection.id ? 'Tesztelés...' : 'Kapcsolat tesztelése'}
+                    </Button>
+                    
+                    {connection.connection_type === 'shoprenter' && (
+                      <>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={isSyncing ? <CircularProgress size={16} /> : <SyncIcon />}
+                          onClick={() => handleSyncProductsClick(connection)}
+                          disabled={isSyncing}
+                          sx={{
+                            borderColor: '#2196f3',
+                            color: '#2196f3',
+                            fontWeight: 600,
+                            '&:hover': {
+                              borderColor: '#1976d2',
+                              bgcolor: 'rgba(33, 150, 243, 0.08)',
+                              color: '#1976d2'
+                            },
+                            '&.Mui-disabled': {
+                              borderColor: 'rgba(0, 0, 0, 0.26)',
+                              color: 'rgba(0, 0, 0, 0.26)'
+                            }
+                          }}
+                        >
+                          {isSyncing ? 'Szinkronizálás...' : 'Termékek szinkronizálása'}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={isSyncingCategories ? <CircularProgress size={16} /> : <CategoryIcon />}
+                          onClick={() => handleSyncCategoriesClick(connection)}
+                          disabled={isSyncingCategories}
+                          sx={{
+                            borderColor: '#4caf50',
+                            color: '#4caf50',
+                            fontWeight: 600,
+                            '&:hover': {
+                              borderColor: '#388e3c',
+                              bgcolor: 'rgba(76, 175, 80, 0.08)',
+                              color: '#388e3c'
+                            },
+                            '&.Mui-disabled': {
+                              borderColor: 'rgba(0, 0, 0, 0.26)',
+                              color: 'rgba(0, 0, 0, 0.26)'
+                            }
+                          }}
+                        >
+                          {isSyncingCategories ? 'Szinkronizálás...' : 'Kategóriák szinkronizálása'}
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<ReceiptIcon />}
+                          onClick={() => handleVatMappingClick(connection)}
+                          sx={{
+                            borderColor: '#ff9800',
+                            color: '#ff9800',
+                            fontWeight: 600,
+                            '&:hover': {
+                              borderColor: '#f57c00',
+                              bgcolor: 'rgba(255, 152, 0, 0.08)',
+                              color: '#f57c00'
+                            }
+                          }}
+                        >
+                          ÁFA leképezés
+                        </Button>
+                      </>
+                    )}
+                    
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<HistoryIcon />}
+                      onClick={() => {
+                        setSyncHistoryConnection(connection)
+                        setSyncHistoryDialogOpen(true)
+                        loadSyncLogs(connection.id)
+                      }}
+                      color="info"
+                    >
+                      Előzmények
+                    </Button>
+                  </Box>
+                </Paper>
+              </Grid>
+            )
+          })}
+        </Grid>
+      )}
+
+      {/* Sync Progress Panel - Sticky at top when syncing */}
+      {syncingConnectionId && syncProgress && (
+        <Paper 
+          elevation={0}
+          sx={{ 
+            mt: 3, 
+            mb: 3,
+            p: 3,
+            bgcolor: 'white',
+            border: '2px solid',
+            borderColor: syncProgress.status === 'completed' ? '#4caf50' : 
+                         syncProgress.status === 'error' ? '#f44336' : 
+                         syncProgress.status === 'stopped' ? '#ff9800' : 
+                         '#2196f3',
+            borderRadius: 2,
+            position: 'sticky',
+            top: 20,
+            zIndex: 1000
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: syncPanelExpanded ? 3 : 0 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{ 
+                p: 1, 
+                borderRadius: '50%', 
+                bgcolor: syncProgress.status === 'completed' ? '#4caf50' : 
+                         syncProgress.status === 'error' ? '#f44336' : 
+                         syncProgress.status === 'stopped' ? '#ff9800' : 
+                         '#2196f3',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: `0 4px 12px ${
+                  syncProgress.status === 'completed' ? 'rgba(76, 175, 80, 0.3)' : 
+                  syncProgress.status === 'error' ? 'rgba(244, 67, 54, 0.3)' : 
+                  syncProgress.status === 'stopped' ? 'rgba(255, 152, 0, 0.3)' : 
+                  'rgba(33, 150, 243, 0.3)'
+                }`
+              }}>
+                <SyncIcon sx={{ color: 'white', fontSize: '24px' }} />
+              </Box>
               <Box>
-                <Typography variant="h6">
+                <Typography variant="h6" sx={{ fontWeight: 700, color: syncProgress.status === 'completed' ? '#2e7d32' : 
+                                                                          syncProgress.status === 'error' ? '#c62828' : 
+                                                                          syncProgress.status === 'stopped' ? '#e65100' : 
+                                                                          '#1565c0' }}>
                   Termékek szinkronizálása
                 </Typography>
                 {currentSyncingConnectionRef.current && (
@@ -1306,13 +1417,15 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               {syncProgress.total > 0 && (
                 <Chip
                   label={`${syncProgress.synced.toLocaleString('hu-HU')} / ${syncProgress.total.toLocaleString('hu-HU')} (${Math.round((syncProgress.synced / syncProgress.total) * 100)}%)`}
-                  color={
-                    syncProgress.status === 'completed' ? 'success' : 
-                    syncProgress.status === 'error' ? 'error' : 
-                    syncProgress.status === 'stopped' ? 'warning' : 
-                    'primary'
-                  }
-                  variant="outlined"
+                  sx={{
+                    bgcolor: syncProgress.status === 'completed' ? '#4caf50' : 
+                             syncProgress.status === 'error' ? '#f44336' : 
+                             syncProgress.status === 'stopped' ? '#ff9800' : 
+                             '#2196f3',
+                    color: 'white',
+                    fontWeight: 600,
+                    height: '32px'
+                  }}
                 />
               )}
             </Box>
@@ -1380,8 +1493,19 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                   <LinearProgress 
                     variant="determinate" 
                     value={syncProgress.total > 0 ? (syncProgress.synced / syncProgress.total) * 100 : 0}
-                    sx={{ height: 10, borderRadius: 5, mb: 3 }}
-                    color={syncProgress.status === 'completed' ? 'success' : 'primary'}
+                    sx={{ 
+                      height: 12, 
+                      borderRadius: 6, 
+                      mb: 3,
+                      bgcolor: 'rgba(0, 0, 0, 0.1)',
+                      '& .MuiLinearProgress-bar': {
+                        bgcolor: syncProgress.status === 'completed' ? '#4caf50' : 
+                                 syncProgress.status === 'error' ? '#f44336' : 
+                                 syncProgress.status === 'stopped' ? '#ff9800' : 
+                                 '#2196f3',
+                        borderRadius: 6
+                      }
+                    }}
                   />
                   <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1418,23 +1542,65 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         </Typography>
                       </Box>
                     )}
+                    {/* Batch progress display */}
+                    {syncProgress.currentBatch && syncProgress.totalBatches && (
+                      <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Batch:</strong> {syncProgress.currentBatch} / {syncProgress.totalBatches}
+                          {syncProgress.batchProgress && (
+                            <span> ({syncProgress.batchProgress}/200 termék)</span>
+                          )}
+                        </Typography>
+                      </Box>
+                    )}
                     {syncProgress.total > 0 && syncProgress.synced < syncProgress.total && (
                       <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
                         <Typography variant="body2" color="info.dark">
                           <strong>Becsült hátralévő idő:</strong> {
-                            syncProgress.synced > 0 && syncProgress.elapsed && syncProgress.elapsed > 0
-                              ? (() => {
-                                  // Calculate actual sync rate (products per second)
-                                  const rate = syncProgress.synced / syncProgress.elapsed
-                                  // Calculate remaining products
-                                  const remaining = syncProgress.total - syncProgress.synced
-                                  // Estimate remaining time in seconds
-                                  const remainingSeconds = remaining / rate
-                                  // Convert to minutes (round up)
-                                  const remainingMinutes = Math.ceil(remainingSeconds / 60)
+                            (() => {
+                              // Need at least 10 seconds of data for accurate estimation
+                              if (syncProgress.synced > 10 && syncProgress.elapsed && syncProgress.elapsed >= 10) {
+                                // Calculate actual sync rate (products per second)
+                                const rate = syncProgress.synced / syncProgress.elapsed
+                                
+                                // Account for parallel processing (2 concurrent batches)
+                                // Effective rate is higher due to parallelism, but not 2x due to overhead
+                                const effectiveRate = rate * 1.4 // Conservative estimate for 2x parallelism
+                                
+                                // Calculate remaining products
+                                const remaining = syncProgress.total - syncProgress.synced
+                                
+                                // Estimate remaining time in seconds
+                                // Add 15% buffer for slowdowns (database, network, etc.)
+                                const remainingSeconds = (remaining / effectiveRate) * 1.15
+                                
+                                // Convert to minutes (round up, minimum 1 minute)
+                                const remainingMinutes = Math.max(1, Math.ceil(remainingSeconds / 60))
+                                
+                                // Format nicely
+                                if (remainingMinutes < 60) {
                                   return `~${remainingMinutes} perc`
-                                })()
-                              : `~${Math.ceil((syncProgress.total - syncProgress.synced) / 200 * 0.5)} perc` // Fallback to old calculation
+                                } else {
+                                  const hours = Math.floor(remainingMinutes / 60)
+                                  const minutes = remainingMinutes % 60
+                                  return minutes > 0 ? `~${hours} óra ${minutes} perc` : `~${hours} óra`
+                                }
+                              } else {
+                                // Not enough data yet - use conservative estimate
+                                // Realistic rate: ~1-1.5 products/second = 60-90 products/minute
+                                const conservativeRate = 60 // products per minute (conservative)
+                                const remaining = syncProgress.total - syncProgress.synced
+                                const remainingMinutes = Math.max(1, Math.ceil(remaining / conservativeRate))
+                                
+                                if (remainingMinutes < 60) {
+                                  return `~${remainingMinutes} perc (becslés)`
+                                } else {
+                                  const hours = Math.floor(remainingMinutes / 60)
+                                  const minutes = remainingMinutes % 60
+                                  return minutes > 0 ? `~${hours} óra ${minutes} perc (becslés)` : `~${hours} óra (becslés)`
+                                }
+                              }
+                            })()
                           }
                         </Typography>
                       </Box>
@@ -1483,139 +1649,393 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         fullWidth
       >
         <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <AddIcon color="primary" />
-            <Typography variant="h6">
-              Új webshop kapcsolat hozzáadása
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ 
+              p: 1, 
+              borderRadius: '50%', 
+              bgcolor: '#2196f3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+            }}>
+              <AddIcon sx={{ color: 'white', fontSize: '24px' }} />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
+              Új kapcsolat hozzáadása
             </Typography>
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            {/* Basic Information Section */}
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Előtag *"
-                value={newConnection.name}
-                onChange={(e) => setNewConnection(prev => ({ ...prev, name: e.target.value }))}
-                required
-                helperText="A kapcsolat azonosító neve"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                select
-                label="Típus *"
-                value={newConnection.connection_type}
-                onChange={(e) => setNewConnection(prev => ({ ...prev, connection_type: e.target.value as any }))}
-                required
-                SelectProps={{
-                  native: true,
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 3,
+                  bgcolor: 'white',
+                  border: '2px solid',
+                  borderColor: '#2196f3',
+                  borderRadius: 2
                 }}
               >
-                <option value="shoprenter">ShopRenter</option>
-                <option value="unas">Unas</option>
-                <option value="shopify">Shopify</option>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={newConnection.is_active}
-                    onChange={(e) => setNewConnection(prev => ({ ...prev, is_active: e.target.checked }))}
-                  />
-                }
-                label="Aktív"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="API URL *"
-                value={newConnection.api_url}
-                onChange={(e) => setNewConnection(prev => ({ ...prev, api_url: e.target.value }))}
-                required
-                placeholder="https://example.shoprenter.hu"
-                helperText="A webshop API URL címe"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Felhasználónév *"
-                value={newConnection.username}
-                onChange={(e) => setNewConnection(prev => ({ ...prev, username: e.target.value }))}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Jelszó *"
-                type="password"
-                value={newConnection.password}
-                onChange={(e) => setNewConnection(prev => ({ ...prev, password: e.target.value }))}
-                required
-              />
-            </Grid>
-            
-            {/* Search Console Configuration */}
-            <Grid item xs={12}>
-              <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 1 }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>
-                  Google Search Console beállítások
-                </Typography>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={newConnection.search_console_enabled}
-                      onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_enabled: e.target.checked }))}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: '#2196f3',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+                  }}>
+                    <InfoIcon sx={{ color: 'white', fontSize: '20px' }} />
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1rem' }}>
+                    Alapinformációk
+                  </Typography>
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Kapcsolat neve *"
+                      value={newConnection.name}
+                      onChange={(e) => setNewConnection(prev => ({ ...prev, name: e.target.value }))}
+                      required
+                      helperText="A kapcsolat azonosító neve (pl: Fő webshop, Másodlagos webshop)"
+                      placeholder="Pl.: Fő webshop"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
                     />
-                  }
-                  label="Search Console integráció engedélyezése"
-                />
-              </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Típus *</InputLabel>
+                      <Select
+                        value={newConnection.connection_type}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, connection_type: e.target.value as any }))}
+                        label="Típus *"
+                        required
+                        sx={{
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)'
+                          },
+                          '&:hover .MuiOutlinedInput-notchedOutline': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                            bgcolor: 'white'
+                          }
+                        }}
+                      >
+                        <MenuItem value="shoprenter">ShopRenter</MenuItem>
+                        <MenuItem value="szamlazz">Szamlazz.hu</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={newConnection.is_active}
+                            onChange={(e) => setNewConnection(prev => ({ ...prev, is_active: e.target.checked }))}
+                          />
+                        }
+                        label="Aktív"
+                      />
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Paper>
             </Grid>
-            {newConnection.search_console_enabled && (
-              <>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Property URL *"
-                    value={newConnection.search_console_property_url}
-                    onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_property_url: e.target.value }))}
-                    required={newConnection.search_console_enabled}
-                    placeholder="https://vasalatmester.hu vagy sc-domain:vasalatmester.hu"
-                    helperText="A Search Console property URL-je"
+
+            {/* API Settings Section - Conditional based on connection type */}
+            {newConnection.connection_type === 'shoprenter' && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#4caf50',
+                    borderRadius: 2
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#4caf50',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
+                    }}>
+                      <SettingsIcon sx={{ color: 'white', fontSize: '20px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', fontSize: '1rem' }}>
+                      ShopRenter API Beállítások
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="API URL *"
+                        value={newConnection.api_url}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, api_url: e.target.value }))}
+                        required
+                        placeholder="https://shopname.api2.myshoprenter.hu"
+                        helperText="ShopRenter API URL formátum: https://shopname.api2.myshoprenter.hu"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Client ID *"
+                        value={newConnection.username}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, username: e.target.value }))}
+                        required
+                        helperText="ShopRenter API Client ID"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Client Secret *"
+                        type="password"
+                        value={newConnection.password}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, password: e.target.value }))}
+                        required
+                        helperText="ShopRenter API Client Secret"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
+
+            {/* Szamlazz.hu Settings Section */}
+            {newConnection.connection_type === 'szamlazz' && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#ff9800',
+                    borderRadius: 2
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#ff9800',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
+                    }}>
+                      <ReceiptIcon sx={{ color: 'white', fontSize: '20px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', fontSize: '1rem' }}>
+                      Szamlazz.hu Beállítások
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Agent Key *"
+                        value={newConnection.agent_key}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, agent_key: e.target.value }))}
+                        required
+                        placeholder="Az Agent Key a Szamlazz.hu fiókjából érhető el"
+                        helperText="A Szamlazz.hu Agent Key-je (a fiók beállításaiból)"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
+            
+            {/* Search Console Configuration - Optional (only for ShopRenter) */}
+            {newConnection.connection_type === 'shoprenter' && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: newConnection.search_console_enabled ? '#9c27b0' : '#e0e0e0',
+                    borderRadius: 2,
+                    opacity: newConnection.search_console_enabled ? 1 : 0.7
+                  }}
+                >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: newConnection.search_console_enabled ? '#9c27b0' : '#e0e0e0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: newConnection.search_console_enabled ? '0 4px 12px rgba(156, 39, 176, 0.3)' : 'none'
+                  }}>
+                    <SearchIcon sx={{ color: 'white', fontSize: '20px' }} />
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: newConnection.search_console_enabled ? '#7b1fa2' : '#757575', fontSize: '1rem' }}>
+                      Google Search Console (Opcionális)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      SEO optimalizáláshoz és keresési adatokhoz
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={newConnection.search_console_enabled}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_enabled: e.target.checked }))}
+                      />
+                    }
+                    label=""
                   />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Service Account Email *"
-                    value={newConnection.search_console_client_email}
-                    onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_client_email: e.target.value }))}
-                    required={newConnection.search_console_enabled}
-                    placeholder="service-account@project.iam.gserviceaccount.com"
-                    helperText="Google Service Account email"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Private Key *"
-                    type="password"
-                    value={newConnection.search_console_private_key}
-                    onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_private_key: e.target.value }))}
-                    required={newConnection.search_console_enabled}
-                    multiline
-                    rows={4}
-                    helperText="Service Account private key (JSON formátum)"
-                  />
-                </Grid>
-              </>
+                </Box>
+                {newConnection.search_console_enabled && (
+                  <Grid container spacing={2} sx={{ mt: 2 }}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Property URL *"
+                        value={newConnection.search_console_property_url}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_property_url: e.target.value }))}
+                        required={newConnection.search_console_enabled}
+                        placeholder="https://vasalatmester.hu vagy sc-domain:vasalatmester.hu"
+                        helperText="A Search Console property URL-je"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Service Account Email *"
+                        value={newConnection.search_console_client_email}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_client_email: e.target.value }))}
+                        required={newConnection.search_console_enabled}
+                        placeholder="service-account@project.iam.gserviceaccount.com"
+                        helperText="Google Service Account email"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Private Key *"
+                        type="password"
+                        value={newConnection.search_console_private_key}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, search_console_private_key: e.target.value }))}
+                        required={newConnection.search_console_enabled}
+                        multiline
+                        rows={4}
+                        helperText="Service Account private key (JSON formátum)"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                )}
+              </Paper>
+              </Grid>
             )}
           </Grid>
         </DialogContent>
@@ -1630,7 +2050,12 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             onClick={handleCreateConnection} 
             variant="contained"
             startIcon={creatingConnection ? <CircularProgress size={20} /> : <AddIcon />}
-            disabled={creatingConnection || !newConnection.name || !newConnection.api_url || !newConnection.username || !newConnection.password}
+            disabled={
+              creatingConnection || 
+              !newConnection.name || 
+              (newConnection.connection_type === 'shoprenter' && (!newConnection.api_url || !newConnection.username || !newConnection.password)) ||
+              (newConnection.connection_type === 'szamlazz' && !newConnection.agent_key)
+            }
             sx={{ minWidth: 120 }}
           >
             {creatingConnection ? 'Létrehozás...' : 'Létrehozás'}
@@ -1649,147 +2074,395 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         fullWidth
       >
         <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <EditIcon color="primary" />
-            <Typography variant="h6">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ 
+              p: 1, 
+              borderRadius: '50%', 
+              bgcolor: '#2196f3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+            }}>
+              <EditIcon sx={{ color: 'white', fontSize: '24px' }} />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
               Kapcsolat szerkesztése
             </Typography>
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            {/* Basic Information Section */}
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Előtag *"
-                value={editFormData.name}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
-                required
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                select
-                label="Típus *"
-                value={editFormData.connection_type}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, connection_type: e.target.value as any }))}
-                required
-                SelectProps={{
-                  native: true,
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 3,
+                  bgcolor: 'white',
+                  border: '2px solid',
+                  borderColor: '#2196f3',
+                  borderRadius: 2
                 }}
               >
-                <option value="shoprenter">ShopRenter</option>
-                <option value="unas">Unas</option>
-                <option value="shopify">Shopify</option>
-              </TextField>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={editFormData.is_active}
-                    onChange={(e) => setEditFormData(prev => ({ ...prev, is_active: e.target.checked }))}
-                  />
-                }
-                label="Aktív"
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="API URL *"
-                value={editFormData.api_url}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, api_url: e.target.value }))}
-                required
-                placeholder="https://shopname.api2.myshoprenter.hu"
-                helperText={editFormData.connection_type === 'shoprenter' 
-                  ? "ShopRenter API URL formátum: https://shopname.api2.myshoprenter.hu" 
-                  : undefined}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label={editFormData.connection_type === 'shoprenter' ? 'Client ID *' : 'Felhasználónév *'}
-                value={editFormData.username}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, username: e.target.value }))}
-                required
-                helperText={editFormData.connection_type === 'shoprenter' 
-                  ? "ShopRenter API Client ID" 
-                  : undefined}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label={editFormData.connection_type === 'shoprenter' ? 'Client Secret' : 'Jelszó'}
-                type="password"
-                value={editFormData.password}
-                onChange={(e) => setEditFormData(prev => ({ ...prev, password: e.target.value }))}
-                helperText={editFormData.connection_type === 'shoprenter' 
-                  ? "Hagyja üresen, ha nem szeretné megváltoztatni" 
-                  : "Hagyja üresen, ha nem szeretné megváltoztatni"}
-              />
-            </Grid>
-            
-            {/* Search Console Configuration */}
-            <Grid item xs={12}>
-              <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 1 }}>
-                <Typography variant="h6" sx={{ mb: 2 }}>
-                  Google Search Console beállítások
-                </Typography>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={editFormData.search_console_enabled}
-                      onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_enabled: e.target.checked }))}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: '#2196f3',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+                  }}>
+                    <InfoIcon sx={{ color: 'white', fontSize: '20px' }} />
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1rem' }}>
+                    Alapinformációk
+                  </Typography>
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Kapcsolat neve *"
+                      value={editFormData.name}
+                      onChange={(e) => setEditFormData(prev => ({ ...prev, name: e.target.value }))}
+                      required
+                      helperText="A kapcsolat azonosító neve"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
                     />
-                  }
-                  label="Search Console integráció engedélyezése"
-                />
-              </Box>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Típus *</InputLabel>
+                      <Select
+                        value={editFormData.connection_type}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, connection_type: e.target.value as any }))}
+                        label="Típus *"
+                        required
+                        sx={{
+                          '& .MuiOutlinedInput-notchedOutline': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)'
+                          },
+                          '&:hover .MuiOutlinedInput-notchedOutline': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                            bgcolor: 'white'
+                          }
+                        }}
+                      >
+                        <MenuItem value="shoprenter">ShopRenter</MenuItem>
+                        <MenuItem value="szamlazz">Szamlazz.hu</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={editFormData.is_active}
+                            onChange={(e) => setEditFormData(prev => ({ ...prev, is_active: e.target.checked }))}
+                          />
+                        }
+                        label="Aktív"
+                      />
+                    </Box>
+                  </Grid>
+                </Grid>
+              </Paper>
             </Grid>
-            {editFormData.search_console_enabled && (
-              <>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Property URL *"
-                    value={editFormData.search_console_property_url}
-                    onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_property_url: e.target.value }))}
-                    required={editFormData.search_console_enabled}
-                    placeholder="https://vasalatmester.hu vagy sc-domain:vasalatmester.hu"
-                    helperText="A Search Console property URL-je"
+
+            {/* API Settings Section - Conditional based on connection type */}
+            {editFormData.connection_type === 'shoprenter' && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#4caf50',
+                    borderRadius: 2
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#4caf50',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
+                    }}>
+                      <SettingsIcon sx={{ color: 'white', fontSize: '20px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', fontSize: '1rem' }}>
+                      ShopRenter API Beállítások
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="API URL *"
+                        value={editFormData.api_url}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, api_url: e.target.value }))}
+                        required
+                        placeholder="https://shopname.api2.myshoprenter.hu"
+                        helperText="ShopRenter API URL formátum: https://shopname.api2.myshoprenter.hu"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Client ID *"
+                        value={editFormData.username}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, username: e.target.value }))}
+                        required
+                        helperText="ShopRenter API Client ID"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Client Secret"
+                        type="password"
+                        value={editFormData.password}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, password: e.target.value }))}
+                        helperText="Hagyja üresen, ha nem szeretné megváltoztatni"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
+
+            {/* Szamlazz.hu Settings Section */}
+            {editFormData.connection_type === 'szamlazz' && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#ff9800',
+                    borderRadius: 2
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#ff9800',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
+                    }}>
+                      <ReceiptIcon sx={{ color: 'white', fontSize: '20px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100', fontSize: '1rem' }}>
+                      Szamlazz.hu Beállítások
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Agent Key *"
+                        value={editFormData.agent_key}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, agent_key: e.target.value }))}
+                        required={editFormData.connection_type === 'szamlazz'}
+                        placeholder="Az Agent Key a Szamlazz.hu fiókjából érhető el"
+                        helperText={(editingConnection as any)?.agent_key || (editingConnection?.connection_type === 'szamlazz' && editingConnection?.password)
+                          ? "Hagyja üresen, ha nem szeretné megváltoztatni" 
+                          : "A Szamlazz.hu Agent Key-je (a fiók beállításaiból)"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
+            
+            {/* Search Console Configuration - Optional (only for ShopRenter) */}
+            {editFormData.connection_type === 'shoprenter' && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: editFormData.search_console_enabled ? '#9c27b0' : '#e0e0e0',
+                    borderRadius: 2,
+                    opacity: editFormData.search_console_enabled ? 1 : 0.7
+                  }}
+                >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: editFormData.search_console_enabled ? '#9c27b0' : '#e0e0e0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: editFormData.search_console_enabled ? '0 4px 12px rgba(156, 39, 176, 0.3)' : 'none'
+                  }}>
+                    <SearchIcon sx={{ color: 'white', fontSize: '20px' }} />
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: editFormData.search_console_enabled ? '#7b1fa2' : '#757575', fontSize: '1rem' }}>
+                      Google Search Console (Opcionális)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      SEO optimalizáláshoz és keresési adatokhoz
+                    </Typography>
+                  </Box>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={editFormData.search_console_enabled}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_enabled: e.target.checked }))}
+                      />
+                    }
+                    label=""
                   />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Service Account Email *"
-                    value={editFormData.search_console_client_email}
-                    onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_client_email: e.target.value }))}
-                    required={editFormData.search_console_enabled}
-                    placeholder="service-account@project.iam.gserviceaccount.com"
-                    helperText="Google Service Account email"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label={editingConnection?.search_console_private_key ? "Private Key" : "Private Key *"}
-                    type="password"
-                    value={editFormData.search_console_private_key}
-                    onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_private_key: e.target.value }))}
-                    required={editFormData.search_console_enabled && !editingConnection?.search_console_private_key}
-                    multiline
-                    rows={4}
-                    helperText={editingConnection?.search_console_private_key 
-                      ? "Hagyja üresen, ha nem szeretné megváltoztatni" 
-                      : "Service Account private key (JSON formátum)"}
-                  />
-                </Grid>
-              </>
+                </Box>
+                {editFormData.search_console_enabled && (
+                  <Grid container spacing={2} sx={{ mt: 2 }}>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Property URL *"
+                        value={editFormData.search_console_property_url}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_property_url: e.target.value }))}
+                        required={editFormData.search_console_enabled}
+                        placeholder="https://vasalatmester.hu vagy sc-domain:vasalatmester.hu"
+                        helperText="A Search Console property URL-je"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Service Account Email *"
+                        value={editFormData.search_console_client_email}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_client_email: e.target.value }))}
+                        required={editFormData.search_console_enabled}
+                        placeholder="service-account@project.iam.gserviceaccount.com"
+                        helperText="Google Service Account email"
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label={editingConnection?.search_console_private_key ? "Private Key" : "Private Key *"}
+                        type="password"
+                        value={editFormData.search_console_private_key}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, search_console_private_key: e.target.value }))}
+                        required={editFormData.search_console_enabled && !editingConnection?.search_console_private_key}
+                        multiline
+                        rows={4}
+                        helperText={editingConnection?.search_console_private_key 
+                          ? "Hagyja üresen, ha nem szeretné megváltoztatni" 
+                          : "Service Account private key (JSON formátum)"}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                )}
+              </Paper>
+              </Grid>
             )}
           </Grid>
         </DialogContent>
@@ -1807,7 +2480,12 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             onClick={handleUpdateConnection} 
             variant="contained"
             startIcon={updatingConnection ? <CircularProgress size={20} /> : <EditIcon />}
-            disabled={updatingConnection || !editFormData.name || !editFormData.api_url || !editFormData.username}
+            disabled={
+              updatingConnection || 
+              !editFormData.name || 
+              (editFormData.connection_type === 'shoprenter' && (!editFormData.api_url || !editFormData.username)) ||
+              (editFormData.connection_type === 'szamlazz' && !editFormData.agent_key)
+            }
             sx={{ minWidth: 120 }}
           >
             {updatingConnection ? 'Mentés...' : 'Mentés'}
@@ -1866,31 +2544,54 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         fullWidth
       >
         <DialogTitle>
-          Termékek szinkronizálása
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Box sx={{ 
+              p: 1, 
+              borderRadius: '50%', 
+              bgcolor: '#2196f3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+            }}>
+              <SyncIcon sx={{ color: 'white', fontSize: '24px' }} />
+            </Box>
+            <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
+              Termékek szinkronizálása
+            </Typography>
+          </Box>
         </DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+              Teljes szinkronizálás
+            </Typography>
+            <Typography variant="body2">
+              A teljes szinkronizálás során <strong>minden termékadat</strong> frissül a webshopból. 
+              Ez biztosítja, hogy az ERP adatbázis pontosan egyezzen a ShopRenter webshop adataival.
+            </Typography>
+          </Alert>
           <Typography variant="body1" sx={{ mb: 2 }}>
             Biztosan szeretné szinkronizálni a termékeket a webshopból?
           </Typography>
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={forceSync}
-                onChange={(e) => setForceSync(e.target.checked)}
-              />
-            }
-            label={
-              <Box>
-                <Typography variant="body2" fontWeight="medium">
-                  Kényszerített szinkronizálás
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Ha be van jelölve, a helyi módosítások felülírásra kerülnek. Alapértelmezetten csak az üres mezők kerülnek frissítésre.
-                </Typography>
-              </Box>
-            }
-            sx={{ mt: 1 }}
-          />
+          <Box sx={{ 
+            p: 2, 
+            bgcolor: 'rgba(0, 0, 0, 0.02)', 
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'divider'
+          }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              <strong>Szinkronizált adatok:</strong>
+            </Typography>
+            <Box component="ul" sx={{ pl: 2, m: 0 }}>
+              <li><Typography variant="body2" color="text.secondary">Termék alapadatok (név, SKU, ár, stb.)</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Termékleírások és SEO adatok</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Termékképek és alt szövegek</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Kategória kapcsolatok</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Termék attribútumok</Typography></li>
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button 
@@ -1903,7 +2604,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             onClick={() => {
               if (syncDialogConnection) {
                 setSyncDialogOpen(false)
-                handleSyncProducts(syncDialogConnection, forceSync)
+                handleSyncProducts(syncDialogConnection, false) // forceSync is ignored for bulk sync anyway
               }
             }}
             variant="contained"

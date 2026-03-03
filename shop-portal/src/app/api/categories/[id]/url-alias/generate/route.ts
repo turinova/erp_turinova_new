@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import Anthropic from '@anthropic-ai/sdk'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
+import { checkCreditsForAIFeature } from '@/lib/credit-checker'
 
 /**
  * POST /api/categories/[id]/url-alias/generate
@@ -19,6 +21,21 @@ export async function POST(
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check credits before generation
+    const creditCheck = await checkCreditsForAIFeature(user.id, 'url_slug')
+    if (!creditCheck.hasEnough) {
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient credits',
+        credits: {
+          available: creditCheck.available,
+          required: creditCheck.required,
+          limit: creditCheck.limit,
+          used: creditCheck.used
+        }
+      }, { status: 402 }) // 402 Payment Required
     }
 
     // Get category with descriptions
@@ -124,6 +141,19 @@ Return ONLY the slug, nothing else. Example: "konyhai-butorok" or "konyhai-butor
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
       .substring(0, 60) // Enforce max length
+
+    // Track AI usage after successful generation
+    const tokensUsed = message.usage.input_tokens + message.usage.output_tokens
+    await trackAIUsage({
+      userId: user.id,
+      featureType: 'url_slug',
+      tokensUsed: tokensUsed,
+      modelUsed: 'claude-haiku-4-5-20251001',
+      categoryId: id,
+      creditsUsed: 1,
+      creditType: 'ai_generation',
+      metadata: { generated: true }
+    })
 
     return NextResponse.json({
       success: true,

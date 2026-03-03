@@ -32,6 +32,7 @@ export async function trackAIUsage(params: TrackUsageParams) {
     let productName = params.productName
     let productSku = params.productSku
     let userEmail = params.userEmail
+    let categoryName: string | undefined
 
     if (params.productId && (!productName || !productSku)) {
       try {
@@ -48,6 +49,29 @@ export async function trackAIUsage(params: TrackUsageParams) {
         }
       } catch (error) {
         console.warn('[AI USAGE TRACKER] Could not fetch product context:', error)
+      }
+    }
+
+    // Fetch category context if categoryId is provided
+    if (params.categoryId) {
+      try {
+        const tenantSupabase = await getTenantSupabase()
+        const { data: category } = await tenantSupabase
+          .from('shoprenter_categories')
+          .select(`
+            name,
+            shoprenter_category_descriptions(name)
+          `)
+          .eq('id', params.categoryId)
+          .single()
+        
+        if (category) {
+          // Prefer description name, fallback to category name
+          const descName = category.shoprenter_category_descriptions?.[0]?.name
+          categoryName = descName || category.name || undefined
+        }
+      } catch (error) {
+        console.warn('[AI USAGE TRACKER] Could not fetch category context:', error)
       }
     }
 
@@ -83,6 +107,7 @@ export async function trackAIUsage(params: TrackUsageParams) {
     }
     if (params.categoryId) {
       productContext.category_id = params.categoryId
+      if (categoryName) productContext.category_name = categoryName
     }
 
     // Insert into Admin DB

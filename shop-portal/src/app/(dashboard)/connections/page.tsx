@@ -21,7 +21,7 @@ export default async function ConnectionsPage() {
           Főoldal
         </Link>
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          Kapcsolatok
+          Kapcsolatok kezelése
         </Typography>
       </Breadcrumbs>
 

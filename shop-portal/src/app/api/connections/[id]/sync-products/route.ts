@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
@@ -325,6 +325,10 @@ export async function POST(
     // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
     const supabase = await getTenantSupabase()
 
+    // Get tenant context for tenant-specific rate limiting
+    const tenant = await getTenantFromSession()
+    const tenantId = tenant?.id
+
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
@@ -388,7 +392,8 @@ export async function POST(
       }
 
       try {
-        await syncProductToDatabase(supabase, connection, data, false, apiUrl, authHeader)
+        // For single product sync, use forceSync from request (defaults to false)
+        await syncProductToDatabase(supabase, connection, data, forceSync, apiUrl, authHeader, undefined, tenantId)
         return NextResponse.json({ success: true, synced: 1 })
       } catch (error) {
         return NextResponse.json({ 
@@ -397,6 +402,10 @@ export async function POST(
         }, { status: 500 })
       }
     }
+
+    // For bulk sync (full sync), ALWAYS force sync everything to match ShopRenter exactly
+    // This ensures complete data synchronization
+    forceSync = true
 
     // For bulk sync, use Batch API for efficiency
     // First, get all product IDs (paginated)
@@ -574,7 +583,7 @@ export async function POST(
     // Return immediately and run sync in background
     // The frontend will poll for progress
     // Don't await - let it run in background
-    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader, request).catch(error => {
+    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader, request, tenantId, user.id, user.email || null).catch(error => {
       console.error('Background sync error:', error)
       updateProgress(connectionId, {
         status: 'error',
@@ -625,7 +634,10 @@ async function processSyncInBackground(
   forceSync: boolean,
   apiUrl: string,
   authHeader: string,
-  request: NextRequest
+  request: NextRequest,
+  tenantId?: string,
+  userId?: string,
+  userEmail?: string | null
 ) {
   // Initialize variables at function scope so they're accessible in catch block
   let syncedCount = 0
@@ -633,6 +645,45 @@ async function processSyncInBackground(
   const errors: string[] = []
   const totalProducts = allProductIds.length
   const totalBatches = batches.length
+  const syncStartTime = new Date()
+
+  // Create sync audit log entry
+  let auditLogId: string | null = null
+  try {
+    if (tenantId && userId) {
+      const { data: auditLog, error: auditError } = await supabase
+        .from('sync_audit_logs')
+        .insert({
+          connection_id: connectionId,
+          sync_type: 'full',
+          sync_direction: 'from_shoprenter',
+          user_id: userId,
+          user_email: userEmail,
+          total_products: totalProducts,
+          synced_count: 0,
+          error_count: 0,
+          skipped_count: 0,
+          started_at: syncStartTime.toISOString(),
+          status: 'running',
+          metadata: {
+            forceSync: forceSync,
+            batchSize: 200,
+            totalBatches: totalBatches
+          }
+        })
+        .select('id')
+        .single()
+      
+      if (!auditError && auditLog) {
+        auditLogId = auditLog.id
+        console.log(`[SYNC] Created audit log entry: ${auditLogId}`)
+      } else {
+        console.warn(`[SYNC] Failed to create audit log:`, auditError)
+      }
+    }
+  } catch (auditInitError) {
+    console.warn(`[SYNC] Error creating audit log (non-fatal):`, auditInitError)
+  }
 
   try {
     // Ensure progress is initialized at the start of background process
@@ -778,21 +829,31 @@ async function processSyncInBackground(
         // Process products sequentially to avoid overwhelming the API with image requests
         // The rate limiter will handle the 3 req/sec limit, but sequential processing prevents
         // too many requests from queuing up at once
-        for (const { product, batchItem } of productsToSync) {
+        for (let productIdx = 0; productIdx < productsToSync.length; productIdx++) {
+          const { product, batchItem } = productsToSync[productIdx]
+          
           if (shouldStopSync(connectionId)) {
             return batchResults
           }
 
+          // Update batch progress for UI feedback
+          updateProgress(connectionId, {
+            currentBatch: batchIndex + 1,
+            totalBatches: batches.length,
+            batchProgress: productIdx + 1
+          })
+
           try {
-            await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap)
+            await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId)
             batchResults.synced++
-            // Update progress after each product for real-time updates
-            // Note: We need to track the total synced count across all batches
-            // This will be aggregated at the batch group level
+            // Update progress after EACH product for real-time updates
+            incrementProgress(connectionId, { synced: 1 })
           } catch (error) {
             batchResults.errors++
             const errorMsg = error instanceof Error ? error.message : 'Ismeretlen hiba'
             batchResults.errorMessages.push(`Termék ${product.sku || product.id}: ${errorMsg}`)
+            // Update error count immediately
+            incrementProgress(connectionId, { errors: 1 })
           }
         }
       } catch (batchError) {
@@ -836,13 +897,8 @@ async function processSyncInBackground(
       errorCount += result.errors
       errors.push(...result.errorMessages)
       
-      // Atomically increment progress to avoid race conditions
-      incrementProgress(connectionId, {
-        synced: result.synced,
-        errors: result.errors
-      })
-      
-      // Get updated progress for logging
+      // Progress is already updated per-product, so we don't need to increment here
+      // Just get updated progress for logging
       const currentProgress = getProgress(connectionId)
       const currentSynced = currentProgress?.synced || 0
       
@@ -868,39 +924,25 @@ async function processSyncInBackground(
     }
 
     // Post-sync: Update parent_product_id for products that were synced before their parent
-    // Only run if there are products with missing parents (optimization)
-    console.log(`[SYNC] Checking if post-sync parent update is needed...`)
+    // Always run for full sync (forceSync = true) to ensure all parent-child relationships are correct
+    // For incremental sync, only run if there might be missing parents
+    console.log(`[SYNC] Running post-sync parent-child relationship update...`)
     try {
-      // Check if any products have missing parents
-      const { data: productsWithMissingParents, error: checkError } = await supabase
+      // Get all products for this connection to update parent relationships
+      // This ensures parent_product_id is always correct, even if products were synced out of order
+      const { data: allProducts, error: productsError } = await supabase
         .from('shoprenter_products')
-        .select('id')
+        .select('id, shoprenter_id, sku, parent_product_id')
         .eq('connection_id', connection.id)
-        .not('parent_category_shoprenter_id', 'is', null)
-        .is('parent_product_id', null)
-        .limit(1)
         .is('deleted_at', null)
       
-      if (checkError) {
-        console.error(`[SYNC] Error checking for missing parents:`, checkError)
-      } else if (productsWithMissingParents && productsWithMissingParents.length > 0) {
-        console.log(`[SYNC] Found products with missing parents, running post-sync update...`)
+      if (productsError) {
+        console.error(`[SYNC] Error fetching products for parent update:`, productsError)
+      } else if (allProducts && allProducts.length > 0) {
+        let updatedCount = 0
+        const batchSize = 50 // Process in smaller batches to avoid timeout
         
-        // Get all products for this connection that might have parents
-        // We'll re-fetch their parentProduct from ShopRenter and update if parent now exists
-        const { data: allProducts, error: productsError } = await supabase
-          .from('shoprenter_products')
-          .select('id, shoprenter_id, sku, parent_product_id')
-          .eq('connection_id', connection.id)
-          .is('deleted_at', null)
-        
-        if (productsError) {
-          console.error(`[SYNC] Error fetching products for parent update:`, productsError)
-        } else if (allProducts && allProducts.length > 0) {
-          let updatedCount = 0
-          const batchSize = 50 // Process in smaller batches to avoid timeout
-          
-          for (let i = 0; i < allProducts.length; i += batchSize) {
+        for (let i = 0; i < allProducts.length; i += batchSize) {
           const batch = allProducts.slice(i, i + batchSize)
           
           // Build batch request to fetch parentProduct for each product
@@ -939,12 +981,17 @@ async function processSyncInBackground(
                   const productData = batchItem.response.body
                   const parentShopRenterId = extractParentProductId(productData)
                   
-                  // Only update if we found a parent and it's different from current
-                  if (parentShopRenterId && (!product.parent_product_id || product.parent_product_id !== parentShopRenterId)) {
-                    // Find parent in database
+                  // For force sync, always update parent relationships to match ShopRenter exactly
+                  // For non-force sync, only update if parent changed or is missing
+                  const shouldUpdateParent = forceSync || 
+                    (parentShopRenterId && !product.parent_product_id) ||
+                    (parentShopRenterId && product.parent_product_id) // Check if current parent matches ShopRenter parent
+                  
+                  if (parentShopRenterId && shouldUpdateParent) {
+                    // Find parent in database by ShopRenter ID
                     const { data: parentProduct } = await supabase
                       .from('shoprenter_products')
-                      .select('id')
+                      .select('id, sku')
                       .eq('connection_id', connection.id)
                       .eq('shoprenter_id', parentShopRenterId)
                       .single()
@@ -962,18 +1009,46 @@ async function processSyncInBackground(
                         continue
                       }
                       
-                      // Update the child product with parent UUID
-                      const { error: updateError } = await supabase
-                        .from('shoprenter_products')
-                        .update({ parent_product_id: parentProduct.id })
-                        .eq('id', product.id)
+                      // Check if parent needs updating (different from current or force sync)
+                      const needsUpdate = forceSync || product.parent_product_id !== parentProduct.id
                       
-                      if (!updateError) {
-                        updatedCount++
-                        console.log(`[SYNC] Updated parent for ${product.sku}: ${parentProduct.id}`)
-                      } else {
-                        console.error(`[SYNC] Error updating parent for ${product.sku}:`, updateError)
+                      if (needsUpdate) {
+                        // Update the child product with parent UUID
+                        const { error: updateError } = await supabase
+                          .from('shoprenter_products')
+                          .update({ parent_product_id: parentProduct.id })
+                          .eq('id', product.id)
+                        
+                        if (!updateError) {
+                          updatedCount++
+                          console.log(`[SYNC] Updated parent for ${product.sku}: ${parentProduct.sku} (${parentProduct.id})`)
+                        } else {
+                          console.error(`[SYNC] Error updating parent for ${product.sku}:`, updateError)
+                        }
                       }
+                    } else if (forceSync) {
+                      // For force sync, if parent doesn't exist in DB, clear the parent_product_id
+                      // This ensures exact match with ShopRenter (if parent doesn't exist, clear it)
+                      if (product.parent_product_id) {
+                        const { error: clearError } = await supabase
+                          .from('shoprenter_products')
+                          .update({ parent_product_id: null })
+                          .eq('id', product.id)
+                        
+                        if (!clearError) {
+                          console.log(`[SYNC] Cleared parent_product_id for ${product.sku} (parent ${parentShopRenterId} not found in database)`)
+                        }
+                      }
+                    }
+                  } else if (forceSync && !parentShopRenterId && product.parent_product_id) {
+                    // For force sync, if ShopRenter says no parent but we have one, clear it
+                    const { error: clearError } = await supabase
+                      .from('shoprenter_products')
+                      .update({ parent_product_id: null })
+                      .eq('id', product.id)
+                    
+                    if (!clearError) {
+                      console.log(`[SYNC] Cleared parent_product_id for ${product.sku} (no parent in ShopRenter)`)
                     }
                   }
                 }
@@ -987,12 +1062,11 @@ async function processSyncInBackground(
           if (i + batchSize < allProducts.length) {
             await new Promise(resolve => setTimeout(resolve, 100))
           }
-          }
-          
-          console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
         }
+        
+        console.log(`[SYNC] Updated ${updatedCount} parent-child relationships`)
       } else {
-        console.log(`[SYNC] No products with missing parents found, skipping post-sync update`)
+        console.log(`[SYNC] No products found for parent update`)
       }
     } catch (parentUpdateError) {
       console.error(`[SYNC] Error updating parent relationships (non-fatal):`, parentUpdateError)
@@ -1000,6 +1074,9 @@ async function processSyncInBackground(
 
 
     // Mark as complete
+    const syncEndTime = new Date()
+    const durationSeconds = Math.floor((syncEndTime.getTime() - syncStartTime.getTime()) / 1000)
+    
     updateProgress(connectionId, {
       synced: syncedCount,
       current: totalProducts,
@@ -1007,22 +1084,66 @@ async function processSyncInBackground(
       errors: errorCount
     })
 
+    // Update audit log
+    if (auditLogId && tenantId) {
+      try {
+        await supabase
+          .from('sync_audit_logs')
+          .update({
+            synced_count: syncedCount,
+            error_count: errorCount,
+            skipped_count: totalProducts - syncedCount - errorCount,
+            completed_at: syncEndTime.toISOString(),
+            duration_seconds: durationSeconds,
+            status: 'completed'
+          })
+          .eq('id', auditLogId)
+      } catch (auditUpdateError) {
+        console.warn(`[SYNC] Failed to update audit log:`, auditUpdateError)
+      }
+    }
+
     // Clear progress after 30 seconds (give time for final poll)
     setTimeout(() => {
       clearProgress(connectionId)
     }, 30 * 1000)
 
-    console.log(`[SYNC] Completed: ${syncedCount}/${totalProducts} synced, ${errorCount} errors`)
+    console.log(`[SYNC] Completed: ${syncedCount}/${totalProducts} synced, ${errorCount} errors (duration: ${durationSeconds}s)`)
   } catch (error) {
     console.error('Error in background sync:', error)
     const errorMessage = error instanceof Error ? error.message : 'Ismeretlen hiba'
     console.error(`[SYNC] Fatal error at batch ${Math.floor(syncedCount / 200) + 1}: ${errorMessage}`)
+    
+    const syncEndTime = new Date()
+    const durationSeconds = Math.floor((syncEndTime.getTime() - syncStartTime.getTime()) / 1000)
+    
     updateProgress(connectionId, {
       status: 'error',
       errors: errorCount,
       synced: syncedCount,
       current: syncedCount + errorCount
     })
+
+    // Update audit log with error
+    if (auditLogId && tenantId) {
+      try {
+        await supabase
+          .from('sync_audit_logs')
+          .update({
+            synced_count: syncedCount,
+            error_count: errorCount,
+            skipped_count: totalProducts - syncedCount - errorCount,
+            completed_at: syncEndTime.toISOString(),
+            duration_seconds: durationSeconds,
+            status: 'failed',
+            error_message: errorMessage
+          })
+          .eq('id', auditLogId)
+      } catch (auditUpdateError) {
+        console.warn(`[SYNC] Failed to update audit log with error:`, auditUpdateError)
+      }
+    }
+    
     // Don't throw - log the error but mark progress as error so UI can show it
     console.error(`[SYNC] Sync stopped at ${syncedCount}/${totalProducts} products due to error`)
   }
@@ -1039,7 +1160,8 @@ export async function syncProductToDatabase(
   forceSync: boolean = false,
   apiBaseUrl?: string,
   authHeaderParam?: string,
-  attributeDescriptionsMap?: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>
+  attributeDescriptionsMap?: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>,
+  tenantId?: string
 ) {
   try {
     console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
@@ -1146,7 +1268,7 @@ export async function syncProductToDatabase(
         } else if (attributeId && apiBaseUrl && authHeaderParam && !attributeDescriptionsMap) {
           // Fallback: fetch individually only if batch map not provided (backward compatibility)
           try {
-            const rateLimiter = getShopRenterRateLimiter()
+            const rateLimiter = getShopRenterRateLimiter(tenantId)
             const desc = await rateLimiter.execute(() =>
               fetchAttributeDescription(
                 apiBaseUrl,
@@ -1598,6 +1720,7 @@ export async function syncProductToDatabase(
               meta_description: desc.metaDescription || null,
               short_description: desc.shortDescription || null,
               description: desc.description || null,
+              parameters: desc.parameters || null, // Add parameters field
               shoprenter_id: desc.id || null
             }
 
@@ -1765,7 +1888,8 @@ export async function syncProductToDatabase(
                 password: connection.password,
                 shopName: shopName
               },
-              product.id // This is the ShopRenter product ID from productExtend
+              product.id, // This is the ShopRenter product ID from productExtend
+              tenantId
             )
             console.log(`[SYNC] Fetched ${shoprenterImages.length} images from ShopRenter API for product ${product.sku}`)
             if (shoprenterImages.length > 0) {

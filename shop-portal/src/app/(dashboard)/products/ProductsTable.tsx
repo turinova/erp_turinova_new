@@ -42,8 +42,12 @@ import {
   FamilyRestroom as FamilyRestroomIcon,
   ArrowUpward as ArrowUpwardIcon,
   ArrowDownward as ArrowDownwardIcon,
-  Assessment as AssessmentIcon
+  Assessment as AssessmentIcon,
+  Image as ImageIcon,
+  Close as CloseIcon,
+  FileDownload as FileDownloadIcon
 } from '@mui/icons-material'
+import { Avatar, IconButton } from '@mui/material'
 import { toast } from 'react-toastify'
 import type { ShopRenterProduct } from '@/lib/products-server'
 import ProductQualityScore from '@/components/ProductQualityScore'
@@ -92,6 +96,14 @@ export default function ProductsTable({
   // Track which products are parents (have children)
   const [parentProductIds, setParentProductIds] = useState<Set<string>>(new Set())
 
+  // Product images state - map of product_id to main image URL
+  const [productImages, setProductImages] = useState<Map<string, string>>(new Map())
+
+  // Image modal state
+  const [imageModalOpen, setImageModalOpen] = useState(false)
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
+  const [selectedImageAlt, setSelectedImageAlt] = useState<string>('')
+
   // Search Console sync state
   const [isSyncingSearchConsole, setIsSyncingSearchConsole] = useState(false)
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 })
@@ -123,6 +135,21 @@ export default function ProductsTable({
   // Bulk sync to ShopRenter state
   const [isSyncingToShopRenter, setIsSyncingToShopRenter] = useState(false)
   const [shopRenterSyncToProgress, setShopRenterSyncToProgress] = useState({ current: 0, total: 0 })
+
+  // Export state - default all fields checked
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportFields, setExportFields] = useState<Set<string>>(new Set([
+    'sku',
+    'model_number',
+    'gtin',
+    'name',
+    'cost',
+    'multiplier',
+    'price',
+    'gross_price',
+    'status'
+  ]))
+  const [isExporting, setIsExporting] = useState(false)
 
   // Refs for polling intervals
   const syncFromShopRenterIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -159,17 +186,20 @@ export default function ProductsTable({
   const [searchResults, setSearchResults] = useState<ShopRenterProduct[]>([])
   const [searchTotalCount, setSearchTotalCount] = useState(0)
   const [searchTotalPages, setSearchTotalPages] = useState(0)
+  const [hasSearched, setHasSearched] = useState(false) // Track if a search has been performed
 
-  // Search function - can be called manually or via debounce
+  // Search function - called only on Enter key press
   const performSearch = useCallback(async (term: string) => {
-    if (!term || term.length < 3) {
+    if (!term || term.length < 2) {
       setSearchResults([])
       setSearchTotalCount(0)
       setSearchTotalPages(0)
+      setHasSearched(false) // Reset flag when clearing
       return
     }
 
     setIsSearching(true)
+    setHasSearched(true) // Mark that a search has been performed
     try {
       const response = await fetch(`/api/products/search?q=${encodeURIComponent(term)}&page=1&limit=${currentPageSize}`)
       if (response.ok) {
@@ -193,22 +223,8 @@ export default function ProductsTable({
     }
   }, [currentPageSize])
 
-  // Search effect - fetch from API route with optimized debounce
-  useEffect(() => {
-    if (!searchTerm || searchTerm.length < 3) {
-      setSearchResults([])
-      setSearchTotalCount(0)
-      setSearchTotalPages(0)
-      return
-    }
-
-    // Optimized debounce delay (500ms) - faster response, minimum 3 characters
-    const searchTimeout = setTimeout(() => {
-      performSearch(searchTerm)
-    }, 500)
-
-    return () => clearTimeout(searchTimeout)
-  }, [searchTerm, performSearch])
+  // Search is now only triggered on Enter key press (see handleSearchKeyPress)
+  // Removed automatic search on input change
 
   // Fetch quality scores for displayed products (batch API)
   const fetchQualityScores = async (productIds: string[]) => {
@@ -264,6 +280,33 @@ export default function ProductsTable({
       console.error('Error fetching indexing statuses:', error)
     } finally {
       setIsLoadingIndexStatus(false)
+    }
+  }
+
+  // Fetch main images for displayed products
+  const fetchProductImages = async (productIds: string[]) => {
+    if (productIds.length === 0) return
+    
+    try {
+      // Fetch main images in batch
+      const response = await fetch('/api/products/main-images-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const imagesMap = new Map<string, string>(productImages)
+        for (const item of data.images || []) {
+          if (item.product_id && item.image_url) {
+            imagesMap.set(item.product_id, item.image_url)
+          }
+        }
+        setProductImages(imagesMap)
+      }
+    } catch (error) {
+      console.error('Error fetching product images:', error)
     }
   }
 
@@ -737,16 +780,29 @@ export default function ProductsTable({
   // Handle search input change
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
+    // Clear search results immediately when input is cleared
+    if (!value || value.trim().length === 0) {
+      setSearchResults([])
+      setSearchTotalCount(0)
+      setSearchTotalPages(0)
+      setHasSearched(false) // Reset flag when clearing
+    }
   }
 
-  // Handle search input key press (Enter to search immediately)
+  // Handle search input key press (Enter to search)
   const handleSearchKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
-      // Clear any pending debounced search
-      // The performSearch will be called immediately
-      if (searchTerm && searchTerm.length >= 2) {
-        performSearch(searchTerm)
+      const trimmedTerm = searchTerm.trim()
+      // Only search if term is at least 2 characters (matching API requirement)
+      if (trimmedTerm.length >= 2) {
+        performSearch(trimmedTerm)
+      } else if (trimmedTerm.length === 0) {
+        // Clear search results when input is empty and Enter is pressed
+        setSearchResults([])
+        setSearchTotalCount(0)
+        setSearchTotalPages(0)
+        setHasSearched(false) // Reset flag when clearing
       }
     }
   }
@@ -794,11 +850,11 @@ export default function ProductsTable({
     }
   }
 
-  // Use search results if searching, otherwise use regular products
-  const displayProducts = searchTerm && searchTerm.length >= 2 ? searchResults : products
-  const displayTotalCount = searchTerm && searchTerm.length >= 2 ? searchTotalCount : totalCount
-  const displayTotalPages = searchTerm && searchTerm.length >= 2 ? searchTotalPages : totalPages
-  const displayCurrentPage = searchTerm && searchTerm.length >= 2 ? 1 : page
+  // Use search results only if a search has been performed, otherwise use regular products
+  const displayProducts = hasSearched ? searchResults : products
+  const displayTotalCount = hasSearched ? searchTotalCount : totalCount
+  const displayTotalPages = hasSearched ? searchTotalPages : totalPages
+  const displayCurrentPage = hasSearched ? 1 : page
 
   // Fetch quality scores when products change
   useEffect(() => {
@@ -827,6 +883,15 @@ export default function ProductsTable({
     const productIds = displayProducts.map(p => p.id)
     if (productIds.length > 0) {
       fetchIndexingStatuses(productIds)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayProducts.map(p => p.id).join(',')])
+
+  // Fetch main images when products change
+  useEffect(() => {
+    const productIds = displayProducts.map(p => p.id)
+    if (productIds.length > 0) {
+      fetchProductImages(productIds)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayProducts.map(p => p.id).join(',')])
@@ -987,62 +1052,171 @@ export default function ProductsTable({
     router.push(`/products/${productId}`)
   }
 
+  // Handle image click - open modal (stops propagation to prevent row click)
+  const handleImageClick = (e: React.MouseEvent, imageUrl: string, productName: string) => {
+    e.stopPropagation() // Prevent row click navigation
+    setSelectedImageUrl(imageUrl)
+    setSelectedImageAlt(productName)
+    setImageModalOpen(true)
+  }
+
+  // Handle export button click - reset to all fields checked by default
+  const handleExportClick = () => {
+    // Reset to all fields checked by default
+    setExportFields(new Set([
+      'sku',
+      'model_number',
+      'gtin',
+      'name',
+      'cost',
+      'multiplier',
+      'price',
+      'gross_price',
+      'status'
+    ]))
+    setExportDialogOpen(true)
+  }
+
+  // Handle export field toggle
+  const handleExportFieldToggle = (field: string) => {
+    // SKU cannot be deselected
+    if (field === 'sku') return
+    
+    const newFields = new Set(exportFields)
+    if (newFields.has(field)) {
+      newFields.delete(field)
+    } else {
+      newFields.add(field)
+    }
+    setExportFields(newFields)
+  }
+
+  // Handle export confirmation
+  const handleExportConfirm = async () => {
+    if (exportFields.size === 0) {
+      toast.error('Válasszon ki legalább egy mezőt az exportáláshoz')
+      return
+    }
+
+    setIsExporting(true)
+    setExportDialogOpen(false)
+
+    try {
+      // Determine which products to export
+      const productIdsToExport = selectedIds.size > 0 ? Array.from(selectedIds) : null
+
+      const response = await fetch('/api/products/export', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          productIds: productIdsToExport,
+          fields: Array.from(exportFields)
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Export failed')
+      }
+
+      // Get the blob and create download link
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = 'termekek_export.xlsx'
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+        if (filenameMatch) {
+          filename = filenameMatch[1]
+        }
+      }
+      
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+
+      const productCount = productIdsToExport ? productIdsToExport.length : displayTotalCount
+      toast.success(`${productCount} termék exportálva (${exportFields.size} mező)`)
+    } catch (error) {
+      console.error('Error exporting products:', error)
+      toast.error(error instanceof Error ? error.message : 'Hiba történt az exportálás során')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <Box>
       {/* Search Bar */}
       <TextField
         fullWidth
-        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján... (minimum 3 karakter)"
+        size="small"
+        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján..."
         value={searchTerm}
         onChange={(e) => handleSearchChange(e.target.value)}
         onKeyPress={handleSearchKeyPress}
         disabled={isSearching || isLoading}
-        sx={{ mt: 2, mb: 2 }}
+        sx={{ mt: 2, mb: 1.5 }}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              {isSearching ? <CircularProgress size={20} /> : <SearchIcon />}
+              {isSearching ? <CircularProgress size={18} /> : <SearchIcon fontSize="small" />}
             </InputAdornment>
           ),
         }}
       />
 
+      {/* Export button - always visible */}
+      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        <Button
+          variant="outlined"
+          size="medium"
+          color="primary"
+          startIcon={isExporting ? <CircularProgress size={18} color="inherit" /> : <FileDownloadIcon />}
+          onClick={handleExportClick}
+          disabled={isExporting}
+          sx={{
+            fontWeight: 600,
+            px: 3
+          }}
+        >
+          {isExporting 
+            ? 'Exportálás...' 
+            : selectedIds.size > 0 
+              ? `Excel exportálás (${selectedIds.size} termék)`
+              : 'Excel exportálás'}
+        </Button>
+      </Box>
+
       {/* Selected count indicator and actions */}
       {selectedIds.size > 0 && (
         <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-          <Typography variant="body2" color="primary">
+          <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
             {selectedIds.size} termék kiválasztva
           </Typography>
           <Button
             variant="contained"
-            size="small"
-            startIcon={isSyncingSearchConsole ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
-            onClick={handleSearchConsoleRefresh}
-            disabled={isSyncingSearchConsole || selectedIds.size === 0}
-          >
-            {isSyncingSearchConsole 
-              ? `Search Console frissítése (${syncProgress.current}/${syncProgress.total})...` 
-              : 'Search Console frissítése'}
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
-            color="warning"
-            startIcon={isCalculatingQualityScores ? <CircularProgress size={16} color="inherit" /> : <AssessmentIcon />}
-            onClick={handleBulkCalculateQualityScores}
-            disabled={isCalculatingQualityScores || selectedIds.size === 0}
-          >
-            {isCalculatingQualityScores 
-              ? `Minőségi pontszám számítás (${qualityScoreProgress.current}/${qualityScoreProgress.total})...` 
-              : 'Minőségi pontszám számítás'}
-          </Button>
-          <Button
-            variant="contained"
-            size="small"
+            size="medium"
             color="primary"
-            startIcon={isSyncingFromShopRenter ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+            startIcon={isSyncingFromShopRenter ? <CircularProgress size={18} color="inherit" /> : <RefreshIcon />}
             onClick={handleBulkSyncFromShopRenter}
             disabled={isSyncingFromShopRenter || isSyncingToShopRenter || selectedIds.size === 0}
+            sx={{
+              fontWeight: 600,
+              px: 3,
+              boxShadow: 2,
+              '&:hover': {
+                boxShadow: 4
+              }
+            }}
           >
             {isSyncingFromShopRenter 
               ? `ShopRenter-ből: ${shopRenterSyncProgress.current}/${shopRenterSyncProgress.total}` 
@@ -1050,11 +1224,19 @@ export default function ProductsTable({
           </Button>
           <Button
             variant="contained"
-            size="small"
+            size="medium"
             color="success"
-            startIcon={isSyncingToShopRenter ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+            startIcon={isSyncingToShopRenter ? <CircularProgress size={18} color="inherit" /> : <RefreshIcon />}
             onClick={handleBulkSyncToShopRenter}
             disabled={isSyncingFromShopRenter || isSyncingToShopRenter || selectedIds.size === 0}
+            sx={{
+              fontWeight: 600,
+              px: 3,
+              boxShadow: 2,
+              '&:hover': {
+                boxShadow: 4
+              }
+            }}
           >
             {isSyncingToShopRenter 
               ? `ShopRenter-be: ${shopRenterSyncToProgress.current}/${shopRenterSyncToProgress.total}` 
@@ -1063,29 +1245,11 @@ export default function ProductsTable({
         </Box>
       )}
 
-      {/* Sync progress bar */}
-      {isSyncingSearchConsole && (
-        <LinearProgress 
-          variant="determinate" 
-          value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0}
-          sx={{ mb: 2 }}
-        />
-      )}
-
       {/* Image alt text progress bar */}
       {(isGeneratingImageAltText || isSyncingImageAltText) && (
         <LinearProgress 
           variant="determinate" 
           value={imageAltTextProgress.total > 0 ? (imageAltTextProgress.current / imageAltTextProgress.total) * 100 : 0}
-          sx={{ mb: 2 }}
-        />
-      )}
-
-      {/* Quality score progress bar */}
-      {isCalculatingQualityScores && (
-        <LinearProgress 
-          variant="determinate" 
-          value={qualityScoreProgress.total > 0 ? (qualityScoreProgress.current / qualityScoreProgress.total) * 100 : 0}
           sx={{ mb: 2 }}
         />
       )}
@@ -1119,42 +1283,42 @@ export default function ProductsTable({
       )}
 
       {/* Products Table */}
-      <TableContainer component={Paper} sx={{ mt: 2 }}>
+      <TableContainer 
+        component={Paper} 
+        sx={{ 
+          mt: 2,
+          '& .MuiTable-root': {
+            '& .MuiTableCell-root': {
+              borderColor: 'divider',
+              py: 1
+            }
+          }
+        }}
+      >
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow sx={{ bgcolor: 'action.hover' }}>
-              <TableCell padding="checkbox" sx={{ width: 50 }}>
+              <TableCell padding="checkbox" sx={{ width: 40 }}>
                 <Checkbox
                   checked={isAllSelected}
                   indeterminate={isIndeterminate}
                   onChange={handleSelectAll}
                   disabled={displayProducts.length === 0}
+                  size="small"
                 />
               </TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>SKU</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Gyártói cikkszám</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Név</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">Nettó ár</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Státusz</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center" width={100}>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1, width: 60 }} align="center">
+                Kép
+              </TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1 }}>SKU</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1 }}>Gyártói cikkszám</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1 }}>Név</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1 }} align="right">Nettó ár</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1 }}>Státusz</TableCell>
+              <TableCell sx={{ fontWeight: 600, fontSize: '0.75rem', py: 1 }} align="center" width={100}>
                 <Tooltip title="Termék kapcsolatok">
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
                     Kapcsolat
-                  </Box>
-                </Tooltip>
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">
-                <Tooltip title="Google Indexelés - A keresési eredményekben megjelenik-e">
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                    Indexelve
-                    {isLoadingIndexStatus && <CircularProgress size={12} />}
-                  </Box>
-                </Tooltip>
-              </TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center" width={120}>
-                <Tooltip title="Minőségi pontszám - SEO és adatminőség értékelése">
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                    Minőség
                   </Box>
                 </Tooltip>
               </TableCell>
@@ -1163,63 +1327,105 @@ export default function ProductsTable({
           <TableBody>
             {displayProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 3 }}>
+                <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
-                    {isLoading || isSearching ? 'Betöltés...' : (searchTerm && searchTerm.length >= 3 ? 'Nincs találat' : 'Nincsenek termékek')}
+                    {isLoading || isSearching ? 'Betöltés...' : (hasSearched ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
                 </TableCell>
               </TableRow>
             ) : (
-              displayProducts.map((product) => (
-                <TableRow
-                  key={product.id}
-                  hover
-                  selected={selectedIds.has(product.id)}
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => handleProductClick(product.id)}
-                >
-                  <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      checked={selectedIds.has(product.id)}
-                      onChange={(e) => handleSelectOne(product.id, e)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
-                      {product.sku}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2" color="text.secondary">
-                      {product.model_number || '-'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">
-                      {product.name || '-'}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography variant="body2" fontWeight={500}>
-                      {formatPrice(product.price)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>{getStatusChip(product)}</TableCell>
-                  <TableCell align="center">
-                    {getVariantChip(product)}
-                  </TableCell>
-                  <TableCell align="center">
-                    {getIndexingStatusIcon(product.id)}
-                  </TableCell>
-                  <TableCell align="center" onClick={(e) => e.stopPropagation()}>
-                    <ProductQualityScore 
-                      score={qualityScores.get(product.id) || null} 
-                      size="small"
-                      compact
-                    />
-                  </TableCell>
-                </TableRow>
-              ))
+              displayProducts.map((product) => {
+                const mainImageUrl = productImages.get(product.id)
+                return (
+                  <TableRow
+                    key={product.id}
+                    hover
+                    selected={selectedIds.has(product.id)}
+                    sx={{ 
+                      cursor: 'pointer',
+                      '& td': { py: 1, fontSize: '0.875rem' }
+                    }}
+                    onClick={() => handleProductClick(product.id)}
+                  >
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()} sx={{ width: 40 }}>
+                      <Checkbox
+                        checked={selectedIds.has(product.id)}
+                        onChange={(e) => handleSelectOne(product.id, e)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell align="center" onClick={(e) => e.stopPropagation()} sx={{ width: 60 }}>
+                      {mainImageUrl ? (
+                        <Box
+                          component="img"
+                          src={mainImageUrl}
+                          alt={product.name || product.sku}
+                          loading="lazy"
+                          onClick={(e) => handleImageClick(e, mainImageUrl, product.name || product.sku)}
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            objectFit: 'cover',
+                            borderRadius: 1,
+                            bgcolor: 'grey.200',
+                            display: 'block',
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s, opacity 0.2s',
+                            '&:hover': {
+                              transform: 'scale(1.1)',
+                              opacity: 0.9
+                            }
+                          }}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                            const placeholder = e.currentTarget.nextElementSibling as HTMLElement
+                            if (placeholder) placeholder.style.display = 'flex'
+                          }}
+                        />
+                      ) : null}
+                      {!mainImageUrl && (
+                        <Box
+                          sx={{
+                            width: 48,
+                            height: 48,
+                            bgcolor: 'grey.200',
+                            borderRadius: 1,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}
+                        >
+                          <ImageIcon sx={{ color: 'grey.400', fontSize: 20 }} />
+                        </Box>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.875rem' }}>
+                        {product.sku}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                        {product.model_number || '-'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                        {product.name || '-'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={500} sx={{ fontSize: '0.875rem' }}>
+                        {formatPrice(product.price)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{getStatusChip(product)}</TableCell>
+                    <TableCell align="center">
+                      {getVariantChip(product)}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -1229,7 +1435,7 @@ export default function ProductsTable({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            {searchTerm && searchTerm.length >= 2 
+            {hasSearched 
               ? `Keresési eredmény: ${displayTotalCount} termék` 
               : `Összesen ${displayTotalCount} termék`
             }
@@ -1389,6 +1595,138 @@ export default function ProductsTable({
           </Button>
           <Button onClick={handleConfirmImageAltText} variant="contained" autoFocus>
             {imageAltTextDialogType === 'generate' ? 'Generálás' : 'Szinkronizálás'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Image Modal */}
+      <Dialog
+        open={imageModalOpen}
+        onClose={() => setImageModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{
+          sx: {
+            bgcolor: 'rgba(0, 0, 0, 0.9)',
+            boxShadow: 'none',
+            maxHeight: '90vh'
+          }
+        }}
+      >
+        <DialogContent
+          sx={{
+            p: 0,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '70vh',
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
+          <IconButton
+            onClick={() => setImageModalOpen(false)}
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              color: 'white',
+              bgcolor: 'rgba(0, 0, 0, 0.5)',
+              '&:hover': {
+                bgcolor: 'rgba(0, 0, 0, 0.7)'
+              },
+              zIndex: 1
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+          {selectedImageUrl && (
+            <Box
+              component="img"
+              src={selectedImageUrl}
+              alt={selectedImageAlt}
+              loading="eager"
+              sx={{
+                maxWidth: '100%',
+                maxHeight: '90vh',
+                objectFit: 'contain',
+                borderRadius: 1
+              }}
+              onError={(e) => {
+                console.error('Error loading full image:', selectedImageUrl)
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Dialog */}
+      <Dialog 
+        open={exportDialogOpen} 
+        onClose={() => setExportDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Excel exportálás
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 3 }}>
+            Válassza ki, mely mezőket szeretne exportálni. {selectedIds.size > 0 
+              ? `${selectedIds.size} kiválasztott termék` 
+              : 'Összes termék'} lesz exportálva.
+          </DialogContentText>
+          
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {/* SKU - always required, disabled */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Checkbox
+                checked={true}
+                disabled
+                size="small"
+              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body2" component="span" sx={{ color: 'text.secondary' }}>
+                  SKU
+                </Typography>
+                <Chip label="Kötelező" size="small" sx={{ height: 20, fontSize: '0.7rem' }} />
+              </Box>
+            </Box>
+
+            {/* Other fields */}
+            {[
+              { field: 'model_number', label: 'Gyártói cikkszám' },
+              { field: 'gtin', label: 'Vonalkód' },
+              { field: 'name', label: 'Termék neve' },
+              { field: 'cost', label: 'Beszerzési ár' },
+              { field: 'multiplier', label: 'Árazási szorzó' },
+              { field: 'price', label: 'Nettó ár' },
+              { field: 'gross_price', label: 'Bruttó ár' },
+              { field: 'status', label: 'Aktív' }
+            ].map(({ field, label }) => (
+              <Box key={field} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Checkbox
+                  checked={exportFields.has(field)}
+                  onChange={() => handleExportFieldToggle(field)}
+                  size="small"
+                />
+                <Typography variant="body2">
+                  {label}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportDialogOpen(false)}>
+            Mégse
+          </Button>
+          <Button 
+            onClick={handleExportConfirm} 
+            variant="contained" 
+            disabled={exportFields.size === 0}
+            startIcon={<FileDownloadIcon />}
+          >
+            Exportálás
           </Button>
         </DialogActions>
       </Dialog>

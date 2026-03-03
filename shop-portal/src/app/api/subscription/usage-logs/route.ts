@@ -100,12 +100,14 @@ export async function GET(request: NextRequest) {
     const logs = (data || []).map((log: any) => ({
       id: log.id,
       feature_type: log.feature_type,
-      credits_used: log.credits_used,
+      credits_used: log.credits_used || 1, // Default to 1 if null/undefined
       credit_type: log.credit_type,
       created_at: log.created_at,
       product_id: log.product_context?.product_id || null,
       product_name: log.product_context?.product_name || null,
       product_sku: log.product_context?.product_sku || null,
+      category_id: log.product_context?.category_id || null,
+      category_name: log.product_context?.category_name || null,
       user_id_in_tenant_db: log.user_id_in_tenant_db,
       user_email: log.user_email
     }))

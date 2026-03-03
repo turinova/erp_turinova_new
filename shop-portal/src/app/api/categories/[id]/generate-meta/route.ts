@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import Anthropic from '@anthropic-ai/sdk'
+import { trackAIUsage } from '@/lib/ai-usage-tracker'
+import { checkAvailableCredits } from '@/lib/credit-checker'
 
 // Use the same Anthropic client creation as product generation
 function getAnthropicClient() {
@@ -42,6 +44,29 @@ export async function POST(
     // Get request body
     const body = await request.json().catch(() => ({}))
     const { fields = ['name', 'meta_title', 'meta_description'] } = body
+
+    // Calculate total credits needed (1 credit per field)
+    let totalCreditsNeeded = 0
+    if (fields.includes('name')) totalCreditsNeeded += 1
+    if (fields.includes('meta_title')) totalCreditsNeeded += 1
+    if (fields.includes('meta_description')) totalCreditsNeeded += 1
+
+    // Check credits before generation
+    if (totalCreditsNeeded > 0) {
+      const creditCheck = await checkAvailableCredits(user.id, totalCreditsNeeded)
+      if (!creditCheck.hasEnough) {
+        return NextResponse.json({
+          success: false,
+          error: 'Insufficient credits',
+          credits: {
+            available: creditCheck.available,
+            required: creditCheck.required,
+            limit: creditCheck.limit,
+            used: creditCheck.used
+          }
+        }, { status: 402 }) // 402 Payment Required
+      }
+    }
 
     // Get category data
     const { data: category, error: categoryError } = await supabase
@@ -175,6 +200,20 @@ Generate a better, SEO-optimized category name in Hungarian based on the product
           if (generatedName && generatedName.length > 0) {
             results.name = generatedName
             nameGenerated = true
+            
+            // Track AI usage for name generation
+            const tokensUsed = message.usage.input_tokens + message.usage.output_tokens
+            await trackAIUsage({
+              userId: user.id,
+              featureType: 'meta_title', // Use meta_title as closest match (1 credit)
+              tokensUsed: tokensUsed,
+              modelUsed: model,
+              categoryId: id,
+              creditsUsed: 1,
+              creditType: 'ai_generation',
+              metadata: { field: 'name', generated: true }
+            })
+            
             break
           }
         } catch (error: any) {
@@ -272,6 +311,20 @@ Example format: "[CATEGORY] - Minőségi szekrény kellékek | Széles választ�
           
           results.meta_title = metaTitle
           titleGenerated = true
+          
+          // Track AI usage for meta title generation
+          const tokensUsed = message.usage.input_tokens + message.usage.output_tokens
+          await trackAIUsage({
+            userId: user.id,
+            featureType: 'meta_title',
+            tokensUsed: tokensUsed,
+            modelUsed: model,
+            categoryId: id,
+            creditsUsed: 1,
+            creditType: 'ai_generation',
+            metadata: { generated: true }
+          })
+          
           break
         } catch (error: any) {
           if (error.status === 404) continue
@@ -378,6 +431,20 @@ Example format: "[CATEGORY] - Minőségi szekrény kellékek, széles választé
           
           results.meta_description = metaDescription
           descGenerated = true
+          
+          // Track AI usage for meta description generation
+          const tokensUsed = message.usage.input_tokens + message.usage.output_tokens
+          await trackAIUsage({
+            userId: user.id,
+            featureType: 'meta_description',
+            tokensUsed: tokensUsed,
+            modelUsed: model,
+            categoryId: id,
+            creditsUsed: 1,
+            creditType: 'ai_generation',
+            metadata: { generated: true }
+          })
+          
           break
         } catch (error: any) {
           if (error.status === 404) continue

@@ -35,7 +35,10 @@ export async function GET(
         status: progress.status,
         errors: progress.errors,
         percentage: progress.total > 0 ? Math.round((progress.synced / progress.total) * 100) : 0,
-        elapsed: Math.floor((Date.now() - progress.startTime) / 1000)
+        elapsed: Math.floor((Date.now() - progress.startTime) / 1000),
+        currentBatch: progress.currentBatch,
+        totalBatches: progress.totalBatches,
+        batchProgress: progress.batchProgress
       }
     })
   } catch (error) {

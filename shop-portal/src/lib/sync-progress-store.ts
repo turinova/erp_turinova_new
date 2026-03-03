@@ -11,6 +11,9 @@ export interface SyncProgress {
   errors: number
   startTime: number
   shouldStop?: boolean
+  currentBatch?: number
+  totalBatches?: number
+  batchProgress?: number // products processed in current batch
 }
 
 // Global in-memory progress store
@@ -80,7 +83,10 @@ export function incrementProgress(
   }
 
   store.set(connectionId, updated)
-  console.log(`[PROGRESS] Incremented progress for ${connectionId}: +${increments.synced || 0} synced, +${increments.errors || 0} errors (Total: ${updated.synced}/${updated.total})`)
+  // Only log every 10 products to reduce console spam (we update per product now)
+  if (updated.synced % 10 === 0 || updated.errors % 10 === 0) {
+    console.log(`[PROGRESS] Incremented progress for ${connectionId}: +${increments.synced || 0} synced, +${increments.errors || 0} errors (Total: ${updated.synced}/${updated.total})`)
+  }
 }
 
 /**
