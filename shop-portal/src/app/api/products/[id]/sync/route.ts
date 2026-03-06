@@ -252,7 +252,8 @@ export async function POST(
     }
 
     // Check if this is a new product (has placeholder shoprenter_id)
-    const isNewProduct = product.shoprenter_id?.startsWith('pending-') || product.sync_status === 'pending'
+    // Use let so we can flip this flag if we discover the product already exists in ShopRenter (409 conflict handling)
+    let isNewProduct = product.shoprenter_id?.startsWith('pending-') || product.sync_status === 'pending'
     
     // If new product, create it in ShopRenter first
     if (isNewProduct) {
@@ -417,90 +418,144 @@ export async function POST(
 
       if (!createResponse.ok) {
         const errorText = await createResponse.text().catch(() => 'Unknown error')
-        console.error(`[SYNC] ❌ Failed to create product in ShopRenter: ${createResponse.status} - ${errorText}`)
-        
-        await supabase
-          .from('shoprenter_products')
-          .update({
-            sync_status: 'error',
-            sync_error: `Product creation failed: ${createResponse.status} - ${errorText.substring(0, 200)}`
-          })
-          .eq('id', id)
 
-        return NextResponse.json({ 
-          success: false, 
-          error: `Termék létrehozása sikertelen: ${errorText.substring(0, 200)}` 
-        }, { status: createResponse.status })
-      }
+        // Handle 409 conflict: product already exists in ShopRenter
+        if (createResponse.status === 409) {
+          console.warn(`[SYNC] ⚠️ Product create returned 409 (already exists) for SKU ${product.sku}. Attempting to extract existing ShopRenter ID...`)
 
-      // Extract shoprenter_id from response
-      const createData = await createResponse.json().catch(() => null)
-      const newShopRenterId = createData?.id || createData?.response?.id || createData?.href?.split('/').pop()
+          try {
+            const errorData = JSON.parse(errorText)
+            const existingId =
+              errorData?.id ||
+              errorData?.href?.split('/').pop() ||
+              errorData?.response?.id
 
-      if (!newShopRenterId) {
-        console.error(`[SYNC] ❌ Failed to extract shoprenter_id from create response:`, createData)
-        await supabase
-          .from('shoprenter_products')
-          .update({
-            sync_status: 'error',
-            sync_error: 'Failed to extract shoprenter_id from create response'
-          })
-          .eq('id', id)
+            if (existingId) {
+              console.log(`[SYNC] ✅ Extracted existing ShopRenter product ID for ${product.sku}: ${existingId}`)
 
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Nem sikerült meghatározni a termék ShopRenter azonosítóját' 
-        }, { status: 500 })
-      }
+              // Update local database with the existing ShopRenter ID
+              await supabase
+                .from('shoprenter_products')
+                .update({
+                  shoprenter_id: existingId,
+                  sync_status: 'synced',
+                  sync_error: null,
+                  last_synced_to_shoprenter_at: new Date().toISOString()
+                })
+                .eq('id', id)
 
-      console.log(`[SYNC] ✅ Product created in ShopRenter with ID: ${newShopRenterId}`)
+              // Update in-memory product for the rest of the sync flow
+              product.shoprenter_id = existingId
+              // From this point, treat it as an existing product (will go through the update flow below)
+              isNewProduct = false
 
-      // Update local database with real shoprenter_id
-      await supabase
-        .from('shoprenter_products')
-        .update({
-          shoprenter_id: newShopRenterId,
-          sync_status: 'synced',
-          sync_error: null,
-          last_synced_to_shoprenter_at: new Date().toISOString()
-        })
-        .eq('id', id)
+              console.log(`[SYNC] ✅ Linked ERP product to existing ShopRenter product. Continuing with update flow...`)
+              // IMPORTANT: do NOT return here – we fall through and let the "existing product" update logic run
+            } else {
+              throw new Error('Could not extract existing product ID from ShopRenter 409 response')
+            }
+          } catch (parseError) {
+            console.error(`[SYNC] ❌ Failed to handle 409 conflict for product ${product.sku}:`, parseError)
 
-      // Update product object for rest of sync
-      product.shoprenter_id = newShopRenterId
-
-      // Extract description ID from response if available
-      if (createData?.productDescriptions && Array.isArray(createData.productDescriptions) && createData.productDescriptions.length > 0) {
-        const createdDescription = createData.productDescriptions.find((d: any) => 
-          d.language?.id === languageId || d.language?.href?.includes(languageId)
-        )
-        
-        if (createdDescription?.id) {
-          await supabase
-            .from('shoprenter_product_descriptions')
-            .update({ shoprenter_id: createdDescription.id })
-            .eq('id', huDescription.id)
-          
-          huDescription.shoprenter_id = createdDescription.id
-          console.log(`[SYNC] Updated description shoprenter_id: ${createdDescription.id}`)
-        }
-      }
-
-      // Update category relations with real shoprenter_ids if available
-      if (createData?.productCategoryRelations && Array.isArray(createData.productCategoryRelations)) {
-        for (const relation of createData.productCategoryRelations) {
-          const categoryId = relation.category?.id || relation.category?.href?.split('/').pop()
-          if (categoryId) {
             await supabase
-              .from('shoprenter_product_category_relations')
-              .update({ shoprenter_id: relation.id || relation.href?.split('/').pop() })
-              .eq('product_id', id)
-              .eq('category_shoprenter_id', categoryId)
+              .from('shoprenter_products')
+              .update({
+                sync_status: 'error',
+                sync_error: `Product exists in ShopRenter but ID extraction failed: ${errorText.substring(0, 200)}`
+              })
+              .eq('id', id)
+
+            return NextResponse.json({ 
+              success: false, 
+              error: 'Termék már létezik a ShopRenter-ben, de nem sikerült meghatározni az azonosítóját. Kérjük, futtassa a termékek teljes szinkronizálását a kapcsolat oldaláról.' 
+            }, { status: 409 })
+          }
+        } else {
+          console.error(`[SYNC] ❌ Failed to create product in ShopRenter: ${createResponse.status} - ${errorText}`)
+          
+          await supabase
+            .from('shoprenter_products')
+            .update({
+              sync_status: 'error',
+              sync_error: `Product creation failed: ${createResponse.status} - ${errorText.substring(0, 200)}`
+            })
+            .eq('id', id)
+
+          return NextResponse.json({ 
+            success: false, 
+            error: `Termék létrehozása sikertelen: ${errorText.substring(0, 200)}` 
+          }, { status: createResponse.status })
+        }
+      } else {
+        // Extract shoprenter_id from successful response
+        const createData = await createResponse.json().catch(() => null)
+        const newShopRenterId = createData?.id || createData?.response?.id || createData?.href?.split('/').pop()
+
+        if (!newShopRenterId) {
+          console.error(`[SYNC] ❌ Failed to extract shoprenter_id from create response:`, createData)
+          await supabase
+            .from('shoprenter_products')
+            .update({
+              sync_status: 'error',
+              sync_error: 'Failed to extract shoprenter_id from create response'
+            })
+            .eq('id', id)
+
+          return NextResponse.json({ 
+            success: false, 
+            error: 'Nem sikerült meghatározni a termék ShopRenter azonosítóját' 
+          }, { status: 500 })
+        }
+
+        console.log(`[SYNC] ✅ Product created in ShopRenter with ID: ${newShopRenterId}`)
+
+        // Update local database with real shoprenter_id
+        await supabase
+          .from('shoprenter_products')
+          .update({
+            shoprenter_id: newShopRenterId,
+            sync_status: 'synced',
+            sync_error: null,
+            last_synced_to_shoprenter_at: new Date().toISOString()
+          })
+          .eq('id', id)
+
+        // Update product object for rest of sync
+        product.shoprenter_id = newShopRenterId
+
+        // Extract description ID from response if available
+        if (createData?.productDescriptions && Array.isArray(createData.productDescriptions) && createData.productDescriptions.length > 0) {
+          const createdDescription = createData.productDescriptions.find((d: any) => 
+            d.language?.id === languageId || d.language?.href?.includes(languageId)
+          )
+          
+          if (createdDescription?.id) {
+            await supabase
+              .from('shoprenter_product_descriptions')
+              .update({ shoprenter_id: createdDescription.id })
+              .eq('id', huDescription.id)
+            
+            huDescription.shoprenter_id = createdDescription.id
+            console.log(`[SYNC] Updated description shoprenter_id: ${createdDescription.id}`)
           }
         }
-      }
 
-      console.log(`[SYNC] ✅ New product creation completed, continuing with attribute sync...`)
+        // Update category relations with real shoprenter_ids if available
+        if (createData?.productCategoryRelations && Array.isArray(createData.productCategoryRelations)) {
+          for (const relation of createData.productCategoryRelations) {
+            const categoryId = relation.category?.id || relation.category?.href?.split('/').pop()
+            if (categoryId) {
+              await supabase
+                .from('shoprenter_product_category_relations')
+                .update({ shoprenter_id: relation.id || relation.href?.split('/').pop() })
+                .eq('product_id', id)
+                .eq('category_shoprenter_id', categoryId)
+            }
+          }
+        }
+
+        console.log(`[SYNC] ✅ New product creation completed, continuing with attribute sync...`)
+      }
     }
 
     // Get product description ID (for existing products or after creation)
