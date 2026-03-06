@@ -65,42 +65,114 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       return { success: false, error: 'Unauthorized' }
     }
 
-    // Build insert data based on connection type
-    const insertData: any = {
-      name: name.trim(),
-      connection_type,
-      is_active,
-      search_console_enabled: search_console_enabled && connection_type === 'shoprenter' ? true : false
-    }
-
+    // Build credentials for matching
+    let matchApiUrl = ''
+    let matchUsername = ''
+    let matchPassword = ''
+    
     if (connection_type === 'shoprenter') {
-      insertData.api_url = api_url!.trim()
-      insertData.username = username!.trim()
-      insertData.password = password // Store as-is for now (TODO: encrypt)
-      insertData.search_console_property_url = search_console_enabled ? search_console_property_url?.trim() || null : null
-      insertData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
-      insertData.search_console_private_key = search_console_enabled ? search_console_private_key || null : null
+      matchApiUrl = api_url!.trim()
+      matchUsername = username!.trim()
+      matchPassword = password
     } else if (connection_type === 'szamlazz') {
-      // For szamlazz, store agent_key in password field (temporary solution until schema is updated)
-      insertData.api_url = '' // Not used for szamlazz
-      insertData.username = '' // Not used for szamlazz
-      insertData.password = agent_key // Store agent_key in password field for now
+      matchApiUrl = '' // Not used for szamlazz
+      matchUsername = '' // Not used for szamlazz
+      matchPassword = agent_key
     }
 
-    // TODO: Encrypt password/agent_key in production
-    const { data, error } = await supabase
+    // Check if deleted connection exists with same credentials (restoration)
+    const { data: deletedConnection, error: checkError } = await supabase
       .from('webshop_connections')
-      .insert(insertData)
-      .select()
-      .single()
+      .select('*')
+      .eq('connection_type', connection_type)
+      .eq('api_url', matchApiUrl)
+      .eq('username', matchUsername)
+      .eq('password', matchPassword)
+      .not('deleted_at', 'is', null)
+      .maybeSingle()
 
-    if (error) {
-      console.error('Error creating connection:', error)
-      return { success: false, error: error.message || 'Hiba a kapcsolat létrehozásakor' }
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Error checking for deleted connection:', checkError)
+      // Continue with creation if check fails
+    }
+
+    let connectionData
+    let isRestored = false
+
+    if (deletedConnection) {
+      // Restore deleted connection instead of creating new one
+      const updateData: any = {
+        deleted_at: null,
+        name: name.trim(),
+        is_active,
+        updated_at: new Date().toISOString()
+      }
+
+      if (connection_type === 'shoprenter') {
+        updateData.search_console_enabled = search_console_enabled && connection_type === 'shoprenter' ? true : false
+        updateData.search_console_property_url = search_console_enabled ? search_console_property_url?.trim() || null : null
+        updateData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
+        updateData.search_console_private_key = search_console_enabled ? search_console_private_key || null : null
+      }
+
+      const { data: restoredConnection, error: restoreError } = await supabase
+        .from('webshop_connections')
+        .update(updateData)
+        .eq('id', deletedConnection.id)
+        .select()
+        .single()
+
+      if (restoreError) {
+        console.error('Error restoring connection:', restoreError)
+        return { success: false, error: restoreError.message || 'Hiba a kapcsolat visszaállításakor' }
+      }
+
+      connectionData = restoredConnection
+      isRestored = true
+    } else {
+      // Create new connection
+      const insertData: any = {
+        name: name.trim(),
+        connection_type,
+        is_active,
+        search_console_enabled: search_console_enabled && connection_type === 'shoprenter' ? true : false
+      }
+
+      if (connection_type === 'shoprenter') {
+        insertData.api_url = matchApiUrl
+        insertData.username = matchUsername
+        insertData.password = matchPassword // Store as-is for now (TODO: encrypt)
+        insertData.search_console_property_url = search_console_enabled ? search_console_property_url?.trim() || null : null
+        insertData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
+        insertData.search_console_private_key = search_console_enabled ? search_console_private_key || null : null
+      } else if (connection_type === 'szamlazz') {
+        // For szamlazz, store agent_key in password field (temporary solution until schema is updated)
+        insertData.api_url = '' // Not used for szamlazz
+        insertData.username = '' // Not used for szamlazz
+        insertData.password = matchPassword // Store agent_key in password field for now
+      }
+
+      // TODO: Encrypt password/agent_key in production
+      const { data, error } = await supabase
+        .from('webshop_connections')
+        .insert(insertData)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error creating connection:', error)
+        return { success: false, error: error.message || 'Hiba a kapcsolat létrehozásakor' }
+      }
+
+      connectionData = data
     }
 
     revalidatePath('/connections')
-    return { success: true, connection: data }
+    return { 
+      success: true, 
+      connection: connectionData,
+      restored: isRestored
+    }
   } catch (error) {
     console.error('Error creating connection:', error)
     return { success: false, error: 'Hiba a kapcsolat létrehozásakor' }

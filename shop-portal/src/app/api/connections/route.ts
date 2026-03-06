@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     }
 
     const connections = await getAllConnections()
-    return NextResponse.json(connections)
+    return NextResponse.json({ success: true, connections })
   } catch (error) {
     console.error('Error fetching connections:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

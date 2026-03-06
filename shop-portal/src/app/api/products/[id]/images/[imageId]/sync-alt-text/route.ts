@@ -482,34 +482,34 @@ export async function POST(
             
             // If we didn't find existing image or update failed, try to create
             if (!shoprenterImageId) {
-              const createResponse = await rateLimiter.execute(() =>
-                fetch(
-                  `${apiBaseUrl}/productImages`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Accept': 'application/json',
-                      'Authorization': authHeader
-                    },
-                    body: JSON.stringify({
-                      imagePath: imagePathForCreation,
-                      imageAlt: image.alt_text || '',
+            const createResponse = await rateLimiter.execute(() =>
+              fetch(
+                `${apiBaseUrl}/productImages`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': authHeader
+                  },
+                  body: JSON.stringify({
+                    imagePath: imagePathForCreation,
+                    imageAlt: image.alt_text || '',
                       sortOrder: image.sort_order?.toString() || '0',
-                      product: {
-                        id: product.shoprenter_id
-                      }
-                    }),
-                    signal: AbortSignal.timeout(30000)
-                  }
-                )
+                    product: {
+                      id: product.shoprenter_id
+                    }
+                  }),
+                  signal: AbortSignal.timeout(30000)
+                }
               )
+            )
+            
+            if (createResponse.ok) {
+              const createdData = await createResponse.json()
+              shoprenterImageId = createdData.id || createdData.href?.split('/').pop()
               
-              if (createResponse.ok) {
-                const createdData = await createResponse.json()
-                shoprenterImageId = createdData.id || createdData.href?.split('/').pop()
-                
-                if (shoprenterImageId) {
+              if (shoprenterImageId) {
                   // Verify the created image exists
                   let imageVerified = false
                   let retryCount = 0
@@ -571,53 +571,53 @@ export async function POST(
                   }
                   
                   // Image verified, update database and sync
+                await supabase
+                  .from('product_images')
+                  .update({ shoprenter_image_id: shoprenterImageId })
+                  .eq('id', imageId)
+                
+                  console.log(`[SYNC ALT TEXT] Created and verified productImage: ${shoprenterImageId}`)
+                
+                  // Sync alt text
+                const syncResult = await syncImageAltText(
+                  {
+                    apiUrl: connection.api_url,
+                    username: connection.username,
+                    password: connection.password,
+                    shopName: shopName
+                  },
+                  shoprenterImageId,
+                  image.alt_text || ''
+                )
+                
+                if (syncResult.success) {
                   await supabase
                     .from('product_images')
-                    .update({ shoprenter_image_id: shoprenterImageId })
+                    .update({
+                      alt_text_status: 'synced',
+                      alt_text_synced_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    })
                     .eq('id', imageId)
                   
-                  console.log(`[SYNC ALT TEXT] Created and verified productImage: ${shoprenterImageId}`)
-                  
-                  // Sync alt text
-                  const syncResult = await syncImageAltText(
-                    {
-                      apiUrl: connection.api_url,
-                      username: connection.username,
-                      password: connection.password,
-                      shopName: shopName
-                    },
-                    shoprenterImageId,
-                    image.alt_text || ''
-                  )
-                  
-                  if (syncResult.success) {
-                    await supabase
-                      .from('product_images')
-                      .update({
-                        alt_text_status: 'synced',
-                        alt_text_synced_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                      })
-                      .eq('id', imageId)
-                    
-                    return NextResponse.json({
-                      success: true,
+                  return NextResponse.json({
+                    success: true,
                       message: 'Image record created, verified, and alt text synced successfully'
-                    })
-                  } else {
-                    return NextResponse.json({
-                      success: false,
-                      error: syncResult.error || 'Failed to sync alt text after creating image record'
-                    }, { status: 500 })
-                  }
+                  })
+                } else {
+                  return NextResponse.json({
+                    success: false,
+                    error: syncResult.error || 'Failed to sync alt text after creating image record'
+                  }, { status: 500 })
                 }
-              } else {
-                const errorText = await createResponse.text().catch(() => 'Unknown error')
-                
+              }
+            } else {
+              const errorText = await createResponse.text().catch(() => 'Unknown error')
+              
                 // Handle 409 - Resource exists
-                if (createResponse.status === 409) {
-                  try {
-                    const errorData = JSON.parse(errorText)
+              if (createResponse.status === 409) {
+                try {
+                  const errorData = JSON.parse(errorText)
                     let extractedId = errorData.id || errorData.href?.split('/').pop()
                     
                     if (extractedId) {
@@ -714,42 +714,42 @@ export async function POST(
                         
                         if (putResponse.ok) {
                           shoprenterImageId = extractedId
-                          await supabase
-                            .from('product_images')
-                            .update({ shoprenter_image_id: shoprenterImageId })
-                            .eq('id', imageId)
-                          
+                    await supabase
+                      .from('product_images')
+                      .update({ shoprenter_image_id: shoprenterImageId })
+                      .eq('id', imageId)
+                    
                           // Sync alt text
-                          const syncResult = await syncImageAltText(
-                            {
-                              apiUrl: connection.api_url,
-                              username: connection.username,
-                              password: connection.password,
-                              shopName: shopName
-                            },
-                            shoprenterImageId,
-                            image.alt_text || ''
-                          )
-                          
-                          if (syncResult.success) {
-                            await supabase
-                              .from('product_images')
-                              .update({
-                                alt_text_status: 'synced',
-                                alt_text_synced_at: new Date().toISOString(),
-                                updated_at: new Date().toISOString()
-                              })
-                              .eq('id', imageId)
-                            
-                            return NextResponse.json({
-                              success: true,
+                    const syncResult = await syncImageAltText(
+                      {
+                        apiUrl: connection.api_url,
+                        username: connection.username,
+                        password: connection.password,
+                        shopName: shopName
+                      },
+                      shoprenterImageId,
+                      image.alt_text || ''
+                    )
+                    
+                    if (syncResult.success) {
+                      await supabase
+                        .from('product_images')
+                        .update({
+                          alt_text_status: 'synced',
+                          alt_text_synced_at: new Date().toISOString(),
+                          updated_at: new Date().toISOString()
+                        })
+                        .eq('id', imageId)
+                      
+                      return NextResponse.json({
+                        success: true,
                               message: 'Updated existing productImage (409) and synced alt text successfully'
-                            })
-                          } else {
-                            return NextResponse.json({
-                              success: false,
+                      })
+                    } else {
+                      return NextResponse.json({
+                        success: false,
                               error: syncResult.error || 'Failed to sync alt text after updating productImage'
-                            }, { status: 500 })
+                      }, { status: 500 })
                           }
                         } else {
                           const putErrorText = await putResponse.text().catch(() => 'Unknown error')
@@ -810,14 +810,14 @@ export async function POST(
                           }, { status: 500 })
                         }
                         // Continue to matching logic only if we have images to match against
-                      }
                     }
-                  } catch (parseError) {
-                    console.error(`[SYNC ALT TEXT] Failed to parse 409 error:`, parseError)
                   }
+                } catch (parseError) {
+                    console.error(`[SYNC ALT TEXT] Failed to parse 409 error:`, parseError)
                 }
-                
-                console.error(`[SYNC ALT TEXT] Failed to create productImage: ${createResponse.status} - ${errorText}`)
+              }
+              
+              console.error(`[SYNC ALT TEXT] Failed to create productImage: ${createResponse.status} - ${errorText}`)
                 
                 // If we have no images in productImages API and creation failed, 
                 // don't fall through to matching logic - return a helpful error

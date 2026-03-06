@@ -388,25 +388,29 @@ async function processBulkSyncToShopRenterInBackground(
                   }
 
                   // Update product sync status
+                  // Use last_synced_to_shoprenter_at to track when we synced TO ShopRenter
+                  // This prevents incremental sync from overwriting changes we just pushed
                   await supabase
                     .from('shoprenter_products')
                     .update({
                       sync_status: 'synced',
                       sync_error: null,
-                      last_synced_at: new Date().toISOString()
+                      last_synced_to_shoprenter_at: new Date().toISOString()
+                      // Note: Don't update last_synced_at - that's only for FROM syncs
                     })
                     .eq('id', product.id)
 
                   batchResults.synced++
                 } else {
                   // Update product sync status with error
+                  // Don't update last_synced_to_shoprenter_at on error
                   if (mapping) {
                     await supabase
                       .from('shoprenter_products')
                       .update({
                         sync_status: 'error',
-                        sync_error: `Sync failed: ${statusCode}`,
-                        last_synced_at: new Date().toISOString()
+                        sync_error: `Sync failed: ${statusCode}`
+                        // Note: Don't update last_synced_to_shoprenter_at on error
                       })
                       .eq('id', mapping.product.id)
                   }

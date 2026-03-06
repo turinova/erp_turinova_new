@@ -8,6 +8,7 @@ import NavToggle from './NavToggle'
 import ModeDropdown from '@components/layout/shared/ModeDropdown'
 import UserDropdown from '@components/layout/shared/UserDropdown'
 import { CreditBalance } from '@/components/CreditBalance'
+import { SyncProgressIndicator } from '@/components/SyncProgressIndicator'
 
 // Util Imports
 import { verticalLayoutClasses } from '@layouts/utils/layoutClasses'
@@ -20,6 +21,7 @@ const NavbarContent = () => {
         <ModeDropdown />
       </div>
       <div className='flex items-center gap-4'>
+        <SyncProgressIndicator />
         <CreditBalance compact={true} />
         <UserDropdown />
       </div>

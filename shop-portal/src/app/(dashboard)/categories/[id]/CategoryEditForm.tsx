@@ -479,7 +479,7 @@ export default function CategoryEditForm({ category: initialCategory }: Category
         }
         throw new Error(error.error || 'Hiba az AI generálás során')
       }
-
+      
       const result = await response.json()
       
       if (result.success && result.data) {
@@ -630,13 +630,13 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                   </Typography>
                 </Box>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Kategória neve"
-                      value={category.name || ''}
-                      disabled
-                      helperText="A név a ShopRenter-ből szinkronizálva"
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Kategória neve"
+                value={category.name || ''}
+                disabled
+                helperText="A név a ShopRenter-ből szinkronizálva"
                       sx={{
                         '& .MuiInputBase-input.Mui-disabled': {
                           WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
@@ -647,14 +647,14 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                           bgcolor: 'rgba(0, 0, 0, 0.02)'
                         }
                       }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Státusz"
-                      value={category.status === 1 ? 'Aktív' : 'Inaktív'}
-                      disabled
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Státusz"
+                value={category.status === 1 ? 'Aktív' : 'Inaktív'}
+                disabled
                       sx={{
                         '& .MuiInputBase-input.Mui-disabled': {
                           WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
@@ -665,9 +665,9 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                           bgcolor: 'rgba(0, 0, 0, 0.02)'
                         }
                       }}
-                    />
-                  </Grid>
-                </Grid>
+              />
+            </Grid>
+            </Grid>
               </Paper>
             </Grid>
             
@@ -699,7 +699,7 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                   </Box>
                   <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32' }}>
                     SEO URL (slug)
-                  </Typography>
+                </Typography>
                 </Box>
                 
                 {loadingUrlAlias && !urlSlug ? (
@@ -736,15 +736,15 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                       InputProps={{
                         endAdornment: (
                           <Tooltip title="AI generálás (1 Turitoken)">
-                            <Button
-                              size="small"
-                              startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                              onClick={handleGenerateUrlSlug}
-                              disabled={generatingUrlSlug}
-                              sx={{ minWidth: 'auto' }}
-                            >
-                              {generatingUrlSlug ? '' : 'AI'}
-                            </Button>
+                          <Button
+                            size="small"
+                            startIcon={generatingUrlSlug ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                            onClick={handleGenerateUrlSlug}
+                            disabled={generatingUrlSlug}
+                            sx={{ minWidth: 'auto' }}
+                          >
+                            {generatingUrlSlug ? '' : 'AI'}
+                          </Button>
                           </Tooltip>
                         )
                       }}
@@ -841,12 +841,12 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                     </Typography>
                   </Box>
                   <Box sx={{ position: 'relative', zIndex: 1 }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                      <TextField
-                        fullWidth
-                        label="Név"
-                        value={formData.name || currentDescription.name || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Név"
+                    value={formData.name || currentDescription.name || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -860,18 +860,18 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                         }}
                       />
                       <Tooltip title="AI generálás (1 Turitoken)">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={generatingMeta.name ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                          onClick={() => handleGenerateMeta('name')}
-                          disabled={generatingMeta.name}
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={generatingMeta.name ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={() => handleGenerateMeta('name')}
+                    disabled={generatingMeta.name}
                           sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
-                        >
+                  >
                           {generatingMeta.name ? '' : 'AI'}
-                        </Button>
+                  </Button>
                       </Tooltip>
-                    </Box>
+                </Box>
                   </Box>
                 </Paper>
               </Grid>
@@ -907,13 +907,13 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                     </Typography>
                   </Box>
                   <Box sx={{ position: 'relative', zIndex: 1 }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                      <TextField
-                        fullWidth
-                        label="Meta Title"
-                        value={formData.meta_title || currentDescription.custom_title || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))}
-                        helperText={`${(formData.meta_title || currentDescription.custom_title || '').length} karakter (50-60 optimális)`}
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Meta Title"
+                    value={formData.meta_title || currentDescription.custom_title || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, meta_title: e.target.value }))}
+                    helperText={`${(formData.meta_title || currentDescription.custom_title || '').length} karakter (50-60 optimális)`}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -927,18 +927,18 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                         }}
                       />
                       <Tooltip title="AI generálás (1 Turitoken)">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={generatingMeta.meta_title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                          onClick={() => handleGenerateMeta('meta_title')}
-                          disabled={generatingMeta.meta_title}
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={generatingMeta.meta_title ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={() => handleGenerateMeta('meta_title')}
+                    disabled={generatingMeta.meta_title}
                           sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
-                        >
+                  >
                           {generatingMeta.meta_title ? '' : 'AI'}
-                        </Button>
+                  </Button>
                       </Tooltip>
-                    </Box>
+                </Box>
                   </Box>
                 </Paper>
               </Grid>
@@ -974,15 +974,15 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                     </Typography>
                   </Box>
                   <Box sx={{ position: 'relative', zIndex: 1 }}>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                      <TextField
-                        fullWidth
-                        label="Meta Description"
-                        value={formData.meta_description || currentDescription.meta_description || ''}
-                        onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))}
-                        multiline
-                        rows={3}
-                        helperText={`${(formData.meta_description || currentDescription.meta_description || '').length} karakter (150-160 optimális)`}
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Meta Description"
+                    value={formData.meta_description || currentDescription.meta_description || ''}
+                    onChange={(e) => setFormData(prev => ({ ...prev, meta_description: e.target.value }))}
+                    multiline
+                    rows={3}
+                    helperText={`${(formData.meta_description || currentDescription.meta_description || '').length} karakter (150-160 optimális)`}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -996,18 +996,18 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                         }}
                       />
                       <Tooltip title="AI generálás (1 Turitoken)">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          startIcon={generatingMeta.meta_description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                          onClick={() => handleGenerateMeta('meta_description')}
-                          disabled={generatingMeta.meta_description}
-                          sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
-                        >
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={generatingMeta.meta_description ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                    onClick={() => handleGenerateMeta('meta_description')}
+                    disabled={generatingMeta.meta_description}
+                    sx={{ minWidth: 'auto', px: 2, whiteSpace: 'nowrap', mt: 0.5 }}
+                  >
                           {generatingMeta.meta_description ? '' : 'AI'}
-                        </Button>
+                  </Button>
                       </Tooltip>
-                    </Box>
+                </Box>
                   </Box>
                 </Paper>
               </Grid>
@@ -1042,24 +1042,24 @@ export default function CategoryEditForm({ category: initialCategory }: Category
                       Részletes leírás
                     </Typography>
                     <Tooltip title="AI generálás (3 Turitoken)">
-                      <Button
-                        variant="outlined"
+                  <Button
+                    variant="outlined"
                         size="small"
                         startIcon={generating ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                        onClick={handleGenerateDescription}
-                        disabled={generating}
+                    onClick={handleGenerateDescription}
+                    disabled={generating}
                         sx={{ ml: 'auto' }}
-                      >
+                  >
                         {generating ? 'Generálás...' : 'AI'}
-                      </Button>
+                  </Button>
                     </Tooltip>
-                  </Box>
+                </Box>
                   <Box sx={{ position: 'relative', zIndex: 1 }}>
-                    <HtmlEditor
-                      value={formData.description || currentDescription.description || ''}
-                      onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
-                      placeholder="Kategória leírása..."
-                    />
+                <HtmlEditor
+                  value={formData.description || currentDescription.description || ''}
+                  onChange={(value) => setFormData(prev => ({ ...prev, description: value }))}
+                  placeholder="Kategória leírása..."
+                />
                   </Box>
                 </Paper>
               </Grid>

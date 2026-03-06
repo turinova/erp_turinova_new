@@ -23,9 +23,18 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
-  Tooltip
+  Tooltip,
+  Checkbox,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemButton,
+  InputAdornment,
+  Radio,
+  RadioGroup,
+  FormControlLabel
 } from '@mui/material'
-import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon } from '@mui/icons-material'
+import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon, Add as AddIcon, Close as CloseIcon, Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import NextLink from 'next/link'
 import type { ProductWithDescriptions } from '@/lib/products-server'
@@ -39,7 +48,7 @@ import { FeatureGate } from '@/components/FeatureGate'
 import { useSubscription } from '@/lib/subscription-context'
 
 interface ProductEditFormProps {
-  product: ProductWithDescriptions
+  product: ProductWithDescriptions | null // null for new products
 }
 
 interface TabPanelProps {
@@ -67,6 +76,13 @@ function TabPanel(props: TabPanelProps) {
 export default function ProductEditForm({ product }: ProductEditFormProps) {
   const router = useRouter()
   const { hasFeature: hasFeatureAccess, canUseAI } = useSubscription()
+  const isNewProduct = product === null
+  
+  // Connection selection state (for new products)
+  const [connections, setConnections] = useState<Array<{ id: string; name: string; shop_name?: string; api_url: string; is_active: boolean }>>([])
+  const [loadingConnections, setLoadingConnections] = useState(false)
+  const [selectedConnectionId, setSelectedConnectionId] = useState<string>('')
+  
   const [tabValue, setTabValue] = useState(0)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -104,6 +120,58 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   // Categories state
   const [categories, setCategories] = useState<any[]>([])
   const [loadingCategories, setLoadingCategories] = useState(false)
+  const [addCategoryModalOpen, setAddCategoryModalOpen] = useState(false)
+  const [availableCategories, setAvailableCategories] = useState<any[]>([])
+  const [loadingAvailableCategories, setLoadingAvailableCategories] = useState(false)
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
+  const [categorySearchTerm, setCategorySearchTerm] = useState('')
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null)
+  const [deleteCategoryModalOpen, setDeleteCategoryModalOpen] = useState(false)
+  const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null)
+
+  // Product Class state
+  const [productClass, setProductClass] = useState<{ id: string; name: string } | null>(null)
+  const [availableProductClasses, setAvailableProductClasses] = useState<Array<{ id: string; name: string }>>([])
+  const [loadingProductClass, setLoadingProductClass] = useState(false)
+  const [updatingProductClass, setUpdatingProductClass] = useState(false)
+  const [loadingAvailableProductClasses, setLoadingAvailableProductClasses] = useState(false)
+  const [productClassEditModalOpen, setProductClassEditModalOpen] = useState(false)
+  const [selectedProductClassId, setSelectedProductClassId] = useState<string>('')
+  const [productClassConfirmOpen, setProductClassConfirmOpen] = useState(false)
+  const [productClassToUpdate, setProductClassToUpdate] = useState<{ 
+    id: string
+    name: string
+    willClearAttributes?: boolean
+    attributeCount?: number
+  } | null>(null)
+
+  // Attributes state
+  const [attributes, setAttributes] = useState<any[]>([])
+  const [editAttributeModalOpen, setEditAttributeModalOpen] = useState(false)
+  const [deleteAttributeModalOpen, setDeleteAttributeModalOpen] = useState(false)
+  const [attributeToEdit, setAttributeToEdit] = useState<any | null>(null)
+  const [attributeToDelete, setAttributeToDelete] = useState<{ name: string; displayName: string } | null>(null)
+  const [editingAttributeValue, setEditingAttributeValue] = useState<any>(null)
+  const [addAttributeModalOpen, setAddAttributeModalOpen] = useState(false)
+  const [availableAttributes, setAvailableAttributes] = useState<any[]>([])
+  const [loadingAvailableAttributes, setLoadingAvailableAttributes] = useState(false)
+  const [selectedAttributeToAdd, setSelectedAttributeToAdd] = useState<string>('')
+  const [newAttributeValue, setNewAttributeValue] = useState<any>(null)
+  // List attribute values for edit modal
+  const [listAttributeValues, setListAttributeValues] = useState<Array<{ id: string; value: string; displayValue: string }>>([])
+  const [loadingListAttributeValues, setLoadingListAttributeValues] = useState(false)
+  // List attribute values for add modal
+  const [newListAttributeValues, setNewListAttributeValues] = useState<Array<{ id: string; value: string; displayValue: string }>>([])
+  const [loadingNewListAttributeValues, setLoadingNewListAttributeValues] = useState(false)
+
+  // Parent product editing state
+  const [parentProductModalOpen, setParentProductModalOpen] = useState(false)
+  const [availableProducts, setAvailableProducts] = useState<any[]>([])
+  const [loadingAvailableProducts, setLoadingAvailableProducts] = useState(false)
+  const [parentProductSearchTerm, setParentProductSearchTerm] = useState('')
+  const [selectedParentProductId, setSelectedParentProductId] = useState<string | null>(null)
+  const [selectedParentProductData, setSelectedParentProductData] = useState<any | null>(null)
+  const [updatingParentProduct, setUpdatingParentProduct] = useState(false)
 
   // Meta generation state
   const [generatingMeta, setGeneratingMeta] = useState<{
@@ -137,17 +205,32 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   }
 
   // Find Hungarian description or create default
-  const huDescription = product.descriptions.find(d => d.language_code === 'hu') || {
+  const huDescription = product ? (product.descriptions.find(d => d.language_code === 'hu') || {
     id: '',
-    product_id: product.id,
+    product_id: product?.id || '',
     language_code: 'hu',
-    name: product.name || '',
+    name: product?.name || '',
     meta_title: '',
     meta_keywords: '',
     meta_description: '',
     short_description: '',
     description: '',
-    parameters: null, // Add parameters field
+    parameters: null,
+    generation_instructions: null,
+    shoprenter_id: null,
+    created_at: '',
+    updated_at: ''
+  }) : {
+    id: '',
+    product_id: '',
+    language_code: 'hu',
+    name: '',
+    meta_title: '',
+    meta_keywords: '',
+    meta_description: '',
+    short_description: '',
+    description: '',
+    parameters: null,
     generation_instructions: null,
     shoprenter_id: null,
     created_at: '',
@@ -173,17 +256,27 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   // Product basic data (separate from description)
   const [productData, setProductData] = useState({
-    sku: product.sku || '',
-    model_number: product.model_number || '',
-    gtin: product.gtin || '',  // Vonalkód (Barcode/GTIN)
+    sku: product?.sku || '',
+    model_number: product?.model_number || '',
+    gtin: product?.gtin || '',  // Vonalkód (Barcode/GTIN)
+    brand: (product as any)?.brand || '',
+    manufacturer_id: (product as any)?.manufacturer_id || null,
     // Pricing fields (Árazás)
-    price: product.price ?? '',
-    cost: product.cost ?? '',
-    multiplier: product.multiplier ?? 1.0,
-    multiplier_lock: product.multiplier_lock ?? false,
-    vat_id: (product as any).vat_id || null,
-    gross_price: (product as any).gross_price || null
+    price: product?.price ?? '',
+    cost: product?.cost ?? '',
+    multiplier: product?.multiplier ?? 1.0,
+    multiplier_lock: product?.multiplier_lock ?? false,
+    vat_id: (product as any)?.vat_id || null,
+    gross_price: (product as any)?.gross_price || null
   })
+  
+  // Manufacturers state
+  const [manufacturers, setManufacturers] = useState<Array<{ id: string; name: string; innerId: string | null }>>([])
+  const [loadingManufacturers, setLoadingManufacturers] = useState(false)
+  const [manufacturerSearchTerm, setManufacturerSearchTerm] = useState('')
+  const [showCreateManufacturer, setShowCreateManufacturer] = useState(false)
+  const [newManufacturerName, setNewManufacturerName] = useState('')
+  const [creatingManufacturer, setCreatingManufacturer] = useState(false)
 
   // VAT rates state
   const [vatRates, setVatRates] = useState<Array<{ id: string; name: string; kulcs: number }>>([])
@@ -204,6 +297,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   
   // Ref to prevent infinite loops in auto-calculation
   const isCalculatingRef = useRef(false)
+
+  // SKU validation state
+  const [skuValidationError, setSkuValidationError] = useState<string | null>(null)
+  const [isValidatingSku, setIsValidatingSku] = useState(false)
+  const skuValidationTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Fetch VAT rates on mount
   useEffect(() => {
@@ -293,6 +391,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       const cost = parseFloat(prev.cost.toString() || '0')
       const newMultiplier = cost > 0 ? netPrice / cost : prev.multiplier
       
+      // Calculate gross price immediately
+      const vat = vatRates.find(v => v.id === prev.vat_id)
+      const newGrossPrice = vat && netPrice > 0 
+        ? Math.round(netPrice * (1 + vat.kulcs / 100))
+        : null
+      
+      if (newGrossPrice !== null) {
+        setGrossPrice(newGrossPrice)
+      }
+      
       return {
         ...prev,
         price: value,
@@ -303,7 +411,22 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   // Handle VAT change (recalculate gross)
   const handleVatChange = (vatId: string) => {
-    setProductData(prev => ({ ...prev, vat_id: vatId }))
+    setProductData(prev => {
+      const vat = vatRates.find(v => v.id === vatId)
+      const currentPrice = parseFloat(prev.price.toString() || '0')
+      // Recalculate gross price immediately when VAT changes
+      const newGrossPrice = vat && currentPrice > 0 
+        ? Math.round(currentPrice * (1 + vat.kulcs / 100))
+        : null
+      
+      if (newGrossPrice !== null) {
+        setGrossPrice(newGrossPrice)
+      } else {
+        setGrossPrice(null)
+      }
+      
+      return { ...prev, vat_id: vatId }
+    })
     setIsEditingGross(false)
     // Reset VAT mapping status when VAT changes
     setVatMappingStatus(null)
@@ -320,6 +443,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       const currentPrice = parseFloat(prev.price.toString() || '0')
       // Keep net price fixed, calculate multiplier: net price / cost
       const newMultiplier = cost > 0 && currentPrice > 0 ? currentPrice / cost : prev.multiplier
+      
+      // Recalculate gross price if net price and VAT exist
+      const vat = vatRates.find(v => v.id === prev.vat_id)
+      const newGrossPrice = vat && currentPrice > 0 
+        ? Math.round(currentPrice * (1 + vat.kulcs / 100))
+        : null
+      
+      if (newGrossPrice !== null) {
+        setGrossPrice(newGrossPrice)
+      }
       
       return {
         ...prev,
@@ -339,6 +472,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     setProductData(prev => {
       const cost = parseFloat(prev.cost.toString() || '0')
       const newNetPrice = cost > 0 ? cost * multiplier : prev.price
+      
+      // Calculate gross price immediately
+      const vat = vatRates.find(v => v.id === prev.vat_id)
+      const newGrossPrice = vat && newNetPrice > 0 
+        ? Math.round(newNetPrice * (1 + vat.kulcs / 100))
+        : null
+      
+      if (newGrossPrice !== null) {
+        setGrossPrice(newGrossPrice)
+      }
       
       return {
         ...prev,
@@ -376,6 +519,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       setCheckingVatMapping(true)
       
       // Get connection ID from product
+      if (!product?.id) {
+        return { hasMapping: false, shoprenterTaxClassName: null, warning: 'Termék ID hiányzik' }
+      }
       const response = await fetch(`/api/products/${product.id}`)
       if (!response.ok) {
         return { hasMapping: false, shoprenterTaxClassName: null, warning: 'Nem található termék' }
@@ -463,6 +609,42 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     try {
       setSaving(true)
 
+      // Validation for new products
+      if (isNewProduct) {
+        // Required fields: connection_id, sku, name, cost
+        if (!selectedConnectionId) {
+          toast.error('Kapcsolat kiválasztása kötelező')
+          setSaving(false)
+          return
+        }
+        if (!productData.sku || !productData.sku.trim()) {
+          toast.error('SKU kötelező mező')
+          setSaving(false)
+          return
+        }
+        if (skuValidationError) {
+          toast.error('A SKU már létezik, válasszon másikat')
+          setSaving(false)
+          return
+        }
+        if (isValidatingSku) {
+          toast.error('Kérjük várjon, amíg a SKU ellenőrzése befejeződik')
+          setSaving(false)
+          return
+        }
+        if (!formData.name || !formData.name.trim()) {
+          toast.error('Termék neve kötelező mező')
+          setSaving(false)
+          return
+        }
+        const cost = parseFloat(productData.cost.toString() || '0')
+        if (!cost || cost <= 0) {
+          toast.error('Beszerzési ár kötelező mező és nagyobbnak kell lennie, mint 0')
+          setSaving(false)
+          return
+        }
+      }
+
       // Validation
       const cost = parseFloat(productData.cost.toString() || '0')
       const price = parseFloat(productData.price.toString() || '0')
@@ -491,10 +673,58 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         }
       }
 
-      // Save product basic data (sku, model_number, gtin, pricing)
+      // Create new product
+      if (isNewProduct) {
+        const productToCreate = {
+          connection_id: selectedConnectionId,
+          sku: productData.sku.trim(),
+          name: formData.name.trim(),
+          model_number: productData.model_number.trim() || null,
+          gtin: productData.gtin.trim() || null,
+          brand: productData.brand || null,
+          manufacturer_id: productData.manufacturer_id || null,
+          cost: cost.toString(),
+          multiplier: multiplier.toString(),
+          vat_id: productData.vat_id || null,
+          category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : [],
+          product_class_shoprenter_id: productClass?.id || null,
+          product_attributes: attributes.length > 0 ? attributes : null,
+          parent_product_id: selectedParentProductId || null,
+          short_description: formData.short_description || null,
+          description: formData.description || null,
+          meta_title: formData.meta_title || null,
+          meta_description: formData.meta_description || null,
+          url_slug: urlSlug.trim() || null
+        }
+
+        const createResponse = await fetch('/api/products', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(productToCreate)
+        })
+
+        const createResult = await createResponse.json()
+        if (!createResult.success) {
+          toast.error(`Termék létrehozása sikertelen: ${createResult.error || 'Ismeretlen hiba'}`)
+          setSaving(false)
+          return
+        }
+
+        toast.success('Termék sikeresen létrehozva!')
+        // Redirect to product edit page
+        router.push(`/products/${createResult.product.id}`)
+        return
+      }
+
+      // Update existing product
+      // Save product basic data (sku, model_number, gtin, brand, pricing)
       const productDataToSave = {
         model_number: productData.model_number.trim() || null,
         gtin: productData.gtin.trim() || null,  // Vonalkód
+        brand: productData.brand || null,
+        manufacturer_id: productData.manufacturer_id || null,
         // Pricing fields
         price: productData.price !== '' ? parseFloat(String(productData.price)) : null,
         cost: productData.cost !== '' ? parseFloat(String(productData.cost)) : null,
@@ -532,7 +762,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         generation_instructions: formData.generation_instructions.trim() || null
       }
 
-      const response = await fetch(`/api/products/${product.id}/descriptions`, {
+      const response = await fetch(`/api/products/${product!.id}/descriptions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -545,8 +775,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       if (result.success) {
         // Save or delete product tags (always sync, even if empty to delete)
         console.log(`[SAVE] Saving product tags: "${productTags}" (trimmed: "${productTags.trim()}")`)
-        try {
-          const tagsResponse = await fetch(`/api/products/${product.id}/tags`, {
+        if (product?.id) {
+          try {
+            const tagsResponse = await fetch(`/api/products/${product.id}/tags`, {
             method: 'PUT',
             headers: {
               'Content-Type': 'application/json'
@@ -577,13 +808,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               setTagsReloadKey(prev => prev + 1)
             }, 100)
           }
-        } catch (tagsError) {
-          console.warn('[SAVE] Error saving product tags:', tagsError)
-          // Don't fail the entire save if tags fail
+          } catch (tagsError) {
+            console.warn('[SAVE] Error saving product tags:', tagsError)
+            // Don't fail the entire save if tags fail
+          }
         }
 
         // Save URL alias if it has changed
-        if (urlSlug.trim() && urlSlug.trim() !== originalUrlSlug) {
+        if (product?.id && urlSlug.trim() && urlSlug.trim() !== originalUrlSlug) {
           try {
             console.log(`[SAVE] Saving URL alias: "${urlSlug.trim()}"`)
             const urlResponse = await fetch(`/api/products/${product.id}/url-alias`, {
@@ -626,6 +858,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   }
 
   const handleSyncClick = async () => {
+    if (!product?.id) return
     // Check VAT mapping first
     const mappingStatus = await checkVatMapping()
     setVatMappingStatus(mappingStatus)
@@ -667,6 +900,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   // Pull product from ShopRenter (fetch latest data including display names)
   const handlePullFromShopRenter = async () => {
+    if (!product?.id) return
     try {
       setPulling(true)
 
@@ -716,6 +950,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   // Load URL alias on mount
   useEffect(() => {
+    if (!product?.id) return
     const loadUrlAlias = async () => {
       try {
         setLoadingUrlAlias(true)
@@ -735,37 +970,99 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
     
     loadUrlAlias()
-  }, [product.id])
+  }, [product?.id])
+
+  // Load parent/child relationships
+  const loadVariants = async () => {
+    try {
+      setLoadingVariants(true)
+      const response = await fetch(`/api/products/${product.id}/variants`)
+      const result = await response.json()
+      
+      if (result.success) {
+        setVariantData({
+          isParent: result.isParent,
+          isChild: result.isChild,
+          parent: result.parent,
+          children: result.children || [],
+          childCount: result.childCount || 0
+        })
+      }
+    } catch (error) {
+      console.error('Error loading variants:', error)
+    } finally {
+      setLoadingVariants(false)
+    }
+  }
+
+  // Load manufacturers
+  const loadManufacturers = async (connectionId: string) => {
+    if (!connectionId) return
+    try {
+      setLoadingManufacturers(true)
+      const response = await fetch(`/api/connections/${connectionId}/manufacturers`)
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success && result.manufacturers) {
+          setManufacturers(result.manufacturers)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading manufacturers:', error)
+    } finally {
+      setLoadingManufacturers(false)
+    }
+  }
+
+  // Load manufacturers when connection is selected (for new products) or on mount (for existing products)
+  useEffect(() => {
+    if (isNewProduct && selectedConnectionId) {
+      loadManufacturers(selectedConnectionId)
+    } else if (product?.id && (product as any).connection_id) {
+      loadManufacturers((product as any).connection_id)
+    }
+  }, [isNewProduct, selectedConnectionId, product?.id])
 
   // Load parent/child relationships on mount
+  // Load connections for new products
   useEffect(() => {
-    const loadVariants = async () => {
-      try {
-        setLoadingVariants(true)
-        const response = await fetch(`/api/products/${product.id}/variants`)
-        const result = await response.json()
-        
-        if (result.success) {
-          setVariantData({
-            isParent: result.isParent,
-            isChild: result.isChild,
-            parent: result.parent,
-            children: result.children || [],
-            childCount: result.childCount || 0
-          })
+    if (isNewProduct) {
+      const loadConnections = async () => {
+        setLoadingConnections(true)
+        try {
+          const response = await fetch('/api/connections')
+          if (response.ok) {
+            const data = await response.json()
+            const connectionsList = Array.isArray(data) ? data : (data.connections || [])
+            const shoprenterConnections = connectionsList.filter(
+              (conn: any) => conn.connection_type === 'shoprenter' && conn.is_active
+            )
+            setConnections(shoprenterConnections)
+            // Auto-select first connection if only one
+            if (shoprenterConnections.length === 1) {
+              setSelectedConnectionId(shoprenterConnections[0].id)
+            }
+          }
+        } catch (error) {
+          console.error('Error loading connections:', error)
+          toast.error('Hiba a kapcsolatok betöltésekor')
+        } finally {
+          setLoadingConnections(false)
         }
-      } catch (error) {
-        console.error('Error loading variants:', error)
-      } finally {
-        setLoadingVariants(false)
       }
+      loadConnections()
     }
-    
-    loadVariants()
-  }, [product.id])
+  }, [isNewProduct])
+
+  useEffect(() => {
+    if (product?.id) {
+      loadVariants()
+    }
+  }, [product?.id])
 
   // Load quality score on mount
   useEffect(() => {
+    if (!product?.id) return
     const loadQualityScore = async () => {
       try {
         setLoadingQualityScore(true)
@@ -783,10 +1080,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
     
     loadQualityScore()
-  }, [product.id])
+  }, [product?.id])
 
   // Load product tags on mount
   useEffect(() => {
+    if (!product?.id) return
     const loadProductTags = async () => {
       try {
         setLoadingProductTags(true)
@@ -818,12 +1116,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       }
     }
     
-    loadProductTags()
-  }, [product.id, tagsReloadKey]) // Reload when tagsReloadKey changes
+    if (product?.id) {
+      loadProductTags()
+    }
+  }, [product?.id, tagsReloadKey]) // Reload when tagsReloadKey changes
 
   // Load categories
-  useEffect(() => {
     const loadCategories = async () => {
+      if (!product?.id) {
+        setCategories([])
+        return
+      }
       try {
         setLoadingCategories(true)
         const response = await fetch(`/api/products/${product.id}/categories`)
@@ -839,11 +1142,973 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       }
     }
     
-    loadCategories()
-  }, [product.id])
+  useEffect(() => {
+    if (product?.id) {
+      loadCategories()
+    }
+  }, [product?.id])
+
+  // Load Product Class
+  const loadProductClass = async () => {
+    if (!product?.id) {
+      setProductClass(null)
+      return
+    }
+    try {
+      setLoadingProductClass(true)
+      const response = await fetch(`/api/products/${product.id}/product-class`)
+      const result = await response.json()
+      
+      if (result.success) {
+        setProductClass(result.productClass)
+      }
+    } catch (error) {
+      console.error('Error loading product class:', error)
+    } finally {
+      setLoadingProductClass(false)
+    }
+  }
+
+  // Load available Product Classes
+  const loadAvailableProductClasses = async () => {
+    try {
+      setLoadingAvailableProductClasses(true)
+      // Try multiple ways to get connection_id
+      const connectionId = isNewProduct 
+        ? selectedConnectionId
+        : ((product as any)?.connection_id || 
+           (product as any)?.webshop_connections?.id ||
+           (product as any)?.webshop_connection_id)
+      
+      if (!connectionId) {
+        if (isNewProduct) {
+          setAvailableProductClasses([])
+          return
+        }
+        console.error('No connection_id found in product:', product)
+        toast.error('A termékhez nincs kapcsolat rendelve')
+        return
+      }
+
+      console.log('[PRODUCT-CLASS] Loading Product Classes for connection:', connectionId)
+      const response = await fetch(`/api/connections/${connectionId}/product-classes`)
+      const result = await response.json()
+      
+      console.log('[PRODUCT-CLASS] API response:', result)
+      
+      if (result.success && result.productClasses) {
+        console.log('[PRODUCT-CLASS] Loaded Product Classes:', result.productClasses.length)
+        setAvailableProductClasses(result.productClasses)
+      } else {
+        console.error('[PRODUCT-CLASS] API error:', result.error)
+        toast.error(result.error || 'Hiba a termék típusok betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading available product classes:', error)
+      toast.error('Hiba a termék típusok betöltésekor')
+    } finally {
+      setLoadingAvailableProductClasses(false)
+    }
+  }
+
+  // Handle open Product Class edit modal
+  const handleOpenProductClassEditModal = async () => {
+    setSelectedProductClassId(productClass?.id || '')
+    setProductClassEditModalOpen(true)
+    // Load available product classes when opening modal (for new products, this ensures they're loaded)
+    await loadAvailableProductClasses()
+  }
+
+  // Handle close Product Class edit modal
+  const handleCloseProductClassEditModal = () => {
+    setProductClassEditModalOpen(false)
+    setSelectedProductClassId('')
+  }
+
+  // Handle confirm Product Class change
+  const handleConfirmProductClassChange = () => {
+    const newProductClassName = availableProductClasses.find(pc => pc.id === selectedProductClassId)?.name || 'Ismeretlen'
+    const attributeCount = attributes.length
+    const willClearAttributes = attributeCount > 0 && productClass?.id !== selectedProductClassId
+    
+    setProductClassToUpdate({ 
+      id: selectedProductClassId, 
+      name: newProductClassName,
+      willClearAttributes: willClearAttributes,
+      attributeCount: attributeCount
+    })
+    setProductClassConfirmOpen(true)
+    setProductClassEditModalOpen(false)
+  }
+
+  // Update Product Class
+  const handleProductClassChange = async () => {
+    if (!productClassToUpdate) return
+    if (productClassToUpdate.id === productClass?.id) {
+      setProductClassConfirmOpen(false)
+      setProductClassToUpdate(null)
+      return // No change
+    }
+
+    // For new products, just update local state
+    if (isNewProduct) {
+      const newProductClass = availableProductClasses.find(pc => pc.id === productClassToUpdate.id)
+      if (newProductClass) {
+        setProductClass({ id: productClassToUpdate.id, name: productClassToUpdate.name })
+        // Clear attributes when product class changes
+        setAttributes([])
+        setProductClassConfirmOpen(false)
+        setProductClassToUpdate(null)
+        toast.success('Termék típusa frissítve')
+      }
+      return
+    }
+
+    // Check for unsaved changes (pending sync)
+    if (product.sync_status === 'pending') {
+      const confirmed = window.confirm(
+        'A terméknek vannak nem szinkronizált változásai. A termék típus megváltoztatása előtt ajánlott szinkronizálni. Folytatja?'
+      )
+      if (!confirmed) {
+        setProductClassConfirmOpen(false)
+        setProductClassToUpdate(null)
+        return
+      }
+    }
+
+    // Check for variants
+    if (variantData?.isParent && variantData.childCount > 0) {
+      const confirmed = window.confirm(
+        `Ez a termék ${variantData.childCount} variánst tartalmaz. A termék típus megváltoztatása csak ezt a terméket érinti, a variánsok termék típusa nem változik meg. Folytatja?`
+      )
+      if (!confirmed) {
+        setProductClassConfirmOpen(false)
+        setProductClassToUpdate(null)
+        return
+      }
+    }
+
+    try {
+      setUpdatingProductClass(true)
+      const response = await fetch(`/api/products/${product.id}/product-class`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ productClassId: productClassToUpdate.id })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setProductClass(result.productClass)
+        // Clear attributes immediately in UI
+        setAttributes([])
+        // Close all modals
+        setAddAttributeModalOpen(false)
+        setEditAttributeModalOpen(false)
+        setDeleteAttributeModalOpen(false)
+        setProductClassConfirmOpen(false)
+        // Clear selections
+        setSelectedAttributeToAdd('')
+        setNewAttributeValue(null)
+        setNewListAttributeValues([])
+        setProductClassToUpdate(null)
+        toast.success(result.message || 'Termék típusa frissítve')
+        // Reload product to get updated attributes
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba a termék típus frissítésekor')
+      }
+    } catch (error) {
+      console.error('Error updating product class:', error)
+      toast.error('Hiba a termék típus frissítésekor')
+    } finally {
+      setUpdatingProductClass(false)
+      setProductClassConfirmOpen(false)
+      setProductClassToUpdate(null)
+    }
+  }
+
+  // Load attributes from product
+  useEffect(() => {
+    if (product?.product_attributes && Array.isArray(product.product_attributes)) {
+      setAttributes(product.product_attributes)
+    } else if (isNewProduct) {
+      setAttributes([])
+    }
+  }, [product?.product_attributes, isNewProduct])
+
+  // Load available attributes when add modal opens
+  const loadAvailableAttributes = async () => {
+    if (isNewProduct) {
+      // For new products, use the new endpoint
+      if (!selectedConnectionId || !productClass?.id) {
+        setAvailableAttributes([])
+        return
+      }
+      try {
+        setLoadingAvailableAttributes(true)
+        const response = await fetch(`/api/products/new/attributes/available?connectionId=${selectedConnectionId}&productClassId=${productClass.id}`)
+        const result = await response.json()
+        if (result.success) {
+          setAvailableAttributes(result.attributes || [])
+        } else {
+          toast.error(result.error || 'Hiba az attribútumok betöltésekor')
+          setAvailableAttributes([])
+        }
+      } catch (error) {
+        console.error('Error loading available attributes:', error)
+        toast.error('Hiba az attribútumok betöltésekor')
+        setAvailableAttributes([])
+      } finally {
+        setLoadingAvailableAttributes(false)
+      }
+      return
+    }
+    
+    if (!product?.id) {
+      setAvailableAttributes([])
+      return
+    }
+    
+    try {
+      setLoadingAvailableAttributes(true)
+      const response = await fetch(`/api/products/${product.id}/attributes/available`)
+      const result = await response.json()
+      
+      if (result.success) {
+        setAvailableAttributes(result.attributes || [])
+      } else {
+        toast.error(result.error || 'Hiba az elérhető attribútumok betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading available attributes:', error)
+      toast.error('Hiba az elérhető attribútumok betöltésekor')
+    } finally {
+      setLoadingAvailableAttributes(false)
+    }
+  }
+
+  // Handle open add attribute modal
+  const handleOpenAddAttributeModal = () => {
+    setAddAttributeModalOpen(true)
+    loadAvailableAttributes()
+  }
+
+  // Handle close add attribute modal
+  const handleCloseAddAttributeModal = () => {
+    setAddAttributeModalOpen(false)
+    setSelectedAttributeToAdd('')
+    setNewAttributeValue(null)
+    setNewListAttributeValues([])
+  }
+
+  // Handle open edit attribute modal
+  const handleOpenEditAttributeModal = async (attribute: any) => {
+    setAttributeToEdit(attribute)
+    
+    // Extract current value ID if it's an object
+    let currentValueId: string | null = null
+    if (Array.isArray(attribute.value) && attribute.value[0]?.id) {
+      currentValueId = attribute.value[0].id
+      setEditingAttributeValue(currentValueId)
+    } else if (typeof attribute.value === 'string') {
+      currentValueId = attribute.value
+      setEditingAttributeValue(currentValueId)
+    } else {
+      setEditingAttributeValue(attribute.value)
+    }
+    
+    setEditAttributeModalOpen(true)
+    
+    // If it's a LIST attribute, fetch all available values
+    if (attribute.type === 'LIST') {
+      setLoadingListAttributeValues(true)
+      try {
+        const response = await fetch(`/api/products/${product.id}/attributes/${encodeURIComponent(attribute.name)}/values`)
+        const result = await response.json()
+        
+        if (result.success) {
+          setListAttributeValues(result.values || [])
+        } else {
+          toast.error(result.error || 'Hiba az elérhető értékek betöltésekor')
+          setListAttributeValues([])
+        }
+      } catch (error) {
+        console.error('Error loading list attribute values:', error)
+        toast.error('Hiba az elérhető értékek betöltésekor')
+        setListAttributeValues([])
+      } finally {
+        setLoadingListAttributeValues(false)
+      }
+    } else {
+      setListAttributeValues([])
+    }
+  }
+
+  // Handle close edit attribute modal
+  const handleCloseEditAttributeModal = () => {
+    setEditAttributeModalOpen(false)
+    setAttributeToEdit(null)
+    setEditingAttributeValue(null)
+    setListAttributeValues([])
+  }
+
+  // Handle save attribute edit
+  const handleSaveAttributeEdit = async () => {
+    if (!attributeToEdit) return
+
+    try {
+      // For LIST attributes, we need to format the value correctly
+      // The ShopRenter API expects an array containing the listAttributeValueDescription object
+      // This format matches what we get from productAttributeExtend during sync
+      let valueToSave = editingAttributeValue
+      
+      if (attributeToEdit.type === 'LIST' && editingAttributeValue) {
+        // Find the full value object from listAttributeValues
+        // The editingAttributeValue is the listAttributeValueDescription ID
+        const selectedValue = listAttributeValues.find(v => {
+          // Match by the listAttributeValueDescription ID (v.id) or by valueId
+          return v.id === editingAttributeValue || v.valueId === editingAttributeValue
+        })
+        
+        if (selectedValue) {
+          // Format as array with listAttributeValueDescription object (matching ShopRenter format)
+          // IMPORTANT: Also store the listAttributeValue ID (valueId) so we can sync it directly
+          // This matches the format we see in productAttributeExtend during sync
+          valueToSave = [{
+            id: selectedValue.id, // listAttributeValueDescription ID
+            href: selectedValue.href || '',
+            value: selectedValue.displayValue || selectedValue.value,
+            language: selectedValue.language || {
+              id: 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==',
+              href: ''
+            },
+            // Store the listAttributeValue ID for direct syncing (avoids extra API calls)
+            listAttributeValueId: selectedValue.valueId || null
+          }]
+          console.log(`[ATTRIBUTE-EDIT] Saving LIST attribute "${attributeToEdit.name}" with value:`, valueToSave)
+        } else {
+          // Fallback: if we can't find the full object, use the ID as string
+          // This should not happen, but handle gracefully
+          console.warn(`[ATTRIBUTE-EDIT] Could not find full value object for ID: ${editingAttributeValue}`)
+          valueToSave = editingAttributeValue
+        }
+      }
+
+      // For new products, just update local state
+      if (isNewProduct) {
+        const attrIndex = attributes.findIndex((attr: any) => 
+          (attr.id || attr.attribute_shoprenter_id) === (attributeToEdit.id || attributeToEdit.attribute_shoprenter_id)
+        )
+        if (attrIndex !== -1) {
+          const updated = [...attributes]
+          updated[attrIndex] = {
+            ...updated[attrIndex],
+            value: valueToSave,
+            ...(attributeToEdit.type === 'LIST' && {
+              listAttributeValueId: editingAttributeValue,
+              listAttributeValueDisplay: listAttributeValues.find(v => v.id === editingAttributeValue)?.displayValue || editingAttributeValue
+            })
+          }
+          setAttributes(updated)
+          toast.success('Attribútum frissítve')
+          handleCloseEditAttributeModal()
+        }
+        return
+      }
+
+      if (!product?.id) {
+        toast.error('Termék ID hiányzik')
+        return
+      }
+
+      const response = await fetch(`/api/products/${product.id}/attributes`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          attributeName: attributeToEdit.name,
+          value: valueToSave
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success(result.message || 'Attribútum frissítve')
+        handleCloseEditAttributeModal()
+        // Reload product to get updated attributes
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba az attribútum frissítésekor')
+      }
+    } catch (error) {
+      console.error('Error updating attribute:', error)
+      toast.error('Hiba az attribútum frissítésekor')
+    }
+  }
+
+  // Handle delete attribute - open modal
+  const handleDeleteAttribute = (attribute: any) => {
+    const displayName = attribute.display_name || attribute.name || 'Ismeretlen'
+    setAttributeToDelete({ name: attribute.name, displayName })
+    setDeleteAttributeModalOpen(true)
+  }
+
+  // Confirm delete attribute
+  const handleConfirmDeleteAttribute = async () => {
+    if (!attributeToDelete) return
+
+    // For new products, just update local state
+    if (isNewProduct) {
+      setAttributes(prev => prev.filter((attr: any) => 
+        (attr.name || attr.display_name) !== attributeToDelete.name &&
+        (attr.name || attr.display_name) !== attributeToDelete.displayName
+      ))
+      setDeleteAttributeModalOpen(false)
+      setAttributeToDelete(null)
+      toast.success('Attribútum eltávolítva')
+      return
+    }
+
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/products/${product.id}/attributes?attributeName=${encodeURIComponent(attributeToDelete.name)}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success(result.message || 'Attribútum eltávolítva')
+        setDeleteAttributeModalOpen(false)
+        setAttributeToDelete(null)
+        // Reload product to get updated attributes
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba az attribútum eltávolításakor')
+      }
+    } catch (error) {
+      console.error('Error deleting attribute:', error)
+      toast.error('Hiba az attribútum eltávolításakor')
+    }
+  }
+
+  // Fetch list attribute values when a LIST attribute is selected in add modal
+  useEffect(() => {
+    if (selectedAttributeToAdd && addAttributeModalOpen && availableAttributes.length > 0) {
+      const selectedAttr = availableAttributes.find(a => a.id === selectedAttributeToAdd)
+      if (selectedAttr && selectedAttr.type === 'LIST') {
+        // Always use attribute ID (attribute_shoprenter_id) which is the listAttribute ID
+        // The ID is what we need to fetch listAttributeValues
+        if (selectedAttr.id) {
+          setLoadingNewListAttributeValues(true)
+          
+          if (isNewProduct) {
+            // For new products, use the connection-based endpoint
+            if (!selectedConnectionId) {
+              setNewListAttributeValues([])
+              setLoadingNewListAttributeValues(false)
+              return
+            }
+            fetch(`/api/connections/${selectedConnectionId}/list-attribute-values?attributeId=${encodeURIComponent(selectedAttr.id)}`)
+              .then(res => res.json())
+              .then(result => {
+                if (result.success) {
+                  setNewListAttributeValues(result.values || [])
+                } else {
+                  toast.error(result.error || 'Hiba az elérhető értékek betöltésekor')
+                  setNewListAttributeValues([])
+                }
+              })
+              .catch(error => {
+                console.error('Error loading list attribute values:', error)
+                toast.error('Hiba az elérhető értékek betöltésekor')
+                setNewListAttributeValues([])
+              })
+              .finally(() => {
+                setLoadingNewListAttributeValues(false)
+              })
+          } else if (product?.id) {
+            fetch(`/api/products/${product.id}/attributes/${encodeURIComponent(selectedAttr.id)}/values`)
+              .then(res => res.json())
+              .then(result => {
+                if (result.success) {
+                  setNewListAttributeValues(result.values || [])
+                } else {
+                  toast.error(result.error || 'Hiba az elérhető értékek betöltésekor')
+                  setNewListAttributeValues([])
+                }
+              })
+              .catch(error => {
+                console.error('Error loading list attribute values:', error)
+                toast.error('Hiba az elérhető értékek betöltésekor')
+                setNewListAttributeValues([])
+              })
+              .finally(() => {
+                setLoadingNewListAttributeValues(false)
+              })
+          } else {
+            setNewListAttributeValues([])
+            setLoadingNewListAttributeValues(false)
+          }
+        } else {
+          setNewListAttributeValues([])
+          setLoadingNewListAttributeValues(false)
+        }
+      } else {
+        setNewListAttributeValues([])
+        setLoadingNewListAttributeValues(false)
+      }
+    } else {
+      setNewListAttributeValues([])
+    }
+  }, [selectedAttributeToAdd, addAttributeModalOpen, availableAttributes, product?.id, isNewProduct, selectedConnectionId])
+
+  // Handle add attribute
+  const handleAddAttribute = async () => {
+    if (!selectedAttributeToAdd || newAttributeValue === null) {
+      toast.warning('Válasszon attribútumot és adjon meg értéket')
+      return
+    }
+
+    const selectedAttr = availableAttributes.find(a => a.id === selectedAttributeToAdd)
+    if (!selectedAttr) {
+      toast.error('Érvénytelen attribútum kiválasztás')
+      return
+    }
+
+    try {
+      // For LIST attributes, we need to format the value correctly
+      // The ShopRenter API expects an array containing the listAttributeValueDescription object
+      let valueToSave = newAttributeValue
+      
+      if (selectedAttr.type === 'LIST' && newAttributeValue) {
+        // Find the full value object from newListAttributeValues
+        const selectedValue = newListAttributeValues.find(v => {
+          return v.id === newAttributeValue || v.valueId === newAttributeValue
+        })
+        
+        if (selectedValue) {
+          // Format as array with listAttributeValueDescription object (matching ShopRenter format)
+          valueToSave = [{
+            id: selectedValue.id, // listAttributeValueDescription ID
+            href: selectedValue.href || '',
+            value: selectedValue.displayValue || selectedValue.value,
+            language: selectedValue.language || {
+              id: 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==',
+              href: ''
+            }
+          }]
+          console.log(`[ATTRIBUTE-ADD] Adding LIST attribute "${selectedAttr.name}" with value:`, valueToSave)
+        } else {
+          console.warn(`[ATTRIBUTE-ADD] Could not find full value object for ID: ${newAttributeValue}`)
+          // Fallback: use the ID as string (should not happen)
+          valueToSave = newAttributeValue
+        }
+      }
+
+      // For new products, just update local state
+      if (isNewProduct) {
+        const newAttr = {
+          id: selectedAttr.id,
+          attribute_shoprenter_id: selectedAttr.id,
+          name: selectedAttr.name,
+          display_name: selectedAttr.name,
+          type: selectedAttr.type,
+          value: valueToSave,
+          ...(selectedAttr.type === 'LIST' && {
+            listAttributeValueId: newAttributeValue,
+            listAttributeValueDisplay: newListAttributeValues.find(v => v.id === newAttributeValue)?.displayValue || newAttributeValue
+          })
+        }
+        setAttributes(prev => [...prev, newAttr])
+        setSelectedAttributeToAdd('')
+        setNewAttributeValue(null)
+        setNewListAttributeValues([])
+        toast.success('Attribútum hozzáadva')
+        return
+      }
+
+      if (!product?.id) {
+        toast.error('Termék ID hiányzik')
+        return
+      }
+
+      const response = await fetch(`/api/products/${product.id}/attributes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          attributeId: selectedAttr.id,
+          attributeType: selectedAttr.type,
+          value: valueToSave
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success(result.message || 'Attribútum hozzáadva')
+        // Reload available attributes to remove the newly added one from the list
+        await loadAvailableAttributes()
+        // Clear selection so user can add another attribute if needed
+        setSelectedAttributeToAdd('')
+        setNewAttributeValue(null)
+        setNewListAttributeValues([])
+        // Reload product to get updated attributes
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba az attribútum hozzáadásakor')
+      }
+    } catch (error) {
+      console.error('Error adding attribute:', error)
+      toast.error('Hiba az attribútum hozzáadásakor')
+    }
+  }
+
+  useEffect(() => {
+    if (product?.id) {
+      loadProductClass()
+      loadAvailableProductClasses()
+    } else if (isNewProduct) {
+      setProductClass(null)
+    }
+  }, [product?.id, isNewProduct])
+
+  // Load available product classes when connection is selected for new products
+  useEffect(() => {
+    if (isNewProduct && selectedConnectionId) {
+      loadAvailableProductClasses()
+    }
+  }, [isNewProduct, selectedConnectionId])
+
+  // Load available products for parent selection
+  const loadAvailableProducts = async (searchTerm: string = '') => {
+    try {
+      setLoadingAvailableProducts(true)
+      const connectionId = isNewProduct 
+        ? selectedConnectionId
+        : ((product as any)?.connection_id)
+      if (!connectionId) {
+        if (isNewProduct) {
+          toast.error('Válasszon kapcsolatot')
+        } else {
+          toast.error('A termékhez nincs kapcsolat rendelve')
+        }
+        return
+      }
+      // Build URL with search parameter
+      const searchParam = searchTerm.trim() ? `&search=${encodeURIComponent(searchTerm.trim())}` : ''
+      const excludeParam = product?.id ? `&excludeProductId=${product.id}` : ''
+      const response = await fetch(`/api/connections/${connectionId}/products?${excludeParam}${searchParam}`)
+      const result = await response.json()
+      
+      if (result.products) {
+        setAvailableProducts(result.products)
+      } else {
+        setAvailableProducts([])
+      }
+    } catch (error) {
+      console.error('Error loading available products:', error)
+      toast.error('Hiba a termékek betöltésekor')
+      setAvailableProducts([])
+    } finally {
+      setLoadingAvailableProducts(false)
+    }
+  }
+
+  // Handle open parent product modal
+  const handleOpenParentProductModal = async () => {
+    // For new products, keep current selection; for existing products, load from variantData
+    if (!isNewProduct && variantData?.isChild && variantData?.parent) {
+      setSelectedParentProductId(variantData.parent.id)
+    }
+    setParentProductModalOpen(true)
+    setParentProductSearchTerm('') // Reset search when opening
+    await loadAvailableProducts('') // Load all products initially
+  }
+  
+  // Debounced search for parent products
+  useEffect(() => {
+    if (!parentProductModalOpen) return
+    
+    const timeoutId = setTimeout(() => {
+      loadAvailableProducts(parentProductSearchTerm)
+    }, 300) // 300ms debounce
+    
+    return () => clearTimeout(timeoutId)
+  }, [parentProductSearchTerm, parentProductModalOpen])
+
+  // Handle close parent product modal
+  const handleCloseParentProductModal = () => {
+    setParentProductModalOpen(false)
+    // Don't clear selectedParentProductId here - it should persist after save
+    setParentProductSearchTerm('')
+  }
+
+  // Handle save parent product
+  const handleSaveParentProduct = async () => {
+    // For new products, just update local state (selectedParentProductId is already set by the modal)
+    if (isNewProduct) {
+      handleCloseParentProductModal()
+      toast.success(selectedParentProductId ? 'Szülő termék kiválasztva' : 'Szülő termék eltávolítva')
+      return
+    }
+
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
+
+    try {
+      setUpdatingParentProduct(true)
+      const response = await fetch(`/api/products/${product.id}/parent-product`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          parentProductId: selectedParentProductId || null
+        })
+      })
+      
+      const result = await response.json()
+      if (result.success) {
+        toast.success(selectedParentProductId ? 'Szülő termék frissítve' : 'Szülő termék eltávolítva')
+        handleCloseParentProductModal()
+        // Reload variant data to refresh parent/child relationships
+        if (loadVariants) {
+          await loadVariants()
+        }
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba a szülő termék frissítésekor')
+      }
+    } catch (error) {
+      console.error('Error saving parent product:', error)
+      toast.error('Hiba a szülő termék frissítésekor')
+    } finally {
+      setUpdatingParentProduct(false)
+    }
+  }
+
+  // Handle remove parent product
+  const handleRemoveParentProduct = async () => {
+    // For new products, just update local state
+    if (isNewProduct) {
+      setSelectedParentProductId(null)
+      setSelectedParentProductData(null)
+      toast.success('Szülő termék eltávolítva')
+      return
+    }
+
+    if (!variantData?.parent || !product?.id) return
+    
+    try {
+      setUpdatingParentProduct(true)
+      const response = await fetch(`/api/products/${product.id}/parent-product`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parentProductId: null })
+      })
+      
+      const result = await response.json()
+      if (result.success) {
+        toast.success('Szülő termék eltávolítva')
+        // Reload variant data
+        if (loadVariants) {
+          await loadVariants()
+        }
+        router.refresh()
+      } else {
+        toast.error(result.error || 'Hiba a szülő termék eltávolításakor')
+      }
+    } catch (error) {
+      console.error('Error removing parent product:', error)
+      toast.error('Hiba a szülő termék eltávolításakor')
+    } finally {
+      setUpdatingParentProduct(false)
+    }
+  }
+
+  // Load available categories when modal opens
+  const loadAvailableCategories = async () => {
+    try {
+      setLoadingAvailableCategories(true)
+      const connectionId = isNewProduct 
+        ? selectedConnectionId
+        : ((product as any)?.connection_id)
+      if (!connectionId) {
+        if (isNewProduct) {
+          toast.error('Válasszon kapcsolatot')
+        } else {
+          toast.error('A termékhez nincs kapcsolat rendelve')
+        }
+        return
+      }
+      const response = await fetch(`/api/connections/${connectionId}/categories`)
+      const result = await response.json()
+      
+      if (result.categories) {
+        setAvailableCategories(result.categories)
+      }
+    } catch (error) {
+      console.error('Error loading available categories:', error)
+      toast.error('Hiba a kategóriák betöltésekor')
+    } finally {
+      setLoadingAvailableCategories(false)
+    }
+  }
+
+  // Handle delete category - open modal
+  const handleDeleteCategory = (categoryId: string, categoryName: string) => {
+    setCategoryToDelete({ id: categoryId, name: categoryName })
+    setDeleteCategoryModalOpen(true)
+  }
+
+  // Confirm delete category
+  const handleConfirmDeleteCategory = async () => {
+    if (!categoryToDelete) return
+
+    // For new products, just update local state
+    if (isNewProduct) {
+      setCategories(prev => prev.filter((cat: any) => cat.id !== categoryToDelete.id))
+      setDeleteCategoryModalOpen(false)
+      setCategoryToDelete(null)
+      toast.success('Kategória eltávolítva')
+      return
+    }
+
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
+
+    try {
+      setDeletingCategoryId(categoryToDelete.id)
+      setDeleteCategoryModalOpen(false)
+      
+      const response = await fetch(`/api/products/${product.id}/categories?categoryId=${categoryToDelete.id}`, {
+        method: 'DELETE'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Kategória eltávolítva')
+        // Reload categories
+        await loadCategories()
+      } else {
+        toast.error(result.error || 'Hiba a kategória eltávolításakor')
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+      toast.error('Hiba a kategória eltávolításakor')
+    } finally {
+      setDeletingCategoryId(null)
+      setCategoryToDelete(null)
+    }
+  }
+
+  // Handle open add category modal
+  const handleOpenAddCategoryModal = () => {
+    setAddCategoryModalOpen(true)
+    setSelectedCategoryIds([])
+    setCategorySearchTerm('')
+    loadAvailableCategories()
+  }
+
+  // Handle close add category modal
+  const handleCloseAddCategoryModal = () => {
+    setAddCategoryModalOpen(false)
+    setSelectedCategoryIds([])
+    setCategorySearchTerm('')
+  }
+
+  // Handle toggle category selection
+  const handleToggleCategory = (categoryId: string) => {
+    setSelectedCategoryIds(prev => {
+      if (prev.includes(categoryId)) {
+        return prev.filter(id => id !== categoryId)
+      } else {
+        return [...prev, categoryId]
+      }
+    })
+  }
+
+  // Handle add categories
+  const handleAddCategories = async () => {
+    if (selectedCategoryIds.length === 0) {
+      toast.warning('Válasszon ki legalább egy kategóriát')
+      return
+    }
+
+    // For new products, just update local state
+    if (isNewProduct) {
+      // Fetch category details to add to local state
+      const categoriesToAdd = availableCategories.filter(cat => selectedCategoryIds.includes(cat.id))
+      setCategories(prev => {
+        const existingIds = new Set(prev.map((c: any) => c.id))
+        const newCategories = categoriesToAdd.filter(cat => !existingIds.has(cat.id))
+        return [...prev, ...newCategories]
+      })
+      handleCloseAddCategoryModal()
+      toast.success(`${categoriesToAdd.length} kategória hozzáadva`)
+      return
+    }
+
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/products/${product.id}/categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ categoryIds: selectedCategoryIds })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success(result.message || `${result.added} kategória hozzáadva`)
+        handleCloseAddCategoryModal()
+        // Reload categories
+        await loadCategories()
+      } else {
+        toast.error(result.error || 'Hiba a kategóriák hozzáadásakor')
+      }
+    } catch (error) {
+      console.error('Error adding categories:', error)
+      toast.error('Hiba a kategóriák hozzáadásakor')
+    }
+  }
+
+  // Filter available categories based on search and exclude already assigned
+  const filteredAvailableCategories = availableCategories.filter((cat: any) => {
+    const displayName = cat.displayName || cat.shoprenter_category_descriptions?.[0]?.name || cat.name || ''
+    const matchesSearch = displayName.toLowerCase().includes(categorySearchTerm.toLowerCase()) ||
+                         cat.path?.toLowerCase().includes(categorySearchTerm.toLowerCase())
+    const notAlreadyAssigned = !categories.some(assignedCat => assignedCat.id === cat.id)
+    return matchesSearch && notAlreadyAssigned
+  })
 
   // Calculate quality score
   const handleCalculateQualityScore = async () => {
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
     try {
       setCalculatingQualityScore(true)
       const response = await fetch(`/api/products/${product.id}/quality-score`, {
@@ -868,6 +2133,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   // Generate meta fields
   const handleGenerateMeta = async (field: 'title' | 'keywords' | 'description' | 'all') => {
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
     try {
       const fieldsToGenerate = field === 'all' ? ['title', 'keywords', 'description'] : [field]
       
@@ -928,6 +2197,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   }
 
   const handleGenerateUrlSlug = async () => {
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
     try {
       setGeneratingUrlSlug(true)
       const response = await fetch(`/api/products/${product.id}/url-alias/generate`, {
@@ -966,6 +2239,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   }
 
   const handleGenerateTags = async () => {
+    if (!product?.id) {
+      toast.error('Termék ID hiányzik')
+      return
+    }
     try {
       setGeneratingTags(true)
       const response = await fetch(`/api/products/${product.id}/tags/generate`, {
@@ -1049,6 +2326,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       setGenerating(true)
       setGenerationDialogOpen(false)
 
+      if (!product?.id) return
       const response = await fetch(`/api/products/${product.id}/generate-description`, {
         method: 'POST',
         headers: {
@@ -1126,34 +2404,96 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   return (
     <Box>
+      {/* Connection Selection for New Products */}
+      {isNewProduct && (
+        <Paper elevation={0} sx={{ p: 2.5, mb: 3, border: '1px solid', borderColor: '#2196f3', borderRadius: 2, bgcolor: '#f5f9ff' }}>
+          <FormControl fullWidth>
+            <InputLabel>Kapcsolat *</InputLabel>
+            <Select
+              value={selectedConnectionId}
+              onChange={(e) => setSelectedConnectionId(e.target.value)}
+              label="Kapcsolat *"
+              disabled={loadingConnections}
+              sx={{
+                bgcolor: 'white',
+                '&:hover': {
+                  bgcolor: 'rgba(0, 0, 0, 0.04)'
+                },
+                '&.Mui-focused': {
+                  bgcolor: 'white'
+                }
+              }}
+            >
+              {loadingConnections ? (
+                <MenuItem value="" disabled>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <CircularProgress size={16} />
+                    Betöltés...
+                  </Box>
+                </MenuItem>
+              ) : connections.length === 0 ? (
+                <MenuItem value="" disabled>
+                  Nincs elérhető kapcsolat
+                </MenuItem>
+              ) : (
+                connections.map((connection) => (
+                  <MenuItem key={connection.id} value={connection.id}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <StoreIcon sx={{ fontSize: 20, color: 'primary.main' }} />
+                      <Box>
+                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                          {connection.name || connection.shop_name || 'Névtelen kapcsolat'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {connection.api_url}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+          </FormControl>
+          {!selectedConnectionId && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              Válassza ki a webshop kapcsolatot, amelyhez a terméket hozzá szeretné adni.
+            </Alert>
+          )}
+        </Paper>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3 }}>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="outlined"
-            color="info"
-            startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
-            onClick={handlePullFromShopRenter}
-            disabled={pulling || syncing}
-            title="Frissítés ShopRenter-ből (lekéri a legfrissebb adatokat, pl. attribútum megjelenítési neveket)"
-          >
-            {pulling ? 'Frissítés...' : 'Frissítés ShopRenter-ből'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
-            onClick={handleSyncClick}
-            disabled={syncing || pulling}
-            title="Szinkronizálás ShopRenter-be (elküldi a helyi változtatásokat)"
-          >
-            Szinkronizálás
-          </Button>
+          {!isNewProduct && (
+            <>
+              <Button
+                variant="outlined"
+                color="info"
+                startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
+                onClick={handlePullFromShopRenter}
+                disabled={pulling || syncing}
+                title="Frissítés ShopRenter-ből (lekéri a legfrissebb adatokat, pl. attribútum megjelenítési neveket)"
+              >
+                {pulling ? 'Frissítés...' : 'Frissítés ShopRenter-ből'}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
+                onClick={handleSyncClick}
+                disabled={syncing || pulling}
+                title="Szinkronizálás ShopRenter-be (elküldi a helyi változtatásokat)"
+              >
+                Szinkronizálás
+              </Button>
+            </>
+          )}
           <Button
             variant="contained"
             startIcon={saving ? <CircularProgress size={20} /> : <SaveIcon />}
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || (isNewProduct && !selectedConnectionId)}
           >
-            Mentés
+            {isNewProduct ? 'Létrehozás' : 'Mentés'}
           </Button>
         </Box>
       </Box>
@@ -1223,7 +2563,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   <Grid item xs={12} md={8}>
                     <TextField
                       fullWidth
-                      label="Termék neve"
+                      label="Termék neve *"
                       value={formData.name}
                       onChange={handleInputChange('name')}
                       required
@@ -1243,10 +2583,28 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   <Grid item xs={12} md={4}>
                     <TextField
                       fullWidth
-                      label="Cikkszám (SKU)"
+                      label="Cikkszám (SKU) *"
                       value={productData.sku}
-                      disabled
-                      helperText="A cikkszám nem módosítható"
+                      onChange={(e) => setProductData(prev => ({ ...prev, sku: e.target.value }))}
+                      disabled={!isNewProduct}
+                      required
+                      error={!!skuValidationError}
+                      helperText={
+                        isValidatingSku 
+                          ? "Ellenőrzés..." 
+                          : skuValidationError 
+                            ? skuValidationError 
+                            : isNewProduct 
+                              ? "A cikkszám egyedi kell legyen" 
+                              : "A cikkszám nem módosítható"
+                      }
+                      InputProps={{
+                        endAdornment: isValidatingSku ? (
+                          <InputAdornment position="end">
+                            <CircularProgress size={20} />
+                          </InputAdornment>
+                        ) : null
+                      }}
                       sx={{
                         '& .MuiInputBase-input.Mui-disabled': {
                           WebkitTextFillColor: 'rgba(0, 0, 0, 0.87)',
@@ -1254,7 +2612,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                           fontWeight: 500
                         },
                         '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)'
+                          bgcolor: isNewProduct ? 'rgba(0, 0, 0, 0.02)' : 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: isNewProduct ? 'rgba(0, 0, 0, 0.04)' : undefined
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: isNewProduct ? 'white' : undefined
+                          }
                         }
                       }}
                     />
@@ -1299,11 +2663,198 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       }}
                     />
                   </Grid>
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Gyártó / Márka</InputLabel>
+                      <Select
+                        value={productData.manufacturer_id || ''}
+                        onChange={(e) => {
+                          const manufacturerId = e.target.value as string
+                          const manufacturer = manufacturers.find(m => m.id === manufacturerId)
+                          setProductData(prev => ({
+                            ...prev,
+                            manufacturer_id: manufacturerId || null,
+                            brand: manufacturer?.name || ''
+                          }))
+                        }}
+                        label="Gyártó / Márka"
+                        disabled={loadingManufacturers}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Nincs gyártó</em>
+                        </MenuItem>
+                        {manufacturers.map((manufacturer) => (
+                          <MenuItem key={manufacturer.id} value={manufacturer.id}>
+                            {manufacturer.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Helyőrző"
+                      value=""
+                      disabled
+                      placeholder="Később hozzáadandó mező"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
                 </Grid>
               </Paper>
             </Grid>
+            {/* Product Class Section - Blue Theme */}
+            <Grid item xs={12}>
+              <Paper 
+                elevation={0}
+                sx={{ 
+                  p: 3,
+                  background: 'linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%)',
+                  border: '2px solid',
+                  borderColor: '#2196f3',
+                  borderRadius: 2,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  '&::before': {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    right: 0,
+                    width: '100px',
+                    height: '100px',
+                    background: 'radial-gradient(circle, rgba(33, 150, 243, 0.1) 0%, transparent 70%)',
+                    borderRadius: '50%',
+                    transform: 'translate(30px, -30px)'
+                  }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2, position: 'relative', zIndex: 1 }}>
+                  <Box sx={{ 
+                    p: 1, 
+                    borderRadius: '50%', 
+                    bgcolor: '#2196f3',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
+                  }}>
+                    <LocalOfferIcon sx={{ color: 'white', fontSize: '24px' }} />
+                  </Box>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
+                    Termék típusa
+                  </Typography>
+                </Box>
+                
+                <Box sx={{ position: 'relative', zIndex: 1 }}>
+                  {loadingProductClass ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CircularProgress size={20} />
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        Betöltés...
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Box sx={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap', 
+                        gap: 1.5,
+                        mb: 2
+                      }}>
+                        {productClass ? (
+                          <Chip
+                            label={productClass.name}
+                            size="medium"
+                            icon={updatingProductClass ? <CircularProgress size={16} /> : undefined}
+                            onDelete={updatingProductClass ? undefined : handleOpenProductClassEditModal}
+                            deleteIcon={updatingProductClass ? undefined : <EditIcon fontSize="small" />}
+                            disabled={updatingProductClass}
+                            sx={{ 
+                              height: '36px',
+                              fontSize: '0.875rem',
+                              bgcolor: 'white',
+                              border: '1px solid',
+                              borderColor: '#2196f3',
+                              color: '#1565c0',
+                              fontWeight: 500,
+                              '&:hover': { 
+                                bgcolor: '#e3f2fd',
+                                transform: 'translateY(-2px)',
+                                boxShadow: '0 4px 8px rgba(33, 150, 243, 0.2)',
+                                transition: 'all 0.2s ease',
+                                '& .MuiChip-deleteIcon': {
+                                  opacity: 1
+                                }
+                              },
+                              '& .MuiChip-deleteIcon': {
+                                color: '#1565c0',
+                                fontSize: '16px',
+                                opacity: 0.7,
+                                '&:hover': {
+                                  color: '#0d47a1',
+                                  bgcolor: '#e3f2fd',
+                                  borderRadius: '50%'
+                                },
+                                transition: 'all 0.2s ease'
+                              },
+                              transition: 'all 0.2s ease'
+                            }}
+                          />
+                        ) : (
+                          <Button
+                            startIcon={<AddIcon />}
+                            variant="outlined"
+                            size="small"
+                            onClick={handleOpenProductClassEditModal}
+                            sx={{
+                              height: '36px',
+                              borderColor: '#2196f3',
+                              color: '#1565c0',
+                              fontSize: '0.875rem',
+                              fontWeight: 500,
+                              '&:hover': {
+                                borderColor: '#1976d2',
+                                bgcolor: '#e3f2fd'
+                              },
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            Termék típus hozzáadása
+                          </Button>
+                        )}
+                      </Box>
+                      {productClass && (
+                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block' }}>
+                          A termék típusa meghatározza, hogy mely attribútumok érhetők el a termékhez.
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                </Box>
+              </Paper>
+            </Grid>
+
             {/* Product Attributes Section - Green Theme */}
-            {product.product_attributes && product.product_attributes.length > 0 && (
+            {productClass && (
               <Grid item xs={12}>
                 <Paper 
                   elevation={0}
@@ -1344,7 +2895,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       Attribútumok
                     </Typography>
                     <Chip 
-                      label={product.product_attributes.length} 
+                      label={attributes.length} 
                       size="small" 
                       sx={{ 
                         bgcolor: '#4caf50',
@@ -1361,7 +2912,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     position: 'relative',
                     zIndex: 1
                   }}>
-                  {product.product_attributes.map((attr: any, index: number) => {
+                  {attributes.map((attr: any, index: number) => {
                     // Use display_name (from AttributeDescription) as primary, fallback to name
                     const displayName = attr.display_name || attr.name || 'Ismeretlen'
                     
@@ -1378,33 +2929,73 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
                       // Handle arrays
                       if (Array.isArray(val)) {
+                        // For TEXT attributes from ShopRenter, find the first non-null value
+                        // Priority: Hungarian (language_id ending in 1) > any other language > first available
+                        const hungarianValue = val.find((v: any) => 
+                          v && typeof v === 'object' && 
+                          (v.language?.id === 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' || 
+                           v.language?.id?.endsWith('bGFuZ3VhZ2VfaWQ9MQ==')) &&
+                          v.value && v.value !== null && v.value.trim() !== ''
+                        )
+                        
+                        if (hungarianValue && hungarianValue.value) {
+                          return hungarianValue.value
+                        }
+                        
+                        // Fallback: find first non-null value
+                        const firstValidValue = val.find((v: any) => 
+                          v && typeof v === 'object' && 
+                          v.value && v.value !== null && v.value.trim() !== '' &&
+                          v.value !== 'null' && v.value !== 'undefined'
+                        )
+                        
+                        if (firstValidValue && firstValidValue.value) {
+                          return firstValidValue.value
+                        }
+                        
+                        // Last resort: extract all values and join
                         const extracted = val
-                          .map(v => extractAttributeValue(v))
-                          .filter(v => v !== null && v !== undefined && v !== 'null' && v !== 'undefined')
+                          .map((v: any) => {
+                            if (v && typeof v === 'object' && v.value) {
+                              return v.value
+                            }
+                            return extractAttributeValue(v)
+                          })
+                          .filter((v: any) => v !== null && v !== undefined && v !== 'null' && v !== 'undefined' && v !== '')
                         return extracted.length > 0 ? extracted.join(', ') : null
                       }
 
                       // Handle objects - try multiple strategies
-                      // Strategy 1: Language-specific (Hungarian first)
-                      if (val.hu && typeof val.hu === 'string') {
-                        return val.hu
-                      }
-                      if (val.name && typeof val.name === 'string') {
-                        return val.name
-                      }
-                      if (val.description && typeof val.description === 'string') {
-                        return val.description
-                      }
-                      if (val.value !== undefined && val.value !== null) {
+                      // Strategy 1: Direct value property (for TEXT attributes from ShopRenter)
+                      if (val.value !== undefined && val.value !== null && val.value !== '') {
+                        // Skip if value looks like a UUID/base64 ID
+                        if (typeof val.value === 'string' && !val.value.match(/^[A-Za-z0-9+/=]{20,}$/)) {
+                          return val.value
+                        }
                         const extracted = extractAttributeValue(val.value)
-                        if (extracted !== null) {
+                        if (extracted !== null && !extracted.match(/^[A-Za-z0-9+/=]{20,}$/)) {
                           return extracted
                         }
                       }
+                      
+                      // Strategy 2: Language-specific (Hungarian first)
+                      if (val.hu && typeof val.hu === 'string' && val.hu.trim() !== '') {
+                        return val.hu
+                      }
+                      if (val.name && typeof val.name === 'string' && val.name.trim() !== '') {
+                        return val.name
+                      }
+                      if (val.description && typeof val.description === 'string' && val.description.trim() !== '') {
+                        return val.description
+                      }
 
-                      // Strategy 2: Find first string value in object
+                      // Strategy 3: Find first string value in object (excluding ID-like fields)
                       for (const [key, v] of Object.entries(val)) {
-                        if (typeof v === 'string' && v.trim() !== '') {
+                        // Skip ID fields and href fields
+                        if (key === 'id' || key === 'href' || key === 'language' || key === 'listAttributeValueId') {
+                          continue
+                        }
+                        if (typeof v === 'string' && v.trim() !== '' && !v.match(/^[A-Za-z0-9+/=]{20,}$/)) {
                           return v
                         }
                         if (typeof v === 'number') {
@@ -1412,11 +3003,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         }
                       }
 
-                      // Strategy 3: If object has a single property, use it
-                      const keys = Object.keys(val)
+                      // Strategy 4: If object has a single property, use it (but not if it's an ID)
+                      const keys = Object.keys(val).filter(k => k !== 'id' && k !== 'href' && k !== 'language')
                       if (keys.length === 1) {
                         const extracted = extractAttributeValue(val[keys[0]])
-                        if (extracted !== null) {
+                        if (extracted !== null && !extracted.match(/^[A-Za-z0-9+/=]{20,}$/)) {
                           return extracted
                         }
                       }
@@ -1439,6 +3030,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         key={index}
                         label={`${displayName}: ${displayValue}`}
                         size="small"
+                        onDelete={() => handleDeleteAttribute(attr)}
+                        deleteIcon={<CloseIcon fontSize="small" />}
+                        onClick={() => handleOpenEditAttributeModal(attr)}
                         sx={{ 
                           fontSize: '0.875rem',
                           height: '36px',
@@ -1447,10 +3041,25 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                           borderColor: '#4caf50',
                           color: '#2e7d32',
                           fontWeight: 500,
+                          cursor: 'pointer',
                           '&:hover': {
                             bgcolor: '#e8f5e9',
                             transform: 'translateY(-2px)',
                             boxShadow: '0 4px 8px rgba(76, 175, 80, 0.2)',
+                            transition: 'all 0.2s ease',
+                            '& .MuiChip-deleteIcon': {
+                              opacity: 1
+                            }
+                          },
+                          '& .MuiChip-deleteIcon': {
+                            color: '#2e7d32',
+                            fontSize: '16px',
+                            opacity: 0.7,
+                            '&:hover': {
+                              color: '#1b5e20',
+                              bgcolor: '#e8f5e9',
+                              borderRadius: '50%'
+                            },
                             transition: 'all 0.2s ease'
                           },
                           transition: 'all 0.2s ease'
@@ -1458,13 +3067,50 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       />
                     )
                   })}
+                  {attributes.length === 0 && (
+                    <Typography variant="body2" sx={{ color: 'text.secondary', fontStyle: 'italic', width: '100%' }}>
+                      Nincs hozzárendelt attribútum
+                    </Typography>
+                  )}
+                  <Button
+                    startIcon={<AddIcon />}
+                    variant="outlined"
+                    size="small"
+                    onClick={handleOpenAddAttributeModal}
+                    disabled={!productClass}
+                    sx={{
+                      height: '36px',
+                      borderColor: '#4caf50',
+                      color: '#2e7d32',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      '&:hover': {
+                        borderColor: '#388e3c',
+                        bgcolor: '#e8f5e9'
+                      },
+                      '&.Mui-disabled': {
+                        borderColor: '#a5d6a7',
+                        color: '#81c784'
+                      },
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    Attribútum hozzáadása
+                  </Button>
                   </Box>
+                  {!productClass && (
+                    <Alert severity="info" sx={{ mt: 2, bgcolor: 'white', border: '1px solid', borderColor: '#a5d6a7', position: 'relative', zIndex: 1 }}>
+                      <Typography variant="body2">
+                        A termék típus hozzárendelése szükséges az attribútumok hozzáadásához.
+                      </Typography>
+                    </Alert>
+                  )}
                 </Paper>
               </Grid>
             )}
 
             {/* Product Relationships Section - Purple/Pink Theme */}
-            {!loadingVariants && variantData && (variantData.isParent || variantData.isChild) && (
+            {((isNewProduct || (!loadingVariants && variantData))) && (
               <Grid item xs={12}>
                 <Paper 
                   elevation={0}
@@ -1511,12 +3157,20 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   }}>
                   
                   {/* Parent Product Info - Compact */}
-                  {variantData.isChild && variantData.parent && (
+                  {((isNewProduct && selectedParentProductId) || (variantData?.isChild && variantData?.parent)) && (() => {
+                    // For new products, use stored parent product data
+                    const parentProduct = isNewProduct && selectedParentProductId
+                      ? (selectedParentProductData || availableProducts.find(p => p.id === selectedParentProductId))
+                      : variantData?.parent
+                    
+                    if (!parentProduct) return null
+                    
+                    return (
                     <Box sx={{ 
                       display: 'flex', 
                       alignItems: 'center', 
                       gap: 1.5, 
-                      mb: variantData.isParent ? 2 : 0,
+                      mb: (variantData?.isParent) ? 2 : 0,
                       p: 2,
                       bgcolor: 'white',
                       borderRadius: 1.5,
@@ -1542,7 +3196,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       </Box>
                       <Typography variant="body2" sx={{ fontWeight: 600, color: '#7b1fa2' }}>Szülő:</Typography>
                       <Chip 
-                        label={variantData.parent.sku} 
+                        label={parentProduct.sku} 
                         size="small" 
                         sx={{ 
                           height: '24px', 
@@ -1555,12 +3209,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         }}
                       />
                       <Button
-                        component={NextLink}
-                        href={`/products/${variantData.parent.id}`}
+                        component={isNewProduct ? 'div' : NextLink}
+                        href={isNewProduct ? undefined : `/products/${parentProduct.id}`}
+                        onClick={isNewProduct ? undefined : undefined}
                         size="small"
                         variant="contained"
+                        disabled={isNewProduct}
                         sx={{ 
-                          ml: 'auto', 
                           fontSize: '0.75rem', 
                           minWidth: 'auto', 
                           px: 2,
@@ -1572,11 +3227,86 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       >
                         Megnyitás →
                       </Button>
+                      <Button
+                        startIcon={<EditIcon />}
+                        size="small"
+                        variant="outlined"
+                        onClick={handleOpenParentProductModal}
+                        disabled={updatingParentProduct}
+                        sx={{ 
+                          fontSize: '0.75rem', 
+                          minWidth: 'auto', 
+                          px: 1.5,
+                          borderColor: '#9c27b0',
+                          color: '#7b1fa2',
+                          '&:hover': {
+                            borderColor: '#7b1fa2',
+                            bgcolor: '#f3e5f5'
+                          }
+                        }}
+                      >
+                        Módosítás
+                      </Button>
+                      <Button
+                        startIcon={<CloseIcon />}
+                        size="small"
+                        variant="outlined"
+                        onClick={handleRemoveParentProduct}
+                        disabled={updatingParentProduct}
+                        sx={{ 
+                          fontSize: '0.75rem', 
+                          minWidth: 'auto', 
+                          px: 1.5,
+                          borderColor: '#d32f2f',
+                          color: '#d32f2f',
+                          '&:hover': {
+                            borderColor: '#c62828',
+                            bgcolor: '#ffebee'
+                          }
+                        }}
+                      >
+                        Eltávolítás
+                      </Button>
+                    </Box>
+                    )
+                  })()}
+                  
+                  {/* Add Parent Button - Show if product has no parent and no children */}
+                  {((isNewProduct && !selectedParentProductId) || (!isNewProduct && !variantData || (!variantData?.isChild && !variantData?.isParent))) && (
+                    <Box sx={{ 
+                      p: 2,
+                      bgcolor: 'white',
+                      borderRadius: 1.5,
+                      border: '1px solid',
+                      borderColor: '#ce93d8',
+                      boxShadow: '0 2px 8px rgba(156, 39, 176, 0.1)'
+                    }}>
+                      <Alert severity="info" sx={{ mb: 2, bgcolor: '#f3e5f5', border: '1px solid', borderColor: '#ce93d8' }}>
+                        <Typography variant="body2">
+                          Ez a terméknek nincs szülő terméke, és nincs gyermek terméke sem.
+                        </Typography>
+                      </Alert>
+                      <Button
+                        startIcon={<AddIcon />}
+                        variant="outlined"
+                        size="small"
+                        onClick={handleOpenParentProductModal}
+                        sx={{
+                          borderColor: '#9c27b0',
+                          color: '#7b1fa2',
+                          '&:hover': {
+                            borderColor: '#7b1fa2',
+                            bgcolor: '#f3e5f5'
+                          }
+                        }}
+                      >
+                        Szülő termék hozzáadása
+                      </Button>
                     </Box>
                   )}
                   
                   {/* Child Products Info - Compact Table */}
-                  {variantData.isParent && variantData.children.length > 0 && (
+                  {variantData?.isParent && variantData?.children.length > 0 && (
                     <Box>
                       <Box sx={{ 
                         display: 'flex', 
@@ -1653,7 +3383,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                             </Box>
                           </Box>
                           <Box component="tbody">
-                            {variantData.children.map((child: any) => {
+                            {variantData?.children?.map((child: any) => {
                               // Extract key attributes for compact display
                               const keyAttributes = child.product_attributes && Array.isArray(child.product_attributes)
                                 ? child.product_attributes
@@ -1756,7 +3486,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             )}
 
             {/* Categories Section - Orange Theme */}
-            {!loadingCategories && categories.length > 0 && (
+            {!loadingCategories && (
               <Grid item xs={12}>
                 <Paper 
                   elevation={0}
@@ -1818,12 +3548,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     {categories.map((category: any) => {
                       const catName = category.shoprenter_category_descriptions?.[0]?.name || category.name || 'Kategória'
                       const catUrl = category.category_url
+                      const isDeleting = deletingCategoryId === category.id
                       
                       return (
                         <Chip
                           key={category.id}
                           label={catName}
                           size="small"
+                          onDelete={isDeleting ? undefined : () => handleDeleteCategory(category.id, catName)}
+                          deleteIcon={isDeleting ? <CircularProgress size={16} /> : <CloseIcon fontSize="small" />}
+                          disabled={isDeleting}
                           sx={{ 
                             height: '32px',
                             fontSize: '0.875rem',
@@ -1836,6 +3570,20 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                               bgcolor: '#fff3e0',
                               transform: 'translateY(-2px)',
                               boxShadow: '0 4px 8px rgba(255, 152, 0, 0.2)',
+                              transition: 'all 0.2s ease',
+                              '& .MuiChip-deleteIcon': {
+                                opacity: 1
+                              }
+                            },
+                            '& .MuiChip-deleteIcon': {
+                              color: '#e65100',
+                              fontSize: '16px',
+                              opacity: 0.7,
+                              '&:hover': {
+                                color: '#bf360c',
+                                bgcolor: '#fff3e0',
+                                borderRadius: '50%'
+                              },
                               transition: 'all 0.2s ease'
                             },
                             transition: 'all 0.2s ease'
@@ -1850,6 +3598,26 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         />
                       )
                     })}
+                    <Button
+                      startIcon={<AddIcon />}
+                      variant="outlined"
+                      size="small"
+                      onClick={handleOpenAddCategoryModal}
+                      sx={{
+                        height: '32px',
+                        borderColor: '#ff9800',
+                        color: '#e65100',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        '&:hover': {
+                          borderColor: '#f57c00',
+                          bgcolor: '#fff3e0'
+                        },
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      Kategória hozzáadása
+                    </Button>
                   </Box>
                   
                   {categories.some((cat: any) => !cat.category_url) && (
@@ -1869,14 +3637,6 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     </Alert>
                   )}
                 </Paper>
-              </Grid>
-            )}
-            {!loadingCategories && categories.length === 0 && (
-              <Grid item xs={12}>
-                <Alert severity="warning" sx={{ fontSize: '0.875rem' }}>
-                  Ez a termék nincs kategóriákhoz rendelve. A termék szinkronizálása után a kategóriák automatikusan megjelennek itt.
-                  Az AI generálás csak akkor ad hivatkozásokat, ha a termékhez kategóriák vannak rendelve.
-                </Alert>
               </Grid>
             )}
             {loadingCategories && (
@@ -2755,7 +4515,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     Termékképek
                   </Typography>
                 </Box>
-                <ProductImagesTab productId={product.id} hideBulkActions={true} />
+                {product?.id ? (
+                  <ProductImagesTab productId={product.id} hideBulkActions={true} />
+                ) : (
+                  <Alert severity="info">
+                    A termékképek hozzáadása a termék létrehozása után lehetséges.
+                  </Alert>
+                )}
               </Paper>
             </Grid>
           </Grid>
@@ -2763,7 +4529,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
         <TabPanel value={tabValue} index={3}>
           <FeatureGate feature="ai_generation">
-            <SourceMaterialsTab productId={product.id} />
+            {product?.id ? (
+              <SourceMaterialsTab productId={product.id} />
+            ) : (
+              <Alert severity="info">
+                Az AI források hozzáadása a termék létrehozása után lehetséges.
+              </Alert>
+            )}
           </FeatureGate>
         </TabPanel>
 
@@ -2860,7 +4632,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   </Typography>
                 </Box>
                 <Box sx={{ position: 'relative', zIndex: 1 }}>
-                  <SearchConsoleTab productId={product.id} productUrl={product.product_url} />
+                  {product?.id ? (
+                    <SearchConsoleTab productId={product.id} productUrl={product?.product_url} />
+                  ) : (
+                    <Alert severity="info">
+                      Az elemzési adatok a termék létrehozása után érhetők el.
+                    </Alert>
+                  )}
                 </Box>
               </Paper>
             </Grid>
@@ -2896,12 +4674,18 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   </Typography>
                 </Box>
                 <Box sx={{ position: 'relative', zIndex: 1 }}>
-                  <CompetitorPricesTab 
-                    productId={product.id} 
-                    productPrice={product.price}
-                    productName={formData.name}
-                    modelNumber={productData.model_number}
-                  />
+                  {product?.id ? (
+                    <CompetitorPricesTab 
+                      productId={product.id} 
+                      productPrice={product?.price}
+                      productName={formData.name}
+                      modelNumber={productData.model_number}
+                    />
+                  ) : (
+                    <Alert severity="info">
+                      A versenytárs árak elemzése a termék létrehozása után érhető el.
+                    </Alert>
+                  )}
                 </Box>
               </Paper>
             </Grid>
@@ -3080,6 +4864,971 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               {generating ? 'Generálás...' : 'Generálás'}
             </Button>
           </Tooltip>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Category Modal */}
+      <Dialog
+        open={addCategoryModalOpen}
+        onClose={handleCloseAddCategoryModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#ff9800'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#fff3e0', 
+          borderBottom: '1px solid',
+          borderColor: '#ffb74d',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <CategoryIcon sx={{ color: '#ff9800' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#e65100', fontSize: '1.25rem' }}>
+            Kategória hozzáadása
+    </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <TextField
+            fullWidth
+            placeholder="Keresés kategóriák között..."
+            value={categorySearchTerm}
+            onChange={(e) => setCategorySearchTerm(e.target.value)}
+            size="small"
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: '#ff9800' }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+          
+          {loadingAvailableCategories ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={32} sx={{ color: '#ff9800' }} />
+            </Box>
+          ) : filteredAvailableCategories.length === 0 ? (
+            <Alert severity="info" sx={{ bgcolor: '#fff3e0', border: '1px solid', borderColor: '#ffb74d' }}>
+              {categorySearchTerm 
+                ? 'Nincs találat a keresésre.' 
+                : 'Nincs elérhető kategória, vagy minden kategória már hozzá van rendelve.'}
+            </Alert>
+          ) : (
+            <Box sx={{ 
+              maxHeight: '400px', 
+              overflowY: 'auto',
+              border: '1px solid',
+              borderColor: '#ffb74d',
+              borderRadius: 1,
+              bgcolor: '#fffbf5'
+            }}>
+              <List dense>
+                {filteredAvailableCategories.map((category: any) => {
+                  const displayName = category.displayName || category.shoprenter_category_descriptions?.[0]?.name || category.name || 'Kategória'
+                  const isSelected = selectedCategoryIds.includes(category.id)
+                  const indent = category.level || 0
+                  
+                  return (
+                    <ListItem
+                      key={category.id}
+                      disablePadding
+                      sx={{
+                        pl: `${1 + indent * 2}rem`,
+                        '&:hover': {
+                          bgcolor: '#fff3e0'
+                        }
+                      }}
+                    >
+                      <ListItemButton
+                        onClick={() => handleToggleCategory(category.id)}
+                        sx={{
+                          py: 0.5,
+                          borderRadius: 1
+                        }}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          sx={{
+                            color: '#ff9800',
+                            '&.Mui-checked': {
+                              color: '#e65100'
+                            }
+                          }}
+                        />
+                        <ListItemText
+                          primary={displayName}
+                          secondary={category.path && category.path !== displayName ? category.path : undefined}
+                          primaryTypographyProps={{
+                            sx: {
+                              fontSize: '0.875rem',
+                              fontWeight: isSelected ? 600 : 400,
+                              color: isSelected ? '#e65100' : 'text.primary'
+                            }
+                          }}
+                          secondaryTypographyProps={{
+                            sx: {
+                              fontSize: '0.75rem',
+                              color: 'text.secondary'
+                            }
+                          }}
+                        />
+                      </ListItemButton>
+                    </ListItem>
+                  )
+                })}
+              </List>
+            </Box>
+          )}
+          
+          {selectedCategoryIds.length > 0 && (
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: '#fff3e0', borderRadius: 1, border: '1px solid', borderColor: '#ffb74d' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: '#e65100' }}>
+                Kiválasztva: {selectedCategoryIds.length} kategória
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ 
+          bgcolor: '#fffbf5', 
+          borderTop: '1px solid',
+          borderColor: '#ffb74d',
+          px: 2,
+          py: 1.5
+        }}>
+          <Button 
+            onClick={handleCloseAddCategoryModal}
+            sx={{ 
+              color: '#e65100',
+              '&:hover': {
+                bgcolor: '#fff3e0'
+              }
+            }}
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handleAddCategories}
+            variant="contained"
+            disabled={selectedCategoryIds.length === 0}
+            sx={{
+              bgcolor: '#ff9800',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#f57c00'
+              },
+              '&.Mui-disabled': {
+                bgcolor: '#ffcc80',
+                color: 'rgba(0, 0, 0, 0.26)'
+              }
+            }}
+            startIcon={<AddIcon />}
+          >
+            Hozzáadás ({selectedCategoryIds.length})
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Category Confirmation Modal */}
+      <Dialog
+        open={deleteCategoryModalOpen}
+        onClose={() => {
+          setDeleteCategoryModalOpen(false)
+          setCategoryToDelete(null)
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#ff9800'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#fff3e0', 
+          borderBottom: '1px solid',
+          borderColor: '#ffb74d',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <CategoryIcon sx={{ color: '#ff9800' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#e65100', fontSize: '1.25rem' }}>
+            Kategória eltávolítása
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Alert severity="warning" sx={{ mb: 2, bgcolor: '#fff3e0', border: '1px solid', borderColor: '#ffb74d' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#e65100' }}>
+              Biztosan eltávolítja ezt a kategóriát?
+            </Typography>
+          </Alert>
+          {categoryToDelete && (
+            <Box sx={{ p: 2, bgcolor: '#fffbf5', borderRadius: 1, border: '1px solid', borderColor: '#ffb74d' }}>
+              <Typography variant="body1" sx={{ fontWeight: 600, color: '#e65100', mb: 1 }}>
+                {categoryToDelete.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                A kategória eltávolítása után a termék szinkronizálásakor ez a kategória nem lesz a termékhez rendelve a webshopban.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ 
+          bgcolor: '#fffbf5', 
+          borderTop: '1px solid',
+          borderColor: '#ffb74d',
+          px: 2,
+          py: 1.5
+        }}>
+          <Button 
+            onClick={() => {
+              setDeleteCategoryModalOpen(false)
+              setCategoryToDelete(null)
+            }}
+            sx={{ 
+              color: '#e65100',
+              '&:hover': {
+                bgcolor: '#fff3e0'
+              }
+            }}
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handleConfirmDeleteCategory}
+            variant="contained"
+            disabled={deletingCategoryId !== null}
+            sx={{
+              bgcolor: '#ff9800',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#f57c00'
+              },
+              '&.Mui-disabled': {
+                bgcolor: '#ffcc80',
+                color: 'rgba(0, 0, 0, 0.26)'
+              }
+            }}
+            startIcon={deletingCategoryId ? <CircularProgress size={20} /> : <DeleteIcon />}
+          >
+            {deletingCategoryId ? 'Eltávolítás...' : 'Eltávolítás'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Product Class Edit Modal */}
+      <Dialog
+        open={productClassEditModalOpen}
+        onClose={handleCloseProductClassEditModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#2196f3'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#e3f2fd', 
+          borderBottom: '1px solid',
+          borderColor: '#90caf9',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <LocalOfferIcon sx={{ color: '#2196f3' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1.25rem' }}>
+            Termék típus szerkesztése
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <FormControl fullWidth>
+            <InputLabel id="edit-product-class-label">Termék típusa</InputLabel>
+            <Select
+              labelId="edit-product-class-label"
+              value={selectedProductClassId}
+              label="Termék típusa"
+              onChange={(e) => setSelectedProductClassId(e.target.value)}
+              disabled={loadingAvailableProductClasses}
+            >
+              <MenuItem value="">
+                <em>Nincs hozzárendelt termék típus</em>
+              </MenuItem>
+              {loadingAvailableProductClasses ? (
+                <MenuItem value="" disabled>
+                  <CircularProgress size={16} sx={{ mr: 1 }} />
+                  Betöltés...
+                </MenuItem>
+              ) : availableProductClasses.length === 0 ? (
+                <MenuItem value="" disabled>
+                  Nincs elérhető termék típus
+                </MenuItem>
+              ) : (
+                availableProductClasses.map((pc) => (
+                  <MenuItem key={pc.id} value={pc.id}>
+                    {pc.name}
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseProductClassEditModal}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleConfirmProductClassChange}
+            variant="contained"
+            disabled={selectedProductClassId === productClass?.id}
+            sx={{
+              bgcolor: '#2196f3',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#1976d2'
+              }
+            }}
+          >
+            Mentés
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Product Class Change Confirmation Modal */}
+      <Dialog
+        open={productClassConfirmOpen}
+        onClose={() => {
+          setProductClassConfirmOpen(false)
+          setProductClassToUpdate(null)
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#2196f3'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#e3f2fd', 
+          borderBottom: '1px solid',
+          borderColor: '#90caf9',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <LocalOfferIcon sx={{ color: '#2196f3' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#1565c0', fontSize: '1.25rem' }}>
+            Termék típus megváltoztatása
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Alert severity="warning" sx={{ mb: 2, bgcolor: '#e3f2fd', border: '1px solid', borderColor: '#90caf9' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#1565c0' }}>
+              Biztosan meg szeretné változtatni a termék típusát?
+            </Typography>
+          </Alert>
+          {productClassToUpdate && (
+            <Box sx={{ p: 2, bgcolor: '#f5f9ff', borderRadius: 1, border: '1px solid', borderColor: '#90caf9' }}>
+              <Typography variant="body2" sx={{ mb: 1, color: '#1565c0' }}>
+                <strong>Jelenlegi:</strong> {productClass?.name || 'Nincs'}
+              </Typography>
+              <Typography variant="body2" sx={{ color: '#1565c0' }}>
+                <strong>Új:</strong> {productClassToUpdate.name}
+              </Typography>
+              {productClassToUpdate.willClearAttributes && productClassToUpdate.attributeCount && productClassToUpdate.attributeCount > 0 && (
+                <Alert 
+                  severity="warning" 
+                  sx={{ 
+                    mt: 2, 
+                    bgcolor: '#fff3cd', 
+                    border: '1px solid', 
+                    borderColor: '#ffc107',
+                    '& .MuiAlert-icon': {
+                      color: '#856404'
+                    }
+                  }}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: '#856404', mb: 0.5 }}>
+                    Figyelem: Attribútumok törlése
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: '#856404' }}>
+                    A termék típus megváltoztatása során az összes jelenlegi attribútum ({productClassToUpdate.attributeCount} db) törlődni fog, mivel az új termék típus más attribútumokat tartalmaz. Az attribútumokat később újra hozzáadhatja az új termék típushoz tartozó attribútumok közül.
+                  </Typography>
+                </Alert>
+              )}
+              {!productClassToUpdate.willClearAttributes && (
+                <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+                  A termék típus megváltoztatása befolyásolhatja a meglévő attribútumokat.
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setProductClassConfirmOpen(false)
+            setProductClassToUpdate(null)
+          }}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleProductClassChange}
+            variant="contained"
+            disabled={updatingProductClass}
+            sx={{
+              bgcolor: '#2196f3',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#1976d2'
+              }
+            }}
+            startIcon={updatingProductClass ? <CircularProgress size={20} /> : undefined}
+          >
+            {updatingProductClass ? 'Frissítés...' : 'Megerősítés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Attribute Modal */}
+      <Dialog
+        open={editAttributeModalOpen}
+        onClose={handleCloseEditAttributeModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#4caf50'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#e8f5e9', 
+          borderBottom: '1px solid',
+          borderColor: '#a5d6a7',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <LabelIcon sx={{ color: '#4caf50' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#2e7d32', fontSize: '1.25rem' }}>
+            Attribútum szerkesztése
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {attributeToEdit && (
+            <>
+              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                <strong>{attributeToEdit.display_name || attributeToEdit.name}</strong>
+              </Typography>
+              {attributeToEdit.type === 'LIST' ? (
+                <FormControl fullWidth>
+                  <InputLabel>Érték</InputLabel>
+                  <Select
+                    value={editingAttributeValue || ''}
+                    label="Érték"
+                    onChange={(e) => setEditingAttributeValue(e.target.value)}
+                    disabled={loadingListAttributeValues}
+                  >
+                    {loadingListAttributeValues ? (
+                      <MenuItem value="" disabled>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress size={16} />
+                          Betöltés...
+                        </Box>
+                      </MenuItem>
+                    ) : listAttributeValues.length > 0 ? (
+                      listAttributeValues.map((val) => (
+                        <MenuItem key={val.id} value={val.id || val.valueId}>
+                          {val.displayValue}
+                        </MenuItem>
+                      ))
+                    ) : (
+                      <MenuItem value="" disabled>
+                        Nincs elérhető érték
+                      </MenuItem>
+                    )}
+                  </Select>
+                </FormControl>
+              ) : attributeToEdit.type === 'INTEGER' || attributeToEdit.type === 'FLOAT' ? (
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Érték"
+                  value={editingAttributeValue || ''}
+                  onChange={(e) => setEditingAttributeValue(attributeToEdit.type === 'FLOAT' ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0)}
+                />
+              ) : (
+                <TextField
+                  fullWidth
+                  label="Érték"
+                  value={editingAttributeValue || ''}
+                  onChange={(e) => setEditingAttributeValue(e.target.value)}
+                  multiline
+                  rows={3}
+                />
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditAttributeModal}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleSaveAttributeEdit}
+            variant="contained"
+            sx={{
+              bgcolor: '#4caf50',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#388e3c'
+              }
+            }}
+          >
+            Mentés
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Attribute Confirmation Modal */}
+      <Dialog
+        open={deleteAttributeModalOpen}
+        onClose={() => {
+          setDeleteAttributeModalOpen(false)
+          setAttributeToDelete(null)
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#4caf50'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#e8f5e9', 
+          borderBottom: '1px solid',
+          borderColor: '#a5d6a7',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <LabelIcon sx={{ color: '#4caf50' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#2e7d32', fontSize: '1.25rem' }}>
+            Attribútum eltávolítása
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Alert severity="warning" sx={{ mb: 2, bgcolor: '#e8f5e9', border: '1px solid', borderColor: '#a5d6a7' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, color: '#2e7d32' }}>
+              Biztosan eltávolítja ezt az attribútumot?
+            </Typography>
+          </Alert>
+          {attributeToDelete && (
+            <Box sx={{ p: 2, bgcolor: '#f1f8f4', borderRadius: 1, border: '1px solid', borderColor: '#a5d6a7' }}>
+              <Typography variant="body1" sx={{ fontWeight: 600, color: '#2e7d32', mb: 1 }}>
+                {attributeToDelete.displayName}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Az attribútum eltávolítása után a termék szinkronizálásakor ez az attribútum nem lesz a termékhez rendelve a webshopban.
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setDeleteAttributeModalOpen(false)
+            setAttributeToDelete(null)
+          }}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleConfirmDeleteAttribute}
+            variant="contained"
+            sx={{
+              bgcolor: '#4caf50',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#388e3c'
+              }
+            }}
+            startIcon={<DeleteIcon />}
+          >
+            Eltávolítás
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Attribute Modal */}
+      <Dialog
+        open={addAttributeModalOpen}
+        onClose={handleCloseAddAttributeModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#4caf50'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#e8f5e9', 
+          borderBottom: '1px solid',
+          borderColor: '#a5d6a7',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <LabelIcon sx={{ color: '#4caf50' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#2e7d32', fontSize: '1.25rem' }}>
+            Attribútum hozzáadása
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {loadingAvailableAttributes ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+              <CircularProgress />
+            </Box>
+          ) : availableAttributes.length === 0 ? (
+            <Alert severity="info">
+              Nincs elérhető attribútum a termék típushoz.
+            </Alert>
+          ) : (
+            <>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Attribútum</InputLabel>
+                <Select
+                  value={selectedAttributeToAdd}
+                  label="Attribútum"
+                  onChange={(e) => {
+                    setSelectedAttributeToAdd(e.target.value)
+                    setNewAttributeValue(null)
+                  }}
+                >
+                  {availableAttributes.map((attr) => (
+                    <MenuItem key={attr.id} value={attr.id}>
+                      {attr.name} ({attr.type})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {selectedAttributeToAdd && (() => {
+                const selectedAttr = availableAttributes.find(a => a.id === selectedAttributeToAdd)
+                if (!selectedAttr) return null
+                
+                if (selectedAttr.type === 'LIST') {
+                  return (
+                    <FormControl fullWidth>
+                      <InputLabel>Érték</InputLabel>
+                      <Select
+                        value={newAttributeValue || ''}
+                        label="Érték"
+                        onChange={(e) => setNewAttributeValue(e.target.value)}
+                        disabled={loadingNewListAttributeValues}
+                      >
+                        {loadingNewListAttributeValues ? (
+                          <MenuItem value="" disabled>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <CircularProgress size={16} />
+                              Betöltés...
+                            </Box>
+                          </MenuItem>
+                        ) : newListAttributeValues.length > 0 ? (
+                          [
+                            <MenuItem key="placeholder" value="">Válasszon értéket</MenuItem>,
+                            ...newListAttributeValues.map((val) => (
+                              <MenuItem key={val.id || val.valueId} value={val.id || val.valueId}>
+                                {val.displayValue}
+                              </MenuItem>
+                            ))
+                          ]
+                        ) : (
+                          <MenuItem value="" disabled>
+                            Nincs elérhető érték
+                          </MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
+                  )
+                } else if (selectedAttr.type === 'INTEGER' || selectedAttr.type === 'FLOAT') {
+                  return (
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Érték"
+                      value={newAttributeValue || ''}
+                      onChange={(e) => setNewAttributeValue(selectedAttr.type === 'FLOAT' ? parseFloat(e.target.value) || 0 : parseInt(e.target.value) || 0)}
+                    />
+                  )
+                } else {
+                  return (
+                    <TextField
+                      fullWidth
+                      label="Érték"
+                      value={newAttributeValue || ''}
+                      onChange={(e) => setNewAttributeValue(e.target.value)}
+                      multiline
+                      rows={3}
+                    />
+                  )
+                }
+              })()}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAddAttributeModal}>
+            Mégse
+          </Button>
+          <Button
+            onClick={handleAddAttribute}
+            variant="contained"
+            disabled={!selectedAttributeToAdd || newAttributeValue === null}
+            sx={{
+              bgcolor: '#4caf50',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#388e3c'
+              },
+              '&.Mui-disabled': {
+                bgcolor: '#a5d6a7',
+                color: 'rgba(0, 0, 0, 0.26)'
+              }
+            }}
+            startIcon={<AddIcon />}
+          >
+            Hozzáadás
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Parent Product Selection Modal */}
+      <Dialog
+        open={parentProductModalOpen}
+        onClose={handleCloseParentProductModal}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            border: '2px solid',
+            borderColor: '#9c27b0'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: '#f3e5f5', 
+          borderBottom: '1px solid',
+          borderColor: '#ce93d8',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5
+        }}>
+          <FamilyRestroomIcon sx={{ color: '#9c27b0' }} />
+          <Box component="span" sx={{ fontWeight: 700, color: '#7b1fa2', fontSize: '1.25rem' }}>
+            {variantData?.isChild ? 'Szülő termék módosítása' : 'Szülő termék hozzáadása'}
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <TextField
+            fullWidth
+            placeholder="Keresés termékek között (név, SKU)..."
+            value={parentProductSearchTerm}
+            onChange={(e) => setParentProductSearchTerm(e.target.value)}
+            size="small"
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: '#9c27b0' }} />
+                </InputAdornment>
+              ),
+            }}
+          />
+          
+          {loadingAvailableProducts ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={32} sx={{ color: '#9c27b0' }} />
+            </Box>
+          ) : (
+            <>
+              {availableProducts.length === 0 ? (
+                <Alert severity="info" sx={{ bgcolor: '#f3e5f5', border: '1px solid', borderColor: '#ce93d8' }}>
+                  {parentProductSearchTerm 
+                    ? 'Nincs találat a keresésre.' 
+                    : 'Nincs elérhető termék. (Csak olyan termékek jelennek meg, amelyeknek nincs szülő terméke.)'}
+                </Alert>
+              ) : (
+                <Box sx={{ 
+                  maxHeight: '400px', 
+                  overflowY: 'auto',
+                  border: '1px solid',
+                  borderColor: '#ce93d8',
+                  borderRadius: 1,
+                  bgcolor: '#fafafa'
+                }}>
+                  <RadioGroup
+                    value={selectedParentProductId || ''}
+                    onChange={(e) => {
+                      const productId = e.target.value || null
+                      setSelectedParentProductId(productId)
+                      // Also store the product data
+                      const product = availableProducts.find(p => p.id === productId)
+                      if (product) {
+                        setSelectedParentProductData(product)
+                      } else {
+                        setSelectedParentProductData(null)
+                      }
+                    }}
+                  >
+                    <List dense>
+                      {availableProducts.map((prod: any) => {
+                          const isSelected = selectedParentProductId === prod.id
+                          
+                          return (
+                            <ListItem
+                              key={prod.id}
+                              disablePadding
+                              sx={{
+                                '&:hover': {
+                                  bgcolor: '#f3e5f5'
+                                }
+                              }}
+                            >
+                              <ListItemButton
+                                onClick={() => {
+                                  setSelectedParentProductId(prod.id)
+                                  setSelectedParentProductData(prod) // Store the full product data
+                                }}
+                                sx={{
+                                  py: 0.5,
+                                  borderRadius: 1
+                                }}
+                              >
+                                <FormControlLabel
+                                  value={prod.id}
+                                  control={
+                                    <Radio
+                                      sx={{
+                                        color: '#9c27b0',
+                                        '&.Mui-checked': {
+                                          color: '#7b1fa2'
+                                        }
+                                      }}
+                                    />
+                                  }
+                                  label={
+                                    <ListItemText
+                                      primary={prod.name}
+                                      secondary={`SKU: ${prod.sku}`}
+                                      primaryTypographyProps={{
+                                        sx: {
+                                          fontSize: '0.875rem',
+                                          fontWeight: isSelected ? 600 : 400,
+                                          color: isSelected ? '#7b1fa2' : 'text.primary'
+                                        }
+                                      }}
+                                      secondaryTypographyProps={{
+                                        sx: {
+                                          fontSize: '0.75rem',
+                                          color: 'text.secondary'
+                                        }
+                                      }}
+                                    />
+                                  }
+                                  sx={{ m: 0, width: '100%' }}
+                                />
+                              </ListItemButton>
+                            </ListItem>
+                          )
+                        })}
+                      </List>
+                    </RadioGroup>
+                  </Box>
+              )}
+            </>
+          )}
+          
+          {selectedParentProductId && (
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: '#f3e5f5', borderRadius: 1, border: '1px solid', borderColor: '#ce93d8' }}>
+              <Typography variant="body2" sx={{ fontWeight: 600, color: '#7b1fa2' }}>
+                Kiválasztva: {availableProducts.find((p: any) => p.id === selectedParentProductId)?.name || 'Ismeretlen'}
+              </Typography>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ 
+          bgcolor: '#fafafa', 
+          borderTop: '1px solid',
+          borderColor: '#ce93d8',
+          px: 2,
+          py: 1.5
+        }}>
+          <Button 
+            onClick={handleCloseParentProductModal}
+            sx={{ 
+              color: '#7b1fa2',
+              '&:hover': {
+                bgcolor: '#f3e5f5'
+              }
+            }}
+          >
+            Mégse
+          </Button>
+          {variantData?.isChild && (
+            <Button
+              onClick={async () => {
+                setSelectedParentProductId(null)
+                await handleSaveParentProduct()
+              }}
+              variant="outlined"
+              color="error"
+              disabled={updatingParentProduct}
+              sx={{ mr: 'auto' }}
+            >
+              {updatingParentProduct ? <CircularProgress size={16} /> : 'Szülő termék eltávolítása'}
+            </Button>
+          )}
+          <Button
+            onClick={handleSaveParentProduct}
+            variant="contained"
+            disabled={!selectedParentProductId || updatingParentProduct}
+            sx={{
+              bgcolor: '#9c27b0',
+              color: 'white',
+              '&:hover': {
+                bgcolor: '#7b1fa2'
+              },
+              '&.Mui-disabled': {
+                bgcolor: '#ce93d8',
+                color: 'rgba(0, 0, 0, 0.26)'
+              }
+            }}
+            startIcon={updatingParentProduct ? <CircularProgress size={16} /> : undefined}
+          >
+            {updatingParentProduct ? 'Mentés...' : variantData?.isChild ? 'Módosítás' : 'Hozzáadás'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

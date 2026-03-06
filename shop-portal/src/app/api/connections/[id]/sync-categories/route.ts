@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
-import { updateProgress, clearProgress, shouldStopSync } from '@/lib/sync-progress-store'
+import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 import { getLanguageId, getShopRenterAuthHeader, extractShopNameFromUrl as extractShopNameFromUrlLib } from '@/lib/shoprenter-api'
 
@@ -445,6 +445,10 @@ export async function POST(
     // Get tenant-aware Supabase client - CRITICAL: No fallback to default database
     const supabase = await getTenantSupabase()
 
+    // Get tenant context
+    const tenant = await getTenantFromSession()
+    const tenantId = tenant?.id
+
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
@@ -452,6 +456,23 @@ export async function POST(
         success: false,
         error: 'Authentication failed'
       }, { status: 401 })
+    }
+
+    // Check if category sync is already running for this connection (prevent concurrent syncs)
+    const categoryProgressKey = `categories-${connectionId}`
+    const existingCategoryProgress = getProgress(categoryProgressKey)
+    if (existingCategoryProgress && (existingCategoryProgress.status === 'syncing' || existingCategoryProgress.status === 'starting')) {
+      console.log(`[CATEGORY SYNC] Category sync already running for connection ${connectionId}. Status: ${existingCategoryProgress.status}, Progress: ${existingCategoryProgress.synced}/${existingCategoryProgress.total}`)
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Kategória szinkronizálás már folyamatban van erre a kapcsolatra.',
+        details: `Jelenleg ${existingCategoryProgress.synced}/${existingCategoryProgress.total} kategória szinkronizálva. Kérjük, várja meg a befejezését vagy állítsa le az előző szinkronizálást.`,
+        existingProgress: {
+          synced: existingCategoryProgress.synced,
+          total: existingCategoryProgress.total,
+          status: existingCategoryProgress.status
+        }
+      }, { status: 409 })
     }
 
     // Get connection
@@ -617,7 +638,10 @@ export async function POST(
       connectionId,
       apiUrl,
       authHeader,
-      shopName
+      shopName,
+      tenantId,
+      user.id,
+      user.email || null
     ).catch(error => {
       console.error('[CATEGORY SYNC] Background process error:', error)
     })
@@ -664,12 +688,53 @@ async function processSyncInBackground(
   connectionId: string,
   apiUrl: string,
   authHeader: string,
-  shopName: string
+  shopName: string,
+  tenantId?: string,
+  userId?: string,
+  userEmail?: string | null
 ) {
   const rateLimiter = getShopRenterRateLimiter()
   let syncedCount = 0
   let errorCount = 0
   const errors: string[] = []
+  const syncStartTime = new Date()
+  
+  // Create sync audit log entry
+  let auditLogId: string | null = null
+  try {
+    if (tenantId && userId) {
+      const { data: auditLog, error: auditError } = await supabase
+        .from('sync_audit_logs')
+        .insert({
+          connection_id: connectionId,
+          sync_type: 'category',
+          sync_direction: 'from_shoprenter',
+          user_id: userId,
+          user_email: userEmail,
+          total_products: 0, // Will be updated when we know the total
+          synced_count: 0,
+          error_count: 0,
+          skipped_count: 0,
+          started_at: syncStartTime.toISOString(),
+          status: 'running',
+          metadata: {
+            syncType: 'category',
+            shopName: shopName
+          }
+        })
+        .select()
+        .single()
+
+      if (!auditError && auditLog) {
+        auditLogId = auditLog.id
+        console.log(`[CATEGORY SYNC] Created audit log entry: ${auditLogId}`)
+      } else {
+        console.warn(`[CATEGORY SYNC] Failed to create audit log:`, auditError)
+      }
+    }
+  } catch (auditInitError) {
+    console.warn(`[CATEGORY SYNC] Error creating audit log (non-fatal):`, auditInitError)
+  }
   
   // Get Hungarian language ID for name extraction
   let hungarianLanguageId: string | undefined
@@ -691,6 +756,7 @@ async function processSyncInBackground(
     // Continue without it - fallback logic will handle it
   }
   
+  let allCategoryIds: string[] = []
   try {
     // Step 1: Fetch all category IDs
     console.log('[CATEGORY SYNC] Fetching category IDs...')
@@ -702,7 +768,7 @@ async function processSyncInBackground(
       errors: 0
     })
     
-    const allCategoryIds: string[] = []
+    allCategoryIds = []
     let page = 0
     const limit = 200
     
@@ -773,6 +839,14 @@ async function processSyncInBackground(
     }
     
     console.log(`[CATEGORY SYNC] Found ${allCategoryIds.length} categories`)
+    
+    // Update audit log with total count
+    if (auditLogId) {
+      await supabase
+        .from('sync_audit_logs')
+        .update({ total_products: allCategoryIds.length })
+        .eq('id', auditLogId)
+    }
     
     updateProgress(`categories-${connectionId}`, {
       total: allCategoryIds.length,
@@ -927,15 +1001,25 @@ async function processSyncInBackground(
           syncedCount++
           console.log(`[CATEGORY SYNC] Successfully synced category ${category.id}`)
           
+          // Update progress immediately after each category (for real-time UI updates)
+          incrementProgress(`categories-${connectionId}`, {
+            synced: 1
+          })
+          
         } catch (error: any) {
           errorCount++
           const errorMessage = `Category ${categoryId}: ${error.message || 'Unknown error'}`
           errors.push(errorMessage)
           console.error(`[CATEGORY SYNC] ${errorMessage}`, error)
+          
+          // Update progress for errors too
+          incrementProgress(`categories-${connectionId}`, {
+            errors: 1
+          })
         }
       }
       
-      // Update progress
+      // Also update progress after batch (to ensure consistency)
       updateProgress(`categories-${connectionId}`, {
         synced: syncedCount,
         current: syncedCount + errorCount,
@@ -971,6 +1055,25 @@ async function processSyncInBackground(
       console.error(`[CATEGORY SYNC] First 10 errors:`, errors.slice(0, 10))
     }
     
+    // Update audit log on completion
+    if (auditLogId) {
+      const syncEndTime = new Date()
+      const durationSeconds = Math.floor((syncEndTime.getTime() - syncStartTime.getTime()) / 1000)
+      
+      await supabase
+        .from('sync_audit_logs')
+        .update({
+          synced_count: syncedCount,
+          error_count: errorCount,
+          total_products: allCategoryIds.length,
+          status: 'completed',
+          completed_at: syncEndTime.toISOString(),
+          duration_seconds: durationSeconds,
+          error_message: errors.length > 0 ? errors.slice(0, 500).join('; ') : null
+        })
+        .eq('id', auditLogId)
+    }
+    
   } catch (error: any) {
     console.error('[CATEGORY SYNC] Background process error:', error)
     updateProgress(`categories-${connectionId}`, {
@@ -979,5 +1082,24 @@ async function processSyncInBackground(
       synced: syncedCount,
       current: syncedCount + errorCount
     })
+    
+    // Update audit log on error
+    if (auditLogId) {
+      const syncEndTime = new Date()
+      const durationSeconds = Math.floor((syncEndTime.getTime() - syncStartTime.getTime()) / 1000)
+      
+      await supabase
+        .from('sync_audit_logs')
+        .update({
+          synced_count: syncedCount,
+          error_count: errorCount,
+          total_products: allCategoryIds.length || 0,
+          status: 'error',
+          completed_at: syncEndTime.toISOString(),
+          duration_seconds: durationSeconds,
+          error_message: error.message || 'Unknown error'
+        })
+        .eq('id', auditLogId)
+    }
   }
 }

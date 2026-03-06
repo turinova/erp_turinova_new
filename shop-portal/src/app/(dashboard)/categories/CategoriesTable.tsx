@@ -105,7 +105,7 @@ export default function CategoriesTable({
       } else {
         rootCategories.push(node)
       }
-    })
+  })
 
     // Sort children by sort_order or name
     const sortChildren = (nodes: CategoryTreeNode[]) => {
@@ -233,20 +233,20 @@ export default function CategoriesTable({
           Kategóriák kezelése
         </Typography>
         {shoprenterConnections.length > 0 && (
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Kapcsolat</InputLabel>
-            <Select
-              value={selectedConnectionId}
-              label="Kapcsolat"
-              onChange={(e) => handleConnectionChange(e.target.value)}
-            >
-              {shoprenterConnections.map(conn => (
-                <MenuItem key={conn.id} value={conn.id}>
-                  {conn.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+            <FormControl size="small" sx={{ minWidth: 200 }}>
+              <InputLabel>Kapcsolat</InputLabel>
+              <Select
+                value={selectedConnectionId}
+                label="Kapcsolat"
+                onChange={(e) => handleConnectionChange(e.target.value)}
+              >
+                {shoprenterConnections.map(conn => (
+                  <MenuItem key={conn.id} value={conn.id}>
+                    {conn.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
         )}
       </Box>
 
@@ -357,8 +357,8 @@ export default function CategoriesTable({
                             color: category.level === 0 ? 'text.primary' : 'text.secondary'
                           }}
                         >
-                          {categoryName}
-                        </Typography>
+                        {categoryName}
+                      </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>

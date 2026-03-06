@@ -469,7 +469,9 @@ CREATE TABLE IF NOT EXISTS public.shoprenter_products (
   status INTEGER DEFAULT 1, -- 1=active, 0=inactive
   
   -- Sync Metadata
-  last_synced_at TIMESTAMP WITH TIME ZONE,
+  last_synced_at TIMESTAMP WITH TIME ZONE, -- DEPRECATED: Use last_synced_from_shoprenter_at instead (kept for backward compatibility)
+  last_synced_from_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced FROM ShopRenter (pulled into ERP)
+  last_synced_to_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced TO ShopRenter (pushed from ERP)
   sync_status TEXT DEFAULT 'pending', -- 'synced', 'pending', 'error'
   sync_error TEXT,
   
@@ -511,6 +513,12 @@ CREATE INDEX IF NOT EXISTS idx_products_connection ON public.shoprenter_products
 CREATE INDEX IF NOT EXISTS idx_products_sku ON public.shoprenter_products(sku);
 CREATE INDEX IF NOT EXISTS idx_products_status ON public.shoprenter_products(status);
 CREATE INDEX IF NOT EXISTS idx_products_sync_status ON public.shoprenter_products(sync_status);
+CREATE INDEX IF NOT EXISTS idx_products_last_synced_from 
+  ON public.shoprenter_products(last_synced_from_shoprenter_at) 
+  WHERE last_synced_from_shoprenter_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_products_last_synced_to 
+  ON public.shoprenter_products(last_synced_to_shoprenter_at) 
+  WHERE last_synced_to_shoprenter_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_descriptions_product ON public.shoprenter_product_descriptions(product_id);
 CREATE INDEX IF NOT EXISTS idx_descriptions_language ON public.shoprenter_product_descriptions(language_code);
 
@@ -2563,7 +2571,9 @@ CREATE TABLE IF NOT EXISTS public.product_images (
   alt_text_synced_at TIMESTAMP WITH TIME ZONE,
   
   -- Metadata
-  last_synced_at TIMESTAMP WITH TIME ZONE,
+  last_synced_at TIMESTAMP WITH TIME ZONE, -- DEPRECATED: Use last_synced_from_shoprenter_at instead (kept for backward compatibility)
+  last_synced_from_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced FROM ShopRenter (pulled into ERP)
+  last_synced_to_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced TO ShopRenter (pushed from ERP)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
@@ -2944,6 +2954,25 @@ COMMENT ON COLUMN public.shoprenter_products.brand IS 'Product brand/manufacture
 
 
 -- =============================================================================
+-- Migration: 20250313_add_manufacturer_id.sql
+-- =============================================================================
+
+-- Add manufacturer_id column to shoprenter_products table
+-- This stores the ShopRenter manufacturer ID for syncing back
+
+ALTER TABLE public.shoprenter_products 
+  ADD COLUMN IF NOT EXISTS manufacturer_id TEXT;
+
+-- Add index for manufacturer_id searches
+CREATE INDEX IF NOT EXISTS idx_shoprenter_products_manufacturer_id 
+  ON public.shoprenter_products(manufacturer_id) 
+  WHERE manufacturer_id IS NOT NULL;
+
+-- Comment on new column
+COMMENT ON COLUMN public.shoprenter_products.manufacturer_id IS 'ShopRenter manufacturer resource ID (for syncing manufacturer back to ShopRenter)';
+
+
+-- =============================================================================
 -- Migration: 20250303_allow_anon_read_products_for_api.sql
 -- =============================================================================
 
@@ -3073,7 +3102,9 @@ CREATE TABLE IF NOT EXISTS public.shoprenter_categories (
   -- Sync tracking
   sync_status TEXT DEFAULT 'pending', -- pending, synced, error
   sync_error TEXT,
-  last_synced_at TIMESTAMP WITH TIME ZONE,
+  last_synced_at TIMESTAMP WITH TIME ZONE, -- DEPRECATED: Use last_synced_from_shoprenter_at instead (kept for backward compatibility)
+  last_synced_from_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced FROM ShopRenter (pulled into ERP)
+  last_synced_to_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced TO ShopRenter (pushed from ERP)
   date_created TIMESTAMP WITH TIME ZONE,
   date_updated TIMESTAMP WITH TIME ZONE,
   
@@ -3318,6 +3349,186 @@ GRANT SELECT, INSERT ON public.category_description_generations TO authenticated
 INSERT INTO public.pages (path, name, description, category) VALUES
   ('/categories', 'Kategóriák', 'ShopRenter kategóriák kezelése', 'Törzsadatok')
 ON CONFLICT (path) DO NOTHING;
+
+
+-- =============================================================================
+-- Migration: 20250311_create_product_classes_tables.sql
+-- =============================================================================
+
+-- Product Classes Sync - Database Schema
+-- Creates tables for ShopRenter Product Classes and their attribute relations
+-- Similar to categories sync pattern
+
+-- Product Classes table
+CREATE TABLE IF NOT EXISTS public.shoprenter_product_classes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  connection_id UUID NOT NULL REFERENCES public.webshop_connections(id) ON DELETE CASCADE,
+  
+  -- ShopRenter identifiers
+  shoprenter_id TEXT NOT NULL, -- Base64 encoded Product Class ID from ShopRenter
+  shoprenter_inner_id TEXT, -- Inner ID (numeric)
+  
+  -- Product Class data
+  name TEXT NOT NULL,
+  description TEXT,
+  
+  -- Variant configuration (for product variants)
+  first_variant_select_type TEXT, -- SELECT, RADIO, etc.
+  second_variant_select_type TEXT,
+  first_variant_parameter_shoprenter_id TEXT, -- Attribute ID for first variant
+  second_variant_parameter_shoprenter_id TEXT, -- Attribute ID for second variant
+  
+  -- Sync tracking
+  sync_status TEXT DEFAULT 'pending', -- pending, synced, error
+  sync_error TEXT,
+  last_synced_from_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced FROM ShopRenter (pulled into ERP)
+  last_synced_to_shoprenter_at TIMESTAMP WITH TIME ZONE, -- When last synced TO ShopRenter (pushed from ERP)
+  date_created TIMESTAMP WITH TIME ZONE,
+  date_updated TIMESTAMP WITH TIME ZONE,
+  
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  deleted_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Constraints
+  UNIQUE(connection_id, shoprenter_id)
+);
+
+-- Indexes for Product Classes
+CREATE INDEX IF NOT EXISTS idx_product_classes_connection 
+  ON public.shoprenter_product_classes(connection_id);
+CREATE INDEX IF NOT EXISTS idx_product_classes_shoprenter_id 
+  ON public.shoprenter_product_classes(shoprenter_id);
+CREATE INDEX IF NOT EXISTS idx_product_classes_name 
+  ON public.shoprenter_product_classes(name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_product_classes_sync_status 
+  ON public.shoprenter_product_classes(sync_status) WHERE deleted_at IS NULL;
+
+-- Product Class - Attribute Relations table
+-- Stores which attributes belong to which Product Class
+CREATE TABLE IF NOT EXISTS public.shoprenter_product_class_attribute_relations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  connection_id UUID NOT NULL REFERENCES public.webshop_connections(id) ON DELETE CASCADE,
+  
+  -- ShopRenter identifiers
+  shoprenter_id TEXT NOT NULL, -- Base64 encoded relation ID from ShopRenter
+  
+  -- Relations
+  product_class_id UUID NOT NULL REFERENCES public.shoprenter_product_classes(id) ON DELETE CASCADE,
+  attribute_shoprenter_id TEXT NOT NULL, -- ShopRenter attribute ID
+  attribute_type TEXT NOT NULL, -- LIST, INTEGER, FLOAT, TEXT
+  attribute_name TEXT, -- Internal name (e.g., "meret", "szin")
+  
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  deleted_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Constraints
+  UNIQUE(connection_id, shoprenter_id),
+  UNIQUE(product_class_id, attribute_shoprenter_id)
+);
+
+-- Indexes for Product Class - Attribute Relations
+CREATE INDEX IF NOT EXISTS idx_product_class_attr_relations_class 
+  ON public.shoprenter_product_class_attribute_relations(product_class_id);
+CREATE INDEX IF NOT EXISTS idx_product_class_attr_relations_connection 
+  ON public.shoprenter_product_class_attribute_relations(connection_id);
+CREATE INDEX IF NOT EXISTS idx_product_class_attr_relations_attribute 
+  ON public.shoprenter_product_class_attribute_relations(attribute_shoprenter_id);
+
+-- Comments
+COMMENT ON TABLE public.shoprenter_product_classes IS 
+'ShopRenter Product Classes (Product Types) synced from ShopRenter API. Product Classes define which attributes are available for products.';
+
+COMMENT ON TABLE public.shoprenter_product_class_attribute_relations IS 
+'Relations between Product Classes and Attributes. Defines which attributes belong to which Product Class.';
+
+COMMENT ON COLUMN public.shoprenter_product_classes.shoprenter_id IS 
+'Base64 encoded Product Class ID from ShopRenter API (e.g., cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9MTQ=)';
+
+COMMENT ON COLUMN public.shoprenter_product_classes.name IS 
+'Product Class name (e.g., "Fiók", "Csavar", "Szobanövény")';
+
+COMMENT ON COLUMN public.shoprenter_product_classes.first_variant_parameter_shoprenter_id IS 
+'ShopRenter attribute ID used for first variant parameter (for product variants)';
+
+COMMENT ON COLUMN public.shoprenter_product_class_attribute_relations.attribute_shoprenter_id IS 
+'ShopRenter attribute ID (base64 encoded)';
+
+COMMENT ON COLUMN public.shoprenter_product_class_attribute_relations.attribute_type IS 
+'Attribute type: LIST, INTEGER, FLOAT, or TEXT';
+
+-- Enable RLS
+ALTER TABLE public.shoprenter_product_classes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shoprenter_product_class_attribute_relations ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies: All authenticated users can view Product Classes
+CREATE POLICY "Product Classes are viewable by authenticated users" 
+  ON public.shoprenter_product_classes
+  FOR SELECT
+  TO authenticated
+  USING (deleted_at IS NULL);
+
+-- RLS Policies: All authenticated users can view Product Class - Attribute Relations
+CREATE POLICY "Product Class Attribute Relations are viewable by authenticated users" 
+  ON public.shoprenter_product_class_attribute_relations
+  FOR SELECT
+  TO authenticated
+  USING (deleted_at IS NULL);
+
+-- RLS Policies: Only authorized users can manage Product Classes (same as products/categories)
+CREATE POLICY "Only authorized users can manage Product Classes" 
+  ON public.shoprenter_product_classes
+  FOR ALL
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_permissions up
+      JOIN public.pages p ON up.page_id = p.id
+      WHERE up.user_id = auth.uid() 
+      AND p.path = '/products' 
+      AND up.can_access = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_permissions up
+      JOIN public.pages p ON up.page_id = p.id
+      WHERE up.user_id = auth.uid() 
+      AND p.path = '/products' 
+      AND up.can_access = true
+    )
+  );
+
+-- RLS Policies: Only authorized users can manage Product Class - Attribute Relations
+CREATE POLICY "Only authorized users can manage Product Class Attribute Relations" 
+  ON public.shoprenter_product_class_attribute_relations
+  FOR ALL
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_permissions up
+      JOIN public.pages p ON up.page_id = p.id
+      WHERE up.user_id = auth.uid() 
+      AND p.path = '/products' 
+      AND up.can_access = true
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_permissions up
+      JOIN public.pages p ON up.page_id = p.id
+      WHERE up.user_id = auth.uid() 
+      AND p.path = '/products' 
+      AND up.can_access = true
+    )
+  );
+
+-- Grant necessary permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.shoprenter_product_classes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.shoprenter_product_class_attribute_relations TO authenticated;
 
 
 -- =============================================================================
@@ -3600,3 +3811,39 @@ COMMENT ON TABLE public.sync_audit_logs IS 'Audit log for all sync operations (f
 COMMENT ON COLUMN public.sync_audit_logs.sync_type IS 'Type of sync: full, incremental, single_product, bulk';
 COMMENT ON COLUMN public.sync_audit_logs.sync_direction IS 'Direction: from_shoprenter (pull) or to_shoprenter (push)';
 COMMENT ON COLUMN public.sync_audit_logs.metadata IS 'Additional sync metadata: {forceSync: true, batchSize: 200, etc.}';
+
+-- =============================================================================
+-- Migration: 20250310_add_sync_direction_tracking.sql
+-- =============================================================================
+
+-- Add separate sync direction tracking fields
+-- This allows us to track when we last synced FROM ShopRenter vs TO ShopRenter
+-- This prevents overwriting ERP changes that were just synced to ShopRenter
+
+ALTER TABLE public.shoprenter_products
+ADD COLUMN IF NOT EXISTS last_synced_from_shoprenter_at TIMESTAMP WITH TIME ZONE,
+ADD COLUMN IF NOT EXISTS last_synced_to_shoprenter_at TIMESTAMP WITH TIME ZONE;
+
+-- Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_products_last_synced_from 
+  ON public.shoprenter_products(last_synced_from_shoprenter_at) 
+  WHERE last_synced_from_shoprenter_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_products_last_synced_to 
+  ON public.shoprenter_products(last_synced_to_shoprenter_at) 
+  WHERE last_synced_to_shoprenter_at IS NOT NULL;
+
+-- Migrate existing data (for backward compatibility)
+-- Set last_synced_from_shoprenter_at = last_synced_at for existing records
+-- This assumes existing last_synced_at values are from FROM syncs
+UPDATE public.shoprenter_products
+SET last_synced_from_shoprenter_at = last_synced_at
+WHERE last_synced_at IS NOT NULL 
+  AND last_synced_from_shoprenter_at IS NULL;
+
+-- Add comments for documentation
+COMMENT ON COLUMN public.shoprenter_products.last_synced_from_shoprenter_at IS 
+'Timestamp when product was last synced FROM ShopRenter (pulled into ERP). Used for incremental sync logic to determine if ShopRenter has new changes.';
+
+COMMENT ON COLUMN public.shoprenter_products.last_synced_to_shoprenter_at IS 
+'Timestamp when product was last synced TO ShopRenter (pushed from ERP). Used to prevent overwriting ERP changes that were just synced to ShopRenter.';

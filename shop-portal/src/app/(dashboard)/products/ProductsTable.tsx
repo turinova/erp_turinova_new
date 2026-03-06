@@ -45,7 +45,10 @@ import {
   Assessment as AssessmentIcon,
   Image as ImageIcon,
   Close as CloseIcon,
-  FileDownload as FileDownloadIcon
+  FileDownload as FileDownloadIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Restore as RestoreIcon
 } from '@mui/icons-material'
 import { Avatar, IconButton } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -135,6 +138,11 @@ export default function ProductsTable({
   // Bulk sync to ShopRenter state
   const [isSyncingToShopRenter, setIsSyncingToShopRenter] = useState(false)
   const [shopRenterSyncToProgress, setShopRenterSyncToProgress] = useState({ current: 0, total: 0 })
+
+  // Delete state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [productToDelete, setProductToDelete] = useState<{ id: string; sku: string; name: string; hasChildren: boolean; childCount: number } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Export state - default all fields checked
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
@@ -1052,6 +1060,103 @@ export default function ProductsTable({
     router.push(`/products/${productId}`)
   }
 
+  // Handle bulk delete button click - open confirmation dialog
+  const handleBulkDeleteClick = () => {
+    if (selectedIds.size === 0) return
+
+    // Get selected products
+    const selectedProducts = displayProducts.filter(p => selectedIds.has(p.id))
+    
+    // Check which products have children
+    let totalChildCount = 0
+    const productsWithChildren = selectedProducts.filter(p => {
+      const hasChildren = parentProductIds.has(p.id)
+      if (hasChildren) {
+        const childCount = displayProducts.filter(child => child.parent_product_id === p.id).length
+        totalChildCount += childCount
+        return true
+      }
+      return false
+    })
+
+    setProductToDelete({
+      id: '', // Not used for bulk delete
+      sku: `${selectedProducts.length} termék`,
+      name: `${selectedProducts.length} termék`,
+      hasChildren: productsWithChildren.length > 0,
+      childCount: totalChildCount
+    })
+    setDeleteDialogOpen(true)
+  }
+
+  // Handle delete confirmation (bulk delete)
+  const handleConfirmDelete = async () => {
+    if (selectedIds.size === 0) return
+
+    setIsDeleting(true)
+    try {
+      const selectedProductIds = Array.from(selectedIds)
+      let successCount = 0
+      let errorCount = 0
+      let totalDisabledChildren = 0
+
+      // Delete each product sequentially
+      for (const productId of selectedProductIds) {
+        try {
+          const response = await fetch(`/api/products/${productId}`, {
+            method: 'DELETE'
+          })
+
+          const data = await response.json()
+
+          if (!response.ok) {
+            console.error(`Failed to delete product ${productId}:`, data.error)
+            errorCount++
+            continue
+          }
+
+          successCount++
+          
+          // Count disabled children
+          if (data.disabledChildren && data.disabledChildren.length > 0) {
+            totalDisabledChildren += data.disabledChildren.length
+          }
+
+          // Remove product from local state
+          setProducts(prev => prev.filter(p => p.id !== productId))
+          setSearchResults(prev => prev.filter(p => p.id !== productId))
+        } catch (error) {
+          console.error(`Error deleting product ${productId}:`, error)
+          errorCount++
+        }
+      }
+
+      // Clear selection
+      setSelectedIds(new Set())
+
+      // Show result message
+      if (successCount > 0) {
+        const message = totalDisabledChildren > 0
+          ? `${successCount} termék törölve. ${totalDisabledChildren} variáns is letiltva.`
+          : `${successCount} termék törölve.`
+        toast.success(message)
+      }
+
+      if (errorCount > 0) {
+        toast.error(`${errorCount} termék törlése sikertelen`)
+      }
+
+      setDeleteDialogOpen(false)
+      setProductToDelete(null)
+    } catch (error) {
+      console.error('Error in bulk delete:', error)
+      toast.error('Hiba a termékek törlésekor')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+
   // Handle image click - open modal (stops propagation to prevent row click)
   const handleImageClick = (e: React.MouseEvent, imageUrl: string, productName: string) => {
     e.stopPropagation() // Prevent row click navigation
@@ -1155,27 +1260,26 @@ export default function ProductsTable({
 
   return (
     <Box>
-      {/* Search Bar */}
-      <TextField
-        fullWidth
-        size="small"
-        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján..."
-        value={searchTerm}
-        onChange={(e) => handleSearchChange(e.target.value)}
-        onKeyPress={handleSearchKeyPress}
-        disabled={isSearching || isLoading}
-        sx={{ mt: 2, mb: 1.5 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              {isSearching ? <CircularProgress size={18} /> : <SearchIcon fontSize="small" />}
-            </InputAdornment>
-          ),
-        }}
-      />
-
-      {/* Export button - always visible */}
-      <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-end' }}>
+      {/* Action buttons - above search bar */}
+      <Box sx={{ mt: 2, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
+        <Button
+          variant="contained"
+          size="medium"
+          color="primary"
+          startIcon={<AddIcon />}
+          onClick={() => router.push('/products/new')}
+          sx={{
+            fontWeight: 600,
+            px: 3,
+            boxShadow: 2,
+            textTransform: 'uppercase',
+            '&:hover': {
+              boxShadow: 4
+            }
+          }}
+        >
+          + ÚJ TERMÉK
+        </Button>
         <Button
           variant="outlined"
           size="medium"
@@ -1196,12 +1300,49 @@ export default function ProductsTable({
         </Button>
       </Box>
 
+      {/* Search Bar */}
+      <TextField
+        fullWidth
+        size="small"
+        placeholder="Keresés név, SKU, gyártói cikkszám vagy GTIN alapján..."
+        value={searchTerm}
+        onChange={(e) => handleSearchChange(e.target.value)}
+        onKeyPress={handleSearchKeyPress}
+        disabled={isSearching || isLoading}
+        sx={{ mb: 1.5 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              {isSearching ? <CircularProgress size={18} /> : <SearchIcon fontSize="small" />}
+            </InputAdornment>
+          ),
+        }}
+      />
+
       {/* Selected count indicator and actions */}
       {selectedIds.size > 0 && (
         <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
           <Typography variant="body2" color="primary" sx={{ fontWeight: 600 }}>
             {selectedIds.size} termék kiválasztva
           </Typography>
+          <Button
+            variant="contained"
+            size="medium"
+            color="error"
+            startIcon={isDeleting ? <CircularProgress size={18} color="inherit" /> : <DeleteIcon />}
+            onClick={handleBulkDeleteClick}
+            disabled={isDeleting}
+            sx={{
+              fontWeight: 600,
+              px: 3,
+              boxShadow: 2,
+              '&:hover': {
+                boxShadow: 4
+              }
+            }}
+          >
+            {isDeleting ? 'Törlés...' : `Törlés (${selectedIds.size})`}
+          </Button>
           <Button
             variant="contained"
             size="medium"
@@ -1430,6 +1571,58 @@ export default function ProductsTable({
           </TableBody>
         </Table>
       </TableContainer>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => !isDeleting && setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Termék törlése
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            <Typography variant="body2" component="div" sx={{ mb: 2 }}>
+              Biztosan törölni szeretné a kiválasztott {selectedIds.size} terméket?
+            </Typography>
+            {productToDelete?.hasChildren && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                <Typography variant="body2" fontWeight={600} component="div">
+                  Figyelem: A kiválasztott termékek közül {productToDelete.childCount} variáns is törlésre kerül.
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1 }} component="div">
+                  A törlés során az összes variáns is törlésre kerül és letiltásra kerül ShopRenter-ben.
+                </Typography>
+              </Alert>
+            )}
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2" component="div">
+                A termékek törlése után letiltásra kerülnek ShopRenter-ben (status = 0), de a művelet visszavonható.
+              </Typography>
+            </Alert>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setDeleteDialogOpen(false)}
+            disabled={isDeleting}
+            color="inherit"
+          >
+            Mégse
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}
+            color="error"
+            variant="contained"
+            startIcon={isDeleting ? <CircularProgress size={16} /> : <DeleteIcon />}
+          >
+            {isDeleting ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Pagination Controls */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 2 }}>
@@ -1730,6 +1923,7 @@ export default function ProductsTable({
           </Button>
         </DialogActions>
       </Dialog>
+
     </Box>
   )
 }

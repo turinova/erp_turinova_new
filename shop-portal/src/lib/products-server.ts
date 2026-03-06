@@ -34,6 +34,7 @@ export interface ShopRenterProduct {
     type: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
     name: string // Internal identifier (e.g., "meret", "szin")
     display_name?: string | null // Display name from AttributeDescription (e.g., "Méret", "Szín") - PRIMARY for display
+    group_name?: string | null // Group name from AttributeWidgetDescription (e.g., "Fiók", "Méret", "Szín") - NEW
     prefix?: string | null // Text before value
     postfix?: string | null // Text after value
     value: any // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)

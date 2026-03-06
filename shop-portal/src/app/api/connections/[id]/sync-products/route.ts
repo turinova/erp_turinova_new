@@ -5,6 +5,7 @@ import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
 import { extractImagesFromProductExtend, fetchProductImages } from '@/lib/shoprenter-image-service'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
+import { retryWithBackoff } from '@/lib/retry-with-backoff'
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -144,19 +145,114 @@ export async function batchFetchAttributeDescriptions(
           
           if (statusCode >= 200 && statusCode < 300) {
             const data = batchItem.response?.body
-            const items = data?.items || data?.response?.items || []
+            // Log the raw response structure for debugging
+            console.log(`[SYNC] Batch AttributeDescription response for ${attrReq.attributeId} (type: ${attrReq.attributeType}):`, JSON.stringify(data, null, 2).substring(0, 500))
             
-            if (items.length > 0) {
-              const desc = items[0]
+            // Handle different response structures from batch API
+            // The response can be:
+            // 1. Direct object with items array: { items: [...] }
+            // 2. Nested response: { response: { items: [...] } }
+            // 3. Direct description object (if full=1): { name: "...", prefix: "...", postfix: "..." }
+            // 4. Pagination object with first.href (no items): { href: "...", first: { href: "..." }, ... }
+            let items = data?.items || data?.response?.items || []
+            
+            // If data itself is a description object (full=1 might return single object)
+            if (!items.length && data && (data.name || data.id)) {
+              // This is a single description object, not an array
+              const desc = data
               results.set(attrReq.attributeId, {
                 display_name: desc.name || null,
                 prefix: desc.prefix || null,
                 postfix: desc.postfix || null
               })
+              console.log(`[SYNC] Batch AttributeDescription (single object) for ${attrReq.attributeId}: name="${desc.name}", prefix="${desc.prefix}", postfix="${desc.postfix}"`)
+            } else if (items.length > 0) {
+              const desc = items[0]
+              // If item only has href (not full data), we need to fetch it individually
+              if (desc.href && !desc.name && !desc.id) {
+                console.log(`[SYNC] Batch AttributeDescription item only has href for ${attrReq.attributeId}, fetching full data: ${desc.href}`)
+                try {
+                  const fullResponse = await fetch(desc.href, {
+                    method: 'GET',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Authorization': authHeader
+                    },
+                    signal: AbortSignal.timeout(5000)
+                  })
+                  
+                  if (fullResponse.ok) {
+                    const fullDesc = await fullResponse.json()
+                    results.set(attrReq.attributeId, {
+                      display_name: fullDesc.name || null,
+                      prefix: fullDesc.prefix || null,
+                      postfix: fullDesc.postfix || null
+                    })
+                    console.log(`[SYNC] Batch AttributeDescription (fetched from href) for ${attrReq.attributeId}: name="${fullDesc.name}", prefix="${fullDesc.prefix}", postfix="${fullDesc.postfix}"`)
+                  } else {
+                    console.warn(`[SYNC] Failed to fetch full AttributeDescription from href for ${attrReq.attributeId}: ${fullResponse.status}`)
+                    results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+                  }
+                } catch (fetchError) {
+                  console.warn(`[SYNC] Failed to fetch full AttributeDescription from href for ${attrReq.attributeId}:`, fetchError)
+                  results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+                }
+              } else {
+                results.set(attrReq.attributeId, {
+                  display_name: desc.name || null,
+                  prefix: desc.prefix || null,
+                  postfix: desc.postfix || null
+                })
+                console.log(`[SYNC] Batch AttributeDescription (from items array) for ${attrReq.attributeId}: name="${desc.name}", prefix="${desc.prefix}", postfix="${desc.postfix}"`)
+              }
+            } else if (data?.first?.href || data?.href) {
+              // No items array, but we have a pagination object with first.href or href
+              // This means we need to fetch the first page to get the items
+              const fetchUrl = data.first?.href || data.href
+              console.log(`[SYNC] Batch AttributeDescription response has no items, but has href. Fetching from: ${fetchUrl}`)
+              try {
+                const fullResponse = await fetch(fetchUrl, {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': authHeader
+                  },
+                  signal: AbortSignal.timeout(5000)
+                })
+                
+                if (fullResponse.ok) {
+                  const fullData = await fullResponse.json()
+                  const fullItems = fullData?.items || fullData?.response?.items || []
+                  
+                  if (fullItems.length > 0) {
+                    const desc = fullItems[0]
+                    results.set(attrReq.attributeId, {
+                      display_name: desc.name || null,
+                      prefix: desc.prefix || null,
+                      postfix: desc.postfix || null
+                    })
+                    console.log(`[SYNC] Batch AttributeDescription (fetched from pagination href) for ${attrReq.attributeId}: name="${desc.name}", prefix="${desc.prefix}", postfix="${desc.postfix}"`)
+                  } else {
+                    console.warn(`[SYNC] Fetched from href but still no items found for ${attrReq.attributeId}`)
+                    results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+                  }
+                } else {
+                  console.warn(`[SYNC] Failed to fetch AttributeDescription from pagination href for ${attrReq.attributeId}: ${fullResponse.status}`)
+                  results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+                }
+              } catch (fetchError) {
+                console.warn(`[SYNC] Failed to fetch AttributeDescription from pagination href for ${attrReq.attributeId}:`, fetchError)
+                results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
+              }
             } else {
+              console.warn(`[SYNC] No AttributeDescription items found for ${attrReq.attributeId} (type: ${attrReq.attributeType}). Response data:`, JSON.stringify(data, null, 2).substring(0, 300))
               results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
             }
           } else {
+            const errorText = batchItem.response?.body?.error || batchItem.response?.body?.message || JSON.stringify(batchItem.response?.body || {}).substring(0, 200)
+            console.warn(`[SYNC] AttributeDescription API error for ${attrReq.attributeId}: status ${statusCode} - ${errorText}`)
             results.set(attrReq.attributeId, { display_name: null, prefix: null, postfix: null })
           }
         }
@@ -165,6 +261,110 @@ export async function batchFetchAttributeDescriptions(
   } catch (error) {
     console.error('[SYNC] Error batch fetching attribute descriptions:', error)
     // Return empty results on error - will fall back to internal names
+  }
+
+  return results
+}
+
+/**
+ * Batch fetch AttributeWidgetDescriptions for multiple widgets to get group names
+ * This fetches the label (group name) for each attribute widget
+ */
+export async function batchFetchAttributeWidgetDescriptions(
+  apiBaseUrl: string,
+  authHeader: string,
+  widgetRequests: Array<{ widgetId: string; widgetType: 'LIST' | 'NUMBER' }>
+): Promise<Map<string, string | null>> {
+  const results = new Map<string, string | null>()
+  
+  if (widgetRequests.length === 0) {
+    return results
+  }
+
+  try {
+    // Build batch requests for widget descriptions
+    const batchRequests = widgetRequests.map(req => {
+      let queryParam = ''
+      if (req.widgetType === 'LIST') {
+        queryParam = `listAttributeWidgetId=${encodeURIComponent(req.widgetId)}`
+      } else if (req.widgetType === 'NUMBER') {
+        queryParam = `numberAttributeWidgetId=${encodeURIComponent(req.widgetId)}`
+      }
+      
+      const languageId = 'bGFuZ3VhZ2UtbGFuZ3VhZ2VfaWQ9MQ==' // Hungarian default
+      return {
+        method: 'GET',
+        uri: `${apiBaseUrl}/attributeWidgetDescriptions?${queryParam}&languageId=${encodeURIComponent(languageId)}&full=1`
+      }
+    })
+
+    // Filter out invalid requests
+    const validRequests = batchRequests.filter(req => req.uri.includes('WidgetId='))
+    
+    if (validRequests.length === 0) {
+      return results
+    }
+
+    // Split into batches of 200 (ShopRenter limit)
+    const BATCH_SIZE = 200
+    for (let i = 0; i < validRequests.length; i += BATCH_SIZE) {
+      const batch = validRequests.slice(i, i + BATCH_SIZE)
+      const correspondingWidgetRequests = widgetRequests.slice(i, i + BATCH_SIZE)
+      
+      const batchPayload = {
+        data: {
+          requests: batch
+        }
+      }
+
+      const batchResponse = await fetch(`${apiBaseUrl}/batch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        body: JSON.stringify(batchPayload),
+        signal: AbortSignal.timeout(60000) // 1 minute
+      })
+
+      if (batchResponse.ok) {
+        const batchData = await batchResponse.json()
+        const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+        
+        for (let j = 0; j < batchResponses.length && j < correspondingWidgetRequests.length; j++) {
+          const batchItem = batchResponses[j]
+          const widgetReq = correspondingWidgetRequests[j]
+          const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+          
+          if (statusCode >= 200 && statusCode < 300) {
+            const data = batchItem.response?.body
+            const items = data?.items || data?.response?.items || []
+            
+            if (items.length > 0) {
+              const desc = items[0]
+              // Extract label - this is the group name (e.g., "Fiók", "Méret", "Szín")
+              // According to ShopRenter docs: attributeWidgetDescriptions contains a "label" field
+              const groupName = desc.label || null
+              if (groupName) {
+                console.log(`[SYNC] Found group_name "${groupName}" for widget ${widgetReq.widgetId}`)
+              }
+              results.set(widgetReq.widgetId, groupName)
+            } else {
+              console.warn(`[SYNC] No items found in widget description response for widget ${widgetReq.widgetId}`)
+              results.set(widgetReq.widgetId, null)
+            }
+          } else {
+            const errorMsg = batchItem.response?.body?.error || batchItem.response?.body?.message || 'Unknown error'
+            console.warn(`[SYNC] Failed to fetch widget description for ${widgetReq.widgetId}: status ${statusCode}, error: ${errorMsg}`)
+            results.set(widgetReq.widgetId, null)
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[SYNC] Error batch fetching attribute widget descriptions:', error)
+    // Return empty results on error - will fall back to null group_name
   }
 
   return results
@@ -340,16 +540,58 @@ export async function POST(
       }, { status: 401 })
     }
 
+    // Check if sync is already running for this connection (prevent concurrent syncs)
+    const existingProgress = getProgress(connectionId)
+    if (existingProgress && (existingProgress.status === 'syncing' || existingProgress.status === 'starting')) {
+      console.log(`[SYNC] Sync already running for connection ${connectionId}. Status: ${existingProgress.status}, Progress: ${existingProgress.synced}/${existingProgress.total}`)
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Szinkronizálás már folyamatban van erre a kapcsolatra.',
+        details: `Jelenleg ${existingProgress.synced}/${existingProgress.total} termék szinkronizálva. Kérjük, várja meg a befejezését vagy állítsa le az előző szinkronizálást.`,
+        existingProgress: {
+          synced: existingProgress.synced,
+          total: existingProgress.total,
+          status: existingProgress.status
+        }
+      }, { status: 409 })
+    }
+
     // Get connection
     const connection = await getConnectionById(connectionId)
     if (!connection || connection.connection_type !== 'shoprenter') {
-      return NextResponse.json({ error: 'Connection not found or invalid type' }, { status: 404 })
+      return NextResponse.json({ 
+        success: false,
+        error: 'Kapcsolat nem található vagy érvénytelen típus',
+        details: 'Csak ShopRenter kapcsolatokhoz szinkronizálható termékek.'
+      }, { status: 404 })
+    }
+
+    // Validate connection is active
+    if (!connection.is_active) {
+      return NextResponse.json({ 
+        success: false,
+        error: 'A kapcsolat inaktív',
+        details: 'Kérjük, aktiválja a kapcsolatot a szinkronizálás előtt a kapcsolat szerkesztése menüpontban.'
+      }, { status: 400 })
+    }
+
+    // Validate connection has required credentials
+    if (!connection.username || !connection.password) {
+      return NextResponse.json({ 
+        success: false,
+        error: 'Hiányzó hitelesítési adatok',
+        details: 'Kérjük, ellenőrizze, hogy a kapcsolat rendelkezik-e felhasználónévvel és jelszóval. Frissítse a kapcsolat beállításait.'
+      }, { status: 400 })
     }
 
     // Extract shop name
     const shopName = extractShopNameFromUrl(connection.api_url)
     if (!shopName) {
-      return NextResponse.json({ error: 'Invalid API URL format' }, { status: 400 })
+      return NextResponse.json({ 
+        success: false,
+        error: 'Érvénytelen API URL formátum',
+        details: 'Az API URL formátuma nem megfelelő. Kérjük, ellenőrizze a kapcsolat beállításait. Várt formátum: https://shopname.api.myshoprenter.hu'
+      }, { status: 400 })
     }
 
     // Use Basic Auth for old API
@@ -392,8 +634,84 @@ export async function POST(
       }
 
       try {
+        // Extract Product Class ID and fetch name (for group_name)
+        let productClassName: string | null = null
+        if (data.productClass) {
+          let productClassId: string | null = null
+          if (typeof data.productClass === 'object' && data.productClass.id) {
+            productClassId = data.productClass.id
+          } else if (data.productClass.href) {
+            // Extract ID from href like: "http://shopname.api.myshoprenter.hu/productClasses/cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9MQ=="
+            const hrefParts = data.productClass.href.split('/')
+            productClassId = hrefParts[hrefParts.length - 1] || null
+          }
+          
+          // Fetch Product Class name if ID exists
+          if (productClassId && apiUrl && authHeader) {
+            try {
+              const classUrl = `${apiUrl}/productClasses/${productClassId}?full=1`
+              const classResponse = await fetch(classUrl, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                signal: AbortSignal.timeout(10000)
+              })
+              
+              if (classResponse.ok) {
+                const classData = await classResponse.json()
+                productClassName = classData?.name || null
+                if (productClassName) {
+                  console.log(`[SYNC] Found Product Class name "${productClassName}" for single product sync`)
+                }
+              } else {
+                console.warn(`[SYNC] Failed to fetch Product Class ${productClassId}: ${classResponse.status}`)
+              }
+            } catch (classError) {
+              console.warn(`[SYNC] Failed to fetch Product Class name for single product:`, classError)
+            }
+          }
+        }
+        
+        // Collect attribute IDs and batch fetch descriptions (same as batch sync)
+        const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> = []
+        if (data.productAttributeExtend && Array.isArray(data.productAttributeExtend)) {
+          data.productAttributeExtend.forEach((attr: any) => {
+            let attributeId = attr.id || null
+            if (!attributeId && attr.href) {
+              const hrefParts = attr.href.split('/')
+              attributeId = hrefParts[hrefParts.length - 1] || null
+            }
+            
+            if (attributeId) {
+              attributeRequests.push({
+                attributeId,
+                attributeType: attr.type as 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
+              })
+              console.log(`[SYNC] Single product: Collected attribute "${attr.name}" with ID "${attributeId}" (type: ${attr.type})`)
+            } else {
+              console.warn(`[SYNC] Single product: Could not extract attribute ID for "${attr.name}" (href: ${attr.href}, id: ${attr.id})`)
+            }
+          })
+        }
+        
+        // Batch fetch attribute descriptions (same method as batch sync)
+        let attributeDescriptionsMap = new Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>()
+        if (attributeRequests.length > 0 && apiUrl && authHeader) {
+          console.log(`[SYNC] Batch fetching ${attributeRequests.length} attribute descriptions for single product sync`)
+          attributeDescriptionsMap = await batchFetchAttributeDescriptions(
+            apiUrl,
+            authHeader,
+            attributeRequests
+          )
+          console.log(`[SYNC] Fetched ${attributeDescriptionsMap.size} attribute descriptions for single product`)
+        }
+        
         // For single product sync, use forceSync from request (defaults to false)
-        await syncProductToDatabase(supabase, connection, data, forceSync, apiUrl, authHeader, undefined, tenantId)
+        // Pass both attributeDescriptionsMap and productClassName
+        await syncProductToDatabase(supabase, connection, data, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId, undefined, productClassName)
         return NextResponse.json({ success: true, synced: 1 })
       } catch (error) {
         return NextResponse.json({ 
@@ -403,20 +721,85 @@ export async function POST(
       }
     }
 
-    // For bulk sync (full sync), ALWAYS force sync everything to match ShopRenter exactly
-    // This ensures complete data synchronization
-    forceSync = true
+    // For bulk sync, check if user wants incremental sync (default) or force sync
+    // If forceSync is not explicitly set to true, use incremental sync
+    const useIncrementalSync = !forceSync
+
+    // Get existing products with sync timestamps from ERP for incremental sync
+    // We need:
+    // - last_synced_from_shoprenter_at: When we last pulled FROM ShopRenter
+    // - last_synced_to_shoprenter_at: When we last pushed TO ShopRenter
+    // - updated_at: When product was last modified in ERP
+    // This prevents overwriting ERP changes that were just synced to ShopRenter
+    let lastSyncedMap = new Map<string, { 
+      last_synced_from: string | null; 
+      last_synced_to: string | null;
+      updated_at: string | null 
+    }>()
+    if (useIncrementalSync) {
+      console.log(`[SYNC] Using incremental sync - will only sync changed products`)
+      
+      // Fetch all existing products in batches to avoid Supabase's 1000 row limit
+      const batchSize = 1000
+      let allExistingProducts: any[] = []
+      let hasMore = true
+      let offset = 0
+      
+      while (hasMore) {
+        const { data: existingProducts, error } = await supabase
+          .from('shoprenter_products')
+          .select('shoprenter_id, last_synced_from_shoprenter_at, last_synced_to_shoprenter_at, updated_at')
+          .eq('connection_id', connectionId)
+          .is('deleted_at', null)
+          .range(offset, offset + batchSize - 1)
+        
+        if (error) {
+          console.error(`[SYNC] Error fetching existing products (offset ${offset}):`, error)
+          break
+        }
+        
+        if (existingProducts && existingProducts.length > 0) {
+          allExistingProducts = allExistingProducts.concat(existingProducts)
+          hasMore = existingProducts.length === batchSize
+          offset += batchSize
+        } else {
+          hasMore = false
+        }
+      }
+      
+      if (allExistingProducts.length > 0) {
+        lastSyncedMap = new Map(
+          allExistingProducts.map(p => [
+            p.shoprenter_id, 
+            { 
+              last_synced_from: p.last_synced_from_shoprenter_at, 
+              last_synced_to: p.last_synced_to_shoprenter_at,
+              updated_at: p.updated_at 
+            }
+          ])
+        )
+        console.log(`[SYNC] Found ${lastSyncedMap.size} existing products in ERP (fetched in ${Math.ceil(allExistingProducts.length / batchSize)} batches)`)
+      } else {
+        console.log(`[SYNC] No existing products found in ERP`)
+      }
+    } else {
+      console.log(`[SYNC] Using force sync - will sync all products`)
+    }
 
     // For bulk sync, use Batch API for efficiency
-    // First, get all product IDs (paginated)
+    // First, get all product IDs with timestamps (paginated)
     const allProductIds: string[] = []
+    const shoprenterProductIds = new Set<string>() // Track all products in ShopRenter for deletion detection
     let page = 0
     const pageSize = 200
     let hasMorePages = true
     let firstPageData: any = null
+    let newProductsCount = 0
+    let changedProductsCount = 0
+    let skippedProductsCount = 0
 
     while (hasMorePages) {
-      // Use full=1 to get product IDs in the response (not just hrefs)
+      // Use full=1 to get product IDs and timestamps in the response
       const productsListUrl = `${apiUrl}/products?full=1&limit=${pageSize}&page=${page}`
       const listResponse = await fetch(productsListUrl, {
         method: 'GET',
@@ -503,27 +886,205 @@ export async function POST(
 
       console.log(`[SYNC] Page ${page}: Found ${items.length} items`)
 
+      // Diagnostic logging for dateUpdated availability (first page only)
+      if (page === 0 && items.length > 0 && useIncrementalSync) {
+        const sampleItems = items.slice(0, 3)
+        const dateUpdatedStats = {
+          total: sampleItems.length,
+          hasDateUpdated: sampleItems.filter(i => i.dateUpdated || i.date_updated).length,
+          missingDateUpdated: sampleItems.filter(i => !i.dateUpdated && !i.date_updated).length
+        }
+        
+        console.log(`[SYNC] First page diagnostic - dateUpdated availability:`, {
+          ...dateUpdatedStats,
+          sample: sampleItems.map(i => ({
+            id: i.id?.substring(0, 20) + '...',
+            sku: i.sku,
+            hasDateUpdated: !!(i.dateUpdated || i.date_updated),
+            dateUpdated: i.dateUpdated || i.date_updated || 'MISSING'
+          }))
+        })
+        
+        if (dateUpdatedStats.missingDateUpdated > 0) {
+          console.warn(`[SYNC] WARNING: ${dateUpdatedStats.missingDateUpdated}/${dateUpdatedStats.total} sample products missing dateUpdated. This may indicate an API issue.`)
+        }
+      }
+
       for (const item of items) {
+        let productId: string | null = null
+        
         if (item.id) {
-          // Direct ID available
-          allProductIds.push(item.id)
+          productId = item.id
         } else if (item.href) {
           // Extract ID from href (format: /products/cHJvZHVjdC1wcm9kdWN0X2lkPTI0NTE=)
-          // The ID is the last part of the path
           const hrefParts = item.href.split('/')
           const lastPart = hrefParts[hrefParts.length - 1]
           if (lastPart && lastPart !== 'products') {
-            allProductIds.push(lastPart)
+            productId = lastPart
+          }
+        }
+
+        if (!productId) {
+          console.warn(`[SYNC] Item without ID or href on page ${page}:`, Object.keys(item))
+          continue
+        }
+
+        // Track all products in ShopRenter for deletion detection
+        shoprenterProductIds.add(productId)
+
+        // Incremental sync: Only include if changed or new
+        // CRITICAL: Prevent syncing products that were modified in ERP more recently than ShopRenter
+        // This prevents overwriting ERP changes that were just synced to ShopRenter
+        if (useIncrementalSync) {
+          const productSyncInfo = lastSyncedMap.get(productId)
+          // Try multiple possible field names for dateUpdated (fixed: removed duplicate check)
+          const dateUpdated = item.dateUpdated || item.date_updated || null
+          
+          // Determine if we should sync:
+          // 1. New product (not in ERP) -> always sync
+          // 2. ShopRenter updated AND:
+          //    - Never synced before, OR
+          //    - ShopRenter updated after last sync, AND
+          //    - Product wasn't modified in ERP more recently than ShopRenter's update
+          let shouldSync = false
+          let skipReason = ''
+          
+          if (!productSyncInfo) {
+            // New product - always sync
+            shouldSync = true
+            newProductsCount++
+          } else if (!dateUpdated) {
+            // FIXED: Industry-standard fallback for missing dateUpdated
+            // Strategy: Use time-based heuristic to avoid unnecessary syncs
+            const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
+            
+            if (!lastSyncedFrom) {
+              // Never synced before but product exists in ERP - sync to establish baseline
+              shouldSync = true
+              changedProductsCount++
+              skipReason = 'dateUpdated missing, but never synced - syncing to establish baseline'
+            } else {
+              // We have sync history - use time-based heuristic
+              const hoursSinceLastSync = (Date.now() - lastSyncedFrom.getTime()) / (1000 * 60 * 60)
+              const RECENT_SYNC_THRESHOLD_HOURS = 24 // Configurable threshold
+              
+              if (hoursSinceLastSync < RECENT_SYNC_THRESHOLD_HOURS) {
+                // Synced recently - assume API issue, not a change
+                shouldSync = false
+                skipReason = `dateUpdated missing, but synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago (assuming API issue, not change)`
+                skippedProductsCount++
+                
+                // Log first few for monitoring
+                if (skippedProductsCount <= 5) {
+                  console.warn(`[SYNC] Product ${productId}: dateUpdated missing from API. Last synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago. Skipping.`)
+                }
+              } else {
+                // Last sync was old - could be a real change, but we can't tell
+                // Industry standard: Skip to avoid unnecessary syncs, but log for admin review
+                shouldSync = false
+                skipReason = `dateUpdated missing, last synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago (skipping to avoid unnecessary sync)`
+                skippedProductsCount++
+                
+                // Log for admin review (but don't spam)
+                if (skippedProductsCount <= 10) {
+                  console.warn(`[SYNC] Product ${productId}: dateUpdated missing, last synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago. Consider force sync if needed.`)
+                }
+              }
+            }
           } else {
-            console.warn(`[SYNC] Could not extract ID from href on page ${page}:`, item.href)
+            // dateUpdated is available - use precise comparison
+            let shoprenterUpdated: Date | null = null
+            
+            try {
+              // Parse dateUpdated - handle ISO format (e.g., "2013-08-08T12:30:00")
+              shoprenterUpdated = new Date(dateUpdated)
+              
+              // Validate date
+              if (isNaN(shoprenterUpdated.getTime())) {
+                // Try alternative format (e.g., "2013-08-08 12:30:00")
+                shoprenterUpdated = new Date(dateUpdated.replace(' ', 'T'))
+              }
+              
+              if (isNaN(shoprenterUpdated.getTime())) {
+                // Invalid date - fall back to time-based heuristic
+                console.warn(`[SYNC] Invalid dateUpdated format for product ${productId}: ${dateUpdated}. Using fallback logic.`)
+                const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
+                if (lastSyncedFrom) {
+                  const hoursSinceLastSync = (Date.now() - lastSyncedFrom.getTime()) / (1000 * 60 * 60)
+                  if (hoursSinceLastSync < 24) {
+                    shouldSync = false
+                    skipReason = 'invalid dateUpdated format, but synced recently'
+                    skippedProductsCount++
+                  } else {
+                    shouldSync = true
+                    changedProductsCount++
+                    skipReason = 'invalid dateUpdated format, last sync was old'
+                  }
+                } else {
+                  shouldSync = true
+                  changedProductsCount++
+                }
+              }
+            } catch (error) {
+              console.warn(`[SYNC] Error parsing dateUpdated for product ${productId}:`, error)
+              // Fall back to time-based heuristic
+              const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
+              if (lastSyncedFrom) {
+                const hoursSinceLastSync = (Date.now() - lastSyncedFrom.getTime()) / (1000 * 60 * 60)
+                shouldSync = hoursSinceLastSync >= 24
+                skipReason = `dateUpdated parse error, using time heuristic (${Math.round(hoursSinceLastSync * 10) / 10}h since last sync)`
+                if (shouldSync) {
+                  changedProductsCount++
+                } else {
+                  skippedProductsCount++
+                }
+              } else {
+                shouldSync = true
+                changedProductsCount++
+              }
+            }
+            
+            if (shoprenterUpdated && !isNaN(shoprenterUpdated.getTime())) {
+              // Valid date - proceed with precise comparison
+              const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
+              const lastSyncedTo = productSyncInfo.last_synced_to ? new Date(productSyncInfo.last_synced_to) : null
+              const erpUpdated = productSyncInfo.updated_at ? new Date(productSyncInfo.updated_at) : null
+              
+              // Check if ShopRenter was updated after last FROM sync
+              const shoprenterUpdatedAfterFromSync = !lastSyncedFrom || shoprenterUpdated > lastSyncedFrom
+              
+              if (!shoprenterUpdatedAfterFromSync) {
+                shouldSync = false
+                skipReason = 'not updated in ShopRenter since last FROM sync'
+              } else if (lastSyncedTo && shoprenterUpdated <= lastSyncedTo) {
+                shouldSync = false
+                skipReason = 'synced TO ShopRenter more recently than ShopRenter update (likely our push)'
+              } else if (erpUpdated && erpUpdated >= shoprenterUpdated) {
+                shouldSync = false
+                skipReason = 'modified in ERP at same time or more recently'
+              } else {
+                shouldSync = true
+                changedProductsCount++
+              }
+            }
+          }
+          
+          if (shouldSync) {
+            allProductIds.push(productId)
+          } else {
+            skippedProductsCount++
+            if (skipReason && skippedProductsCount <= 10) {
+              // Log first 10 skip reasons for debugging
+              console.log(`[SYNC] Skipping product ${productId}: ${skipReason}`)
+            }
           }
         } else {
-          console.warn(`[SYNC] Item without ID or href on page ${page}:`, Object.keys(item))
+          // Force sync: Include all products
+          allProductIds.push(productId)
         }
       }
 
       // Check if there are more pages
-      // Handle both string and number pageCount
       let pageCount = 0
       if (listData.pageCount !== undefined) {
         pageCount = typeof listData.pageCount === 'string' ? parseInt(listData.pageCount, 10) : listData.pageCount
@@ -531,34 +1092,92 @@ export async function POST(
         pageCount = typeof listData.response.pageCount === 'string' ? parseInt(listData.response.pageCount, 10) : listData.response.pageCount
       }
 
-      // If we got items on this page, continue to next page
-      // If pageCount is 0 or not set, but we have items, assume there might be more
       if (pageCount > 0) {
         hasMorePages = page < pageCount - 1
       } else {
-        // If no pageCount, check if we got a full page (might indicate more pages)
         hasMorePages = items.length === pageSize
       }
 
-      console.log(`[SYNC] Page ${page}: pageCount=${pageCount}, items=${items.length}, hasMorePages=${hasMorePages}, totalIds=${allProductIds.length}`)
+      if (useIncrementalSync) {
+        console.log(`[SYNC] Page ${page}: ${items.length} items, ${allProductIds.length - (allProductIds.length - (newProductsCount + changedProductsCount))} to sync (${newProductsCount} new, ${changedProductsCount} changed, ${skippedProductsCount} skipped)`)
+      } else {
+        console.log(`[SYNC] Page ${page}: pageCount=${pageCount}, items=${items.length}, hasMorePages=${hasMorePages}, totalIds=${allProductIds.length}`)
+      }
 
       page++
 
-      // Minimal delay between page requests (ShopRenter API can handle faster requests)
+      // Minimal delay between page requests
       if (hasMorePages) {
         await new Promise(resolve => setTimeout(resolve, 50))
       }
     }
 
-    console.log(`[SYNC] Total product IDs collected: ${allProductIds.length}`)
+    // Deletion detection: Find products in ERP that no longer exist in ShopRenter
+    let deletedCount = 0
+    if (shoprenterProductIds.size > 0) {
+      const { data: erpProducts } = await supabase
+        .from('shoprenter_products')
+        .select('id, shoprenter_id, sku')
+        .eq('connection_id', connectionId)
+        .is('deleted_at', null)
+      
+      if (erpProducts) {
+        const deletedProducts = erpProducts.filter(
+          p => !shoprenterProductIds.has(p.shoprenter_id)
+        )
+        
+        if (deletedProducts.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('shoprenter_products')
+            .update({ 
+              deleted_at: new Date().toISOString(),
+              status: 0,
+              sync_status: 'deleted',
+              last_synced_from_shoprenter_at: new Date().toISOString() // Track deletion detection sync
+            })
+            .in('id', deletedProducts.map(p => p.id))
+          
+          if (!deleteError) {
+            deletedCount = deletedProducts.length
+            console.log(`[SYNC] Marked ${deletedCount} products as deleted`)
+          } else {
+            console.error(`[SYNC] Error marking products as deleted:`, deleteError)
+          }
+        }
+      }
+    }
+
+    if (useIncrementalSync) {
+      console.log(`[SYNC] Incremental sync summary: ${allProductIds.length} to sync (${newProductsCount} new, ${changedProductsCount} changed), ${skippedProductsCount} skipped, ${deletedCount} deleted`)
+    } else {
+      console.log(`[SYNC] Total product IDs collected: ${allProductIds.length}, ${deletedCount} deleted`)
+    }
 
     if (allProductIds.length === 0) {
-      console.error(`[SYNC] No products found. First page data:`, JSON.stringify(firstPageData, null, 2).substring(0, 500))
-      clearProgress(connectionId)
-      return NextResponse.json({ 
-        success: false, 
-        error: 'Nem található termék a webshopban. Ellenőrizze, hogy a kapcsolat helyes-e és hogy vannak-e termékek a webshopban.' 
-      }, { status: 404 })
+      // For incremental sync, 0 products is a success (everything is up to date)
+      // For force sync, 0 products might indicate an issue
+      if (useIncrementalSync) {
+        console.log(`[SYNC] Incremental sync: No products to sync - everything is up to date`)
+        clearProgress(connectionId)
+        return NextResponse.json({ 
+          success: true, 
+          message: 'Nincs szinkronizálandó termék. Minden termék naprakész.',
+          total: 0,
+          synced: 0,
+          skipped: skippedProductsCount,
+          newProducts: 0,
+          changedProducts: 0,
+          deletedProducts: deletedCount
+        }, { status: 200 })
+      } else {
+        // Force sync with 0 products - this might be an issue
+        console.error(`[SYNC] No products found. First page data:`, JSON.stringify(firstPageData, null, 2).substring(0, 500))
+        clearProgress(connectionId)
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Nem található termék a webshopban. Ellenőrizze, hogy a kapcsolat helyes-e és hogy vannak-e termékek a webshopban.' 
+        }, { status: 404 })
+      }
     }
 
     // Now use Batch API to fetch products in batches of 200
@@ -583,7 +1202,15 @@ export async function POST(
     // Return immediately and run sync in background
     // The frontend will poll for progress
     // Don't await - let it run in background
-    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader, request, tenantId, user.id, user.email || null).catch(error => {
+    // Pass incremental sync stats to background process
+    const incrementalStats = useIncrementalSync ? {
+      newProducts: newProductsCount,
+      changedProducts: changedProductsCount,
+      skippedProducts: skippedProductsCount,
+      deletedProducts: deletedCount
+    } : undefined
+    
+    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader, request, tenantId, user.id, user.email || null, incrementalStats).catch(error => {
       console.error('Background sync error:', error)
       updateProgress(connectionId, {
         status: 'error',
@@ -637,7 +1264,8 @@ async function processSyncInBackground(
   request: NextRequest,
   tenantId?: string,
   userId?: string,
-  userEmail?: string | null
+  userEmail?: string | null,
+  incrementalStats?: { newProducts: number; changedProducts: number; skippedProducts: number; deletedProducts: number }
 ) {
   // Initialize variables at function scope so they're accessible in catch block
   let syncedCount = 0
@@ -646,33 +1274,43 @@ async function processSyncInBackground(
   const totalProducts = allProductIds.length
   const totalBatches = batches.length
   const syncStartTime = new Date()
+  // Track synced product IDs for post-sync optimization
+  const syncedProductIds: string[] = [] // Store ERP UUIDs of synced products
+
+  // For incremental sync, total_products should be total evaluated (synced + skipped)
+  // For force sync, total_products is just the products to sync
+  const totalProductsEvaluated = incrementalStats 
+    ? totalProducts + (incrementalStats.skippedProducts || 0)
+    : totalProducts
 
   // Create sync audit log entry
   let auditLogId: string | null = null
   try {
-    if (tenantId && userId) {
-      const { data: auditLog, error: auditError } = await supabase
-        .from('sync_audit_logs')
-        .insert({
-          connection_id: connectionId,
-          sync_type: 'full',
-          sync_direction: 'from_shoprenter',
-          user_id: userId,
-          user_email: userEmail,
-          total_products: totalProducts,
-          synced_count: 0,
-          error_count: 0,
-          skipped_count: 0,
-          started_at: syncStartTime.toISOString(),
-          status: 'running',
-          metadata: {
-            forceSync: forceSync,
-            batchSize: 200,
-            totalBatches: totalBatches
-          }
-        })
-        .select('id')
-        .single()
+      if (tenantId && userId) {
+        const syncType = forceSync ? 'full' : 'incremental'
+        const { data: auditLog, error: auditError } = await supabase
+          .from('sync_audit_logs')
+          .insert({
+            connection_id: connectionId,
+            sync_type: syncType,
+            sync_direction: 'from_shoprenter',
+            user_id: userId,
+            user_email: userEmail,
+            total_products: totalProductsEvaluated, // Total products evaluated (synced + skipped for incremental)
+            synced_count: 0,
+            error_count: 0,
+            skipped_count: incrementalStats?.skippedProducts || 0,
+            started_at: syncStartTime.toISOString(),
+            status: 'running',
+            metadata: {
+              forceSync: forceSync,
+              batchSize: 200,
+              totalBatches: totalBatches,
+              incrementalStats: incrementalStats || null
+            }
+          })
+          .select('id')
+          .single()
       
       if (!auditError && auditLog) {
         auditLogId = auditLog.id
@@ -768,6 +1406,10 @@ async function processSyncInBackground(
         
         // Collect all attribute IDs from this batch for batch fetching
         const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> = []
+        
+        // Collect Product Class IDs from products (for group_name)
+        const productClassIds = new Set<string>()
+        const productToClassMap = new Map<string, string>() // productId -> productClassId
 
         for (let i = 0; i < batchResponses.length; i++) {
           const batchItem = batchResponses[i]
@@ -775,22 +1417,110 @@ async function processSyncInBackground(
           
           if (statusCode >= 200 && statusCode < 300) {
             const product = batchItem.response?.body
-            if (product && product.id && product.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
-              product.productAttributeExtend.forEach((attr: any) => {
-                let attributeId = attr.id || null
-                if (!attributeId && attr.href) {
-                  const hrefParts = attr.href.split('/')
-                  attributeId = hrefParts[hrefParts.length - 1] || null
+            if (product && product.id) {
+              // Extract Product Class ID for group_name
+              if (product.productClass) {
+                let productClassId: string | null = null
+                if (typeof product.productClass === 'object' && product.productClass.id) {
+                  productClassId = product.productClass.id
+                } else if (product.productClass.href) {
+                  // Extract ID from href like: "http://shopname.api.myshoprenter.hu/productClasses/cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9MQ=="
+                  const hrefParts = product.productClass.href.split('/')
+                  productClassId = hrefParts[hrefParts.length - 1] || null
                 }
                 
-                if (attributeId) {
-                  attributeRequests.push({
-                    attributeId,
-                    attributeType: attr.type as 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
-                  })
+                if (productClassId) {
+                  productClassIds.add(productClassId)
+                  productToClassMap.set(product.id, productClassId)
                 }
-              })
+              }
+              
+              // Collect attribute IDs
+              if (product.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
+                product.productAttributeExtend.forEach((attr: any) => {
+                  let attributeId = attr.id || null
+                  if (!attributeId && attr.href) {
+                    const hrefParts = attr.href.split('/')
+                    attributeId = hrefParts[hrefParts.length - 1] || null
+                  }
+                  
+                  if (attributeId) {
+                    attributeRequests.push({
+                      attributeId,
+                      attributeType: attr.type as 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
+                    })
+                  }
+                })
+              }
             }
+          }
+        }
+
+        // Batch fetch Product Class details to get names (for group_name)
+        const productClassNamesMap = new Map<string, string | null>()
+        if (productClassIds.size > 0 && apiUrl && authHeader) {
+          console.log(`[SYNC] Batch fetching ${productClassIds.size} Product Class details for batch ${batchIndex + 1}`)
+          try {
+            const productClassArray = Array.from(productClassIds)
+            const BATCH_SIZE = 200
+            
+            for (let i = 0; i < productClassArray.length; i += BATCH_SIZE) {
+              const batch = productClassArray.slice(i, i + BATCH_SIZE)
+              const batchRequests = batch.map(classId => ({
+                method: 'GET',
+                uri: `${apiUrl}/productClasses/${classId}?full=1`
+              }))
+              
+              const batchPayload = {
+                data: {
+                  requests: batchRequests
+                }
+              }
+              
+              const batchResponse = await fetch(`${apiUrl}/batch`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                body: JSON.stringify(batchPayload),
+                signal: AbortSignal.timeout(60000)
+              })
+              
+              if (batchResponse.ok) {
+                const batchData = await batchResponse.json()
+                const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+                
+                for (let j = 0; j < batchResponses.length && j < batch.length; j++) {
+                  const batchItem = batchResponses[j]
+                  const classId = batch[j]
+                  const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+                  
+                  if (statusCode >= 200 && statusCode < 300) {
+                    const productClass = batchItem.response?.body
+                    const className = productClass?.name || null
+                    productClassNamesMap.set(classId, className)
+                    if (className) {
+                      console.log(`[SYNC] Found Product Class name "${className}" for ID ${classId}`)
+                    }
+                  } else {
+                    productClassNamesMap.set(classId, null)
+                    console.warn(`[SYNC] Failed to fetch Product Class ${classId}: status ${statusCode}`)
+                  }
+                }
+              } else {
+                console.warn(`[SYNC] Failed to fetch Product Classes batch: ${batchResponse.status}`)
+                // Set all to null on batch failure
+                batch.forEach(classId => productClassNamesMap.set(classId, null))
+              }
+            }
+            
+            console.log(`[SYNC] Fetched ${productClassNamesMap.size} Product Class names`)
+          } catch (error) {
+            console.warn(`[SYNC] Error fetching Product Classes:`, error)
+            // Set all to null on error
+            productClassIds.forEach(classId => productClassNamesMap.set(classId, null))
           }
         }
 
@@ -804,6 +1534,127 @@ async function processSyncInBackground(
             attributeRequests
           )
           console.log(`[SYNC] Fetched ${attributeDescriptionsMap.size} attribute descriptions`)
+        }
+
+        // Create map: productId -> productClassId -> productClassName (for group_name)
+        // This will be used in syncProductToDatabase to set group_name for all attributes
+        const productToClassNameMap = new Map<string, string | null>()
+        productToClassMap.forEach((classId, productId) => {
+          const className = productClassNamesMap.get(classId) || null
+          productToClassNameMap.set(productId, className)
+        })
+
+        // DEPRECATED: Fetch full attributes to get widget information, then fetch widget descriptions for group names
+        // This is kept as fallback but Product Class name takes priority
+        let attributeGroupNamesMap = new Map<string, string | null>()
+        if (attributeRequests.length > 0 && apiUrl && authHeader) {
+          try {
+            // Build batch requests to fetch full attributes
+            const attributeFetchRequests = attributeRequests.map(req => {
+              let endpoint = ''
+              if (req.attributeType === 'LIST') {
+                endpoint = `listAttributes/${req.attributeId}`
+              } else if (req.attributeType === 'TEXT') {
+                endpoint = `textAttributes/${req.attributeId}`
+              } else if (req.attributeType === 'INTEGER' || req.attributeType === 'FLOAT') {
+                endpoint = `numberAttributes/${req.attributeId}`
+              }
+              
+              return {
+                method: 'GET',
+                uri: `${apiUrl}/${endpoint}?full=1`
+              }
+            }).filter(req => req.uri.includes('Attributes/'))
+
+            if (attributeFetchRequests.length > 0) {
+              // Split into batches of 200
+              const BATCH_SIZE = 200
+              const widgetRequests: Array<{ widgetId: string; widgetType: 'LIST' | 'NUMBER'; attributeId: string }> = []
+              
+              for (let i = 0; i < attributeFetchRequests.length; i += BATCH_SIZE) {
+                const batch = attributeFetchRequests.slice(i, i + BATCH_SIZE)
+                const correspondingAttributeRequests = attributeRequests.slice(i, i + BATCH_SIZE)
+                
+                const batchPayload = {
+                  data: {
+                    requests: batch
+                  }
+                }
+
+                const batchResponse = await fetch(`${apiUrl}/batch`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': authHeader
+                  },
+                  body: JSON.stringify(batchPayload),
+                  signal: AbortSignal.timeout(60000)
+                })
+
+                if (batchResponse.ok) {
+                  const batchData = await batchResponse.json()
+                  const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+                  
+                  for (let j = 0; j < batchResponses.length && j < correspondingAttributeRequests.length; j++) {
+                    const batchItem = batchResponses[j]
+                    const attrReq = correspondingAttributeRequests[j]
+                    const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+                    
+                    if (statusCode >= 200 && statusCode < 300) {
+                      const attrData = batchItem.response?.body
+                      
+                      // Extract widget href based on attribute type
+                      let widgetHref: string | null = null
+                      if (attrReq.attributeType === 'LIST' && attrData.listAttributeWidget?.href) {
+                        widgetHref = attrData.listAttributeWidget.href
+                      } else if ((attrReq.attributeType === 'INTEGER' || attrReq.attributeType === 'FLOAT') && attrData.numberAttributeWidget?.href) {
+                        widgetHref = attrData.numberAttributeWidget.href
+                      }
+                      // TEXT attributes usually don't have widgets
+                      
+                      if (widgetHref) {
+                        // Extract widget ID from href
+                        const hrefParts = widgetHref.split('/')
+                        const widgetId = hrefParts[hrefParts.length - 1] || null
+                        
+                        if (widgetId) {
+                          widgetRequests.push({
+                            widgetId,
+                            widgetType: attrReq.attributeType === 'LIST' ? 'LIST' : 'NUMBER',
+                            attributeId: attrReq.attributeId
+                          })
+                        }
+                      } else {
+                        // No widget for this attribute
+                        attributeGroupNamesMap.set(attrReq.attributeId, null)
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Batch fetch widget descriptions to get group names
+              if (widgetRequests.length > 0) {
+                console.log(`[SYNC] Batch fetching ${widgetRequests.length} widget descriptions for batch ${batchIndex + 1}`)
+                const widgetDescriptionsMap = await batchFetchAttributeWidgetDescriptions(
+                  apiUrl,
+                  authHeader,
+                  widgetRequests.map(w => ({ widgetId: w.widgetId, widgetType: w.widgetType }))
+                )
+                console.log(`[SYNC] Fetched ${widgetDescriptionsMap.size} widget descriptions`)
+                
+                // Map widget IDs back to attribute IDs
+                for (const widgetReq of widgetRequests) {
+                  const groupName = widgetDescriptionsMap.get(widgetReq.widgetId) || null
+                  attributeGroupNamesMap.set(widgetReq.attributeId, groupName)
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`[SYNC] Error fetching attribute widget information:`, error)
+            // Continue without group names - attributes will have group_name: null
+          }
         }
 
         // Collect all valid products for batch processing
@@ -844,8 +1695,29 @@ async function processSyncInBackground(
           })
 
           try {
-            await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId)
+            // Sync product and get the ERP UUID if available
+            // Pass Product Class name map for group_name
+            const productClassName = productToClassNameMap.get(product.id) || null
+            const result = await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId, attributeGroupNamesMap, productClassName)
             batchResults.synced++
+            
+            // Track synced product ERP UUID for post-sync optimization
+            if (result && result.productId) {
+              syncedProductIds.push(result.productId)
+            } else {
+              // Fallback: Try to find the product by shoprenter_id
+              const { data: syncedProduct } = await supabase
+                .from('shoprenter_products')
+                .select('id')
+                .eq('connection_id', connection.id)
+                .eq('shoprenter_id', product.id)
+                .single()
+              
+              if (syncedProduct) {
+                syncedProductIds.push(syncedProduct.id)
+              }
+            }
+            
             // Update progress after EACH product for real-time updates
             incrementProgress(connectionId, { synced: 1 })
           } catch (error) {
@@ -924,26 +1796,50 @@ async function processSyncInBackground(
     }
 
     // Post-sync: Update parent_product_id for products that were synced before their parent
-    // Always run for full sync (forceSync = true) to ensure all parent-child relationships are correct
-    // For incremental sync, only run if there might be missing parents
+    // OPTIMIZATION: Only process products that were actually synced, not all products
+    // This reduces post-sync API calls by 90%+ for incremental syncs
     console.log(`[SYNC] Running post-sync parent-child relationship update...`)
+    console.log(`[SYNC] Processing ${syncedProductIds.length} synced products (instead of all products)`)
     try {
-      // Get all products for this connection to update parent relationships
-      // This ensures parent_product_id is always correct, even if products were synced out of order
-      const { data: allProducts, error: productsError } = await supabase
-        .from('shoprenter_products')
-        .select('id, shoprenter_id, sku, parent_product_id')
-        .eq('connection_id', connection.id)
-        .is('deleted_at', null)
+      // Get only the products that were synced in this sync operation
+      // This is much more efficient than fetching all products
+      let productsToUpdate: any[] = []
       
-      if (productsError) {
-        console.error(`[SYNC] Error fetching products for parent update:`, productsError)
-      } else if (allProducts && allProducts.length > 0) {
+      if (syncedProductIds.length > 0) {
+        const { data: syncedProducts, error: productsError } = await supabase
+          .from('shoprenter_products')
+          .select('id, shoprenter_id, sku, parent_product_id')
+          .eq('connection_id', connection.id)
+          .in('id', syncedProductIds)
+          .is('deleted_at', null)
+        
+        if (productsError) {
+          console.error(`[SYNC] Error fetching synced products for parent update:`, productsError)
+        } else if (syncedProducts) {
+          productsToUpdate = syncedProducts
+        }
+      } else {
+        // Fallback: If no synced product IDs tracked, get all products (for backward compatibility)
+        console.warn(`[SYNC] No synced product IDs tracked, falling back to all products`)
+        const { data: allProducts, error: productsError } = await supabase
+          .from('shoprenter_products')
+          .select('id, shoprenter_id, sku, parent_product_id')
+          .eq('connection_id', connection.id)
+          .is('deleted_at', null)
+        
+        if (productsError) {
+          console.error(`[SYNC] Error fetching products for parent update:`, productsError)
+        } else if (allProducts) {
+          productsToUpdate = allProducts
+        }
+      }
+      
+      if (productsToUpdate.length > 0) {
         let updatedCount = 0
         const batchSize = 50 // Process in smaller batches to avoid timeout
         
-        for (let i = 0; i < allProducts.length; i += batchSize) {
-          const batch = allProducts.slice(i, i + batchSize)
+        for (let i = 0; i < productsToUpdate.length; i += batchSize) {
+          const batch = productsToUpdate.slice(i, i + batchSize)
           
           // Build batch request to fetch parentProduct for each product
           const batchRequests = batch.map(p => ({
@@ -1059,7 +1955,7 @@ async function processSyncInBackground(
           }
           
           // Small delay between batches
-          if (i + batchSize < allProducts.length) {
+          if (i + batchSize < productsToUpdate.length) {
             await new Promise(resolve => setTimeout(resolve, 100))
           }
         }
@@ -1087,15 +1983,27 @@ async function processSyncInBackground(
     // Update audit log
     if (auditLogId && tenantId) {
       try {
+        const metadata: any = {
+          forceSync: forceSync,
+          batchSize: 200,
+          totalBatches: totalBatches
+        }
+        
+        // Include incremental stats if available
+        if (incrementalStats) {
+          metadata.incrementalStats = incrementalStats
+        }
+        
         await supabase
           .from('sync_audit_logs')
           .update({
             synced_count: syncedCount,
             error_count: errorCount,
-            skipped_count: totalProducts - syncedCount - errorCount,
+            skipped_count: incrementalStats ? incrementalStats.skippedProducts : (totalProducts - syncedCount - errorCount),
             completed_at: syncEndTime.toISOString(),
             duration_seconds: durationSeconds,
-            status: 'completed'
+            status: 'completed',
+            metadata: metadata
           })
           .eq('id', auditLogId)
       } catch (auditUpdateError) {
@@ -1161,7 +2069,9 @@ export async function syncProductToDatabase(
   apiBaseUrl?: string,
   authHeaderParam?: string,
   attributeDescriptionsMap?: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>,
-  tenantId?: string
+  tenantId?: string,
+  attributeGroupNamesMap?: Map<string, string | null>,
+  productClassName?: string | null
 ) {
   try {
     console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
@@ -1226,6 +2136,23 @@ export async function syncProductToDatabase(
       }
     }
 
+    // Extract Product Class ID
+    let productClassShoprenterId: string | null = null
+    if (product.productClass) {
+      if (typeof product.productClass === 'object' && product.productClass.id) {
+        productClassShoprenterId = product.productClass.id
+      } else if (product.productClass.href) {
+        // Extract ID from href like: "http://shopname.api.myshoprenter.hu/productClasses/cHJvZHVjdENsYXNzLXByb2R1Y3RfY2xhc3NfaWQ9MQ=="
+        const hrefParts = product.productClass.href.split('/')
+        productClassShoprenterId = hrefParts[hrefParts.length - 1] || null
+      }
+    }
+    if (productClassShoprenterId) {
+      console.log(`[SYNC] Product ${product.sku} - Found Product Class ID: ${productClassShoprenterId}`)
+    } else {
+      console.log(`[SYNC] Product ${product.sku} - No Product Class assigned`)
+    }
+
     // Extract product attributes (productAttributeExtend from ShopRenter)
     // This contains structured attributes like size, color, dimensions, etc.
     // Fetch display names from AttributeDescription for each attribute
@@ -1256,6 +2183,7 @@ export async function syncProductToDatabase(
         let displayName = attr.name // Fallback to internal name
         let prefix = null
         let postfix = null
+        let groupName = null // Group name (e.g., "Fiók", "Méret", "Szín")
         
         if (attributeId && attributeDescriptionsMap && attributeDescriptionsMap.has(attributeId)) {
           const desc = attributeDescriptionsMap.get(attributeId)!
@@ -1264,7 +2192,11 @@ export async function syncProductToDatabase(
             prefix = desc.prefix
             postfix = desc.postfix
             console.log(`[SYNC] Using pre-fetched display name for "${attr.name}": "${displayName}"`)
+          } else {
+            console.warn(`[SYNC] AttributeDescription found for "${attr.name}" (ID: ${attributeId}) but display_name is null`)
           }
+        } else if (attributeId && attributeDescriptionsMap) {
+          console.warn(`[SYNC] AttributeDescription NOT found in map for "${attr.name}" (ID: ${attributeId}). Map has ${attributeDescriptionsMap.size} entries. Available IDs: ${Array.from(attributeDescriptionsMap.keys()).slice(0, 5).join(', ')}...`)
         } else if (attributeId && apiBaseUrl && authHeaderParam && !attributeDescriptionsMap) {
           // Fallback: fetch individually only if batch map not provided (backward compatibility)
           try {
@@ -1287,34 +2219,255 @@ export async function syncProductToDatabase(
           }
         }
 
+        // Get group name from Product Class name (primary) or fallback to widget descriptions map
+        // Product Class name takes priority as it's the correct source according to ShopRenter documentation
+        if (productClassName) {
+          groupName = productClassName
+          console.log(`[SYNC] Using Product Class name "${productClassName}" as group_name for "${attr.name}"`)
+        } else if (attributeId && attributeGroupNamesMap && attributeGroupNamesMap.has(attributeId)) {
+          // Fallback to widget description (deprecated approach)
+          groupName = attributeGroupNamesMap.get(attributeId) || null
+          if (groupName) {
+            console.log(`[SYNC] Using pre-fetched widget description group name for "${attr.name}": "${groupName}"`)
+          }
+        }
+
+        // For LIST attributes, extract and store listAttributeValue ID
+        // This is critical for syncing values back to ShopRenter
+        let processedValue = attr.value
+        if (attr.type === 'LIST' && Array.isArray(attr.value) && attr.value.length > 0) {
+          processedValue = await Promise.all(
+            attr.value.map(async (listValue: any) => {
+              const processedListValue = { ...listValue }
+              
+              // Try to extract listAttributeValue ID from the description
+              // The description should have a listAttributeValue href or id
+              if (listValue.listAttributeValue?.id) {
+                // Already have the ID in full response
+                processedListValue.listAttributeValueId = listValue.listAttributeValue.id
+                console.log(`[SYNC] Extracted listAttributeValue ID from full response for "${attr.name}": ${processedListValue.listAttributeValueId}`)
+              } else if (listValue.listAttributeValue?.href) {
+                // Extract ID from href: "http://shop.api.myshoprenter.hu/listAttributeValues/{id}"
+                const hrefMatch = listValue.listAttributeValue.href.match(/\/listAttributeValues\/([^\/\?]+)/)
+                if (hrefMatch && hrefMatch[1]) {
+                  processedListValue.listAttributeValueId = hrefMatch[1]
+                  console.log(`[SYNC] Extracted listAttributeValue ID from href for "${attr.name}": ${processedListValue.listAttributeValueId}`)
+                }
+              }
+              
+              // If we still don't have the ID, try to fetch it from the description
+              // This is a fallback for when full=1 doesn't include the nested data
+              if (!processedListValue.listAttributeValueId && (listValue.id || listValue.href) && apiBaseUrl && authHeaderParam) {
+                try {
+                  const descId = listValue.id || (listValue.href ? listValue.href.split('/').pop()?.split('?')[0] : null)
+                  if (descId) {
+                    const descUrl = `${apiBaseUrl}/listAttributeValueDescriptions/${encodeURIComponent(descId)}?full=1`
+                    const descResponse = await fetch(descUrl, {
+                      method: 'GET',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': authHeaderParam
+                      },
+                      signal: AbortSignal.timeout(5000)
+                    })
+                    
+                    if (descResponse.ok) {
+                      const descData = await descResponse.json()
+                      if (descData.listAttributeValue?.id) {
+                        processedListValue.listAttributeValueId = descData.listAttributeValue.id
+                        console.log(`[SYNC] Fetched listAttributeValue ID from description for "${attr.name}": ${processedListValue.listAttributeValueId}`)
+                      } else if (descData.listAttributeValue?.href) {
+                        const hrefMatch = descData.listAttributeValue.href.match(/\/listAttributeValues\/([^\/\?]+)/)
+                        if (hrefMatch && hrefMatch[1]) {
+                          processedListValue.listAttributeValueId = hrefMatch[1]
+                          console.log(`[SYNC] Extracted listAttributeValue ID from description href for "${attr.name}": ${processedListValue.listAttributeValueId}`)
+                        }
+                      }
+                    } else {
+                      console.warn(`[SYNC] Failed to fetch description for "${attr.name}" to extract listAttributeValue ID: ${descResponse.status}`)
+                    }
+                  }
+                } catch (error) {
+                  console.warn(`[SYNC] Error fetching listAttributeValue ID for "${attr.name}":`, error)
+                  // Don't fail the entire sync if this fails - fallback strategies will handle it
+                }
+              }
+              
+              return processedListValue
+            })
+          )
+        }
+
         productAttributes.push({
           type: attr.type, // LIST, INTEGER, FLOAT, TEXT
           name: attr.name, // Internal identifier (e.g., "meret", "szin")
+          id: attributeId, // Store attribute_shoprenter_id for filtering
+          attribute_shoprenter_id: attributeId, // Also store as attribute_shoprenter_id for consistency
           display_name: displayName, // Display name (e.g., "Méret", "Szín") - PRIMARY
+          group_name: groupName, // Group name (e.g., "Fiók", "Méret", "Szín") - NEW
           prefix: prefix, // Text before value
           postfix: postfix, // Text after value
-          value: attr.value // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
+          value: processedValue // Can be array (LIST) or single value (INTEGER/FLOAT/TEXT)
         })
+      }
+      
+      // For LIST attributes, fetch and store productListAttributeValueRelation IDs
+      // This enables direct updates during sync without searching
+      if (productAttributes && productAttributes.length > 0) {
+        const listAttributes = productAttributes.filter((attr: any) => attr.type === 'LIST')
+        
+        if (listAttributes.length > 0 && apiBaseUrl && authHeaderParam && product.id) {
+          try {
+            // Fetch all relations for this product
+            const relationsUrl = `${apiBaseUrl}/productListAttributeValueRelations?productId=${encodeURIComponent(product.id)}&full=1`
+            const relationsResponse = await fetch(relationsUrl, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeaderParam
+              },
+              signal: AbortSignal.timeout(5000)
+            })
+            
+            if (relationsResponse.ok) {
+              const relationsData = await relationsResponse.json()
+              const relations = relationsData.items || relationsData.productListAttributeValueRelations?.productListAttributeValueRelation || []
+              const relationsArray = Array.isArray(relations) ? relations : [relations].filter(Boolean)
+              
+              console.log(`[SYNC] Found ${relationsArray.length} productListAttributeValueRelations for product ${product.sku}`)
+              
+              // Create a map of listAttribute ID -> relation
+              // We need to match by the listAttribute ID (not listAttributeValue ID)
+              const relationMap = new Map<string, any>()
+              
+              for (const relation of relationsArray) {
+                // Get the listAttribute ID from the relation's listAttributeValue
+                let listAttributeId: string | null = null
+                
+                if (relation.listAttributeValue) {
+                  if (typeof relation.listAttributeValue === 'object') {
+                    // If we have full data, get listAttribute ID from listAttributeValue.listAttribute
+                    if (relation.listAttributeValue.listAttribute?.id) {
+                      listAttributeId = relation.listAttributeValue.listAttribute.id
+                    } else if (relation.listAttributeValue.listAttribute?.href) {
+                      const hrefMatch = relation.listAttributeValue.listAttribute.href.match(/\/listAttributes\/([^\/\?]+)/)
+                      if (hrefMatch && hrefMatch[1]) {
+                        listAttributeId = hrefMatch[1]
+                      }
+                    }
+                    
+                    // If we still don't have it, we might need to fetch the listAttributeValue
+                    if (!listAttributeId && relation.listAttributeValue.id) {
+                      try {
+                        const valueUrl = `${apiBaseUrl}/listAttributeValues/${encodeURIComponent(relation.listAttributeValue.id)}?full=1`
+                        const valueResponse = await fetch(valueUrl, {
+                          method: 'GET',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'Authorization': authHeaderParam
+                          },
+                          signal: AbortSignal.timeout(5000)
+                        })
+                        
+                        if (valueResponse.ok) {
+                          const valueData = await valueResponse.json()
+                          if (valueData.listAttribute?.id) {
+                            listAttributeId = valueData.listAttribute.id
+                          } else if (valueData.listAttribute?.href) {
+                            const hrefMatch = valueData.listAttribute.href.match(/\/listAttributes\/([^\/\?]+)/)
+                            if (hrefMatch && hrefMatch[1]) {
+                              listAttributeId = hrefMatch[1]
+                            }
+                          }
+                        }
+                      } catch (error) {
+                        console.warn(`[SYNC] Error fetching listAttributeValue to get listAttribute ID:`, error)
+                      }
+                    }
+                  }
+                }
+                
+                if (listAttributeId && relation.id) {
+                  relationMap.set(listAttributeId, relation)
+                  console.log(`[SYNC] Mapped relation ${relation.id} to listAttribute ${listAttributeId}`)
+                }
+              }
+              
+              // Add relation IDs to attributes
+              for (const attr of listAttributes) {
+                // Get the attribute ID from productAttributeExtend
+                let attributeId: string | null = null
+                if (product.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
+                  const matchingAttr = product.productAttributeExtend.find((a: any) => a.name === attr.name)
+                  if (matchingAttr) {
+                    attributeId = matchingAttr.id || null
+                    if (!attributeId && matchingAttr.href) {
+                      const hrefParts = matchingAttr.href.split('/')
+                      attributeId = hrefParts[hrefParts.length - 1] || null
+                    }
+                  }
+                }
+                
+                if (attributeId && relationMap.has(attributeId)) {
+                  const relation = relationMap.get(attributeId)
+                  if (Array.isArray(attr.value) && attr.value.length > 0) {
+                    attr.value[0].relationId = relation.id
+                    console.log(`[SYNC] Stored relation ID ${relation.id} for attribute "${attr.name}"`)
+                  }
+                }
+              }
+            } else {
+              console.warn(`[SYNC] Failed to fetch productListAttributeValueRelations for product ${product.sku}: ${relationsResponse.status}`)
+            }
+          } catch (error) {
+            console.warn(`[SYNC] Error fetching relations for product ${product.sku}:`, error)
+            // Don't fail the entire sync if this fails - we can still use search during sync
+          }
+        }
       }
       
       // Log what we're storing
       console.log(`[SYNC] Processed ${productAttributes.length} attributes for product ${product.sku}:`)
       productAttributes.forEach((attr: any) => {
-        console.log(`  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", type=${attr.type}`)
+        if (attr.type === 'LIST' && Array.isArray(attr.value) && attr.value[0]) {
+          console.log(`  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", group_name="${attr.group_name || 'NOT SET'}", type=${attr.type}, hasListAttributeValueId=${!!attr.value[0].listAttributeValueId}, hasRelationId=${!!attr.value[0].relationId}`)
+        } else {
+        console.log(`  - ${attr.name}: display_name="${attr.display_name || 'NOT SET'}", group_name="${attr.group_name || 'NOT SET'}", type=${attr.type}`)
+        }
       })
     }
 
-    // Extract brand/manufacturer from productExtend
+    // Extract brand/manufacturer from productExtend (non-blocking - won't fail sync if extraction fails)
     let brand = null
-    if (product.manufacturer) {
-      // manufacturer can be an object with name property, or just href
-      if (typeof product.manufacturer === 'object' && product.manufacturer.name) {
-        brand = product.manufacturer.name
-        console.log(`[SYNC] Extracted brand from manufacturer: "${brand}" for product ${product.sku}`)
-      } else if (product.manufacturer.href) {
-        // If only href is available, we could fetch it, but for now just log
-        console.log(`[SYNC] Manufacturer href found but no name for product ${product.sku}: ${product.manufacturer.href}`)
+    let manufacturerId: string | null = null
+    try {
+      if (product.manufacturer) {
+        // manufacturer can be an object with name and id properties, or just href
+        if (typeof product.manufacturer === 'object') {
+          if (product.manufacturer.name) {
+            brand = product.manufacturer.name
+          }
+          if (product.manufacturer.id) {
+            manufacturerId = product.manufacturer.id
+          }
+          console.log(`[SYNC] Extracted brand from manufacturer: "${brand}" (ID: ${manufacturerId}) for product ${product.sku}`)
+        } else if (product.manufacturer.href) {
+          // Extract ID from href if available
+          const hrefParts = product.manufacturer.href.split('/')
+          const lastPart = hrefParts[hrefParts.length - 1]
+          if (lastPart && lastPart !== 'manufacturers') {
+            manufacturerId = lastPart
+          }
+          console.log(`[SYNC] Manufacturer href found for product ${product.sku}: ${product.manufacturer.href}, extracted ID: ${manufacturerId}`)
+        }
       }
+    } catch (manufacturerError: any) {
+      // Non-blocking: log error but continue sync
+      console.warn(`[SYNC] Failed to extract manufacturer for product ${product.sku}:`, manufacturerError?.message || manufacturerError)
+      // Continue with brand = null and manufacturerId = null
     }
 
     // Extract taxClass and map to VAT
@@ -1428,7 +2581,7 @@ export async function syncProductToDatabase(
     }
 
     // Extract product data
-    const productData = {
+    const productData: any = {
       connection_id: connection.id,
       shoprenter_id: product.id,
       shoprenter_inner_id: product.innerId || null,
@@ -1437,7 +2590,10 @@ export async function syncProductToDatabase(
       gtin: product.gtin || null, // Vonalkód (Barcode/GTIN)
       name: null, // Will be set from description
       brand: brand, // Brand/manufacturer name from ShopRenter
+      manufacturer_id: manufacturerId, // ShopRenter manufacturer ID for syncing back
       status: product.status === '1' || product.status === 1 ? 1 : 0,
+      // Product Class
+      product_class_shoprenter_id: productClassShoprenterId, // Store Product Class ID for attribute filtering
       // Pricing fields (Árazás) - using calculated values
       price: finalPrice, // Nettó ár
       cost: finalCost, // Beszerzési ár (calculated if needed)
@@ -1458,16 +2614,27 @@ export async function syncProductToDatabase(
       last_url_synced_at: urlAliasData.slug ? new Date().toISOString() : null,
       sync_status: 'synced',
       sync_error: null,
-      last_synced_at: new Date().toISOString()
+      last_synced_from_shoprenter_at: new Date().toISOString() // Track when we synced FROM ShopRenter
+      // Note: Keep last_synced_at for backward compatibility (can be deprecated later)
     }
 
     // Upsert product
+    // IMPORTANT: Don't filter by deleted_at - we need to find soft-deleted products too
+    // Use .maybeSingle() instead of .single() to handle cases where product might not exist
     const { data: existingProduct } = await supabase
       .from('shoprenter_products')
-      .select('id')
+      .select('id, deleted_at, status')
       .eq('connection_id', connection.id)
       .eq('shoprenter_id', product.id)
-      .single()
+      .maybeSingle()
+    
+    // If product exists and is soft-deleted, but ShopRenter has it enabled, restore it
+    const isEnabledInShopRenter = product.status === '1' || product.status === 1
+    if (existingProduct && existingProduct.deleted_at && isEnabledInShopRenter) {
+      console.log(`[SYNC] Product ${product.sku} is soft-deleted in ERP but enabled in ShopRenter (status = ${product.status}). Restoring...`)
+      productData.deleted_at = null // Clear deleted_at to restore the product
+      productData.status = 1 // Ensure status is 1
+    }
 
     let productResult
     if (existingProduct) {
@@ -1523,15 +2690,24 @@ export async function syncProductToDatabase(
           descUrl = `${apiUrl}/${descUrl}`
         }
 
-        const descResponse = await fetch(descUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authHeader
-          },
-          signal: AbortSignal.timeout(10000)
-        })
+        // Use retry logic for 429 rate limit errors
+        const descResponse = await retryWithBackoff(
+          () => fetch(descUrl, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(10000)
+          }),
+          {
+            maxRetries: 3,
+            initialDelayMs: 2000, // Start with 2 seconds for 429 errors
+            maxDelayMs: 30000, // Max 30 seconds delay
+            retryableStatusCodes: [429, 500, 502, 503, 504] // Retry on rate limit and server errors
+          }
+        )
 
         // Handle ShopRenter API errors according to documentation
         // Reference: https://doc.shoprenter.hu/development/api/02_status_codes.html
@@ -1557,9 +2733,10 @@ export async function syncProductToDatabase(
             console.warn(`[SYNC] Product descriptions not found (404) for product ${product.sku} - this may be normal`)
             // Continue - 404 is acceptable if product has no descriptions
           } else if (descResponse.status === 429) {
-            console.error(`[SYNC] Rate limit exceeded (429) for product ${product.sku}: ${errorMessage}`)
-            // This is a critical error - should stop sync
-            throw new Error(`ShopRenter rate limit exceeded (429). Please wait before retrying.`)
+            // After retries, if still 429, log but continue (retry logic already tried)
+            console.error(`[SYNC] Rate limit exceeded (429) for product ${product.sku} after retries: ${errorMessage}`)
+            // Skip this product's description but continue sync
+            return
           } else if (descResponse.status === 403) {
             console.error(`[SYNC] Access forbidden (403) for product ${product.sku}: ${errorMessage}`)
             // Continue - but log the error
@@ -1570,11 +2747,7 @@ export async function syncProductToDatabase(
             console.error(`[SYNC] ShopRenter API error (${descResponse.status}) for product ${product.sku}: ${errorMessage}`)
           }
           
-          // Skip description processing if error is critical
-          if (descResponse.status === 429) {
-            return // Exit early for rate limiting
-          }
-          // For other errors, continue but skip description processing
+          // For non-retryable errors, continue but skip description processing
           return
         }
 
@@ -2038,6 +3211,9 @@ export async function syncProductToDatabase(
 
     // Sync product-category relations
     try {
+      // Collect ShopRenter category IDs from the response
+      const shoprenterCategoryIds = new Set<string>()
+      
       if (product.productCategoryRelations && Array.isArray(product.productCategoryRelations) && product.productCategoryRelations.length > 0) {
         console.log(`[SYNC] Processing ${product.productCategoryRelations.length} product-category relations for product ${product.sku}`)
         
@@ -2056,6 +3232,9 @@ export async function syncProductToDatabase(
               console.warn(`[SYNC] Skipping product-category relation for product ${product.sku}: missing category ID`)
               continue
             }
+
+            // Track this category ID from ShopRenter
+            shoprenterCategoryIds.add(categoryShopRenterId)
 
             // Find category in database
             const { data: categoryInDb } = await supabase
@@ -2155,6 +3334,38 @@ export async function syncProductToDatabase(
       } else {
         console.log(`[SYNC] No product-category relations found for product ${product.sku}`)
       }
+
+      // Now remove relations that exist in DB but not in ShopRenter (deleted in ShopRenter)
+      // Get all current relations for this product in database
+      const { data: allDbRelations } = await supabase
+        .from('shoprenter_product_category_relations')
+        .select('id, category_shoprenter_id')
+        .eq('product_id', dbProduct.id)
+        .is('deleted_at', null)
+
+      if (allDbRelations && allDbRelations.length > 0) {
+        // Find relations that exist in DB but not in ShopRenter response
+        const relationsToDelete = allDbRelations.filter(rel => 
+          rel.category_shoprenter_id && !shoprenterCategoryIds.has(rel.category_shoprenter_id)
+        )
+
+        if (relationsToDelete.length > 0) {
+          console.log(`[SYNC] Found ${relationsToDelete.length} category relations to remove (deleted in ShopRenter) for product ${product.sku}`)
+          
+          // Soft-delete relations that were removed in ShopRenter
+          const relationIdsToDelete = relationsToDelete.map(rel => rel.id)
+          const { error: deleteError } = await supabase
+            .from('shoprenter_product_category_relations')
+            .update({ deleted_at: new Date().toISOString() })
+            .in('id', relationIdsToDelete)
+
+          if (deleteError) {
+            console.error(`[SYNC] Failed to remove deleted category relations for product ${product.sku}:`, deleteError)
+          } else {
+            console.log(`[SYNC] Removed ${relationsToDelete.length} category relations (deleted in ShopRenter) for product ${product.sku}`)
+          }
+        }
+      }
     } catch (relationSyncError: any) {
       // Don't fail the entire sync if relation sync fails
       console.warn(`[SYNC] Failed to sync product-category relations for product ${product.sku}:`, relationSyncError?.message || relationSyncError)
@@ -2241,6 +3452,8 @@ export async function syncProductToDatabase(
       console.warn(`[SYNC] Failed to sync product tags for product ${product.sku}:`, tagSyncError?.message || tagSyncError)
     }
 
+    // Return product ID for tracking synced products
+    return { productId: dbProduct.id }
   } catch (error) {
     console.error('Error in syncProductToDatabase:', error)
     throw error

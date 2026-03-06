@@ -143,12 +143,12 @@ Return ONLY the slug, nothing else. Example: "blum-clip-top-blumotion-pant-110-f
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         message = await anthropic.messages.create({
-          model: 'claude-haiku-4-5-20251001',
-          max_tokens: 100,
-          messages: [
-            { role: 'user', content: prompt }
-          ]
-        })
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 100,
+      messages: [
+        { role: 'user', content: prompt }
+      ]
+    })
         break // Success, exit retry loop
       } catch (error: any) {
         lastError = error
