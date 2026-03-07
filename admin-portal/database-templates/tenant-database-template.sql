@@ -497,6 +497,7 @@ CREATE TABLE IF NOT EXISTS public.shoprenter_product_descriptions (
   meta_description TEXT,
   short_description TEXT,
   description TEXT,
+  measurement_unit TEXT, -- Measurement unit from ShopRenter (e.g., "db", "kg", "m", "l", "pc")
   
   -- ShopRenter Sync
   shoprenter_id TEXT,
@@ -521,6 +522,13 @@ CREATE INDEX IF NOT EXISTS idx_products_last_synced_to
   WHERE last_synced_to_shoprenter_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_descriptions_product ON public.shoprenter_product_descriptions(product_id);
 CREATE INDEX IF NOT EXISTS idx_descriptions_language ON public.shoprenter_product_descriptions(language_code);
+
+-- 3.5. Create trigger to auto-update updated_at for shoprenter_products
+DROP TRIGGER IF EXISTS update_shoprenter_products_updated_at ON public.shoprenter_products;
+CREATE TRIGGER update_shoprenter_products_updated_at
+  BEFORE UPDATE ON public.shoprenter_products
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
 
 -- 4. Enable Row Level Security (RLS)
 ALTER TABLE public.shoprenter_products ENABLE ROW LEVEL SECURITY;
@@ -632,6 +640,83 @@ WHERE p.path = '/vat'
   )
 ON CONFLICT (user_id, page_id) DO NOTHING;
 
+-- =============================================================================
+-- Migration: 20250315_add_units_page_to_permissions.sql
+-- =============================================================================
+
+-- Add Units page to permissions system
+-- This allows the /units page to be accessible through the permission system
+
+INSERT INTO public.pages (path, name, description, category) VALUES
+  ('/units', 'Mértékegységek', 'Mértékegységek kezelése', 'Törzsadatok')
+ON CONFLICT (path) DO NOTHING;
+
+-- Grant default access to all existing users for the Units page
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path = '/units'
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+-- Add Manufacturers page to permissions system
+-- This allows the /manufacturers page to be accessible through the permission system
+
+INSERT INTO public.pages (path, name, description, category) VALUES
+  ('/manufacturers', 'Gyártók', 'Gyártók kezelése', 'Törzsadatok')
+ON CONFLICT (path) DO NOTHING;
+
+-- Grant default access to all existing users for the Manufacturers page
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path = '/manufacturers'
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+-- =============================================================================
+-- Migration: 20250317_add_weight_units_page_to_permissions.sql
+-- =============================================================================
+
+-- Add Weight Units page to permissions system
+-- This allows the /weight-units page to be accessible through the permission system
+
+INSERT INTO public.pages (path, name, description, category) VALUES
+  ('/weight-units', 'Súlymértékek', 'Súlymértékek kezelése', 'Törzsadatok')
+ON CONFLICT (path) DO NOTHING;
+
+-- Grant default access to all existing users for the Weight Units page
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path = '/weight-units'
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
 
 -- =============================================================================
 -- Migration: 20250125_add_vat_support.sql
@@ -724,6 +809,218 @@ COMMENT ON COLUMN public.shoprenter_products.vat_id IS 'Reference to ERP VAT rat
 COMMENT ON COLUMN public.shoprenter_products.gross_price IS 'Calculated gross price (net + VAT). Stored for display and calculations.';
 COMMENT ON COLUMN public.shoprenter_products.shoprenter_tax_class_id IS 'ShopRenter taxClass ID (base64 encoded). Used for syncing taxClass to ShopRenter.';
 
+-- =============================================================================
+-- Migration: 20250315_create_units_table.sql
+-- =============================================================================
+
+-- Create units table for measurement units management
+-- This table stores measurement units (mértékegységek) used in products
+
+CREATE TABLE IF NOT EXISTS public.units (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL,
+    shortform VARCHAR NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add unique constraint on name (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS units_name_unique_active 
+ON public.units (name) 
+WHERE deleted_at IS NULL;
+
+-- Add unique constraint on shortform (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS units_shortform_unique_active 
+ON public.units (shortform) 
+WHERE deleted_at IS NULL;
+
+-- Add index for better performance when filtering out deleted records
+CREATE INDEX IF NOT EXISTS ix_units_deleted_at ON public.units(deleted_at) WHERE deleted_at IS NULL;
+
+-- Create trigger for units table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_units_updated_at ON public.units;
+CREATE TRIGGER update_units_updated_at
+    BEFORE UPDATE ON public.units
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Insert sample data (only if they don't exist)
+INSERT INTO public.units (name, shortform) 
+SELECT * FROM (VALUES 
+    ('Darab', 'db'),
+    ('Kilogramm', 'kg'),
+    ('Gramm', 'g'),
+    ('Méter', 'm'),
+    ('Centiméter', 'cm'),
+    ('Milliméter', 'mm'),
+    ('Liter', 'l'),
+    ('Milliliter', 'ml'),
+    ('Piece', 'pc'),
+    ('Doboz', 'box'),
+    ('Csomag', 'pack')
+) AS v(name, shortform)
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.units 
+    WHERE units.name = v.name AND units.deleted_at IS NULL
+);
+
+-- Enable RLS for units table
+ALTER TABLE public.units ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for units table
+DROP POLICY IF EXISTS "Units are viewable by authenticated users" ON public.units;
+CREATE POLICY "Units are viewable by authenticated users" 
+ON public.units
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Units are manageable by authenticated users" ON public.units;
+CREATE POLICY "Units are manageable by authenticated users" 
+ON public.units
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.units TO authenticated;
+
+
+-- Create manufacturers table for brand/manufacturer management
+-- This table stores manufacturers/brands used in products
+-- Global table (like units, vat) - shared across all platforms
+
+CREATE TABLE IF NOT EXISTS public.manufacturers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL,
+    description TEXT,
+    website TEXT,
+    logo_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add unique constraint on name (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS manufacturers_name_unique_active 
+ON public.manufacturers (name) 
+WHERE deleted_at IS NULL;
+
+-- Add index for better performance when filtering out deleted records
+CREATE INDEX IF NOT EXISTS ix_manufacturers_deleted_at ON public.manufacturers(deleted_at) WHERE deleted_at IS NULL;
+
+-- Create trigger for manufacturers table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_manufacturers_updated_at ON public.manufacturers;
+CREATE TRIGGER update_manufacturers_updated_at
+    BEFORE UPDATE ON public.manufacturers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for manufacturers table
+ALTER TABLE public.manufacturers ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for manufacturers table
+DROP POLICY IF EXISTS "Manufacturers are viewable by authenticated users" ON public.manufacturers;
+CREATE POLICY "Manufacturers are viewable by authenticated users" 
+ON public.manufacturers
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Manufacturers are manageable by authenticated users" ON public.manufacturers;
+CREATE POLICY "Manufacturers are manageable by authenticated users" 
+ON public.manufacturers
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.manufacturers TO authenticated;
+
+
+-- =============================================================================
+-- Migration: 20250317_create_weight_units_table.sql
+-- =============================================================================
+
+-- Create weight_units table for weight unit management
+-- This table stores weight units (súlymértékek) used in products
+-- Global table (like units, vat, manufacturers) - shared across all platforms
+
+CREATE TABLE IF NOT EXISTS public.weight_units (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL,
+    shortform VARCHAR NOT NULL,
+    shoprenter_weight_class_id TEXT, -- ShopRenter weightClass ID (for mapping)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add unique constraint on name (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS weight_units_name_unique_active 
+ON public.weight_units (name) 
+WHERE deleted_at IS NULL;
+
+-- Add unique constraint on shortform (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS weight_units_shortform_unique_active 
+ON public.weight_units (shortform) 
+WHERE deleted_at IS NULL;
+
+-- Add index for shoprenter_weight_class_id
+CREATE INDEX IF NOT EXISTS idx_weight_units_shoprenter_id 
+ON public.weight_units(shoprenter_weight_class_id) 
+WHERE shoprenter_weight_class_id IS NOT NULL;
+
+-- Add index for better performance when filtering out deleted records
+CREATE INDEX IF NOT EXISTS ix_weight_units_deleted_at ON public.weight_units(deleted_at) WHERE deleted_at IS NULL;
+
+-- Create trigger for weight_units table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_weight_units_updated_at ON public.weight_units;
+CREATE TRIGGER update_weight_units_updated_at
+    BEFORE UPDATE ON public.weight_units
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Insert sample data (only if they don't exist)
+INSERT INTO public.weight_units (name, shortform) 
+SELECT * FROM (VALUES 
+    ('Kilogramm', 'kg'),
+    ('Gramm', 'g'),
+    ('Ton', 't'),
+    ('Pound', 'lb'),
+    ('Ounce', 'oz')
+) AS v(name, shortform)
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.weight_units 
+    WHERE weight_units.name = v.name AND weight_units.deleted_at IS NULL
+);
+
+-- Enable RLS for weight_units table
+ALTER TABLE public.weight_units ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for weight_units table
+DROP POLICY IF EXISTS "Weight units are viewable by authenticated users" ON public.weight_units;
+CREATE POLICY "Weight units are viewable by authenticated users" 
+ON public.weight_units
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Weight units are manageable by authenticated users" ON public.weight_units;
+CREATE POLICY "Weight units are manageable by authenticated users" 
+ON public.weight_units
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.weight_units TO authenticated;
+
+
 -- Create mapping table: ERP VAT rates ↔ ShopRenter taxClasses (per connection)
 CREATE TABLE IF NOT EXISTS public.shoprenter_tax_class_mappings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -779,6 +1076,19 @@ ADD COLUMN IF NOT EXISTS parameters TEXT;
 
 -- Add comment
 COMMENT ON COLUMN public.shoprenter_product_descriptions.parameters IS 'Product parameters (language-specific). Pulled from ShopRenter productDescriptions.parameters field.';
+
+-- Add measurement_unit column to shoprenter_product_descriptions
+ALTER TABLE public.shoprenter_product_descriptions 
+ADD COLUMN IF NOT EXISTS measurement_unit TEXT;
+
+-- Add index for measurement_unit searches
+CREATE INDEX IF NOT EXISTS idx_descriptions_measurement_unit 
+  ON public.shoprenter_product_descriptions(measurement_unit) 
+  WHERE measurement_unit IS NOT NULL;
+
+-- Add comment
+COMMENT ON COLUMN public.shoprenter_product_descriptions.measurement_unit IS 
+  'Measurement unit from ShopRenter productDescriptions.measurementUnit (e.g., "db", "kg", "m", "l", "pc"). Used for displaying quantity with unit (e.g., "5 db", "2 kg").';
 
 -- Create product_tags table for storing product tags (language-specific)
 CREATE TABLE IF NOT EXISTS public.product_tags (
@@ -2935,22 +3245,19 @@ COMMENT ON COLUMN public.product_indexing_status.sitemap_url IS 'URL of the site
 
 
 -- =============================================================================
--- Migration: 20250303_add_brand_field.sql
+-- Migration: 20250316_remove_brand_column.sql
 -- =============================================================================
 
--- Add brand/manufacturer field to shoprenter_products table
--- Brand is pulled from ShopRenter productExtend.manufacturer.name
+-- Remove brand column from shoprenter_products table
+-- Brand is now redundant - we use erp_manufacturer_id to join with manufacturers table
+-- This migration removes the brand column and its index
 
+-- Drop index first
+DROP INDEX IF EXISTS idx_shoprenter_products_brand;
+
+-- Drop column
 ALTER TABLE public.shoprenter_products 
-  ADD COLUMN IF NOT EXISTS brand TEXT;
-
--- Add index for brand searches
-CREATE INDEX IF NOT EXISTS idx_shoprenter_products_brand 
-  ON public.shoprenter_products(brand) 
-  WHERE brand IS NOT NULL;
-
--- Comment on new column
-COMMENT ON COLUMN public.shoprenter_products.brand IS 'Product brand/manufacturer name from ShopRenter manufacturer resource';
+  DROP COLUMN IF EXISTS brand;
 
 
 -- =============================================================================
@@ -2968,8 +3275,63 @@ CREATE INDEX IF NOT EXISTS idx_shoprenter_products_manufacturer_id
   ON public.shoprenter_products(manufacturer_id) 
   WHERE manufacturer_id IS NOT NULL;
 
+-- Add erp_manufacturer_id column to shoprenter_products table
+-- This stores the ERP manufacturer ID (from manufacturers table) for products
+-- This is separate from manufacturer_id which stores the ShopRenter manufacturer ID
+
+ALTER TABLE public.shoprenter_products 
+  ADD COLUMN IF NOT EXISTS erp_manufacturer_id UUID REFERENCES public.manufacturers(id) ON DELETE SET NULL;
+
+-- Add index for erp_manufacturer_id searches
+CREATE INDEX IF NOT EXISTS idx_shoprenter_products_erp_manufacturer_id 
+  ON public.shoprenter_products(erp_manufacturer_id) 
+  WHERE erp_manufacturer_id IS NOT NULL;
+
+-- Comment on new column
+COMMENT ON COLUMN public.shoprenter_products.erp_manufacturer_id IS 'ERP manufacturer ID (from manufacturers table). This is the global manufacturer/brand that can be used across all platforms. Separate from manufacturer_id which is the ShopRenter-specific manufacturer ID.';
+
 -- Comment on new column
 COMMENT ON COLUMN public.shoprenter_products.manufacturer_id IS 'ShopRenter manufacturer resource ID (for syncing manufacturer back to ShopRenter)';
+
+
+-- =============================================================================
+-- Migration: 20250317_add_dimensions_to_products.sql
+-- =============================================================================
+
+-- Add dimension and weight columns to shoprenter_products table
+-- Dimensions: width (szélesség), height (magasság), length (hosszúság)
+-- Weight: weight (súly) with weight unit reference
+
+ALTER TABLE public.shoprenter_products 
+  ADD COLUMN IF NOT EXISTS width NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS height NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS length NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS weight NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS erp_weight_unit_id UUID REFERENCES public.weight_units(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS shoprenter_volume_unit_id TEXT, -- ShopRenter lengthClass ID (for dimensions - cm, m, mm)
+  ADD COLUMN IF NOT EXISTS shoprenter_weight_unit_id TEXT; -- ShopRenter weightClass ID (for weight - kg, g, etc.)
+
+-- Add indexes for dimensions and weight
+CREATE INDEX IF NOT EXISTS idx_shoprenter_products_dimensions 
+  ON public.shoprenter_products(width, height, length) 
+  WHERE width IS NOT NULL OR height IS NOT NULL OR length IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shoprenter_products_weight 
+  ON public.shoprenter_products(weight) 
+  WHERE weight IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shoprenter_products_erp_weight_unit_id 
+  ON public.shoprenter_products(erp_weight_unit_id) 
+  WHERE erp_weight_unit_id IS NOT NULL;
+
+-- Comments on new columns
+COMMENT ON COLUMN public.shoprenter_products.width IS 'Product width in cm (szélesség)';
+COMMENT ON COLUMN public.shoprenter_products.height IS 'Product height in cm (magasság)';
+COMMENT ON COLUMN public.shoprenter_products.length IS 'Product length in cm (hosszúság)';
+COMMENT ON COLUMN public.shoprenter_products.weight IS 'Product weight (súly)';
+COMMENT ON COLUMN public.shoprenter_products.erp_weight_unit_id IS 'ERP weight unit ID (from weight_units table)';
+COMMENT ON COLUMN public.shoprenter_products.shoprenter_volume_unit_id IS 'ShopRenter lengthClass ID (for dimensions - default: cm)';
+COMMENT ON COLUMN public.shoprenter_products.shoprenter_weight_unit_id IS 'ShopRenter weightClass ID (for weight)';
 
 
 -- =============================================================================
@@ -3847,3 +4209,339 @@ COMMENT ON COLUMN public.shoprenter_products.last_synced_from_shoprenter_at IS
 
 COMMENT ON COLUMN public.shoprenter_products.last_synced_to_shoprenter_at IS 
 'Timestamp when product was last synced TO ShopRenter (pushed from ERP). Used to prevent overwriting ERP changes that were just synced to ShopRenter.';
+
+-- =============================================================================
+-- Migration: 20250319_create_customer_groups_table.sql
+-- =============================================================================
+
+-- Create customer_groups table for pricing system
+-- This table stores customer groups (vevőcsoportok) used for different pricing tiers
+-- Maps to ShopRenter customer groups
+
+CREATE TABLE IF NOT EXISTS public.customer_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(100) NOT NULL,
+    description TEXT,
+    
+    -- ShopRenter sync
+    shoprenter_customer_group_id TEXT,
+    
+    -- Price calculation
+    price_multiplier DECIMAL(10,4) DEFAULT NULL,
+    
+    is_default BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add unique constraint on code (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS customer_groups_code_unique_active 
+ON public.customer_groups (code) 
+WHERE deleted_at IS NULL;
+
+-- Add unique constraint on name (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS customer_groups_name_unique_active 
+ON public.customer_groups (name) 
+WHERE deleted_at IS NULL;
+
+-- Add index for better performance when filtering out deleted records
+CREATE INDEX IF NOT EXISTS ix_customer_groups_deleted_at ON public.customer_groups(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS ix_customer_groups_active ON public.customer_groups(is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_groups_multiplier ON public.customer_groups(price_multiplier) WHERE price_multiplier IS NOT NULL AND deleted_at IS NULL;
+
+-- Create trigger for customer_groups table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_customer_groups_updated_at ON public.customer_groups;
+CREATE TRIGGER update_customer_groups_updated_at
+    BEFORE UPDATE ON public.customer_groups
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for customer_groups table
+ALTER TABLE public.customer_groups ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for customer_groups table
+DROP POLICY IF EXISTS "Customer groups are viewable by authenticated users" ON public.customer_groups;
+CREATE POLICY "Customer groups are viewable by authenticated users" 
+ON public.customer_groups
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Customer groups are manageable by authenticated users" ON public.customer_groups;
+CREATE POLICY "Customer groups are manageable by authenticated users" 
+ON public.customer_groups
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_groups TO authenticated;
+
+-- Add comments
+COMMENT ON TABLE public.customer_groups IS 'Customer groups (vevőcsoportok) for pricing tiers. Maps to ShopRenter customer groups.';
+COMMENT ON COLUMN public.customer_groups.code IS 'Unique code for the customer group (e.g., CUSTOMERS, RETAILERS, VIP)';
+COMMENT ON COLUMN public.customer_groups.shoprenter_customer_group_id IS 'ShopRenter customer group ID after sync';
+COMMENT ON COLUMN public.customer_groups.price_multiplier IS 'Multiplier for auto-calculating prices (e.g., 1.1 = cost * 1.1). NULL means manual pricing.';
+COMMENT ON COLUMN public.customer_groups.is_default IS 'Whether this is the default customer group';
+
+-- =============================================================================
+-- Migration: 20250319_add_customer_groups_page_to_permissions.sql
+-- =============================================================================
+
+-- Add Customer Groups page to permissions system
+-- This allows the /customer-groups page to be accessible through the permission system
+
+INSERT INTO public.pages (path, name, description, category) VALUES
+  ('/customer-groups', 'Vevőcsoportok', 'Vevőcsoportok kezelése', 'Árazás')
+ON CONFLICT (path) DO NOTHING;
+
+-- Grant default access to all existing users for the Customer Groups page
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path = '/customer-groups'
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+-- =============================================================================
+-- Migration: 20250321_add_promotions_page_to_permissions.sql
+-- =============================================================================
+
+-- Add promotions page to permission system
+INSERT INTO public.pages (path, name, description, category, is_active)
+VALUES (
+  '/promotions',
+  'Akciók',
+  'Termék akciók és mennyiségi árazás kezelése',
+  'Árszabás',
+  true
+)
+ON CONFLICT (path) DO NOTHING;
+
+-- Grant default access to all existing users for the Promotions page
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path = '/promotions'
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+-- =============================================================================
+-- Migration: 20250319_create_product_customer_group_prices_table.sql
+-- =============================================================================
+
+-- Create product_customer_group_prices table for pricing system
+-- This table stores different prices for products based on customer groups
+-- Maps to ShopRenter customerGroupProductPrice resource
+
+CREATE TABLE IF NOT EXISTS public.product_customer_group_prices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES shoprenter_products(id) ON DELETE CASCADE,
+    customer_group_id UUID NOT NULL REFERENCES customer_groups(id) ON DELETE CASCADE,
+    
+    price DECIMAL(15,4) NOT NULL, -- Price for this customer group
+    
+    -- ShopRenter sync
+    shoprenter_customer_group_price_id TEXT,
+    last_synced_at TIMESTAMPTZ,
+    
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    
+    UNIQUE(product_id, customer_group_id)
+);
+
+-- Add indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_product_group_prices_product ON public.product_customer_group_prices(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_group_prices_group ON public.product_customer_group_prices(customer_group_id);
+CREATE INDEX IF NOT EXISTS idx_product_group_prices_active ON public.product_customer_group_prices(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_product_group_prices_synced ON public.product_customer_group_prices(last_synced_at) WHERE last_synced_at IS NOT NULL;
+
+-- Create trigger for product_customer_group_prices table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_product_customer_group_prices_updated_at ON public.product_customer_group_prices;
+CREATE TRIGGER update_product_customer_group_prices_updated_at
+    BEFORE UPDATE ON public.product_customer_group_prices
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for product_customer_group_prices table
+ALTER TABLE public.product_customer_group_prices ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for product_customer_group_prices table
+DROP POLICY IF EXISTS "Product customer group prices are viewable by authenticated users" ON public.product_customer_group_prices;
+CREATE POLICY "Product customer group prices are viewable by authenticated users" 
+ON public.product_customer_group_prices
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Product customer group prices are manageable by authenticated users" ON public.product_customer_group_prices;
+CREATE POLICY "Product customer group prices are manageable by authenticated users" 
+ON public.product_customer_group_prices
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.product_customer_group_prices TO authenticated;
+
+-- Add comments
+COMMENT ON TABLE public.product_customer_group_prices IS 'Product prices per customer group. Maps to ShopRenter customerGroupProductPrice resource.';
+COMMENT ON COLUMN public.product_customer_group_prices.price IS 'Price for this product for this specific customer group';
+COMMENT ON COLUMN public.product_customer_group_prices.shoprenter_customer_group_price_id IS 'ShopRenter customerGroupProductPrice ID after sync';
+COMMENT ON COLUMN public.product_customer_group_prices.last_synced_at IS 'Timestamp when this price was last synced to ShopRenter';
+
+-- =============================================================================
+-- Migration: 20250321_create_product_specials_table.sql
+-- =============================================================================
+
+-- Create product_specials table for promotions and volume pricing
+-- This table stores promotions, volume pricing, and "Product of the Day" features
+-- Maps to ShopRenter productSpecial resource
+
+CREATE TABLE IF NOT EXISTS public.product_specials (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Product reference
+  product_id UUID NOT NULL REFERENCES public.shoprenter_products(id) ON DELETE CASCADE,
+  
+  -- ShopRenter sync
+  shoprenter_special_id TEXT, -- ShopRenter resource ID (nullable until synced)
+  connection_id UUID NOT NULL REFERENCES public.webshop_connections(id) ON DELETE CASCADE,
+  
+  -- Customer group (nullable = "Everyone")
+  customer_group_id UUID REFERENCES public.customer_groups(id) ON DELETE SET NULL,
+  
+  -- Promotion details
+  priority INTEGER NOT NULL DEFAULT 1, -- Higher priority wins conflicts
+  price DECIMAL(15,4) NOT NULL, -- Special price (net)
+  
+  -- Date range
+  date_from DATE, -- NULL = no start date
+  date_to DATE, -- NULL = no end date
+  
+  -- Volume pricing
+  min_quantity INTEGER DEFAULT 0, -- 0 = no minimum
+  max_quantity INTEGER DEFAULT 0, -- 0 = unlimited
+  
+  -- Product of the day
+  type TEXT DEFAULT 'interval', -- 'interval' or 'day_spec'
+  day_of_week INTEGER, -- 1-7 (Monday-Sunday), only for type='day_spec'
+  
+  -- Status
+  is_active BOOLEAN DEFAULT true,
+  is_expired BOOLEAN DEFAULT false, -- Auto-set when date_to < today
+  
+  -- Timestamps
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  deleted_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Constraints
+  CONSTRAINT valid_day_of_week CHECK (day_of_week IS NULL OR (day_of_week >= 1 AND day_of_week <= 7)),
+  CONSTRAINT valid_priority CHECK (priority >= -1),
+  CONSTRAINT valid_quantity_range CHECK (max_quantity = 0 OR max_quantity >= min_quantity),
+  CONSTRAINT valid_date_range CHECK (date_to IS NULL OR date_from IS NULL OR date_to >= date_from)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_product_specials_product_id ON public.product_specials(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_specials_connection_id ON public.product_specials(connection_id);
+CREATE INDEX IF NOT EXISTS idx_product_specials_customer_group_id ON public.product_specials(customer_group_id);
+CREATE INDEX IF NOT EXISTS idx_product_specials_active ON public.product_specials(is_active, is_expired) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_product_specials_dates ON public.product_specials(date_from, date_to) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_product_specials_shoprenter_id ON public.product_specials(shoprenter_special_id) WHERE shoprenter_special_id IS NOT NULL;
+
+-- Comments
+COMMENT ON TABLE public.product_specials IS 'Product promotions, volume pricing, and special offers';
+COMMENT ON COLUMN public.product_specials.priority IS 'Higher priority wins conflicts. Product of day uses -1.';
+COMMENT ON COLUMN public.product_specials.price IS 'Special price (net). ShopRenter calculates gross.';
+COMMENT ON COLUMN public.product_specials.customer_group_id IS 'NULL = "Everyone" (all customer groups)';
+COMMENT ON COLUMN public.product_specials.type IS 'interval = regular promotion, day_spec = product of the day';
+COMMENT ON COLUMN public.product_specials.day_of_week IS '1=Monday, 2=Tuesday, ..., 7=Sunday. Only for type=day_spec';
+
+-- RLS Policies
+ALTER TABLE public.product_specials ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for product_specials table
+DROP POLICY IF EXISTS "Product specials are viewable by authenticated users" ON public.product_specials;
+CREATE POLICY "Product specials are viewable by authenticated users" 
+ON public.product_specials
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Product specials are manageable by authenticated users" ON public.product_specials;
+CREATE POLICY "Product specials are manageable by authenticated users" 
+ON public.product_specials
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.product_specials TO authenticated;
+
+-- Create trigger for product_specials table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_product_specials_updated_at ON public.product_specials;
+CREATE TRIGGER update_product_specials_updated_at
+    BEFORE UPDATE ON public.product_specials
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Trigger to auto-set is_expired
+CREATE OR REPLACE FUNCTION check_product_special_expiration()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.date_to IS NOT NULL AND NEW.date_to < CURRENT_DATE THEN
+    NEW.is_expired = true;
+  ELSE
+    NEW.is_expired = false;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER product_specials_check_expiration
+  BEFORE INSERT OR UPDATE ON public.product_specials
+  FOR EACH ROW
+  EXECUTE FUNCTION check_product_special_expiration();
+
+-- Function to get next priority for a product
+CREATE OR REPLACE FUNCTION get_next_priority_for_product(p_product_id UUID)
+RETURNS INTEGER AS $$
+DECLARE
+  max_priority INTEGER;
+BEGIN
+  SELECT COALESCE(MAX(priority), 0) INTO max_priority
+  FROM public.product_specials
+  WHERE product_id = p_product_id
+    AND deleted_at IS NULL
+    AND priority > 0; -- Don't count -1 (product of day)
+  
+  RETURN max_priority + 1;
+END;
+$$ LANGUAGE plpgsql;
