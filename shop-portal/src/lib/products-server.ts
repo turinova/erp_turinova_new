@@ -12,7 +12,6 @@ export interface ShopRenterProduct {
   model_number: string | null  // Gyártói cikkszám (Manufacturer part number)
   gtin: string | null  // Vonalkód (Barcode/GTIN)
   name: string | null
-  brand: string | null  // Brand/manufacturer name from ShopRenter
   status: number
   // Pricing fields (Árazás)
   price: number | null  // Nettó ár (Net price)
@@ -112,7 +111,6 @@ export async function getAllProducts(
         model_number,
         gtin,
         name,
-        brand,
         status,
         price,
         cost,

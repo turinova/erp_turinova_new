@@ -199,7 +199,6 @@ export async function POST(request: NextRequest) {
         sku: sku.trim(),
         model_number: model_number?.trim() || null,
         gtin: gtin?.trim() || null,
-        brand: brand?.trim() || null,
         manufacturer_id: manufacturer_id || null,
         name: name.trim(),
         status: 1, // Active
