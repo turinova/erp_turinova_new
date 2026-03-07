@@ -5,7 +5,10 @@ import {
   extractShopNameFromUrl,
   getShopRenterAuthHeader,
   getLanguageId,
-  getProductDescriptionId
+  getProductDescriptionId,
+  syncCustomerGroupToShopRenter,
+  syncCustomerGroupPriceToShopRenter,
+  syncProductSpecialToShopRenter
 } from '@/lib/shoprenter-api'
 
 /**
@@ -298,6 +301,12 @@ export async function POST(
         durableMediaDevice: '0'
       }
 
+      // Add cost to ShopRenter (költség field) for new products
+      if (cost !== null && cost !== undefined && !isNaN(cost) && isFinite(cost) && cost > 0) {
+        productExtendPayload.cost = String(Math.round(cost * 100) / 100) // Round to 2 decimal places
+        console.log(`[SYNC] ✅ Added cost to new product payload: ${productExtendPayload.cost}`)
+      }
+
       // Add modelNumber if exists
       if (product.model_number !== null && product.model_number !== undefined) {
         productExtendPayload.modelNumber = product.model_number || ''
@@ -306,6 +315,134 @@ export async function POST(
       // Add gtin if exists
       if (product.gtin !== null && product.gtin !== undefined) {
         productExtendPayload.gtin = product.gtin || ''
+      }
+
+      // Add dimensions (width, height, length) - stored in cm
+      const width = (product as any).width
+      const height = (product as any).height
+      const length = (product as any).length
+      if (width !== null && width !== undefined) {
+        productExtendPayload.width = String(width)
+      }
+      if (height !== null && height !== undefined) {
+        productExtendPayload.height = String(height)
+      }
+      if (length !== null && length !== undefined) {
+        productExtendPayload.length = String(length)
+      }
+
+      // Add weight
+      const weight = (product as any).weight
+      if (weight !== null && weight !== undefined) {
+        productExtendPayload.weight = String(weight)
+      }
+
+      // Add volumeUnit (for dimensions - default to cm if not set)
+      const shoprenterVolumeUnitId = (product as any).shoprenter_volume_unit_id
+      if (shoprenterVolumeUnitId) {
+        productExtendPayload.volumeUnit = {
+          id: shoprenterVolumeUnitId
+        }
+        console.log(`[SYNC] Adding volumeUnit: ${shoprenterVolumeUnitId}`)
+      }
+
+      // Add weightUnit if set
+      const shoprenterWeightUnitId = (product as any).shoprenter_weight_unit_id
+      let finalWeightUnitId = shoprenterWeightUnitId
+      
+      if (!finalWeightUnitId) {
+        // Try to get ShopRenter weight unit ID from erp_weight_unit_id
+        const erpWeightUnitId = (product as any).erp_weight_unit_id
+        if (erpWeightUnitId) {
+          const { data: weightUnit } = await supabase
+            .from('weight_units')
+            .select('shoprenter_weight_class_id, name, shortform')
+            .eq('id', erpWeightUnitId)
+            .is('deleted_at', null)
+            .single()
+          
+          if (weightUnit?.shoprenter_weight_class_id) {
+            finalWeightUnitId = weightUnit.shoprenter_weight_class_id
+            console.log(`[SYNC] Mapped ERP weight unit ${erpWeightUnitId} to ShopRenter weightUnit ${finalWeightUnitId}`)
+          } else if (weightUnit) {
+            // Weight unit exists in ERP but not in ShopRenter - try to find matching weight class
+            console.log(`[SYNC] Searching for matching weight class in ShopRenter for "${weightUnit.name}" (${weightUnit.shortform})...`)
+            try {
+              // Search existing weight classes
+              const weightClassesResponse = await fetch(`${apiBaseUrl}/weightClasses?full=1`, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                signal: AbortSignal.timeout(10000)
+              })
+
+              if (weightClassesResponse.ok) {
+                const weightClassesData = await weightClassesResponse.json()
+                const weightClasses = weightClassesData?.items || weightClassesData?.response?.items || []
+                
+                // Search for matching weight class by fetching descriptions
+                for (const weightClass of weightClasses) {
+                  const weightClassId = weightClass.id
+                  if (!weightClassId) continue
+                  
+                  try {
+                    const descResponse = await fetch(`${apiBaseUrl}/weightClassDescriptions?weightClassId=${encodeURIComponent(weightClassId)}&full=1`, {
+                      method: 'GET',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': authHeader
+                      },
+                      signal: AbortSignal.timeout(5000)
+                    })
+                    
+                    if (descResponse.ok) {
+                      const descData = await descResponse.json()
+                      const descriptions = descData?.items || descData?.response?.items || []
+                      
+                      // Check if any description matches our weight unit name or shortform
+                      const matchingDesc = descriptions.find((d: any) => 
+                        d.title?.toLowerCase() === weightUnit.name.toLowerCase() ||
+                        d.unit?.toLowerCase() === weightUnit.shortform.toLowerCase()
+                      )
+                      
+                      if (matchingDesc) {
+                        finalWeightUnitId = weightClassId
+                        // Update our database with the found ShopRenter ID
+                        await supabase
+                          .from('weight_units')
+                          .update({ shoprenter_weight_class_id: weightClassId })
+                          .eq('id', erpWeightUnitId)
+                        
+                        console.log(`[SYNC] ✅ Found matching weight class "${matchingDesc.title}" (${matchingDesc.unit}) in ShopRenter: ${weightClassId}`)
+                        break
+                      }
+                    }
+                  } catch (descError) {
+                    // Continue searching
+                    continue
+                  }
+                }
+                
+                if (!finalWeightUnitId) {
+                  console.warn(`[SYNC] ⚠️ Weight unit "${weightUnit.name}" (${weightUnit.shortform}) not found in ShopRenter. Weight classes are read-only in ShopRenter API, so new weight units cannot be created. Please create the weight class manually in ShopRenter or use an existing one.`)
+                }
+              }
+            } catch (searchError) {
+              console.warn(`[SYNC] ⚠️ Error searching for weight class:`, searchError)
+            }
+          }
+        }
+      }
+      
+      if (finalWeightUnitId) {
+        productExtendPayload.weightUnit = {
+          id: finalWeightUnitId
+        }
+        console.log(`[SYNC] Adding weightUnit: ${finalWeightUnitId}`)
       }
 
       // Add taxClass if VAT is set
@@ -355,15 +492,160 @@ export async function POST(
 
       // Add manufacturer if set
       const manufacturerId = (product as any).manufacturer_id
-      const brand = (product as any).brand
-      if (manufacturerId) {
-        productExtendPayload.manufacturer = {
-          id: manufacturerId
+      const erpManufacturerId = (product as any).erp_manufacturer_id
+      
+      // Get manufacturer name from erp_manufacturer_id for logging
+      let manufacturerName: string | null = null
+      if (erpManufacturerId) {
+        const { data: manufacturer } = await supabase
+          .from('manufacturers')
+          .select('name')
+          .eq('id', erpManufacturerId)
+          .is('deleted_at', null)
+          .single()
+        if (manufacturer) {
+          manufacturerName = manufacturer.name
         }
-        console.log(`[SYNC] Adding manufacturer: ${manufacturerId} (${brand || 'no name'})`)
-      } else if (brand) {
-        // If we have brand name but no ID, try to find or create manufacturer
-        console.warn(`[SYNC] ⚠️ Brand name "${brand}" found but no manufacturer_id, skipping manufacturer in creation`)
+      }
+      
+      // Use manufacturerId if it exists and is valid, otherwise try to create from erp_manufacturer_id
+      let finalManufacturerId: string | null = null
+      
+      // If we have both manufacturer_id and erp_manufacturer_id, verify they match
+      if (manufacturerId && manufacturerId.trim() !== '' && !manufacturerId.startsWith('pending-') && erpManufacturerId && manufacturerName) {
+        // Verify that the ShopRenter manufacturer_id actually matches the erp_manufacturer_id
+        try {
+          console.log(`[SYNC] Verifying manufacturer match: checking if ShopRenter manufacturer_id ${manufacturerId} matches erp_manufacturer_id ${erpManufacturerId}...`)
+          const verifyResponse = await fetch(`${apiBaseUrl}/manufacturers/${manufacturerId}?full=1`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(5000)
+          })
+
+          if (verifyResponse.ok) {
+            const shoprenterManufacturer = await verifyResponse.json()
+            const shoprenterManufacturerName = shoprenterManufacturer?.name || ''
+            
+            // Compare names (case-insensitive, trimmed)
+            if (shoprenterManufacturerName.trim().toLowerCase() === manufacturerName.trim().toLowerCase()) {
+              // They match! Use the existing manufacturer_id
+              finalManufacturerId = manufacturerId
+              console.log(`[SYNC] ✅ Verified manufacturer match: "${shoprenterManufacturerName}" matches "${manufacturerName}", using existing ShopRenter manufacturer_id: ${finalManufacturerId}`)
+            } else {
+              // They don't match - manufacturer was changed, need to find/create the correct one
+              console.log(`[SYNC] ⚠️ Manufacturer mismatch detected: ShopRenter has "${shoprenterManufacturerName}" but ERP has "${manufacturerName}". Need to find/create correct manufacturer.`)
+              // Continue to find/create logic below
+            }
+          } else {
+            // Couldn't verify - manufacturer might not exist in ShopRenter anymore
+            console.warn(`[SYNC] ⚠️ Could not verify manufacturer ${manufacturerId} in ShopRenter (${verifyResponse.status}), will find/create correct one`)
+            // Continue to find/create logic below
+          }
+        } catch (verifyError) {
+          console.warn(`[SYNC] ⚠️ Error verifying manufacturer:`, verifyError)
+          // Continue to find/create logic below
+        }
+      }
+      
+      // If we don't have a verified match, find or create the correct manufacturer
+      if (!finalManufacturerId && erpManufacturerId && manufacturerName) {
+        // Try to find existing manufacturer in ShopRenter by name
+        try {
+          console.log(`[SYNC] Searching for manufacturer "${manufacturerName}" in ShopRenter...`)
+          const searchResponse = await fetch(`${apiBaseUrl}/manufacturers?name=${encodeURIComponent(manufacturerName.trim())}&full=1`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(10000)
+          })
+
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json()
+            const manufacturers = searchData?.items || searchData?.response?.items || []
+            
+            // Find exact match by name (case-insensitive)
+            const matchingManufacturer = manufacturers.find((m: any) => 
+              m.name?.trim().toLowerCase() === manufacturerName.trim().toLowerCase()
+            )
+            
+            if (matchingManufacturer?.id) {
+              finalManufacturerId = matchingManufacturer.id
+              console.log(`[SYNC] ✅ Found existing manufacturer "${manufacturerName}" in ShopRenter with ID: ${finalManufacturerId}`)
+              
+              // Update product with the correct ShopRenter manufacturer ID
+              await supabase
+                .from('shoprenter_products')
+                .update({ manufacturer_id: finalManufacturerId })
+                .eq('id', id)
+            }
+          }
+        } catch (searchError) {
+          console.warn(`[SYNC] ⚠️ Error searching for manufacturer:`, searchError)
+        }
+        
+        // If still not found, create it
+        if (!finalManufacturerId) {
+          try {
+            console.log(`[SYNC] Creating manufacturer "${manufacturerName}" in ShopRenter...`)
+            const createManufacturerResponse = await fetch(`${apiBaseUrl}/manufacturers`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeader
+              },
+              body: JSON.stringify({
+                name: manufacturerName.trim(),
+                sortOrder: '0',
+                robotsMetaTag: '0'
+              }),
+              signal: AbortSignal.timeout(10000)
+            })
+
+            if (createManufacturerResponse.ok) {
+              const createdManufacturer = await createManufacturerResponse.json()
+              finalManufacturerId = createdManufacturer.id
+              
+              // Update product with the new ShopRenter manufacturer ID
+              await supabase
+                .from('shoprenter_products')
+                .update({ manufacturer_id: finalManufacturerId })
+                .eq('id', id)
+              
+              console.log(`[SYNC] ✅ Created manufacturer "${manufacturerName}" in ShopRenter with ID: ${finalManufacturerId}`)
+            } else {
+              const errorText = await createManufacturerResponse.text().catch(() => 'Unknown error')
+              console.warn(`[SYNC] ⚠️ Failed to create manufacturer "${manufacturerName}" in ShopRenter: ${createManufacturerResponse.status} - ${errorText}`)
+            }
+          } catch (manufacturerError) {
+            console.warn(`[SYNC] ⚠️ Error creating manufacturer "${manufacturerName}" in ShopRenter:`, manufacturerError)
+          }
+        }
+      } else if (manufacturerId && manufacturerId.trim() !== '' && !manufacturerId.startsWith('pending-') && !erpManufacturerId) {
+        // We have manufacturer_id but no erp_manufacturer_id - use it (backward compatibility)
+        finalManufacturerId = manufacturerId
+        console.log(`[SYNC] Using existing ShopRenter manufacturer_id (no erp_manufacturer_id): ${finalManufacturerId}`)
+      }
+      
+      if (finalManufacturerId) {
+        productExtendPayload.manufacturer = {
+          id: finalManufacturerId
+        }
+        console.log(`[SYNC] Adding manufacturer: ${finalManufacturerId} (${manufacturerName || 'no name'})`)
+      } else if (erpManufacturerId && !finalManufacturerId) {
+        // We tried to create but failed - don't remove, just skip
+        console.warn(`[SYNC] ⚠️ Could not create or find manufacturer for erp_manufacturer_id ${erpManufacturerId}, skipping manufacturer in product creation`)
+      } else if (!erpManufacturerId) {
+        // If no manufacturer at all, remove it
+        productExtendPayload.manufacturer = null
+        console.log(`[SYNC] Removing manufacturer`)
       }
 
       // Add productDescriptions
@@ -375,6 +657,7 @@ export async function POST(
         metaKeywords: huDescription.meta_keywords?.trim() || '',
         metaDescription: huDescription.meta_description?.trim() || '',
         parameters: huDescription.parameters?.trim() || '',
+        measurementUnit: (huDescription as any).measurement_unit || 'db', // Add measurementUnit (default to 'db' if empty)
         language: {
           id: languageId
         }
@@ -471,90 +754,90 @@ export async function POST(
             }, { status: 409 })
           }
         } else {
-          console.error(`[SYNC] ❌ Failed to create product in ShopRenter: ${createResponse.status} - ${errorText}`)
-          
-          await supabase
-            .from('shoprenter_products')
-            .update({
-              sync_status: 'error',
-              sync_error: `Product creation failed: ${createResponse.status} - ${errorText.substring(0, 200)}`
-            })
-            .eq('id', id)
-
-          return NextResponse.json({ 
-            success: false, 
-            error: `Termék létrehozása sikertelen: ${errorText.substring(0, 200)}` 
-          }, { status: createResponse.status })
-        }
-      } else {
-        // Extract shoprenter_id from successful response
-        const createData = await createResponse.json().catch(() => null)
-        const newShopRenterId = createData?.id || createData?.response?.id || createData?.href?.split('/').pop()
-
-        if (!newShopRenterId) {
-          console.error(`[SYNC] ❌ Failed to extract shoprenter_id from create response:`, createData)
-          await supabase
-            .from('shoprenter_products')
-            .update({
-              sync_status: 'error',
-              sync_error: 'Failed to extract shoprenter_id from create response'
-            })
-            .eq('id', id)
-
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Nem sikerült meghatározni a termék ShopRenter azonosítóját' 
-          }, { status: 500 })
-        }
-
-        console.log(`[SYNC] ✅ Product created in ShopRenter with ID: ${newShopRenterId}`)
-
-        // Update local database with real shoprenter_id
+        console.error(`[SYNC] ❌ Failed to create product in ShopRenter: ${createResponse.status} - ${errorText}`)
+        
         await supabase
           .from('shoprenter_products')
           .update({
-            shoprenter_id: newShopRenterId,
-            sync_status: 'synced',
-            sync_error: null,
-            last_synced_to_shoprenter_at: new Date().toISOString()
+            sync_status: 'error',
+            sync_error: `Product creation failed: ${createResponse.status} - ${errorText.substring(0, 200)}`
           })
           .eq('id', id)
 
-        // Update product object for rest of sync
-        product.shoprenter_id = newShopRenterId
+        return NextResponse.json({ 
+          success: false, 
+          error: `Termék létrehozása sikertelen: ${errorText.substring(0, 200)}` 
+        }, { status: createResponse.status })
+      }
+      } else {
+        // Extract shoprenter_id from successful response
+      const createData = await createResponse.json().catch(() => null)
+      const newShopRenterId = createData?.id || createData?.response?.id || createData?.href?.split('/').pop()
 
-        // Extract description ID from response if available
-        if (createData?.productDescriptions && Array.isArray(createData.productDescriptions) && createData.productDescriptions.length > 0) {
-          const createdDescription = createData.productDescriptions.find((d: any) => 
-            d.language?.id === languageId || d.language?.href?.includes(languageId)
-          )
+      if (!newShopRenterId) {
+        console.error(`[SYNC] ❌ Failed to extract shoprenter_id from create response:`, createData)
+        await supabase
+          .from('shoprenter_products')
+          .update({
+            sync_status: 'error',
+            sync_error: 'Failed to extract shoprenter_id from create response'
+          })
+          .eq('id', id)
+
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Nem sikerült meghatározni a termék ShopRenter azonosítóját' 
+        }, { status: 500 })
+      }
+
+      console.log(`[SYNC] ✅ Product created in ShopRenter with ID: ${newShopRenterId}`)
+
+      // Update local database with real shoprenter_id
+      await supabase
+        .from('shoprenter_products')
+        .update({
+          shoprenter_id: newShopRenterId,
+          sync_status: 'synced',
+          sync_error: null,
+          last_synced_to_shoprenter_at: new Date().toISOString()
+        })
+        .eq('id', id)
+
+      // Update product object for rest of sync
+      product.shoprenter_id = newShopRenterId
+
+      // Extract description ID from response if available
+      if (createData?.productDescriptions && Array.isArray(createData.productDescriptions) && createData.productDescriptions.length > 0) {
+        const createdDescription = createData.productDescriptions.find((d: any) => 
+          d.language?.id === languageId || d.language?.href?.includes(languageId)
+        )
+        
+        if (createdDescription?.id) {
+          await supabase
+            .from('shoprenter_product_descriptions')
+            .update({ shoprenter_id: createdDescription.id })
+            .eq('id', huDescription.id)
           
-          if (createdDescription?.id) {
+          huDescription.shoprenter_id = createdDescription.id
+          console.log(`[SYNC] Updated description shoprenter_id: ${createdDescription.id}`)
+        }
+      }
+
+      // Update category relations with real shoprenter_ids if available
+      if (createData?.productCategoryRelations && Array.isArray(createData.productCategoryRelations)) {
+        for (const relation of createData.productCategoryRelations) {
+          const categoryId = relation.category?.id || relation.category?.href?.split('/').pop()
+          if (categoryId) {
             await supabase
-              .from('shoprenter_product_descriptions')
-              .update({ shoprenter_id: createdDescription.id })
-              .eq('id', huDescription.id)
-            
-            huDescription.shoprenter_id = createdDescription.id
-            console.log(`[SYNC] Updated description shoprenter_id: ${createdDescription.id}`)
+              .from('shoprenter_product_category_relations')
+              .update({ shoprenter_id: relation.id || relation.href?.split('/').pop() })
+              .eq('product_id', id)
+              .eq('category_shoprenter_id', categoryId)
           }
         }
+      }
 
-        // Update category relations with real shoprenter_ids if available
-        if (createData?.productCategoryRelations && Array.isArray(createData.productCategoryRelations)) {
-          for (const relation of createData.productCategoryRelations) {
-            const categoryId = relation.category?.id || relation.category?.href?.split('/').pop()
-            if (categoryId) {
-              await supabase
-                .from('shoprenter_product_category_relations')
-                .update({ shoprenter_id: relation.id || relation.href?.split('/').pop() })
-                .eq('product_id', id)
-                .eq('category_shoprenter_id', categoryId)
-            }
-          }
-        }
-
-        console.log(`[SYNC] ✅ New product creation completed, continuing with attribute sync...`)
+      console.log(`[SYNC] ✅ New product creation completed, continuing with attribute sync...`)
       }
     }
 
@@ -581,61 +864,358 @@ export async function POST(
       if (product.gtin !== null && product.gtin !== undefined) {
         productPayload.gtin = product.gtin || ''
       }
+
+      // Add dimensions (width, height, length) - stored in cm
+      const width = (product as any).width
+      const height = (product as any).height
+      const length = (product as any).length
+      if (width !== null && width !== undefined) {
+        productPayload.width = String(width)
+      }
+      if (height !== null && height !== undefined) {
+        productPayload.height = String(height)
+      }
+      if (length !== null && length !== undefined) {
+        productPayload.length = String(length)
+      }
+
+      // Add weight
+      const weight = (product as any).weight
+      if (weight !== null && weight !== undefined) {
+        productPayload.weight = String(weight)
+      }
+
+      // Add volumeUnit (for dimensions - default to cm if not set)
+      const shoprenterVolumeUnitId = (product as any).shoprenter_volume_unit_id
+      if (shoprenterVolumeUnitId) {
+        productPayload.volumeUnit = {
+          id: shoprenterVolumeUnitId
+        }
+        console.log(`[SYNC] Updating volumeUnit: ${shoprenterVolumeUnitId}`)
+      }
+
+      // Add weightUnit if set
+      const shoprenterWeightUnitId = (product as any).shoprenter_weight_unit_id
+      let finalWeightUnitId = shoprenterWeightUnitId
+      
+      if (!finalWeightUnitId) {
+        // Try to get ShopRenter weight unit ID from erp_weight_unit_id
+        const erpWeightUnitId = (product as any).erp_weight_unit_id
+        if (erpWeightUnitId) {
+          const { data: weightUnit } = await supabase
+            .from('weight_units')
+            .select('shoprenter_weight_class_id, name, shortform')
+            .eq('id', erpWeightUnitId)
+            .is('deleted_at', null)
+            .single()
+          
+          if (weightUnit?.shoprenter_weight_class_id) {
+            finalWeightUnitId = weightUnit.shoprenter_weight_class_id
+            console.log(`[SYNC] Mapped ERP weight unit ${erpWeightUnitId} to ShopRenter weightUnit ${finalWeightUnitId}`)
+          } else if (weightUnit) {
+            // Weight unit exists in ERP but not in ShopRenter - try to find matching weight class
+            console.log(`[SYNC] Searching for matching weight class in ShopRenter for "${weightUnit.name}" (${weightUnit.shortform})...`)
+            try {
+              // Search existing weight classes
+              const weightClassesResponse = await fetch(`${apiBaseUrl}/weightClasses?full=1`, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                signal: AbortSignal.timeout(10000)
+              })
+
+              if (weightClassesResponse.ok) {
+                const weightClassesData = await weightClassesResponse.json()
+                const weightClasses = weightClassesData?.items || weightClassesData?.response?.items || []
+                
+                // Search for matching weight class by fetching descriptions
+                for (const weightClass of weightClasses) {
+                  const weightClassId = weightClass.id
+                  if (!weightClassId) continue
+                  
+                  try {
+                    const descResponse = await fetch(`${apiBaseUrl}/weightClassDescriptions?weightClassId=${encodeURIComponent(weightClassId)}&full=1`, {
+                      method: 'GET',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': authHeader
+                      },
+                      signal: AbortSignal.timeout(5000)
+                    })
+                    
+                    if (descResponse.ok) {
+                      const descData = await descResponse.json()
+                      const descriptions = descData?.items || descData?.response?.items || []
+                      
+                      // Check if any description matches our weight unit name or shortform
+                      const matchingDesc = descriptions.find((d: any) => 
+                        d.title?.toLowerCase() === weightUnit.name.toLowerCase() ||
+                        d.unit?.toLowerCase() === weightUnit.shortform.toLowerCase()
+                      )
+                      
+                      if (matchingDesc) {
+                        finalWeightUnitId = weightClassId
+                        // Update our database with the found ShopRenter ID
+                        await supabase
+                          .from('weight_units')
+                          .update({ shoprenter_weight_class_id: weightClassId })
+                          .eq('id', erpWeightUnitId)
+                        
+                        console.log(`[SYNC] ✅ Found matching weight class "${matchingDesc.title}" (${matchingDesc.unit}) in ShopRenter: ${weightClassId}`)
+                        break
+                      }
+                    }
+                  } catch (descError) {
+                    // Continue searching
+                    continue
+                  }
+                }
+                
+                if (!finalWeightUnitId) {
+                  console.warn(`[SYNC] ⚠️ Weight unit "${weightUnit.name}" (${weightUnit.shortform}) not found in ShopRenter. Weight classes are read-only in ShopRenter API, so new weight units cannot be created. Please create the weight class manually in ShopRenter or use an existing one.`)
+                }
+              }
+            } catch (searchError) {
+              console.warn(`[SYNC] ⚠️ Error searching for weight class:`, searchError)
+            }
+          }
+        }
+      }
+      
+      if (finalWeightUnitId) {
+        productPayload.weightUnit = {
+          id: finalWeightUnitId
+        }
+        console.log(`[SYNC] Updating weightUnit: ${finalWeightUnitId}`)
+      } else if (!(product as any).erp_weight_unit_id) {
+        // If erp_weight_unit_id is null, remove weightUnit
+        productPayload.weightUnit = null
+        console.log(`[SYNC] Removing weightUnit`)
+      }
       
       // Add manufacturer if set
       const manufacturerId = (product as any).manufacturer_id
-      const brand = (product as any).brand
-      if (manufacturerId) {
-        productPayload.manufacturer = {
-          id: manufacturerId
+      const erpManufacturerId = (product as any).erp_manufacturer_id
+      
+      // Get manufacturer name from erp_manufacturer_id for logging
+      let manufacturerName: string | null = null
+      if (erpManufacturerId) {
+        const { data: manufacturer } = await supabase
+          .from('manufacturers')
+          .select('name')
+          .eq('id', erpManufacturerId)
+          .is('deleted_at', null)
+          .single()
+        if (manufacturer) {
+          manufacturerName = manufacturer.name
         }
-        console.log(`[SYNC] Updating manufacturer: ${manufacturerId} (${brand || 'no name'})`)
-      } else if (brand === null || brand === '') {
-        // If brand is explicitly null/empty, remove manufacturer
-        productPayload.manufacturer = null
-        console.log(`[SYNC] Removing manufacturer`)
+      }
+      
+      // Use manufacturerId if it exists and is valid, otherwise try to create from erp_manufacturer_id
+      let finalManufacturerId: string | null = null
+      
+      // If we have both manufacturer_id and erp_manufacturer_id, verify they match
+      if (manufacturerId && manufacturerId.trim() !== '' && !manufacturerId.startsWith('pending-') && erpManufacturerId && manufacturerName) {
+        // Verify that the ShopRenter manufacturer_id actually matches the erp_manufacturer_id
+        try {
+          console.log(`[SYNC] Verifying manufacturer match: checking if ShopRenter manufacturer_id ${manufacturerId} matches erp_manufacturer_id ${erpManufacturerId}...`)
+          const verifyResponse = await fetch(`${apiBaseUrl}/manufacturers/${manufacturerId}?full=1`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(5000)
+          })
+
+          if (verifyResponse.ok) {
+            const shoprenterManufacturer = await verifyResponse.json()
+            const shoprenterManufacturerName = shoprenterManufacturer?.name || ''
+            
+            // Compare names (case-insensitive, trimmed)
+            if (shoprenterManufacturerName.trim().toLowerCase() === manufacturerName.trim().toLowerCase()) {
+              // They match! Use the existing manufacturer_id
+              finalManufacturerId = manufacturerId
+              console.log(`[SYNC] ✅ Verified manufacturer match: "${shoprenterManufacturerName}" matches "${manufacturerName}", using existing ShopRenter manufacturer_id: ${finalManufacturerId}`)
+            } else {
+              // They don't match - manufacturer was changed, need to find/create the correct one
+              console.log(`[SYNC] ⚠️ Manufacturer mismatch detected: ShopRenter has "${shoprenterManufacturerName}" but ERP has "${manufacturerName}". Need to find/create correct manufacturer.`)
+              // Continue to find/create logic below
+            }
+          } else {
+            // Couldn't verify - manufacturer might not exist in ShopRenter anymore
+            console.warn(`[SYNC] ⚠️ Could not verify manufacturer ${manufacturerId} in ShopRenter (${verifyResponse.status}), will find/create correct one`)
+            // Continue to find/create logic below
+          }
+        } catch (verifyError) {
+          console.warn(`[SYNC] ⚠️ Error verifying manufacturer:`, verifyError)
+          // Continue to find/create logic below
+        }
+      }
+      
+      // If we don't have a verified match, find or create the correct manufacturer
+      if (!finalManufacturerId && erpManufacturerId && manufacturerName) {
+        // Try to find existing manufacturer in ShopRenter by name
+        try {
+          console.log(`[SYNC] Searching for manufacturer "${manufacturerName}" in ShopRenter...`)
+          const searchResponse = await fetch(`${apiBaseUrl}/manufacturers?name=${encodeURIComponent(manufacturerName.trim())}&full=1`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(10000)
+          })
+
+          if (searchResponse.ok) {
+            const searchData = await searchResponse.json()
+            const manufacturers = searchData?.items || searchData?.response?.items || []
+            
+            // Find exact match by name (case-insensitive)
+            const matchingManufacturer = manufacturers.find((m: any) => 
+              m.name?.trim().toLowerCase() === manufacturerName.trim().toLowerCase()
+            )
+            
+            if (matchingManufacturer?.id) {
+              finalManufacturerId = matchingManufacturer.id
+              console.log(`[SYNC] ✅ Found existing manufacturer "${manufacturerName}" in ShopRenter with ID: ${finalManufacturerId}`)
+              
+              // Update product with the correct ShopRenter manufacturer ID
+              await supabase
+                .from('shoprenter_products')
+                .update({ manufacturer_id: finalManufacturerId })
+                .eq('id', id)
+            }
+          }
+        } catch (searchError) {
+          console.warn(`[SYNC] ⚠️ Error searching for manufacturer:`, searchError)
+        }
+        
+        // If still not found, create it
+        if (!finalManufacturerId) {
+          try {
+            console.log(`[SYNC] Creating manufacturer "${manufacturerName}" in ShopRenter...`)
+            const createManufacturerResponse = await fetch(`${apiBaseUrl}/manufacturers`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeader
+              },
+              body: JSON.stringify({
+                name: manufacturerName.trim(),
+                sortOrder: '0',
+                robotsMetaTag: '0'
+              }),
+              signal: AbortSignal.timeout(10000)
+            })
+
+            if (createManufacturerResponse.ok) {
+              const createdManufacturer = await createManufacturerResponse.json()
+              finalManufacturerId = createdManufacturer.id
+              
+              // Update product with the new ShopRenter manufacturer ID
+              await supabase
+                .from('shoprenter_products')
+                .update({ manufacturer_id: finalManufacturerId })
+                .eq('id', id)
+              
+              console.log(`[SYNC] ✅ Created manufacturer "${manufacturerName}" in ShopRenter with ID: ${finalManufacturerId}`)
+            } else {
+              const errorText = await createManufacturerResponse.text().catch(() => 'Unknown error')
+              console.warn(`[SYNC] ⚠️ Failed to create manufacturer "${manufacturerName}" in ShopRenter: ${createManufacturerResponse.status} - ${errorText}`)
+            }
+          } catch (manufacturerError) {
+            console.warn(`[SYNC] ⚠️ Error creating manufacturer "${manufacturerName}" in ShopRenter:`, manufacturerError)
+          }
+        }
+      } else if (manufacturerId && manufacturerId.trim() !== '' && !manufacturerId.startsWith('pending-') && !erpManufacturerId) {
+        // We have manufacturer_id but no erp_manufacturer_id - use it (backward compatibility)
+        finalManufacturerId = manufacturerId
+        console.log(`[SYNC] Using existing ShopRenter manufacturer_id (no erp_manufacturer_id): ${finalManufacturerId}`)
+      }
+      
+      // Manufacturer must be updated via productExtend endpoint, not /products endpoint
+      // We'll handle it separately after the product update
+      let manufacturerToUpdate: { id: string } | null | undefined = undefined
+      if (finalManufacturerId) {
+        manufacturerToUpdate = { id: finalManufacturerId }
+        console.log(`[SYNC] Will update manufacturer via productExtend: ${finalManufacturerId} (${manufacturerName || 'no name'})`)
+      } else if (!erpManufacturerId) {
+        // If erp_manufacturer_id is null, remove manufacturer
+        manufacturerToUpdate = null
+        console.log(`[SYNC] Will remove manufacturer via productExtend`)
+      } else {
+        // We have erp_manufacturer_id but couldn't create/get ShopRenter ID - skip (don't remove existing)
+        console.warn(`[SYNC] ⚠️ Could not create or find manufacturer for erp_manufacturer_id ${erpManufacturerId}, skipping manufacturer update (preserving existing)`)
+        // Don't set manufacturerToUpdate - this preserves existing manufacturer in ShopRenter
       }
       
       // Edge case handling for PUSH (ERP → ShopRenter)
-      let priceToSend: number | null = product.price ? parseFloat(product.price.toString()) : null
+      // Handle price parsing - ensure we get a valid number or null
+      let priceToSend: number | null = null
+      console.log(`[SYNC] Raw product.price value: ${product.price} (type: ${typeof product.price})`)
+      
+      if (product.price !== null && product.price !== undefined && product.price !== '') {
+        const parsedPrice = parseFloat(product.price.toString())
+        console.log(`[SYNC] Parsed price: ${parsedPrice} (isNaN: ${isNaN(parsedPrice)}, isFinite: ${isFinite(parsedPrice)})`)
+        if (!isNaN(parsedPrice) && isFinite(parsedPrice) && parsedPrice > 0) {
+          priceToSend = parsedPrice
+          console.log(`[SYNC] ✅ Using product.price: ${priceToSend}`)
+        } else {
+          console.warn(`[SYNC] ⚠️ Invalid parsed price: ${parsedPrice}, will try to calculate from cost × multiplier`)
+        }
+      } else {
+        console.log(`[SYNC] Product price is null/undefined/empty, will try to calculate from cost × multiplier`)
+      }
+      
       const cost = product.cost ? parseFloat(product.cost.toString()) : null
       const multiplier = product.multiplier ? parseFloat(product.multiplier.toString()) : 1.0
+      console.log(`[SYNC] Cost: ${cost}, Multiplier: ${multiplier}`)
 
       // Case 4: No price, but has cost and multiplier -> calculate price
-      if (!priceToSend || priceToSend <= 0) {
-        if (cost && cost > 0 && multiplier > 0) {
+      if (!priceToSend || priceToSend <= 0 || isNaN(priceToSend)) {
+        if (cost && cost > 0 && multiplier > 0 && !isNaN(cost) && !isNaN(multiplier)) {
           priceToSend = cost * multiplier
-          console.log(`[SYNC] Calculated price from cost × multiplier: ${priceToSend.toFixed(2)} (cost: ${cost}, multiplier: ${multiplier})`)
+          console.log(`[SYNC] ✅ Calculated price from cost × multiplier: ${priceToSend.toFixed(2)} (cost: ${cost}, multiplier: ${multiplier})`)
         } else {
-          console.warn(`[SYNC] ⚠️ Cannot sync product ${product.sku}: No price and cannot calculate from cost/multiplier`)
+          console.error(`[SYNC] ❌ Cannot sync product ${product.sku}: No valid price and cannot calculate from cost/multiplier`)
+          console.error(`[SYNC]   - priceToSend: ${priceToSend}`)
+          console.error(`[SYNC]   - cost: ${cost} (valid: ${cost && cost > 0 && !isNaN(cost)})`)
+          console.error(`[SYNC]   - multiplier: ${multiplier} (valid: ${multiplier > 0 && !isNaN(multiplier)})`)
           return NextResponse.json({ 
             success: false, 
-            error: 'Cannot sync product without price. Please set a price or provide both cost and multiplier.' 
+            error: 'Nem lehet szinkronizálni a terméket ár nélkül. Kérjük, állítson be árat vagy adjon meg beszerzési árat és szorzót.' 
           }, { status: 400 })
         }
       } else {
-        // Case 2 & 3: Has price, missing cost or multiplier -> calculate missing one for validation
-        let calculatedCost = cost
-        let calculatedMultiplier = multiplier
-        
+        // Case 2 & 3: Has price, missing cost or multiplier -> calculate missing one for informational purposes only
+        // NOTE: We don't override the user's price - they may have set it manually
         if (cost && cost > 0 && (!multiplier || multiplier === 1.0)) {
-          calculatedMultiplier = priceToSend / cost
-          console.log(`[SYNC] Calculated multiplier for validation: ${calculatedMultiplier.toFixed(3)} (price: ${priceToSend}, cost: ${cost})`)
+          const calculatedMultiplier = priceToSend / cost
+          console.log(`[SYNC] Calculated multiplier for reference: ${calculatedMultiplier.toFixed(3)} (price: ${priceToSend}, cost: ${cost})`)
         } else if (!cost && multiplier > 0 && multiplier !== 1.0) {
-          calculatedCost = priceToSend / multiplier
-          console.log(`[SYNC] Calculated cost for validation: ${calculatedCost.toFixed(2)} (price: ${priceToSend}, multiplier: ${multiplier})`)
+          const calculatedCost = priceToSend / multiplier
+          console.log(`[SYNC] Calculated cost for reference: ${calculatedCost.toFixed(2)} (price: ${priceToSend}, multiplier: ${multiplier})`)
         }
         
-        // Case 5: Validate consistency
-        if (calculatedCost && calculatedCost > 0 && calculatedMultiplier > 0) {
-          const expectedPrice = calculatedCost * calculatedMultiplier
+        // Case 5: Validate consistency (informational only - don't override user's price)
+        if (cost && cost > 0 && multiplier > 0 && multiplier !== 1.0) {
+          const expectedPrice = cost * multiplier
           const difference = Math.abs(priceToSend - expectedPrice)
           
           if (difference > 0.01) {
-            console.warn(`[SYNC] ⚠️ Price mismatch before sync: cost (${calculatedCost}) × multiplier (${calculatedMultiplier}) = ${expectedPrice.toFixed(2)}, but price is ${priceToSend}`)
-            // Fix price to match cost × multiplier before sending (ensures consistency)
-            priceToSend = expectedPrice
-            console.log(`[SYNC] Fixed price to match cost × multiplier: ${priceToSend.toFixed(2)}`)
+            console.warn(`[SYNC] ⚠️ Price mismatch: cost (${cost}) × multiplier (${multiplier}) = ${expectedPrice.toFixed(2)}, but user set price is ${priceToSend}`)
+            console.warn(`[SYNC] ⚠️ Using user's explicit price (${priceToSend}) instead of calculated price`)
+            // Don't override - user may have set price manually
+          } else {
+            console.log(`[SYNC] ✅ Price matches cost × multiplier: ${priceToSend}`)
           }
         }
       }
@@ -644,10 +1224,28 @@ export async function POST(
       // IMPORTANT: ShopRenter calculates: price * multiplier * VAT
       // In ERP: cost * multiplier = price (net price already includes multiplier)
       // So we send net price to ShopRenter and set multiplier to 1.0 to avoid double calculation
-      if (priceToSend !== null && priceToSend !== undefined) {
-        productPayload.price = String(priceToSend)
+      // Ensure priceToSend is a valid number before adding to payload
+      console.log(`[SYNC] Final priceToSend before validation: ${priceToSend} (type: ${typeof priceToSend}, isNaN: ${isNaN(priceToSend as number)}, isFinite: ${isFinite(priceToSend as number)})`)
+      
+      if (priceToSend !== null && priceToSend !== undefined && !isNaN(priceToSend) && isFinite(priceToSend) && priceToSend > 0) {
+        const roundedPrice = Math.round(priceToSend * 100) / 100
+        productPayload.price = String(roundedPrice)
+        console.log(`[SYNC] ✅ Added price to payload: ${productPayload.price}`)
+      } else {
+        console.error(`[SYNC] ❌ Invalid priceToSend value: ${priceToSend} (type: ${typeof priceToSend}, isNaN: ${isNaN(priceToSend as number)}, isFinite: ${isFinite(priceToSend as number)})`)
+        return NextResponse.json({ 
+          success: false, 
+          error: `Érvénytelen ár érték: ${priceToSend}. Kérjük, ellenőrizze az árat és próbálja újra.` 
+        }, { status: 400 })
       }
-      // Cost is informational only, not synced to ShopRenter
+      // Add cost to ShopRenter (költség field)
+      if (cost !== null && cost !== undefined && !isNaN(cost) && isFinite(cost) && cost > 0) {
+        productPayload.cost = String(Math.round(cost * 100) / 100) // Round to 2 decimal places
+        console.log(`[SYNC] ✅ Added cost to payload: ${productPayload.cost}`)
+      } else {
+        console.log(`[SYNC] Cost not added (value: ${cost}, valid: ${cost !== null && cost !== undefined && !isNaN(cost) && isFinite(cost) && cost > 0})`)
+      }
+      
       // Multiplier is set to 1.0 because the net price already includes it
       // This prevents ShopRenter from calculating: (cost * multiplier) * multiplier * VAT
       productPayload.multiplier = '1.0'
@@ -684,7 +1282,10 @@ export async function POST(
       }
 
       // Log pricing sync
-      console.log(`[SYNC] Syncing net price: ${priceToSend} (${priceToSend !== product.price ? 'calculated/fixed from cost × multiplier' : 'original price, already includes multiplier from ERP'})`)
+      const priceSource = priceToSend === parseFloat(String(product.price || '')) 
+        ? 'user-set price from ERP' 
+        : 'calculated from cost × multiplier (price was missing/invalid)'
+      console.log(`[SYNC] Syncing net price: ${priceToSend} (${priceSource})`)
       console.log(`[SYNC] Setting ShopRenter multiplier to 1.0 to avoid double calculation`)
       if (cost !== null && cost !== undefined) {
         console.log(`[SYNC] Cost (informational only, not synced): ${cost}`)
@@ -693,11 +1294,23 @@ export async function POST(
         console.log(`[SYNC] ERP multiplier (informational only, not synced): ${multiplier}`)
       }
       
+      // Always ensure price is in payload (it's required for ShopRenter)
+      if (!productPayload.price) {
+        console.error(`[SYNC] ❌ CRITICAL: Price is missing from productPayload!`)
+        console.error(`[SYNC]   productPayload keys: ${Object.keys(productPayload).join(', ')}`)
+        console.error(`[SYNC]   priceToSend: ${priceToSend}`)
+        return NextResponse.json({ 
+          success: false, 
+          error: 'Hiba: Az ár nem került hozzáadásra a szinkronizálási adatokhoz. Kérjük, próbálja újra.' 
+        }, { status: 500 })
+      }
+      
       // Only update if there's something to update
       if (Object.keys(productPayload).length > 0) {
         const productUpdateUrl = `${apiBaseUrl}/products/${product.shoprenter_id}`
         console.log(`[SYNC] Updating product data: PUT ${productUpdateUrl}`)
         console.log(`[SYNC] Product payload:`, JSON.stringify(productPayload))
+        console.log(`[SYNC] ✅ Price in payload: ${productPayload.price}`)
         
         const productUpdateResponse = await fetch(productUpdateUrl, {
           method: 'PUT',
@@ -716,6 +1329,42 @@ export async function POST(
           // Continue with description sync even if product update fails
         } else {
           console.log(`[SYNC] Product data updated successfully`)
+        }
+      }
+      
+      // Update manufacturer via productExtend endpoint (manufacturer cannot be updated via /products endpoint)
+      if (manufacturerToUpdate !== undefined) {
+        try {
+          const productExtendUrl = `${apiBaseUrl}/productExtend/${product.shoprenter_id}`
+          const manufacturerPayload: any = {}
+          
+          if (manufacturerToUpdate === null) {
+            manufacturerPayload.manufacturer = null
+            console.log(`[SYNC] Removing manufacturer via productExtend`)
+          } else {
+            manufacturerPayload.manufacturer = manufacturerToUpdate
+            console.log(`[SYNC] Updating manufacturer via productExtend: ${manufacturerToUpdate.id}`)
+          }
+          
+          const manufacturerUpdateResponse = await fetch(productExtendUrl, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify(manufacturerPayload),
+            signal: AbortSignal.timeout(10000)
+          })
+          
+          if (!manufacturerUpdateResponse.ok) {
+            const errorText = await manufacturerUpdateResponse.text().catch(() => 'Unknown error')
+            console.warn(`[SYNC] ⚠️ Manufacturer update via productExtend failed: ${manufacturerUpdateResponse.status} - ${errorText.substring(0, 200)}`)
+          } else {
+            console.log(`[SYNC] ✅ Manufacturer updated successfully via productExtend`)
+          }
+        } catch (manufacturerUpdateError) {
+          console.warn(`[SYNC] ⚠️ Error updating manufacturer via productExtend:`, manufacturerUpdateError)
         }
       }
     }
@@ -747,6 +1396,7 @@ export async function POST(
       parameters: huDescription.parameters && huDescription.parameters.trim().length > 0 
         ? huDescription.parameters.trim() 
         : '', // Empty string will delete parameters in ShopRenter
+      measurementUnit: (huDescription as any).measurement_unit || 'db', // Add measurementUnit (default to 'db' if empty)
       product: {
         id: product.shoprenter_id
       },
@@ -2741,6 +3391,191 @@ export async function POST(
       console.warn(`[SYNC] Error syncing product attributes:`, attributeSyncError?.message || attributeSyncError)
     }
 
+    // Sync customer group prices
+    try {
+      if (product.shoprenter_id && !product.shoprenter_id.startsWith('pending-')) {
+        // Get all customer group prices for this product
+        const { data: customerGroupPrices } = await supabase
+          .from('product_customer_group_prices')
+          .select(`
+            *,
+            customer_groups(*)
+          `)
+          .eq('product_id', id)
+          .eq('is_active', true)
+
+        if (customerGroupPrices && customerGroupPrices.length > 0) {
+          console.log(`[SYNC] Syncing ${customerGroupPrices.length} customer group prices...`)
+
+          for (const groupPrice of customerGroupPrices) {
+            const customerGroup = groupPrice.customer_groups
+            if (!customerGroup) {
+              console.warn(`[SYNC] Customer group not found for price ${groupPrice.id}`)
+              continue
+            }
+
+            // First, ensure customer group is synced to ShopRenter
+            let customerGroupShopRenterId = customerGroup.shoprenter_customer_group_id
+
+            if (!customerGroupShopRenterId) {
+              console.log(`[SYNC] Customer group "${customerGroup.name}" not synced, syncing now...`)
+              const syncResult = await syncCustomerGroupToShopRenter(
+                apiBaseUrl,
+                authHeader,
+                {
+                  id: customerGroup.id,
+                  name: customerGroup.name,
+                  code: customerGroup.code,
+                  shoprenter_customer_group_id: null
+                }
+              )
+
+              if (syncResult.shoprenterId) {
+                customerGroupShopRenterId = syncResult.shoprenterId
+                // Update customer group with ShopRenter ID
+                await supabase
+                  .from('customer_groups')
+                  .update({ shoprenter_customer_group_id: customerGroupShopRenterId })
+                  .eq('id', customerGroup.id)
+                console.log(`[SYNC] ✅ Synced customer group "${customerGroup.name}" to ShopRenter: ${customerGroupShopRenterId}`)
+              } else {
+                console.warn(`[SYNC] ⚠️ Failed to sync customer group "${customerGroup.name}": ${syncResult.error}`)
+                continue // Skip this price if customer group sync failed
+              }
+            }
+
+            // Now sync the price
+            const priceSyncResult = await syncCustomerGroupPriceToShopRenter(
+              apiBaseUrl,
+              authHeader,
+              product.shoprenter_id,
+              customerGroupShopRenterId,
+              parseFloat(groupPrice.price.toString()),
+              groupPrice.shoprenter_customer_group_price_id || null
+            )
+
+            if (priceSyncResult.shoprenterId) {
+              // Update local database with ShopRenter price ID
+              await supabase
+                .from('product_customer_group_prices')
+                .update({
+                  shoprenter_customer_group_price_id: priceSyncResult.shoprenterId,
+                  last_synced_at: new Date().toISOString()
+                })
+                .eq('id', groupPrice.id)
+              console.log(`[SYNC] ✅ Synced customer group price for "${customerGroup.name}": ${priceSyncResult.shoprenterId}`)
+            } else {
+              console.warn(`[SYNC] ⚠️ Failed to sync customer group price for "${customerGroup.name}": ${priceSyncResult.error}`)
+            }
+          }
+
+          console.log(`[SYNC] Completed customer group price syncing`)
+        }
+      }
+    } catch (customerGroupPriceSyncError: any) {
+      // Don't fail the entire sync if customer group price sync fails
+      console.warn(`[SYNC] Error syncing customer group prices:`, customerGroupPriceSyncError?.message || customerGroupPriceSyncError)
+    }
+
+    // Sync promotions (product specials)
+    try {
+      if (product.shoprenter_id && !product.shoprenter_id.startsWith('pending-')) {
+        // Get all active promotions for this product
+        const { data: promotions } = await supabase
+          .from('product_specials')
+          .select(`
+            *,
+            customer_groups (
+              id,
+              name,
+              shoprenter_customer_group_id
+            )
+          `)
+          .eq('product_id', id)
+          .eq('is_active', true)
+          .is('deleted_at', null)
+
+        if (promotions && promotions.length > 0) {
+          console.log(`[SYNC] Syncing ${promotions.length} promotions...`)
+
+          for (const promotion of promotions) {
+            // Get customer group ShopRenter ID if applicable
+            let customerGroupShopRenterId: string | null = null
+            if (promotion.customer_group_id && promotion.customer_groups) {
+              const customerGroup = promotion.customer_groups as any
+              customerGroupShopRenterId = customerGroup.shoprenter_customer_group_id || null
+
+              // If customer group not synced, sync it first
+              if (!customerGroupShopRenterId) {
+                console.log(`[SYNC] Customer group "${customerGroup.name}" not synced, syncing now...`)
+                const syncResult = await syncCustomerGroupToShopRenter(
+                  apiBaseUrl,
+                  authHeader,
+                  {
+                    id: customerGroup.id,
+                    name: customerGroup.name,
+                    code: customerGroup.code,
+                    shoprenter_customer_group_id: null
+                  }
+                )
+
+                if (syncResult.shoprenterId) {
+                  customerGroupShopRenterId = syncResult.shoprenterId
+                  // Update customer group with ShopRenter ID
+                  await supabase
+                    .from('customer_groups')
+                    .update({ shoprenter_customer_group_id: customerGroupShopRenterId })
+                    .eq('id', customerGroup.id)
+                  console.log(`[SYNC] ✅ Synced customer group "${customerGroup.name}" to ShopRenter: ${customerGroupShopRenterId}`)
+                } else {
+                  console.warn(`[SYNC] ⚠️ Failed to sync customer group "${customerGroup.name}": ${syncResult.error}`)
+                  // Continue without customer group - promotion will be for "Everyone"
+                }
+              }
+            }
+
+            // Sync promotion to ShopRenter
+            const syncResult = await syncProductSpecialToShopRenter(
+              apiBaseUrl,
+              authHeader,
+              product.shoprenter_id,
+              {
+                priority: promotion.priority,
+                price: parseFloat(promotion.price.toString()),
+                dateFrom: promotion.date_from || null,
+                dateTo: promotion.date_to || null,
+                minQuantity: promotion.min_quantity || 0,
+                maxQuantity: promotion.max_quantity || 0,
+                type: promotion.type as 'interval' | 'day_spec',
+                dayOfWeek: promotion.day_of_week || null,
+                customerGroupShopRenterId: customerGroupShopRenterId
+              },
+              promotion.shoprenter_special_id || null
+            )
+
+            if (syncResult.shoprenterId) {
+              // Update local database with ShopRenter promotion ID
+              await supabase
+                .from('product_specials')
+                .update({
+                  shoprenter_special_id: syncResult.shoprenterId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', promotion.id)
+              console.log(`[SYNC] ✅ Synced promotion (priority: ${promotion.priority}, price: ${promotion.price}): ${syncResult.shoprenterId}`)
+            } else {
+              console.warn(`[SYNC] ⚠️ Failed to sync promotion (priority: ${promotion.priority}): ${syncResult.error}`)
+            }
+          }
+
+          console.log(`[SYNC] Completed promotion syncing`)
+        }
+      }
+    } catch (promotionSyncError: any) {
+      // Don't fail the entire sync if promotion sync fails
+      console.warn(`[SYNC] Error syncing promotions:`, promotionSyncError?.message || promotionSyncError)
+    }
+
     // Now pull back from ShopRenter to verify
     const pullUrl = useOAuth 
       ? `${apiBaseUrl}/productExtend/${product.shoprenter_id}?full=1`
@@ -2782,12 +3617,16 @@ export async function POST(
     // Update product sync status
     // Use last_synced_to_shoprenter_at to track when we synced TO ShopRenter
     // This prevents incremental sync from overwriting changes we just pushed
+    // IMPORTANT: We explicitly set updated_at to the same value as last_synced_to_shoprenter_at
+    // to ensure that after sync, updated_at is not newer than last_synced_to_shoprenter_at
+    const syncTimestamp = new Date().toISOString()
     await supabase
       .from('shoprenter_products')
       .update({
         sync_status: 'synced',
         sync_error: null,
-        last_synced_to_shoprenter_at: new Date().toISOString()
+        last_synced_to_shoprenter_at: syncTimestamp,
+        updated_at: syncTimestamp // Set updated_at to sync time so comparison works correctly
         // Note: Don't update last_synced_at - that's only for FROM syncs
       })
       .eq('id', id)

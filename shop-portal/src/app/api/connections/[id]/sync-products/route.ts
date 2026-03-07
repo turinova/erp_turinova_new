@@ -711,7 +711,8 @@ export async function POST(
         
         // For single product sync, use forceSync from request (defaults to false)
         // Pass both attributeDescriptionsMap and productClassName
-        await syncProductToDatabase(supabase, connection, data, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId, undefined, productClassName)
+        // manufacturerName is undefined for single product sync (will extract from product.manufacturer.name)
+        await syncProductToDatabase(supabase, connection, data, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId, undefined, productClassName, undefined)
         return NextResponse.json({ success: true, synced: 1 })
       } catch (error) {
         return NextResponse.json({ 
@@ -1410,6 +1411,10 @@ async function processSyncInBackground(
         // Collect Product Class IDs from products (for group_name)
         const productClassIds = new Set<string>()
         const productToClassMap = new Map<string, string>() // productId -> productClassId
+        
+        // Collect Manufacturer IDs from products (for erp_manufacturer_id)
+        const manufacturerIds = new Set<string>()
+        const productToManufacturerMap = new Map<string, string>() // productId -> manufacturerId
 
         for (let i = 0; i < batchResponses.length; i++) {
           const batchItem = batchResponses[i]
@@ -1432,6 +1437,26 @@ async function processSyncInBackground(
                 if (productClassId) {
                   productClassIds.add(productClassId)
                   productToClassMap.set(product.id, productClassId)
+                }
+              }
+              
+              // Extract Manufacturer ID (for batch fetching manufacturer names)
+              if (product.manufacturer) {
+                let manufacturerId: string | null = null
+                if (typeof product.manufacturer === 'object' && product.manufacturer.id) {
+                  manufacturerId = product.manufacturer.id
+                } else if (product.manufacturer.href) {
+                  // Extract ID from href like: "http://shopname.api.myshoprenter.hu/manufacturers/..."
+                  const hrefParts = product.manufacturer.href.split('/')
+                  const lastPart = hrefParts[hrefParts.length - 1]
+                  if (lastPart && lastPart !== 'manufacturers') {
+                    manufacturerId = lastPart
+                  }
+                }
+                
+                if (manufacturerId) {
+                  manufacturerIds.add(manufacturerId)
+                  productToManufacturerMap.set(product.id, manufacturerId)
                 }
               }
               
@@ -1524,6 +1549,76 @@ async function processSyncInBackground(
           }
         }
 
+        // Batch fetch Manufacturer details to get names (for erp_manufacturer_id)
+        const manufacturerNamesMap = new Map<string, string | null>()
+        if (manufacturerIds.size > 0 && apiUrl && authHeader) {
+          console.log(`[SYNC] Batch fetching ${manufacturerIds.size} Manufacturer details for batch ${batchIndex + 1}`)
+          try {
+            const manufacturerArray = Array.from(manufacturerIds)
+            const BATCH_SIZE = 200
+            
+            for (let i = 0; i < manufacturerArray.length; i += BATCH_SIZE) {
+              const batch = manufacturerArray.slice(i, i + BATCH_SIZE)
+              const batchRequests = batch.map(manufacturerId => ({
+                method: 'GET',
+                uri: `${apiUrl}/manufacturers/${manufacturerId}?full=1`
+              }))
+              
+              const batchPayload = {
+                data: {
+                  requests: batchRequests
+                }
+              }
+              
+              const batchResponse = await fetch(`${apiUrl}/batch`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                body: JSON.stringify(batchPayload),
+                signal: AbortSignal.timeout(60000)
+              })
+              
+              if (batchResponse.ok) {
+                const batchData = await batchResponse.json()
+                const batchResponses = batchData.requests?.request || batchData.response?.requests?.request || []
+                
+                for (let j = 0; j < batchResponses.length && j < batch.length; j++) {
+                  const batchItem = batchResponses[j]
+                  const manufacturerId = batch[j]
+                  const statusCode = parseInt(batchItem.response?.header?.statusCode || '0', 10)
+                  
+                  if (statusCode >= 200 && statusCode < 300) {
+                    const manufacturer = batchItem.response?.body
+                    const manufacturerName = manufacturer?.name || null
+                    manufacturerNamesMap.set(manufacturerId, manufacturerName)
+                    if (manufacturerName) {
+                      console.log(`[SYNC] Found Manufacturer name "${manufacturerName}" for ID ${manufacturerId}`)
+                      // Auto-create manufacturer in ERP if it doesn't exist
+                      await ensureManufacturerExists(supabase, manufacturerName)
+                    }
+                  } else {
+                    manufacturerNamesMap.set(manufacturerId, null)
+                    console.warn(`[SYNC] Failed to fetch Manufacturer ${manufacturerId}: status ${statusCode}`)
+                  }
+                }
+              } else {
+                console.warn(`[SYNC] Failed to fetch Manufacturers batch: ${batchResponse.status}`)
+                // Set all to null on batch failure
+                batch.forEach(manufacturerId => manufacturerNamesMap.set(manufacturerId, null))
+              }
+            }
+            
+            console.log(`[SYNC] Fetched ${manufacturerNamesMap.size} Manufacturer names`)
+          } catch (error) {
+            console.warn(`[SYNC] Error fetching Manufacturers:`, error)
+            // Set all to null on error
+            manufacturerIds.forEach(manufacturerId => manufacturerNamesMap.set(manufacturerId, null))
+          }
+        }
+
         // Batch fetch all attribute descriptions at once
         let attributeDescriptionsMap = new Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>()
         if (attributeRequests.length > 0 && apiUrl && authHeader) {
@@ -1542,6 +1637,14 @@ async function processSyncInBackground(
         productToClassMap.forEach((classId, productId) => {
           const className = productClassNamesMap.get(classId) || null
           productToClassNameMap.set(productId, className)
+        })
+
+        // Create map: productId -> manufacturerId -> manufacturerName (for erp_manufacturer_id)
+        // This will be used in syncProductToDatabase to set erp_manufacturer_id
+        const productToManufacturerNameMap = new Map<string, string | null>()
+        productToManufacturerMap.forEach((manufacturerId, productId) => {
+          const manufacturerName = manufacturerNamesMap.get(manufacturerId) || null
+          productToManufacturerNameMap.set(productId, manufacturerName)
         })
 
         // DEPRECATED: Fetch full attributes to get widget information, then fetch widget descriptions for group names
@@ -1696,9 +1799,10 @@ async function processSyncInBackground(
 
           try {
             // Sync product and get the ERP UUID if available
-            // Pass Product Class name map for group_name
+            // Pass Product Class name map for group_name and Manufacturer name map for erp_manufacturer_id
             const productClassName = productToClassNameMap.get(product.id) || null
-            const result = await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId, attributeGroupNamesMap, productClassName)
+            const manufacturerName = productToManufacturerNameMap.get(product.id) || null
+            const result = await syncProductToDatabase(supabase, connection, product, forceSync, apiUrl, authHeader, attributeDescriptionsMap, tenantId, attributeGroupNamesMap, productClassName, manufacturerName)
             batchResults.synced++
             
             // Track synced product ERP UUID for post-sync optimization
@@ -2058,6 +2162,179 @@ async function processSyncInBackground(
 }
 
 /**
+ * Ensure a unit exists in the units table, create it if it doesn't
+ * @param supabase Supabase client
+ * @param measurementUnit The measurement unit shortform (e.g., "db", "kg", "Test")
+ * @returns The unit ID if found or created, null if measurementUnit is empty
+ */
+async function ensureUnitExists(supabase: any, measurementUnit: string | null | undefined): Promise<string | null> {
+  if (!measurementUnit || !measurementUnit.trim()) {
+    return null
+  }
+
+  const trimmedUnit = measurementUnit.trim()
+
+  // Check if unit already exists by shortform
+  const { data: existingUnit } = await supabase
+    .from('units')
+    .select('id')
+    .eq('shortform', trimmedUnit)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (existingUnit) {
+    return existingUnit.id
+  }
+
+  // Unit doesn't exist, create it
+  // Use the shortform as the name if it's a simple unit, otherwise capitalize first letter
+  const unitName = trimmedUnit.length > 0 
+    ? trimmedUnit.charAt(0).toUpperCase() + trimmedUnit.slice(1).toLowerCase()
+    : trimmedUnit
+
+  const { data: newUnit, error } = await supabase
+    .from('units')
+    .insert({
+      name: unitName,
+      shortform: trimmedUnit
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error(`[SYNC] Failed to create unit "${trimmedUnit}":`, error)
+    // Don't throw - just log and return null, we'll still save the measurement_unit in the description
+    return null
+  }
+
+  console.log(`[SYNC] Auto-created unit: "${unitName}" (${trimmedUnit})`)
+  return newUnit.id
+}
+
+/**
+ * Ensure a manufacturer exists in the manufacturers table, create it if it doesn't
+ * @param supabase Supabase client
+ * @param manufacturerName The manufacturer/brand name (e.g., "Samsung", "Apple")
+ * @returns The manufacturer ID if found or created, null if manufacturerName is empty
+ */
+async function ensureManufacturerExists(supabase: any, manufacturerName: string | null | undefined): Promise<string | null> {
+  if (!manufacturerName || !manufacturerName.trim()) {
+    return null
+  }
+
+  const trimmedName = manufacturerName.trim()
+
+  // Check if manufacturer already exists by name
+  const { data: existingManufacturer } = await supabase
+    .from('manufacturers')
+    .select('id')
+    .eq('name', trimmedName)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (existingManufacturer) {
+    return existingManufacturer.id
+  }
+
+  // Manufacturer doesn't exist, create it
+  const { data: newManufacturer, error } = await supabase
+    .from('manufacturers')
+    .insert({
+      name: trimmedName
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error(`[SYNC] Failed to create manufacturer "${trimmedName}":`, error)
+    // Don't throw - just log and return null, we'll still save the brand in the product
+    return null
+  }
+
+  console.log(`[SYNC] Auto-created manufacturer: "${trimmedName}"`)
+  return newManufacturer.id
+}
+
+/**
+ * Ensure a weight unit exists in the weight_units table, create it if it doesn't
+ * @param supabase Supabase client
+ * @param weightUnitName The weight unit name (e.g., "Kilogramm", "Gramm")
+ * @param weightUnitShortform The weight unit shortform (e.g., "kg", "g")
+ * @param shoprenterWeightClassId Optional ShopRenter weightClass ID for mapping
+ * @returns The weight unit ID if found or created, null if weightUnitName is empty
+ */
+async function ensureWeightUnitExists(
+  supabase: any, 
+  weightUnitName: string | null | undefined,
+  weightUnitShortform: string | null | undefined,
+  shoprenterWeightClassId?: string | null
+): Promise<string | null> {
+  if (!weightUnitName || !weightUnitName.trim()) {
+    return null
+  }
+
+  const trimmedName = weightUnitName.trim()
+  const trimmedShortform = weightUnitShortform?.trim() || trimmedName.toLowerCase().substring(0, 10)
+
+  // Check if weight unit already exists by name
+  const { data: existingWeightUnit } = await supabase
+    .from('weight_units')
+    .select('id')
+    .eq('name', trimmedName)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (existingWeightUnit) {
+    // Update shoprenter_weight_class_id if provided and not set
+    if (shoprenterWeightClassId && !existingWeightUnit.shoprenter_weight_class_id) {
+      await supabase
+        .from('weight_units')
+        .update({ shoprenter_weight_class_id: shoprenterWeightClassId })
+        .eq('id', existingWeightUnit.id)
+    }
+    return existingWeightUnit.id
+  }
+
+  // Check by shortform as fallback
+  const { data: existingByShortform } = await supabase
+    .from('weight_units')
+    .select('id')
+    .eq('shortform', trimmedShortform)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (existingByShortform) {
+    // Update shoprenter_weight_class_id if provided and not set
+    if (shoprenterWeightClassId && !existingByShortform.shoprenter_weight_class_id) {
+      await supabase
+        .from('weight_units')
+        .update({ shoprenter_weight_class_id: shoprenterWeightClassId })
+        .eq('id', existingByShortform.id)
+    }
+    return existingByShortform.id
+  }
+
+  // Weight unit doesn't exist, create it
+  const { data: newWeightUnit, error } = await supabase
+    .from('weight_units')
+    .insert({
+      name: trimmedName,
+      shortform: trimmedShortform,
+      shoprenter_weight_class_id: shoprenterWeightClassId || null
+    })
+    .select('id')
+    .single()
+
+  if (error) {
+    console.error(`[SYNC] Failed to create weight unit "${trimmedName}":`, error)
+    return null
+  }
+
+  console.log(`[SYNC] Auto-created weight unit: "${trimmedName}" (${trimmedShortform})`)
+  return newWeightUnit.id
+}
+
+/**
  * Sync a single product to database
  * @param attributeDescriptionsMap Optional map of attributeId -> {display_name, prefix, postfix} for batch-fetched attributes
  */
@@ -2071,7 +2348,8 @@ export async function syncProductToDatabase(
   attributeDescriptionsMap?: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>,
   tenantId?: string,
   attributeGroupNamesMap?: Map<string, string | null>,
-  productClassName?: string | null
+  productClassName?: string | null,
+  manufacturerName?: string | null
 ) {
   try {
     console.log(`[SYNC] syncProductToDatabase called for product ${product.sku}`)
@@ -2440,20 +2718,39 @@ export async function syncProductToDatabase(
       })
     }
 
-    // Extract brand/manufacturer from productExtend (non-blocking - won't fail sync if extraction fails)
-    let brand = null
-    let manufacturerId: string | null = null
+    // Extract manufacturer from productExtend (non-blocking - won't fail sync if extraction fails)
+    let manufacturerId: string | null = null // ShopRenter manufacturer ID
+    let erp_manufacturer_id: string | null = null // ERP manufacturer ID (from manufacturers table)
     try {
+      // If manufacturerName was provided from batch fetch, use it (for batch sync performance)
+      if (manufacturerName) {
+        erp_manufacturer_id = await ensureManufacturerExists(supabase, manufacturerName)
+        // Extract manufacturer ID from product.manufacturer if available
       if (product.manufacturer) {
+          if (typeof product.manufacturer === 'object' && product.manufacturer.id) {
+            manufacturerId = product.manufacturer.id
+          } else if (product.manufacturer.href) {
+            const hrefParts = product.manufacturer.href.split('/')
+            const lastPart = hrefParts[hrefParts.length - 1]
+            if (lastPart && lastPart !== 'manufacturers') {
+              manufacturerId = lastPart
+            }
+          }
+        }
+        console.log(`[SYNC] Using batch-fetched manufacturer name: "${manufacturerName}" (ShopRenter ID: ${manufacturerId}, ERP ID: ${erp_manufacturer_id}) for product ${product.sku}`)
+      } else if (product.manufacturer) {
+        // Fallback: Extract from product.manufacturer (for single product sync or when batch fetch didn't work)
         // manufacturer can be an object with name and id properties, or just href
         if (typeof product.manufacturer === 'object') {
           if (product.manufacturer.name) {
-            brand = product.manufacturer.name
+            const manufacturerNameFromProduct = product.manufacturer.name
+            // Auto-create manufacturer in ERP if it doesn't exist
+            erp_manufacturer_id = await ensureManufacturerExists(supabase, manufacturerNameFromProduct)
           }
           if (product.manufacturer.id) {
             manufacturerId = product.manufacturer.id
           }
-          console.log(`[SYNC] Extracted brand from manufacturer: "${brand}" (ID: ${manufacturerId}) for product ${product.sku}`)
+          console.log(`[SYNC] Extracted manufacturer: "${product.manufacturer.name || 'no name'}" (ShopRenter ID: ${manufacturerId}, ERP ID: ${erp_manufacturer_id}) for product ${product.sku}`)
         } else if (product.manufacturer.href) {
           // Extract ID from href if available
           const hrefParts = product.manufacturer.href.split('/')
@@ -2462,6 +2759,8 @@ export async function syncProductToDatabase(
             manufacturerId = lastPart
           }
           console.log(`[SYNC] Manufacturer href found for product ${product.sku}: ${product.manufacturer.href}, extracted ID: ${manufacturerId}`)
+          // Note: If we only have href and no batch-fetched name, we can't auto-create manufacturer without name
+          // This should only happen if batch fetch failed or for single product sync without full=1
         }
       }
     } catch (manufacturerError: any) {
@@ -2580,6 +2879,102 @@ export async function syncProductToDatabase(
       }
     }
 
+    // Extract dimensions and weight units (non-blocking)
+    let width: number | null = null
+    let height: number | null = null
+    let length: number | null = null
+    let weight: number | null = null
+    let erp_weight_unit_id: string | null = null
+    let shoprenter_volume_unit_id: string | null = null
+    let shoprenter_weight_unit_id: string | null = null
+    
+    try {
+      // Extract dimensions (width, height, length) - stored in cm by default
+      if (product.width !== undefined && product.width !== null && product.width !== '') {
+        width = parseFloat(String(product.width))
+      }
+      if (product.height !== undefined && product.height !== null && product.height !== '') {
+        height = parseFloat(String(product.height))
+      }
+      if (product.length !== undefined && product.length !== null && product.length !== '') {
+        length = parseFloat(String(product.length))
+      }
+      
+      // Extract weight
+      if (product.weight !== undefined && product.weight !== null && product.weight !== '') {
+        weight = parseFloat(String(product.weight))
+      }
+      
+      // Extract volumeUnit (for dimensions - lengthClass)
+      if (product.volumeUnit) {
+        if (typeof product.volumeUnit === 'object' && product.volumeUnit.id) {
+          shoprenter_volume_unit_id = product.volumeUnit.id
+        } else if (product.volumeUnit.href) {
+          const hrefParts = product.volumeUnit.href.split('/')
+          shoprenter_volume_unit_id = hrefParts[hrefParts.length - 1] || null
+        }
+      }
+      
+      // Extract weightUnit and get/create ERP weight unit
+      if (product.weightUnit) {
+        let weightClassId: string | null = null
+        if (typeof product.weightUnit === 'object' && product.weightUnit.id) {
+          weightClassId = product.weightUnit.id
+          shoprenter_weight_unit_id = weightClassId
+        } else if (product.weightUnit.href) {
+          const hrefParts = product.weightUnit.href.split('/')
+          weightClassId = hrefParts[hrefParts.length - 1] || null
+          shoprenter_weight_unit_id = weightClassId
+        }
+        
+        // Fetch weightClassDescription to get unit name (if we have weightClassId and API access)
+        if (weightClassId && apiBaseUrl && authHeaderParam) {
+          try {
+            // Try to fetch weightClassDescription for Hungarian language first, then any language
+            const weightClassDescUrl = `${apiBaseUrl}/weightClassDescriptions?weightClassId=${encodeURIComponent(weightClassId)}&full=1`
+            const weightClassDescResponse = await fetch(weightClassDescUrl, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeaderParam
+              },
+              signal: AbortSignal.timeout(5000)
+            })
+            
+            if (weightClassDescResponse.ok) {
+              const weightClassDescData = await weightClassDescResponse.json()
+              const descriptions = weightClassDescData?.items || weightClassDescData?.response?.items || []
+              
+              // Prefer Hungarian, fallback to first available
+              const huDesc = descriptions.find((d: any) => d.language?.id?.includes('hu') || d.language?.innerId === '1')
+              const desc = huDesc || descriptions[0]
+              
+              if (desc) {
+                const weightUnitName = desc.title || desc.unit || null
+                const weightUnitShortform = desc.unit || null
+                
+                if (weightUnitName) {
+                  erp_weight_unit_id = await ensureWeightUnitExists(
+                    supabase,
+                    weightUnitName,
+                    weightUnitShortform,
+                    weightClassId
+                  )
+                  console.log(`[SYNC] Extracted weight unit: "${weightUnitName}" (${weightUnitShortform}) for product ${product.sku}`)
+                }
+              }
+            }
+          } catch (weightUnitError) {
+            console.warn(`[SYNC] Failed to fetch weightClassDescription for product ${product.sku}:`, weightUnitError)
+          }
+        }
+      }
+    } catch (dimensionError) {
+      console.warn(`[SYNC] Failed to extract dimensions/weight for product ${product.sku}:`, dimensionError)
+      // Continue without dimensions - non-blocking
+    }
+
     // Extract product data
     const productData: any = {
       connection_id: connection.id,
@@ -2589,8 +2984,16 @@ export async function syncProductToDatabase(
       model_number: product.modelNumber || null, // Gyártói cikkszám (Manufacturer part number)
       gtin: product.gtin || null, // Vonalkód (Barcode/GTIN)
       name: null, // Will be set from description
-      brand: brand, // Brand/manufacturer name from ShopRenter
       manufacturer_id: manufacturerId, // ShopRenter manufacturer ID for syncing back
+      erp_manufacturer_id: erp_manufacturer_id, // ERP manufacturer ID (from manufacturers table)
+      // Dimensions
+      width: width,
+      height: height,
+      length: length,
+      weight: weight,
+      erp_weight_unit_id: erp_weight_unit_id,
+      shoprenter_volume_unit_id: shoprenter_volume_unit_id,
+      shoprenter_weight_unit_id: shoprenter_weight_unit_id,
       status: product.status === '1' || product.status === 1 ? 1 : 0,
       // Product Class
       product_class_shoprenter_id: productClassShoprenterId, // Store Product Class ID for attribute filtering
@@ -3016,6 +3419,12 @@ export async function syncProductToDatabase(
           }
         }
 
+        // Ensure unit exists in units table if measurementUnit is provided
+        const measurementUnit = desc.measurementUnit || null
+        if (measurementUnit) {
+          await ensureUnitExists(supabase, measurementUnit)
+        }
+
         const descDataToSave = {
           product_id: dbProduct.id,
           language_code: languageCode,
@@ -3026,6 +3435,7 @@ export async function syncProductToDatabase(
           short_description: desc.shortDescription || null,
           description: desc.description || null,
           parameters: desc.parameters || null, // Add parameters field
+          measurement_unit: measurementUnit, // Add measurementUnit field
           shoprenter_id: desc.id || null
         }
 
@@ -3450,6 +3860,147 @@ export async function syncProductToDatabase(
     } catch (tagSyncError: any) {
       // Don't fail the entire sync if tag sync fails
       console.warn(`[SYNC] Failed to sync product tags for product ${product.sku}:`, tagSyncError?.message || tagSyncError)
+    }
+
+    // Sync customer group prices FROM ShopRenter
+    try {
+      if (product.id && !product.id.startsWith('pending-')) {
+        // Fetch customer group prices from ShopRenter
+        const pricesResponse = await fetch(
+          `${apiUrl}/customerGroupProductPrices?productId=${encodeURIComponent(product.id)}&full=1`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            signal: AbortSignal.timeout(10000)
+          }
+        )
+
+        if (pricesResponse.ok) {
+          const pricesData = await pricesResponse.json().catch(() => null)
+          const prices = pricesData?.items || pricesData?.response?.items || []
+
+          if (prices.length > 0) {
+            console.log(`[SYNC] Found ${prices.length} customer group prices for product ${product.sku}`)
+
+            for (const shoprenterPrice of prices) {
+              const shoprenterPriceId = shoprenterPrice.id || shoprenterPrice.href?.split('/').pop()
+              const priceValue = shoprenterPrice.price ? parseFloat(shoprenterPrice.price) : null
+              const customerGroupId = shoprenterPrice.customerGroup?.id || shoprenterPrice.customerGroup?.href?.split('/').pop()
+
+              if (!shoprenterPriceId || !priceValue || !customerGroupId) {
+                continue
+              }
+
+              // Find or create customer group in ERP
+              // First, try to find by ShopRenter ID
+              let { data: customerGroup } = await supabase
+                .from('customer_groups')
+                .select('id')
+                .eq('shoprenter_customer_group_id', customerGroupId)
+                .is('deleted_at', null)
+                .maybeSingle()
+
+              // If not found, try to fetch customer group name from ShopRenter
+              if (!customerGroup) {
+                try {
+                  const groupResponse = await fetch(
+                    `${apiUrl}/customerGroups/${customerGroupId}`,
+                    {
+                      method: 'GET',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'Authorization': authHeader
+                      },
+                      signal: AbortSignal.timeout(5000)
+                    }
+                  )
+
+                  if (groupResponse.ok) {
+                    const groupData = await groupResponse.json().catch(() => null)
+                    const groupName = groupData?.name
+
+                    if (groupName) {
+                      // Create customer group in ERP
+                      const code = groupName
+                        .toUpperCase()
+                        .replace(/[^A-Z0-9_]/g, '_')
+                        .replace(/_+/g, '_')
+                        .replace(/^_|_$/g, '')
+
+                      const { data: newGroup, error: createError } = await supabase
+                        .from('customer_groups')
+                        .insert({
+                          name: groupName,
+                          code: code,
+                          shoprenter_customer_group_id: customerGroupId,
+                          is_default: false,
+                          is_active: true
+                        })
+                        .select('id')
+                        .single()
+
+                      if (!createError && newGroup) {
+                        customerGroup = newGroup
+                        console.log(`[SYNC] Created customer group "${groupName}" for product ${product.sku}`)
+                      }
+                    }
+                  }
+                } catch (groupError) {
+                  console.warn(`[SYNC] Failed to fetch customer group ${customerGroupId}:`, groupError)
+                }
+              }
+
+              if (customerGroup) {
+                // Upsert customer group price
+                const { data: existingPrice } = await supabase
+                  .from('product_customer_group_prices')
+                  .select('id')
+                  .eq('product_id', dbProduct.id)
+                  .eq('customer_group_id', customerGroup.id)
+                  .maybeSingle()
+
+                const priceData = {
+                  product_id: dbProduct.id,
+                  customer_group_id: customerGroup.id,
+                  price: priceValue,
+                  shoprenter_customer_group_price_id: shoprenterPriceId,
+                  last_synced_at: new Date().toISOString(),
+                  is_active: true
+                }
+
+                if (existingPrice) {
+                  await supabase
+                    .from('product_customer_group_prices')
+                    .update(priceData)
+                    .eq('id', existingPrice.id)
+                } else {
+                  await supabase
+                    .from('product_customer_group_prices')
+                    .insert(priceData)
+                }
+
+                console.log(`[SYNC] Synced customer group price for product ${product.sku}: ${priceValue} Ft`)
+              } else {
+                console.warn(`[SYNC] Could not find or create customer group ${customerGroupId} for product ${product.sku}`)
+              }
+            }
+          }
+        } else {
+          // 404 is acceptable - product might not have customer group prices
+          if (pricesResponse.status !== 404) {
+            const errorText = await pricesResponse.text().catch(() => 'Unknown error')
+            console.warn(`[SYNC] Failed to fetch customer group prices for product ${product.sku}: ${pricesResponse.status} - ${errorText}`)
+          }
+        }
+      }
+    } catch (customerGroupPriceSyncError: any) {
+      // Don't fail the entire sync if customer group price sync fails
+      console.warn(`[SYNC] Error syncing customer group prices for product ${product.sku}:`, customerGroupPriceSyncError?.message || customerGroupPriceSyncError)
     }
 
     // Return product ID for tracking synced products

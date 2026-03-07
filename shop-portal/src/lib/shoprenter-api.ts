@@ -312,3 +312,499 @@ export async function getCategoryDescriptionId(
     return null
   }
 }
+
+/**
+ * Sync customer group to ShopRenter
+ * Creates or updates a customer group in ShopRenter and returns the ShopRenter ID
+ */
+export async function syncCustomerGroupToShopRenter(
+  apiBaseUrl: string,
+  authHeader: string,
+  customerGroup: {
+    id: string
+    name: string
+    code: string
+    shoprenter_customer_group_id: string | null
+  }
+): Promise<{ shoprenterId: string | null; error?: string }> {
+  try {
+    // If we already have a ShopRenter ID, try to update
+    if (customerGroup.shoprenter_customer_group_id) {
+      try {
+        const updateResponse = await fetch(
+          `${apiBaseUrl}/customerGroups/${customerGroup.shoprenter_customer_group_id}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify({
+              name: customerGroup.name,
+              percentDiscount: '0',
+              percentDiscountSpecialPrices: '0'
+            }),
+            signal: AbortSignal.timeout(10000)
+          }
+        )
+
+        if (updateResponse.ok) {
+          const result = await updateResponse.json().catch(() => null)
+          const shoprenterId = result?.id || customerGroup.shoprenter_customer_group_id
+          return { shoprenterId }
+        }
+      } catch (error) {
+        console.warn(`[SYNC] Failed to update customer group in ShopRenter:`, error)
+        // Continue to try creating
+      }
+    }
+
+    // Try to find existing customer group by name
+    try {
+      const searchResponse = await fetch(`${apiBaseUrl}/customerGroups?full=1`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        signal: AbortSignal.timeout(10000)
+      })
+
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json().catch(() => null)
+        const items = searchData?.items || searchData?.response?.items || []
+        
+        // Find by name (case-insensitive)
+        const existing = items.find((item: any) => 
+          item.name?.toLowerCase() === customerGroup.name.toLowerCase()
+        )
+        
+        if (existing) {
+          const shoprenterId = existing.id || existing.href?.split('/').pop()
+          if (shoprenterId) {
+            return { shoprenterId }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`[SYNC] Failed to search for existing customer group:`, error)
+    }
+
+    // Create new customer group
+    const createResponse = await fetch(`${apiBaseUrl}/customerGroups`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': authHeader
+      },
+      body: JSON.stringify({
+        name: customerGroup.name,
+        percentDiscount: '0',
+        percentDiscountSpecialPrices: '0'
+      }),
+      signal: AbortSignal.timeout(10000)
+    })
+
+    if (createResponse.ok) {
+      const result = await createResponse.json().catch(() => null)
+      const shoprenterId = result?.id || result?.href?.split('/').pop()
+      if (shoprenterId) {
+        return { shoprenterId }
+      }
+    }
+
+    const errorText = await createResponse.text().catch(() => 'Unknown error')
+    return { shoprenterId: null, error: `Failed to create customer group: ${createResponse.status} - ${errorText}` }
+  } catch (error) {
+    console.error('Error syncing customer group to ShopRenter:', error)
+    return { shoprenterId: null, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+/**
+ * Sync customer group price to ShopRenter
+ * Creates or updates a customer group product price in ShopRenter
+ */
+export async function syncCustomerGroupPriceToShopRenter(
+  apiBaseUrl: string,
+  authHeader: string,
+  productShopRenterId: string,
+  customerGroupShopRenterId: string,
+  price: number,
+  existingShopRenterPriceId: string | null
+): Promise<{ shoprenterId: string | null; error?: string }> {
+  try {
+    // If we have an existing ShopRenter price ID, try to update
+    if (existingShopRenterPriceId) {
+      try {
+        const updateResponse = await fetch(
+          `${apiBaseUrl}/customerGroupProductPrices/${existingShopRenterPriceId}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify({
+              price: price.toString(),
+              customerGroup: {
+                id: customerGroupShopRenterId
+              },
+              product: {
+                id: productShopRenterId
+              }
+            }),
+            signal: AbortSignal.timeout(10000)
+          }
+        )
+
+        if (updateResponse.ok) {
+          const result = await updateResponse.json().catch(() => null)
+          const shoprenterId = result?.id || existingShopRenterPriceId
+          return { shoprenterId }
+        }
+      } catch (error) {
+        console.warn(`[SYNC] Failed to update customer group price in ShopRenter:`, error)
+        // Continue to try creating
+      }
+    }
+
+    // Try to find existing price
+    try {
+      const searchResponse = await fetch(
+        `${apiBaseUrl}/customerGroupProductPrices?productId=${encodeURIComponent(productShopRenterId)}&full=1`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          signal: AbortSignal.timeout(10000)
+        }
+      )
+
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json().catch(() => null)
+        const items = searchData?.items || searchData?.response?.items || []
+        
+        // Find by customer group ID
+        const existing = items.find((item: any) => {
+          const itemGroupId = item.customerGroup?.id || item.customerGroup?.href?.split('/').pop()
+          return itemGroupId === customerGroupShopRenterId
+        })
+        
+        if (existing) {
+          const shoprenterId = existing.id || existing.href?.split('/').pop()
+          if (shoprenterId) {
+            // Update it
+            const updateResponse = await fetch(
+              `${apiBaseUrl}/customerGroupProductPrices/${shoprenterId}`,
+              {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Accept': 'application/json',
+                  'Authorization': authHeader
+                },
+                body: JSON.stringify({
+                  price: price.toString(),
+                  customerGroup: {
+                    id: customerGroupShopRenterId
+                  },
+                  product: {
+                    id: productShopRenterId
+                  }
+                }),
+                signal: AbortSignal.timeout(10000)
+              }
+            )
+
+            if (updateResponse.ok) {
+              return { shoprenterId }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`[SYNC] Failed to search for existing customer group price:`, error)
+    }
+
+    // Create new customer group price
+    const createResponse = await fetch(`${apiBaseUrl}/customerGroupProductPrices`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': authHeader
+      },
+      body: JSON.stringify({
+        price: price.toString(),
+        customerGroup: {
+          id: customerGroupShopRenterId
+        },
+        product: {
+          id: productShopRenterId
+        }
+      }),
+      signal: AbortSignal.timeout(10000)
+    })
+
+    if (createResponse.ok) {
+      const result = await createResponse.json().catch(() => null)
+      const shoprenterId = result?.id || result?.href?.split('/').pop()
+      if (shoprenterId) {
+        return { shoprenterId }
+      }
+    }
+
+    const errorText = await createResponse.text().catch(() => 'Unknown error')
+    return { shoprenterId: null, error: `Failed to create customer group price: ${createResponse.status} - ${errorText}` }
+  } catch (error) {
+    console.error('Error syncing customer group price to ShopRenter:', error)
+    return { shoprenterId: null, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+/**
+ * Sync product special (promotion) to ShopRenter
+ * Creates or updates a productSpecial in ShopRenter
+ */
+export async function syncProductSpecialToShopRenter(
+  apiBaseUrl: string,
+  authHeader: string,
+  productShopRenterId: string,
+  promotion: {
+    priority: number
+    price: number
+    dateFrom: string | null
+    dateTo: string | null
+    minQuantity: number
+    maxQuantity: number
+    type?: 'interval' | 'day_spec'
+    dayOfWeek?: number | null
+    customerGroupShopRenterId?: string | null
+  },
+  existingShopRenterSpecialId: string | null
+): Promise<{ shoprenterId: string | null; error?: string }> {
+  try {
+    // Build payload
+    const payload: any = {
+      priority: promotion.priority.toString(),
+      price: promotion.price.toFixed(4),
+      product: {
+        id: productShopRenterId
+      }
+    }
+
+    // Add date range (ShopRenter format: YYYY-MM-DD)
+    if (promotion.dateFrom) {
+      payload.dateFrom = promotion.dateFrom
+    }
+    if (promotion.dateTo) {
+      payload.dateTo = promotion.dateTo
+    }
+
+    // Add quantity range
+    payload.minQuantity = promotion.minQuantity.toString()
+    payload.maxQuantity = promotion.maxQuantity.toString()
+
+    // Add customer group (null = "Everyone")
+    if (promotion.customerGroupShopRenterId) {
+      payload.customerGroup = {
+        id: promotion.customerGroupShopRenterId
+      }
+    }
+
+    // Add product of day fields
+    if (promotion.type === 'day_spec') {
+      payload.type = 'day_spec'
+      if (promotion.dayOfWeek) {
+        payload.dayOfWeek = promotion.dayOfWeek.toString()
+      }
+    }
+
+    // If we have an existing ShopRenter special ID, try to update
+    if (existingShopRenterSpecialId) {
+      try {
+        const updateResponse = await fetch(
+          `${apiBaseUrl}/productSpecials/${existingShopRenterSpecialId}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'Authorization': authHeader
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(10000)
+          }
+        )
+
+        if (updateResponse.ok) {
+          const result = await updateResponse.json().catch(() => null)
+          const shoprenterId = result?.id || existingShopRenterSpecialId
+          return { shoprenterId }
+        }
+
+        // If update fails with 404, the promotion was deleted in ShopRenter, create new
+        if (updateResponse.status === 404) {
+          console.log(`[SYNC] Promotion ${existingShopRenterSpecialId} not found in ShopRenter, creating new`)
+        } else {
+          const errorText = await updateResponse.text().catch(() => 'Unknown error')
+          console.warn(`[SYNC] Failed to update promotion in ShopRenter: ${updateResponse.status} - ${errorText}`)
+        }
+      } catch (error) {
+        console.warn(`[SYNC] Failed to update promotion in ShopRenter:`, error)
+        // Continue to try creating
+      }
+    }
+
+    // Create new promotion
+    console.log(`[SYNC] Creating promotion in ShopRenter for product: ${productShopRenterId}`)
+    console.log(`[SYNC] Promotion payload:`, JSON.stringify(payload, null, 2))
+    
+    const createResponse = await fetch(`${apiBaseUrl}/productSpecials`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': authHeader
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10000)
+    })
+
+    console.log(`[SYNC] Promotion create response status: ${createResponse.status}`)
+
+    if (createResponse.ok) {
+      const responseText = await createResponse.text().catch(() => '')
+      console.log(`[SYNC] Promotion create response body (raw):`, responseText)
+      
+      let result: any = null
+      try {
+        result = JSON.parse(responseText)
+        console.log(`[SYNC] Promotion create response (parsed):`, result)
+      } catch (parseError) {
+        console.error(`[SYNC] ⚠️ Failed to parse response as JSON:`, parseError)
+        console.error(`[SYNC] Response text:`, responseText)
+      }
+      
+      // Try multiple ways to extract the ShopRenter ID
+      let shoprenterId: string | null = null
+      
+      if (result?.id) {
+        shoprenterId = result.id
+      } else if (result?.href) {
+        // Extract ID from href: http://shop.api.myshoprenter.hu/productSpecials/cHJvZHVjdFNwZWNpYWwt...
+        const hrefParts = result.href.split('/')
+        shoprenterId = hrefParts[hrefParts.length - 1] || null
+      } else if (responseText) {
+        // Try to extract from raw text if JSON parsing failed but we have text
+        const idMatch = responseText.match(/productSpecials[\/"]([^"\/]+)/)
+        if (idMatch && idMatch[1]) {
+          shoprenterId = idMatch[1]
+        }
+      }
+      
+      if (shoprenterId) {
+        console.log(`[SYNC] ✅ Promotion created successfully in ShopRenter: ${shoprenterId}`)
+        return { shoprenterId }
+      } else {
+        console.warn(`[SYNC] ⚠️ Promotion created but no ID returned in response`)
+        console.warn(`[SYNC] Response object:`, result)
+        console.warn(`[SYNC] Response text:`, responseText.substring(0, 500))
+        console.warn(`[SYNC] Attempted to extract ID from:`, { 
+          id: result?.id, 
+          href: result?.href,
+          status: createResponse.status,
+          statusText: createResponse.statusText
+        })
+        // Even if we can't extract ID, if status is 200/201, the creation was successful
+        // Return error so caller knows to retry or check manually
+        return { 
+          shoprenterId: null, 
+          error: 'Promotion created in ShopRenter but ID could not be extracted from response. Please sync manually.' 
+        }
+      }
+    }
+
+    // Handle 409 conflict (promotion already exists)
+    if (createResponse.status === 409) {
+      try {
+        const errorData = await createResponse.json().catch(() => null)
+        if (errorData?.id) {
+          // Extract ID from error response
+          const existingId = errorData.id
+          console.log(`[SYNC] Promotion already exists in ShopRenter: ${existingId}, updating instead`)
+          
+          // Try to update with the existing ID
+          const updateResponse = await fetch(
+            `${apiBaseUrl}/productSpecials/${existingId}`,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'Authorization': authHeader
+              },
+              body: JSON.stringify(payload),
+              signal: AbortSignal.timeout(10000)
+            }
+          )
+
+          if (updateResponse.ok) {
+            return { shoprenterId: existingId }
+          }
+        }
+      } catch (error) {
+        console.warn(`[SYNC] Failed to handle 409 conflict:`, error)
+      }
+    }
+
+    const errorText = await createResponse.text().catch(() => 'Unknown error')
+    console.error(`[SYNC] ❌ Failed to create promotion in ShopRenter. Status: ${createResponse.status}, Error: ${errorText}`)
+    return { shoprenterId: null, error: `Failed to create promotion: ${createResponse.status} - ${errorText}` }
+  } catch (error) {
+    console.error('Error syncing promotion to ShopRenter:', error)
+    return { shoprenterId: null, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
+
+/**
+ * Delete product special from ShopRenter
+ */
+export async function deleteProductSpecialFromShopRenter(
+  apiBaseUrl: string,
+  authHeader: string,
+  shoprenterSpecialId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const deleteResponse = await fetch(
+      `${apiBaseUrl}/productSpecials/${shoprenterSpecialId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': authHeader
+        },
+        signal: AbortSignal.timeout(10000)
+      }
+    )
+
+    if (deleteResponse.ok || deleteResponse.status === 204 || deleteResponse.status === 404) {
+      return { success: true }
+    }
+
+    const errorText = await deleteResponse.text().catch(() => 'Unknown error')
+    return { success: false, error: `Failed to delete promotion: ${deleteResponse.status} - ${errorText}` }
+  } catch (error) {
+    console.error('Error deleting promotion from ShopRenter:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+  }
+}
