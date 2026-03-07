@@ -59,7 +59,8 @@ import {
   Warning as WarningIcon,
   Category as CategoryIcon,
   LocalOffer as LocalOfferIcon,
-  MoreVert as MoreVertIcon
+  MoreVert as MoreVertIcon,
+  Business as BusinessIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -433,6 +434,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   } | null>(null)
   const categoryPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [syncingProductClassesConnectionId, setSyncingProductClassesConnectionId] = useState<string | null>(null)
+  const [backfillingManufacturers, setBackfillingManufacturers] = useState(false)
   
   const [newConnection, setNewConnection] = useState({
     name: '',
@@ -1134,6 +1136,43 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
+  // Handle backfill manufacturers
+  const handleBackfillManufacturers = async () => {
+    try {
+      setBackfillingManufacturers(true)
+      toast.info('Gyártók szinkronizálása elindítva...')
+      
+      const response = await fetch('/api/products/backfill-manufacturers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        const errorResult = await response.json()
+        throw new Error(errorResult.error || 'Hiba a gyártók szinkronizálásakor')
+      }
+
+      const result = await response.json()
+      
+      if (result.success) {
+        toast.success(result.message || `Gyártók szinkronizálása befejezve: ${result.updated} termék frissítve`)
+        if (result.errors > 0) {
+          toast.warning(`${result.errors} hiba történt a szinkronizálás során`)
+        }
+      } else {
+        throw new Error(result.error || 'Ismeretlen hiba')
+      }
+    } catch (error) {
+      console.error('Error backfilling manufacturers:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Ismeretlen hiba'
+      toast.error(`Hiba a gyártók szinkronizálásakor: ${errorMessage}`)
+    } finally {
+      setBackfillingManufacturers(false)
+    }
+  }
+
   // Handle sync products (actual sync)
   // forceSync=true: Full sync (all products)
   // forceSync=false: Incremental sync (only changed/new products) - default and recommended
@@ -1313,6 +1352,15 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               Törlés ({selectedConnections.length})
             </Button>
           )}
+          <Button
+            variant="outlined"
+            startIcon={backfillingManufacturers ? <CircularProgress size={18} /> : <BusinessIcon />}
+            onClick={handleBackfillManufacturers}
+            disabled={backfillingManufacturers}
+            sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+          >
+            {backfillingManufacturers ? 'Gyártók szinkronizálása...' : 'Gyártók szinkronizálása'}
+          </Button>
           <Button
             variant="contained"
             startIcon={<AddIcon />}

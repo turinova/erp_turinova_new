@@ -20,7 +20,8 @@ import {
   DialogActions,
   TextField,
   Alert,
-  Chip
+  Chip,
+  Checkbox
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -45,6 +46,7 @@ interface VatRatesTableProps {
 
 export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
   const [vatRates, setVatRates] = useState<VatRate[]>(initialVatRates)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [editingVat, setEditingVat] = useState<VatRate | null>(null)
@@ -81,6 +83,57 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
   const handleCloseDeleteDialog = () => {
     setDeleteDialogOpen(false)
     setDeletingVat(null)
+  }
+
+  // Selection handlers
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      setSelectedIds(new Set(vatRates.map(v => v.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const handleSelectOne = (vatId: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    event.stopPropagation()
+    const newSelected = new Set(selectedIds)
+    if (newSelected.has(vatId)) {
+      newSelected.delete(vatId)
+    } else {
+      newSelected.add(vatId)
+    }
+    setSelectedIds(newSelected)
+  }
+
+  const handleRowClick = (vat: VatRate) => {
+    // Open edit dialog when row is clicked
+    handleOpenDialog(vat)
+  }
+
+  const isAllSelected = vatRates.length > 0 && selectedIds.size === vatRates.length
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < vatRates.length
+
+  // Bulk delete
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return
+    const selectedVats = vatRates.filter(v => selectedIds.has(v.id))
+    if (selectedVats.length === 1) {
+      setDeletingVat(selectedVats[0])
+      setDeleteDialogOpen(true)
+    } else {
+      // For multiple, we'll delete the first one and show dialog
+      setDeletingVat(selectedVats[0])
+      setDeleteDialogOpen(true)
+    }
+  }
+
+  // Bulk edit - edit first selected
+  const handleBulkEdit = () => {
+    if (selectedIds.size === 0) return
+    const selectedVats = vatRates.filter(v => selectedIds.has(v.id))
+    if (selectedVats.length > 0) {
+      handleOpenDialog(selectedVats[0])
+    }
   }
 
   const validateForm = (): boolean => {
@@ -172,6 +225,11 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
       }
 
       setVatRates(prev => prev.filter(vat => vat.id !== deletingVat.id))
+      setSelectedIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(deletingVat.id)
+        return newSet
+      })
       toast.success('ÁFA kulcs sikeresen törölve')
       handleCloseDeleteDialog()
     } catch (error) {
@@ -187,8 +245,7 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
+      <Box sx={{ mb: 3 }}>
           <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
             ÁFA kulcsok kezelése
           </Typography>
@@ -196,22 +253,13 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
             Itt kezelheti az ÁFA (Általános Forgalmi Adó) kulcsokat, amelyeket a termékek árazásánál használhat.
             Az ÁFA kulcsok határozzák meg, hogy a termékek bruttó árában mekkora adó összeget kell tartalmazniuk.
           </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{ minWidth: 150 }}
-        >
-          Új ÁFA kulcs
-        </Button>
       </Box>
 
       {/* Info Alert */}
       <Alert
         severity="info"
         icon={<InfoIcon />}
-        sx={{ mb: 3 }}
+        sx={{ mb: 2 }}
       >
         <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
           Fontos információk az ÁFA kulcsokról:
@@ -227,15 +275,58 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
         </Typography>
       </Alert>
 
+      {/* Action Buttons - Above Table */}
+      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'nowrap', alignItems: 'center' }}>
+        {selectedIds.size > 0 && (
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<EditIcon />}
+              onClick={handleBulkEdit}
+              disabled={selectedIds.size === 0}
+              sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+            >
+              Szerkesztés ({selectedIds.size})
+            </Button>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0}
+              sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+            >
+              Törlés ({selectedIds.size})
+            </Button>
+          </>
+        )}
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => handleOpenDialog()}
+          sx={{ whiteSpace: 'nowrap', minWidth: 'auto', ml: 'auto' }}
+        >
+          Új ÁFA kulcs
+        </Button>
+      </Box>
+
       {/* Table */}
       <TableContainer component={Paper} elevation={2}>
         <Table>
           <TableHead>
             <TableRow sx={{ backgroundColor: 'action.hover' }}>
-              <TableCell sx={{ fontWeight: 600 }}>Név</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="right">ÁFA kulcs</TableCell>
-              <TableCell sx={{ fontWeight: 600 }}>Példa számítás</TableCell>
-              <TableCell sx={{ fontWeight: 600 }} align="center">Műveletek</TableCell>
+              <TableCell padding="checkbox" sx={{ width: 40, py: 1 }}>
+                <Checkbox
+                  checked={isAllSelected}
+                  indeterminate={isIndeterminate}
+                  onChange={handleSelectAll}
+                  disabled={vatRates.length === 0}
+                  size="small"
+                />
+              </TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Név</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }} align="right">ÁFA kulcs</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Példa számítás</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -264,10 +355,23 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
                 const exampleVat = exampleGross - exampleNet
 
                 return (
-                  <TableRow key={vat.id} hover>
-                    <TableCell>
+                  <TableRow 
+                    key={vat.id} 
+                    hover
+                    selected={selectedIds.has(vat.id)}
+                    onClick={() => handleRowClick(vat)}
+                    sx={{ cursor: 'pointer', '& td': { py: 1 } }}
+                  >
+                    <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()} sx={{ width: 40, py: 1 }}>
+                      <Checkbox
+                        checked={selectedIds.has(vat.id)}
+                        onChange={(e) => handleSelectOne(vat.id, e)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell sx={{ py: 1 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
                           {vat.name}
                         </Typography>
                         {vat.kulcs === 0 && (
@@ -280,12 +384,12 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
                         )}
                       </Box>
                     </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                    <TableCell align="right" sx={{ py: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
                         {vat.kulcs.toFixed(2)}%
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ py: 1 }}>
                       <Typography variant="body2" color="text.secondary">
                         <strong>{exampleNet.toLocaleString('hu-HU')} Ft</strong> nettó ={' '}
                         <strong>{exampleGross.toLocaleString('hu-HU')} Ft</strong> bruttó
@@ -294,28 +398,6 @@ export default function VatRatesTable({ initialVatRates }: VatRatesTableProps) {
                           (ÁFA: {exampleVat.toLocaleString('hu-HU')} Ft)
                         </span>
                       </Typography>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                        <Tooltip title="Szerkesztés">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenDialog(vat)}
-                            color="primary"
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Törlés">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleOpenDeleteDialog(vat)}
-                            color="error"
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
                     </TableCell>
                   </TableRow>
                 )

@@ -27,6 +27,33 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Áfák',
           href: '/vat'
+        },
+        {
+          label: 'Mértékegységek',
+          href: '/units'
+        },
+        {
+          label: 'Gyártók',
+          href: '/manufacturers'
+        },
+        {
+          label: 'Súlymértékek',
+          href: '/weight-units'
+        }
+      ]
+    },
+    {
+      label: 'Árazás',
+      icon: 'ri-price-tag-3-line',
+      iconColor: '#E74C3C', // Red for pricing
+      children: [
+        {
+          label: 'Vevőcsoportok',
+          href: '/customer-groups'
+        },
+        {
+          label: 'Akciók',
+          href: '/promotions'
         }
       ]
     },
