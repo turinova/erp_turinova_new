@@ -315,7 +315,7 @@ export default function PromotionsCard({ productId, isVisible = true }: Promotio
         p: 3,
         bgcolor: 'white',
         border: '2px solid',
-        borderColor: '#e74c3c',
+        borderColor: '#4CAF50',
         borderRadius: 2,
         position: 'relative',
         overflow: 'hidden'
@@ -325,15 +325,15 @@ export default function PromotionsCard({ productId, isVisible = true }: Promotio
         <Box sx={{
           p: 1,
           borderRadius: '50%',
-          bgcolor: '#e74c3c',
+          bgcolor: '#4CAF50',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
+          boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
         }}>
           <LocalOfferIcon sx={{ color: 'white', fontSize: '24px' }} />
         </Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, color: '#388E3C' }}>
           Akciók & Mennyiségi Árazás
         </Typography>
         <Box sx={{ flexGrow: 1 }} />
@@ -342,7 +342,7 @@ export default function PromotionsCard({ productId, isVisible = true }: Promotio
           startIcon={<AddIcon />}
           onClick={() => handleOpenDialog()}
           size="small"
-          sx={{ bgcolor: '#e74c3c', '&:hover': { bgcolor: '#c0392b' } }}
+          sx={{ bgcolor: '#4CAF50', '&:hover': { bgcolor: '#388E3C' } }}
         >
           Új akció
         </Button>
@@ -367,12 +367,12 @@ export default function PromotionsCard({ productId, isVisible = true }: Promotio
                 mt: 1.5, 
                 mb: 2,
                 p: 1.5,
-                bgcolor: 'rgba(231, 76, 60, 0.08)',
+                bgcolor: 'rgba(76, 175, 80, 0.08)',
                 borderRadius: 1,
-                borderLeft: '3px solid #e74c3c'
+                borderLeft: '3px solid #4CAF50'
               }}>
-                <InfoIcon sx={{ color: '#c0392b', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
-                <Typography variant="body2" sx={{ color: '#c0392b', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+                <InfoIcon sx={{ color: '#388E3C', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+                <Typography variant="body2" sx={{ color: '#388E3C', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                   Nincs aktív akció
                 </Typography>
               </Box>
@@ -675,7 +675,7 @@ export default function PromotionsCard({ productId, isVisible = true }: Promotio
             onClick={handleSave}
             disabled={saving || !formData.price}
             startIcon={saving ? <CircularProgress size={20} /> : null}
-            sx={{ bgcolor: '#e74c3c', '&:hover': { bgcolor: '#c0392b' } }}
+            sx={{ bgcolor: '#4CAF50', '&:hover': { bgcolor: '#388E3C' } }}
           >
             {saving ? 'Mentés...' : 'Mentés'}
           </Button>

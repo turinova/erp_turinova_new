@@ -723,131 +723,345 @@ export default function AIPricingRecommendationsCard({
 
   return (
     <Box>
-      {/* AI Recommendations Section - Simplified */}
+      {/* AI Recommendations Section - Redesigned */}
       {bestRecommendation ? (
-        <Card 
+        <Paper 
+          elevation={0}
           sx={{ 
             mb: 3,
-            border: '2px solid',
-            borderColor: bestRecommendation.recommendationType === 'increase' ? 'success.main' : 'warning.main',
-            bgcolor: bestRecommendation.recommendationType === 'increase' 
-              ? 'rgba(76, 175, 80, 0.05)' 
-              : 'rgba(255, 152, 0, 0.05)'
+            p: 2.5,
+            bgcolor: 'white',
+            border: '1px solid',
+            borderColor: 'rgba(0, 0, 0, 0.08)',
+            borderRadius: 2,
+            position: 'relative',
+            overflow: 'hidden'
           }}
         >
-          <CardContent>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <AutoAwesomeIcon sx={{ fontSize: 24, color: 'primary.main' }} />
-                <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                  AI Ajánlás
-                </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box sx={{
+                p: 0.75,
+                borderRadius: '8px',
+                bgcolor: 'rgba(0, 0, 0, 0.04)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <AutoAwesomeIcon 
+                  sx={{ 
+                    fontSize: 18, 
+                    color: 'rgba(0, 0, 0, 0.7)'
+                  }} 
+                />
               </Box>
-              <Chip
-                label={bestRecommendation.recommendationType === 'increase' ? 'Ár emelés' : 'Ár csökkentés'}
-                size="small"
-                color={bestRecommendation.recommendationType === 'increase' ? 'success' : 'warning'}
-                icon={bestRecommendation.recommendationType === 'increase' ? <TrendingUpIcon /> : <TrendingDownIcon />}
-              />
+              <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1rem', color: 'rgba(0, 0, 0, 0.9)', letterSpacing: '-0.01em' }}>
+                AI Ajánlás
+              </Typography>
             </Box>
+            <Chip
+              label={bestRecommendation.recommendationType === 'increase' ? 'Ár emelés' : 'Ár csökkentés'}
+              size="small"
+              sx={{
+                bgcolor: 'rgba(0, 0, 0, 0.04)',
+                color: 'rgba(0, 0, 0, 0.7)',
+                fontWeight: 600,
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '0.75rem',
+                height: '24px'
+              }}
+              icon={bestRecommendation.recommendationType === 'increase' ? (
+                <TrendingUpIcon sx={{ fontSize: 14, color: 'rgba(0, 0, 0, 0.6)' }} />
+              ) : (
+                <TrendingDownIcon sx={{ fontSize: 14, color: 'rgba(0, 0, 0, 0.6)' }} />
+              )}
+            />
+          </Box>
 
-            <Grid container spacing={2} sx={{ mb: 2 }}>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                    Jelenlegi ár (Nettó)
-                  </Typography>
-                  <Typography variant="h6" fontWeight={600}>
-                    {formatPrice(bestRecommendation.currentPrice)}
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            {/* Current Price - Neutral Gray */}
+            <Grid item xs={12} md={4}>
+              <Box sx={{ 
+                p: 2.5, 
+                bgcolor: 'rgba(0, 0, 0, 0.02)', 
+                borderRadius: 1.5,
+                border: '1px solid',
+                borderColor: 'rgba(0, 0, 0, 0.08)',
+                position: 'relative',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  borderColor: 'rgba(0, 0, 0, 0.12)',
+                  bgcolor: 'rgba(0, 0, 0, 0.03)'
+                }
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Box sx={{
+                    p: 0.5,
+                    borderRadius: '6px',
+                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <AttachMoneyIcon sx={{ fontSize: 16, color: 'rgba(0, 0, 0, 0.6)' }} />
+                  </Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'rgba(0, 0, 0, 0.7)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Jelenlegi ár
                   </Typography>
                 </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                    Versenyár (Nettó) - {bestRecommendation.competitorName}
+                <Typography variant="h5" fontWeight={700} sx={{ fontSize: '1.5rem', color: 'rgba(0, 0, 0, 0.9)', mb: 0.5, letterSpacing: '-0.02em' }}>
+                  {formatPrice(bestRecommendation.currentPrice)}
+                </Typography>
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'rgba(0, 0, 0, 0.5)' }}>
+                  Nettó ár
+                </Typography>
+              </Box>
+            </Grid>
+            
+            {/* Competitor Price - Neutral Gray */}
+            <Grid item xs={12} md={4}>
+              <Box sx={{ 
+                p: 2.5, 
+                bgcolor: 'rgba(0, 0, 0, 0.02)', 
+                borderRadius: 1.5,
+                border: '1px solid',
+                borderColor: 'rgba(0, 0, 0, 0.08)',
+                position: 'relative',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  borderColor: 'rgba(0, 0, 0, 0.12)',
+                  bgcolor: 'rgba(0, 0, 0, 0.03)'
+                }
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Box sx={{
+                    p: 0.5,
+                    borderRadius: '6px',
+                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <StoreIcon sx={{ fontSize: 16, color: 'rgba(0, 0, 0, 0.6)' }} />
+                  </Box>
+                  <Typography variant="body2" sx={{ fontWeight: 600, color: 'rgba(0, 0, 0, 0.7)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Versenyár
                   </Typography>
-                  <Typography variant="h6" fontWeight={600}>
-                    {formatPrice(bestRecommendation.competitorPrice)}
-                  </Typography>
+                </Box>
+                <Typography variant="body2" sx={{ mb: 0.5, fontSize: '0.7rem', fontWeight: 500, color: 'rgba(0, 0, 0, 0.6)' }}>
+                  {bestRecommendation.competitorName}
+                </Typography>
+                <Typography variant="h5" fontWeight={700} sx={{ fontSize: '1.5rem', color: 'rgba(0, 0, 0, 0.9)', mb: 0.5, letterSpacing: '-0.02em' }}>
+                  {formatPrice(bestRecommendation.competitorPrice)}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <Chip
                     label={formatPercent(bestRecommendation.currentPercentDiff)}
                     size="small"
-                    color={bestRecommendation.currentPercentDiff > 0 ? 'error' : 'success'}
-                    sx={{ mt: 0.5 }}
+                    sx={{
+                      height: 20,
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      bgcolor: bestRecommendation.currentPercentDiff > 0 
+                        ? 'rgba(244, 67, 54, 0.08)' 
+                        : 'rgba(76, 175, 80, 0.08)',
+                      color: bestRecommendation.currentPercentDiff > 0 
+                        ? '#D32F2F' 
+                        : '#388E3C',
+                      border: 'none',
+                      borderRadius: '4px'
+                    }}
                   />
-                </Box>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'rgba(0,0,0,0.02)', borderRadius: 1 }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                    Ajánlott ár (Nettó)
+                  <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'rgba(0, 0, 0, 0.5)' }}>
+                    Nettó ár
                   </Typography>
-                  <Typography 
-                    variant="h6" 
-                    fontWeight={700}
-                    color={bestRecommendation.recommendationType === 'increase' ? 'success.main' : 'warning.main'}
-                  >
-                    {formatPrice(bestRecommendation.recommendedPrice)}
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mt: 0.5 }}>
-                    {bestRecommendation.recommendationType === 'increase' ? (
-                      <ArrowUpwardIcon fontSize="small" color="success" />
-                    ) : (
-                      <ArrowDownwardIcon fontSize="small" color="warning" />
-                    )}
-                    <Typography 
-                      variant="caption"
-                      color={bestRecommendation.recommendationType === 'increase' ? 'success.main' : 'warning.main'}
-                      fontWeight={600}
-                    >
-                      {formatPercent(bestRecommendation.priceChangePercent)}
-                    </Typography>
-                  </Box>
                 </Box>
-              </Grid>
+              </Box>
             </Grid>
-
-            {productCost && productCost > 0 && bestRecommendation.margin !== null && (
-              <Box sx={{ mb: 2, p: 1.5, bgcolor: bestRecommendation.margin < 0 ? 'error.light' : 'success.light', borderRadius: 1 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="body2" fontWeight={500}>
-                    Árrés az ajánlott áron:
+            
+            {/* Recommended Price - Subtle Blue Accent */}
+            <Grid item xs={12} md={4}>
+              <Box sx={{ 
+                p: 2.5, 
+                bgcolor: 'rgba(33, 150, 243, 0.04)', 
+                borderRadius: 1.5,
+                border: '2px solid',
+                borderColor: 'rgba(33, 150, 243, 0.2)',
+                position: 'relative',
+                boxShadow: '0 2px 8px rgba(33, 150, 243, 0.08)',
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  borderColor: 'rgba(33, 150, 243, 0.3)',
+                  boxShadow: '0 4px 12px rgba(33, 150, 243, 0.12)'
+                }
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                  <Box sx={{
+                    p: 0.5,
+                    borderRadius: '6px',
+                    bgcolor: 'rgba(33, 150, 243, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <LightbulbIcon sx={{ 
+                      fontSize: 16, 
+                      color: '#2196F3'
+                    }} />
+                  </Box>
+                  <Typography variant="body2" sx={{ 
+                    fontWeight: 600, 
+                    color: '#1976D2',
+                    fontSize: '0.75rem', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.5px' 
+                  }}>
+                    Ajánlott ár
                   </Typography>
+                </Box>
+                <Typography 
+                  variant="h5" 
+                  fontWeight={700}
+                  sx={{ 
+                    fontSize: '1.75rem',
+                    color: '#1976D2',
+                    mb: 0.5,
+                    letterSpacing: '-0.02em'
+                  }}
+                >
+                  {formatPrice(bestRecommendation.recommendedPrice)}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                  {bestRecommendation.recommendationType === 'increase' ? (
+                    <ArrowUpwardIcon sx={{ fontSize: 16, color: '#2196F3' }} />
+                  ) : (
+                    <ArrowDownwardIcon sx={{ fontSize: 16, color: '#2196F3' }} />
+                  )}
+                  <Typography 
+                    variant="body2"
+                    sx={{
+                      color: '#1976D2',
+                      fontWeight: 600,
+                      fontSize: '0.75rem'
+                    }}
+                  >
+                    {formatPercent(bestRecommendation.priceChangePercent)}
+                  </Typography>
+                </Box>
+                <Typography variant="caption" sx={{ fontSize: '0.7rem', color: 'rgba(0, 0, 0, 0.5)' }}>
+                  Nettó ár
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+
+          {productCost && productCost > 0 && bestRecommendation.margin !== null && (
+            <Box sx={{ 
+              mb: 2, 
+              p: 1.5, 
+              bgcolor: 'rgba(0, 0, 0, 0.02)', 
+              borderRadius: 1.5,
+              border: '1px solid',
+              borderColor: 'rgba(0, 0, 0, 0.08)'
+            }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="body2" fontWeight={500} sx={{ color: 'rgba(0, 0, 0, 0.6)', fontSize: '0.875rem' }}>
+                  Árrés az ajánlott áron:
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Typography 
                     variant="body2" 
-                    fontWeight={600}
-                    color={bestRecommendation.margin < 0 ? 'error.main' : 'success.main'}
+                    fontWeight={700}
+                    sx={{
+                      color: bestRecommendation.margin < 0 
+                        ? '#D32F2F' 
+                        : bestRecommendation.marginPercent && bestRecommendation.marginPercent < 10
+                        ? '#F57C00'
+                        : 'rgba(0, 0, 0, 0.9)',
+                      fontSize: '0.875rem'
+                    }}
                   >
-                    {formatPrice(bestRecommendation.margin)} ({formatPercent(bestRecommendation.marginPercent || 0)})
+                    {formatPrice(bestRecommendation.margin)}
+                  </Typography>
+                  <Chip
+                    label={formatPercent(bestRecommendation.marginPercent || 0)}
+                    size="small"
+                    sx={{
+                      height: 20,
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      bgcolor: bestRecommendation.margin < 0 
+                        ? 'rgba(244, 67, 54, 0.08)' 
+                        : bestRecommendation.marginPercent && bestRecommendation.marginPercent < 10
+                        ? 'rgba(255, 152, 0, 0.08)'
+                        : 'rgba(76, 175, 80, 0.08)',
+                      color: bestRecommendation.margin < 0 
+                        ? '#D32F2F' 
+                        : bestRecommendation.marginPercent && bestRecommendation.marginPercent < 10
+                        ? '#F57C00'
+                        : '#388E3C',
+                      border: 'none',
+                      borderRadius: '4px'
+                    }}
+                  />
+                </Box>
+              </Box>
+              {bestRecommendation.minPrice && bestRecommendation.recommendedPrice === bestRecommendation.minPrice && (
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 0.5, 
+                  mt: 1, 
+                  pt: 1, 
+                  borderTop: '1px solid',
+                  borderColor: 'rgba(0, 0, 0, 0.08)'
+                }}>
+                  <WarningIcon sx={{ fontSize: 14, color: '#F57C00' }} />
+                  <Typography variant="caption" sx={{ color: '#F57C00', fontWeight: 500, fontSize: '0.7rem' }}>
+                    Minimum ár alkalmazva (költség + 5%)
                   </Typography>
                 </Box>
-                {bestRecommendation.minPrice && bestRecommendation.recommendedPrice === bestRecommendation.minPrice && (
-                  <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.5 }}>
-                    ⚠️ Minimum ár alkalmazva (költség + 5%)
-                  </Typography>
-                )}
-              </Box>
-            )}
-
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 2 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-                {bestRecommendation.reason}
-              </Typography>
-              <Button
-                variant="contained"
-                size="medium"
-                onClick={() => handleApplyPrice(bestRecommendation)}
-                disabled={!!applyingPrice}
-                startIcon={applyingPrice === bestRecommendation.linkId ? <CircularProgress size={16} /> : <CheckCircleIcon />}
-                color={bestRecommendation.recommendationType === 'increase' ? 'success' : 'warning'}
-                sx={{ ml: 2 }}
-              >
-                {applyingPrice === bestRecommendation.linkId ? 'Alkalmazás...' : 'Alkalmaz'}
-              </Button>
+              )}
             </Box>
-          </CardContent>
-        </Card>
+          )}
+
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'flex-start', 
+            gap: 2,
+            pt: 1.5,
+            borderTop: '1px solid',
+            borderColor: 'rgba(0, 0, 0, 0.08)'
+          }}>
+            <Typography variant="body2" sx={{ flex: 1, lineHeight: 1.6, color: 'rgba(0, 0, 0, 0.6)', fontSize: '0.875rem' }}>
+              {bestRecommendation.reason}
+            </Typography>
+            <Button
+              variant="contained"
+              size="medium"
+              onClick={() => handleApplyPrice(bestRecommendation)}
+              disabled={!!applyingPrice}
+              startIcon={applyingPrice === bestRecommendation.linkId ? (
+                <CircularProgress size={16} color="inherit" />
+              ) : (
+                <CheckCircleIcon sx={{ fontSize: 18 }} />
+              )}
+              sx={{
+                bgcolor: '#4CAF50',
+                color: 'white',
+                fontWeight: 600,
+                '&:hover': {
+                  bgcolor: '#388E3C',
+                },
+                minWidth: 120
+              }}
+            >
+              {applyingPrice === bestRecommendation.linkId ? 'Alkalmazás...' : 'Alkalmaz'}
+            </Button>
+          </Box>
+        </Paper>
       ) : links.length > 0 && productPrice ? (
         <Box sx={{ 
           display: 'flex', 

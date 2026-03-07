@@ -290,7 +290,7 @@ export default function CustomerGroupPricingCard({ productId, isVisible = true }
         p: 3,
         bgcolor: 'white',
         border: '2px solid',
-        borderColor: '#e74c3c',
+        borderColor: '#2196F3',
         borderRadius: 2,
         position: 'relative',
         overflow: 'hidden'
@@ -301,16 +301,16 @@ export default function CustomerGroupPricingCard({ productId, isVisible = true }
           sx={{
             p: 1,
             borderRadius: '50%',
-            bgcolor: '#e74c3c',
+            bgcolor: '#2196F3',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
+            boxShadow: '0 4px 12px rgba(33, 150, 243, 0.3)'
           }}
         >
-          <AttachMoneyIcon sx={{ color: 'white', fontSize: '24px' }} />
+          <PeopleIcon sx={{ color: 'white', fontSize: '24px' }} />
         </Box>
-        <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
+        <Typography variant="h6" sx={{ fontWeight: 700, color: '#1976D2' }}>
           Vevőcsoport Árak
         </Typography>
       </Box>
@@ -322,9 +322,9 @@ export default function CustomerGroupPricingCard({ productId, isVisible = true }
           onClick={() => handleOpenDialog()}
           disabled={loadingGroups || availableCustomerGroups.length === 0}
           sx={{
-            bgcolor: '#e74c3c',
+            bgcolor: '#2196F3',
             '&:hover': {
-              bgcolor: '#c0392b'
+              bgcolor: '#1976D2'
             }
           }}
         >
@@ -349,12 +349,12 @@ export default function CustomerGroupPricingCard({ productId, isVisible = true }
           mt: 1.5, 
           mb: 2,
           p: 1.5,
-          bgcolor: 'rgba(231, 76, 60, 0.08)',
+          bgcolor: 'rgba(33, 150, 243, 0.08)',
           borderRadius: 1,
-          borderLeft: '3px solid #e74c3c'
+          borderLeft: '3px solid #2196F3'
         }}>
-          <InfoIcon sx={{ color: '#c0392b', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
-          <Typography variant="body2" sx={{ color: '#c0392b', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+          <InfoIcon sx={{ color: '#1976D2', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+          <Typography variant="body2" sx={{ color: '#1976D2', fontSize: '0.8125rem', lineHeight: 1.5 }}>
             Még nincs vevőcsoport ár beállítva. Kattintson az "Új vevőcsoport ár" gombra a hozzáadáshoz.
           </Typography>
         </Box>
@@ -416,7 +416,7 @@ export default function CustomerGroupPricingCard({ productId, isVisible = true }
                       )}
                     </TableCell>
                     <TableCell sx={{ py: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#e74c3c' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#2196F3' }}>
                         {formatPrice(price.price)}
                       </Typography>
                     </TableCell>
@@ -507,7 +507,7 @@ export default function CustomerGroupPricingCard({ productId, isVisible = true }
                           <IconButton
                             size="small"
                             onClick={() => handleOpenDeleteDialog(price)}
-                            sx={{ color: '#e74c3c' }}
+                            sx={{ color: '#2196F3' }}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>

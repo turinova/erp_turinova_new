@@ -4342,7 +4342,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     justifyContent: 'center',
                     boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
                   }}>
-                    <AttachMoneyIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    <ReceiptIcon sx={{ color: 'white', fontSize: '24px' }} />
                   </Box>
                   <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
                     Alapadatok
@@ -4495,7 +4495,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     p: 3,
                     bgcolor: 'white',
                     border: '2px solid',
-                    borderColor: '#e74c3c',
+                    borderColor: '#9C27B0',
                     borderRadius: 2,
                     position: 'relative',
                     overflow: 'hidden'
@@ -4505,15 +4505,15 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     <Box sx={{ 
                       p: 1, 
                       borderRadius: '50%', 
-                      bgcolor: '#e74c3c',
+                      bgcolor: '#9C27B0',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
+                      boxShadow: '0 4px 12px rgba(156, 39, 176, 0.3)'
                     }}>
                       <AutoAwesomeIcon sx={{ color: 'white', fontSize: '24px' }} />
                     </Box>
-                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#7B1FA2' }}>
                       AI Árazási Ajánlások
                     </Typography>
                   </Box>
