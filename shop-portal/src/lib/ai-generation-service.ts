@@ -273,8 +273,10 @@ async function buildContext(
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
   context += `- Name: ${product.name || 'N/A'}\n`
-  if (product.brand) {
-    context += `- Brand/Manufacturer: ${product.brand}\n`
+  // Get manufacturer name from erp_manufacturer_id (joined manufacturers table) or fallback to brand for backward compatibility
+  const manufacturerName = (product.manufacturers as any)?.name || product.brand || null
+  if (manufacturerName) {
+    context += `- Brand/Manufacturer: ${manufacturerName}\n`
     context += `**IMPORTANT**: Mention the brand naturally in the introduction and throughout the description when relevant. For well-known brands (Blum, Hafele, Hettich, Grass), emphasize brand quality and trust.\n`
   }
   if (product.gtin) {
@@ -652,10 +654,15 @@ export async function generateProductDescription(
       childrenResult,
       searchQueriesResult
     ] = await Promise.all([
-      // Main product
+      // Main product with manufacturer
       supabase
         .from('shoprenter_products')
-        .select('*')
+        .select(`
+          *,
+          manufacturers (
+            name
+          )
+        `)
         .eq('id', productId)
         .single(),
       // Source materials (if enabled)

@@ -58,10 +58,15 @@ export async function POST(
       }
     }
 
-    // Fetch product data
+    // Fetch product data with manufacturer
     const { data: product, error: productError } = await supabase
       .from('shoprenter_products')
-      .select('*')
+      .select(`
+        *,
+        manufacturers (
+          name
+        )
+      `)
       .eq('id', productId)
       .single()
 
@@ -146,7 +151,7 @@ export async function POST(
         name: product.name,
         model_number: product.model_number,
         price: product.price,
-        brand: product.brand || null,
+        brand: (product.manufacturers as any)?.name || null,
         product_attributes: product.product_attributes
       },
       description: description?.description || null,

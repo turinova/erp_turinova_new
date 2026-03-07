@@ -22,7 +22,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get product with all relevant data
+    // Get product with all relevant data and manufacturer
     const { data: product, error: productError } = await supabase
       .from('shoprenter_products')
       .select(`
@@ -30,7 +30,10 @@ export async function POST(
         sku,
         name,
         model_number,
-        brand,
+        erp_manufacturer_id,
+        manufacturers (
+          name
+        ),
         product_attributes,
         parent_product_id
       `)
@@ -200,7 +203,7 @@ Return ONLY comma-separated tags, nothing else. No quotes, no explanations.`
 Product Name: ${product.name || 'N/A'}
 SKU: ${product.sku}
 Model Number: ${product.model_number || 'N/A'}
-Brand: ${product.brand || 'N/A'}
+Brand: ${(product.manufacturers as any)?.name || 'N/A'}
 Categories: ${categories.length > 0 ? categories.join(', ') : 'N/A'}
 Attributes: ${attributeTags.length > 0 ? attributeTags.slice(0, 10).join(', ') : 'N/A'}
 Top Search Queries: ${topSearchQueries || 'N/A'}

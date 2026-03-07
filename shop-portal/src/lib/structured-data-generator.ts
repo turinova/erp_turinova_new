@@ -7,7 +7,7 @@ export interface StructuredDataProduct {
   name: string | null
   model_number: string | null
   gtin: string | null
-  brand: string | null  // Brand/manufacturer name from ShopRenter
+  erp_manufacturer_id: string | null  // ERP manufacturer ID (from manufacturers table)
   price: number | null
   status: number
   product_url: string | null
@@ -797,10 +797,9 @@ export function generateProductStructuredData(
   }
 
   // Add brand and manufacturer if available
-  let brandName = product.brand || null
-  if (!brandName) {
-    brandName = extractBrandName(product)
-  }
+  // Note: brandName should be passed from the caller who joins with manufacturers table
+  // For now, we'll extract from attributes/name as fallback
+  let brandName = extractBrandName(product)
   if (brandName) {
     schema.brand = {
       '@type': 'Brand',

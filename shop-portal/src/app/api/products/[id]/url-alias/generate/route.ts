@@ -37,7 +37,7 @@ export async function POST(
       }, { status: 402 }) // 402 Payment Required
     }
 
-    // Get product with descriptions
+    // Get product with descriptions and manufacturer
     const { data: product, error: productError } = await supabase
       .from('shoprenter_products')
       .select(`
@@ -46,6 +46,10 @@ export async function POST(
         model_number,
         name,
         url_slug,
+        erp_manufacturer_id,
+        manufacturers (
+          name
+        ),
         shoprenter_product_descriptions (
           name,
           language_code
@@ -104,7 +108,7 @@ export async function POST(
     const modelNumber = product.model_number || ''
     const currentSlug = product.url_slug || ''
 
-    const brand = product.brand || ''
+    const brand = (product.manufacturers as any)?.name || ''
     
     const prompt = `Generate an SEO-optimized URL slug for this Hungarian e-commerce product:
 
