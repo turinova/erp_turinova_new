@@ -1082,7 +1082,19 @@ export default function AIPricingRecommendationsCard({
       ) : null}
 
       {/* Competitor Prices Section - Collapsible */}
-      <Card variant="outlined">
+      <Card 
+        variant="outlined"
+        sx={{
+          border: '1px solid',
+          borderColor: 'rgba(0, 0, 0, 0.12)',
+          bgcolor: 'rgba(0, 0, 0, 0.02)',
+          '&:hover': {
+            borderColor: 'rgba(0, 0, 0, 0.2)',
+            bgcolor: 'rgba(0, 0, 0, 0.04)'
+          },
+          transition: 'all 0.2s ease'
+        }}
+      >
         <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
           <Box 
             sx={{ 
@@ -1094,15 +1106,21 @@ export default function AIPricingRecommendationsCard({
             onClick={() => setCompetitorPricesExpanded(!competitorPricesExpanded)}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <StoreIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
-              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              <StoreIcon sx={{ fontSize: 20, color: 'rgba(0, 0, 0, 0.7)' }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'rgba(0, 0, 0, 0.9)' }}>
                 Versenytárs árak
               </Typography>
               {links.length > 0 && (
                 <Chip 
                   label={links.length} 
                   size="small" 
-                  sx={{ height: 20, fontSize: '0.75rem' }}
+                  sx={{ 
+                    height: 20, 
+                    fontSize: '0.75rem',
+                    bgcolor: 'rgba(0, 0, 0, 0.08)',
+                    color: 'rgba(0, 0, 0, 0.8)',
+                    fontWeight: 600
+                  }}
                 />
               )}
             </Box>
@@ -1222,11 +1240,11 @@ export default function AIPricingRecommendationsCard({
                 <TableContainer>
                   <Table size="small">
                     <TableHead>
-                      <TableRow sx={{ bgcolor: 'action.hover' }}>
-                        <TableCell sx={{ fontWeight: 600, py: 1 }}>Versenytárs</TableCell>
-                        <TableCell sx={{ fontWeight: 600, py: 1 }} align="right">Nettó ár</TableCell>
-                        <TableCell sx={{ fontWeight: 600, py: 1 }} align="center">Különbség</TableCell>
-                        <TableCell sx={{ fontWeight: 600, py: 1 }} align="right">Művelet</TableCell>
+                      <TableRow sx={{ bgcolor: 'rgba(0, 0, 0, 0.04)' }}>
+                        <TableCell sx={{ fontWeight: 600, py: 1.5, color: 'rgba(0, 0, 0, 0.9)', borderBottom: '2px solid rgba(0, 0, 0, 0.12)' }}>Versenytárs</TableCell>
+                        <TableCell sx={{ fontWeight: 600, py: 1.5, color: 'rgba(0, 0, 0, 0.9)', borderBottom: '2px solid rgba(0, 0, 0, 0.12)' }} align="right">Nettó ár</TableCell>
+                        <TableCell sx={{ fontWeight: 600, py: 1.5, color: 'rgba(0, 0, 0, 0.9)', borderBottom: '2px solid rgba(0, 0, 0, 0.12)' }} align="center">Különbség</TableCell>
+                        <TableCell sx={{ fontWeight: 600, py: 1.5, color: 'rgba(0, 0, 0, 0.9)', borderBottom: '2px solid rgba(0, 0, 0, 0.12)' }} align="right">Művelet</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1234,7 +1252,19 @@ export default function AIPricingRecommendationsCard({
                         const priceDiff = link.latestPrice ? getPriceDifference(link.latestPrice.price) : null
                         
                         return (
-                          <TableRow key={link.id} hover>
+                          <TableRow 
+                            key={link.id} 
+                            hover
+                            sx={{
+                              '&:hover': {
+                                bgcolor: 'rgba(0, 0, 0, 0.03)'
+                              },
+                              '& td': {
+                                borderBottom: '1px solid rgba(0, 0, 0, 0.08)',
+                                py: 1.5
+                              }
+                            }}
+                          >
                             <TableCell>
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 <Box
@@ -1242,7 +1272,7 @@ export default function AIPricingRecommendationsCard({
                                     width: 28,
                                     height: 28,
                                     borderRadius: 0.5,
-                                    bgcolor: 'primary.main',
+                                    bgcolor: 'rgba(33, 150, 243, 0.8)',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
@@ -1253,18 +1283,18 @@ export default function AIPricingRecommendationsCard({
                                 >
                                   {link.competitor.name.charAt(0).toUpperCase()}
                                 </Box>
-                                <Typography variant="body2" fontWeight={500}>
+                                <Typography variant="body2" fontWeight={500} sx={{ color: 'rgba(0, 0, 0, 0.9)' }}>
                                   {link.competitor.name}
                                 </Typography>
                               </Box>
                             </TableCell>
                             <TableCell align="right">
                               {link.latestPrice?.price ? (
-                                <Typography variant="body2" fontWeight={600}>
+                                <Typography variant="body2" fontWeight={600} sx={{ color: 'rgba(0, 0, 0, 0.9)' }}>
                                   {formatPrice(link.latestPrice.price)}
                                 </Typography>
                               ) : (
-                                <Typography variant="body2" color="text.disabled">-</Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(0, 0, 0, 0.5)' }}>-</Typography>
                               )}
                             </TableCell>
                             <TableCell align="center">
@@ -1273,15 +1303,15 @@ export default function AIPricingRecommendationsCard({
                                   label={formatPercent(priceDiff.percent)}
                                   size="small"
                                   color={priceDiff.direction === 'up' ? 'error' : priceDiff.direction === 'down' ? 'success' : 'default'}
-                                  sx={{ height: 24, fontSize: '0.7rem' }}
+                                  sx={{ height: 24, fontSize: '0.7rem', fontWeight: 600 }}
                                 />
                               ) : (
-                                <Typography variant="body2" color="text.disabled">-</Typography>
+                                <Typography variant="body2" sx={{ color: 'rgba(0, 0, 0, 0.5)' }}>-</Typography>
                               )}
                             </TableCell>
                             <TableCell align="right">
                               <Box sx={{ display: 'flex', gap: 0.5 }}>
-                                <Tooltip title="Ár ellenőrzése">
+                                <Tooltip title="Ár ellenőrzése (2 Turitoken)">
                                   <IconButton 
                                     size="small" 
                                     onClick={(e) => {
