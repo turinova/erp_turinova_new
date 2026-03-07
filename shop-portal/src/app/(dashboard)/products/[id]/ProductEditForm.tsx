@@ -41,10 +41,12 @@ import type { ProductWithDescriptions } from '@/lib/products-server'
 import HtmlEditor from '@/components/HtmlEditor'
 import SourceMaterialsTab from '@/components/SourceMaterialsTab'
 import SearchConsoleTab from '@/components/SearchConsoleTab'
-import CompetitorPricesTab from '@/components/CompetitorPricesTab'
 import ProductImagesTab from '@/components/ProductImagesTab'
 import ProductQualityScore from '@/components/ProductQualityScore'
 import { FeatureGate } from '@/components/FeatureGate'
+import CustomerGroupPricingCard from '@/components/CustomerGroupPricingCard'
+import AIPricingRecommendationsCard from '@/components/AIPricingRecommendationsCard'
+import PromotionsCard from '@/components/PromotionsCard'
 import { useSubscription } from '@/lib/subscription-context'
 
 interface ProductEditFormProps {
@@ -55,10 +57,30 @@ interface TabPanelProps {
   children?: React.ReactNode
   index: number
   value: number
+  isLoaded?: boolean // New prop to control lazy loading
 }
 
 function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props
+  const { children, value, index, isLoaded = true, ...other } = props
+
+  // If tab is not loaded yet, show loading state
+  if (!isLoaded && value === index) {
+    return (
+      <div
+        role="tabpanel"
+        hidden={value !== index}
+        id={`product-tabpanel-${index}`}
+        aria-labelledby={`product-tab-${index}`}
+        {...other}
+      >
+        {value === index && (
+          <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+            <CircularProgress />
+          </Box>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -68,7 +90,7 @@ function TabPanel(props: TabPanelProps) {
       aria-labelledby={`product-tab-${index}`}
       {...other}
     >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+      {value === index && isLoaded && <Box sx={{ p: 3 }}>{children}</Box>}
     </div>
   )
 }
@@ -84,10 +106,26 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string>('')
   
   const [tabValue, setTabValue] = useState(0)
+  // Track which tabs have been loaded (for lazy loading)
+  const [loadedTabs, setLoadedTabs] = useState<Set<number>>(new Set([0])) // Tab 0 (Alapadatok) loads immediately
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncConfirmOpen, setSyncConfirmOpen] = useState(false)
   const [pulling, setPulling] = useState(false) // For pulling from ShopRenter
+  
+  // Unsaved changes tracking
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
+  const initialFormStateRef = useRef<{
+    formData: typeof formData
+    productData: typeof productData
+    productTags: string
+    urlSlug: string
+    attributes: any[]
+    categories: any[]
+    productClass: typeof productClass
+  } | null>(null)
   const [generating, setGenerating] = useState(false)
   const [generationDialogOpen, setGenerationDialogOpen] = useState(false)
   const [generatedProductType, setGeneratedProductType] = useState<string | null>(null)
@@ -216,6 +254,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     short_description: '',
     description: '',
     parameters: null,
+    measurement_unit: 'db', // Default to 'db'
     generation_instructions: null,
     shoprenter_id: null,
     created_at: '',
@@ -231,6 +270,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     short_description: '',
     description: '',
     parameters: null,
+    measurement_unit: 'db', // Default to 'db'
     generation_instructions: null,
     shoprenter_id: null,
     created_at: '',
@@ -246,7 +286,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     short_description: decodeHtmlEntities(huDescription.short_description),
     description: decodeHtmlEntities(huDescription.description),
     generation_instructions: huDescription.generation_instructions || '',
-    parameters: (huDescription as any).parameters || '' // Add parameters field
+    parameters: (huDescription as any).parameters || '', // Add parameters field
+    measurement_unit: (huDescription as any).measurement_unit || 'db' // Add measurement_unit field
   })
 
   // Product tags state (language-specific, comma-separated)
@@ -259,8 +300,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     sku: product?.sku || '',
     model_number: product?.model_number || '',
     gtin: product?.gtin || '',  // Vonalkód (Barcode/GTIN)
-    brand: (product as any)?.brand || '',
-    manufacturer_id: (product as any)?.manufacturer_id || null,
+    manufacturer_id: (product as any)?.manufacturer_id || null, // ShopRenter manufacturer ID
+    erp_manufacturer_id: (product as any)?.erp_manufacturer_id || null, // ERP manufacturer ID
+    // Dimensions
+    width: (product as any)?.width || '',
+    height: (product as any)?.height || '',
+    length: (product as any)?.length || '',
+    weight: (product as any)?.weight || '',
+    erp_weight_unit_id: (product as any)?.erp_weight_unit_id || null, // ERP weight unit ID
     // Pricing fields (Árazás)
     price: product?.price ?? '',
     cost: product?.cost ?? '',
@@ -270,13 +317,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     gross_price: (product as any)?.gross_price || null
   })
   
-  // Manufacturers state
-  const [manufacturers, setManufacturers] = useState<Array<{ id: string; name: string; innerId: string | null }>>([])
+  // Manufacturers state (ERP manufacturers, not ShopRenter)
+  const [manufacturers, setManufacturers] = useState<Array<{ id: string; name: string; description: string | null; website: string | null }>>([])
   const [loadingManufacturers, setLoadingManufacturers] = useState(false)
-  const [manufacturerSearchTerm, setManufacturerSearchTerm] = useState('')
-  const [showCreateManufacturer, setShowCreateManufacturer] = useState(false)
-  const [newManufacturerName, setNewManufacturerName] = useState('')
-  const [creatingManufacturer, setCreatingManufacturer] = useState(false)
+  
+  // Units state
+  const [units, setUnits] = useState<Array<{ id: string; name: string; shortform: string }>>([])
+  const [loadingUnits, setLoadingUnits] = useState(false)
+
+  // Weight units state
+  const [weightUnits, setWeightUnits] = useState<Array<{ id: string; name: string; shortform: string; shoprenter_weight_class_id?: string | null }>>([])
+  const [loadingWeightUnits, setLoadingWeightUnits] = useState(false)
 
   // VAT rates state
   const [vatRates, setVatRates] = useState<Array<{ id: string; name: string; kulcs: number }>>([])
@@ -584,6 +635,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
+    // Mark tab as loaded when first opened (for lazy loading)
+    setLoadedTabs(prev => new Set([...prev, newValue]))
   }
 
   const handleInputChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -681,8 +734,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           name: formData.name.trim(),
           model_number: productData.model_number.trim() || null,
           gtin: productData.gtin.trim() || null,
-          brand: productData.brand || null,
-          manufacturer_id: productData.manufacturer_id || null,
+          manufacturer_id: productData.manufacturer_id || null, // ShopRenter manufacturer ID
+          erp_manufacturer_id: productData.erp_manufacturer_id || null, // ERP manufacturer ID
+          width: productData.width ? parseFloat(String(productData.width)) : null,
+          height: productData.height ? parseFloat(String(productData.height)) : null,
+          length: productData.length ? parseFloat(String(productData.length)) : null,
+          weight: productData.weight ? parseFloat(String(productData.weight)) : null,
+          erp_weight_unit_id: productData.erp_weight_unit_id || null,
           cost: cost.toString(),
           multiplier: multiplier.toString(),
           vat_id: productData.vat_id || null,
@@ -719,12 +777,18 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       }
 
       // Update existing product
-      // Save product basic data (sku, model_number, gtin, brand, pricing)
+      // Save product basic data (sku, model_number, gtin, pricing)
       const productDataToSave = {
         model_number: productData.model_number.trim() || null,
         gtin: productData.gtin.trim() || null,  // Vonalkód
-        brand: productData.brand || null,
-        manufacturer_id: productData.manufacturer_id || null,
+        manufacturer_id: productData.manufacturer_id || null, // ShopRenter manufacturer ID
+        erp_manufacturer_id: productData.erp_manufacturer_id || null, // ERP manufacturer ID
+        // Dimensions
+        width: productData.width ? parseFloat(String(productData.width)) : null,
+        height: productData.height ? parseFloat(String(productData.height)) : null,
+        length: productData.length ? parseFloat(String(productData.length)) : null,
+        weight: productData.weight ? parseFloat(String(productData.weight)) : null,
+        erp_weight_unit_id: productData.erp_weight_unit_id || null,
         // Pricing fields
         price: productData.price !== '' ? parseFloat(String(productData.price)) : null,
         cost: productData.cost !== '' ? parseFloat(String(productData.cost)) : null,
@@ -759,6 +823,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         short_description: encodeHtmlEntities(formData.short_description),
         description: encodeHtmlEntities(formData.description),
         parameters: formData.parameters || null, // Add parameters field
+        measurement_unit: formData.measurement_unit.trim() || 'db', // Add measurement_unit field
         generation_instructions: formData.generation_instructions.trim() || null
       }
 
@@ -843,9 +908,38 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         }
 
         toast.success('Termék sikeresen mentve!')
-        startTransition(() => {
-          router.refresh()
-        })
+        
+        // Update initial state after successful save
+        if (initialFormStateRef.current) {
+          initialFormStateRef.current = {
+            formData: JSON.parse(JSON.stringify(formData)),
+            productData: JSON.parse(JSON.stringify(productData)),
+            productTags: productTags,
+            urlSlug: urlSlug,
+            attributes: JSON.parse(JSON.stringify(attributes)),
+            categories: JSON.parse(JSON.stringify(categories)),
+            productClass: productClass ? { ...productClass } : null
+          }
+        }
+        // Update initial state after successful save
+        if (initialFormStateRef.current) {
+          initialFormStateRef.current = {
+            formData: JSON.parse(JSON.stringify(formData)),
+            productData: JSON.parse(JSON.stringify(productData)),
+            productTags: productTags,
+            urlSlug: urlSlug,
+            attributes: JSON.parse(JSON.stringify(attributes)),
+            categories: JSON.parse(JSON.stringify(categories)),
+            productClass: productClass ? { ...productClass } : null
+          }
+        }
+        setHasUnsavedChanges(false)
+        
+        // Refresh the page to get updated product data (including updated_at and last_synced_to_shoprenter_at)
+        // This ensures the sync button status is updated correctly
+        setTimeout(() => {
+          window.location.reload()
+        }, 500)
       } else {
         toast.error(`Mentés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
       }
@@ -880,9 +974,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
       if (result.success) {
         toast.success(result.message || 'Termék sikeresen szinkronizálva a webshopba!')
-        startTransition(() => {
-          router.refresh()
-        })
+        // Full page refresh to display updated data
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000) // Small delay to show success toast
       } else {
         toast.error(`Szinkronizálás sikertelen: ${result.error || 'Ismeretlen hiba'}`)
       }
@@ -933,10 +1028,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
 
       if (result.success) {
         toast.success('Termék sikeresen frissítve ShopRenter-ből!')
-        // Refresh the page to show updated data
-        startTransition(() => {
-          router.refresh()
-        })
+        // Full page refresh to display updated data
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000) // Small delay to show success toast
       } else {
         toast.error(`Frissítés sikertelen: ${result.error || 'Ismeretlen hiba'}`)
       }
@@ -995,15 +1090,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
   }
 
-  // Load manufacturers
-  const loadManufacturers = async (connectionId: string) => {
-    if (!connectionId) return
+  // Load manufacturers (ERP manufacturers, global)
+  const loadManufacturers = async () => {
     try {
       setLoadingManufacturers(true)
-      const response = await fetch(`/api/connections/${connectionId}/manufacturers`)
+      const response = await fetch('/api/manufacturers')
       if (response.ok) {
         const result = await response.json()
-        if (result.success && result.manufacturers) {
+        if (result.manufacturers) {
           setManufacturers(result.manufacturers)
         }
       }
@@ -1014,72 +1108,365 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
   }
 
-  // Load manufacturers when connection is selected (for new products) or on mount (for existing products)
-  useEffect(() => {
-    if (isNewProduct && selectedConnectionId) {
-      loadManufacturers(selectedConnectionId)
-    } else if (product?.id && (product as any).connection_id) {
-      loadManufacturers((product as any).connection_id)
+  // Load units
+  const loadUnits = async () => {
+    try {
+      setLoadingUnits(true)
+      const response = await fetch('/api/units')
+      const result = await response.json()
+      if (result.units) {
+        setUnits(result.units)
+      }
+    } catch (error) {
+      console.error('Error loading units:', error)
+    } finally {
+      setLoadingUnits(false)
     }
-  }, [isNewProduct, selectedConnectionId, product?.id])
+  }
 
-  // Load parent/child relationships on mount
-  // Load connections for new products
-  useEffect(() => {
-    if (isNewProduct) {
-      const loadConnections = async () => {
-        setLoadingConnections(true)
-        try {
-          const response = await fetch('/api/connections')
-          if (response.ok) {
-            const data = await response.json()
-            const connectionsList = Array.isArray(data) ? data : (data.connections || [])
-            const shoprenterConnections = connectionsList.filter(
-              (conn: any) => conn.connection_type === 'shoprenter' && conn.is_active
-            )
-            setConnections(shoprenterConnections)
-            // Auto-select first connection if only one
-            if (shoprenterConnections.length === 1) {
-              setSelectedConnectionId(shoprenterConnections[0].id)
-            }
-          }
-        } catch (error) {
-          console.error('Error loading connections:', error)
-          toast.error('Hiba a kapcsolatok betöltésekor')
-        } finally {
-          setLoadingConnections(false)
+  // Load weight units
+  const loadWeightUnits = async () => {
+    try {
+      setLoadingWeightUnits(true)
+      const response = await fetch('/api/weight-units')
+      if (response.ok) {
+        const result = await response.json()
+        if (result.weightUnits) {
+          setWeightUnits(result.weightUnits)
         }
       }
-      loadConnections()
+    } catch (error) {
+      console.error('Error loading weight units:', error)
+    } finally {
+      setLoadingWeightUnits(false)
     }
-  }, [isNewProduct])
+  }
 
-  useEffect(() => {
-    if (product?.id) {
-      loadVariants()
+  // Function to check if form has unsaved changes
+  // Normalize value for comparison (handles string/number conversion)
+  const normalizeValue = (value: any): any => {
+    if (value === null || value === undefined || value === '') return null
+    // Try to convert to number if it's a numeric string
+    if (typeof value === 'string' && value.trim() !== '') {
+      const num = Number(value)
+      if (!isNaN(num) && isFinite(num)) {
+        return num
+      }
     }
-  }, [product?.id])
+    return value
+  }
 
-  // Load quality score on mount
-  useEffect(() => {
-    if (!product?.id) return
-    const loadQualityScore = async () => {
+  // Deep equality helper for objects
+  const deepEqual = (obj1: any, obj2: any): boolean => {
+    // Normalize and compare primitive values
+    const norm1 = normalizeValue(obj1)
+    const norm2 = normalizeValue(obj2)
+    
+    if (norm1 === norm2) return true
+    if (norm1 == null || norm2 == null) return norm1 === norm2
+    if (typeof norm1 !== 'object' || typeof norm2 !== 'object') {
+      // For primitives, compare normalized values
+      return norm1 === norm2
+    }
+    
+    const keys1 = Object.keys(norm1).sort()
+    const keys2 = Object.keys(norm2).sort()
+    
+    if (keys1.length !== keys2.length) return false
+    
+    for (const key of keys1) {
+      if (!keys2.includes(key)) return false
+      if (!deepEqual(norm1[key], norm2[key])) return false
+    }
+    
+    return true
+  }
+
+  // Deep equality helper for arrays
+  const arraysEqual = (arr1: any[], arr2: any[]): boolean => {
+    if (arr1.length !== arr2.length) return false
+    // Sort arrays by a stable key (id if available) before comparing
+    const sorted1 = [...arr1].sort((a, b) => {
+      const keyA = a.id || JSON.stringify(a)
+      const keyB = b.id || JSON.stringify(b)
+      return keyA > keyB ? 1 : keyA < keyB ? -1 : 0
+    })
+    const sorted2 = [...arr2].sort((a, b) => {
+      const keyA = a.id || JSON.stringify(a)
+      const keyB = b.id || JSON.stringify(b)
+      return keyA > keyB ? 1 : keyA < keyB ? -1 : 0
+    })
+    
+    return sorted1.every((item, index) => deepEqual(item, sorted2[index]))
+  }
+
+  const checkForUnsavedChanges = () => {
+    if (!initialFormStateRef.current) return false
+    
+    const initial = initialFormStateRef.current
+    
+    // Compare formData using deep equality
+    const formDataChanged = !deepEqual(formData, initial.formData)
+    
+    // Compare productData using deep equality
+    const productDataChanged = !deepEqual(productData, initial.productData)
+    
+    // Compare productTags (simple string comparison)
+    const tagsChanged = productTags !== initial.productTags
+    
+    // Compare urlSlug (simple string comparison)
+    const urlSlugChanged = urlSlug !== initial.urlSlug
+    
+    // Compare attributes using array deep equality
+    const attributesChanged = !arraysEqual(attributes, initial.attributes)
+    
+    // Compare categories (compare by id only, sorted)
+    const categoriesChanged = !arraysEqual(
+      categories.map(c => ({ id: c.id })),
+      initial.categories.map(c => ({ id: c.id }))
+    )
+    
+    // Compare productClass (compare by id only)
+    const productClassChanged = (productClass?.id || null) !== (initial.productClass?.id || null)
+    
+    return formDataChanged || productDataChanged || tagsChanged || urlSlugChanged || attributesChanged || categoriesChanged || productClassChanged
+  }
+
+  // Check if product needs to be synced to ShopRenter
+  // This only checks saved database state, not unsaved form changes
+  const needsSync = (): boolean => {
+    if (!product || isNewProduct) return false
+    
+    // Check if product was updated after last sync (only saved changes matter)
+    const lastSyncedTo = (product as any)?.last_synced_to_shoprenter_at
+    const updatedAt = product.updated_at
+    
+    // If never synced, needs sync
+    if (!lastSyncedTo) {
+      return true
+    }
+    
+    // If ERP was updated after last sync, needs sync
+    if (updatedAt && lastSyncedTo) {
       try {
-        setLoadingQualityScore(true)
-        const response = await fetch(`/api/products/${product.id}/quality-score`)
-        const result = await response.json()
+        const updatedAtDate = new Date(updatedAt)
+        const lastSyncedDate = new Date(lastSyncedTo)
         
-        if (result.success && result.score) {
-          setQualityScore(result.score)
-        }
+        // Add a small buffer (1 second) to handle timestamp precision issues
+        // If updated_at is more than 1 second newer than last_synced_to, it needs sync
+        const timeDiff = updatedAtDate.getTime() - lastSyncedDate.getTime()
+        const needsSyncResult = timeDiff > 1000 // More than 1 second difference
+        
+        return needsSyncResult
       } catch (error) {
-        console.error('Error loading quality score:', error)
-      } finally {
-        setLoadingQualityScore(false)
+        // If date parsing fails, assume needs sync
+        console.error('Error parsing dates for sync check:', error)
+        return true
       }
     }
     
-    loadQualityScore()
+    return false
+  }
+
+  // Handle navigation with unsaved changes check
+  const handleNavigation = (url: string, e?: React.MouseEvent) => {
+    if (hasUnsavedChanges) {
+      e?.preventDefault()
+      setPendingNavigation(url)
+      setShowUnsavedDialog(true)
+      return false
+    }
+    return true
+  }
+
+  // Intercept link clicks within the component
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+
+    const handleLinkClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      const link = target.closest('a[href]') as HTMLAnchorElement
+      
+      if (link && link.href) {
+        const url = new URL(link.href)
+        // Only intercept internal navigation (same origin)
+        if (url.origin === window.location.origin) {
+          const pathname = url.pathname
+          // Don't intercept if navigating to the same page
+          if (pathname !== window.location.pathname) {
+            e.preventDefault()
+            setPendingNavigation(pathname)
+            setShowUnsavedDialog(true)
+          }
+        }
+      }
+    }
+
+    document.addEventListener('click', handleLinkClick, true)
+    return () => document.removeEventListener('click', handleLinkClick, true)
+  }, [hasUnsavedChanges])
+
+  // Initialize initial form state ref (after formData and productData are set)
+  const initializationDoneRef = useRef(false)
+  const initializationTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Initialize only once when component mounts and all async data is loaded
+  useEffect(() => {
+    // Only initialize once
+    if (initializationDoneRef.current) return
+    
+    // For existing products, wait until async data has finished loading
+    // For new products, we can initialize immediately
+    const shouldWait = !isNewProduct && (
+      !product?.id || 
+      !formData.name || 
+      loadingCategories || 
+      loadingProductClass
+    )
+    
+    if (shouldWait) {
+      // Data not ready yet, wait a bit more
+      return
+    }
+    
+    // Clear any pending timer
+    if (initializationTimerRef.current) {
+      clearTimeout(initializationTimerRef.current)
+    }
+    
+    // Wait a bit to ensure all state is properly initialized
+    initializationTimerRef.current = setTimeout(() => {
+      if (!initialFormStateRef.current && !initializationDoneRef.current) {
+        initialFormStateRef.current = {
+          formData: JSON.parse(JSON.stringify(formData)),
+          productData: JSON.parse(JSON.stringify(productData)),
+          productTags: productTags,
+          urlSlug: urlSlug,
+          attributes: JSON.parse(JSON.stringify(attributes)),
+          categories: JSON.parse(JSON.stringify(categories)),
+          productClass: productClass ? { ...productClass } : null
+        }
+        initializationDoneRef.current = true
+        // Explicitly set to false after initialization to prevent false positives
+        setHasUnsavedChanges(false)
+      }
+    }, 200) // Short delay to ensure state is stable
+    
+    return () => {
+      if (initializationTimerRef.current) {
+        clearTimeout(initializationTimerRef.current)
+      }
+    }
+  }, [isNewProduct, product?.id, formData.name, loadingCategories, loadingProductClass]) // Wait for async data to load
+
+  // Detect unsaved changes (only after initialization is complete)
+  useEffect(() => {
+    // Don't check until initial state is properly set
+    if (!initializationDoneRef.current || !initialFormStateRef.current) {
+      // Explicitly set to false during initialization to prevent false positives
+      setHasUnsavedChanges(false)
+      // Clean up title during initialization
+      document.title = document.title.replace(/^•\s*/, '')
+      return
+    }
+    
+    // Only check for changes after initialization is complete
+    const hasChanges = checkForUnsavedChanges()
+    setHasUnsavedChanges(hasChanges)
+    
+    // Update page title
+    if (hasChanges) {
+      const originalTitle = document.title
+      if (!originalTitle.includes('•')) {
+        document.title = `• ${originalTitle}`
+      }
+    } else {
+      document.title = document.title.replace(/^•\s*/, '')
+    }
+  }, [formData, productData, productTags, urlSlug, attributes, categories, productClass])
+
+  // Browser-level protection (beforeunload)
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = '' // Required for Chrome
+      return '' // Required for Safari
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges])
+
+  // Load manufacturers on mount (global, not connection-specific)
+  useEffect(() => {
+    loadManufacturers()
+  }, [])
+  
+  // Load units on mount
+  useEffect(() => {
+    loadUnits()
+    loadWeightUnits()
+  }, [])
+
+  // Load connections (for both new and existing products - needed for connection name display)
+  // This is critical, load immediately
+  useEffect(() => {
+    const loadConnections = async () => {
+      setLoadingConnections(true)
+      try {
+        const response = await fetch('/api/connections')
+        if (response.ok) {
+          const data = await response.json()
+          const connectionsList = Array.isArray(data) ? data : (data.connections || [])
+          const shoprenterConnections = connectionsList.filter(
+            (conn: any) => conn.connection_type === 'shoprenter' && conn.is_active
+          )
+          setConnections(shoprenterConnections)
+          // Auto-select first connection if only one (for new products)
+          if (isNewProduct && shoprenterConnections.length === 1) {
+            setSelectedConnectionId(shoprenterConnections[0].id)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading connections:', error)
+        toast.error('Hiba a kapcsolatok betöltésekor')
+      } finally {
+        setLoadingConnections(false)
+      }
+    }
+    loadConnections()
+  }, [isNewProduct])
+
+  // Defer non-critical data loading by 200ms to prioritize critical data
+  useEffect(() => {
+    if (!product?.id) return
+    
+    // Defer non-critical API calls to improve initial load time
+    const timer = setTimeout(() => {
+      loadVariants()
+      
+      // Load quality score (non-critical, can wait)
+      const loadQualityScore = async () => {
+        try {
+          setLoadingQualityScore(true)
+          const response = await fetch(`/api/products/${product.id}/quality-score`)
+          const result = await response.json()
+          
+          if (result.success && result.score) {
+            setQualityScore(result.score)
+          }
+        } catch (error) {
+          console.error('Error loading quality score:', error)
+        } finally {
+          setLoadingQualityScore(false)
+        }
+      }
+      loadQualityScore()
+    }, 200) // Defer by 200ms
+    
+    return () => clearTimeout(timer)
   }, [product?.id])
 
   // Load product tags on mount
@@ -2462,29 +2849,41 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         </Paper>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 3 }}>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        {/* Removed persistent chip - modal will show on navigation attempt only */}
+        <Box sx={{ display: 'flex', gap: 2, ml: 'auto' }}>
           {!isNewProduct && (
             <>
-              <Button
-                variant="outlined"
-                color="info"
-                startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
-                onClick={handlePullFromShopRenter}
-                disabled={pulling || syncing}
-                title="Frissítés ShopRenter-ből (lekéri a legfrissebb adatokat, pl. attribútum megjelenítési neveket)"
-              >
-                {pulling ? 'Frissítés...' : 'Frissítés ShopRenter-ből'}
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
-                onClick={handleSyncClick}
-                disabled={syncing || pulling}
-                title="Szinkronizálás ShopRenter-be (elküldi a helyi változtatásokat)"
-              >
-                Szinkronizálás
-              </Button>
+              {(() => {
+                const connectionId = (product as any)?.connection_id
+                const connection = connections.find(c => c.id === connectionId)
+                const connectionName = connection?.name || connection?.shop_name || 'webshop'
+                
+                return (
+                  <>
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
+                      onClick={handlePullFromShopRenter}
+                      disabled={pulling || syncing}
+                      title={`Frissítés ${connectionName}-ből (lekéri a legfrissebb adatokat, pl. attribútum megjelenítési neveket)`}
+                    >
+                      {pulling ? 'Frissítés...' : `Frissítés ${connectionName}-ből`}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      startIcon={syncing ? <CircularProgress size={20} /> : <SyncIcon />}
+                      onClick={handleSyncClick}
+                      disabled={syncing || pulling}
+                      title={`Szinkronizálás ${connectionName}-be (elküldi a helyi változtatásokat)`}
+                      color={needsSync() ? 'warning' : 'primary'}
+                    >
+                      {syncing ? 'Szinkronizálás...' : needsSync() ? 'Szinkronizálás (változások)' : 'Szinkronizálás'}
+                    </Button>
+                  </>
+                )
+              })()}
             </>
           )}
           <Button
@@ -2527,7 +2926,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           />
         </Tabs>
 
-        <TabPanel value={tabValue} index={0}>
+        <TabPanel value={tabValue} index={0} isLoaded={loadedTabs.has(0)}>
           <Grid container spacing={3}>
             {/* Basic Information Section - White Background with Blue Border */}
             <Grid item xs={12}>
@@ -2667,18 +3066,24 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     <FormControl fullWidth>
                       <InputLabel>Gyártó / Márka</InputLabel>
                       <Select
-                        value={productData.manufacturer_id || ''}
+                        value={productData.erp_manufacturer_id || ''}
                         onChange={(e) => {
                           const manufacturerId = e.target.value as string
-                          const manufacturer = manufacturers.find(m => m.id === manufacturerId)
                           setProductData(prev => ({
                             ...prev,
-                            manufacturer_id: manufacturerId || null,
-                            brand: manufacturer?.name || ''
+                            erp_manufacturer_id: manufacturerId || null
                           }))
                         }}
                         label="Gyártó / Márka"
                         disabled={loadingManufacturers}
+                        MenuProps={{
+                          PaperProps: {
+                            style: {
+                              maxHeight: 300,
+                              width: 'auto'
+                            }
+                          }
+                        }}
                         sx={{
                           '& .MuiOutlinedInput-root': {
                             bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -2703,21 +3108,213 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     </FormControl>
                   </Grid>
                   <Grid item xs={12} md={6}>
+                    <FormControl fullWidth>
+                      <InputLabel id="measurement-unit-label">Mértékegység</InputLabel>
+                      <Select
+                        labelId="measurement-unit-label"
+                        id="measurement-unit-select"
+                        value={formData.measurement_unit}
+                        label="Mértékegység"
+                        onChange={(e) => setFormData(prev => ({ ...prev, measurement_unit: e.target.value }))}
+                        disabled={loadingUnits}
+                        MenuProps={{
+                          PaperProps: {
+                            style: {
+                              maxHeight: 300,
+                              width: 'auto'
+                            }
+                          }
+                        }}
+                        sx={{
+                          bgcolor: 'white'
+                        }}
+                      >
+                        {units.map((unit) => (
+                          <MenuItem key={unit.id} value={unit.shortform}>
+                            {unit.name} ({unit.shortform})
+                          </MenuItem>
+                        ))}
+                        {units.length === 0 && !loadingUnits && (
+                          <MenuItem disabled value="">
+                            Nincs elérhető mértékegység
+                          </MenuItem>
+                        )}
+                        {loadingUnits && (
+                          <MenuItem disabled value="">
+                            Betöltés...
+                          </MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  {/* 4th Row: Dimensions and Weight */}
+                  <Grid item xs={12} md={2.4}>
                     <TextField
                       fullWidth
-                      label="Helyőrző"
-                      value=""
-                      disabled
-                      placeholder="Később hozzáadandó mező"
+                      label="Hosszúság (cm)"
+                      type="number"
+                      value={productData.length}
+                      onChange={(e) => setProductData(prev => ({ ...prev, length: e.target.value }))}
+                      InputProps={{
+                        endAdornment: <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>cm</Typography>
+                      }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           bgcolor: 'rgba(0, 0, 0, 0.02)',
                           '&:hover': {
                             bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
                           }
                         }
                       }}
                     />
+                  </Grid>
+                  <Grid item xs={12} md={2.4}>
+                    <TextField
+                      fullWidth
+                      label="Szélesség (cm)"
+                      type="number"
+                      value={productData.width}
+                      onChange={(e) => setProductData(prev => ({ ...prev, width: e.target.value }))}
+                      InputProps={{
+                        endAdornment: <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>cm</Typography>
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2.4}>
+                    <TextField
+                      fullWidth
+                      label="Magasság (cm)"
+                      type="number"
+                      value={productData.height}
+                      onChange={(e) => setProductData(prev => ({ ...prev, height: e.target.value }))}
+                      InputProps={{
+                        endAdornment: <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>cm</Typography>
+                      }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2.4}>
+                    <TextField
+                      fullWidth
+                      label="Súly"
+                      type="number"
+                      value={productData.weight}
+                      onChange={(e) => setProductData(prev => ({ ...prev, weight: e.target.value }))}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={2.4}>
+                    <FormControl fullWidth>
+                      <InputLabel id="weight-unit-label">Súlymérték</InputLabel>
+                      <Select
+                        labelId="weight-unit-label"
+                        id="weight-unit-select"
+                        value={productData.erp_weight_unit_id || ''}
+                        label="Súlymérték"
+                        onChange={(e) => {
+                          const selectedWeightUnitId = e.target.value || null
+                          setProductData(prev => ({ ...prev, erp_weight_unit_id: selectedWeightUnitId }))
+                          
+                          // Validate if weight unit exists in ShopRenter
+                          if (selectedWeightUnitId) {
+                            const selectedWeightUnit = weightUnits.find(wu => wu.id === selectedWeightUnitId)
+                            if (selectedWeightUnit && !selectedWeightUnit.shoprenter_weight_class_id) {
+                              toast.warning(
+                                `A "${selectedWeightUnit.name}" (${selectedWeightUnit.shortform}) súlymérték nem található ShopRenter-ben. ` +
+                                `A súlymértékeket nem lehet automatikusan létrehozni ShopRenter-ben. ` +
+                                `Kérjük, hozza létre manuálisan a ShopRenter admin felületen, vagy válasszon egy másik súlymértéket.`,
+                                { autoClose: 8000 }
+                              )
+                            }
+                          }
+                        }}
+                        disabled={loadingWeightUnits}
+                        MenuProps={{
+                          PaperProps: {
+                            style: {
+                              maxHeight: 300,
+                              width: 'auto'
+                            }
+                          }
+                        }}
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      >
+                        <MenuItem value="">
+                          <em>Nincs súlymérték</em>
+                        </MenuItem>
+                        {weightUnits.map((weightUnit) => (
+                          <MenuItem key={weightUnit.id} value={weightUnit.id}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                              <Typography>
+                                {weightUnit.name} ({weightUnit.shortform})
+                              </Typography>
+                              {!weightUnit.shoprenter_weight_class_id && (
+                                <Chip 
+                                  label="Nincs ShopRenter-ben" 
+                                  size="small" 
+                                  color="warning" 
+                                  sx={{ ml: 'auto', fontSize: '0.7rem', height: '20px' }}
+                                />
+                              )}
+                            </Box>
+                          </MenuItem>
+                        ))}
+                        {weightUnits.length === 0 && !loadingWeightUnits && (
+                          <MenuItem disabled value="">
+                            Nincs elérhető súlymérték
+                          </MenuItem>
+                        )}
+                        {loadingWeightUnits && (
+                          <MenuItem disabled value="">
+                            Betöltés...
+                          </MenuItem>
+                        )}
+                      </Select>
+                    </FormControl>
                   </Grid>
                 </Grid>
               </Paper>
@@ -2761,6 +3358,22 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   </Box>
                   <Typography variant="h6" sx={{ fontWeight: 700, color: '#1565c0' }}>
                     Termék típusa
+                  </Typography>
+                </Box>
+                <Box sx={{ 
+                  display: 'flex', 
+                  alignItems: 'flex-start', 
+                  gap: 1, 
+                  mt: 1.5, 
+                  mb: 2,
+                  p: 1.5,
+                  bgcolor: 'rgba(33, 150, 243, 0.08)',
+                  borderRadius: 1,
+                  borderLeft: '3px solid #2196f3'
+                }}>
+                  <InfoIcon sx={{ color: '#1565c0', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+                  <Typography variant="body2" sx={{ color: '#1565c0', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+                    A termék típus csak a Webshop felületen szerkeszthető. Az ERP-ből csak a hozzárendelés módosítható.
                   </Typography>
                 </Box>
                 
@@ -2904,6 +3517,22 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         height: '24px'
                       }} 
                     />
+                  </Box>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'flex-start', 
+                    gap: 1, 
+                    mt: 1.5, 
+                    mb: 2,
+                    p: 1.5,
+                    bgcolor: 'rgba(76, 175, 80, 0.08)',
+                    borderRadius: 1,
+                    borderLeft: '3px solid #4caf50'
+                  }}>
+                    <InfoIcon sx={{ color: '#2e7d32', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: '#2e7d32', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+                      Az attribútum értékek csak a Webshop felületen szerkeszthetők. Az ERP-ből csak a hozzárendelés módosítható.
+                    </Typography>
                   </Box>
                   <Box sx={{ 
                     display: 'flex', 
@@ -3099,11 +3728,23 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   </Button>
                   </Box>
                   {!productClass && (
-                    <Alert severity="info" sx={{ mt: 2, bgcolor: 'white', border: '1px solid', borderColor: '#a5d6a7', position: 'relative', zIndex: 1 }}>
-                      <Typography variant="body2">
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'flex-start', 
+                      gap: 1, 
+                      mt: 2,
+                      p: 1.5,
+                      bgcolor: 'rgba(33, 150, 243, 0.08)',
+                      borderRadius: 1,
+                      borderLeft: '3px solid #2196f3',
+                      position: 'relative',
+                      zIndex: 1
+                    }}>
+                      <InfoIcon sx={{ color: '#1565c0', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ color: '#1565c0', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                         A termék típus hozzárendelése szükséges az attribútumok hozzáadásához.
                       </Typography>
-                    </Alert>
+                    </Box>
                   )}
                 </Paper>
               </Grid>
@@ -3281,11 +3922,21 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       borderColor: '#ce93d8',
                       boxShadow: '0 2px 8px rgba(156, 39, 176, 0.1)'
                     }}>
-                      <Alert severity="info" sx={{ mb: 2, bgcolor: '#f3e5f5', border: '1px solid', borderColor: '#ce93d8' }}>
-                        <Typography variant="body2">
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        gap: 1, 
+                        mb: 2,
+                        p: 1.5,
+                        bgcolor: 'rgba(156, 39, 176, 0.08)',
+                        borderRadius: 1,
+                        borderLeft: '3px solid #9c27b0'
+                      }}>
+                        <InfoIcon sx={{ color: '#7b1fa2', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+                        <Typography variant="body2" sx={{ color: '#7b1fa2', fontSize: '0.8125rem', lineHeight: 1.5 }}>
                           Ez a terméknek nincs szülő terméke, és nincs gyermek terméke sem.
                         </Typography>
-                      </Alert>
+                      </Box>
                       <Button
                         startIcon={<AddIcon />}
                         variant="outlined"
@@ -3537,6 +4188,22 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       }} 
                     />
                   </Box>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    alignItems: 'flex-start', 
+                    gap: 1, 
+                    mt: 1.5, 
+                    mb: 2,
+                    p: 1.5,
+                    bgcolor: 'rgba(255, 152, 0, 0.08)',
+                    borderRadius: 1,
+                    borderLeft: '3px solid #ff9800'
+                  }}>
+                    <InfoIcon sx={{ color: '#e65100', fontSize: '18px', mt: 0.25, flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: '#e65100', fontSize: '0.8125rem', lineHeight: 1.5 }}>
+                      A kategóriák csak a Webshop felületen szerkeszthetők. Az ERP-ből csak a hozzárendelés módosítható.
+                    </Typography>
+                  </Box>
                   
                   <Box sx={{ 
                     display: 'flex', 
@@ -3649,9 +4316,9 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={1}>
+        <TabPanel value={tabValue} index={1} isLoaded={loadedTabs.has(1)}>
           <Grid container spacing={3}>
-            {/* Price Section - Green Theme */}
+            {/* Base Pricing Information - Red Theme */}
             <Grid item xs={12}>
               <Paper 
                 elevation={0}
@@ -3659,7 +4326,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   p: 3,
                   bgcolor: 'white',
                   border: '2px solid',
-                  borderColor: '#4caf50',
+                  borderColor: '#e74c3c',
                   borderRadius: 2,
                   position: 'relative',
                   overflow: 'hidden'
@@ -3669,31 +4336,28 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   <Box sx={{ 
                     p: 1, 
                     borderRadius: '50%', 
-                    bgcolor: '#4caf50',
+                    bgcolor: '#e74c3c',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)'
+                    boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
                   }}>
                     <AttachMoneyIcon sx={{ color: 'white', fontSize: '24px' }} />
                   </Box>
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32' }}>
-                    Ár beállítása
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
+                    Alapadatok
                   </Typography>
                 </Box>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <TextField
                       fullWidth
-                      label="Bruttó ár (Ft)"
+                      label="Beszerzési ár (Nettó)"
                       type="number"
-                      value={grossPrice || ''}
-                      onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
-                      helperText="Amit a vásárló fizet (ÁFÁ-val együtt) - Szerkeszthető"
-                      inputProps={{ step: '1', min: '0' }}
-                      InputProps={{
-                        readOnly: false
-                      }}
+                      value={productData.cost && (typeof productData.cost === 'number' ? productData.cost > 0 : parseFloat(String(productData.cost)) > 0) ? productData.cost : ''}
+                      onChange={(e) => handleCostChange(e.target.value)}
+                      helperText="A termék beszerzési ára"
+                      inputProps={{ step: '0.01', min: '0' }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -3707,17 +4371,39 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       }}
                     />
                   </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={4}>
                     <TextField
                       fullWidth
-                      label="Nettó ár (Ft)"
+                      label="Eladási ár (Nettó)"
                       type="number"
                       value={productData.price || ''}
                       onChange={(e) => handleNetPriceChange(e.target.value)}
-                      helperText="Amit Ön kap (ÁFA nélkül) - Szerkeszthető"
+                      helperText="Alapértelmezett eladási ár (nettó)"
                       inputProps={{ step: '0.01', min: '0' }}
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Eladási ár (Bruttó)"
+                      type="number"
+                      value={grossPrice || ''}
+                      onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
+                      helperText="Bruttó ár (ÁFÁ-val együtt)"
+                      inputProps={{ step: '1', min: '0' }}
                       InputProps={{
-                        readOnly: isEditingGross
+                        readOnly: false
                       }}
                       sx={{
                         '& .MuiOutlinedInput-root': {
@@ -3759,122 +4445,6 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       </Select>
                     </FormControl>
                   </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="ÁFA összege (Ft)"
-                      type="number"
-                      value={grossPrice && productData.price ? Math.round(grossPrice - parseFloat(productData.price.toString() || '0')) : 0}
-                      InputProps={{
-                        readOnly: true
-                      }}
-                      helperText="Automatikusan számolva"
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)'
-                        }
-                      }}
-                    />
-                  </Grid>
-                  {productData.vat_id && productData.price && grossPrice && (
-                    <Grid item xs={12}>
-                      <Alert severity="info" icon={<InfoIcon />}>
-                        <Typography variant="body2">
-                          <strong>{parseFloat(productData.price.toString() || '0').toLocaleString('hu-HU')} Ft</strong> nettó +{' '}
-                          <strong>
-                            {vatRates.find(v => v.id === productData.vat_id)?.kulcs || 0}%
-                          </strong> ÁFA ={' '}
-                          <strong>{grossPrice.toLocaleString('hu-HU')} Ft</strong> bruttó
-                        </Typography>
-                      </Alert>
-                    </Grid>
-                  )}
-                </Grid>
-              </Paper>
-            </Grid>
-
-            {/* Cost and Multiplier Section - Orange Theme */}
-            <Grid item xs={12}>
-              <Paper 
-                elevation={0}
-                sx={{ 
-                  p: 3,
-                  bgcolor: 'white',
-                  border: '2px solid',
-                  borderColor: '#ff9800',
-                  borderRadius: 2,
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
-                  <Box sx={{ 
-                    p: 1, 
-                    borderRadius: '50%', 
-                    bgcolor: '#ff9800',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
-                  }}>
-                    <CalculateIcon sx={{ color: 'white', fontSize: '24px' }} />
-                  </Box>
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100' }}>
-                    Beszerzési ár és szorzó
-                  </Typography>
-                </Box>
-                <Alert severity="info" icon={<InfoIcon />} sx={{ mb: 2 }}>
-                  <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
-                    <strong>Fontos:</strong> A beszerzési ár és a szorzó csak <strong>információs célú</strong> az ERP-ben. 
-                    A ShopRenter-be csak a <strong>nettó ár</strong> szinkronizálódik (ami már tartalmazza a szorzót). 
-                    A ShopRenter-ben a szorzó <strong>1.0-ra</strong> lesz állítva, hogy elkerüljük a kétszeres számolást.
-                  </Typography>
-                </Alert>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Beszerzési ár (Ft)"
-                      type="number"
-                      value={productData.cost && (typeof productData.cost === 'number' ? productData.cost > 0 : parseFloat(String(productData.cost)) > 0) ? productData.cost : ''}
-                      onChange={(e) => handleCostChange(e.target.value)}
-                      helperText="A termék beszerzési ára (csak admin számára látható). Ha megváltoztatja, a szorzó automatikusan újraszámolódik."
-                      inputProps={{ step: '0.01', min: '0' }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
-                        }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Árazási szorzó"
-                      type="number"
-                      value={productData.multiplier}
-                      onChange={(e) => handleMultiplierChange(e.target.value)}
-                      helperText="Az ár szorzója (alapértelmezett: 1.0). Ha megváltoztatja, a beszerzési ár automatikusan újraszámolódik."
-                      inputProps={{ step: '0.0001', min: '0' }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
-                        }
-                      }}
-                    />
-                  </Grid>
                   {(() => {
                     const cost = productData.cost !== null && productData.cost !== undefined && productData.cost !== '' 
                       ? (typeof productData.cost === 'number' ? productData.cost : parseFloat(String(productData.cost)))
@@ -3884,11 +4454,13 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       : null;
                     
                     if (cost && price && cost > 0 && price > 0 && !isNaN(cost) && !isNaN(price)) {
+                      const margin = price - cost;
+                      const marginPercent = ((margin / cost) * 100).toFixed(1);
                       return (
                         <Grid item xs={12}>
-                          <Alert severity="info" icon={<InfoIcon />}>
-                            <Typography variant="body2">
-                              <strong>Számítás:</strong> Nettó ár ({price.toLocaleString('hu-HU')} Ft) ÷ Beszerzési ár ({cost.toLocaleString('hu-HU')} Ft) = Szorzó ({parseFloat(productData.multiplier.toString() || '1').toFixed(3)})
+                          <Alert severity="success" icon={<InfoIcon />}>
+                            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                              Árrés: {margin.toLocaleString('hu-HU')} Ft ({marginPercent}%) | Bruttó: {grossPrice ? grossPrice.toLocaleString('hu-HU') : 'N/A'} Ft
                             </Typography>
                           </Alert>
                         </Grid>
@@ -3899,10 +4471,73 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                 </Grid>
               </Paper>
             </Grid>
+
+            {/* Customer Group Pricing - Red Theme */}
+            {!isNewProduct && product?.id && loadedTabs.has(1) && (
+              <Grid item xs={12}>
+                <CustomerGroupPricingCard productId={product.id} isVisible={tabValue === 1} />
+              </Grid>
+            )}
+
+            {/* Promotions Section */}
+            {!isNewProduct && product?.id && loadedTabs.has(1) && (
+              <Grid item xs={12}>
+                <PromotionsCard productId={product.id} isVisible={tabValue === 1} />
+              </Grid>
+            )}
+
+            {/* AI Pricing Recommendations */}
+            {!isNewProduct && product?.id && loadedTabs.has(1) && (
+              <Grid item xs={12}>
+                <Paper 
+                  elevation={0}
+                  sx={{ 
+                    p: 3,
+                    bgcolor: 'white',
+                    border: '2px solid',
+                    borderColor: '#e74c3c',
+                    borderRadius: 2,
+                    position: 'relative',
+                    overflow: 'hidden'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
+                    <Box sx={{ 
+                      p: 1, 
+                      borderRadius: '50%', 
+                      bgcolor: '#e74c3c',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
+                    }}>
+                      <AutoAwesomeIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
+                      AI Árazási Ajánlások
+                    </Typography>
+                  </Box>
+                  <Box sx={{ position: 'relative', zIndex: 1 }}>
+                    <AIPricingRecommendationsCard
+                      productId={product.id}
+                      productPrice={productData.price ? parseFloat(String(productData.price)) : null}
+                      productCost={productData.cost ? parseFloat(String(productData.cost)) : null}
+                      productName={formData.name}
+                      modelNumber={productData.model_number}
+                      isVisible={tabValue === 1}
+                      onPriceUpdate={(newPrice) => {
+                        handleNetPriceChange(String(newPrice))
+                        setHasUnsavedChanges(true)
+                      }}
+                    />
+                  </Box>
+                </Paper>
+              </Grid>
+            )}
           </Grid>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={2}>
+        <TabPanel value={tabValue} index={2} isLoaded={loadedTabs.has(2)}>
           <Grid container spacing={3}>
             {/* Short Description Section - Green Theme */}
             <Grid item xs={12}>
@@ -4527,7 +5162,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           </Grid>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={3}>
+        <TabPanel value={tabValue} index={3} isLoaded={loadedTabs.has(3)}>
           <FeatureGate feature="ai_generation">
             {product?.id ? (
               <SourceMaterialsTab productId={product.id} />
@@ -4539,7 +5174,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           </FeatureGate>
         </TabPanel>
 
-        <TabPanel value={tabValue} index={4}>
+        <TabPanel value={tabValue} index={4} isLoaded={loadedTabs.has(4)}>
           <FeatureGate feature="analytics">
             <Grid container spacing={3}>
             {/* Quality Score Section - Blue Theme */}
@@ -4643,52 +5278,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               </Paper>
             </Grid>
 
-            {/* Competitor Prices Section - Orange Theme */}
-            <Grid item xs={12}>
-              <Paper 
-                elevation={0}
-                sx={{ 
-                  p: 3,
-                  bgcolor: 'white',
-                  border: '2px solid',
-                  borderColor: '#ff9800',
-                  borderRadius: 2,
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
-                  <Box sx={{ 
-                    p: 1, 
-                    borderRadius: '50%', 
-                    bgcolor: '#ff9800',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 4px 12px rgba(255, 152, 0, 0.3)'
-                  }}>
-                    <StoreIcon sx={{ color: 'white', fontSize: '24px' }} />
-                  </Box>
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#e65100' }}>
-                    Versenytárs árak
-                  </Typography>
-                </Box>
-                <Box sx={{ position: 'relative', zIndex: 1 }}>
-                  {product?.id ? (
-                    <CompetitorPricesTab 
-                      productId={product.id} 
-                      productPrice={product?.price}
-                      productName={formData.name}
-                      modelNumber={productData.model_number}
-                    />
-                  ) : (
-                    <Alert severity="info">
-                      A versenytárs árak elemzése a termék létrehozása után érhető el.
-                    </Alert>
-                  )}
-                </Box>
-              </Paper>
-            </Grid>
+            {/* Competitor Prices moved to Árazás tab */}
           </Grid>
           </FeatureGate>
         </TabPanel>
@@ -5345,6 +5935,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     label="Érték"
                     onChange={(e) => setEditingAttributeValue(e.target.value)}
                     disabled={loadingListAttributeValues}
+                    MenuProps={{
+                      PaperProps: {
+                        style: {
+                          maxHeight: 300,
+                          width: 'auto'
+                        }
+                      }
+                    }}
                   >
                     {loadingListAttributeValues ? (
                       <MenuItem value="" disabled>
@@ -5525,6 +6123,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                     setSelectedAttributeToAdd(e.target.value)
                     setNewAttributeValue(null)
                   }}
+                  MenuProps={{
+                    PaperProps: {
+                      style: {
+                        maxHeight: 300,
+                        width: 'auto'
+                      }
+                    }
+                  }}
                 >
                   {availableAttributes.map((attr) => (
                     <MenuItem key={attr.id} value={attr.id}>
@@ -5546,6 +6152,14 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         label="Érték"
                         onChange={(e) => setNewAttributeValue(e.target.value)}
                         disabled={loadingNewListAttributeValues}
+                        MenuProps={{
+                          PaperProps: {
+                            style: {
+                              maxHeight: 300,
+                              width: 'auto'
+                            }
+                          }
+                        }}
                       >
                         {loadingNewListAttributeValues ? (
                           <MenuItem value="" disabled>
@@ -5828,6 +6442,82 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             startIcon={updatingParentProduct ? <CircularProgress size={16} /> : undefined}
           >
             {updatingParentProduct ? 'Mentés...' : variantData?.isChild ? 'Módosítás' : 'Hozzáadás'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <Dialog
+        open={showUnsavedDialog}
+        onClose={() => {
+          setShowUnsavedDialog(false)
+          setPendingNavigation(null)
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          bgcolor: 'error.main',
+          color: 'error.contrastText',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          py: 2,
+          px: 3,
+          fontWeight: 600,
+          fontSize: '1.25rem'
+        }}>
+          <InfoIcon sx={{ fontSize: 24 }} />
+          Mentetlen változások
+        </DialogTitle>
+        <DialogContent sx={{ py: 3, px: 3 }}>
+          <Typography variant="body1" sx={{ mb: 2, fontWeight: 500, color: 'text.primary', fontSize: '1rem' }}>
+            Biztosan kilépsz erről az oldalról?
+          </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', lineHeight: 1.6, fontSize: '0.9375rem' }}>
+            Vannak elmentetlen változások. Biztosan kilépsz az oldalról anélkül, hogy elmentenéd őket?
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, px: 3, gap: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button 
+            onClick={() => {
+              setShowUnsavedDialog(false)
+              setPendingNavigation(null)
+            }}
+            variant="outlined"
+            sx={{
+              minWidth: 100,
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            Maradok
+          </Button>
+          <Button 
+            onClick={() => {
+              // Discard changes and navigate
+              setHasUnsavedChanges(false)
+              setShowUnsavedDialog(false)
+              if (pendingNavigation) {
+                router.push(pendingNavigation)
+              }
+              setPendingNavigation(null)
+            }}
+            variant="contained"
+            color="error"
+            sx={{
+              minWidth: 100,
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            Kilépés
           </Button>
         </DialogActions>
       </Dialog>
