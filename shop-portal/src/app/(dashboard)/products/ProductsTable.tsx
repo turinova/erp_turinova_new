@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useDebounce } from '@/hooks/useDebounce'
 import { 
   Box, 
   Typography, 
@@ -84,8 +85,11 @@ export default function ProductsTable({
   initialSearch
 }: ProductsTableProps) {
   const router = useRouter()
-  const [products, setProducts] = useState<ShopRenterProduct[]>(initialProducts)
+  const searchParams = useSearchParams()
+  
+  // URL state management - read from URL or use initial values
   const [searchTerm, setSearchTerm] = useState(initialSearch)
+  const debouncedSearchTerm = useDebounce(searchTerm, 600) // Increased to 600ms for better typing experience
   
   // Selection state (for bulk operations)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -188,51 +192,81 @@ export default function ProductsTable({
   const [page, setPage] = useState(currentPage)
   const [currentPageSize, setCurrentPageSize] = useState(limit)
   const [isLoading, setIsLoading] = useState(false)
+  const [isSearching, setIsSearching] = useState(false) // Separate loading state for search
+  
+  // Products state - unified for both search and regular pagination
+  const [products, setProducts] = useState<ShopRenterProduct[]>(initialProducts)
+  const [productsTotalCount, setProductsTotalCount] = useState(totalCount)
+  const [productsTotalPages, setProductsTotalPages] = useState(totalPages)
 
-  // Server-side search with pagination
-  const [isSearching, setIsSearching] = useState(false)
-  const [searchResults, setSearchResults] = useState<ShopRenterProduct[]>([])
-  const [searchTotalCount, setSearchTotalCount] = useState(0)
-  const [searchTotalPages, setSearchTotalPages] = useState(0)
-  const [hasSearched, setHasSearched] = useState(false) // Track if a search has been performed
-
-  // Search function - called only on Enter key press
-  const performSearch = useCallback(async (term: string) => {
-    if (!term || term.length < 2) {
-      setSearchResults([])
-      setSearchTotalCount(0)
-      setSearchTotalPages(0)
-      setHasSearched(false) // Reset flag when clearing
-      return
+  // Unified fetch function for both search and pagination
+  const fetchProducts = useCallback(async (pageNum: number, pageSize: number, search: string, isSearch: boolean = false) => {
+    // Use separate loading state for search vs pagination
+    if (isSearch) {
+      setIsSearching(true)
+    } else {
+      setIsLoading(true)
     }
-
-    setIsSearching(true)
-    setHasSearched(true) // Mark that a search has been performed
+    
     try {
-      const response = await fetch(`/api/products/search?q=${encodeURIComponent(term)}&page=1&limit=${currentPageSize}`)
+      const params = new URLSearchParams({
+        page: pageNum.toString(),
+        limit: pageSize.toString(),
+      })
+      if (search && search.trim().length >= 2) {
+        params.append('search', search.trim())
+      }
+      
+      const response = await fetch(`/api/products/paginated?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
-        setSearchResults(data.products)
-        setSearchTotalCount(data.totalCount)
-        setSearchTotalPages(data.totalPages)
+        setProducts(data.products || [])
+        setProductsTotalCount(data.totalCount || 0)
+        setProductsTotalPages(data.totalPages || 0)
+        setPage(data.currentPage || pageNum)
       } else {
-        console.error('Search failed:', response.statusText)
-        setSearchResults([])
-        setSearchTotalCount(0)
-        setSearchTotalPages(0)
+        console.error('Failed to fetch products')
       }
     } catch (error) {
-      console.error('Error searching products:', error)
-      setSearchResults([])
-      setSearchTotalCount(0)
-      setSearchTotalPages(0)
+      console.error('Error fetching products:', error)
     } finally {
-      setIsSearching(false)
+      if (isSearch) {
+        setIsSearching(false)
+      } else {
+        setIsLoading(false)
+      }
     }
-  }, [currentPageSize])
+  }, [])
 
-  // Search is now only triggered on Enter key press (see handleSearchKeyPress)
-  // Removed automatic search on input change
+  // Update URL with current search and page state
+  const updateURL = useCallback((newPage: number, newLimit: number, newSearch: string) => {
+    const params = new URLSearchParams()
+    if (newPage > 1) params.set('page', newPage.toString())
+    if (newLimit !== 50) params.set('limit', newLimit.toString())
+    if (newSearch && newSearch.trim().length >= 2) params.set('search', newSearch.trim())
+    
+    const queryString = params.toString()
+    const newUrl = queryString ? `/products?${queryString}` : '/products'
+    router.push(newUrl)
+  }, [router])
+
+  // Debounced search effect - auto-trigger search when debounced term changes
+  useEffect(() => {
+    // Skip on initial mount if search is empty (to avoid unnecessary fetch)
+    const trimmedTerm = debouncedSearchTerm.trim()
+    const isInitialMount = debouncedSearchTerm === initialSearch
+    
+    if (trimmedTerm.length >= 2) {
+      // Search with term (mark as search operation)
+      fetchProducts(1, currentPageSize, trimmedTerm, true)
+      updateURL(1, currentPageSize, trimmedTerm)
+    } else if (trimmedTerm.length === 0 && !isInitialMount) {
+      // Clear search - fetch first page without search (only if user cleared it)
+      fetchProducts(1, currentPageSize, '', true)
+      updateURL(1, currentPageSize, '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm, currentPageSize])
 
   // Fetch quality scores for displayed products (batch API)
   const fetchQualityScores = async (productIds: string[]) => {
@@ -788,81 +822,60 @@ export default function ProductsTable({
   // Handle search input change
   const handleSearchChange = (value: string) => {
     setSearchTerm(value)
-    // Clear search results immediately when input is cleared
-    if (!value || value.trim().length === 0) {
-      setSearchResults([])
-      setSearchTotalCount(0)
-      setSearchTotalPages(0)
-      setHasSearched(false) // Reset flag when clearing
-    }
+    // Reset to page 1 when search changes
+    setPage(1)
   }
 
-  // Handle search input key press (Enter to search)
+  // Handle search input key press (Enter triggers immediate search)
   const handleSearchKeyPress = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault()
       const trimmedTerm = searchTerm.trim()
-      // Only search if term is at least 2 characters (matching API requirement)
       if (trimmedTerm.length >= 2) {
-        performSearch(trimmedTerm)
+        // Trigger immediate search (bypass debounce, mark as search operation)
+        fetchProducts(1, currentPageSize, trimmedTerm, true)
+        updateURL(1, currentPageSize, trimmedTerm)
+        setPage(1)
       } else if (trimmedTerm.length === 0) {
-        // Clear search results when input is empty and Enter is pressed
-        setSearchResults([])
-        setSearchTotalCount(0)
-        setSearchTotalPages(0)
-        setHasSearched(false) // Reset flag when clearing
+        // Clear search immediately
+        fetchProducts(1, currentPageSize, '', true)
+        updateURL(1, currentPageSize, '')
+        setPage(1)
       }
     }
   }
 
-  // Handle page change - fetch from API route
+  // Clear search handler
+  const handleClearSearch = () => {
+    setSearchTerm('')
+    setPage(1)
+    fetchProducts(1, currentPageSize, '', true)
+    updateURL(1, currentPageSize, '')
+  }
+
+  // Handle page change - unified pagination that preserves search context
   const handlePageChange = async (_event: React.ChangeEvent<unknown>, newPage: number) => {
-    setIsLoading(true)
     setPage(newPage)
-    
-    try {
-      const response = await fetch(`/api/products/paginated?page=${newPage}&limit=${currentPageSize}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProducts(data.products)
-      } else {
-        console.error('Failed to fetch products')
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error)
-    } finally {
-      setIsLoading(false)
-    }
+    const currentSearch = debouncedSearchTerm.trim()
+    fetchProducts(newPage, currentPageSize, currentSearch)
+    updateURL(newPage, currentPageSize, currentSearch)
   }
 
-  // Handle limit change - fetch from API route
+  // Handle limit change - unified pagination that preserves search context
   const handleLimitChange = async (event: any) => {
     const newPageSize = Number(event.target.value)
-    setIsLoading(true)
     setCurrentPageSize(newPageSize)
     setPage(1) // Reset to first page when changing page size
-    
-    try {
-      const response = await fetch(`/api/products/paginated?page=1&limit=${newPageSize}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProducts(data.products)
-        setPage(1)
-      } else {
-        console.error('Failed to fetch products')
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error)
-    } finally {
-      setIsLoading(false)
-    }
+    const currentSearch = debouncedSearchTerm.trim()
+    fetchProducts(1, newPageSize, currentSearch)
+    updateURL(1, newPageSize, currentSearch)
   }
 
-  // Use search results only if a search has been performed, otherwise use regular products
-  const displayProducts = hasSearched ? searchResults : products
-  const displayTotalCount = hasSearched ? searchTotalCount : totalCount
-  const displayTotalPages = hasSearched ? searchTotalPages : totalPages
-  const displayCurrentPage = hasSearched ? 1 : page
+  // Display products (unified - no need for separate search results)
+  const displayProducts = products
+  const displayTotalCount = productsTotalCount
+  const displayTotalPages = productsTotalPages
+  const displayCurrentPage = page
 
   // Fetch quality scores when products change
   useEffect(() => {
@@ -1308,7 +1321,7 @@ export default function ProductsTable({
         value={searchTerm}
         onChange={(e) => handleSearchChange(e.target.value)}
         onKeyPress={handleSearchKeyPress}
-        disabled={isSearching || isLoading}
+        disabled={false} // Never disable input - allow typing while searching
         sx={{ mb: 1.5 }}
         InputProps={{
           startAdornment: (
@@ -1316,6 +1329,18 @@ export default function ProductsTable({
               {isSearching ? <CircularProgress size={18} /> : <SearchIcon fontSize="small" />}
             </InputAdornment>
           ),
+          endAdornment: searchTerm ? (
+            <InputAdornment position="end">
+              <IconButton
+                size="small"
+                onClick={handleClearSearch}
+                edge="end"
+                sx={{ mr: -1 }}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </InputAdornment>
+          ) : null,
         }}
       />
 
@@ -1470,7 +1495,7 @@ export default function ProductsTable({
               <TableRow>
                 <TableCell colSpan={8} align="center" sx={{ py: 3 }}>
                   <Typography color="text.secondary" variant="body2">
-                    {isLoading || isSearching ? 'Betöltés...' : (hasSearched ? 'Nincs találat' : 'Nincsenek termékek')}
+                    {isLoading ? 'Betöltés...' : (searchTerm.trim().length >= 2 ? 'Nincs találat' : 'Nincsenek termékek')}
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -1628,7 +1653,7 @@ export default function ProductsTable({
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3, mb: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            {hasSearched 
+            {searchTerm.trim().length >= 2
               ? `Keresési eredmény: ${displayTotalCount} termék` 
               : `Összesen ${displayTotalCount} termék`
             }
@@ -1639,7 +1664,7 @@ export default function ProductsTable({
               value={currentPageSize}
               onChange={handleLimitChange}
               label="Oldal mérete"
-              disabled={isLoading || isSearching}
+              disabled={isLoading}
             >
               <MenuItem value={25}>25</MenuItem>
               <MenuItem value={50}>50</MenuItem>
@@ -1655,7 +1680,7 @@ export default function ProductsTable({
             page={displayCurrentPage}
             onChange={handlePageChange}
             color="primary"
-            disabled={isLoading || isSearching}
+            disabled={isLoading}
             showFirstButton
             showLastButton
           />

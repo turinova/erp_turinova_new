@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '50', 10)
+    const search = searchParams.get('search') || ''
 
     // Validate parameters
     if (page < 1) {
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Limit must be 25, 50, 100, or 200' }, { status: 400 })
     }
 
-    const result = await getAllProducts(page, limit, '')
+    const result = await getAllProducts(page, limit, search)
 
     return NextResponse.json(result, {
       headers: {

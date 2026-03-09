@@ -13,13 +13,14 @@ interface PageProps {
 }
 
 export default async function ProductsPage({ searchParams }: PageProps = {}) {
-  // Get initial page data (first page, default limit)
+  // Get initial page data from URL params
   const resolvedParams = searchParams ? await searchParams : { page: '1', limit: '50', search: '' }
   const page = parseInt(resolvedParams.page || '1', 10)
   const limit = parseInt(resolvedParams.limit || '50', 10)
+  const search = resolvedParams.search || ''
 
-  // Fetch initial data (no search on initial load)
-  const result = await getAllProducts(page, limit, '')
+  // Fetch initial data with search if provided
+  const result = await getAllProducts(page, limit, search)
 
   // Fetch quality scores and indexing statuses in batch (server-side)
   const productIds = result.products.map(p => p.id)
@@ -64,7 +65,7 @@ export default async function ProductsPage({ searchParams }: PageProps = {}) {
         totalPages={result.totalPages}
         currentPage={result.currentPage}
         limit={result.limit}
-        initialSearch=""
+        initialSearch={search}
       />
     </Box>
   )
