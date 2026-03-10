@@ -47,6 +47,7 @@ import { FeatureGate } from '@/components/FeatureGate'
 import CustomerGroupPricingCard from '@/components/CustomerGroupPricingCard'
 import AIPricingRecommendationsCard from '@/components/AIPricingRecommendationsCard'
 import PromotionsCard from '@/components/PromotionsCard'
+import ProductSuppliersCard from '@/components/products/ProductSuppliersCard'
 import { useSubscription } from '@/lib/subscription-context'
 
 interface ProductEditFormProps {
@@ -300,8 +301,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     sku: product?.sku || '',
     model_number: product?.model_number || '',
     gtin: product?.gtin || '',  // Vonalkód (Barcode/GTIN)
+    internal_barcode: (product as any)?.internal_barcode || '',  // Internal barcode
     manufacturer_id: (product as any)?.manufacturer_id || null, // ShopRenter manufacturer ID
     erp_manufacturer_id: (product as any)?.erp_manufacturer_id || null, // ERP manufacturer ID
+    unit_id: (product as any)?.unit_id || null, // ERP unit ID (source of truth)
     // Dimensions
     width: (product as any)?.width || '',
     height: (product as any)?.height || '',
@@ -734,6 +737,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           name: formData.name.trim(),
           model_number: productData.model_number.trim() || null,
           gtin: productData.gtin.trim() || null,
+          internal_barcode: productData.internal_barcode.trim() || null,
           manufacturer_id: productData.manufacturer_id || null, // ShopRenter manufacturer ID
           erp_manufacturer_id: productData.erp_manufacturer_id || null, // ERP manufacturer ID
           width: productData.width ? parseFloat(String(productData.width)) : null,
@@ -776,13 +780,19 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         return
       }
 
+      // Get unit shortform from unit_id for ShopRenter sync
+      const selectedUnit = units.find(u => u.id === productData.unit_id)
+      const unitShortform = selectedUnit?.shortform || 'db'
+
       // Update existing product
       // Save product basic data (sku, model_number, gtin, pricing)
       const productDataToSave = {
         model_number: productData.model_number.trim() || null,
         gtin: productData.gtin.trim() || null,  // Vonalkód
+        internal_barcode: productData.internal_barcode.trim() || null,  // Internal barcode
         manufacturer_id: productData.manufacturer_id || null, // ShopRenter manufacturer ID
         erp_manufacturer_id: productData.erp_manufacturer_id || null, // ERP manufacturer ID
+        unit_id: productData.unit_id || null, // ERP unit ID (source of truth)
         // Dimensions
         width: productData.width ? parseFloat(String(productData.width)) : null,
         height: productData.height ? parseFloat(String(productData.height)) : null,
@@ -814,6 +824,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       }
 
       // Encode HTML entities before saving (ShopRenter stores HTML as entities)
+      // measurement_unit is derived from unit_id for ShopRenter sync compatibility
       const dataToSave = {
         language_code: 'hu',
         name: formData.name,
@@ -823,7 +834,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
         short_description: encodeHtmlEntities(formData.short_description),
         description: encodeHtmlEntities(formData.description),
         parameters: formData.parameters || null, // Add parameters field
-        measurement_unit: formData.measurement_unit.trim() || 'db', // Add measurement_unit field
+        measurement_unit: unitShortform, // Derived from unit_id for ShopRenter sync
         generation_instructions: formData.generation_instructions.trim() || null
       }
 
@@ -2924,6 +2935,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             iconPosition="start"
             label="Elemzés" 
           />
+          <Tab 
+            icon={<StoreIcon />} 
+            iconPosition="start"
+            label="Beszállítók" 
+          />
         </Tabs>
 
         <TabPanel value={tabValue} index={0} isLoaded={loadedTabs.has(0)}>
@@ -2959,7 +2975,8 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   </Typography>
                 </Box>
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={8}>
+                  {/* First Row: Termék neve, Cikkszám, Gyártó */}
+                  <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
                       label="Termék neve *"
@@ -2979,7 +2996,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       }}
                     />
                   </Grid>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
                     <TextField
                       fullWidth
                       label="Cikkszám (SKU) *"
@@ -3022,47 +3039,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       }}
                     />
                   </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Gyártói cikkszám"
-                      value={productData.model_number}
-                      onChange={(e) => setProductData(prev => ({ ...prev, model_number: e.target.value }))}
-                      helperText="A gyártó saját termékazonosítója"
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
-                        }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <TextField
-                      fullWidth
-                      label="Vonalkód (GTIN/EAN)"
-                      value={productData.gtin}
-                      onChange={(e) => setProductData(prev => ({ ...prev, gtin: e.target.value }))}
-                      helperText="A termék vonalkódja (EAN, UPC, stb.)"
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
-                        }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
+                  <Grid item xs={12} md={3}>
                     <FormControl fullWidth>
                       <InputLabel>Gyártó / Márka</InputLabel>
                       <Select
@@ -3107,15 +3084,77 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       </Select>
                     </FormControl>
                   </Grid>
+                  {/* Second Row: Vonalkód, Internal vonalkód */}
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Vonalkód (GTIN/EAN)"
+                      value={productData.gtin}
+                      onChange={(e) => setProductData(prev => ({ ...prev, gtin: e.target.value }))}
+                      helperText="A termék vonalkódja (EAN, UPC, stb.)"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Belső vonalkód"
+                      value={productData.internal_barcode}
+                      onChange={(e) => setProductData(prev => ({ ...prev, internal_barcode: e.target.value }))}
+                      helperText="Belső ERP generált vonalkód"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
+                  {/* Third Row: Gyártói cikkszám */}
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      label="Gyártói cikkszám"
+                      value={productData.model_number}
+                      onChange={(e) => setProductData(prev => ({ ...prev, model_number: e.target.value }))}
+                      helperText="A gyártó saját termékazonosítója"
+                      sx={{
+                        '& .MuiOutlinedInput-root': {
+                          bgcolor: 'rgba(0, 0, 0, 0.02)',
+                          '&:hover': {
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          },
+                          '&.Mui-focused': {
+                            bgcolor: 'white'
+                          }
+                        }
+                      }}
+                    />
+                  </Grid>
                   <Grid item xs={12} md={6}>
                     <FormControl fullWidth>
                       <InputLabel id="measurement-unit-label">Mértékegység</InputLabel>
                       <Select
                         labelId="measurement-unit-label"
                         id="measurement-unit-select"
-                        value={formData.measurement_unit}
+                        value={productData.unit_id || ''}
                         label="Mértékegység"
-                        onChange={(e) => setFormData(prev => ({ ...prev, measurement_unit: e.target.value }))}
+                        onChange={(e) => setProductData(prev => ({ ...prev, unit_id: e.target.value || null }))}
                         disabled={loadingUnits}
                         MenuProps={{
                           PaperProps: {
@@ -3130,7 +3169,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                         }}
                       >
                         {units.map((unit) => (
-                          <MenuItem key={unit.id} value={unit.shortform}>
+                          <MenuItem key={unit.id} value={unit.id}>
                             {unit.name} ({unit.shortform})
                           </MenuItem>
                         ))}
@@ -5281,6 +5320,20 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             {/* Competitor Prices moved to Árazás tab */}
           </Grid>
           </FeatureGate>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={5} isLoaded={loadedTabs.has(5)}>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              {product?.id ? (
+                <ProductSuppliersCard productId={product.id} />
+              ) : (
+                <Alert severity="info">
+                  A beszállítók hozzáadása a termék létrehozása után lehetséges.
+                </Alert>
+              )}
+            </Grid>
+          </Grid>
         </TabPanel>
       </Paper>
 

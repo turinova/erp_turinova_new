@@ -65,7 +65,7 @@ export async function PUT(
     }
 
     // Only allow updating specific fields
-    const allowedFields = ['sku', 'model_number', 'gtin', 'manufacturer_id', 'erp_manufacturer_id', 'width', 'height', 'length', 'weight', 'erp_weight_unit_id', 'status', 'name', 'price', 'cost', 'multiplier', 'multiplier_lock', 'vat_id', 'gross_price', 'competitor_tracking_enabled']
+    const allowedFields = ['sku', 'model_number', 'gtin', 'manufacturer_id', 'erp_manufacturer_id', 'unit_id', 'width', 'height', 'length', 'weight', 'erp_weight_unit_id', 'status', 'name', 'price', 'cost', 'multiplier', 'multiplier_lock', 'vat_id', 'gross_price', 'competitor_tracking_enabled']
     const updateData: Record<string, any> = {}
     
     for (const field of allowedFields) {

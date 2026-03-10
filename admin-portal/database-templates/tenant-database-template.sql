@@ -810,6 +810,25 @@ COMMENT ON COLUMN public.shoprenter_products.gross_price IS 'Calculated gross pr
 COMMENT ON COLUMN public.shoprenter_products.shoprenter_tax_class_id IS 'ShopRenter taxClass ID (base64 encoded). Used for syncing taxClass to ShopRenter.';
 
 -- =============================================================================
+-- Migration: 20250324_add_unit_id_to_products.sql
+-- =============================================================================
+
+-- Add unit_id column to shoprenter_products table
+-- This creates a direct foreign key relationship to the units table
+-- for better data integrity and performance
+
+ALTER TABLE public.shoprenter_products 
+ADD COLUMN IF NOT EXISTS unit_id UUID REFERENCES public.units(id);
+
+-- Create index for performance
+CREATE INDEX IF NOT EXISTS idx_products_unit_id 
+ON public.shoprenter_products(unit_id) 
+WHERE deleted_at IS NULL AND unit_id IS NOT NULL;
+
+-- Add comment for documentation
+COMMENT ON COLUMN public.shoprenter_products.unit_id IS 'Reference to units table (measurement unit for product quantity). Source of truth for product unit.';
+
+-- =============================================================================
 -- Migration: 20250315_create_units_table.sql
 -- =============================================================================
 
@@ -4969,3 +4988,929 @@ BEGIN
   RETURN max_priority + 1;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- =============================================================================
+-- Migration: 20250323_create_warehouses_table.sql
+-- =============================================================================
+
+-- Create warehouses table
+-- This table stores warehouse/raktár information
+
+CREATE TABLE IF NOT EXISTS public.warehouses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(100) NOT NULL,
+  code VARCHAR(20) NOT NULL,
+  is_active BOOLEAN DEFAULT true NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+-- Unique constraint on code
+CREATE UNIQUE INDEX IF NOT EXISTS warehouses_code_unique 
+ON public.warehouses(code) 
+WHERE is_active = true;
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_warehouses_is_active 
+ON public.warehouses(is_active) 
+WHERE is_active = true;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_warehouses_updated_at
+BEFORE UPDATE ON public.warehouses
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.warehouses ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Warehouses are viewable by authenticated users" ON public.warehouses;
+CREATE POLICY "Warehouses are viewable by authenticated users" 
+ON public.warehouses
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Warehouses are manageable by authenticated users" ON public.warehouses;
+CREATE POLICY "Warehouses are manageable by authenticated users" 
+ON public.warehouses
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.warehouses TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.warehouses IS 'Warehouses/raktárak for inventory management';
+COMMENT ON COLUMN public.warehouses.code IS 'Short code/identifier for the warehouse';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_product_suppliers_table.sql
+-- =============================================================================
+
+-- Create product_suppliers table
+-- This table stores the relationship between products and suppliers
+-- A product can have multiple suppliers, with one preferred supplier
+
+CREATE TABLE IF NOT EXISTS public.product_suppliers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES public.shoprenter_products(id) ON DELETE CASCADE,
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE CASCADE,
+    
+    -- Supplier-specific product info
+    supplier_sku VARCHAR(255), -- Supplier's product code
+    supplier_barcode VARCHAR(255), -- Supplier's barcode (different from internal)
+    
+    -- Pricing & ordering
+    default_cost DECIMAL(10,2), -- Last purchase price from this supplier
+    last_purchased_at TIMESTAMPTZ,
+    min_order_quantity INTEGER DEFAULT 1,
+    lead_time_days INTEGER, -- Average delivery time
+    
+    -- Preferences
+    is_preferred BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Partial unique index (only for non-deleted records)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_product_suppliers_unique_active 
+ON public.product_suppliers(product_id, supplier_id) 
+WHERE deleted_at IS NULL;
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_product_suppliers_product_id 
+ON public.product_suppliers(product_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_product_suppliers_supplier_id 
+ON public.product_suppliers(supplier_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_product_suppliers_supplier_barcode 
+ON public.product_suppliers(supplier_barcode) 
+WHERE deleted_at IS NULL AND supplier_barcode IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_product_suppliers_preferred 
+ON public.product_suppliers(supplier_id, is_preferred) 
+WHERE deleted_at IS NULL AND is_preferred = true;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_product_suppliers_updated_at
+BEFORE UPDATE ON public.product_suppliers
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.product_suppliers ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Product suppliers are viewable by authenticated users" ON public.product_suppliers;
+CREATE POLICY "Product suppliers are viewable by authenticated users" 
+ON public.product_suppliers
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Product suppliers are manageable by authenticated users" ON public.product_suppliers;
+CREATE POLICY "Product suppliers are manageable by authenticated users" 
+ON public.product_suppliers
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.product_suppliers TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.product_suppliers IS 'Relationship between products and suppliers. A product can have multiple suppliers.';
+COMMENT ON COLUMN public.product_suppliers.supplier_barcode IS 'Supplier-specific barcode (different from product internal_barcode or gtin)';
+COMMENT ON COLUMN public.product_suppliers.is_preferred IS 'Only one supplier should be preferred per product (enforced in application logic)';
+
+
+-- =============================================================================
+-- Migration: 20250323_add_internal_barcode_to_products.sql
+-- =============================================================================
+
+-- Add internal_barcode column to shoprenter_products table
+-- This is the ERP-generated barcode, separate from supplier/manufacturer barcode (gtin)
+
+ALTER TABLE public.shoprenter_products 
+ADD COLUMN IF NOT EXISTS internal_barcode VARCHAR(255);
+
+-- Index for barcode scanning (internal barcode)
+CREATE INDEX IF NOT EXISTS idx_products_internal_barcode 
+ON public.shoprenter_products(internal_barcode) 
+WHERE deleted_at IS NULL AND internal_barcode IS NOT NULL;
+
+-- Index for supplier barcode scanning (gtin)
+CREATE INDEX IF NOT EXISTS idx_products_gtin_scan 
+ON public.shoprenter_products(gtin) 
+WHERE deleted_at IS NULL AND gtin IS NOT NULL;
+
+-- Comments
+COMMENT ON COLUMN public.shoprenter_products.internal_barcode IS 'Internal ERP-generated barcode (separate from supplier/manufacturer barcode)';
+COMMENT ON COLUMN public.shoprenter_products.gtin IS 'Supplier/Manufacturer barcode (from ShopRenter or supplier)';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_purchase_orders_table.sql
+-- =============================================================================
+
+-- Create purchase_orders table
+-- This table stores purchase orders (beszerzési rendelések)
+
+-- PO Number Sequence
+CREATE SEQUENCE IF NOT EXISTS purchase_order_number_seq
+  INCREMENT BY 1
+  MINVALUE 1
+  NO MAXVALUE
+  START WITH 1
+  OWNED BY NONE;
+
+-- PO Number Generator Function
+CREATE OR REPLACE FUNCTION generate_purchase_order_number()
+RETURNS VARCHAR
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  next_val BIGINT;
+BEGIN
+  SELECT nextval('purchase_order_number_seq') INTO next_val;
+  RETURN 'POR-' || 
+         TO_CHAR(CURRENT_DATE, 'YYYY') || '-' ||
+         LPAD(next_val::TEXT, 6, '0');
+END;
+$$;
+
+-- Purchase Orders Table
+CREATE TABLE IF NOT EXISTS public.purchase_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  po_number VARCHAR(50) UNIQUE NOT NULL DEFAULT generate_purchase_order_number(),
+  
+  -- Relationships
+  supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  warehouse_id UUID NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
+  
+  -- Status workflow
+  status VARCHAR(20) DEFAULT 'draft' CHECK (
+    status IN ('draft', 'pending_approval', 'approved', 'partially_received', 'received', 'cancelled')
+  ),
+  
+  -- Email tracking (only relevant when status != 'approved')
+  email_sent BOOLEAN DEFAULT false,
+  email_sent_at TIMESTAMPTZ,
+  
+  -- Dates
+  order_date DATE DEFAULT CURRENT_DATE,
+  expected_delivery_date DATE,
+  approved_at TIMESTAMPTZ,
+  approved_by UUID REFERENCES public.users(id),
+  
+  -- Financial summary (calculated, stored for performance)
+  currency_id UUID REFERENCES public.currencies(id),
+  total_net DECIMAL(12,2) DEFAULT 0,
+  total_vat DECIMAL(12,2) DEFAULT 0,
+  total_gross DECIMAL(12,2) DEFAULT 0,
+  
+  -- Physical summary
+  total_weight DECIMAL(10,2) DEFAULT 0,
+  item_count INTEGER DEFAULT 0,
+  total_quantity DECIMAL(10,2) DEFAULT 0,
+  
+  -- Metadata
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier_id 
+ON public.purchase_orders(supplier_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_warehouse_id 
+ON public.purchase_orders(warehouse_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status 
+ON public.purchase_orders(status) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_email_sent 
+ON public.purchase_orders(email_sent) 
+WHERE deleted_at IS NULL AND status != 'approved';
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_order_date 
+ON public.purchase_orders(order_date DESC) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_po_number 
+ON public.purchase_orders(po_number);
+
+-- Trigger
+CREATE TRIGGER update_purchase_orders_updated_at
+BEFORE UPDATE ON public.purchase_orders
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.purchase_orders ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Purchase orders are viewable by authenticated users" ON public.purchase_orders;
+CREATE POLICY "Purchase orders are viewable by authenticated users" 
+ON public.purchase_orders
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Purchase orders are manageable by authenticated users" ON public.purchase_orders;
+CREATE POLICY "Purchase orders are manageable by authenticated users" 
+ON public.purchase_orders
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.purchase_orders TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.purchase_orders IS 'Purchase orders (beszerzési rendelések)';
+COMMENT ON COLUMN public.purchase_orders.email_sent IS 'Email tracking only relevant when status != approved';
+COMMENT ON COLUMN public.purchase_orders.po_number IS 'Auto-generated format: POR-YYYY-000001';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_purchase_order_items_table.sql
+-- =============================================================================
+
+-- Create purchase_order_items table
+-- This table stores items (products) in purchase orders
+
+CREATE TABLE IF NOT EXISTS public.purchase_order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  purchase_order_id UUID NOT NULL REFERENCES public.purchase_orders(id) ON DELETE CASCADE,
+  
+  -- Product reference
+  product_id UUID NOT NULL REFERENCES public.shoprenter_products(id) ON DELETE RESTRICT,
+  product_supplier_id UUID REFERENCES public.product_suppliers(id) ON DELETE SET NULL,
+  
+  -- Quantities
+  quantity DECIMAL(10,2) NOT NULL CHECK (quantity > 0),
+  received_quantity DECIMAL(10,2) DEFAULT 0,
+  
+  -- Pricing
+  unit_cost DECIMAL(10,2) NOT NULL CHECK (unit_cost >= 0),
+  vat_id UUID REFERENCES public.vat(id) ON DELETE RESTRICT,
+  currency_id UUID REFERENCES public.currencies(id) ON DELETE RESTRICT,
+  
+  -- Units & description
+  unit_id UUID REFERENCES public.units(id) ON DELETE RESTRICT,
+  description TEXT, -- Product name snapshot (for historical accuracy)
+  
+  -- Warehouse location (assigned during receiving)
+  shelf_location VARCHAR(100),
+  
+  -- Metadata
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_po_items_po_id 
+ON public.purchase_order_items(purchase_order_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_po_items_product_id 
+ON public.purchase_order_items(product_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_po_items_product_supplier_id 
+ON public.purchase_order_items(product_supplier_id) 
+WHERE deleted_at IS NULL AND product_supplier_id IS NOT NULL;
+
+-- Trigger
+CREATE TRIGGER update_po_items_updated_at
+BEFORE UPDATE ON public.purchase_order_items
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.purchase_order_items ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "PO items are viewable by authenticated users" ON public.purchase_order_items;
+CREATE POLICY "PO items are viewable by authenticated users" 
+ON public.purchase_order_items
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "PO items are manageable by authenticated users" ON public.purchase_order_items;
+CREATE POLICY "PO items are manageable by authenticated users" 
+ON public.purchase_order_items
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.purchase_order_items TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.purchase_order_items IS 'Items (products) in purchase orders';
+COMMENT ON COLUMN public.purchase_order_items.received_quantity IS 'Updated during shipment receiving';
+COMMENT ON COLUMN public.purchase_order_items.description IS 'Product name snapshot for historical accuracy';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_shipments_table.sql
+-- =============================================================================
+
+-- Create shipments table
+-- This table stores shipments (szállítmányok) - can link to multiple purchase orders
+
+-- Shipment Number Sequence
+CREATE SEQUENCE IF NOT EXISTS shipment_number_seq
+  INCREMENT BY 1
+  MINVALUE 1
+  NO MAXVALUE
+  START WITH 1
+  OWNED BY NONE;
+
+-- Shipment Number Generator
+CREATE OR REPLACE FUNCTION generate_shipment_number()
+RETURNS VARCHAR
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  next_val BIGINT;
+BEGIN
+  SELECT nextval('shipment_number_seq') INTO next_val;
+  RETURN 'SHP-' || 
+         TO_CHAR(CURRENT_DATE, 'YYYY') || '-' ||
+         LPAD(next_val::TEXT, 7, '0');
+END;
+$$;
+
+-- Shipments Table
+CREATE TABLE IF NOT EXISTS public.shipments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shipment_number VARCHAR(50) UNIQUE NOT NULL DEFAULT generate_shipment_number(),
+  
+  -- Relationships
+  supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+  warehouse_id UUID NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
+  
+  -- Status workflow
+  status VARCHAR(20) DEFAULT 'waiting' CHECK (
+    status IN ('waiting', 'in_transit', 'arrived', 'inspecting', 'completed', 'cancelled')
+  ),
+  
+  -- Dates
+  expected_arrival_date DATE,
+  actual_arrival_date DATE,
+  purchased_date DATE,
+  delivered_date DATE,
+  
+  -- Financial
+  currency_id UUID REFERENCES public.currencies(id),
+  
+  -- Metadata
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_shipments_supplier_id 
+ON public.shipments(supplier_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shipments_warehouse_id 
+ON public.shipments(warehouse_id) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shipments_status 
+ON public.shipments(status) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shipments_shipment_number 
+ON public.shipments(shipment_number);
+
+-- Trigger
+CREATE TRIGGER update_shipments_updated_at
+BEFORE UPDATE ON public.shipments
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.shipments ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Shipments are viewable by authenticated users" ON public.shipments;
+CREATE POLICY "Shipments are viewable by authenticated users" 
+ON public.shipments
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Shipments are manageable by authenticated users" ON public.shipments;
+CREATE POLICY "Shipments are manageable by authenticated users" 
+ON public.shipments
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.shipments TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.shipments IS 'Shipments (szállítmányok) - can link to multiple purchase orders from same supplier';
+COMMENT ON COLUMN public.shipments.shipment_number IS 'Auto-generated format: SHP-YYYY-0000001';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_shipment_purchase_orders_table.sql
+-- =============================================================================
+
+-- Create shipment_purchase_orders table
+-- Many-to-many relationship between shipments and purchase orders
+
+CREATE TABLE IF NOT EXISTS public.shipment_purchase_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shipment_id UUID NOT NULL REFERENCES public.shipments(id) ON DELETE CASCADE,
+  purchase_order_id UUID NOT NULL REFERENCES public.purchase_orders(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(shipment_id, purchase_order_id)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_shipment_pos_shipment_id 
+ON public.shipment_purchase_orders(shipment_id);
+
+CREATE INDEX IF NOT EXISTS idx_shipment_pos_po_id 
+ON public.shipment_purchase_orders(purchase_order_id);
+
+-- Enable RLS
+ALTER TABLE public.shipment_purchase_orders ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Shipment POs are viewable by authenticated users" ON public.shipment_purchase_orders;
+CREATE POLICY "Shipment POs are viewable by authenticated users" 
+ON public.shipment_purchase_orders
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Shipment POs are manageable by authenticated users" ON public.shipment_purchase_orders;
+CREATE POLICY "Shipment POs are manageable by authenticated users" 
+ON public.shipment_purchase_orders
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.shipment_purchase_orders TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.shipment_purchase_orders IS 'Many-to-many relationship: one shipment can contain items from multiple purchase orders';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_shipment_items_table.sql
+-- =============================================================================
+
+-- Create shipment_items table
+-- This table stores items in shipments (supports unexpected products not in PO)
+
+CREATE TABLE IF NOT EXISTS public.shipment_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shipment_id UUID NOT NULL REFERENCES public.shipments(id) ON DELETE CASCADE,
+  
+  -- Link to PO item (NULL if unexpected product)
+  purchase_order_item_id UUID REFERENCES public.purchase_order_items(id) ON DELETE SET NULL,
+  
+  -- Product reference (required for all items)
+  product_id UUID NOT NULL REFERENCES public.shoprenter_products(id) ON DELETE RESTRICT,
+  
+  -- Quantities
+  expected_quantity DECIMAL(10,2) DEFAULT 0,
+  received_quantity DECIMAL(10,2) DEFAULT 0,
+  inspected_quantity DECIMAL(10,2) DEFAULT 0,
+  accepted_quantity DECIMAL(10,2) DEFAULT 0,
+  rejected_quantity DECIMAL(10,2) DEFAULT 0,
+  
+  -- Pricing (for unexpected items)
+  unit_cost DECIMAL(10,2),
+  vat_id UUID REFERENCES public.vat(id),
+  currency_id UUID REFERENCES public.currencies(id),
+  
+  -- Warehouse location
+  shelf_location VARCHAR(100),
+  
+  -- Quality control
+  inspection_notes TEXT,
+  is_unexpected BOOLEAN DEFAULT false,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Constraints
+-- Drop constraint if exists, then add it
+DO $$ 
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'check_quantities_sum' 
+    AND conrelid = 'public.shipment_items'::regclass
+  ) THEN
+    ALTER TABLE public.shipment_items DROP CONSTRAINT check_quantities_sum;
+  END IF;
+END $$;
+
+ALTER TABLE public.shipment_items 
+ADD CONSTRAINT check_quantities_sum 
+  CHECK (inspected_quantity = accepted_quantity + rejected_quantity);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_shipment_items_shipment_id 
+ON public.shipment_items(shipment_id);
+
+CREATE INDEX IF NOT EXISTS idx_shipment_items_po_item_id 
+ON public.shipment_items(purchase_order_item_id) 
+WHERE purchase_order_item_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shipment_items_product_id 
+ON public.shipment_items(product_id);
+
+CREATE INDEX IF NOT EXISTS idx_shipment_items_unexpected 
+ON public.shipment_items(is_unexpected) 
+WHERE is_unexpected = true;
+
+-- Trigger
+CREATE TRIGGER update_shipment_items_updated_at
+BEFORE UPDATE ON public.shipment_items
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.shipment_items ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Shipment items are viewable by authenticated users" ON public.shipment_items;
+CREATE POLICY "Shipment items are viewable by authenticated users" 
+ON public.shipment_items
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Shipment items are manageable by authenticated users" ON public.shipment_items;
+CREATE POLICY "Shipment items are manageable by authenticated users" 
+ON public.shipment_items
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.shipment_items TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.shipment_items IS 'Items in shipments. Supports unexpected products not in purchase order.';
+COMMENT ON COLUMN public.shipment_items.is_unexpected IS 'TRUE if product was not in the purchase order';
+COMMENT ON COLUMN public.shipment_items.unit_cost IS 'Required for unexpected items';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_warehouse_operations_table.sql
+-- =============================================================================
+
+-- Create warehouse_operations table
+-- This table tracks warehouse operations (bevételezés, transfers, etc.)
+
+-- Warehouse Operation Number Sequence
+CREATE SEQUENCE IF NOT EXISTS warehouse_operation_number_seq
+  INCREMENT BY 1
+  MINVALUE 1
+  NO MAXVALUE
+  START WITH 1
+  OWNED BY NONE;
+
+-- Warehouse Operation Number Generator
+CREATE OR REPLACE FUNCTION generate_warehouse_operation_number()
+RETURNS VARCHAR
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  next_val BIGINT;
+BEGIN
+  SELECT nextval('warehouse_operation_number_seq') INTO next_val;
+  RETURN 'WOP-' || 
+         TO_CHAR(CURRENT_DATE, 'YYYY') || '-' ||
+         LPAD(next_val::TEXT, 7, '0');
+END;
+$$;
+
+CREATE TABLE IF NOT EXISTS public.warehouse_operations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  operation_number VARCHAR(50) UNIQUE NOT NULL DEFAULT generate_warehouse_operation_number(),
+  
+  -- Relationships
+  shipment_id UUID REFERENCES public.shipments(id) ON DELETE SET NULL,
+  warehouse_id UUID NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
+  
+  -- Operation details
+  operation_type VARCHAR(20) NOT NULL CHECK (
+    operation_type IN ('receiving', 'transfer', 'adjustment', 'picking', 'return')
+  ),
+  
+  status VARCHAR(20) DEFAULT 'waiting' CHECK (
+    status IN ('waiting', 'in_progress', 'completed', 'cancelled')
+  ),
+  
+  -- Timestamps
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  
+  -- User tracking
+  created_by UUID REFERENCES public.users(id),
+  completed_by UUID REFERENCES public.users(id),
+  
+  -- Metadata
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_warehouse_ops_shipment_id 
+ON public.warehouse_operations(shipment_id) 
+WHERE shipment_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_ops_warehouse_id 
+ON public.warehouse_operations(warehouse_id);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_ops_status 
+ON public.warehouse_operations(status);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_ops_type 
+ON public.warehouse_operations(operation_type);
+
+CREATE INDEX IF NOT EXISTS idx_warehouse_ops_operation_number 
+ON public.warehouse_operations(operation_number);
+
+-- Trigger
+CREATE TRIGGER update_warehouse_ops_updated_at
+BEFORE UPDATE ON public.warehouse_operations
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.warehouse_operations ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Warehouse ops are viewable by authenticated users" ON public.warehouse_operations;
+CREATE POLICY "Warehouse ops are viewable by authenticated users" 
+ON public.warehouse_operations
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Warehouse ops are manageable by authenticated users" ON public.warehouse_operations;
+CREATE POLICY "Warehouse ops are manageable by authenticated users" 
+ON public.warehouse_operations
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.warehouse_operations TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.warehouse_operations IS 'Warehouse operations (raktári műveletek) - receiving, transfers, adjustments, etc.';
+COMMENT ON COLUMN public.warehouse_operations.operation_number IS 'Auto-generated format: WOP-YYYY-0000002';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_stock_movements_table.sql
+-- =============================================================================
+
+-- Create stock_movements table
+-- This table is an immutable audit trail of all stock movements
+
+CREATE TABLE IF NOT EXISTS public.stock_movements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Warehouse & Product
+  warehouse_id UUID NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
+  product_id UUID NOT NULL REFERENCES public.shoprenter_products(id) ON DELETE RESTRICT,
+  
+  -- Movement details
+  movement_type VARCHAR(20) NOT NULL CHECK (
+    movement_type IN ('in', 'out', 'adjustment', 'transfer_in', 'transfer_out', 'reserved', 'released')
+  ),
+  
+  quantity DECIMAL(10,2) NOT NULL CHECK (quantity != 0),
+  unit_cost DECIMAL(10,2),
+  
+  -- Location
+  shelf_location VARCHAR(100),
+  
+  -- Source tracking
+  source_type VARCHAR(30) NOT NULL,
+  source_id UUID,
+  warehouse_operation_id UUID REFERENCES public.warehouse_operations(id) ON DELETE SET NULL,
+  
+  -- Metadata
+  note TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES public.users(id)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_stock_movements_warehouse_product 
+ON public.stock_movements(warehouse_id, product_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product_id 
+ON public.stock_movements(product_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_source 
+ON public.stock_movements(source_type, source_id);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_warehouse_op 
+ON public.stock_movements(warehouse_operation_id) 
+WHERE warehouse_operation_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_created_at 
+ON public.stock_movements(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_stock_movements_type 
+ON public.stock_movements(movement_type);
+
+-- Enable RLS
+ALTER TABLE public.stock_movements ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Stock movements are viewable by authenticated users" ON public.stock_movements;
+CREATE POLICY "Stock movements are viewable by authenticated users" 
+ON public.stock_movements
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Stock movements are insertable by authenticated users" ON public.stock_movements;
+CREATE POLICY "Stock movements are insertable by authenticated users" 
+ON public.stock_movements
+FOR INSERT
+TO authenticated
+WITH CHECK (true);
+
+-- Note: Updates and deletes should be restricted (immutable audit trail)
+-- No UPDATE or DELETE policies
+
+-- Grant permissions (only SELECT and INSERT)
+GRANT SELECT, INSERT ON public.stock_movements TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.stock_movements IS 'Immutable audit trail of all stock movements. No updates or deletes allowed.';
+COMMENT ON COLUMN public.stock_movements.movement_type IS 'in/out: physical movements, reserved/released: allocation, adjustment: corrections';
+COMMENT ON COLUMN public.stock_movements.quantity IS 'Positive for in, negative for out';
+
+
+-- =============================================================================
+-- Migration: 20250323_create_stock_summary_view.sql
+-- =============================================================================
+
+-- Create stock_summary materialized view
+-- Real-time aggregated stock levels per product per warehouse
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS public.stock_summary AS
+SELECT 
+  sm.warehouse_id,
+  w.name AS warehouse_name,
+  sm.product_id,
+  p.name AS product_name,
+  p.sku,
+  p.gtin AS supplier_barcode,
+  p.internal_barcode,
+  
+  -- Current stock levels
+  COALESCE(SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') THEN sm.quantity ELSE 0 END), 0) -
+  COALESCE(SUM(CASE WHEN sm.movement_type IN ('out', 'transfer_out') THEN sm.quantity ELSE 0 END), 0) AS quantity_on_hand,
+  
+  -- Reserved stock
+  COALESCE(SUM(CASE WHEN sm.movement_type = 'reserved' THEN sm.quantity ELSE 0 END), 0) -
+  COALESCE(SUM(CASE WHEN sm.movement_type = 'released' THEN sm.quantity ELSE 0 END), 0) AS quantity_reserved,
+  
+  -- Available stock
+  (COALESCE(SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') THEN sm.quantity ELSE 0 END), 0) -
+   COALESCE(SUM(CASE WHEN sm.movement_type IN ('out', 'transfer_out') THEN sm.quantity ELSE 0 END), 0)) -
+  (COALESCE(SUM(CASE WHEN sm.movement_type = 'reserved' THEN sm.quantity ELSE 0 END), 0) -
+   COALESCE(SUM(CASE WHEN sm.movement_type = 'released' THEN sm.quantity ELSE 0 END), 0)) AS quantity_available,
+  
+  -- Average cost (weighted average of IN movements)
+  COALESCE(
+    SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') AND sm.unit_cost IS NOT NULL 
+        THEN sm.quantity * sm.unit_cost ELSE 0 END)::NUMERIC /
+    NULLIF(SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') AND sm.unit_cost IS NOT NULL 
+        THEN sm.quantity ELSE 0 END), 0),
+    0
+  ) AS average_cost,
+  
+  -- Total value
+  (COALESCE(SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') THEN sm.quantity ELSE 0 END), 0) -
+   COALESCE(SUM(CASE WHEN sm.movement_type IN ('out', 'transfer_out') THEN sm.quantity ELSE 0 END), 0)) *
+  COALESCE(
+    SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') AND sm.unit_cost IS NOT NULL 
+        THEN sm.quantity * sm.unit_cost ELSE 0 END)::NUMERIC /
+    NULLIF(SUM(CASE WHEN sm.movement_type IN ('in', 'transfer_in') AND sm.unit_cost IS NOT NULL 
+        THEN sm.quantity ELSE 0 END), 0),
+    0
+  ) AS total_value,
+  
+  -- Last movement
+  MAX(sm.created_at) AS last_movement_at
+  
+FROM public.stock_movements sm
+INNER JOIN public.warehouses w ON w.id = sm.warehouse_id
+INNER JOIN public.shoprenter_products p ON p.id = sm.product_id
+WHERE p.deleted_at IS NULL
+GROUP BY sm.warehouse_id, w.name, sm.product_id, p.name, p.sku, p.gtin, p.internal_barcode;
+
+-- Index for fast lookups
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_summary_unique 
+ON public.stock_summary(warehouse_id, product_id);
+
+-- Refresh function
+CREATE OR REPLACE FUNCTION refresh_stock_summary()
+RETURNS void AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY public.stock_summary;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Comments
+COMMENT ON MATERIALIZED VIEW public.stock_summary IS 'Real-time aggregated stock levels per product per warehouse. Refresh manually after stock movements.';
+COMMENT ON FUNCTION refresh_stock_summary() IS 'Refresh the stock_summary materialized view. Call after bulk stock movements.';

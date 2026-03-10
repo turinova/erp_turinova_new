@@ -231,6 +231,28 @@ export async function POST(
       }, { status: 400 })
     }
 
+    // Get unit shortform from unit_id (source of truth) or fallback to measurement_unit from description
+    let measurementUnitForShopRenter = 'db' // Default
+    if ((product as any).unit_id) {
+      // Fetch unit from units table
+      const { data: unit } = await supabase
+        .from('units')
+        .select('shortform')
+        .eq('id', (product as any).unit_id)
+        .is('deleted_at', null)
+        .maybeSingle()
+      
+      if (unit) {
+        measurementUnitForShopRenter = unit.shortform
+      } else {
+        // Unit not found, fallback to description
+        measurementUnitForShopRenter = (huDescription as any).measurement_unit || 'db'
+      }
+    } else {
+      // No unit_id, use measurement_unit from description (backward compatibility)
+      measurementUnitForShopRenter = (huDescription as any).measurement_unit || 'db'
+    }
+
     // Extract shop name
     const shopName = extractShopNameFromUrl(connection.api_url)
     if (!shopName) {
@@ -657,7 +679,7 @@ export async function POST(
         metaKeywords: huDescription.meta_keywords?.trim() || '',
         metaDescription: huDescription.meta_description?.trim() || '',
         parameters: huDescription.parameters?.trim() || '',
-        measurementUnit: (huDescription as any).measurement_unit || 'db', // Add measurementUnit (default to 'db' if empty)
+        measurementUnit: measurementUnitForShopRenter, // Use unit shortform from unit_id (or fallback to description)
         language: {
           id: languageId
         }

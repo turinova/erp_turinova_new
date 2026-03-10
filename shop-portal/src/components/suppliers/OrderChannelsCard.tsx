@@ -447,7 +447,7 @@ export default function OrderChannelsCard({ supplierId, initialOrderChannels, on
                   error={!!errors.url_template}
                   helperText={
                     errors.url_template ||
-                    'Használjon helyőrzőket: {{sku}}, {{name}}, {{ean}}. Példa: https://example.com/search?q={{sku}}'
+                    'Használjon helyőrzőket: {{sku}}, {{supplier_sku}}, {{name}}, {{ean}}. Példa: https://example.com/search?q={{supplier_sku}}'
                   }
                   placeholder="https://www.zar-vasalas.hu/shop_searchcomplex.php?search={{sku}}&overlay=search_error_no"
                 />
@@ -458,6 +458,7 @@ export default function OrderChannelsCard({ supplierId, initialOrderChannels, on
                   <Typography variant="body2" component="div">
                     <ul style={{ margin: 0, paddingLeft: 20 }}>
                       <li><code>{'{{sku}}'}</code> - Termék SKU</li>
+                      <li><code>{'{{supplier_sku}}'}</code> - Gyártói cikkszám</li>
                       <li><code>{'{{name}}'}</code> - Termék neve</li>
                       <li><code>{'{{ean}}'}</code> - EAN kód</li>
                     </ul>

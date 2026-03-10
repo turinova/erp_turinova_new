@@ -3387,6 +3387,9 @@ export async function syncProductToDatabase(
         }
       }
       
+      // Track unit_id from descriptions (use Hungarian description as primary)
+      let productUnitId: string | null = null
+
       // NOW process descriptions (with smart sync)
       for (const desc of product.productDescriptions) {
         // Determine language code
@@ -3421,8 +3424,13 @@ export async function syncProductToDatabase(
 
         // Ensure unit exists in units table if measurementUnit is provided
         const measurementUnit = desc.measurementUnit || null
+        let unitId: string | null = null
         if (measurementUnit) {
-          await ensureUnitExists(supabase, measurementUnit)
+          unitId = await ensureUnitExists(supabase, measurementUnit)
+          // Use Hungarian description's unit_id for the product
+          if (languageCode === 'hu' && unitId) {
+            productUnitId = unitId
+          }
         }
 
         const descDataToSave = {
@@ -3435,7 +3443,7 @@ export async function syncProductToDatabase(
           short_description: desc.shortDescription || null,
           description: desc.description || null,
           parameters: desc.parameters || null, // Add parameters field
-          measurement_unit: measurementUnit, // Add measurementUnit field
+          measurement_unit: measurementUnit, // Add measurementUnit field (for ShopRenter sync compatibility)
           shoprenter_id: desc.id || null
         }
 
@@ -3449,6 +3457,29 @@ export async function syncProductToDatabase(
           await supabase
             .from('shoprenter_product_descriptions')
             .insert(descDataToSave)
+        }
+      }
+
+      // Update product with unit_id (from Hungarian description)
+      if (productUnitId) {
+        await supabase
+          .from('shoprenter_products')
+          .update({ unit_id: productUnitId })
+          .eq('id', dbProduct.id)
+      } else {
+        // If no unit found, set default to 'db' (Darab)
+        const { data: defaultUnit } = await supabase
+          .from('units')
+          .select('id')
+          .eq('shortform', 'db')
+          .is('deleted_at', null)
+          .maybeSingle()
+        
+        if (defaultUnit) {
+          await supabase
+            .from('shoprenter_products')
+            .update({ unit_id: defaultUnit.id })
+            .eq('id', dbProduct.id)
         }
       }
     }

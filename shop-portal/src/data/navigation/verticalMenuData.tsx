@@ -51,6 +51,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Pénznemek',
           href: '/currencies'
+        },
+        {
+          label: 'Raktárak',
+          href: '/warehouses'
         }
       ]
     },
@@ -66,6 +70,25 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Akciók',
           href: '/promotions'
+        }
+      ]
+    },
+    {
+      label: 'Beszerzés',
+      icon: 'ri-shopping-cart-2-line',
+      iconColor: '#3498DB', // Blue for purchasing
+      children: [
+        {
+          label: 'Beszerzési rendelések',
+          href: '/purchase-orders'
+        },
+        {
+          label: 'Szállítmányok',
+          href: '/shipments'
+        },
+        {
+          label: 'Készlet',
+          href: '/stock'
         }
       ]
     },
