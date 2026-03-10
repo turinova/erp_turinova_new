@@ -1021,6 +1021,430 @@ WITH CHECK (true);
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.weight_units TO authenticated;
 
 
+-- =============================================================================
+-- Migration: 20250322_create_suppliers_table.sql
+-- =============================================================================
+
+-- Create suppliers table
+-- This table stores supplier/beslállító master data
+
+CREATE TABLE IF NOT EXISTS public.suppliers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL, -- Cég neve
+    short_name VARCHAR, -- Rövid név / alias (optional)
+    email VARCHAR, -- E-mail cím
+    phone VARCHAR, -- Telefonszám
+    website VARCHAR, -- Weboldal
+    tax_number VARCHAR, -- Adószám
+    eu_tax_number VARCHAR, -- Közösségi adószám
+    note TEXT, -- Megjegyzés
+    status VARCHAR DEFAULT 'active' CHECK (status IN ('active', 'inactive')), -- Státusz: Aktív / Inaktív
+    default_payment_method_id UUID, -- Will reference payment_methods table (to be created later)
+    default_payment_terms_days INTEGER, -- Fizetési határidő (napokban, pl. 8, 14, 30, 60)
+    default_vat_id UUID REFERENCES public.vat(id) ON DELETE SET NULL, -- Alapértelmezett ÁFA
+    default_currency_id UUID, -- Will reference currencies table (to be created later)
+    default_order_channel VARCHAR CHECK (default_order_channel IN ('email', 'phone', 'in_person', 'internet')), -- Alapértelmezett rendelési csatorna
+    default_order_email VARCHAR, -- Alapértelmezett rendelési e-mail cím
+    email_template_subject TEXT, -- E-mail sablon tárgya
+    email_template_body TEXT, -- E-mail sablon törzse
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add unique constraint on name (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS suppliers_name_unique_active 
+ON public.suppliers (name) 
+WHERE deleted_at IS NULL;
+
+-- Add index for better performance when filtering out deleted records
+CREATE INDEX IF NOT EXISTS ix_suppliers_deleted_at ON public.suppliers(deleted_at) WHERE deleted_at IS NULL;
+
+-- Add index for status filtering
+CREATE INDEX IF NOT EXISTS ix_suppliers_status ON public.suppliers(status) WHERE deleted_at IS NULL;
+
+-- Add index for tax_number searches
+CREATE INDEX IF NOT EXISTS ix_suppliers_tax_number ON public.suppliers(tax_number) WHERE deleted_at IS NULL AND tax_number IS NOT NULL;
+
+-- Create trigger for suppliers table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_suppliers_updated_at ON public.suppliers;
+CREATE TRIGGER update_suppliers_updated_at
+    BEFORE UPDATE ON public.suppliers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for suppliers table
+ALTER TABLE public.suppliers ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for suppliers table
+DROP POLICY IF EXISTS "Suppliers are viewable by authenticated users" ON public.suppliers;
+CREATE POLICY "Suppliers are viewable by authenticated users" 
+ON public.suppliers
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Suppliers are manageable by authenticated users" ON public.suppliers;
+CREATE POLICY "Suppliers are manageable by authenticated users" 
+ON public.suppliers
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.suppliers TO authenticated;
+
+
+-- =============================================================================
+-- Migration: 20250322_create_supplier_addresses_table.sql
+-- =============================================================================
+
+-- Create supplier_addresses table
+-- This table stores multiple addresses for each supplier
+
+CREATE TABLE IF NOT EXISTS public.supplier_addresses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE CASCADE,
+    address_type VARCHAR NOT NULL CHECK (address_type IN ('headquarters', 'billing', 'shipping', 'other')), -- Típus: Székhely / Számlázási cím / Szállítási cím / Egyéb
+    country VARCHAR NOT NULL, -- Ország
+    postal_code VARCHAR, -- Irányítószám
+    city VARCHAR NOT NULL, -- Város
+    street VARCHAR, -- Utca, házszám
+    address_line_2 VARCHAR, -- További címadatok
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add index for supplier_id lookups
+CREATE INDEX IF NOT EXISTS ix_supplier_addresses_supplier_id ON public.supplier_addresses(supplier_id) WHERE deleted_at IS NULL;
+
+-- Add index for address_type filtering
+CREATE INDEX IF NOT EXISTS ix_supplier_addresses_type ON public.supplier_addresses(address_type) WHERE deleted_at IS NULL;
+
+-- Create trigger for supplier_addresses table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_supplier_addresses_updated_at ON public.supplier_addresses;
+CREATE TRIGGER update_supplier_addresses_updated_at
+    BEFORE UPDATE ON public.supplier_addresses
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for supplier_addresses table
+ALTER TABLE public.supplier_addresses ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for supplier_addresses table
+DROP POLICY IF EXISTS "Supplier addresses are viewable by authenticated users" ON public.supplier_addresses;
+CREATE POLICY "Supplier addresses are viewable by authenticated users" 
+ON public.supplier_addresses
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Supplier addresses are manageable by authenticated users" ON public.supplier_addresses;
+CREATE POLICY "Supplier addresses are manageable by authenticated users" 
+ON public.supplier_addresses
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.supplier_addresses TO authenticated;
+
+
+-- =============================================================================
+-- Migration: 20250322_create_supplier_bank_accounts_table.sql
+-- =============================================================================
+
+-- Create supplier_bank_accounts table
+-- This table stores multiple bank accounts for each supplier
+
+CREATE TABLE IF NOT EXISTS public.supplier_bank_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE CASCADE,
+    bank_name VARCHAR NOT NULL, -- Bank neve
+    account_number VARCHAR NOT NULL, -- Számlaszám / IBAN
+    swift_bic VARCHAR, -- SWIFT/BIC (optional)
+    currency_id UUID, -- Will reference currencies table (to be created later)
+    is_default BOOLEAN DEFAULT false, -- Alapértelmezett bank
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add index for supplier_id lookups
+CREATE INDEX IF NOT EXISTS ix_supplier_bank_accounts_supplier_id ON public.supplier_bank_accounts(supplier_id) WHERE deleted_at IS NULL;
+
+-- Add index for is_default filtering
+CREATE INDEX IF NOT EXISTS ix_supplier_bank_accounts_default ON public.supplier_bank_accounts(is_default) WHERE deleted_at IS NULL AND is_default = true;
+
+-- Create trigger for supplier_bank_accounts table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_supplier_bank_accounts_updated_at ON public.supplier_bank_accounts;
+CREATE TRIGGER update_supplier_bank_accounts_updated_at
+    BEFORE UPDATE ON public.supplier_bank_accounts
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for supplier_bank_accounts table
+ALTER TABLE public.supplier_bank_accounts ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for supplier_bank_accounts table
+DROP POLICY IF EXISTS "Supplier bank accounts are viewable by authenticated users" ON public.supplier_bank_accounts;
+CREATE POLICY "Supplier bank accounts are viewable by authenticated users" 
+ON public.supplier_bank_accounts
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Supplier bank accounts are manageable by authenticated users" ON public.supplier_bank_accounts;
+CREATE POLICY "Supplier bank accounts are manageable by authenticated users" 
+ON public.supplier_bank_accounts
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.supplier_bank_accounts TO authenticated;
+
+
+-- =============================================================================
+-- Migration: 20250322_create_supplier_order_channels_table.sql
+-- =============================================================================
+
+-- Create supplier_order_channels table
+-- This table stores order channel details, especially URL templates for internet-based ordering
+
+CREATE TABLE IF NOT EXISTS public.supplier_order_channels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE CASCADE,
+    channel_type VARCHAR NOT NULL CHECK (channel_type IN ('email', 'phone', 'in_person', 'internet')), -- Rendelési csatorna típusa
+    name VARCHAR, -- Név (pl. "Webshop keresés SKU alapján")
+    url_template TEXT, -- URL sablon (pl. "https://www.zar-vasalas.hu/shop_searchcomplex.php?search={{sku}}&overlay=search_error_no")
+    description TEXT, -- Leírás (rövid magyarázat)
+    is_default BOOLEAN DEFAULT false, -- Alapértelmezett csatorna
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add index for supplier_id lookups
+CREATE INDEX IF NOT EXISTS ix_supplier_order_channels_supplier_id ON public.supplier_order_channels(supplier_id) WHERE deleted_at IS NULL;
+
+-- Add index for channel_type filtering
+CREATE INDEX IF NOT EXISTS ix_supplier_order_channels_type ON public.supplier_order_channels(channel_type) WHERE deleted_at IS NULL;
+
+-- Add index for is_default filtering
+CREATE INDEX IF NOT EXISTS ix_supplier_order_channels_default ON public.supplier_order_channels(is_default) WHERE deleted_at IS NULL AND is_default = true;
+
+-- Create trigger for supplier_order_channels table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_supplier_order_channels_updated_at ON public.supplier_order_channels;
+CREATE TRIGGER update_supplier_order_channels_updated_at
+    BEFORE UPDATE ON public.supplier_order_channels
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for supplier_order_channels table
+ALTER TABLE public.supplier_order_channels ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for supplier_order_channels table
+DROP POLICY IF EXISTS "Supplier order channels are viewable by authenticated users" ON public.supplier_order_channels;
+CREATE POLICY "Supplier order channels are viewable by authenticated users" 
+ON public.supplier_order_channels
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Supplier order channels are manageable by authenticated users" ON public.supplier_order_channels;
+CREATE POLICY "Supplier order channels are manageable by authenticated users" 
+ON public.supplier_order_channels
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.supplier_order_channels TO authenticated;
+
+
+-- =============================================================================
+-- Migration: 20250322_create_payment_methods_table.sql
+-- =============================================================================
+
+-- Create payment_methods table for storing payment method options
+-- This table stores available payment methods for suppliers and orders
+
+CREATE TABLE IF NOT EXISTS public.payment_methods (
+  id UUID NOT NULL DEFAULT gen_random_uuid(),
+  name VARCHAR(50) NOT NULL,
+  comment TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT payment_methods_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_methods_name_key UNIQUE (name)
+);
+
+-- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_payment_methods_active 
+ON public.payment_methods (active) 
+WHERE (deleted_at IS NULL);
+
+CREATE INDEX IF NOT EXISTS idx_payment_methods_name 
+ON public.payment_methods (name) 
+WHERE (deleted_at IS NULL);
+
+CREATE INDEX IF NOT EXISTS idx_payment_methods_deleted_at 
+ON public.payment_methods (deleted_at);
+
+-- Create trigger for payment_methods table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_payment_methods_updated_at ON public.payment_methods;
+CREATE TRIGGER update_payment_methods_updated_at
+  BEFORE UPDATE ON public.payment_methods
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for payment_methods table
+ALTER TABLE public.payment_methods ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for payment_methods table
+DROP POLICY IF EXISTS "Payment methods are viewable by authenticated users" ON public.payment_methods;
+CREATE POLICY "Payment methods are viewable by authenticated users" 
+ON public.payment_methods
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Payment methods are manageable by authenticated users" ON public.payment_methods;
+CREATE POLICY "Payment methods are manageable by authenticated users" 
+ON public.payment_methods
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.payment_methods TO authenticated;
+
+-- Insert default payment methods
+INSERT INTO public.payment_methods (name, comment, active) VALUES
+  ('Készpénz', 'Készpénzes fizetés átvételkor', true),
+  ('Bankkártya', 'Bankkártyás fizetés POS terminálon', true),
+  ('Átutalás', 'Banki átutalás előre vagy utólag', true),
+  ('Díjbekérő', 'Proforma számla alapján', true),
+  ('Utánvét', 'Utánvétes fizetés szállításkor', true),
+  ('Online fizetés', 'Online bankkártyás fizetés', true)
+ON CONFLICT ON CONSTRAINT payment_methods_name_key DO NOTHING;
+
+-- Add foreign key constraint to suppliers table
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'suppliers_default_payment_method_id_fkey'
+  ) THEN
+    ALTER TABLE public.suppliers 
+    ADD CONSTRAINT suppliers_default_payment_method_id_fkey 
+    FOREIGN KEY (default_payment_method_id) 
+    REFERENCES public.payment_methods(id) 
+    ON DELETE SET NULL;
+  END IF;
+END $$;
+
+
+-- =============================================================================
+-- Migration: 20250322_create_currencies_table.sql
+-- =============================================================================
+
+-- Create currencies table
+-- This table stores available currencies for suppliers and orders
+
+CREATE TABLE IF NOT EXISTS public.currencies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR NOT NULL,
+    code VARCHAR(3) NOT NULL, -- ISO currency code (HUF, EUR, USD, etc.)
+    symbol VARCHAR(10), -- Currency symbol (Ft, €, $, etc.)
+    rate DECIMAL(10,4) NOT NULL DEFAULT 1.0000, -- Exchange rate relative to base currency
+    is_base BOOLEAN DEFAULT false, -- Whether this is the base currency
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+);
+
+-- Add unique constraint on name (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS currencies_name_unique_active 
+ON public.currencies (name) 
+WHERE deleted_at IS NULL;
+
+-- Add unique constraint on code (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS currencies_code_unique_active 
+ON public.currencies (code) 
+WHERE deleted_at IS NULL;
+
+-- Add index for better performance when filtering out deleted records
+CREATE INDEX IF NOT EXISTS ix_currencies_deleted_at ON public.currencies(deleted_at) WHERE deleted_at IS NULL;
+
+-- Create trigger for currencies table to automatically update updated_at
+DROP TRIGGER IF EXISTS update_currencies_updated_at ON public.currencies;
+CREATE TRIGGER update_currencies_updated_at
+    BEFORE UPDATE ON public.currencies
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS for currencies table
+ALTER TABLE public.currencies ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for currencies table
+DROP POLICY IF EXISTS "Currencies are viewable by authenticated users" ON public.currencies;
+CREATE POLICY "Currencies are viewable by authenticated users" 
+ON public.currencies
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Currencies are manageable by authenticated users" ON public.currencies;
+CREATE POLICY "Currencies are manageable by authenticated users" 
+ON public.currencies
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.currencies TO authenticated;
+
+-- Insert sample data with HUF as base currency
+-- Insert only if they don't already exist (checking by name)
+INSERT INTO public.currencies (name, code, symbol, rate, is_base) 
+SELECT * FROM (VALUES 
+    ('Forint', 'HUF', 'Ft', 1.0000, true),
+    ('Euró', 'EUR', '€', 0.0025, false),
+    ('Amerikai dollár', 'USD', '$', 0.0027, false),
+    ('Font', 'GBP', '£', 0.0021, false)
+) AS v(name, code, symbol, rate, is_base)
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.currencies 
+    WHERE currencies.name = v.name AND currencies.deleted_at IS NULL
+);
+
+-- Add foreign key constraint to suppliers table
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'suppliers_default_currency_id_fkey'
+  ) THEN
+    ALTER TABLE public.suppliers 
+    ADD CONSTRAINT suppliers_default_currency_id_fkey 
+    FOREIGN KEY (default_currency_id) 
+    REFERENCES public.currencies(id) 
+    ON DELETE SET NULL;
+  END IF;
+END $$;
+
+
 -- Create mapping table: ERP VAT rates ↔ ShopRenter taxClasses (per connection)
 CREATE TABLE IF NOT EXISTS public.shoprenter_tax_class_mappings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

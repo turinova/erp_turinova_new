@@ -24,8 +24,9 @@ interface ActiveSync {
 export function SyncProgressIndicator() {
   const [activeSyncs, setActiveSyncs] = useState<ActiveSync[]>([])
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const activeSyncsRef = useRef<ActiveSync[]>([])
 
-  // Poll for active syncs
+  // Poll for active syncs with dynamic interval
   useEffect(() => {
     const pollActiveSyncs = async () => {
       try {
@@ -33,8 +34,11 @@ export function SyncProgressIndicator() {
         if (response.ok) {
           const data = await response.json()
           if (data.success && data.activeSyncs) {
-            setActiveSyncs(data.activeSyncs)
+            const newSyncs = data.activeSyncs
+            activeSyncsRef.current = newSyncs
+            setActiveSyncs(newSyncs)
           } else {
+            activeSyncsRef.current = []
             setActiveSyncs([])
           }
         }
@@ -46,15 +50,31 @@ export function SyncProgressIndicator() {
     // Poll immediately
     pollActiveSyncs()
 
-    // Then poll every 2 seconds
-    pollingIntervalRef.current = setInterval(pollActiveSyncs, 2000)
+    // Dynamic polling: 2s when active syncs exist, 10s when inactive
+    const schedulePoll = () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
+      }
+
+      const hasActiveSyncs = activeSyncsRef.current.length > 0
+      const interval = hasActiveSyncs ? 2000 : 10000 // 2s if active, 10s if not
+
+      pollingIntervalRef.current = setInterval(async () => {
+        await pollActiveSyncs()
+        schedulePoll() // Reschedule based on updated state
+      }, interval)
+    }
+
+    schedulePoll()
 
     return () => {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current)
+        pollingIntervalRef.current = null
       }
     }
-  }, [])
+  }, []) // Empty deps - only run on mount/unmount
 
   // Don't render if no active syncs
   if (activeSyncs.length === 0) {

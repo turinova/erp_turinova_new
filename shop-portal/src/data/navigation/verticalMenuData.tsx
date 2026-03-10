@@ -39,6 +39,18 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Súlymértékek',
           href: '/weight-units'
+        },
+        {
+          label: 'Beszállítók',
+          href: '/suppliers'
+        },
+        {
+          label: 'Fizetési módok',
+          href: '/payment-methods'
+        },
+        {
+          label: 'Pénznemek',
+          href: '/currencies'
         }
       ]
     },
