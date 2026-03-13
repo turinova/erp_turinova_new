@@ -34,9 +34,47 @@ export async function HEAD() {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Parse webhook payload
-    const payload = await request.json()
-    
+    const contentType = request.headers.get('content-type') || ''
+    let payload: unknown
+
+    if (contentType.includes('application/x-www-form-urlencoded')) {
+      const text = await request.text()
+      const params = new URLSearchParams(text)
+      const raw = params.get('payload') ?? params.get('data') ?? params.get('body') ?? text
+      try {
+        payload = typeof raw === 'string' ? JSON.parse(raw) : raw
+      } catch (e) {
+        console.error('[WEBHOOK] Form body parse failed. Raw (truncated):', raw.slice(0, 500))
+        return NextResponse.json(
+          { error: 'Invalid JSON in form payload' },
+          { status: 400 }
+        )
+      }
+    } else {
+      const text = await request.text()
+      if (!text || !text.trim()) {
+        console.error('[WEBHOOK] Empty body. Content-Type:', contentType)
+        return NextResponse.json(
+          { error: 'Empty request body' },
+          { status: 400 }
+        )
+      }
+      try {
+        payload = JSON.parse(text)
+      } catch (e) {
+        console.error('[WEBHOOK] JSON parse failed. Content-Type:', contentType, 'Body (truncated):', text.slice(0, 500))
+        return NextResponse.json(
+          { error: 'Invalid JSON', details: e instanceof Error ? e.message : String(e) },
+          { status: 400 }
+        )
+      }
+    }
+
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      return NextResponse.json({ error: 'Payload must be a JSON object' }, { status: 400 })
+    }
+    const body = payload as Record<string, unknown>
+
     console.log('[WEBHOOK] Received ShopRenter webhook')
     
     // Extract store identifier from payload
@@ -46,10 +84,15 @@ export async function POST(request: NextRequest) {
     let apiUrl: string | null = null
     
     // Try to extract storeName from payload
-    if (payload.storeName) {
-      storeName = payload.storeName
-    } else if (payload.orders?.order?.[0]?.storeName) {
-      storeName = payload.orders.order[0].storeName
+    if (body.storeName) {
+      storeName = String(body.storeName)
+    } else if (body.orders && typeof body.orders === 'object' && body.orders !== null && !Array.isArray(body.orders)) {
+      const orders = body.orders as Record<string, unknown>
+      const orderArr = Array.isArray(orders.order) ? orders.order[0] : orders.order
+      const first = orderArr && typeof orderArr === 'object' && orderArr !== null && 'storeName' in orderArr
+        ? (orderArr as Record<string, unknown>).storeName
+        : null
+      if (first != null) storeName = String(first)
     }
     
     // Try to extract api_url from request headers or payload
@@ -136,19 +179,19 @@ export async function POST(request: NextRequest) {
     
     // Extract order information from payload
     // ShopRenter webhook format: { "orders": { "order": [{ ... }] } }
-    let orderData = null
-    if (payload.orders?.order) {
-      // Handle array of orders
-      orderData = Array.isArray(payload.orders.order) 
-        ? payload.orders.order[0] 
-        : payload.orders.order
-    } else if (payload.order) {
-      orderData = payload.order
+    let orderData: Record<string, unknown> | null = null
+    const ordersObj = body.orders && typeof body.orders === 'object' && body.orders !== null ? (body.orders as Record<string, unknown>) : null
+    const orderVal = ordersObj?.order
+    if (orderVal !== undefined && orderVal !== null) {
+      orderData = Array.isArray(orderVal) ? (orderVal[0] as Record<string, unknown>) : (orderVal as Record<string, unknown>)
+    } else if (body.order !== undefined && body.order !== null && typeof body.order === 'object') {
+      orderData = body.order as Record<string, unknown>
     } else {
-      orderData = payload
+      orderData = body
     }
     
-    if (!orderData || !orderData.innerId) {
+    const innerId = orderData?.innerId
+    if (!orderData || (innerId !== 0 && !innerId)) {
       console.error('[WEBHOOK] Invalid order data in payload')
       return NextResponse.json(
         { error: 'Invalid order data in webhook payload' },
@@ -156,8 +199,8 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const platform_order_id = orderData.innerId.toString()
-    const platform_order_resource_id = orderData.innerResourceId || null
+    const platform_order_id = String(orderData.innerId ?? '')
+    const platform_order_resource_id = orderData.innerResourceId != null ? String(orderData.innerResourceId) : null
     
     // Check if order already exists in buffer (prevent duplicates)
     const { data: existingOrder, error: checkError } = await tenantSupabase
