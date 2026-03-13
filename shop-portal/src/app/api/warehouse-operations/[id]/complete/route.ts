@@ -118,7 +118,7 @@ export async function PUT(
               await supabase.rpc('increment_po_item_received', {
                 po_item_id: item.purchase_order_item_id,
                 quantity: parseFloat(item.accepted_quantity)
-              }).catch(() => {
+              }).catch(async () => {
                 // If RPC doesn't exist, do manual update
                 const { data: currentItem } = await supabase
                   .from('purchase_order_items')
