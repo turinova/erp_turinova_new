@@ -18,54 +18,43 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#16A085'
     },
     {
-      label: 'Törzsadatok',
-      icon: 'ri-database-2-line',
-      iconColor: '#27AE60', // Green for master data
+      label: 'Rendelések',
+      icon: 'ri-shopping-bag-line',
+      iconColor: '#16A085', // Teal for orders
       children: [
         {
-          label: 'Termékek',
-          href: '/products'
+          label: 'Rendelések',
+          href: '/orders'
+        }
+      ]
+    },
+    {
+      label: 'Beszerzés',
+      icon: 'ri-shopping-cart-2-line',
+      iconColor: '#3498DB', // Blue for purchasing
+      children: [
+        {
+          label: 'Beszerzési rendelések',
+          href: '/purchase-orders'
         },
         {
-          label: 'Kategóriák',
-          href: '/categories'
-        },
-        {
-          label: 'Áfák',
-          href: '/vat'
-        },
-        {
-          label: 'Mértékegységek',
-          href: '/units'
-        },
-        {
-          label: 'Gyártók',
-          href: '/manufacturers'
-        },
-        {
-          label: 'Súlymértékek',
-          href: '/weight-units'
+          label: 'Szállítmányok',
+          href: '/shipments'
         },
         {
           label: 'Beszállítók',
           href: '/suppliers'
-        },
-        {
-          label: 'Fizetési módok',
-          href: '/payment-methods'
-        },
-        {
-          label: 'Szállítási módok',
-          href: '/shipping-methods'
-        },
-        {
-          label: 'Pénznemek',
-          href: '/currencies'
-        },
-        {
-          label: 'Raktárak',
-          href: '/warehouses'
         }
+      ]
+    },
+    {
+      label: 'Termékadatbázis',
+      icon: 'ri-archive-2-line',
+      iconColor: '#27AE60',
+      children: [
+        { label: 'Termékek', href: '/products' },
+        { label: 'Kategóriák', href: '/categories' },
+        { label: 'Gyártók', href: '/manufacturers' }
       ]
     },
     {
@@ -99,32 +88,6 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       ]
     },
     {
-      label: 'Beszerzés',
-      icon: 'ri-shopping-cart-2-line',
-      iconColor: '#3498DB', // Blue for purchasing
-      children: [
-        {
-          label: 'Beszerzési rendelések',
-          href: '/purchase-orders'
-        },
-        {
-          label: 'Szállítmányok',
-          href: '/shipments'
-        }
-      ]
-    },
-    {
-      label: 'Rendelések',
-      icon: 'ri-shopping-bag-line',
-      iconColor: '#16A085', // Teal for orders
-      children: [
-        {
-          label: 'Rendelések',
-          href: '/orders'
-        }
-      ]
-    },
-    {
       label: 'Raktár',
       icon: 'ri-archive-line',
       iconColor: '#D35400', // Orange for warehouse
@@ -151,6 +114,25 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Linkek kezelése',
           href: '/competitors/links'
+        }
+      ]
+    },
+    {
+      label: 'Törzsadatok',
+      icon: 'ri-database-2-line',
+      iconColor: '#27AE60', // Green for master data
+      children: [
+        {
+          label: 'Rendszer',
+          children: [
+            { label: 'Áfák', href: '/vat' },
+            { label: 'Mértékegységek', href: '/units' },
+            { label: 'Súlymértékek', href: '/weight-units' },
+            { label: 'Fizetési módok', href: '/payment-methods' },
+            { label: 'Szállítási módok', href: '/shipping-methods' },
+            { label: 'Pénznemek', href: '/currencies' },
+            { label: 'Raktárak', href: '/warehouses' }
+          ]
         }
       ]
     },

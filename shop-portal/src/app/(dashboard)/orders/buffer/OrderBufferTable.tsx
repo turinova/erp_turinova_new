@@ -320,14 +320,17 @@ export default function OrderBufferTable({
     }).format(num)
   }
 
+  /** European format: DD.MM.YYYY HH:mm */
   const formatDateShort = (dateString: string | null) => {
     if (!dateString) return '—'
-    return new Date(dateString).toLocaleDateString('hu-HU', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+    const d = new Date(dateString)
+    if (Number.isNaN(d.getTime())) return '—'
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    const hours = String(d.getHours()).padStart(2, '0')
+    const mins = String(d.getMinutes()).padStart(2, '0')
+    return `${day}.${month}.${year} ${hours}:${mins}`
   }
 
   const handleOpenFulfillability = async (event: React.MouseEvent<HTMLElement>, entryId: string) => {
@@ -644,7 +647,7 @@ export default function OrderBufferTable({
                         )}
                       </TableCell>
                       <TableCell>
-                        <Tooltip title={new Date(entry.received_at).toLocaleString('hu-HU')}>
+                        <Tooltip title={formatDateShort(entry.received_at)}>
                           <Chip
                             size="small"
                             icon={<ScheduleIcon sx={{ fontSize: 14 }} />}
