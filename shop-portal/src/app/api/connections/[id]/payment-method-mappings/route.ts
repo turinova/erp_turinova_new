@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
+import { extractShopNameFromUrl, getShopRenterAuthHeader } from '@/lib/shoprenter-api'
+import { fetchShopRenterPaymentModes } from '@/lib/shoprenter-payment-shipping'
 
 /**
  * GET /api/connections/[id]/payment-method-mappings
@@ -52,9 +54,28 @@ export async function GET(
       )
     }
 
+    let shoprenterPaymentModes: Array<{ id: string; code: string; name: string }> = []
+    if (connection.connection_type === 'shoprenter') {
+      try {
+        const shopName = extractShopNameFromUrl(connection.api_url)
+        if (shopName) {
+          const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
+            shopName,
+            connection.username,
+            connection.password,
+            connection.api_url
+          )
+          shoprenterPaymentModes = await fetchShopRenterPaymentModes(apiBaseUrl, authHeader)
+        }
+      } catch (error) {
+        console.warn('Error fetching ShopRenter payment modes:', error)
+      }
+    }
+
     return NextResponse.json({
       paymentMethods: paymentMethods || [],
-      mappings: mappings || []
+      mappings: mappings || [],
+      shoprenterPaymentModes
     })
   } catch (error) {
     console.error('Error in payment-method-mappings GET:', error)

@@ -65,11 +65,14 @@ interface BufferEntry {
   } | null
 }
 
+export type StockStatuses = Record<string, { quantity_available: number; in_stock: boolean; quantity_ordered: number }>
+
 interface OrderBufferDetailProps {
   initialEntry: BufferEntry
+  stockStatuses?: StockStatuses
 }
 
-export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailProps) {
+export default function OrderBufferDetail({ initialEntry, stockStatuses = {} }: OrderBufferDetailProps) {
   const router = useRouter()
   const [entry, setEntry] = useState<BufferEntry>(initialEntry)
   const [processing, setProcessing] = useState(false)
@@ -161,6 +164,26 @@ export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailPro
     const inner = raw.orderProduct
     if (inner == null) return []
     return Array.isArray(inner) ? inner : [inner]
+  })()
+
+  const stockSummary = (() => {
+    if (orderProducts.length === 0 || Object.keys(stockStatuses).length === 0) return null
+    const bySku = stockStatuses as StockStatuses
+    let allOk = true
+    let anyOk = false
+    let anyUnknown = false
+    orderProducts.forEach((p: any) => {
+      const sku = p.sku ? String(p.sku).trim() : null
+      const key = sku || `no-sku-${p.name}`
+      const st = bySku[key]
+      if (!st) anyUnknown = true
+      else if (st.in_stock) anyOk = true
+      else allOk = false
+    })
+    if (anyUnknown && !anyOk) return 'unknown'
+    if (allOk && anyOk) return 'all'
+    if (anyOk) return 'partial'
+    return 'none'
   })()
 
   return (
@@ -403,10 +426,36 @@ export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailPro
           <Grid item xs={12}>
             <Card>
               <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  <ShoppingCartIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
-                  Termékek
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                  <Typography variant="h6">
+                    <ShoppingCartIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+                    Termékek
+                  </Typography>
+                  {stockSummary !== null && (
+                    <Chip
+                      size="small"
+                      label={
+                        stockSummary === 'all'
+                          ? 'Minden termék raktáron'
+                          : stockSummary === 'partial'
+                            ? 'Részben raktáron'
+                            : stockSummary === 'none'
+                              ? 'Hiány van'
+                              : 'Raktár ismeretlen'
+                      }
+                      color={
+                        stockSummary === 'all'
+                          ? 'success'
+                          : stockSummary === 'partial'
+                            ? 'warning'
+                            : stockSummary === 'none'
+                              ? 'error'
+                              : 'default'
+                      }
+                      sx={{ fontWeight: 500 }}
+                    />
+                  )}
+                </Box>
                 <Divider sx={{ mb: 2 }} />
                 <TableContainer>
                   <Table size="small">
@@ -415,31 +464,54 @@ export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailPro
                         <TableCell>Termék neve</TableCell>
                         <TableCell>SKU</TableCell>
                         <TableCell align="right">Mennyiség</TableCell>
+                        <TableCell>Raktár</TableCell>
                         <TableCell align="right">Nettó ár</TableCell>
                         <TableCell align="right">Bruttó ár</TableCell>
                         <TableCell align="right">Összesen</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {orderProducts.map((product: any, index: number) => (
-                        <TableRow key={index}>
-                          <TableCell>{product.name || '-'}</TableCell>
-                          <TableCell>{product.sku || '-'}</TableCell>
-                          <TableCell align="right">{product.quantity || 1}</TableCell>
-                          <TableCell align="right">
-                            {formatCurrency(product.price || product.priceNet, product.currency || 'HUF')}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatCurrency(product.priceGross || product.price, product.currency || 'HUF')}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatCurrency(
-                              (product.priceGross || product.price || 0) * (product.quantity || 1),
-                              product.currency || 'HUF'
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {orderProducts.map((product: any, index: number) => {
+                        const sku = product.sku ? String(product.sku).trim() : null
+                        const key = sku || `index-${index}`
+                        const st = stockStatuses[key]
+                        const qty = parseInt(String(product.quantity || 1), 10) || 1
+                        return (
+                          <TableRow key={index}>
+                            <TableCell>{product.name || '-'}</TableCell>
+                            <TableCell>{product.sku || '-'}</TableCell>
+                            <TableCell align="right">{qty}</TableCell>
+                            <TableCell>
+                              {st ? (
+                                st.in_stock ? (
+                                  <Chip size="small" label={`Raktáron (${st.quantity_available} db)`} color="success" variant="outlined" />
+                                ) : (
+                                  <Chip
+                                    size="small"
+                                    label={`Hiány: ${st.quantity_available} db (kell ${st.quantity_ordered})`}
+                                    color="error"
+                                    variant="outlined"
+                                  />
+                                )
+                              ) : (
+                                <Typography variant="caption" color="text.secondary">—</Typography>
+                              )}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(product.price || product.priceNet, product.currency || 'HUF')}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(product.priceGross || product.price, product.currency || 'HUF')}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(
+                                (product.priceGross || product.price || 0) * qty,
+                                product.currency || 'HUF'
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

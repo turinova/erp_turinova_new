@@ -32,7 +32,7 @@ import {
   Create as CreateIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 interface Person {
   id: string
@@ -59,13 +59,15 @@ interface PersonsTableProps {
 
 export default function PersonsTable({ initialPersons }: PersonsTableProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const qFromUrl = searchParams.get('q') ?? ''
   const [persons, setPersons] = useState<Person[]>(initialPersons)
   const [filteredPersons, setFilteredPersons] = useState<Person[]>(initialPersons)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deletingPerson, setDeletingPerson] = useState<Person | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(qFromUrl)
   const [sourceFilter, setSourceFilter] = useState<'all' | 'local' | 'webshop_sync'>('all')
 
   // Filter persons based on search and filters

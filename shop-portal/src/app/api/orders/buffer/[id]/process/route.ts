@@ -341,7 +341,7 @@ async function matchCustomer(
 
 /**
  * Match payment and shipping methods.
- * Uses per-connection mapping tables first; falls back to code match if no mapping.
+ * Uses per-connection mapping tables first (by code, then by name); falls back to code match if no mapping.
  */
 async function matchPaymentAndShippingMethods(
   supabase: any,
@@ -356,63 +356,126 @@ async function matchPaymentAndShippingMethods(
   const platformPaymentCode = orderData.paymentMethodCode
     ? String(orderData.paymentMethodCode).trim()
     : null
+  const platformPaymentName = orderData.paymentMethodName
+    ? String(orderData.paymentMethodName).trim()
+    : null
   const platformShippingCode =
     orderData.shippingMethodExtension || orderData.shippingMethodCode
       ? String(orderData.shippingMethodExtension || orderData.shippingMethodCode).trim()
       : null
+  const platformShippingName = orderData.shippingMethodName
+    ? String(orderData.shippingMethodName).trim()
+    : null
 
-  // Payment: try mapping first, then fallback to code
-  if (platformPaymentCode) {
+  // Payment: try mapping by code first, then by name, then fallback to payment_methods.code
+  if (platformPaymentCode || platformPaymentName) {
     if (connectionId) {
-      const { data: mapping } = await supabase
-        .from('connection_payment_method_mappings')
-        .select('payment_method_id')
-        .eq('connection_id', connectionId)
-        .eq('platform_payment_code', platformPaymentCode)
-        .single()
-
-      if (mapping?.payment_method_id) {
-        paymentMethodId = mapping.payment_method_id
+      if (platformPaymentCode) {
+        const { data: mappingByCode } = await supabase
+          .from('connection_payment_method_mappings')
+          .select('payment_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_payment_code', platformPaymentCode)
+          .maybeSingle()
+        if (mappingByCode?.payment_method_id) {
+          paymentMethodId = mappingByCode.payment_method_id
+        }
+      }
+      if (!paymentMethodId && platformPaymentName) {
+        const { data: mappingByCodeCol } = await supabase
+          .from('connection_payment_method_mappings')
+          .select('payment_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_payment_code', platformPaymentName)
+          .maybeSingle()
+        if (mappingByCodeCol?.payment_method_id) {
+          paymentMethodId = mappingByCodeCol.payment_method_id
+        }
+      }
+      if (!paymentMethodId && platformPaymentName) {
+        const { data: mappingByNameCol } = await supabase
+          .from('connection_payment_method_mappings')
+          .select('payment_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_payment_name', platformPaymentName)
+          .maybeSingle()
+        if (mappingByNameCol?.payment_method_id) {
+          paymentMethodId = mappingByNameCol.payment_method_id
+        }
       }
     }
-    if (!paymentMethodId) {
+    if (!paymentMethodId && platformPaymentCode) {
       const { data: paymentMethod } = await supabase
         .from('payment_methods')
         .select('id')
         .eq('code', platformPaymentCode)
         .is('deleted_at', null)
         .eq('active', true)
-        .single()
-
+        .maybeSingle()
       if (paymentMethod) {
         paymentMethodId = paymentMethod.id
       }
     }
   }
 
-  // Shipping: try mapping first, then fallback to code
-  if (platformShippingCode) {
+  // Shipping: when platform reuses same code for different methods (e.g. WSESHIP for
+  // "Személyes átvétel" and "Kumifutar"), match by (code + name) first, then name only, then code only if unique.
+  if (platformShippingCode || platformShippingName) {
     if (connectionId) {
-      const { data: mapping } = await supabase
-        .from('connection_shipping_method_mappings')
-        .select('shipping_method_id')
-        .eq('connection_id', connectionId)
-        .eq('platform_shipping_code', platformShippingCode)
-        .single()
-
-      if (mapping?.shipping_method_id) {
-        shippingMethodId = mapping.shipping_method_id
+      if (platformShippingCode && platformShippingName) {
+        const { data: mappingByCodeAndName } = await supabase
+          .from('connection_shipping_method_mappings')
+          .select('shipping_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_shipping_code', platformShippingCode)
+          .eq('platform_shipping_name', platformShippingName)
+          .maybeSingle()
+        if (mappingByCodeAndName?.shipping_method_id) {
+          shippingMethodId = mappingByCodeAndName.shipping_method_id
+        }
+      }
+      if (!shippingMethodId && platformShippingName) {
+        const { data: mappingByCodeAsName } = await supabase
+          .from('connection_shipping_method_mappings')
+          .select('shipping_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_shipping_code', platformShippingName)
+          .maybeSingle()
+        if (mappingByCodeAsName?.shipping_method_id) {
+          shippingMethodId = mappingByCodeAsName.shipping_method_id
+        }
+      }
+      if (!shippingMethodId && platformShippingName) {
+        const { data: mappingByName } = await supabase
+          .from('connection_shipping_method_mappings')
+          .select('shipping_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_shipping_name', platformShippingName)
+          .maybeSingle()
+        if (mappingByName?.shipping_method_id) {
+          shippingMethodId = mappingByName.shipping_method_id
+        }
+      }
+      if (!shippingMethodId && platformShippingCode) {
+        const { data: mappingsByCode } = await supabase
+          .from('connection_shipping_method_mappings')
+          .select('shipping_method_id')
+          .eq('connection_id', connectionId)
+          .eq('platform_shipping_code', platformShippingCode)
+        if (mappingsByCode?.length === 1) {
+          shippingMethodId = mappingsByCode[0].shipping_method_id
+        }
+        // If multiple rows share same code, we do not pick one (ambiguous)
       }
     }
-    if (!shippingMethodId) {
+    if (!shippingMethodId && platformShippingCode) {
       const { data: shippingMethod } = await supabase
         .from('shipping_methods')
         .select('id')
         .eq('code', platformShippingCode)
         .is('deleted_at', null)
         .eq('is_active', true)
-        .single()
-
+        .maybeSingle()
       if (shippingMethod) {
         shippingMethodId = shippingMethod.id
       }

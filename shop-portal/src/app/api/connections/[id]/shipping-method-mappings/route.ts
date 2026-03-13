@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
+import { extractShopNameFromUrl, getShopRenterAuthHeader } from '@/lib/shoprenter-api'
+import { fetchShopRenterShippingModeExtend } from '@/lib/shoprenter-payment-shipping'
 
 /**
  * GET /api/connections/[id]/shipping-method-mappings
@@ -52,9 +54,28 @@ export async function GET(
       )
     }
 
+    let shoprenterShippingModes: Array<{ id: string; extension: string; name: string }> = []
+    if (connection.connection_type === 'shoprenter') {
+      try {
+        const shopName = extractShopNameFromUrl(connection.api_url)
+        if (shopName) {
+          const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
+            shopName,
+            connection.username,
+            connection.password,
+            connection.api_url
+          )
+          shoprenterShippingModes = await fetchShopRenterShippingModeExtend(apiBaseUrl, authHeader)
+        }
+      } catch (error) {
+        console.warn('Error fetching ShopRenter shipping modes:', error)
+      }
+    }
+
     return NextResponse.json({
       shippingMethods: shippingMethods || [],
-      mappings: mappings || []
+      mappings: mappings || [],
+      shoprenterShippingModes
     })
   } catch (error) {
     console.error('Error in shipping-method-mappings GET:', error)

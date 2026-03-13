@@ -55,8 +55,6 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
   const [deletingMethod, setDeletingMethod] = useState<ShippingMethod | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    code: '',
-    extension: '',
     is_active: true
   })
   const [errors, setErrors] = useState<{ name?: string }>({})
@@ -66,15 +64,10 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
   const handleOpenDialog = (method?: ShippingMethod) => {
     if (method) {
       setEditingMethod(method)
-      setFormData({
-        name: method.name,
-        code: method.code || '',
-        extension: method.extension || '',
-        is_active: method.is_active
-      })
+      setFormData({ name: method.name, is_active: method.is_active })
     } else {
       setEditingMethod(null)
-      setFormData({ name: '', code: '', extension: '', is_active: true })
+      setFormData({ name: '', is_active: true })
     }
     setErrors({})
     setDialogOpen(true)
@@ -83,7 +76,7 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
   const handleCloseDialog = () => {
     setDialogOpen(false)
     setEditingMethod(null)
-    setFormData({ name: '', code: '', extension: '', is_active: true })
+    setFormData({ name: '', is_active: true })
     setErrors({})
   }
 
@@ -130,8 +123,8 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: formData.name.trim(),
-          code: formData.code.trim() || null,
-          extension: formData.extension.trim() || null,
+          code: editingMethod?.code ?? null,
+          extension: editingMethod?.extension ?? null,
           is_active: formData.is_active
         })
       })
@@ -326,22 +319,6 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
             onChange={e => setFormData(prev => ({ ...prev, name: e.target.value }))}
             error={!!errors.name}
             helperText={errors.name}
-          />
-          <TextField
-            margin="dense"
-            label="Kód"
-            fullWidth
-            placeholder="pl. GLS, GLSPARCELPOINT"
-            value={formData.code}
-            onChange={e => setFormData(prev => ({ ...prev, code: e.target.value }))}
-          />
-          <TextField
-            margin="dense"
-            label="Extension"
-            fullWidth
-            placeholder="pl. GLSPARCELPOINT"
-            value={formData.extension}
-            onChange={e => setFormData(prev => ({ ...prev, extension: e.target.value }))}
           />
           <FormControlLabel
             control={

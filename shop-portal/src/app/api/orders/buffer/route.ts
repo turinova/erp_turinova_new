@@ -19,11 +19,17 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const status = searchParams.get('status') || 'pending'
     const connectionId = searchParams.get('connection_id')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const offset = parseInt(searchParams.get('offset') || '0')
+    const dateFrom = searchParams.get('date_from') || ''
+    const dateTo = searchParams.get('date_to') || ''
+    const shippingMethod = searchParams.get('shipping_method') || ''
+    const limit = Math.min(100, parseInt(searchParams.get('limit') || '50') || 50)
+    const pageParam = searchParams.get('page')
+    const offsetParam = searchParams.get('offset')
+    const offset = pageParam
+      ? (Math.max(1, parseInt(pageParam) || 1) - 1) * limit
+      : parseInt(offsetParam || '0')
 
-    // Build query
-    // Note: Using explicit join syntax since PostgREST needs the foreign key to be recognized
+    // Build query (fetch more when we need to filter by shipping in memory)
     let query = supabase
       .from('order_buffer')
       .select(`
@@ -46,14 +52,23 @@ export async function GET(request: NextRequest) {
       `)
       .eq('status', status)
       .order('received_at', { ascending: false })
-      .range(offset, offset + limit - 1)
 
-    // Filter by connection if provided
     if (connectionId) {
       query = query.eq('connection_id', connectionId)
     }
+    if (dateFrom) {
+      const from = new Date(dateFrom)
+      if (!isNaN(from.getTime())) query = query.gte('received_at', from.toISOString())
+    }
+    if (dateTo) {
+      const to = new Date(dateTo)
+      if (!isNaN(to.getTime())) query = query.lte('received_at', to.toISOString())
+    }
 
-    const { data: bufferEntries, error } = await query
+    // Fetch up to 1000 when filtering by shipping (we filter in memory)
+    const fetchLimit = shippingMethod ? 1000 : limit
+    const fetchOffset = shippingMethod ? 0 : offset
+    const { data: bufferEntriesRaw, error } = await query.range(fetchOffset, fetchOffset + (shippingMethod ? 999 : limit - 1))
 
     if (error) {
       console.error('[BUFFER] Error fetching buffer entries:', error)
@@ -63,24 +78,20 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get total count for pagination
-    let countQuery = supabase
-      .from('order_buffer')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', status)
+    let bufferEntries = bufferEntriesRaw || []
 
-    if (connectionId) {
-      countQuery = countQuery.eq('connection_id', connectionId)
+    const getProductCount = (od: any) => {
+      const raw = od?.orderProducts
+      if (!raw) return 0
+      if (Array.isArray(raw)) return raw.length
+      const inner = raw.orderProduct
+      return inner == null ? 0 : Array.isArray(inner) ? inner.length : 1
     }
-
-    const { count, error: countError } = await countQuery
-
     // Extract order data from webhook_data for display
-    const enrichedEntries = bufferEntries?.map((entry: any) => {
+    let enrichedEntries = (bufferEntries as any[]).map((entry: any) => {
       const webhookData = entry.webhook_data as any
-      // Handle different webhook formats
       const orderData = webhookData?.orders?.order?.[0] || webhookData?.order || webhookData
-      
+
       return {
         id: entry.id,
         connection_id: entry.connection_id,
@@ -93,7 +104,6 @@ export async function GET(request: NextRequest) {
         created_at: entry.created_at,
         updated_at: entry.updated_at,
         connection: entry.webshop_connections,
-        // Extract order summary from webhook_data
         order_summary: {
           customer_name: orderData?.firstname && orderData?.lastname
             ? `${orderData.firstname} ${orderData.lastname}`
@@ -102,19 +112,29 @@ export async function GET(request: NextRequest) {
           total: orderData?.totalGross || orderData?.total || null,
           currency: orderData?.currency?.code || orderData?.currency || 'HUF',
           date_created: orderData?.dateCreated || null,
-          order_status: orderData?.orderStatus?.name || orderData?.orderHistory?.statusText || null
+          order_status: orderData?.orderStatus?.name || orderData?.orderHistory?.statusText || null,
+          payment_method_name: orderData?.paymentMethodName || null,
+          shipping_method_name: orderData?.shippingMethodName || null,
+          product_count: getProductCount(orderData)
         }
       }
-    }) || []
+    })
+
+    if (shippingMethod) {
+      enrichedEntries = enrichedEntries.filter(e => (e.order_summary.shipping_method_name || '').trim() === shippingMethod)
+    }
+
+    const total = enrichedEntries.length
+    const paginatedEntries = shippingMethod ? enrichedEntries.slice(offset, offset + limit) : enrichedEntries
 
     return NextResponse.json({
       success: true,
-      entries: enrichedEntries,
+      entries: paginatedEntries,
       pagination: {
-        total: count || 0,
+        total,
         limit,
         offset,
-        has_more: (count || 0) > offset + limit
+        has_more: total > offset + limit
       }
     })
 

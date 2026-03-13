@@ -145,8 +145,12 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [savingShippingMapping, setSavingShippingMapping] = useState(false)
   const [newPaymentCode, setNewPaymentCode] = useState('')
   const [newPaymentMethodId, setNewPaymentMethodId] = useState('')
+  const [shoprenterPaymentModes, setShoprenterPaymentModes] = useState<Array<{ id: string; code: string; name: string }>>([])
+  const [selectedShoprenterPaymentCode, setSelectedShoprenterPaymentCode] = useState('')
   const [newShippingCode, setNewShippingCode] = useState('')
   const [newShippingMethodId, setNewShippingMethodId] = useState('')
+  const [shoprenterShippingModes, setShoprenterShippingModes] = useState<Array<{ id: string; extension: string; name: string }>>([])
+  const [selectedShoprenterShippingExtension, setSelectedShoprenterShippingExtension] = useState('')
 
   // Load sync logs for a connection
   const loadSyncLogs = async (connectionId: string) => {
@@ -980,12 +984,15 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     setPaymentMappingDialogOpen(true)
     setNewPaymentCode('')
     setNewPaymentMethodId('')
+    setSelectedShoprenterPaymentCode('')
+    setShoprenterPaymentModes([])
     try {
       const response = await fetch(`/api/connections/${connection.id}/payment-method-mappings`)
       if (response.ok) {
         const data = await response.json()
         setPaymentMethods(data.paymentMethods || [])
         setPaymentMappings(data.mappings || [])
+        setShoprenterPaymentModes(data.shoprenterPaymentModes || [])
       } else {
         toast.error('Hiba a fizetési mód leképezések betöltésekor')
       }
@@ -1018,6 +1025,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         })
         setNewPaymentCode('')
         setNewPaymentMethodId('')
+        setSelectedShoprenterPaymentCode('')
         toast.success('Fizetési mód leképezés mentve')
       } else {
         const err = await response.json()
@@ -1057,12 +1065,15 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     setShippingMappingDialogOpen(true)
     setNewShippingCode('')
     setNewShippingMethodId('')
+    setSelectedShoprenterShippingExtension('')
+    setShoprenterShippingModes([])
     try {
       const response = await fetch(`/api/connections/${connection.id}/shipping-method-mappings`)
       if (response.ok) {
         const data = await response.json()
         setShippingMethods(data.shippingMethods || [])
         setShippingMappings(data.mappings || [])
+        setShoprenterShippingModes(data.shoprenterShippingModes || [])
       } else {
         toast.error('Hiba a szállítási mód leképezések betöltésekor')
       }
@@ -1094,6 +1105,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         })
         setNewShippingCode('')
         setNewShippingMethodId('')
+        setSelectedShoprenterShippingExtension('')
         toast.success('Szállítási mód leképezés mentve')
       } else {
         const err = await response.json()
@@ -3710,17 +3722,35 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           ) : (
             <Box>
               <Alert severity="info" sx={{ mb: 3 }}>
-                A webshop fizetési mód kódját (pl. COD, BANK_TRANSFER) kösse az ERP fizetési módhoz. A rendelés feldolgozásnál ezt a leképezést használja a rendszer.
+                {shoprenterPaymentModes.length > 0
+                  ? 'Válassza ki a ShopRenter fizetési módot és az ERP fizetési módot. A rendelés feldolgozásnál ezt a leképezést használja a rendszer.'
+                  : 'A webshop fizetési mód kódját (pl. COD, bank_transfer) kösse az ERP fizetési módhoz. Ha az API elérhető, a ShopRenter módok listája automatikusan megjelenik.'}
               </Alert>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-                <TextField
-                  size="small"
-                  label="Platform kód"
-                  placeholder="pl. COD"
-                  value={newPaymentCode}
-                  onChange={e => setNewPaymentCode(e.target.value)}
-                  sx={{ minWidth: 140 }}
-                />
+                {shoprenterPaymentModes.length > 0 ? (
+                  <FormControl size="small" sx={{ minWidth: 280 }}>
+                    <InputLabel>ShopRenter fizetési mód</InputLabel>
+                    <Select
+                      value={selectedShoprenterPaymentCode}
+                      onChange={e => setSelectedShoprenterPaymentCode(e.target.value)}
+                      label="ShopRenter fizetési mód"
+                    >
+                      <MenuItem value=""><em>Válasszon</em></MenuItem>
+                      {shoprenterPaymentModes.map(pm => (
+                        <MenuItem key={pm.id} value={pm.code}>{pm.name} ({pm.code})</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    size="small"
+                    label="Platform kód"
+                    placeholder="pl. bank_transfer"
+                    value={newPaymentCode}
+                    onChange={e => setNewPaymentCode(e.target.value)}
+                    sx={{ minWidth: 140 }}
+                  />
+                )}
                 <FormControl size="small" sx={{ minWidth: 200 }}>
                   <InputLabel>ERP fizetési mód</InputLabel>
                   <Select
@@ -3736,8 +3766,12 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 </FormControl>
                 <Button
                   variant="contained"
-                  disabled={!newPaymentCode.trim() || !newPaymentMethodId || savingPaymentMapping}
-                  onClick={() => handleSavePaymentMapping(newPaymentMethodId, newPaymentCode)}
+                  disabled={(shoprenterPaymentModes.length > 0 ? !selectedShoprenterPaymentCode : !newPaymentCode.trim()) || !newPaymentMethodId || savingPaymentMapping}
+                  onClick={() => {
+                    const code = shoprenterPaymentModes.length > 0 ? selectedShoprenterPaymentCode : newPaymentCode.trim()
+                    const name = shoprenterPaymentModes.length > 0 ? shoprenterPaymentModes.find(p => p.code === selectedShoprenterPaymentCode)?.name : null
+                    handleSavePaymentMapping(newPaymentMethodId, code, name)
+                  }}
                 >
                   {savingPaymentMapping ? 'Mentés…' : 'Hozzáadás'}
                 </Button>
@@ -3818,17 +3852,35 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           ) : (
             <Box>
               <Alert severity="info" sx={{ mb: 3 }}>
-                A webshop szállítási mód kódját (pl. GLSPARCELPOINT) kösse az ERP szállítási módhoz. A rendelés feldolgozásnál ezt a leképezést használja a rendszer.
+                {shoprenterShippingModes.length > 0
+                  ? 'Válassza ki a ShopRenter szállítási módot és az ERP szállítási módot. A rendelés feldolgozásnál ezt a leképezést használja a rendszer.'
+                  : 'A webshop szállítási mód kódját (pl. GLSPARCELPOINT, WSESHIP) kösse az ERP szállítási módhoz. Ha az API elérhető, a ShopRenter módok listája automatikusan megjelenik.'}
               </Alert>
               <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-                <TextField
-                  size="small"
-                  label="Platform kód"
-                  placeholder="pl. GLSPARCELPOINT"
-                  value={newShippingCode}
-                  onChange={e => setNewShippingCode(e.target.value)}
-                  sx={{ minWidth: 160 }}
-                />
+                {shoprenterShippingModes.length > 0 ? (
+                  <FormControl size="small" sx={{ minWidth: 280 }}>
+                    <InputLabel>ShopRenter szállítási mód</InputLabel>
+                    <Select
+                      value={selectedShoprenterShippingExtension}
+                      onChange={e => setSelectedShoprenterShippingExtension(e.target.value)}
+                      label="ShopRenter szállítási mód"
+                    >
+                      <MenuItem value=""><em>Válasszon</em></MenuItem>
+                      {shoprenterShippingModes.map(sm => (
+                        <MenuItem key={sm.id} value={sm.extension}>{sm.name} ({sm.extension})</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    size="small"
+                    label="Platform kód"
+                    placeholder="pl. GLSPARCELPOINT"
+                    value={newShippingCode}
+                    onChange={e => setNewShippingCode(e.target.value)}
+                    sx={{ minWidth: 160 }}
+                  />
+                )}
                 <FormControl size="small" sx={{ minWidth: 200 }}>
                   <InputLabel>ERP szállítási mód</InputLabel>
                   <Select
@@ -3844,8 +3896,12 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 </FormControl>
                 <Button
                   variant="contained"
-                  disabled={!newShippingCode.trim() || !newShippingMethodId || savingShippingMapping}
-                  onClick={() => handleSaveShippingMapping(newShippingMethodId, newShippingCode)}
+                  disabled={(shoprenterShippingModes.length > 0 ? !selectedShoprenterShippingExtension : !newShippingCode.trim()) || !newShippingMethodId || savingShippingMapping}
+                  onClick={() => {
+                    const code = shoprenterShippingModes.length > 0 ? selectedShoprenterShippingExtension : newShippingCode.trim()
+                    const name = shoprenterShippingModes.length > 0 ? shoprenterShippingModes.find(s => s.extension === selectedShoprenterShippingExtension)?.name : null
+                    handleSaveShippingMapping(newShippingMethodId, code, name)
+                  }}
                 >
                   {savingShippingMapping ? 'Mentés…' : 'Hozzáadás'}
                 </Button>

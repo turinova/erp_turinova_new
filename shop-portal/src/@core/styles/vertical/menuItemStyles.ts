@@ -42,11 +42,11 @@ const menuItemStyles = (verticalNavOptions: VerticalNavState, theme: Theme): Men
               }
             }
           : {
-              color: 'var(--mui-palette-primary-contrastText)',
-              backgroundColor: 'var(--mui-palette-primary-main)',
+              backgroundColor: 'var(--mui-palette-primary-lightOpacity)',
+              color: 'var(--mui-palette-primary-main)',
               boxShadow: 'var(--mui-customShadows-xs)',
               [`& .${menuClasses.icon}`]: {
-                color: 'inherit'
+                color: 'var(--mui-palette-primary-main)'
               }
             })
       }

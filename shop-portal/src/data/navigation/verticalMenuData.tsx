@@ -12,6 +12,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#0B6E99' // Blue for home/dashboard
     },
     {
+      label: 'Rendelés puffer',
+      href: '/orders/buffer',
+      icon: 'ri-inbox-line',
+      iconColor: '#16A085'
+    },
+    {
       label: 'Törzsadatok',
       icon: 'ri-database-2-line',
       iconColor: '#27AE60', // Green for master data
@@ -112,10 +118,6 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       icon: 'ri-shopping-bag-line',
       iconColor: '#16A085', // Teal for orders
       children: [
-        {
-          label: 'Rendelés puffer',
-          href: '/orders/buffer'
-        },
         {
           label: 'Rendelések',
           href: '/orders'
