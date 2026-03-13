@@ -37,7 +37,26 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || ''
     let payload: unknown
 
-    if (contentType.includes('application/x-www-form-urlencoded')) {
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData()
+      const raw = formData.get('data') ?? formData.get('payload') ?? formData.get('body')
+      const text = raw == null ? '' : typeof raw === 'string' ? raw : await (raw as Blob).text()
+      if (!text?.trim()) {
+        return NextResponse.json(
+          { error: 'Missing JSON field (data/payload/body) in multipart body' },
+          { status: 400 }
+        )
+      }
+      try {
+        payload = JSON.parse(text)
+      } catch (e) {
+        console.error('[WEBHOOK] Multipart JSON parse failed. Body (truncated):', text.slice(0, 500))
+        return NextResponse.json(
+          { error: 'Invalid JSON in multipart field', details: e instanceof Error ? e.message : String(e) },
+          { status: 400 }
+        )
+      }
+    } else if (contentType.includes('application/x-www-form-urlencoded')) {
       const text = await request.text()
       const params = new URLSearchParams(text)
       const raw = params.get('payload') ?? params.get('data') ?? params.get('body') ?? text
