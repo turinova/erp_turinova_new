@@ -32,6 +32,11 @@ ADMIN_SUPABASE_SERVICE_ROLE_KEY=your-admin-service-role-key
 
 # AI Features (Anthropic Claude)
 ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# Webhook URL (for ShopRenter order webhooks)
+# Production: https://your-domain.com/api/webhooks/shoprenter
+# Development (with ngrok): https://your-ngrok-url.ngrok.io/api/webhooks/shoprenter
+NEXT_PUBLIC_WEBHOOK_URL=https://your-domain.com/api/webhooks/shoprenter
 ```
 
 ### Why These Variables?

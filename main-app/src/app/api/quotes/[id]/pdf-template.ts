@@ -72,6 +72,20 @@ interface Quote {
     }>
   }>
   fees: QuoteFee[]
+  accessories?: Array<{
+    id: string
+    accessory_name: string
+    sku?: string | null
+    quantity: number
+    unit_price_net: number
+    vat_rate: number
+    total_net?: number
+    total_vat?: number
+    total_gross: number
+    unit_name?: string | null
+    accessories?: { name: string; sku?: string | null } | null
+    units?: { name?: string; shortform?: string } | null
+  }>
   panels?: Array<{
     id: string
     material_machine_code: string
@@ -94,6 +108,9 @@ interface Quote {
     total_gross: number
     final_total_after_discount: number
     fees_total_gross: number
+    accessories_total_net?: number
+    accessories_total_vat?: number
+    accessories_total_gross?: number
   }
 }
 
@@ -438,8 +455,32 @@ export default function generateQuotePdfHtml({
       </tr>
     `)
   })
+
+  // 3. Accessories (termékek) from quote_accessories table
+  const accessoryRows = (quote.accessories || []).map((acc) => {
+    const name = acc.accessories?.name || acc.accessory_name || ''
+    const unitPriceGross = acc.quantity > 0 ? acc.total_gross / acc.quantity : 0
+    const roundedUnitPriceGross = Math.round(unitPriceGross)
+    const recalculatedTotalGross = roundedUnitPriceGross * acc.quantity
+    const unitLabel = acc.units?.shortform || acc.units?.name || acc.unit_name || 'db'
+    return `
+      <tr>
+        <td>
+          <div style="font-weight: 500;">${escapeHtml(name)}</div>
+          ${acc.sku || (acc.accessories?.sku) ? `<div style="font-size: 9px; color: #757575; margin-top: 0.25em;">${escapeHtml(acc.accessories?.sku || acc.sku || '')}</div>` : ''}
+        </td>
+        <td></td>
+        <td>
+          <span class="chip">Termék</span>
+        </td>
+        <td class="text-right nowrap">${acc.quantity} ${escapeHtml(unitLabel)}</td>
+        <td class="text-right nowrap">${formatCurrencyPdf(roundedUnitPriceGross)} Ft</td>
+        <td class="text-right nowrap" style="font-weight: 500;">${formatCurrencyPdf(Math.round(recalculatedTotalGross))} Ft</td>
+      </tr>
+    `
+  }).join('')
   
-  // 3. Fees from quote_fees table
+  // 4. Fees from quote_fees table
   const feeRows = quote.fees.map((fee) => {
     const unitPriceGross = fee.quantity > 0 ? fee.gross_price / fee.quantity : 0
     const roundedUnitPriceGross = Math.round(unitPriceGross)
@@ -467,7 +508,7 @@ export default function generateQuotePdfHtml({
     `
   }).join('')
   
-  const itemsRows = materialRows + serviceRows.join('') + feeRows
+  const itemsRows = materialRows + serviceRows.join('') + accessoryRows + feeRows
 
   // Use database summary totals for final summary (matching order detail page)
   // The item rows show recalculated values for display consistency, but the final total

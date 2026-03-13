@@ -79,7 +79,41 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
-### 6. Ha még mindig nem működik - Next.js cache törlése
+### 6. Webhook URL beállítása (ShopRenter webhook-okhoz)
+
+Ha ShopRenter webhook-okat szeretnél tesztelni localhost-on:
+
+1. **Telepítsd az ngrok-ot**:
+   ```bash
+   brew install ngrok  # macOS
+   ```
+
+2. **Regisztrálj az ngrok-ra**: https://ngrok.com (ingyenes)
+
+3. **Konfiguráld**:
+   ```bash
+   ngrok config add-authtoken YOUR_AUTH_TOKEN
+   ```
+
+4. **Indítsd el az ngrok tunnel-t** (új terminálban):
+   ```bash
+   ngrok http 3000
+   ```
+
+5. **Másold ki az HTTPS URL-t** (pl. `https://abc123.ngrok-free.app`)
+
+6. **Add hozzá a `.env.local` fájlhoz**:
+   ```env
+   NEXT_PUBLIC_WEBHOOK_URL=https://abc123.ngrok-free.app/api/webhooks/shoprenter
+   ```
+
+7. **Indítsd újra a Next.js szervert**
+
+**Fontos**: Az ngrok URL minden indításkor változik. Ha újraindítod az ngrok-ot, frissítsd a `.env.local` fájlt is!
+
+Részletes útmutató: `LOCALHOST_WEBHOOK_TESTING.md`
+
+### 7. Ha még mindig nem működik - Next.js cache törlése
 
 ```bash
 cd shop-portal

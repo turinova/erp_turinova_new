@@ -5914,3 +5914,1529 @@ $$ LANGUAGE plpgsql;
 -- Comments
 COMMENT ON MATERIALIZED VIEW public.stock_summary IS 'Real-time aggregated stock levels per product per warehouse. Refresh manually after stock movements.';
 COMMENT ON FUNCTION refresh_stock_summary() IS 'Refresh the stock_summary materialized view. Call after bulk stock movements.';
+
+
+-- =============================================================================
+-- Migration: 20250323_add_purchasing_pages_to_permissions.sql
+-- =============================================================================
+
+-- Add purchasing pages to permissions system
+-- These pages will be under the "Beszerzés" navigation section
+
+INSERT INTO public.pages (path, name, description, category, is_active) VALUES
+('/purchase-orders', 'Beszerzési rendelések', 'Beszerzési rendelések kezelése', 'Beszerzés', true),
+('/purchase-orders/new', 'Új beszerzési rendelés', 'Új beszerzési rendelés létrehozása', 'Beszerzés', true),
+('/purchase-orders/[id]', 'Beszerzési rendelés szerkesztése', 'Beszerzési rendelés szerkesztése', 'Beszerzés', true),
+('/shipments', 'Szállítmányok', 'Szállítmányok kezelése', 'Beszerzés', true),
+('/shipments/[id]/receiving', 'Szállítmány bevételezés', 'Szállítmány bevételezése', 'Beszerzés', true)
+ON CONFLICT (path) DO UPDATE SET 
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  category = EXCLUDED.category,
+  is_active = EXCLUDED.is_active;
+
+-- Grant default access to all existing users for purchasing pages
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path IN ('/purchase-orders', '/purchase-orders/new', '/purchase-orders/[id]', '/shipments', '/shipments/[id]/receiving')
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+
+-- =============================================================================
+-- Migration: 20250324_add_warehouse_operations_page_to_permissions.sql
+-- =============================================================================
+
+-- Add warehouse operations pages to permissions system
+-- These pages will be under the "Raktár" navigation section
+
+INSERT INTO public.pages (path, name, description, category, is_active) VALUES
+('/warehouse-operations', 'Raktári műveletek', 'Raktári műveletek listázása és kezelése', 'Raktár', true),
+('/warehouse-operations/[id]', 'Raktári művelet részletei', 'Raktári művelet részleteinek megtekintése', 'Raktár', true)
+ON CONFLICT (path) DO UPDATE SET
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  category = EXCLUDED.category,
+  is_active = EXCLUDED.is_active;
+
+-- Grant default access to all existing users for warehouse operations pages
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path IN ('/warehouse-operations', '/warehouse-operations/[id]')
+  AND NOT EXISTS (
+    SELECT 1 
+    FROM public.user_permissions up 
+    WHERE up.user_id = u.id AND up.page_id = p.id
+  )
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+
+-- =============================================================================
+-- Migration: 20250326_create_customer_persons_table.sql
+-- =============================================================================
+
+-- Create customer_persons table
+-- Separate table for person customers (individuals)
+
+CREATE TABLE IF NOT EXISTS public.customer_persons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Personal info
+  firstname VARCHAR(255) NOT NULL,
+  lastname VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
+  telephone VARCHAR(50),
+  website VARCHAR(255),
+  
+  -- Identifier (belső ERP azonosító)
+  identifier VARCHAR(100),
+  
+  -- Source tracking (webshop sync vs local creation)
+  source VARCHAR(20) DEFAULT 'local', -- 'local' or 'webshop_sync'
+  
+  -- Relationships
+  customer_group_id UUID REFERENCES customer_groups(id),
+  
+  -- Status
+  is_active BOOLEAN DEFAULT true,
+  
+  -- Default addresses (foreign keys added after customer_addresses table is updated)
+  default_billing_address_id UUID,
+  default_shipping_address_id UUID,
+  
+  -- Personal tax number (can be used for individuals)
+  tax_number VARCHAR(50),
+  
+  -- Metadata
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  
+  -- Constraints
+  CONSTRAINT customer_persons_source_check CHECK (source IN ('local', 'webshop_sync'))
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_customer_persons_source ON public.customer_persons(source) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_persons_email ON public.customer_persons(email) WHERE deleted_at IS NULL AND email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_persons_name ON public.customer_persons(firstname, lastname) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_persons_customer_group ON public.customer_persons(customer_group_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_persons_active ON public.customer_persons(is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_persons_deleted_at ON public.customer_persons(deleted_at) WHERE deleted_at IS NULL;
+
+-- Unique constraints (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS customer_persons_email_unique_active 
+ON public.customer_persons(email) 
+WHERE deleted_at IS NULL AND email IS NOT NULL;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_persons_updated_at
+BEFORE UPDATE ON public.customer_persons
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_persons ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer persons are viewable by authenticated users" ON public.customer_persons;
+CREATE POLICY "Customer persons are viewable by authenticated users" 
+ON public.customer_persons
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Customer persons are manageable by authenticated users" ON public.customer_persons;
+CREATE POLICY "Customer persons are manageable by authenticated users" 
+ON public.customer_persons
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_persons TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_persons IS 'Separate table for person customers (individuals). Can be linked to companies via customer_person_company_relationships.';
+COMMENT ON COLUMN public.customer_persons.source IS 'Source: local (created in ERP) or webshop_sync (synced from webshop)';
+COMMENT ON COLUMN public.customer_persons.tax_number IS 'Personal tax number (can be used for individuals)';
+
+
+-- =============================================================================
+-- Migration: 20250326_create_customer_companies_table.sql
+-- =============================================================================
+
+-- Create customer_companies table
+-- Separate table for company customers
+
+CREATE TABLE IF NOT EXISTS public.customer_companies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Company info
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
+  telephone VARCHAR(50),
+  website VARCHAR(255),
+  
+  -- Identifier (belső ERP azonosító)
+  identifier VARCHAR(100),
+  
+  -- Source tracking (webshop sync vs local creation)
+  source VARCHAR(20) DEFAULT 'local', -- 'local' or 'webshop_sync'
+  
+  -- Relationships
+  customer_group_id UUID REFERENCES customer_groups(id),
+  
+  -- Status
+  is_active BOOLEAN DEFAULT true,
+  
+  -- Default addresses (foreign keys added after customer_addresses table is updated)
+  default_billing_address_id UUID,
+  default_shipping_address_id UUID,
+  registered_address_id UUID, -- Székhely
+  mailing_address_id UUID,    -- Levelezési cím
+  
+  -- Tax numbers
+  tax_number VARCHAR(50),              -- Adószám
+  eu_tax_number VARCHAR(50),           -- Közösségi adószám
+  group_tax_number VARCHAR(50),        -- Csoportos adószám
+  company_registration_number VARCHAR(50), -- Cégjegyzékszám
+  
+  -- Metadata
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  
+  -- Constraints
+  CONSTRAINT customer_companies_source_check CHECK (source IN ('local', 'webshop_sync'))
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_customer_companies_source ON public.customer_companies(source) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_companies_email ON public.customer_companies(email) WHERE deleted_at IS NULL AND email IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_companies_name ON public.customer_companies(name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_companies_customer_group ON public.customer_companies(customer_group_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_companies_active ON public.customer_companies(is_active) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_companies_deleted_at ON public.customer_companies(deleted_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_companies_tax_number ON public.customer_companies(tax_number) WHERE deleted_at IS NULL AND tax_number IS NOT NULL;
+
+-- Unique constraints (only for active records)
+CREATE UNIQUE INDEX IF NOT EXISTS customer_companies_email_unique_active 
+ON public.customer_companies(email) 
+WHERE deleted_at IS NULL AND email IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS customer_companies_name_unique_active 
+ON public.customer_companies(name) 
+WHERE deleted_at IS NULL;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_companies_updated_at
+BEFORE UPDATE ON public.customer_companies
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_companies ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer companies are viewable by authenticated users" ON public.customer_companies;
+CREATE POLICY "Customer companies are viewable by authenticated users" 
+ON public.customer_companies
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Customer companies are manageable by authenticated users" ON public.customer_companies;
+CREATE POLICY "Customer companies are manageable by authenticated users" 
+ON public.customer_companies
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_companies TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_companies IS 'Separate table for company customers. Can be linked to persons via customer_person_company_relationships.';
+COMMENT ON COLUMN public.customer_companies.source IS 'Source: local (created in ERP) or webshop_sync (synced from webshop)';
+
+
+-- =============================================================================
+-- Migration: 20250326_create_customer_person_company_relationships_table.sql
+-- =============================================================================
+
+-- Create customer_person_company_relationships table
+-- Many-to-many relationship between persons and companies
+-- Allows linking persons to companies (e.g., contact person, owner, manager)
+
+CREATE TABLE IF NOT EXISTS public.customer_person_company_relationships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  person_id UUID NOT NULL REFERENCES customer_persons(id) ON DELETE CASCADE,
+  company_id UUID NOT NULL REFERENCES customer_companies(id) ON DELETE CASCADE,
+  
+  -- Relationship role
+  role VARCHAR(50) NOT NULL DEFAULT 'contact_person',
+  -- 'owner', 'contact_person', 'manager', 'accountant', 'other'
+  
+  -- Flags
+  is_primary BOOLEAN DEFAULT false, -- Primary contact person for the company
+  is_billing_contact BOOLEAN DEFAULT false, -- Contact for billing matters
+  is_shipping_contact BOOLEAN DEFAULT false, -- Contact for shipping matters
+  
+  -- Metadata
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  
+  -- Constraints
+  CONSTRAINT customer_person_company_relationships_role_check 
+    CHECK (role IN ('owner', 'contact_person', 'manager', 'accountant', 'other')),
+  UNIQUE(person_id, company_id, deleted_at) -- One relationship per person-company pair (when not deleted)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_customer_person_company_relationships_person_id 
+  ON public.customer_person_company_relationships(person_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_person_company_relationships_company_id 
+  ON public.customer_person_company_relationships(company_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_person_company_relationships_role 
+  ON public.customer_person_company_relationships(role) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_person_company_relationships_primary 
+  ON public.customer_person_company_relationships(is_primary) WHERE deleted_at IS NULL AND is_primary = true;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_person_company_relationships_updated_at
+BEFORE UPDATE ON public.customer_person_company_relationships
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_person_company_relationships ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer person company relationships are viewable by authenticated users" ON public.customer_person_company_relationships;
+CREATE POLICY "Customer person company relationships are viewable by authenticated users" 
+ON public.customer_person_company_relationships
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Customer person company relationships are manageable by authenticated users" ON public.customer_person_company_relationships;
+CREATE POLICY "Customer person company relationships are manageable by authenticated users" 
+ON public.customer_person_company_relationships
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_person_company_relationships TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_person_company_relationships IS 'Many-to-many relationships between persons and companies. Allows linking persons to companies with roles (owner, contact_person, etc.).';
+COMMENT ON COLUMN public.customer_person_company_relationships.role IS 'Role: owner, contact_person, manager, accountant, other';
+COMMENT ON COLUMN public.customer_person_company_relationships.is_primary IS 'Primary contact person for the company';
+
+
+-- =============================================================================
+-- Migration: 20250325_create_customer_addresses_table.sql
+-- =============================================================================
+
+-- Create customer_addresses table
+-- This table stores multiple addresses for customer entities (both persons and companies)
+
+CREATE TABLE IF NOT EXISTS public.customer_addresses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Support both old (customer_entity_id) and new (person_id/company_id) structure for migration
+  customer_entity_id UUID, -- DEPRECATED: Will be removed after migration
+  person_id UUID REFERENCES customer_persons(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES customer_companies(id) ON DELETE CASCADE,
+  
+  -- Address type
+  address_type VARCHAR(20) NOT NULL DEFAULT 'billing', 
+  -- 'billing' (számlázási), 'shipping' (szállítási), 
+  -- 'registered' (székhely - csak cégeknél), 'mailing' (levelezési - csak cégeknél)
+  
+  -- Personal/Company info
+  firstname VARCHAR(255), -- For persons
+  lastname VARCHAR(255),   -- For persons
+  company VARCHAR(255),   -- For companies or if person wants company name on address
+  
+  -- Address details
+  address1 VARCHAR(255) NOT NULL,
+  address2 VARCHAR(255),
+  postcode VARCHAR(20) NOT NULL,
+  city VARCHAR(100) NOT NULL,
+  country_code VARCHAR(3) DEFAULT 'HU', -- ISO country code
+  zone_name VARCHAR(100),  -- State/province name
+  
+  -- Contact
+  telephone VARCHAR(50),
+  
+  -- Flags
+  is_default_billing BOOLEAN DEFAULT false,
+  is_default_shipping BOOLEAN DEFAULT false,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  
+  CONSTRAINT customer_addresses_type_check 
+    CHECK (address_type IN ('billing', 'shipping', 'registered', 'mailing')),
+  CONSTRAINT customer_addresses_entity_check 
+    CHECK (
+      (person_id IS NOT NULL AND company_id IS NULL) OR 
+      (person_id IS NULL AND company_id IS NOT NULL) OR
+      (customer_entity_id IS NOT NULL AND person_id IS NULL AND company_id IS NULL) -- Support old structure during migration
+    )
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_entity_id ON public.customer_addresses(customer_entity_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_person_id ON public.customer_addresses(person_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_company_id ON public.customer_addresses(company_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_type ON public.customer_addresses(address_type) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_default_billing ON public.customer_addresses(is_default_billing) WHERE deleted_at IS NULL AND is_default_billing = true;
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_default_shipping ON public.customer_addresses(is_default_shipping) WHERE deleted_at IS NULL AND is_default_shipping = true;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_addresses_updated_at
+BEFORE UPDATE ON public.customer_addresses
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_addresses ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer addresses are viewable by authenticated users" ON public.customer_addresses;
+CREATE POLICY "Customer addresses are viewable by authenticated users" 
+ON public.customer_addresses
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Customer addresses are manageable by authenticated users" ON public.customer_addresses;
+CREATE POLICY "Customer addresses are manageable by authenticated users" 
+ON public.customer_addresses
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_addresses TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_addresses IS 'Multiple addresses for customer entities (persons and companies)';
+COMMENT ON COLUMN public.customer_addresses.address_type IS 'Type: billing, shipping, registered (székhely), mailing (levelezési)';
+COMMENT ON COLUMN public.customer_addresses.country_code IS 'ISO country code (e.g., HU, DE, AT)';
+
+
+-- =============================================================================
+-- Migration: 20250325_create_customer_bank_accounts_table.sql
+-- =============================================================================
+
+-- Create customer_bank_accounts table
+-- This table stores multiple bank accounts for customer entities (mainly for companies)
+
+CREATE TABLE IF NOT EXISTS public.customer_bank_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Support both old (customer_entity_id) and new (person_id/company_id) structure for migration
+  customer_entity_id UUID, -- DEPRECATED: Will be removed after migration
+  person_id UUID REFERENCES customer_persons(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES customer_companies(id) ON DELETE CASCADE,
+  
+  -- Bank info
+  bank_name VARCHAR(255) NOT NULL,
+  account_number VARCHAR(100) NOT NULL, -- IBAN or account number
+  swift_bic VARCHAR(20), -- SWIFT/BIC code
+  currency_id UUID REFERENCES currencies(id),
+  
+  -- Flags
+  is_default BOOLEAN DEFAULT false,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  CONSTRAINT customer_bank_accounts_entity_check 
+    CHECK (
+      (person_id IS NOT NULL AND company_id IS NULL) OR 
+      (person_id IS NULL AND company_id IS NOT NULL) OR
+      (customer_entity_id IS NOT NULL AND person_id IS NULL AND company_id IS NULL) -- Support old structure during migration
+    )
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_customer_bank_accounts_entity_id ON public.customer_bank_accounts(customer_entity_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_bank_accounts_person_id ON public.customer_bank_accounts(person_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_bank_accounts_company_id ON public.customer_bank_accounts(company_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_bank_accounts_default ON public.customer_bank_accounts(is_default) WHERE deleted_at IS NULL AND is_default = true;
+CREATE INDEX IF NOT EXISTS idx_customer_bank_accounts_currency ON public.customer_bank_accounts(currency_id) WHERE deleted_at IS NULL;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_bank_accounts_updated_at
+BEFORE UPDATE ON public.customer_bank_accounts
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_bank_accounts ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer bank accounts are viewable by authenticated users" ON public.customer_bank_accounts;
+CREATE POLICY "Customer bank accounts are viewable by authenticated users" 
+ON public.customer_bank_accounts
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Customer bank accounts are manageable by authenticated users" ON public.customer_bank_accounts;
+CREATE POLICY "Customer bank accounts are manageable by authenticated users" 
+ON public.customer_bank_accounts
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_bank_accounts TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_bank_accounts IS 'Multiple bank accounts for customer entities (mainly for companies)';
+COMMENT ON COLUMN public.customer_bank_accounts.account_number IS 'IBAN or account number';
+COMMENT ON COLUMN public.customer_bank_accounts.swift_bic IS 'SWIFT/BIC code for international transfers';
+
+
+-- =============================================================================
+-- Migration: 20250326_update_customer_platform_mappings_for_persons_companies.sql
+-- =============================================================================
+
+-- Create customer_platform_mappings table
+-- This table stores platform-specific IDs for customers (persons and companies)
+-- Used for syncing customers between ERP and webshops
+
+CREATE TABLE IF NOT EXISTS public.customer_platform_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Reference to person OR company (not both)
+  person_id UUID REFERENCES customer_persons(id) ON DELETE CASCADE,
+  company_id UUID REFERENCES customer_companies(id) ON DELETE CASCADE,
+  
+  connection_id UUID NOT NULL REFERENCES webshop_connections(id) ON DELETE CASCADE,
+  
+  -- Platform-specific IDs
+  platform_customer_id TEXT NOT NULL,
+  platform_inner_id TEXT,
+  platform_username TEXT,
+  
+  -- Sync tracking
+  last_synced_at TIMESTAMPTZ,
+  last_synced_from_platform_at TIMESTAMPTZ,
+  last_synced_to_platform_at TIMESTAMPTZ,
+  
+  -- Metadata
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Constraints
+  CONSTRAINT customer_platform_mappings_entity_check 
+    CHECK (
+      (person_id IS NOT NULL AND company_id IS NULL) OR 
+      (person_id IS NULL AND company_id IS NOT NULL)
+    ),
+  UNIQUE(person_id, connection_id) WHERE person_id IS NOT NULL,
+  UNIQUE(company_id, connection_id) WHERE company_id IS NOT NULL,
+  UNIQUE(connection_id, platform_customer_id)
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_customer_platform_mappings_person_id 
+  ON public.customer_platform_mappings(person_id);
+CREATE INDEX IF NOT EXISTS idx_customer_platform_mappings_company_id 
+  ON public.customer_platform_mappings(company_id);
+CREATE INDEX IF NOT EXISTS idx_customer_platform_mappings_connection_id 
+  ON public.customer_platform_mappings(connection_id);
+CREATE INDEX IF NOT EXISTS idx_customer_platform_mappings_platform_id 
+  ON public.customer_platform_mappings(platform_customer_id);
+CREATE INDEX IF NOT EXISTS idx_customer_platform_mappings_synced_from 
+  ON public.customer_platform_mappings(last_synced_from_platform_at) 
+  WHERE last_synced_from_platform_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_customer_platform_mappings_synced_to 
+  ON public.customer_platform_mappings(last_synced_to_platform_at) 
+  WHERE last_synced_to_platform_at IS NOT NULL;
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_platform_mappings_updated_at
+BEFORE UPDATE ON public.customer_platform_mappings
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_platform_mappings ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer platform mappings are viewable by authenticated users" ON public.customer_platform_mappings;
+CREATE POLICY "Customer platform mappings are viewable by authenticated users" 
+ON public.customer_platform_mappings
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Customer platform mappings are manageable by authenticated users" ON public.customer_platform_mappings;
+CREATE POLICY "Customer platform mappings are manageable by authenticated users" 
+ON public.customer_platform_mappings
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_platform_mappings TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_platform_mappings IS 'Platform-specific customer IDs for syncing between ERP and webshops. References either person or company.';
+COMMENT ON COLUMN public.customer_platform_mappings.person_id IS 'References customer_persons(id) - for person platform mappings';
+COMMENT ON COLUMN public.customer_platform_mappings.company_id IS 'References customer_companies(id) - for company platform mappings';
+
+-- Create customer_address_platform_mappings table
+CREATE TABLE IF NOT EXISTS public.customer_address_platform_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  address_id UUID NOT NULL REFERENCES customer_addresses(id) ON DELETE CASCADE,
+  connection_id UUID NOT NULL REFERENCES webshop_connections(id) ON DELETE CASCADE,
+  
+  platform_address_id TEXT NOT NULL,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  UNIQUE(address_id, connection_id),
+  UNIQUE(connection_id, platform_address_id)
+);
+
+-- Indexes for address mappings
+CREATE INDEX IF NOT EXISTS idx_customer_address_platform_mappings_address_id ON public.customer_address_platform_mappings(address_id);
+CREATE INDEX IF NOT EXISTS idx_customer_address_platform_mappings_connection_id ON public.customer_address_platform_mappings(connection_id);
+CREATE INDEX IF NOT EXISTS idx_customer_address_platform_mappings_platform_id ON public.customer_address_platform_mappings(platform_address_id);
+
+-- Trigger for updated_at
+CREATE TRIGGER update_customer_address_platform_mappings_updated_at
+BEFORE UPDATE ON public.customer_address_platform_mappings
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.customer_address_platform_mappings ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies
+DROP POLICY IF EXISTS "Customer address platform mappings are viewable by authenticated users" ON public.customer_address_platform_mappings;
+CREATE POLICY "Customer address platform mappings are viewable by authenticated users" 
+ON public.customer_address_platform_mappings
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Customer address platform mappings are manageable by authenticated users" ON public.customer_address_platform_mappings;
+CREATE POLICY "Customer address platform mappings are manageable by authenticated users" 
+ON public.customer_address_platform_mappings
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.customer_address_platform_mappings TO authenticated;
+
+-- Comments
+COMMENT ON TABLE public.customer_address_platform_mappings IS 'Platform-specific address IDs for syncing customer addresses between ERP and webshops';
+
+
+-- =============================================================================
+-- Migration: 20250326_add_foreign_keys_for_persons_companies.sql
+-- =============================================================================
+
+-- Add foreign key constraints for default addresses in customer_persons and customer_companies
+
+-- Customer persons default addresses
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'customer_addresses') THEN
+    ALTER TABLE public.customer_persons
+    ADD CONSTRAINT IF NOT EXISTS fk_customer_persons_default_billing_address 
+    FOREIGN KEY (default_billing_address_id) 
+    REFERENCES public.customer_addresses(id) 
+    ON DELETE SET NULL;
+    
+    ALTER TABLE public.customer_persons
+    ADD CONSTRAINT IF NOT EXISTS fk_customer_persons_default_shipping_address 
+    FOREIGN KEY (default_shipping_address_id) 
+    REFERENCES public.customer_addresses(id) 
+    ON DELETE SET NULL;
+  END IF;
+END $$;
+
+-- Customer companies default addresses
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'customer_addresses') THEN
+    ALTER TABLE public.customer_companies
+    ADD CONSTRAINT IF NOT EXISTS fk_customer_companies_default_billing_address 
+    FOREIGN KEY (default_billing_address_id) 
+    REFERENCES public.customer_addresses(id) 
+    ON DELETE SET NULL;
+    
+    ALTER TABLE public.customer_companies
+    ADD CONSTRAINT IF NOT EXISTS fk_customer_companies_default_shipping_address 
+    FOREIGN KEY (default_shipping_address_id) 
+    REFERENCES public.customer_addresses(id) 
+    ON DELETE SET NULL;
+    
+    ALTER TABLE public.customer_companies
+    ADD CONSTRAINT IF NOT EXISTS fk_customer_companies_registered_address 
+    FOREIGN KEY (registered_address_id) 
+    REFERENCES public.customer_addresses(id) 
+    ON DELETE SET NULL;
+    
+    ALTER TABLE public.customer_companies
+    ADD CONSTRAINT IF NOT EXISTS fk_customer_companies_mailing_address 
+    FOREIGN KEY (mailing_address_id) 
+    REFERENCES public.customer_addresses(id) 
+    ON DELETE SET NULL;
+  END IF;
+END $$;
+
+
+-- =============================================================================
+-- Migration: 20250326_add_customer_persons_companies_pages_to_permissions.sql
+-- =============================================================================
+
+-- Add pages for customer persons and companies to permissions system
+
+-- Add pages
+INSERT INTO public.pages (path, name, description, icon, category, is_active)
+VALUES 
+  ('/customers/persons', 'Személyek', 'Vevő személyek kezelése', 'ri-user-line', 'Vevők', true),
+  ('/customers/persons/new', 'Új személy', 'Új vevő személy létrehozása', 'ri-user-add-line', 'Vevők', true),
+  ('/customers/persons/[id]', 'Személy szerkesztése', 'Vevő személy szerkesztése', 'ri-user-settings-line', 'Vevők', true),
+  ('/customers/companies', 'Cégek', 'Vevő cégek kezelése', 'ri-building-line', 'Vevők', true),
+  ('/customers/companies/new', 'Új cég', 'Új vevő cég létrehozása', 'ri-building-add-line', 'Vevők', true),
+  ('/customers/companies/[id]', 'Cég szerkesztése', 'Vevő cég szerkesztése', 'ri-building-settings-line', 'Vevők', true)
+ON CONFLICT (path) DO UPDATE SET 
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  icon = EXCLUDED.icon,
+  category = EXCLUDED.category,
+  is_active = EXCLUDED.is_active;
+
+-- Grant default access to all authenticated users
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path IN (
+  '/customers/persons',
+  '/customers/persons/new',
+  '/customers/persons/[id]',
+  '/customers/companies',
+  '/customers/companies/new',
+  '/customers/companies/[id]'
+)
+AND NOT EXISTS (
+  SELECT 1 
+  FROM public.user_permissions up 
+  WHERE up.user_id = u.id AND up.page_id = p.id
+)
+ON CONFLICT (user_id, page_id) DO NOTHING;
+
+
+-- =============================================================================
+-- Migration: 20250130_create_order_management_system.sql
+-- =============================================================================
+
+-- =============================================================================
+-- Order Management System - Complete Database Schema
+-- =============================================================================
+-- This migration creates the complete order management system including:
+-- - Order buffer (for web order review)
+-- - Orders and order items
+-- - Shipping and payment methods (enhanced)
+-- - All supporting tables, indexes, triggers, and RLS policies
+-- =============================================================================
+
+-- =============================================================================
+-- 1. ENHANCE PAYMENT_METHODS TABLE (Add missing columns for order management)
+-- =============================================================================
+
+-- Add tenant_id if not exists (for multi-tenant support)
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'payment_methods' 
+    AND column_name = 'tenant_id'
+  ) THEN
+    ALTER TABLE public.payment_methods ADD COLUMN tenant_id UUID;
+  END IF;
+END $$;
+
+-- Add code column if not exists
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'payment_methods' 
+    AND column_name = 'code'
+  ) THEN
+    ALTER TABLE public.payment_methods ADD COLUMN code TEXT;
+  END IF;
+END $$;
+
+-- Add icon_url column if not exists
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'payment_methods' 
+    AND column_name = 'icon_url'
+  ) THEN
+    ALTER TABLE public.payment_methods ADD COLUMN icon_url TEXT;
+  END IF;
+END $$;
+
+-- Add requires_prepayment column if not exists
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'payment_methods' 
+    AND column_name = 'requires_prepayment'
+  ) THEN
+    ALTER TABLE public.payment_methods ADD COLUMN requires_prepayment BOOLEAN DEFAULT false;
+  END IF;
+END $$;
+
+-- Add payment_after_delivery column if not exists
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'payment_methods' 
+    AND column_name = 'payment_after_delivery'
+  ) THEN
+    ALTER TABLE public.payment_methods ADD COLUMN payment_after_delivery BOOLEAN DEFAULT false;
+  END IF;
+END $$;
+
+-- Create unique index for tenant_id + code if not exists
+CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_methods_tenant_code 
+ON public.payment_methods(tenant_id, code) 
+WHERE deleted_at IS NULL AND code IS NOT NULL;
+
+-- Create index for tenant_id if not exists
+CREATE INDEX IF NOT EXISTS idx_payment_methods_tenant_id 
+ON public.payment_methods(tenant_id) 
+WHERE tenant_id IS NOT NULL;
+
+-- =============================================================================
+-- 2. CREATE SHIPPING_METHODS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.shipping_methods (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID, -- For multi-tenant support (nullable for now)
+  name TEXT NOT NULL, -- Display name (e.g., "GLS csomagpont")
+  code TEXT, -- Internal code (WSESHIP, GLS, etc.)
+  extension TEXT, -- Extension type (GLSPARCELPOINT, etc.)
+  icon_url TEXT, -- Icon/image URL for visual display
+  requires_pickup_point BOOLEAN DEFAULT false, -- Whether pickup point ID is required
+  supports_tracking BOOLEAN DEFAULT true, -- Whether tracking number can be added
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP
+);
+
+-- Create indexes for shipping_methods
+CREATE INDEX IF NOT EXISTS idx_shipping_methods_tenant_id 
+ON public.shipping_methods(tenant_id) 
+WHERE tenant_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_shipping_methods_tenant_code 
+ON public.shipping_methods(tenant_id, code) 
+WHERE deleted_at IS NULL AND code IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shipping_methods_code 
+ON public.shipping_methods(tenant_id, code) 
+WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_shipping_methods_is_active 
+ON public.shipping_methods(is_active) 
+WHERE deleted_at IS NULL;
+
+-- Create trigger for updated_at
+DROP TRIGGER IF EXISTS update_shipping_methods_updated_at ON public.shipping_methods;
+CREATE TRIGGER update_shipping_methods_updated_at
+  BEFORE UPDATE ON public.shipping_methods
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.shipping_methods ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for shipping_methods
+DROP POLICY IF EXISTS "Shipping methods are viewable by authenticated users" ON public.shipping_methods;
+CREATE POLICY "Shipping methods are viewable by authenticated users" 
+ON public.shipping_methods
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Shipping methods are manageable by authenticated users" ON public.shipping_methods;
+CREATE POLICY "Shipping methods are manageable by authenticated users" 
+ON public.shipping_methods
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.shipping_methods TO authenticated;
+
+-- =============================================================================
+-- 3. CREATE ORDER_BUFFER TABLE (Web Order Buffer - Like Thanaris)
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_buffer (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID, -- For multi-tenant support (nullable for now)
+  connection_id UUID REFERENCES public.webshop_connections(id) ON DELETE SET NULL, -- Foreign key to webshop_connections
+  
+  -- Platform Info
+  platform_order_id TEXT NOT NULL, -- ShopRenter innerId
+  platform_order_resource_id TEXT,
+  
+  -- Raw Webhook Data (JSONB for flexibility)
+  webhook_data JSONB NOT NULL,
+  
+  -- Processing Status
+  status TEXT DEFAULT 'pending', -- pending, processing, processed, failed, blacklisted
+  processed_at TIMESTAMP,
+  processed_by UUID REFERENCES public.users(id),
+  error_message TEXT,
+  
+  -- Blacklist (if customer is blacklisted)
+  is_blacklisted BOOLEAN DEFAULT false,
+  blacklist_reason TEXT,
+  
+  -- Timestamps
+  received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  
+  CONSTRAINT order_buffer_status_check CHECK (status IN ('pending', 'processing', 'processed', 'failed', 'blacklisted'))
+);
+
+-- Create indexes for order_buffer
+CREATE INDEX IF NOT EXISTS idx_order_buffer_tenant_id ON public.order_buffer(tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_order_buffer_connection_id ON public.order_buffer(connection_id) WHERE connection_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_order_buffer_connection_platform_order 
+ON public.order_buffer(connection_id, platform_order_id) 
+WHERE connection_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_order_buffer_status ON public.order_buffer(status);
+CREATE INDEX IF NOT EXISTS idx_order_buffer_received_at ON public.order_buffer(received_at);
+CREATE INDEX IF NOT EXISTS idx_order_buffer_is_blacklisted ON public.order_buffer(is_blacklisted) WHERE is_blacklisted = true;
+
+-- Create trigger for updated_at
+DROP TRIGGER IF EXISTS update_order_buffer_updated_at ON public.order_buffer;
+CREATE TRIGGER update_order_buffer_updated_at
+  BEFORE UPDATE ON public.order_buffer
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.order_buffer ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for order_buffer
+DROP POLICY IF EXISTS "Order buffer is viewable by authenticated users" ON public.order_buffer;
+CREATE POLICY "Order buffer is viewable by authenticated users" 
+ON public.order_buffer
+FOR SELECT
+TO authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Order buffer is manageable by authenticated users" ON public.order_buffer;
+CREATE POLICY "Order buffer is manageable by authenticated users" 
+ON public.order_buffer
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_buffer TO authenticated;
+
+-- =============================================================================
+-- 4. CREATE ORDERS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID, -- For multi-tenant support (nullable for now)
+  connection_id UUID, -- References webshop_connections(id) - will add FK later if table exists
+  
+  -- Order Identification
+  order_number TEXT UNIQUE NOT NULL, -- ORD-YYYY-MM-DD-NNN
+  platform_order_id TEXT, -- ShopRenter innerId
+  platform_order_resource_id TEXT, -- ShopRenter resource ID
+  invoice_number TEXT, -- From ShopRenter
+  invoice_prefix TEXT,
+  
+  -- Customer Link
+  customer_person_id UUID, -- References customer_persons(id) - will add FK later if table exists
+  
+  -- Customer Info (Snapshot at order time)
+  customer_firstname TEXT NOT NULL,
+  customer_lastname TEXT NOT NULL,
+  customer_email TEXT,
+  customer_phone TEXT,
+  customer_group_id UUID, -- References customer_groups(id) - will add FK later if table exists
+  
+  -- Shipping Address
+  shipping_firstname TEXT NOT NULL,
+  shipping_lastname TEXT NOT NULL,
+  shipping_company TEXT,
+  shipping_address1 TEXT NOT NULL,
+  shipping_address2 TEXT,
+  shipping_city TEXT NOT NULL,
+  shipping_postcode TEXT NOT NULL,
+  shipping_country_code TEXT, -- ISO 2
+  shipping_zone_name TEXT,
+  shipping_method_id UUID REFERENCES public.shipping_methods(id),
+  shipping_method_name TEXT, -- Snapshot from ShopRenter
+  shipping_method_code TEXT, -- WSESHIP, GLS, etc.
+  shipping_method_extension TEXT, -- Extension type
+  shipping_receiving_point_id TEXT, -- Pickup point ID
+  shipping_net_price NUMERIC(10,2),
+  shipping_gross_price NUMERIC(10,2),
+  shipping_additional_cost_net NUMERIC(10,2) DEFAULT 0,
+  shipping_additional_cost_gross NUMERIC(10,2) DEFAULT 0,
+  expected_delivery_date DATE,
+  tracking_number TEXT,
+  
+  -- Billing Address
+  billing_firstname TEXT NOT NULL,
+  billing_lastname TEXT NOT NULL,
+  billing_company TEXT,
+  billing_address1 TEXT NOT NULL,
+  billing_address2 TEXT,
+  billing_city TEXT NOT NULL,
+  billing_postcode TEXT NOT NULL,
+  billing_country_code TEXT, -- ISO 2
+  billing_zone_name TEXT,
+  billing_tax_number TEXT,
+  
+  -- Payment Info
+  payment_method_id UUID REFERENCES public.payment_methods(id),
+  payment_method_name TEXT, -- Snapshot from ShopRenter
+  payment_method_code TEXT, -- COD, BANK_TRANSFER, etc.
+  payment_method_after BOOLEAN DEFAULT true, -- true = pay later
+  payment_net_price NUMERIC(10,2) DEFAULT 0,
+  payment_gross_price NUMERIC(10,2) DEFAULT 0,
+  payment_status TEXT DEFAULT 'pending', -- pending, partial, paid, refunded
+  payment_date TIMESTAMP,
+  
+  -- Order Totals
+  subtotal_net NUMERIC(10,2) NOT NULL,
+  subtotal_gross NUMERIC(10,2) NOT NULL,
+  tax_amount NUMERIC(10,2) NOT NULL,
+  discount_amount NUMERIC(10,2) DEFAULT 0, -- Coupon + quantity discounts
+  shipping_total_net NUMERIC(10,2) DEFAULT 0,
+  shipping_total_gross NUMERIC(10,2) DEFAULT 0,
+  payment_total_net NUMERIC(10,2) DEFAULT 0,
+  payment_total_gross NUMERIC(10,2) DEFAULT 0,
+  total_net NUMERIC(10,2) NOT NULL,
+  total_gross NUMERIC(10,2) NOT NULL,
+  currency_code TEXT NOT NULL DEFAULT 'HUF',
+  
+  -- Status & Workflow
+  status TEXT NOT NULL DEFAULT 'pending_review', -- pending_review, new, packing, shipped, delivered, cancelled, refunded
+  platform_status_id TEXT, -- ShopRenter status ID
+  platform_status_text TEXT, -- ShopRenter status text
+  
+  -- Stock & Fulfillment
+  fulfillability_status TEXT DEFAULT 'unknown', -- unknown, checking, fully_fulfillable, partially_fulfillable, not_fulfillable, po_created
+  stock_reserved BOOLEAN DEFAULT false, -- Whether stock is reserved for this order
+  warehouse_id UUID, -- References warehouses(id) - will add FK later if table exists
+  fulfillment_date DATE, -- When order was fulfilled
+  
+  -- Additional Info
+  customer_comment TEXT,
+  internal_notes TEXT, -- ERP-only notes
+  language_code TEXT DEFAULT 'hu',
+  ip_address TEXT,
+  cart_token TEXT,
+  loyalty_points_earned INTEGER DEFAULT 0,
+  loyalty_points_used INTEGER DEFAULT 0,
+  
+  -- Timestamps
+  order_date TIMESTAMP NOT NULL, -- From ShopRenter dateCreated
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP,
+  
+  CONSTRAINT orders_status_check CHECK (status IN ('pending_review', 'new', 'packing', 'shipped', 'delivered', 'cancelled', 'refunded')),
+  CONSTRAINT orders_payment_status_check CHECK (payment_status IN ('pending', 'partial', 'paid', 'refunded')),
+  CONSTRAINT orders_fulfillability_status_check CHECK (fulfillability_status IN ('unknown', 'checking', 'fully_fulfillable', 'partially_fulfillable', 'not_fulfillable', 'po_created'))
+);
+
+-- Create indexes for orders
+CREATE INDEX IF NOT EXISTS idx_orders_tenant_id ON public.orders(tenant_id) WHERE tenant_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_connection_id ON public.orders(connection_id) WHERE connection_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_platform_order_id ON public.orders(connection_id, platform_order_id) WHERE connection_id IS NOT NULL AND platform_order_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_order_number ON public.orders(order_number);
+CREATE INDEX IF NOT EXISTS idx_orders_customer_person_id ON public.orders(customer_person_id) WHERE customer_person_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_fulfillability_status ON public.orders(fulfillability_status);
+CREATE INDEX IF NOT EXISTS idx_orders_stock_reserved ON public.orders(stock_reserved) WHERE stock_reserved = true;
+CREATE INDEX IF NOT EXISTS idx_orders_order_date ON public.orders(order_date);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON public.orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON public.orders(payment_status);
+
+-- Create trigger for updated_at
+DROP TRIGGER IF EXISTS update_orders_updated_at ON public.orders;
+CREATE TRIGGER update_orders_updated_at
+  BEFORE UPDATE ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for orders
+DROP POLICY IF EXISTS "Orders are viewable by authenticated users" ON public.orders;
+CREATE POLICY "Orders are viewable by authenticated users" 
+ON public.orders
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Orders are manageable by authenticated users" ON public.orders;
+CREATE POLICY "Orders are manageable by authenticated users" 
+ON public.orders
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.orders TO authenticated;
+
+-- =============================================================================
+-- 5. CREATE ORDER_ITEMS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  
+  -- Product Link
+  product_id UUID, -- References shoprenter_products(id) - nullable if product doesn't exist
+  
+  -- Product Info (Snapshot at order time)
+  product_name TEXT NOT NULL,
+  product_sku TEXT NOT NULL,
+  product_model_number TEXT, -- Manufacturer part number
+  product_gtin TEXT, -- Barcode
+  product_image_url TEXT,
+  product_category TEXT, -- Comma-separated
+  
+  -- Pricing (Snapshot)
+  unit_price_net NUMERIC(10,2) NOT NULL,
+  unit_price_gross NUMERIC(10,2) NOT NULL,
+  tax_rate NUMERIC(5,2) NOT NULL, -- e.g., 27.00
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  line_total_net NUMERIC(10,2) NOT NULL,
+  line_total_gross NUMERIC(10,2) NOT NULL,
+  
+  -- Physical Properties
+  weight NUMERIC(10,3),
+  weight_unit_id UUID, -- References weight_units(id) - will add FK later if table exists
+  length NUMERIC(10,2),
+  width NUMERIC(10,2),
+  height NUMERIC(10,2),
+  dimension_unit_id UUID, -- References units(id) - usually 'cm'
+  
+  -- Platform Info
+  platform_order_item_id TEXT, -- ShopRenter orderProduct innerId
+  platform_order_item_resource_id TEXT,
+  
+  -- Stock & Fulfillment
+  fulfillability_status TEXT DEFAULT 'unknown', -- unknown, checking, fully_fulfillable, partially_fulfillable, not_fulfillable, po_created
+  reserved_quantity INTEGER DEFAULT 0, -- How much is reserved from stock
+  purchase_order_id UUID, -- References purchase_orders(id) - will add FK later if table exists
+  purchase_order_item_id UUID, -- References purchase_order_items(id) - will add FK later if table exists
+  
+  -- Status
+  status TEXT DEFAULT 'pending', -- pending, reserved, picked, packed, shipped, delivered, cancelled
+  
+  -- Timestamps
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP,
+  
+  CONSTRAINT order_items_status_check CHECK (status IN ('pending', 'reserved', 'picked', 'packed', 'shipped', 'delivered', 'cancelled')),
+  CONSTRAINT order_items_fulfillability_status_check CHECK (fulfillability_status IN ('unknown', 'checking', 'fully_fulfillable', 'partially_fulfillable', 'not_fulfillable', 'po_created'))
+);
+
+-- Create indexes for order_items
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON public.order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON public.order_items(product_id) WHERE product_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_order_items_fulfillability_status ON public.order_items(fulfillability_status);
+CREATE INDEX IF NOT EXISTS idx_order_items_purchase_order_id ON public.order_items(purchase_order_id) WHERE purchase_order_id IS NOT NULL;
+
+-- Create trigger for updated_at
+DROP TRIGGER IF EXISTS update_order_items_updated_at ON public.order_items;
+CREATE TRIGGER update_order_items_updated_at
+  BEFORE UPDATE ON public.order_items
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- Enable RLS
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for order_items
+DROP POLICY IF EXISTS "Order items are viewable by authenticated users" ON public.order_items;
+CREATE POLICY "Order items are viewable by authenticated users" 
+ON public.order_items
+FOR SELECT
+TO authenticated
+USING (deleted_at IS NULL);
+
+DROP POLICY IF EXISTS "Order items are manageable by authenticated users" ON public.order_items;
+CREATE POLICY "Order items are manageable by authenticated users" 
+ON public.order_items
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+-- Grant permissions
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_items TO authenticated;
+
+-- =============================================================================
+-- 6. CREATE ORDER_ITEM_OPTIONS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_item_options (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_item_id UUID NOT NULL REFERENCES public.order_items(id) ON DELETE CASCADE,
+  option_name TEXT NOT NULL,
+  option_value TEXT NOT NULL,
+  price_adjustment_net NUMERIC(10,2) DEFAULT 0,
+  price_adjustment_gross NUMERIC(10,2) DEFAULT 0,
+  price_prefix TEXT CHECK (price_prefix IN ('+', '-')),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_item_options_order_item_id ON public.order_item_options(order_item_id);
+ALTER TABLE public.order_item_options ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Order item options are viewable by authenticated users" ON public.order_item_options;
+CREATE POLICY "Order item options are viewable by authenticated users" ON public.order_item_options FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Order item options are manageable by authenticated users" ON public.order_item_options;
+CREATE POLICY "Order item options are manageable by authenticated users" ON public.order_item_options FOR ALL TO authenticated USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_item_options TO authenticated;
+
+-- =============================================================================
+-- 7. CREATE ORDER_ITEM_ADDONS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_item_addons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_item_id UUID NOT NULL REFERENCES public.order_items(id) ON DELETE CASCADE,
+  addon_name TEXT NOT NULL,
+  addon_sku TEXT,
+  addon_type TEXT,
+  unit_price_net NUMERIC(10,2) NOT NULL,
+  unit_price_gross NUMERIC(10,2) NOT NULL,
+  quantity INTEGER NOT NULL DEFAULT 1,
+  line_total_net NUMERIC(10,2) NOT NULL,
+  line_total_gross NUMERIC(10,2) NOT NULL,
+  tax_rate NUMERIC(5,2) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_item_addons_order_item_id ON public.order_item_addons(order_item_id);
+ALTER TABLE public.order_item_addons ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Order item addons are viewable by authenticated users" ON public.order_item_addons;
+CREATE POLICY "Order item addons are viewable by authenticated users" ON public.order_item_addons FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Order item addons are manageable by authenticated users" ON public.order_item_addons;
+CREATE POLICY "Order item addons are manageable by authenticated users" ON public.order_item_addons FOR ALL TO authenticated USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_item_addons TO authenticated;
+
+-- =============================================================================
+-- 8. CREATE ORDER_TOTALS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_totals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  value_net NUMERIC(10,2) NOT NULL,
+  value_gross NUMERIC(10,2) NOT NULL,
+  type TEXT NOT NULL,
+  sort_order INTEGER NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT order_totals_type_check CHECK (type IN ('SUB_TOTAL', 'TAX', 'SUB_TOTAL_WITH_TAX', 'SHIPPING', 'PAYMENT', 'COUPON', 'DISCOUNT', 'TOTAL'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_totals_order_id ON public.order_totals(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_totals_type ON public.order_totals(type);
+ALTER TABLE public.order_totals ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Order totals are viewable by authenticated users" ON public.order_totals;
+CREATE POLICY "Order totals are viewable by authenticated users" ON public.order_totals FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Order totals are manageable by authenticated users" ON public.order_totals;
+CREATE POLICY "Order totals are manageable by authenticated users" ON public.order_totals FOR ALL TO authenticated USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_totals TO authenticated;
+
+-- =============================================================================
+-- 9. CREATE ORDER_STATUS_HISTORY TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_status_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  platform_status_id TEXT,
+  platform_status_text TEXT,
+  comment TEXT,
+  changed_by UUID REFERENCES public.users(id),
+  changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  source TEXT NOT NULL DEFAULT 'webhook',
+  CONSTRAINT order_status_history_source_check CHECK (source IN ('webhook', 'manual', 'api'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_status_history_order_id ON public.order_status_history(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_status_history_changed_at ON public.order_status_history(changed_at);
+ALTER TABLE public.order_status_history ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Order status history is viewable by authenticated users" ON public.order_status_history;
+CREATE POLICY "Order status history is viewable by authenticated users" ON public.order_status_history FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Order status history is manageable by authenticated users" ON public.order_status_history;
+CREATE POLICY "Order status history is manageable by authenticated users" ON public.order_status_history FOR ALL TO authenticated USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_status_history TO authenticated;
+
+-- =============================================================================
+-- 10. CREATE ORDER_PAYMENTS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  amount NUMERIC(10,2) NOT NULL,
+  payment_method_id UUID REFERENCES public.payment_methods(id),
+  payment_method_name TEXT,
+  payment_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  transaction_id TEXT,
+  reference_number TEXT,
+  notes TEXT,
+  created_by UUID REFERENCES public.users(id),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMP,
+  CONSTRAINT order_payments_amount_check CHECK (amount != 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_payments_order_id ON public.order_payments(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_payments_payment_date ON public.order_payments(payment_date);
+ALTER TABLE public.order_payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Order payments are viewable by authenticated users" ON public.order_payments;
+CREATE POLICY "Order payments are viewable by authenticated users" ON public.order_payments FOR SELECT TO authenticated USING (deleted_at IS NULL);
+DROP POLICY IF EXISTS "Order payments are manageable by authenticated users" ON public.order_payments;
+CREATE POLICY "Order payments are manageable by authenticated users" ON public.order_payments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_payments TO authenticated;
+
+-- =============================================================================
+-- 11. CREATE ORDER_PLATFORM_MAPPINGS TABLE
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.order_platform_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+  connection_id UUID NOT NULL,
+  platform_order_id TEXT NOT NULL,
+  platform_order_resource_id TEXT,
+  last_synced_from_platform_at TIMESTAMP,
+  last_synced_to_platform_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT order_platform_mappings_unique UNIQUE(connection_id, platform_order_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_order_platform_mappings_order_id ON public.order_platform_mappings(order_id);
+CREATE INDEX IF NOT EXISTS idx_order_platform_mappings_connection_id ON public.order_platform_mappings(connection_id);
+ALTER TABLE public.order_platform_mappings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Order platform mappings are viewable by authenticated users" ON public.order_platform_mappings;
+CREATE POLICY "Order platform mappings are viewable by authenticated users" ON public.order_platform_mappings FOR SELECT TO authenticated USING (true);
+DROP POLICY IF EXISTS "Order platform mappings are manageable by authenticated users" ON public.order_platform_mappings;
+CREATE POLICY "Order platform mappings are manageable by authenticated users" ON public.order_platform_mappings FOR ALL TO authenticated USING (true) WITH CHECK (true);
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.order_platform_mappings TO authenticated;
+
+-- =============================================================================
+-- 12. CREATE FUNCTIONS
+-- =============================================================================
+
+-- Generate order number function
+CREATE OR REPLACE FUNCTION public.generate_order_number()
+RETURNS TEXT AS $$
+DECLARE
+  today_date TEXT;
+  sequence_num INTEGER;
+  order_num TEXT;
+BEGIN
+  today_date := TO_CHAR(NOW(), 'YYYY-MM-DD');
+  SELECT COALESCE(MAX(
+    CAST(SUBSTRING(order_number FROM LENGTH('ORD-' || today_date || '-') + 1) AS INTEGER)
+  ), 0) + 1
+  INTO sequence_num
+  FROM public.orders
+  WHERE order_number LIKE 'ORD-' || today_date || '-%'
+    AND deleted_at IS NULL;
+  order_num := 'ORD-' || today_date || '-' || LPAD(sequence_num::TEXT, 3, '0');
+  RETURN order_num;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Update order payment status function
+CREATE OR REPLACE FUNCTION public.update_order_payment_status()
+RETURNS TRIGGER AS $$
+DECLARE
+  order_total NUMERIC(10,2);
+  total_paid NUMERIC(10,2);
+  new_payment_status TEXT;
+BEGIN
+  SELECT total_gross INTO order_total
+  FROM public.orders
+  WHERE id = COALESCE(NEW.order_id, OLD.order_id);
+  SELECT COALESCE(SUM(amount), 0) INTO total_paid
+  FROM public.order_payments
+  WHERE order_id = COALESCE(NEW.order_id, OLD.order_id)
+    AND deleted_at IS NULL;
+  IF total_paid = 0 THEN
+    new_payment_status := 'pending';
+  ELSIF total_paid < order_total THEN
+    new_payment_status := 'partial';
+  ELSIF total_paid >= order_total THEN
+    new_payment_status := 'paid';
+  ELSE
+    new_payment_status := 'pending';
+  END IF;
+  UPDATE public.orders
+  SET payment_status = new_payment_status
+  WHERE id = COALESCE(NEW.order_id, OLD.order_id);
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for auto-updating payment status
+DROP TRIGGER IF EXISTS trigger_update_order_payment_status ON public.order_payments;
+CREATE TRIGGER trigger_update_order_payment_status
+  AFTER INSERT OR UPDATE OR DELETE ON public.order_payments
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_order_payment_status();
+
+-- Record order status change function
+CREATE OR REPLACE FUNCTION public.record_order_status_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status IS DISTINCT FROM NEW.status THEN
+    INSERT INTO public.order_status_history (
+      order_id, status, platform_status_id, platform_status_text,
+      changed_by, changed_at, source
+    )
+    VALUES (
+      NEW.id, NEW.status, NEW.platform_status_id, NEW.platform_status_text,
+      auth.uid(), NOW(), 'manual'
+    );
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create trigger for auto-recording status changes
+DROP TRIGGER IF EXISTS trigger_record_order_status_change ON public.orders;
+CREATE TRIGGER trigger_record_order_status_change
+  AFTER UPDATE ON public.orders
+  FOR EACH ROW
+  EXECUTE FUNCTION public.record_order_status_change();
+
+-- =============================================================================
+-- Migration: 20250130_add_order_management_pages_to_permissions.sql
+-- =============================================================================
+
+-- Add pages for order management to permissions system
+INSERT INTO public.pages (path, name, description, category, is_active)
+VALUES 
+  ('/orders/buffer', 'Rendelés puffer', 'Webes rendelések áttekintése és feldolgozása', 'Rendelések', true),
+  ('/orders', 'Rendelések', 'Rendelések listázása', 'Rendelések', true),
+  ('/orders/new', 'Új rendelés', 'Kézi rendelés létrehozása', 'Rendelések', true),
+  ('/orders/[id]', 'Rendelés részletei', 'Rendelés megtekintése és szerkesztése', 'Rendelések', true),
+  ('/shipping-methods', 'Szállítási módok', 'Szállítási módok kezelése', 'Törzsadatok', true),
+  ('/shipping-methods/new', 'Új szállítási mód', 'Új szállítási mód létrehozása', 'Törzsadatok', true),
+  ('/shipping-methods/[id]', 'Szállítási mód szerkesztése', 'Szállítási mód szerkesztése', 'Törzsadatok', true)
+ON CONFLICT (path) DO UPDATE SET 
+  name = EXCLUDED.name,
+  description = EXCLUDED.description,
+  category = EXCLUDED.category,
+  is_active = EXCLUDED.is_active;
+
+-- Grant default access to all authenticated users
+INSERT INTO public.user_permissions (user_id, page_id, can_access)
+SELECT 
+  u.id,
+  p.id,
+  true
+FROM auth.users u
+CROSS JOIN public.pages p
+WHERE p.path IN (
+  '/orders/buffer',
+  '/orders',
+  '/orders/new',
+  '/orders/[id]',
+  '/shipping-methods',
+  '/shipping-methods/new',
+  '/shipping-methods/[id]'
+)
+AND NOT EXISTS (
+  SELECT 1 
+  FROM public.user_permissions up 
+  WHERE up.user_id = u.id AND up.page_id = p.id
+)
+ON CONFLICT (user_id, page_id) DO NOTHING;

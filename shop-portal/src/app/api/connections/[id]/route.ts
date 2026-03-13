@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { revalidatePath } from 'next/cache'
+import { setupShopRenterWebhook } from '@/lib/webhook-setup'
 
 /**
  * GET /api/connections/[id]
@@ -96,10 +97,10 @@ export async function PUT(
       // We'll check this by fetching the existing connection
     }
 
-    // Get existing connection to check if private key needs to be updated
+    // Get existing connection to check if private key needs to be updated and if is_active changed
     const { data: existingConnection } = await supabase
       .from('webshop_connections')
-      .select('search_console_private_key')
+      .select('search_console_private_key, is_active, connection_type')
       .eq('id', id)
       .single()
 
@@ -149,8 +150,27 @@ export async function PUT(
       )
     }
 
+    // Automatically setup webhook if:
+    // 1. It's a ShopRenter connection
+    // 2. It's now active (is_active = true)
+    // 3. It was either just created or activated (was inactive before)
+    const wasInactive = existingConnection && !existingConnection.is_active
+    const isNowActive = data.is_active === true
+    
+    if (data.connection_type === 'shoprenter' && isNowActive && (wasInactive || !existingConnection)) {
+      const webhookResult = await setupShopRenterWebhook(data)
+      if (!webhookResult.success) {
+        console.warn('[CONNECTION UPDATE] Webhook setup failed:', webhookResult.error)
+        // Don't fail the connection update if webhook setup fails
+      }
+    }
+
     revalidatePath('/connections')
-    return NextResponse.json({ success: true, connection: data })
+    return NextResponse.json({ 
+      success: true, 
+      connection: data,
+      webhook_setup: data.connection_type === 'shoprenter' && isNowActive && (wasInactive || !existingConnection) ? 'attempted' : 'skipped'
+    })
   } catch (error) {
     console.error('Error updating connection:', error)
     return NextResponse.json(

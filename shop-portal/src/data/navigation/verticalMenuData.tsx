@@ -59,6 +59,21 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       ]
     },
     {
+      label: 'Vevők',
+      icon: 'ri-user-line',
+      iconColor: '#9B59B6', // Purple for customers
+      children: [
+        {
+          label: 'Személyek',
+          href: '/customers/persons'
+        },
+        {
+          label: 'Cégek',
+          href: '/customers/companies'
+        }
+      ]
+    },
+    {
       label: 'Árazás',
       icon: 'ri-price-tag-3-line',
       iconColor: '#E74C3C', // Red for pricing
@@ -85,10 +100,32 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Szállítmányok',
           href: '/shipments'
+        }
+      ]
+    },
+    {
+      label: 'Rendelések',
+      icon: 'ri-shopping-bag-line',
+      iconColor: '#16A085', // Teal for orders
+      children: [
+        {
+          label: 'Rendelés puffer',
+          href: '/orders/buffer'
         },
         {
-          label: 'Készlet',
-          href: '/stock'
+          label: 'Rendelések',
+          href: '/orders'
+        }
+      ]
+    },
+    {
+      label: 'Raktár',
+      icon: 'ri-archive-line',
+      iconColor: '#D35400', // Orange for warehouse
+      children: [
+        {
+          label: 'Műveletek',
+          href: '/warehouse-operations'
         }
       ]
     },

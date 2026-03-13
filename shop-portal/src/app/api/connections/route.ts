@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getAllConnections } from '@/lib/connections-server'
+import { setupShopRenterWebhook } from '@/lib/webhook-setup'
 
 /**
  * GET /api/connections
@@ -96,7 +97,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    return NextResponse.json({ success: true, connection: data }, { status: 201 })
+    // Automatically setup webhook for ShopRenter connections if active
+    if (data.connection_type === 'shoprenter' && data.is_active) {
+      const webhookResult = await setupShopRenterWebhook(data)
+      if (!webhookResult.success) {
+        console.warn('[CONNECTION CREATE] Webhook setup failed:', webhookResult.error)
+        // Don't fail the connection creation if webhook setup fails
+        // The user can manually setup the webhook later
+      }
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      connection: data,
+      webhook_setup: data.connection_type === 'shoprenter' && data.is_active ? 'attempted' : 'skipped'
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating connection:', error)
     return NextResponse.json(

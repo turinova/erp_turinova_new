@@ -34,7 +34,7 @@ import {
   RadioGroup,
   FormControlLabel
 } from '@mui/material'
-import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon, Add as AddIcon, Close as CloseIcon, Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material'
+import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon, Add as AddIcon, Close as CloseIcon, Delete as DeleteIcon, Edit as EditIcon, Inventory as InventoryIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import NextLink from 'next/link'
 import type { ProductWithDescriptions } from '@/lib/products-server'
@@ -48,6 +48,7 @@ import CustomerGroupPricingCard from '@/components/CustomerGroupPricingCard'
 import AIPricingRecommendationsCard from '@/components/AIPricingRecommendationsCard'
 import PromotionsCard from '@/components/PromotionsCard'
 import ProductSuppliersCard from '@/components/products/ProductSuppliersCard'
+import ProductInventoryTab from '@/components/products/ProductInventoryTab'
 import { useSubscription } from '@/lib/subscription-context'
 
 interface ProductEditFormProps {
@@ -2940,6 +2941,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             iconPosition="start"
             label="Beszállítók" 
           />
+          <Tab 
+            icon={<InventoryIcon />} 
+            iconPosition="start"
+            label="Leltár" 
+          />
         </Tabs>
 
         <TabPanel value={tabValue} index={0} isLoaded={loadedTabs.has(0)}>
@@ -5334,6 +5340,16 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               )}
             </Grid>
           </Grid>
+        </TabPanel>
+
+        <TabPanel value={tabValue} index={6} isLoaded={loadedTabs.has(6)}>
+          {product?.id ? (
+            <ProductInventoryTab productId={product.id} />
+          ) : (
+            <Alert severity="info">
+              A leltár megtekintése a termék létrehozása után lehetséges.
+            </Alert>
+          )}
         </TabPanel>
       </Paper>
 

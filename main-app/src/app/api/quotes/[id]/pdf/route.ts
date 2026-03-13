@@ -61,36 +61,37 @@ export async function GET(
       return NextResponse.json({ error: 'Cégadatok nem találhatók' }, { status: 500 })
     }
 
-    // Calculate summary (matching quote totals)
+    // Calculate summary (matching quote page: Lapszabászat + Díjak + Termékek)
     // Note: quote.totals.total_gross already includes materials + their services (cutting, edge materials, etc.)
     const materialsGross = quoteData.totals.total_gross || 0
     const feesGross = quoteData.totals.fees_total_gross || 0
-    
-    // Calculate subtotal before discount (only positive values get discount)
-    const materialsGrossPositive = Math.max(0, materialsGross)
+    const accessoriesGross = quoteData.totals.accessories_total_gross || 0
+
+    // Only positive values get discount (same logic as QuoteDetailClient)
     const feesGrossPositive = Math.max(0, feesGross)
-    const subtotalBeforeDiscount = materialsGrossPositive + feesGrossPositive
-    
+    const accessoriesGrossPositive = Math.max(0, accessoriesGross)
+    const feesGrossNegative = Math.min(0, feesGross)
+    const accessoriesGrossNegative = Math.min(0, accessoriesGross)
+    const subtotalBeforeDiscount = materialsGross + feesGrossPositive + accessoriesGrossPositive
+
     // Calculate discount
     const discountPercent = quoteData.discount_percent || 0
     const discountAmount = subtotalBeforeDiscount * (discountPercent / 100)
-    
-    // Add negative values (no discount on these)
-    const materialsGrossNegative = Math.min(0, materialsGross)
-    const feesGrossNegative = Math.min(0, feesGross)
-    
+
     // Final total after discount
-    const totalGrossAfterDiscount = subtotalBeforeDiscount - discountAmount + materialsGrossNegative + feesGrossNegative
-    
-    // Calculate net and VAT from totals
+    const totalGrossAfterDiscount = subtotalBeforeDiscount - discountAmount + feesGrossNegative + accessoriesGrossNegative
+
+    // Calculate net and VAT from totals (include accessories)
     const materialsNet = quoteData.totals.total_net || 0
     const materialsVat = quoteData.totals.total_vat || 0
     const feesNet = quoteData.totals.fees_total_net || 0
     const feesVat = quoteData.totals.fees_total_vat || 0
-    
-    const totalNetBeforeDiscount = materialsNet + feesNet
-    const totalVatBeforeDiscount = materialsVat + feesVat
-    const totalGrossBeforeDiscount = materialsGross + feesGross
+    const accessoriesNet = quoteData.totals.accessories_total_net || 0
+    const accessoriesVat = quoteData.totals.accessories_total_vat || 0
+
+    const totalNetBeforeDiscount = materialsNet + feesNet + accessoriesNet
+    const totalVatBeforeDiscount = materialsVat + feesVat + accessoriesVat
+    const totalGrossBeforeDiscount = materialsGross + feesGross + accessoriesGross
     
     // Apply discount ratio to net and VAT
     const discountRatio = totalGrossBeforeDiscount > 0 ? discountAmount / totalGrossBeforeDiscount : 0

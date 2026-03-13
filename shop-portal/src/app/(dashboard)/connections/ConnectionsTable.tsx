@@ -60,7 +60,8 @@ import {
   Category as CategoryIcon,
   LocalOffer as LocalOfferIcon,
   MoreVert as MoreVertIcon,
-  Business as BusinessIcon
+  Business as BusinessIcon,
+  People as PeopleIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -93,6 +94,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
   const [syncHistoryDialogOpen, setSyncHistoryDialogOpen] = useState(false)
   const [syncHistoryConnection, setSyncHistoryConnection] = useState<WebshopConnection | null>(null)
+  const [settingUpWebhooks, setSettingUpWebhooks] = useState(false)
   const [syncLogs, setSyncLogs] = useState<Array<{
     id: string
     sync_type: string
@@ -434,6 +436,15 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   } | null>(null)
   const categoryPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [syncingProductClassesConnectionId, setSyncingProductClassesConnectionId] = useState<string | null>(null)
+  const [syncingCustomersConnectionId, setSyncingCustomersConnectionId] = useState<string | null>(null)
+  const [customerSyncProgress, setCustomerSyncProgress] = useState<{
+    current: number
+    total: number
+    synced: number
+    status: string
+    errors?: number
+  } | null>(null)
+  const customerPollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const [backfillingManufacturers, setBackfillingManufacturers] = useState(false)
   
   const [newConnection, setNewConnection] = useState({
@@ -1092,6 +1103,133 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }
 
+  // Handle sync customers
+  const handleSyncCustomersClick = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('Csak ShopRenter kapcsolatokhoz szinkronizálható vevők')
+      return
+    }
+
+    try {
+      setSyncingCustomersConnectionId(connection.id)
+      setCustomerSyncProgress({ current: 0, total: 0, synced: 0, status: 'starting' })
+      
+      // Start sync
+      const response = await fetch(`/api/connections/${connection.id}/sync-customers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ force: false })
+      })
+
+      if (!response.ok) {
+        const errorResult = await response.json()
+        throw new Error(errorResult.error || 'Vevők szinkronizálása sikertelen')
+      }
+
+      // Wait a moment for sync to initialize
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // Start polling for customer sync progress
+      const startCustomerPolling = () => {
+        if (customerPollIntervalRef.current) {
+          clearInterval(customerPollIntervalRef.current)
+        }
+
+        customerPollIntervalRef.current = setInterval(async () => {
+          try {
+            // Check sync progress from sync-progress-store
+            const progressResponse = await fetch(`/api/syncs/active`)
+            if (progressResponse.ok) {
+              const data = await progressResponse.json()
+              const progress = data.progress?.[`customers-${connection.id}`]
+              
+              if (progress) {
+                setCustomerSyncProgress({
+                  current: progress.synced || 0,
+                  total: progress.total || 0,
+                  synced: progress.synced || 0,
+                  status: progress.status || 'syncing',
+                  errors: progress.errors || 0
+                })
+
+                // Stop polling if completed, stopped, or error
+                if (progress.status === 'completed' || 
+                    progress.status === 'stopped' || 
+                    progress.status === 'error') {
+                  if (customerPollIntervalRef.current) {
+                    clearInterval(customerPollIntervalRef.current)
+                    customerPollIntervalRef.current = null
+                  }
+                  
+                  if (progress.status === 'completed') {
+                    toast.success(`Vevők szinkronizálása befejeződött: ${progress.synced} vevő`)
+                    router.refresh()
+                  } else if (progress.status === 'error') {
+                    toast.error('Vevők szinkronizálás hiba történt')
+                  }
+                  
+                  setSyncingCustomersConnectionId(null)
+                  setCustomerSyncProgress(null)
+                }
+              } else {
+                // No progress found, might be completed
+                const result = await response.json().catch(() => null)
+                if (result && result.success) {
+                  if (customerPollIntervalRef.current) {
+                    clearInterval(customerPollIntervalRef.current)
+                    customerPollIntervalRef.current = null
+                  }
+                  toast.success(`Vevők szinkronizálása befejeződött: ${result.synced} vevő`)
+                  setSyncingCustomersConnectionId(null)
+                  setCustomerSyncProgress(null)
+                  router.refresh()
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error fetching customer sync progress:', error)
+          }
+        }, 2000) // Poll every 2 seconds
+      }
+
+      startCustomerPolling()
+
+      // Safety timeout
+      setTimeout(() => {
+        if (customerPollIntervalRef.current) {
+          clearInterval(customerPollIntervalRef.current)
+          customerPollIntervalRef.current = null
+        }
+      }, 10 * 60 * 1000) // 10 minutes
+
+    } catch (error) {
+      console.error('Error syncing customers:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Ismeretlen hiba'
+      
+      if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+        toast.error(
+          'A webshop API túl sok kérést kapott. Kérjük, várjon 2-3 percet, majd próbálja újra.',
+          { autoClose: 8000 }
+        )
+      } else if (errorMessage.includes('401') || errorMessage.includes('Authentication')) {
+        toast.error(
+          'Hitelesítési hiba. Kérjük, ellenőrizze a kapcsolat beállításait.',
+          { autoClose: 8000 }
+        )
+      } else {
+        toast.error(
+          `Hiba a vevők szinkronizálásakor: ${errorMessage}`,
+          { autoClose: 8000 }
+        )
+      }
+      
+      setSyncingCustomersConnectionId(null)
+      setCustomerSyncProgress(null)
+    }
+  }
+
   // Handle sync Product Classes
   const handleSyncProductClassesClick = async (connection: WebshopConnection) => {
     if (connection.connection_type !== 'shoprenter') {
@@ -1137,6 +1275,52 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   }
 
   // Handle backfill manufacturers
+  const handleSetupAllWebhooks = async () => {
+    try {
+      setSettingUpWebhooks(true)
+      toast.info('Webhook-ok beállítása elindítva...')
+      
+      const response = await fetch('/api/connections/setup-all-webhooks', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        const errorResult = await response.json()
+        throw new Error(errorResult.error || 'Hiba a webhook-ok beállításakor')
+      }
+
+      const result = await response.json()
+      
+      if (result.success) {
+        const { summary } = result
+        let message = `Webhook-ok beállítva: ${summary.webhooks_created} webhook létrehozva, ${summary.mappings_synced} mapping szinkronizálva`
+        
+        if (summary.webhooks_failed > 0 || summary.mappings_failed > 0) {
+          message += `\nFigyelem: ${summary.webhooks_failed} webhook és ${summary.mappings_failed} mapping sikertelen`
+          toast.warning(message, { autoClose: 8000 })
+        } else {
+          toast.success(message)
+        }
+        
+        // Show details if there are any failures
+        if (result.details && result.details.some((d: any) => !d.webhook_success || !d.mapping_success)) {
+          console.log('Webhook setup details:', result.details)
+        }
+      } else {
+        throw new Error(result.error || 'Ismeretlen hiba')
+      }
+    } catch (error) {
+      console.error('Error setting up webhooks:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Ismeretlen hiba'
+      toast.error(`Hiba a webhook-ok beállításakor: ${errorMessage}`)
+    } finally {
+      setSettingUpWebhooks(false)
+    }
+  }
+
   const handleBackfillManufacturers = async () => {
     try {
       setBackfillingManufacturers(true)
@@ -1362,6 +1546,16 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             {backfillingManufacturers ? 'Gyártók szinkronizálása...' : 'Gyártók szinkronizálása'}
           </Button>
           <Button
+            variant="outlined"
+            color="primary"
+            startIcon={settingUpWebhooks ? <CircularProgress size={18} /> : <LinkIcon />}
+            onClick={handleSetupAllWebhooks}
+            disabled={settingUpWebhooks}
+            sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+          >
+            {settingUpWebhooks ? 'Webhook-ok beállítása...' : 'Webhook-ok beállítása'}
+          </Button>
+          <Button
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => setNewConnectionDialogOpen(true)}
@@ -1419,6 +1613,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             const isSyncing = syncingConnectionId === connection.id
             const isSyncingCategories = syncingCategoriesConnectionId === connection.id
             const isSyncingProductClasses = syncingProductClassesConnectionId === connection.id
+            const isSyncingCustomers = syncingCustomersConnectionId === connection.id
             
             return (
               <Grid item xs={12} key={connection.id}>
@@ -1543,6 +1738,19 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                   label={`Importálás: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')}`}
                                   color="primary"
                                   sx={{ height: '24px', fontWeight: 600 }}
+                                />
+                              )}
+                              {isSyncingCustomers && customerSyncProgress && (
+                                <Chip
+                                  size="small"
+                                  label={`Vevők: ${customerSyncProgress.synced.toLocaleString('hu-HU')}/${customerSyncProgress.total.toLocaleString('hu-HU')}`}
+                                  sx={{ 
+                                    bgcolor: '#9b59b6', 
+                                    color: 'white',
+                                    height: '24px',
+                                    fontWeight: 600,
+                                    mr: 1
+                                  }}
                                 />
                               )}
                               {isSyncingCategories && categorySyncProgress && (
@@ -1776,6 +1984,19 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         >
                           <LocalOfferIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
                           {isSyncingProductClasses ? 'Szinkronizálás...' : 'Termék típusok szinkronizálása'}
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
+                        <MenuItem
+                          onClick={() => {
+                            handleSyncCustomersClick(connection)
+                            setMenuAnchorEl(null)
+                            setMenuConnectionId(null)
+                          }}
+                          disabled={isSyncingCustomers}
+                        >
+                          <PeopleIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
+                          {isSyncingCustomers ? 'Szinkronizálás...' : 'Vevők szinkronizálása'}
                         </MenuItem>
                       )}
                       {connection.connection_type === 'shoprenter' && (

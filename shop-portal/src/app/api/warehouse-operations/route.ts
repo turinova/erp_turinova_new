@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const warehouse_id = searchParams.get('warehouse_id')
     const status = searchParams.get('status')
     const operation_type = searchParams.get('operation_type')
+    const search = searchParams.get('search')
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
         shipment_id,
         shipments:shipment_id(id, shipment_number),
         warehouse_id,
-        warehouses:warehouse_id(id, name),
+        warehouses:warehouse_id(id, name, code),
         started_at,
         completed_at,
         created_by,
@@ -58,6 +59,11 @@ export async function GET(request: NextRequest) {
     if (operation_type && operation_type !== 'all') {
       query = query.eq('operation_type', operation_type)
     }
+    
+    // Apply search filter (only on operation_number, as nested selects don't work in or())
+    if (search) {
+      query = query.ilike('operation_number', `%${search}%`)
+    }
 
     // Apply pagination
     query = query.range(offset, offset + limit - 1)
@@ -72,8 +78,23 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Get stock movements count for each warehouse operation
+    const operationsWithCounts = await Promise.all(
+      (data || []).map(async (op: any) => {
+        const { count: movementsCount } = await supabase
+          .from('stock_movements')
+          .select('*', { count: 'exact', head: true })
+          .eq('warehouse_operation_id', op.id)
+
+        return {
+          ...op,
+          movements_count: movementsCount || 0
+        }
+      })
+    )
+
     return NextResponse.json({
-      warehouse_operations: data || [],
+      warehouse_operations: operationsWithCounts || [],
       pagination: {
         page,
         limit,
