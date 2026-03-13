@@ -3,11 +3,27 @@ import { getAdminSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 
 /**
+ * GET/HEAD /api/webhooks/shoprenter
+ * ShopRenter may call these to validate the webhook URL when registering.
+ * Return 200 so they don't treat the endpoint as invalid.
+ */
+export async function GET() {
+  return NextResponse.json(
+    { ok: true, message: 'Webhook endpoint ready' },
+    { status: 200 }
+  )
+}
+
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 })
+}
+
+/**
  * POST /api/webhooks/shoprenter
- * 
+ *
  * Central webhook endpoint for all ShopRenter webhooks.
  * Determines tenant database from webhook payload using admin database mapping.
- * 
+ *
  * Workflow:
  * 1. Receive webhook payload
  * 2. Extract storeName or other identifier from payload
