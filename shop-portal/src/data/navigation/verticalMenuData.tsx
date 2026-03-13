@@ -49,6 +49,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
           href: '/payment-methods'
         },
         {
+          label: 'Szállítási módok',
+          href: '/shipping-methods'
+        },
+        {
           label: 'Pénznemek',
           href: '/currencies'
         },

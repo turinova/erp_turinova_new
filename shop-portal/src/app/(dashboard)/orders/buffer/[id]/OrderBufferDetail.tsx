@@ -153,6 +153,16 @@ export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailPro
   const webhookData = entry.webhook_data || {}
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
 
+  // Normalize products: ShopRenter may send orderProducts as array or { orderProduct: [...] }
+  const orderProducts = (() => {
+    const raw = orderData?.orderProducts
+    if (!raw) return []
+    if (Array.isArray(raw)) return raw
+    const inner = raw.orderProduct
+    if (inner == null) return []
+    return Array.isArray(inner) ? inner : [inner]
+  })()
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -389,7 +399,7 @@ export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailPro
         </Grid>
 
         {/* Termékek */}
-        {orderData.orderProducts && Array.isArray(orderData.orderProducts) && orderData.orderProducts.length > 0 && (
+        {orderProducts.length > 0 && (
           <Grid item xs={12}>
             <Card>
               <CardContent>
@@ -411,7 +421,7 @@ export default function OrderBufferDetail({ initialEntry }: OrderBufferDetailPro
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {orderData.orderProducts.map((product: any, index: number) => (
+                      {orderProducts.map((product: any, index: number) => (
                         <TableRow key={index}>
                           <TableCell>{product.name || '-'}</TableCell>
                           <TableCell>{product.sku || '-'}</TableCell>

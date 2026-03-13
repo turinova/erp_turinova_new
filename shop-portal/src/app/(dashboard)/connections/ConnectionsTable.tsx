@@ -61,7 +61,9 @@ import {
   LocalOffer as LocalOfferIcon,
   MoreVert as MoreVertIcon,
   Business as BusinessIcon,
-  People as PeopleIcon
+  People as PeopleIcon,
+  Payment as PaymentIcon,
+  LocalShipping as LocalShippingIcon
 } from '@mui/icons-material'
 import { LinearProgress } from '@mui/material'
 import { toast } from 'react-toastify'
@@ -129,6 +131,22 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [migrating, setMigrating] = useState(false)
   const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null)
   const [menuConnectionId, setMenuConnectionId] = useState<string | null>(null)
+  const [paymentMappingDialogOpen, setPaymentMappingDialogOpen] = useState(false)
+  const [paymentMappingConnection, setPaymentMappingConnection] = useState<WebshopConnection | null>(null)
+  const [paymentMethods, setPaymentMethods] = useState<Array<{ id: string; name: string; code: string | null }>>([])
+  const [paymentMappings, setPaymentMappings] = useState<Array<{ payment_method_id: string; platform_payment_code: string; platform_payment_name: string | null }>>([])
+  const [loadingPaymentMapping, setLoadingPaymentMapping] = useState(false)
+  const [savingPaymentMapping, setSavingPaymentMapping] = useState(false)
+  const [shippingMappingDialogOpen, setShippingMappingDialogOpen] = useState(false)
+  const [shippingMappingConnection, setShippingMappingConnection] = useState<WebshopConnection | null>(null)
+  const [shippingMethods, setShippingMethods] = useState<Array<{ id: string; name: string; code: string | null; extension: string | null }>>([])
+  const [shippingMappings, setShippingMappings] = useState<Array<{ shipping_method_id: string; platform_shipping_code: string; platform_shipping_name: string | null }>>([])
+  const [loadingShippingMapping, setLoadingShippingMapping] = useState(false)
+  const [savingShippingMapping, setSavingShippingMapping] = useState(false)
+  const [newPaymentCode, setNewPaymentCode] = useState('')
+  const [newPaymentMethodId, setNewPaymentMethodId] = useState('')
+  const [newShippingCode, setNewShippingCode] = useState('')
+  const [newShippingMethodId, setNewShippingMethodId] = useState('')
 
   // Load sync logs for a connection
   const loadSyncLogs = async (connectionId: string) => {
@@ -953,6 +971,159 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       toast.error(`Hiba a törlés során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
     } finally {
       setSavingMapping(false)
+    }
+  }
+
+  const handlePaymentMappingClick = async (connection: WebshopConnection) => {
+    setPaymentMappingConnection(connection)
+    setLoadingPaymentMapping(true)
+    setPaymentMappingDialogOpen(true)
+    setNewPaymentCode('')
+    setNewPaymentMethodId('')
+    try {
+      const response = await fetch(`/api/connections/${connection.id}/payment-method-mappings`)
+      if (response.ok) {
+        const data = await response.json()
+        setPaymentMethods(data.paymentMethods || [])
+        setPaymentMappings(data.mappings || [])
+      } else {
+        toast.error('Hiba a fizetési mód leképezések betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading payment mappings:', error)
+      toast.error('Hiba a fizetési mód leképezések betöltésekor')
+    } finally {
+      setLoadingPaymentMapping(false)
+    }
+  }
+
+  const handleSavePaymentMapping = async (paymentMethodId: string, platformPaymentCode: string, platformPaymentName?: string | null) => {
+    if (!paymentMappingConnection) return
+    setSavingPaymentMapping(true)
+    try {
+      const response = await fetch(`/api/connections/${paymentMappingConnection.id}/payment-method-mappings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payment_method_id: paymentMethodId,
+          platform_payment_code: platformPaymentCode.trim(),
+          platform_payment_name: platformPaymentName?.trim() || null
+        })
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setPaymentMappings(prev => {
+          const rest = prev.filter(m => m.platform_payment_code !== platformPaymentCode.trim())
+          return [...rest, { payment_method_id: paymentMethodId, platform_payment_code: platformPaymentCode.trim(), platform_payment_name: platformPaymentName?.trim() || null }]
+        })
+        setNewPaymentCode('')
+        setNewPaymentMethodId('')
+        toast.success('Fizetési mód leképezés mentve')
+      } else {
+        const err = await response.json()
+        throw new Error(err.error || 'Hiba a mentés során')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Ismeretlen hiba')
+    } finally {
+      setSavingPaymentMapping(false)
+    }
+  }
+
+  const handleDeletePaymentMapping = async (platformPaymentCode: string) => {
+    if (!paymentMappingConnection) return
+    setSavingPaymentMapping(true)
+    try {
+      const response = await fetch(`/api/connections/${paymentMappingConnection.id}/payment-method-mappings?platform_payment_code=${encodeURIComponent(platformPaymentCode)}`, {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        setPaymentMappings(prev => prev.filter(m => m.platform_payment_code !== platformPaymentCode))
+        toast.success('Fizetési mód leképezés törölve')
+      } else {
+        const err = await response.json()
+        throw new Error(err.error || 'Hiba a törlés során')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Ismeretlen hiba')
+    } finally {
+      setSavingPaymentMapping(false)
+    }
+  }
+
+  const handleShippingMappingClick = async (connection: WebshopConnection) => {
+    setShippingMappingConnection(connection)
+    setLoadingShippingMapping(true)
+    setShippingMappingDialogOpen(true)
+    setNewShippingCode('')
+    setNewShippingMethodId('')
+    try {
+      const response = await fetch(`/api/connections/${connection.id}/shipping-method-mappings`)
+      if (response.ok) {
+        const data = await response.json()
+        setShippingMethods(data.shippingMethods || [])
+        setShippingMappings(data.mappings || [])
+      } else {
+        toast.error('Hiba a szállítási mód leképezések betöltésekor')
+      }
+    } catch (error) {
+      console.error('Error loading shipping mappings:', error)
+      toast.error('Hiba a szállítási mód leképezések betöltésekor')
+    } finally {
+      setLoadingShippingMapping(false)
+    }
+  }
+
+  const handleSaveShippingMapping = async (shippingMethodId: string, platformShippingCode: string, platformShippingName?: string | null) => {
+    if (!shippingMappingConnection) return
+    setSavingShippingMapping(true)
+    try {
+      const response = await fetch(`/api/connections/${shippingMappingConnection.id}/shipping-method-mappings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shipping_method_id: shippingMethodId,
+          platform_shipping_code: platformShippingCode.trim(),
+          platform_shipping_name: platformShippingName?.trim() || null
+        })
+      })
+      if (response.ok) {
+        setShippingMappings(prev => {
+          const rest = prev.filter(m => m.platform_shipping_code !== platformShippingCode.trim())
+          return [...rest, { shipping_method_id: shippingMethodId, platform_shipping_code: platformShippingCode.trim(), platform_shipping_name: platformShippingName?.trim() || null }]
+        })
+        setNewShippingCode('')
+        setNewShippingMethodId('')
+        toast.success('Szállítási mód leképezés mentve')
+      } else {
+        const err = await response.json()
+        throw new Error(err.error || 'Hiba a mentés során')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Ismeretlen hiba')
+    } finally {
+      setSavingShippingMapping(false)
+    }
+  }
+
+  const handleDeleteShippingMapping = async (platformShippingCode: string) => {
+    if (!shippingMappingConnection) return
+    setSavingShippingMapping(true)
+    try {
+      const response = await fetch(`/api/connections/${shippingMappingConnection.id}/shipping-method-mappings?platform_shipping_code=${encodeURIComponent(platformShippingCode)}`, {
+        method: 'DELETE'
+      })
+      if (response.ok) {
+        setShippingMappings(prev => prev.filter(m => m.platform_shipping_code !== platformShippingCode))
+        toast.success('Szállítási mód leképezés törölve')
+      } else {
+        const err = await response.json()
+        throw new Error(err.error || 'Hiba a törlés során')
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Ismeretlen hiba')
+    } finally {
+      setSavingShippingMapping(false)
     }
   }
 
@@ -2009,6 +2180,30 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         >
                           <ReceiptIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
                           ÁFA leképezés
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
+                        <MenuItem
+                          onClick={() => {
+                            handlePaymentMappingClick(connection)
+                            setMenuAnchorEl(null)
+                            setMenuConnectionId(null)
+                          }}
+                        >
+                          <PaymentIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
+                          Fizetési mód leképezés
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
+                        <MenuItem
+                          onClick={() => {
+                            handleShippingMappingClick(connection)
+                            setMenuAnchorEl(null)
+                            setMenuConnectionId(null)
+                          }}
+                        >
+                          <LocalShippingIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
+                          Szállítási mód leképezés
                         </MenuItem>
                       )}
                       {connection.connection_type === 'shoprenter' && (
@@ -3486,6 +3681,222 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           <Button onClick={() => setVatMappingDialogOpen(false)}>
             Bezárás
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Payment method mapping dialog */}
+      <Dialog
+        open={paymentMappingDialogOpen}
+        onClose={() => setPaymentMappingDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PaymentIcon />
+            <Typography variant="h6">Fizetési mód leképezés</Typography>
+          </Box>
+          {paymentMappingConnection && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {paymentMappingConnection.name}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {loadingPaymentMapping ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                A webshop fizetési mód kódját (pl. COD, BANK_TRANSFER) kösse az ERP fizetési módhoz. A rendelés feldolgozásnál ezt a leképezést használja a rendszer.
+              </Alert>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  size="small"
+                  label="Platform kód"
+                  placeholder="pl. COD"
+                  value={newPaymentCode}
+                  onChange={e => setNewPaymentCode(e.target.value)}
+                  sx={{ minWidth: 140 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>ERP fizetési mód</InputLabel>
+                  <Select
+                    value={newPaymentMethodId}
+                    onChange={e => setNewPaymentMethodId(e.target.value)}
+                    label="ERP fizetési mód"
+                  >
+                    <MenuItem value=""><em>Válasszon</em></MenuItem>
+                    {paymentMethods.map(pm => (
+                      <MenuItem key={pm.id} value={pm.id}>{pm.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  disabled={!newPaymentCode.trim() || !newPaymentMethodId || savingPaymentMapping}
+                  onClick={() => handleSavePaymentMapping(newPaymentMethodId, newPaymentCode)}
+                >
+                  {savingPaymentMapping ? 'Mentés…' : 'Hozzáadás'}
+                </Button>
+              </Box>
+              <TableContainer component={Paper} elevation={1}>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: 'action.hover' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Platform kód</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>ERP fizetési mód</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="center" width="100">Művelet</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {paymentMappings.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Nincs leképezés. Adjon hozzá platform kódot és ERP fizetési módot.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      paymentMappings.map(m => {
+                        const pm = paymentMethods.find(p => p.id === m.payment_method_id)
+                        return (
+                          <TableRow key={m.platform_payment_code} hover>
+                            <TableCell>{m.platform_payment_code}</TableCell>
+                            <TableCell>{pm?.name ?? m.payment_method_id}</TableCell>
+                            <TableCell align="center">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeletePaymentMapping(m.platform_payment_code)}
+                                disabled={savingPaymentMapping}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setPaymentMappingDialogOpen(false)}>Bezárás</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Shipping method mapping dialog */}
+      <Dialog
+        open={shippingMappingDialogOpen}
+        onClose={() => setShippingMappingDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LocalShippingIcon />
+            <Typography variant="h6">Szállítási mód leképezés</Typography>
+          </Box>
+          {shippingMappingConnection && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {shippingMappingConnection.name}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {loadingShippingMapping ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <Box>
+              <Alert severity="info" sx={{ mb: 3 }}>
+                A webshop szállítási mód kódját (pl. GLSPARCELPOINT) kösse az ERP szállítási módhoz. A rendelés feldolgozásnál ezt a leképezést használja a rendszer.
+              </Alert>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+                <TextField
+                  size="small"
+                  label="Platform kód"
+                  placeholder="pl. GLSPARCELPOINT"
+                  value={newShippingCode}
+                  onChange={e => setNewShippingCode(e.target.value)}
+                  sx={{ minWidth: 160 }}
+                />
+                <FormControl size="small" sx={{ minWidth: 200 }}>
+                  <InputLabel>ERP szállítási mód</InputLabel>
+                  <Select
+                    value={newShippingMethodId}
+                    onChange={e => setNewShippingMethodId(e.target.value)}
+                    label="ERP szállítási mód"
+                  >
+                    <MenuItem value=""><em>Válasszon</em></MenuItem>
+                    {shippingMethods.map(sm => (
+                      <MenuItem key={sm.id} value={sm.id}>{sm.name}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  disabled={!newShippingCode.trim() || !newShippingMethodId || savingShippingMapping}
+                  onClick={() => handleSaveShippingMapping(newShippingMethodId, newShippingCode)}
+                >
+                  {savingShippingMapping ? 'Mentés…' : 'Hozzáadás'}
+                </Button>
+              </Box>
+              <TableContainer component={Paper} elevation={1}>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: 'action.hover' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Platform kód</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>ERP szállítási mód</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }} align="center" width="100">Művelet</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {shippingMappings.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Nincs leképezés. Adjon hozzá platform kódot és ERP szállítási módot.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      shippingMappings.map(m => {
+                        const sm = shippingMethods.find(s => s.id === m.shipping_method_id)
+                        return (
+                          <TableRow key={m.platform_shipping_code} hover>
+                            <TableCell>{m.platform_shipping_code}</TableCell>
+                            <TableCell>{sm?.name ?? m.shipping_method_id}</TableCell>
+                            <TableCell align="center">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteShippingMapping(m.platform_shipping_code)}
+                                disabled={savingShippingMapping}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 1 }}>
+          <Button onClick={() => setShippingMappingDialogOpen(false)}>Bezárás</Button>
         </DialogActions>
       </Dialog>
 

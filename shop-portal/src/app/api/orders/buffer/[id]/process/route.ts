@@ -79,10 +79,11 @@ export async function POST(
         bufferEntry.connection_id
       )
 
-      // Step 3: Match payment and shipping methods
+      // Step 3: Match payment and shipping methods (mapping first, then fallback to code)
       const { paymentMethodId, shippingMethodId } = await matchPaymentAndShippingMethods(
         supabase,
-        webhookData
+        webhookData,
+        bufferEntry.connection_id
       )
 
       // Step 4: Generate order number
@@ -339,45 +340,82 @@ async function matchCustomer(
 }
 
 /**
- * Match payment and shipping methods
+ * Match payment and shipping methods.
+ * Uses per-connection mapping tables first; falls back to code match if no mapping.
  */
 async function matchPaymentAndShippingMethods(
   supabase: any,
-  webhookData: any
+  webhookData: any,
+  connectionId: string | null
 ): Promise<{ paymentMethodId: string | null; shippingMethodId: string | null }> {
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
-  
+
   let paymentMethodId: string | null = null
   let shippingMethodId: string | null = null
 
-  // Match payment method
-  if (orderData.paymentMethodCode) {
-    const { data: paymentMethod } = await supabase
-      .from('payment_methods')
-      .select('id')
-      .eq('code', orderData.paymentMethodCode)
-      .is('deleted_at', null)
-      .eq('active', true)
-      .single()
+  const platformPaymentCode = orderData.paymentMethodCode
+    ? String(orderData.paymentMethodCode).trim()
+    : null
+  const platformShippingCode =
+    orderData.shippingMethodExtension || orderData.shippingMethodCode
+      ? String(orderData.shippingMethodExtension || orderData.shippingMethodCode).trim()
+      : null
 
-    if (paymentMethod) {
-      paymentMethodId = paymentMethod.id
+  // Payment: try mapping first, then fallback to code
+  if (platformPaymentCode) {
+    if (connectionId) {
+      const { data: mapping } = await supabase
+        .from('connection_payment_method_mappings')
+        .select('payment_method_id')
+        .eq('connection_id', connectionId)
+        .eq('platform_payment_code', platformPaymentCode)
+        .single()
+
+      if (mapping?.payment_method_id) {
+        paymentMethodId = mapping.payment_method_id
+      }
+    }
+    if (!paymentMethodId) {
+      const { data: paymentMethod } = await supabase
+        .from('payment_methods')
+        .select('id')
+        .eq('code', platformPaymentCode)
+        .is('deleted_at', null)
+        .eq('active', true)
+        .single()
+
+      if (paymentMethod) {
+        paymentMethodId = paymentMethod.id
+      }
     }
   }
 
-  // Match shipping method
-  if (orderData.shippingMethodExtension || orderData.shippingMethodCode) {
-    const code = orderData.shippingMethodExtension || orderData.shippingMethodCode
-    const { data: shippingMethod } = await supabase
-      .from('shipping_methods')
-      .select('id')
-      .eq('code', code)
-      .is('deleted_at', null)
-      .eq('is_active', true)
-      .single()
+  // Shipping: try mapping first, then fallback to code
+  if (platformShippingCode) {
+    if (connectionId) {
+      const { data: mapping } = await supabase
+        .from('connection_shipping_method_mappings')
+        .select('shipping_method_id')
+        .eq('connection_id', connectionId)
+        .eq('platform_shipping_code', platformShippingCode)
+        .single()
 
-    if (shippingMethod) {
-      shippingMethodId = shippingMethod.id
+      if (mapping?.shipping_method_id) {
+        shippingMethodId = mapping.shipping_method_id
+      }
+    }
+    if (!shippingMethodId) {
+      const { data: shippingMethod } = await supabase
+        .from('shipping_methods')
+        .select('id')
+        .eq('code', platformShippingCode)
+        .is('deleted_at', null)
+        .eq('is_active', true)
+        .single()
+
+      if (shippingMethod) {
+        shippingMethodId = shippingMethod.id
+      }
     }
   }
 
@@ -407,6 +445,19 @@ async function generateOrderNumber(supabase: any): Promise<string> {
 }
 
 /**
+ * Normalize order products from webhook payload.
+ * ShopRenter may send orderProducts as array or as { orderProduct: [...] }.
+ */
+function normalizeOrderProducts(orderData: any): any[] {
+  const raw = orderData?.orderProducts
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  const inner = raw.orderProduct
+  if (inner == null) return []
+  return Array.isArray(inner) ? inner : [inner]
+}
+
+/**
  * Create order items from webhook data
  */
 async function createOrderItems(
@@ -416,9 +467,9 @@ async function createOrderItems(
   connectionId: string
 ): Promise<any[]> {
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
-  const orderProducts = orderData.orderProducts || []
+  const orderProducts = normalizeOrderProducts(orderData)
 
-  if (!Array.isArray(orderProducts) || orderProducts.length === 0) {
+  if (orderProducts.length === 0) {
     console.warn('[BUFFER PROCESS] No order products in webhook data')
     return []
   }
