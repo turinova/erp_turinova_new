@@ -14,8 +14,8 @@ schemas = ["public", "graphql_public"]
 # Extra schemas to add to the search_path of every request.
 extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
-# for accidental or malicious requests.
-max_rows = 1000
+# for accidental or malicious requests. Raised to 10000 for supplier-orders page (fetch-all + client filter).
+max_rows = 10000
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
