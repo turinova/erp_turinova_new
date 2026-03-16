@@ -1,7 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { useState, useEffect, useCallback } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 
 import { 
   Box, 
@@ -49,6 +49,7 @@ import {
   AddShoppingCart as CreatePOIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import { useDebounce } from '@/hooks/useDebounce'
 import BeszerzésSmsModal from './BeszerzésSmsModal'
 import CreatePurchaseOrderModal from './CreatePurchaseOrderModal'
 
@@ -122,7 +123,34 @@ export default function SupplierOrdersClient({
   const [searchTerm, setSearchTerm] = useState(initialSearch || '')
   const [statusFilter, setStatusFilter] = useState(initialStatus || 'open')
   const [partnerFilter, setPartnerFilter] = useState(initialPartnerId || '')
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({
+    all: 0,
+    open: 0,
+    ordered: 0,
+    arrived: 0,
+    handed_over: 0,
+    deleted: 0
+  })
   const [mounted, setMounted] = useState(false)
+  const pathname = usePathname()
+
+  const pushUrl = useCallback(
+    (updates: { page?: number; limit?: number; search?: string; status?: string; partner_id?: string }) => {
+      const params = new URLSearchParams()
+      const page = updates.page ?? initialCurrentPage
+      const limit = updates.limit ?? initialLimit
+      const search = updates.search !== undefined ? updates.search : initialSearch
+      const status = updates.status !== undefined ? updates.status : initialStatus
+      const partner_id = updates.partner_id !== undefined ? updates.partner_id : initialPartnerId
+      if (page > 1) params.set('page', String(page))
+      if (limit !== 50) params.set('limit', String(limit))
+      if (search) params.set('search', search)
+      if (status) params.set('status', status)
+      if (partner_id) params.set('partner_id', partner_id)
+      router.push(`${pathname}${params.toString() ? `?${params.toString()}` : ''}`)
+    },
+    [pathname, router, initialCurrentPage, initialLimit, initialSearch, initialStatus, initialPartnerId]
+  )
   const [isLoading, setIsLoading] = useState(false)
   const [confirmationModalOpen, setConfirmationModalOpen] = useState(false)
   const [pendingStatusUpdate, setPendingStatusUpdate] = useState<string | null>(null)
@@ -191,49 +219,42 @@ export default function SupplierOrdersClient({
     return partnerColors[colorIndex]
   }
 
-  // Reset page when search or status filter changes
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchTerm, statusFilter])
-
-  // Update items when initialItems prop changes (from server-side search)
+  // Sync state from server (URL-driven)
   useEffect(() => {
     setItems(initialItems)
-  }, [initialItems])
+    setSearchTerm(initialSearch || '')
+    setStatusFilter(initialStatus || 'open')
+    setPartnerFilter(initialPartnerId || '')
+    setCurrentPage(initialCurrentPage)
+    setPageSize(initialLimit)
+  }, [initialItems, initialSearch, initialStatus, initialPartnerId, initialCurrentPage, initialLimit])
 
-  // Filter items by search term and status (client-side) - like customer orders page
-  const filteredItems = items.filter(item => {
-    // Filter by search term - using optional chaining for null-safety
-    const searchLower = searchTerm.toLowerCase()
-    const matchesSearch = 
-      item.product_name?.toLowerCase().includes(searchLower) ||
-      item.sku?.toLowerCase().includes(searchLower) ||
-      item.customer_name?.toLowerCase().includes(searchLower) ||
-      item.partner_name?.toLowerCase().includes(searchLower)
-    
-    // Filter by status
-    const matchesStatus = statusFilter === '' || item.status === statusFilter
-    
-    return matchesSearch && matchesStatus
-  })
+  // Server returns one page; no client-side filtering
+  const [currentPage, setCurrentPage] = useState(initialCurrentPage)
+  const [pageSize, setPageSize] = useState(initialLimit)
+  const totalPages = Math.max(1, initialTotalPages)
+  const paginatedItems = items
+  const filteredItems = items
 
-  // Count items by status - like orders page
-  const statusCounts = {
-    all: items.length,
-    open: items.filter(i => i.status === 'open').length,
-    ordered: items.filter(i => i.status === 'ordered').length,
-    arrived: items.filter(i => i.status === 'arrived').length,
-    handed_over: items.filter(i => i.status === 'handed_over').length,
-    deleted: items.filter(i => i.status === 'deleted').length
-  }
+  // Fetch status counts for badges (accurate for full dataset)
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (initialSearch) params.set('search', initialSearch)
+    if (initialPartnerId) params.set('partner_id', initialPartnerId)
+    fetch(`/api/supplier-orders/status-counts?${params.toString()}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && typeof data.all === 'number') setStatusCounts(data)
+      })
+      .catch(() => {})
+  }, [initialSearch, initialPartnerId])
 
-  // Pagination - now works with filtered items like customer orders page
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
-  
-  const totalPages = Math.ceil(filteredItems.length / pageSize)
-  const startIndex = (currentPage - 1) * pageSize
-  const paginatedItems = filteredItems.slice(startIndex, startIndex + pageSize)
+  const debouncedSearch = useDebounce(searchTerm, 500)
+  useEffect(() => {
+    if (!mounted) return
+    if (debouncedSearch === (initialSearch || '')) return
+    pushUrl({ search: debouncedSearch, page: 1 })
+  }, [debouncedSearch])
 
   // Check if selected items can create PO (same partner_id)
   const canCreatePO = React.useMemo(() => {
@@ -321,16 +342,15 @@ export default function SupplierOrdersClient({
     }
   }
 
-  // Handle page change
-  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
-    setCurrentPage(value)
+  // Handle page change (navigate so server fetches new page)
+  const handlePageChange = (_event: React.ChangeEvent<unknown>, value: number) => {
+    pushUrl({ page: value })
   }
 
   // Handle limit change
   const handleLimitChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const newLimit = parseInt(event.target.value, 10)
-    setPageSize(newLimit)
-    setCurrentPage(1) // Reset to first page when changing limit
+    pushUrl({ limit: newLimit, page: 1 })
   }
 
   // Handle row click (navigate to customer order detail page)
@@ -577,42 +597,42 @@ export default function SupplierOrdersClient({
         </Typography>
         <Chip
           label={`Összes (${statusCounts.all})`}
-          onClick={() => setStatusFilter('')}
-          color={statusFilter === '' ? 'primary' : 'default'}
-          variant={statusFilter === '' ? 'filled' : 'outlined'}
+          onClick={() => pushUrl({ status: 'all', page: 1 })}
+          color={statusFilter === 'all' || statusFilter === '' ? 'primary' : 'default'}
+          variant={statusFilter === 'all' || statusFilter === '' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Nyitott (${statusCounts.open})`}
-          onClick={() => setStatusFilter('open')}
+          onClick={() => pushUrl({ status: 'open', page: 1 })}
           color={statusFilter === 'open' ? 'warning' : 'default'}
           variant={statusFilter === 'open' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Rendelve (${statusCounts.ordered})`}
-          onClick={() => setStatusFilter('ordered')}
+          onClick={() => pushUrl({ status: 'ordered', page: 1 })}
           color={statusFilter === 'ordered' ? 'info' : 'default'}
           variant={statusFilter === 'ordered' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Megérkezett (${statusCounts.arrived})`}
-          onClick={() => setStatusFilter('arrived')}
+          onClick={() => pushUrl({ status: 'arrived', page: 1 })}
           color={statusFilter === 'arrived' ? 'success' : 'default'}
           variant={statusFilter === 'arrived' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Átadva (${statusCounts.handed_over})`}
-          onClick={() => setStatusFilter('handed_over')}
+          onClick={() => pushUrl({ status: 'handed_over', page: 1 })}
           color={statusFilter === 'handed_over' ? 'primary' : 'default'}
           variant={statusFilter === 'handed_over' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
         />
         <Chip
           label={`Törölve (${statusCounts.deleted})`}
-          onClick={() => setStatusFilter('deleted')}
+          onClick={() => pushUrl({ status: 'deleted', page: 1 })}
           color={statusFilter === 'deleted' ? 'error' : 'default'}
           variant={statusFilter === 'deleted' ? 'filled' : 'outlined'}
           sx={{ cursor: 'pointer' }}
@@ -943,9 +963,9 @@ export default function SupplierOrdersClient({
       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="body2" color="text.secondary">
-            {searchTerm || statusFilter !== '' 
-              ? `Keresési eredmény: ${filteredItems.length} termék` 
-              : `Összesen ${items.length} termék`
+            {initialSearch || statusFilter
+              ? `Keresési eredmény: ${initialTotalCount} termék`
+              : `Összesen ${initialTotalCount} termék`
             }
           </Typography>
           <FormControl size="small" sx={{ minWidth: 80 }}>
