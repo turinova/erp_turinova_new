@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { extractShopNameFromUrl } from '@/lib/shoprenter-api'
+import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
+import { reserveStockForOrder } from '@/lib/order-reservation'
 
 /**
  * POST /api/orders/buffer/[id]/process
@@ -72,8 +74,8 @@ export async function POST(
       // Step 1: Extract order data from webhook
       const orderData = extractOrderDataFromWebhook(webhookData, bufferEntry.connection_id)
 
-      // Step 2: Match customer
-      const customerPersonId = await matchCustomer(
+      // Step 2: Match customer (person or company)
+      const customerMatch = await matchCustomer(
         supabase,
         webhookData,
         bufferEntry.connection_id
@@ -89,13 +91,25 @@ export async function POST(
       // Step 4: Generate order number
       const orderNumber = await generateOrderNumber(supabase)
 
+      let customerCompanyName: string | null = null
+      if (customerMatch.companyId) {
+        const { data: company } = await supabase
+          .from('customer_companies')
+          .select('name')
+          .eq('id', customerMatch.companyId)
+          .single()
+        customerCompanyName = company?.name ?? null
+      }
+
       // Step 5: Create order
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
         .insert({
           ...orderData,
           order_number: orderNumber,
-          customer_person_id: customerPersonId,
+          customer_person_id: customerMatch.personId ?? null,
+          customer_company_id: customerMatch.companyId ?? null,
+          customer_company_name: customerCompanyName,
           payment_method_id: paymentMethodId,
           shipping_method_id: shippingMethodId,
           status: 'new', // Moved from pending_review to new
@@ -117,6 +131,31 @@ export async function POST(
         webhookData,
         bufferEntry.connection_id
       )
+
+      // Step 6b: Recompute order totals from items (so order.total_gross etc. match items, not raw webhook)
+      await recomputeOrderTotalsFromItems(supabase, newOrder.id)
+
+      // Step 6c: Set initial fulfillability_status from stock (Phase 3)
+      const fulfillabilityStatus = await computeOrderFulfillabilityFromStock(supabase, newOrder.id)
+      if (fulfillabilityStatus) {
+        await supabase
+          .from('orders')
+          .update({ fulfillability_status: fulfillabilityStatus, updated_at: new Date().toISOString() })
+          .eq('id', newOrder.id)
+      }
+
+      // Step 6d: Reserve stock when fully fulfillable (see docs/ORDER_RESERVATION_AND_DELETE.md)
+      if (fulfillabilityStatus === 'fully_fulfillable') {
+        const reserveResult = await reserveStockForOrder(supabase, newOrder.id, { createdBy: user.id })
+        if (reserveResult.ok) {
+          try {
+            await supabase.rpc('refresh_stock_summary')
+          } catch {
+            // non-fatal; stock_summary will refresh on next run
+          }
+        }
+        // if !reserveResult.ok we still proceed; order is created, reservation can be retried or done manually
+      }
 
       // Step 7: Create order totals
       await createOrderTotals(supabase, newOrder.id, webhookData)
@@ -278,19 +317,18 @@ function extractOrderDataFromWebhook(webhookData: any, connectionId: string) {
 }
 
 /**
- * Match customer by ShopRenter customer ID or email
+ * Match customer by ShopRenter customer ID or email.
+ * Returns either personId or companyId (platform mapping can link to person or company).
  */
 async function matchCustomer(
   supabase: any,
   webhookData: any,
   connectionId: string
-): Promise<string | null> {
-  // Try to get customer ID from webhook
+): Promise<{ personId: string | null; companyId: string | null }> {
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
   const customerHref = orderData.customer?.href
 
   if (!customerHref) {
-    // Try to match by email
     if (orderData.email) {
       const { data: person } = await supabase
         .from('customer_persons')
@@ -298,31 +336,25 @@ async function matchCustomer(
         .eq('email', orderData.email)
         .is('deleted_at', null)
         .single()
-
-      if (person) {
-        return person.id
-      }
+      if (person) return { personId: person.id, companyId: null }
     }
-    return null // Guest order
+    return { personId: null, companyId: null }
   }
 
-  // Try to find the platform mapping
   try {
     const { data: mapping } = await supabase
       .from('customer_platform_mappings')
-      .select('person_id')
+      .select('person_id, company_id')
       .eq('connection_id', connectionId)
       .eq('platform_customer_id', customerHref)
       .single()
 
-    if (mapping?.person_id) {
-      return mapping.person_id
-    }
+    if (mapping?.person_id) return { personId: mapping.person_id, companyId: null }
+    if (mapping?.company_id) return { personId: null, companyId: mapping.company_id }
   } catch (error) {
     console.warn('[BUFFER PROCESS] Could not match customer by platform ID:', error)
   }
 
-  // Fallback: try email
   if (orderData.email) {
     const { data: person } = await supabase
       .from('customer_persons')
@@ -330,13 +362,10 @@ async function matchCustomer(
       .eq('email', orderData.email)
       .is('deleted_at', null)
       .single()
-
-    if (person) {
-      return person.id
-    }
+    if (person) return { personId: person.id, companyId: null }
   }
 
-  return null // Guest order
+  return { personId: null, companyId: null }
 }
 
 /**
@@ -556,9 +585,12 @@ async function createOrderItems(
     }
 
     const unitPriceNet = parseFloat(product.price || product.priceNet || '0') || 0
-    const unitPriceGross = parseFloat(product.priceGross || product.price || '0') || 0
     const quantity = parseInt(product.quantity || '1') || 1
     const taxRate = parseFloat(product.taxRate || '0') || 0
+    const unitPriceGrossRaw = parseFloat(product.priceGross || product.price || '0') || 0
+    const unitPriceGross = unitPriceGrossRaw > unitPriceNet && taxRate > 0
+      ? unitPriceGrossRaw
+      : unitPriceNet * (1 + taxRate / 100)
 
     const orderItem = {
       order_id: orderId,
@@ -599,6 +631,63 @@ async function createOrderItems(
   }
 
   return []
+}
+
+/**
+ * Recompute order subtotal/tax/total from order_items and update the order row.
+ * Ensures order.total_gross etc. match the actual items (avoids webhook sending net as gross).
+ */
+async function recomputeOrderTotalsFromItems(supabase: any, orderId: string): Promise<void> {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('currency_code, discount_amount, shipping_total_net, shipping_total_gross, payment_total_net, payment_total_gross')
+    .eq('id', orderId)
+    .single()
+  if (!order) return
+
+  const { data: activeItems } = await supabase
+    .from('order_items')
+    .select('line_total_net, line_total_gross')
+    .eq('order_id', orderId)
+    .is('deleted_at', null)
+
+  let subtotalNet = 0
+  let subtotalGross = 0
+  for (const row of activeItems || []) {
+    subtotalNet += parseFloat(String(row.line_total_net)) || 0
+    subtotalGross += parseFloat(String(row.line_total_gross)) || 0
+  }
+  const isHuf = (order.currency_code || 'HUF').toUpperCase() === 'HUF'
+  const round = (x: number) => (isHuf ? Math.round(x) : Math.round(x * 100) / 100)
+  subtotalNet = round(subtotalNet)
+  subtotalGross = round(subtotalGross)
+
+  const orderDiscount = Math.max(0, round(parseFloat(String(order.discount_amount)) || 0))
+  const discountAmount = Math.min(orderDiscount, subtotalGross)
+  const afterDiscountGross = round(subtotalGross - discountAmount)
+  const afterDiscountNet = subtotalGross > 0
+    ? round(subtotalNet - round(discountAmount * subtotalNet / subtotalGross))
+    : subtotalNet
+  const taxAmount = round(afterDiscountGross - afterDiscountNet)
+  const shippingNet = parseFloat(String(order.shipping_total_net)) || 0
+  const shippingGross = parseFloat(String(order.shipping_total_gross)) || 0
+  const paymentNet = parseFloat(String(order.payment_total_net)) || 0
+  const paymentGross = parseFloat(String(order.payment_total_gross)) || 0
+  const totalNet = round(afterDiscountNet + shippingNet + paymentNet)
+  const totalGross = round(afterDiscountGross + shippingGross + paymentGross)
+
+  await supabase
+    .from('orders')
+    .update({
+      subtotal_net: subtotalNet,
+      subtotal_gross: subtotalGross,
+      discount_amount: discountAmount,
+      tax_amount: taxAmount,
+      total_net: totalNet,
+      total_gross: totalGross,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', orderId)
 }
 
 /**

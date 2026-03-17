@@ -57,7 +57,8 @@ export async function GET(
       total_on_hand: 0,
       total_available: 0,
       total_reserved: 0,
-      total_value: 0
+      total_value: 0,
+      total_incoming: 0
     }
 
     const warehousesData = (warehouses || []).map((warehouse: any) => {
@@ -86,6 +87,31 @@ export async function GET(
         last_movement_at: stock?.last_movement_at || null
       }
     })
+
+    // Incoming from open POs (quantity not yet received)
+    const OPEN_PO_STATUSES = ['draft', 'pending_approval', 'approved', 'partially_received']
+    const { data: openPOs } = await supabase
+      .from('purchase_orders')
+      .select('id')
+      .in('status', OPEN_PO_STATUSES)
+      .is('deleted_at', null)
+    if (openPOs && openPOs.length > 0) {
+      const openPoIds = openPOs.map((p: any) => p.id)
+      const { data: poItems } = await supabase
+        .from('purchase_order_items')
+        .select('quantity, received_quantity')
+        .eq('product_id', id)
+        .in('purchase_order_id', openPoIds)
+        .is('deleted_at', null)
+      if (poItems) {
+        for (const row of poItems as any[]) {
+          const qty = parseFloat(String(row.quantity)) || 0
+          const received = parseFloat(String(row.received_quantity)) || 0
+          summary.total_incoming += Math.max(0, qty - received)
+        }
+        summary.total_incoming = Math.round(summary.total_incoming * 100) / 100
+      }
+    }
 
     // Get incoming shipments (waiting shipments with this product)
     // First get shipment items
@@ -234,7 +260,7 @@ export async function GET(
       console.error('Error fetching stock movements:', movementsError)
     }
 
-    // Enrich stock movements with warehouse and operation data
+    // Enrich stock movements with warehouse, operation, and order (for reserved/released) data
     const enrichedMovements = await Promise.all(
       (stockMovements || []).map(async (movement: any) => {
         // Get warehouse
@@ -255,10 +281,22 @@ export async function GET(
           operation = op
         }
 
+        // For reserved/released from order, get order_number for display
+        let source_order_number: string | null = null
+        if (movement.source_type === 'order' && movement.source_id) {
+          const { data: order } = await supabase
+            .from('orders')
+            .select('order_number')
+            .eq('id', movement.source_id)
+            .single()
+          source_order_number = order?.order_number ?? null
+        }
+
         return {
           ...movement,
           warehouses: warehouse,
-          warehouse_operations: operation
+          warehouse_operations: operation,
+          source_order_number
         }
       })
     )

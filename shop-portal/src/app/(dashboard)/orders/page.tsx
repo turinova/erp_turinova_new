@@ -1,7 +1,8 @@
-import { Box, Breadcrumbs, Link, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Chip } from '@mui/material'
+import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, ShoppingCart as ShoppingCartIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import OrdersTable from './OrdersTable'
 
 interface PageProps {
   searchParams?: Promise<{
@@ -10,26 +11,6 @@ interface PageProps {
     status?: string
     search?: string
   }>
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  new: 'Új',
-  pending_review: 'Áttekintésre vár',
-  packing: 'Csomagolás',
-  shipped: 'Elküldve',
-  delivered: 'Kézbesítve',
-  cancelled: 'Törölve',
-  refunded: 'Visszatérítve'
-}
-
-const STATUS_COLORS: Record<string, 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning'> = {
-  new: 'info',
-  pending_review: 'warning',
-  packing: 'primary',
-  shipped: 'info',
-  delivered: 'success',
-  cancelled: 'error',
-  refunded: 'error'
 }
 
 export default async function OrdersPage({ searchParams }: PageProps = {}) {
@@ -53,13 +34,17 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
         id,
         order_number,
         platform_order_id,
+        connection_id,
         customer_firstname,
         customer_lastname,
         customer_email,
         total_gross,
         currency_code,
         status,
+        fulfillability_status,
         payment_status,
+        shipping_method_name,
+        payment_method_name,
         order_date,
         created_at
       `, { count: 'exact' })
@@ -88,14 +73,24 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
     console.error('Error fetching orders:', error)
   }
 
-  const formatCurrency = (amount: number | null, currency: string = 'HUF') => {
-    if (amount == null) return '-'
-    return new Intl.NumberFormat('hu-HU', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
-  }
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return '-'
-    return new Date(dateString).toLocaleDateString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  let batchByOrderId: Record<string, { id: string; code: string }> = {}
+  try {
+    const pickingIds = (orders as any[]).filter((o: any) => o.status === 'picking' || o.status === 'picked').map((o: any) => o.id)
+    if (pickingIds.length > 0) {
+      const supabase = await getTenantSupabase()
+      const { data: pbo } = await supabase
+        .from('pick_batch_orders')
+        .select('order_id, pick_batch_id, pick_batches(id, code, status)')
+        .in('order_id', pickingIds)
+      const active = (pbo || []).filter(
+        (r: any) => r.pick_batches && (r.pick_batches.status === 'in_progress' || r.pick_batches.status === 'completed')
+      )
+      active.forEach((r: any) => {
+        batchByOrderId[r.order_id] = { id: r.pick_batch_id, code: r.pick_batches?.code || r.pick_batch_id }
+      })
+    }
+  } catch (e) {
+    console.error('Error fetching batch info for orders:', e)
   }
 
   return (
@@ -121,66 +116,7 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
         </Link>
       </Box>
 
-      <TableContainer component={Paper} variant="outlined">
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Rendelésszám</TableCell>
-              <TableCell>Vásárló</TableCell>
-              <TableCell>Összeg</TableCell>
-              <TableCell>Státusz</TableCell>
-              <TableCell>Fizetés</TableCell>
-              <TableCell>Dátum</TableCell>
-              <TableCell align="right"></TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {orders.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
-                  Nincs megjeleníthető rendelés.
-                </TableCell>
-              </TableRow>
-            ) : (
-              orders.map((order: any) => (
-                <TableRow key={order.id} hover>
-                  <TableCell>
-                    <Link component={NextLink} href={`/orders/${order.id}`} fontWeight="medium">
-                      {order.order_number}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    {order.customer_firstname} {order.customer_lastname}
-                    {order.customer_email && (
-                      <Typography variant="caption" display="block" color="text.secondary">
-                        {order.customer_email}
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell>{formatCurrency(order.total_gross, order.currency_code)}</TableCell>
-                  <TableCell>
-                    <Chip
-                      size="small"
-                      label={STATUS_LABELS[order.status] || order.status}
-                      color={STATUS_COLORS[order.status] || 'default'}
-                      variant="outlined"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Chip size="small" label={order.payment_status || 'pending'} variant="outlined" />
-                  </TableCell>
-                  <TableCell>{formatDate(order.order_date)}</TableCell>
-                  <TableCell align="right">
-                    <Link component={NextLink} href={`/orders/${order.id}`}>
-                      Részletek
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <OrdersTable orders={orders} batchByOrderId={batchByOrderId} />
 
       {totalPages > 1 && (
         <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 3 }}>

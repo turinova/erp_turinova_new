@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { recomputeFulfillabilityForOrdersLinkedToPOs, getOrderIdsToReserveLinkedToPOs } from '@/lib/order-fulfillability'
+import { reserveStockForOrder } from '@/lib/order-reservation'
 
 /**
  * POST /api/shipments/[id]/complete
@@ -246,6 +248,27 @@ export async function POST(
 
     // Refresh stock summary view
     await supabase.rpc('refresh_stock_summary')
+
+    // Recompute fulfillability for orders linked to the received PO(s) so "Beszerzés alatt" → "Csomagolható"
+    if (!poLinksError && poLinks && poLinks.length > 0) {
+      const poIds = poLinks.map((link: any) => link.purchase_order_id)
+      await recomputeFulfillabilityForOrdersLinkedToPOs(supabase, poIds)
+      // Reserve stock for orders that became fully_fulfillable and are not yet reserved
+      const orderIdsToReserve = await getOrderIdsToReserveLinkedToPOs(supabase, poIds)
+      for (const orderId of orderIdsToReserve) {
+        const result = await reserveStockForOrder(supabase, orderId, { createdBy: user.id })
+        if (!result.ok) {
+          console.error('[shipment complete] Reserve failed for order', orderId, result.error)
+        }
+      }
+      if (orderIdsToReserve.length > 0) {
+        try {
+          await supabase.rpc('refresh_stock_summary')
+        } catch {
+          // non-fatal
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,

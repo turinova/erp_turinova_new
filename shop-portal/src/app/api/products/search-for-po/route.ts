@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
         internal_barcode,
         cost,
         price,
+        gross_price,
         vat_id,
         unit_id
       `)
@@ -169,6 +170,7 @@ export async function GET(request: NextRequest) {
         internal_barcode: p.internal_barcode,
         cost: p.cost,
         price: p.price,
+        gross_price: p.gross_price ?? (p.price && p.vat_id ? (p.price * (1 + (vatMap.get(p.vat_id)?.kulcs || 0) / 100)) : null),
         vat_id: p.vat_id,
         vat_rate: p.vat_id ? (vatMap.get(p.vat_id)?.kulcs || 0) : 0,
         unit_id: matchedUnit?.id || null,

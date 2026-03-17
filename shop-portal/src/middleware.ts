@@ -34,7 +34,7 @@ export async function middleware(req: NextRequest) {
   }
   
   // Define public routes that don't require authentication
-  const publicRoutes = ['/', '/login']
+  const publicRoutes = ['/', '/login', '/manifest.json']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
   const isDev = process.env.NODE_ENV === 'development'
   

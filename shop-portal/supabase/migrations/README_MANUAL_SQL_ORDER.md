@@ -53,3 +53,15 @@ For a **new tenant**, run all migrations in chronological order. The 20250327 fi
 - 20250130_create_order_management_system.sql (adds payment_methods columns and creates shipping_methods)
 
 So: … (earlier migrations) … → **20250327_create_connection_payment_method_mappings.sql** → **20250327_create_connection_shipping_method_mappings.sql** → (any later migrations).
+
+---
+
+## Orders: customer company support (20250329)
+
+Run in **tenant** DB after order management and customer persons/companies exist:
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | **20250329_orders_customer_company.sql** | Add `customer_company_id`, `customer_company_name` to `orders`; make `customer_firstname`/`customer_lastname` nullable |
+
+Prerequisites: `orders`, `customer_companies` tables must exist (from 20250130 and 20250326 migrations).

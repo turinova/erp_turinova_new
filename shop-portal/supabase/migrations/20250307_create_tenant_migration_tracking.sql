@@ -74,7 +74,14 @@ BEGIN
       '20250228_create_product_images_table',
       '20250301_create_product_quality_scores',
       '20250304_create_categories_tables',
-      '20250306_create_competitor_content_cache'
+      '20250306_create_competitor_content_cache',
+      '20250329_orders_customer_company',
+      '20250330_customer_addresses_entity_id_nullable',
+      '20250401_order_items_discount',
+      '20250402_orders_status_workflow',
+      '20250413_add_replenishment_page_to_permissions',
+      '20250414_create_pick_batches',
+      '20250414_add_pick_batches_page_to_permissions'
       -- Add new migrations here as you create them
     ]) AS migration_name
   )

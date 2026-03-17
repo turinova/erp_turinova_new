@@ -1,0 +1,10 @@
+{
+  "name": "Turinova Shop Portal",
+  "short_name": "Shop Portal",
+  "description": "Turinova Shop Portal - Webshop kezelő rendszer",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#5D87FF"
+}

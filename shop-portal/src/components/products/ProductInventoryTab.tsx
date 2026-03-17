@@ -47,6 +47,7 @@ interface Summary {
   total_available: number
   total_reserved: number
   total_value: number
+  total_incoming?: number
 }
 
 interface Warehouse {
@@ -86,6 +87,9 @@ interface StockMovement {
   created_at: string
   warehouse_operation_id: string | null
   warehouse_operations: { id: string; operation_number: string } | null
+  source_type?: string | null
+  source_id?: string | null
+  source_order_number?: string | null
 }
 
 function MovementTypeChip({ type }: { type: string }) {
@@ -558,6 +562,18 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
                   </Box>
                 </Grid>
               )}
+              {(summary.total_incoming ?? 0) > 0 && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                      Érkezik
+                    </Typography>
+                    <Typography variant="h5" sx={{ fontWeight: 700, color: 'info.main' }}>
+                      {(summary.total_incoming ?? 0).toFixed(2)}
+                    </Typography>
+                  </Box>
+                </Grid>
+              )}
               {summary.total_value > 0 && (
                 <Grid item xs={12} sm={6} md={3}>
                   <Box>
@@ -647,6 +663,8 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
                   <MenuItem value="transfer_in">Átszállítás be</MenuItem>
                   <MenuItem value="transfer_out">Átszállítás ki</MenuItem>
                   <MenuItem value="adjustment">Kiigazítás</MenuItem>
+                  <MenuItem value="reserved">Foglalt</MenuItem>
+                  <MenuItem value="released">Felszabadított</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -670,7 +688,7 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
                       <TableCell sx={{ fontWeight: 600, py: 1 }} align="right">Mennyiség</TableCell>
                       <TableCell sx={{ fontWeight: 600, py: 1 }} align="right">Egységár</TableCell>
                       <TableCell sx={{ fontWeight: 600, py: 1 }} align="right">Összesen</TableCell>
-                      <TableCell sx={{ fontWeight: 600, py: 1 }}>Műveletszám</TableCell>
+                      <TableCell sx={{ fontWeight: 600, py: 1 }}>Forrás</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
@@ -678,6 +696,26 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
                       const quantity = parseFloat(movement.quantity.toString())
                       const unitCost = movement.unit_cost ? parseFloat(movement.unit_cost.toString()) : null
                       const total = unitCost ? Math.abs(quantity) * unitCost : null
+                      const sourceNode =
+                        movement.warehouse_operations ? (
+                          <MuiLink
+                            component={NextLink}
+                            href={`/warehouse-operations/${movement.warehouse_operation_id}`}
+                            sx={{ textDecoration: 'none', fontWeight: 500 }}
+                          >
+                            {movement.warehouse_operations.operation_number}
+                          </MuiLink>
+                        ) : movement.source_type === 'order' && movement.source_id ? (
+                          <MuiLink
+                            component={NextLink}
+                            href={`/orders/${movement.source_id}`}
+                            sx={{ textDecoration: 'none', fontWeight: 500 }}
+                          >
+                            {movement.source_order_number ? `Rendelés #${movement.source_order_number}` : 'Rendelés'}
+                          </MuiLink>
+                        ) : (
+                          '-'
+                        )
 
                       return (
                         <TableRow key={movement.id} hover>
@@ -706,17 +744,7 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
                             {total ? formatCurrency(total) : '-'}
                           </TableCell>
                           <TableCell sx={{ py: 1 }}>
-                            {movement.warehouse_operations ? (
-                              <MuiLink
-                                component={NextLink}
-                                href={`/warehouse-operations/${movement.warehouse_operation_id}`}
-                                sx={{ textDecoration: 'none', fontWeight: 500 }}
-                              >
-                                {movement.warehouse_operations.operation_number}
-                              </MuiLink>
-                            ) : (
-                              '-'
-                            )}
+                            {sourceNode}
                           </TableCell>
                         </TableRow>
                       )

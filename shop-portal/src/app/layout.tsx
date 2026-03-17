@@ -36,6 +36,11 @@ const RootLayout = async (props: ChildrenType) => {
   return (
     <html id='__next' lang='hu' dir={direction} suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#5D87FF" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         {/* Preload critical fonts only */}
         <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" as="style" />
         <link rel="preload" href="https://fonts.googleapis.com/icon?family=Material+Icons" as="style" />

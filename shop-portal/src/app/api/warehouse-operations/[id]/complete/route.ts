@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { recomputeFulfillabilityForOrdersLinkedToPOs, getOrderIdsToReserveLinkedToPOs } from '@/lib/order-fulfillability'
+import { reserveStockForOrder } from '@/lib/order-reservation'
 
 /**
  * PUT /api/warehouse-operations/[id]/complete
@@ -207,6 +209,33 @@ export async function PUT(
     await supabase.rpc('refresh_stock_summary').catch(() => {
       // If function doesn't exist, that's okay - it will be refreshed later
     })
+
+    // Recompute fulfillability for orders linked to the received PO(s) so "Beszerzés alatt" → "Csomagolható"
+    if (warehouseOp.shipment_id) {
+      const { data: shipmentPOs } = await supabase
+        .from('shipment_purchase_orders')
+        .select('purchase_order_id')
+        .eq('shipment_id', warehouseOp.shipment_id)
+      if (shipmentPOs?.length) {
+        const poIds = shipmentPOs.map((spo: any) => spo.purchase_order_id)
+        await recomputeFulfillabilityForOrdersLinkedToPOs(supabase, poIds)
+        // Reserve stock for orders that became fully_fulfillable and are not yet reserved
+        const orderIdsToReserve = await getOrderIdsToReserveLinkedToPOs(supabase, poIds)
+        for (const orderId of orderIdsToReserve) {
+          const result = await reserveStockForOrder(supabase, orderId, { createdBy: user.id })
+          if (!result.ok) {
+            console.error('[warehouse-operations complete] Reserve failed for order', orderId, result.error)
+          }
+        }
+        if (orderIdsToReserve.length > 0) {
+          try {
+            await supabase.rpc('refresh_stock_summary')
+          } catch {
+            // non-fatal
+          }
+        }
+      }
+    }
 
     return NextResponse.json({ 
       warehouse_operation: updatedWO,

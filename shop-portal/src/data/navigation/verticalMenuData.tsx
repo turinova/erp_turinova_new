@@ -25,6 +25,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Rendelések',
           href: '/orders'
+        },
+        {
+          label: 'Begyűjtések',
+          href: '/pick-batches'
         }
       ]
     },
@@ -36,6 +40,10 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Beszerzési rendelések',
           href: '/purchase-orders'
+        },
+        {
+          label: 'Beszállítói várólista',
+          href: '/replenishment'
         },
         {
           label: 'Szállítmányok',
