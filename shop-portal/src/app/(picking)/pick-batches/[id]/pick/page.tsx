@@ -10,7 +10,7 @@ import {
   IconButton,
   Chip
 } from '@mui/material'
-import { CheckCircle as CheckIcon, Error as ErrorIcon, Close as CloseIcon, QrCodeScanner as ScanIcon, ChevronLeft as PrevIcon, ChevronRight as NextIcon } from '@mui/icons-material'
+import { CheckCircle as CheckIcon, Error as ErrorIcon, Close as CloseIcon, ChevronLeft as PrevIcon, ChevronRight as NextIcon } from '@mui/icons-material'
 import Link from 'next/link'
 import { toast } from 'react-toastify'
 
@@ -42,7 +42,6 @@ export default function PickPage() {
   const [scanSuccess, setScanSuccess] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [imageError, setImageError] = useState(false)
-  const [showPwaHint, setShowPwaHint] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const scanBufferRef = useRef('')
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -216,11 +215,6 @@ export default function PickPage() {
     setImageError(false)
   }, [currentLine?.order_item_id])
 
-  useEffect(() => {
-    const standalone = typeof window !== 'undefined' && (window.navigator?.standalone === true || window.matchMedia?.('(display-mode: standalone)')?.matches)
-    setShowPwaHint(!standalone)
-  }, [])
-
   if (loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, p: 2, bgcolor: 'background.default' }}>
@@ -254,13 +248,14 @@ export default function PickPage() {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
+        minHeight: 0,
         maxWidth: 720,
         margin: '0 auto',
         bgcolor: 'background.default',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
-        paddingLeft: 'max(env(safe-area-inset-left), 12px)',
-        paddingRight: 'max(env(safe-area-inset-right), 12px)',
+        paddingLeft: 'max(env(safe-area-inset-left), 8px)',
+        paddingRight: 'max(env(safe-area-inset-right), 8px)',
         overflow: 'hidden'
       }}
     >
@@ -292,40 +287,40 @@ export default function PickPage() {
         />
       )}
 
-      {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 2, flexShrink: 0 }}>
-        <IconButton component={Link} href={`/pick-batches/${id}`} size="large" aria-label="Vissza" color="inherit">
+      {/* Header - compact on small viewports */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1.5 }, py: { xs: 1, sm: 2 }, flexShrink: 0 }}>
+        <IconButton component={Link} href={`/pick-batches/${id}`} size="large" aria-label="Vissza" color="inherit" sx={{ p: { xs: 0.5, sm: 1 } }}>
           <CloseIcon fontSize="medium" />
         </IconButton>
         <Chip
           label={batchCode}
-          sx={{ fontSize: '1.1rem', fontWeight: 700, bgcolor: 'background.paper', color: 'text.primary' }}
+          sx={{ fontSize: { xs: '0.95rem', sm: '1.1rem' }, fontWeight: 700, bgcolor: 'background.paper', color: 'text.primary' }}
         />
-        <Box sx={{ flex: 1 }} />
-        <Typography sx={{ fontSize: '1.75rem', fontWeight: 700 }} color="primary">
+        <Box sx={{ flex: 1, minWidth: 0 }} />
+        <Typography sx={{ fontSize: { xs: '1.35rem', sm: '1.75rem' }, fontWeight: 700, whiteSpace: 'nowrap' }} color="primary">
           {totalPickedSoFar} / {totalItems}
         </Typography>
       </Box>
       <LinearProgress
         variant="determinate"
         value={totalItems ? (totalPickedSoFar / totalItems) * 100 : 0}
-        sx={{ height: 10, borderRadius: 5, flexShrink: 0 }}
+        sx={{ height: 8, borderRadius: 4, flexShrink: 0 }}
         color="primary"
       />
 
-      {/* Current item or Done */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, py: 2 }}>
+      {/* Current item or Done - fills remaining space, no scroll */}
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, py: { xs: 0.75, sm: 2 } }}>
         {allDone ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 3 }}>
-            <CheckIcon sx={{ fontSize: 120 }} color="success" />
-            <Typography sx={{ fontSize: '1.75rem', fontWeight: 700 }} color="text.primary">Minden tétel kiszedve</Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: { xs: 1.5, sm: 3 }, minHeight: 0 }}>
+            <CheckIcon sx={{ fontSize: { xs: 80, sm: 120 }, flexShrink: 0 }} color="success" />
+            <Typography sx={{ fontSize: { xs: '1.25rem', sm: '1.75rem' }, fontWeight: 700, whiteSpace: 'nowrap' }} color="text.primary">Minden tétel kiszedve</Typography>
             <Button
               variant="contained"
               color="success"
               size="large"
               onClick={handleComplete}
               disabled={completing}
-              sx={{ minHeight: 56, px: 4, fontSize: '1.25rem', fontWeight: 700 }}
+              sx={{ minHeight: 48, px: { xs: 3, sm: 4 }, fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 700, flexShrink: 0 }}
             >
               {completing ? 'Folyamatban…' : 'Begyűjtés kész'}
             </Button>
@@ -343,11 +338,11 @@ export default function PickPage() {
                 alignItems: 'center',
                 flex: 1,
                 minHeight: 0,
-                overflow: 'auto',
+                overflow: 'hidden',
                 width: '100%',
                 borderRadius: 2,
                 bgcolor: lineComplete ? 'rgba(46, 125, 50, 0.08)' : 'rgba(211, 47, 47, 0.06)',
-                py: 1.5,
+                py: { xs: 0.75, sm: 1.5 },
                 px: 1
               }}
             >
@@ -364,112 +359,78 @@ export default function PickPage() {
                     onError={() => setImageError(true)}
                     sx={{
                       width: '100%',
-                      maxWidth: 340,
-                      maxHeight: 300,
+                      maxWidth: 320,
+                      maxHeight: 'min(24dvh, 180px)',
                       objectFit: 'contain',
-                      borderRadius: 2,
+                      borderRadius: 1,
                       bgcolor: 'background.paper',
-                      boxShadow: 1
+                      boxShadow: 1,
+                      flexShrink: 0
                     }}
                   />
                 ) : (
                   <Box
                     sx={{
                       width: '100%',
-                      maxWidth: 340,
-                      height: 220,
-                      borderRadius: 2,
+                      maxWidth: 320,
+                      height: 'min(24dvh, 140px)',
+                      borderRadius: 1,
                       bgcolor: 'grey.100',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       border: 1,
-                      borderColor: 'divider'
+                      borderColor: 'divider',
+                      flexShrink: 0
                     }}
                   >
-                    <Typography sx={{ fontSize: '1.25rem' }} color="text.secondary">Nincs kép</Typography>
+                    <Typography sx={{ fontSize: { xs: '0.95rem', sm: '1.25rem' } }} color="text.secondary">Nincs kép</Typography>
                   </Box>
                 )
               })()}
-              <Typography sx={{ mt: 2, textAlign: 'center', px: 1, fontSize: '1.35rem', fontWeight: 700, lineHeight: 1.3 }} color="text.primary">
+              <Typography
+                sx={{
+                  mt: { xs: 0.5, sm: 1 },
+                  textAlign: 'center',
+                  px: 0.5,
+                  fontSize: { xs: '1rem', sm: '1.35rem' },
+                  fontWeight: 700,
+                  lineHeight: 1.25,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical'
+                }}
+                color="text.primary"
+              >
                 {currentLine.product_name}
               </Typography>
-              <Typography sx={{ mt: 1, fontSize: '1.15rem' }} color="text.secondary">
+              <Typography
+                sx={{ mt: 0.5, fontSize: { xs: '0.85rem', sm: '1.15rem' }, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+              >
                 Cikkszám: {currentLine.product_sku}
                 {(currentLine.product_gtin || currentLine.internal_barcode) && (
-                  <> · Vonalkód: {currentLine.product_gtin || currentLine.internal_barcode}</>
+                  <> · {currentLine.product_gtin || currentLine.internal_barcode}</>
                 )}
               </Typography>
               <Chip
                 label={`Rendelés: ${currentLine.order_number}`}
                 color="primary"
                 variant="outlined"
-                sx={{ mt: 1.5, fontSize: '1.1rem', fontWeight: 600 }}
+                size="small"
+                sx={{ mt: 0.5, fontSize: { xs: '0.8rem', sm: '1.1rem' }, fontWeight: 600 }}
               />
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, mt: 2.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, mt: { xs: 0.75, sm: 1.5 } }}>
                 <Chip
                   label={`${currentPicked} / ${currentLine.quantity} kiszedve`}
                   color={lineComplete ? 'success' : 'error'}
                   variant="filled"
-                  sx={{ fontSize: '1.35rem', fontWeight: 700 }}
+                  sx={{ fontSize: { xs: '1.1rem', sm: '1.35rem' }, fontWeight: 700 }}
                 />
-                <Typography sx={{ fontSize: '1rem', fontWeight: 600 }} color={lineComplete ? 'success.dark' : 'error.dark'}>
+                <Typography sx={{ fontSize: { xs: '0.85rem', sm: '1rem' }, fontWeight: 600 }} color={lineComplete ? 'success.dark' : 'error.dark'}>
                   {lineComplete ? 'Kész' : `Még ${remaining} kell`}
                 </Typography>
-              </Box>
-              <Box
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: { xs: 1, sm: 2 },
-                  mt: 2,
-                  flexWrap: 'nowrap',
-                  width: '100%',
-                  px: 0.5
-                }}
-              >
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  size="large"
-                  onClick={() => setIndex(safeIndex <= 0 ? lines.length - 1 : safeIndex - 1)}
-                  disabled={lines.length <= 1}
-                  startIcon={<PrevIcon sx={{ fontSize: { xs: 24, sm: 32 } }} />}
-                  aria-label="Előző tétel"
-                  sx={{
-                    minWidth: { xs: 0, sm: 140 },
-                    flex: '1 1 0',
-                    minHeight: 56,
-                    fontSize: { xs: '0.95rem', sm: '1.15rem' },
-                    fontWeight: 700,
-                    px: { xs: 1, sm: 2 }
-                  }}
-                >
-                  Előző
-                </Button>
-                <Typography sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, flexShrink: 0 }} color="text.secondary">
-                  {safeIndex + 1} / {lines.length}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  color="primary"
-                  size="large"
-                  onClick={() => setIndex(safeIndex >= lines.length - 1 ? 0 : safeIndex + 1)}
-                  disabled={lines.length <= 1}
-                  endIcon={<NextIcon sx={{ fontSize: { xs: 24, sm: 32 } }} />}
-                  aria-label="Következő tétel"
-                  sx={{
-                    minWidth: { xs: 0, sm: 140 },
-                    flex: '1 1 0',
-                    minHeight: 56,
-                    fontSize: { xs: '0.95rem', sm: '1.15rem' },
-                    fontWeight: 700,
-                    px: { xs: 1, sm: 2 }
-                  }}
-                >
-                  Következő
-                </Button>
               </Box>
             </Box>
           </>
@@ -478,39 +439,88 @@ export default function PickPage() {
         ) : null}
       </Box>
 
-      {/* Scan hint + error - no visible input, scanning goes to hidden input */}
+      {/* Előző / Következő - always at bottom, no scroll */}
       {!allDone && currentLine && (
         <Box
           sx={{
             flexShrink: 0,
-            py: 2,
-            paddingBottom: 'max(20px, env(safe-area-inset-bottom))'
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: { xs: 0.5, sm: 2 },
+            width: '100%',
+            py: { xs: 1, sm: 1.5 },
+            px: 0.5,
+            flexWrap: 'nowrap',
+            borderTop: 1,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            paddingBottom: 'max(12px, env(safe-area-inset-bottom))'
+          }}
+        >
+          <Button
+            variant="outlined"
+            color="primary"
+            size="large"
+            onClick={() => setIndex(safeIndex <= 0 ? lines.length - 1 : safeIndex - 1)}
+            disabled={lines.length <= 1}
+            startIcon={<PrevIcon sx={{ fontSize: { xs: 22, sm: 32 } }} />}
+            aria-label="Előző tétel"
+            sx={{
+              minWidth: 0,
+              flex: '1 1 0',
+              minHeight: { xs: 44, sm: 56 },
+              fontSize: { xs: '0.9rem', sm: '1.15rem' },
+              fontWeight: 700,
+              px: { xs: 0.75, sm: 2 }
+            }}
+          >
+            Előző
+          </Button>
+          <Typography sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' }, fontWeight: 600, flexShrink: 0, whiteSpace: 'nowrap' }} color="text.secondary">
+            {safeIndex + 1} / {lines.length}
+          </Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            size="large"
+            onClick={() => setIndex(safeIndex >= lines.length - 1 ? 0 : safeIndex + 1)}
+            disabled={lines.length <= 1}
+            endIcon={<NextIcon sx={{ fontSize: { xs: 22, sm: 32 } }} />}
+            aria-label="Következő tétel"
+            sx={{
+              minWidth: 0,
+              flex: '1 1 0',
+              minHeight: { xs: 44, sm: 56 },
+              fontSize: { xs: '0.9rem', sm: '1.15rem' },
+              fontWeight: 700,
+              px: { xs: 0.75, sm: 2 }
+            }}
+          >
+            Következő
+          </Button>
+        </Box>
+      )}
+
+      {/* Scan feedback only (success/error) - no hint */}
+      {!allDone && currentLine && (scanSuccess || scanError) && (
+        <Box
+          sx={{
+            flexShrink: 0,
+            py: { xs: 1, sm: 2 },
+            paddingBottom: 'max(12px, env(safe-area-inset-bottom))',
+            minHeight: 0
           }}
         >
           {scanSuccess ? (
-            <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'success.main', border: 2, borderColor: 'success.dark', textAlign: 'center' }}>
-              <Typography sx={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: 2, color: '#fff' }}>
+            <Box sx={{ p: { xs: 1, sm: 2 }, borderRadius: 2, bgcolor: 'success.main', border: 2, borderColor: 'success.dark', textAlign: 'center' }}>
+              <Typography sx={{ fontSize: { xs: '1.75rem', sm: '2.5rem' }, fontWeight: 800, letterSpacing: 2, color: '#fff', whiteSpace: 'nowrap' }}>
                 Rendben!
               </Typography>
             </Box>
-          ) : scanError ? (
-            <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'error.main', border: 2, borderColor: 'error.dark', textAlign: 'center' }}>
-              <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>{scanError}</Typography>
-            </Box>
           ) : (
-            <Box
-              onClick={() => inputRef.current?.focus()}
-              sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, py: 1.5, cursor: 'pointer' }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <ScanIcon sx={{ fontSize: 28 }} color="primary" />
-                <Typography sx={{ fontSize: '1.15rem' }} color="text.secondary">Szkenneld a vonalkódot</Typography>
-              </Box>
-              {showPwaHint && (
-                <Typography component="span" sx={{ fontSize: '0.75rem' }} color="text.disabled">
-                  Ha a böngésző sáv látszik: indítsd a Kezdőképernyő ikonról
-                </Typography>
-              )}
+            <Box sx={{ p: { xs: 1, sm: 2 }, borderRadius: 2, bgcolor: 'error.main', border: 2, borderColor: 'error.dark', textAlign: 'center' }}>
+              <Typography sx={{ fontSize: { xs: '1.1rem', sm: '1.5rem' }, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{scanError}</Typography>
             </Box>
           )}
         </Box>

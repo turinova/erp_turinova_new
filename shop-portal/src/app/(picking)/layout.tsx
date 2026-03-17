@@ -7,8 +7,9 @@ export default async function PickingLayout(props: ChildrenType) {
     <Providers direction="ltr">
       <div
         style={{
-          minHeight: '100dvh',
-          minHeight: '100vh',
+          height: '100dvh',
+          height: '100vh',
+          maxHeight: '-webkit-fill-available',
           width: '100%',
           display: 'flex',
           flexDirection: 'column',
