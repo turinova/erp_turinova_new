@@ -10,7 +10,7 @@ import {
   IconButton,
   Chip
 } from '@mui/material'
-import { CheckCircle as CheckIcon, Error as ErrorIcon, Close as CloseIcon, QrCodeScanner as ScanIcon } from '@mui/icons-material'
+import { CheckCircle as CheckIcon, Error as ErrorIcon, Close as CloseIcon, QrCodeScanner as ScanIcon, ChevronLeft as PrevIcon, ChevronRight as NextIcon } from '@mui/icons-material'
 import Link from 'next/link'
 import { toast } from 'react-toastify'
 
@@ -39,9 +39,13 @@ export default function PickPage() {
   const [picked, setPicked] = useState<Record<string, number>>({})
   const [scanValue, setScanValue] = useState('')
   const [scanError, setScanError] = useState<string | null>(null)
+  const [scanSuccess, setScanSuccess] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [imageError, setImageError] = useState(false)
+  const [showPwaHint, setShowPwaHint] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const scanBufferRef = useRef('')
+  const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchPickList = useCallback(async () => {
     if (!id) return
@@ -69,12 +73,14 @@ export default function PickPage() {
     fetchPickList()
   }, [fetchPickList])
 
-  const currentLine = lines[index] ?? null
-  const currentPicked = currentLine ? (picked[currentLine.order_item_id] ?? 0) : 0
   const totalLines = lines.length
   const totalItems = lines.reduce((sum, l) => sum + l.quantity, 0)
-  const totalPickedSoFar = lines.slice(0, index).reduce((sum, l) => sum + (picked[l.order_item_id] ?? l.quantity), 0) + currentPicked
+  const totalPickedSoFar = lines.reduce((sum, l) => sum + (picked[l.order_item_id] ?? 0), 0)
   const allDone = totalItems > 0 && totalPickedSoFar >= totalItems
+  const firstIncompleteIndex = lines.findIndex((l) => (picked[l.order_item_id] ?? 0) < l.quantity)
+  const safeIndex = index >= 0 && index < lines.length ? index : firstIncompleteIndex >= 0 ? firstIncompleteIndex : 0
+  const currentLine = lines[safeIndex] ?? null
+  const currentPicked = currentLine ? (picked[currentLine.order_item_id] ?? 0) : 0
 
   const normalizeBarcode = (v: string) =>
     String(v)
@@ -91,31 +97,43 @@ export default function PickPage() {
     return false
   }
 
-  const handleScan = useCallback(() => {
-    const val = normalizeBarcode(scanValue)
+  const handleScan = useCallback((overrideVal?: string) => {
+    const val = normalizeBarcode(overrideVal ?? scanValue)
     if (!val) return
     setScanError(null)
-    if (!currentLine) return
-    if (!matchesLine(currentLine, val)) {
-      const expected = [currentLine.product_gtin, currentLine.internal_barcode, currentLine.product_sku].filter(Boolean).join(' / ')
-      setScanError(`Nem egyezik. Várt: ${currentLine.product_name} (${expected || '—'})`)
+    setScanSuccess(false)
+    if (lines.length === 0) return
+    const matchedWithRoom = lines.find(
+      (l) => matchesLine(l, val) && (picked[l.order_item_id] ?? 0) < l.quantity
+    )
+    if (matchedWithRoom) {
+      const currentPickedForLine = picked[matchedWithRoom.order_item_id] ?? 0
+      const nextPicked = Math.min(currentPickedForLine + 1, matchedWithRoom.quantity)
+      setPicked((prev) => ({ ...prev, [matchedWithRoom.order_item_id]: nextPicked }))
       setScanValue('')
+      scanBufferRef.current = ''
+      setScanSuccess(true)
+      setTimeout(() => setScanSuccess(false), 1500)
       inputRef.current?.focus()
+      setIndex((i) => {
+        const nextIncomplete = lines.findIndex((l) => {
+          const count = l.order_item_id === matchedWithRoom.order_item_id ? nextPicked : (picked[l.order_item_id] ?? 0)
+          return count < l.quantity
+        })
+        return nextIncomplete >= 0 ? nextIncomplete : lines.length
+      })
       return
     }
-    const currentPickedForLine = picked[currentLine.order_item_id] ?? 0
-    const nextPicked = Math.min(currentPickedForLine + 1, currentLine.quantity)
-    setPicked((prev) => ({ ...prev, [currentLine.order_item_id]: nextPicked }))
-    setScanValue('')
-    inputRef.current?.focus()
-    if (nextPicked >= currentLine.quantity) {
-      if (index + 1 >= lines.length) {
-        setIndex(index + 1)
-      } else {
-        setIndex((i) => i + 1)
-      }
+    const matchedFull = lines.find((l) => matchesLine(l, val))
+    if (matchedFull) {
+      setScanError('Ez a termék már kiszedve')
+    } else {
+      setScanError('Rossz vonalkód')
     }
-  }, [scanValue, currentLine, picked, index, lines.length])
+    setScanValue('')
+    scanBufferRef.current = ''
+    inputRef.current?.focus()
+  }, [scanValue, picked, lines])
 
   const handleComplete = async () => {
     setCompleting(true)
@@ -143,10 +161,65 @@ export default function PickPage() {
     inputRef.current?.focus()
   }, [index])
 
+  // Document-level key listener so PDA barcode scanner works even when no input is focused
+  useEffect(() => {
+    if (!currentLine || allDone) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const buf = scanBufferRef.current
+        scanBufferRef.current = ''
+        if (scanTimeoutRef.current) {
+          clearTimeout(scanTimeoutRef.current)
+          scanTimeoutRef.current = null
+        }
+        if (buf) handleScan(buf)
+        return
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        scanBufferRef.current += e.key
+        e.preventDefault()
+        if (scanTimeoutRef.current) clearTimeout(scanTimeoutRef.current)
+        scanTimeoutRef.current = setTimeout(() => {
+          scanBufferRef.current = ''
+          scanTimeoutRef.current = null
+        }, 300)
+      }
+    }
+    const onPaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData('text')?.trim()
+      if (!text) return
+      e.preventDefault()
+      scanBufferRef.current = ''
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current)
+        scanTimeoutRef.current = null
+      }
+      handleScan(text)
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    document.addEventListener('paste', onPaste, true)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true)
+      document.removeEventListener('paste', onPaste, true)
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current)
+        scanTimeoutRef.current = null
+      }
+    }
+  }, [currentLine, allDone, handleScan])
+
   // Reset image error when current line changes
   useEffect(() => {
     setImageError(false)
   }, [currentLine?.order_item_id])
+
+  useEffect(() => {
+    const standalone = typeof window !== 'undefined' && (window.navigator?.standalone === true || window.matchMedia?.('(display-mode: standalone)')?.matches)
+    setShowPwaHint(!standalone)
+  }, [])
 
   if (loading) {
     return (
@@ -198,7 +271,13 @@ export default function PickPage() {
           type="text"
           value={scanValue}
           onChange={(e) => { setScanValue(e.target.value); setScanError(null) }}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleScan() } }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              const value = String(inputRef.current?.value ?? scanValue ?? '').trim()
+              if (value) handleScan(value)
+            }
+          }}
           autoComplete="off"
           autoFocus
           aria-label="Vonalkód szkennelése"
@@ -252,7 +331,11 @@ export default function PickPage() {
             </Button>
           </Box>
         ) : currentLine ? (
-          <>
+          (() => {
+            const lineComplete = currentPicked >= currentLine.quantity
+            const remaining = Math.max(0, currentLine.quantity - currentPicked)
+            return (
+            <>
             <Box
               sx={{
                 display: 'flex',
@@ -260,7 +343,12 @@ export default function PickPage() {
                 alignItems: 'center',
                 flex: 1,
                 minHeight: 0,
-                overflow: 'auto'
+                overflow: 'auto',
+                width: '100%',
+                borderRadius: 2,
+                bgcolor: lineComplete ? 'rgba(46, 125, 50, 0.08)' : 'rgba(211, 47, 47, 0.06)',
+                py: 1.5,
+                px: 1
               }}
             >
               {(() => {
@@ -318,20 +406,75 @@ export default function PickPage() {
                 variant="outlined"
                 sx={{ mt: 1.5, fontSize: '1.1rem', fontWeight: 600 }}
               />
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, mt: 2.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.5, mt: 2.5 }}>
                 <Chip
-                  label={`Kiszedendő: ${currentLine.quantity}`}
-                  sx={{ fontSize: '1.2rem', fontWeight: 700 }}
+                  label={`${currentPicked} / ${currentLine.quantity} kiszedve`}
+                  color={lineComplete ? 'success' : 'error'}
+                  variant="filled"
+                  sx={{ fontSize: '1.35rem', fontWeight: 700 }}
+                />
+                <Typography sx={{ fontSize: '1rem', fontWeight: 600 }} color={lineComplete ? 'success.dark' : 'error.dark'}>
+                  {lineComplete ? 'Kész' : `Még ${remaining} kell`}
+                </Typography>
+              </Box>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: { xs: 1, sm: 2 },
+                  mt: 2,
+                  flexWrap: 'nowrap',
+                  width: '100%',
+                  px: 0.5
+                }}
+              >
+                <Button
                   variant="outlined"
-                />
-                <Chip
-                  label={`Kiszedve: ${currentPicked}`}
-                  color="success"
-                  sx={{ fontSize: '1.2rem', fontWeight: 700 }}
-                />
+                  color="primary"
+                  size="large"
+                  onClick={() => setIndex(safeIndex <= 0 ? lines.length - 1 : safeIndex - 1)}
+                  disabled={lines.length <= 1}
+                  startIcon={<PrevIcon sx={{ fontSize: { xs: 24, sm: 32 } }} />}
+                  aria-label="Előző tétel"
+                  sx={{
+                    minWidth: { xs: 0, sm: 140 },
+                    flex: '1 1 0',
+                    minHeight: 56,
+                    fontSize: { xs: '0.95rem', sm: '1.15rem' },
+                    fontWeight: 700,
+                    px: { xs: 1, sm: 2 }
+                  }}
+                >
+                  Előző
+                </Button>
+                <Typography sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600, flexShrink: 0 }} color="text.secondary">
+                  {safeIndex + 1} / {lines.length}
+                </Typography>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  size="large"
+                  onClick={() => setIndex(safeIndex >= lines.length - 1 ? 0 : safeIndex + 1)}
+                  disabled={lines.length <= 1}
+                  endIcon={<NextIcon sx={{ fontSize: { xs: 24, sm: 32 } }} />}
+                  aria-label="Következő tétel"
+                  sx={{
+                    minWidth: { xs: 0, sm: 140 },
+                    flex: '1 1 0',
+                    minHeight: 56,
+                    fontSize: { xs: '0.95rem', sm: '1.15rem' },
+                    fontWeight: 700,
+                    px: { xs: 1, sm: 2 }
+                  }}
+                >
+                  Következő
+                </Button>
               </Box>
             </Box>
           </>
+            )
+          })()
         ) : null}
       </Box>
 
@@ -344,17 +487,30 @@ export default function PickPage() {
             paddingBottom: 'max(20px, env(safe-area-inset-bottom))'
           }}
         >
-          {scanError ? (
-            <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'error.light', border: 2, borderColor: 'error.main' }}>
-              <Typography sx={{ fontSize: '1.2rem', fontWeight: 600 }} color="error">{scanError}</Typography>
+          {scanSuccess ? (
+            <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'success.main', border: 2, borderColor: 'success.dark', textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '2.5rem', fontWeight: 800, letterSpacing: 2, color: '#fff' }}>
+                Rendben!
+              </Typography>
+            </Box>
+          ) : scanError ? (
+            <Box sx={{ p: 2, borderRadius: 2, bgcolor: 'error.main', border: 2, borderColor: 'error.dark', textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#fff' }}>{scanError}</Typography>
             </Box>
           ) : (
             <Box
               onClick={() => inputRef.current?.focus()}
-              sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, py: 1.5, cursor: 'pointer' }}
+              sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0.5, py: 1.5, cursor: 'pointer' }}
             >
-              <ScanIcon sx={{ fontSize: 28 }} color="primary" />
-              <Typography sx={{ fontSize: '1.15rem' }} color="text.secondary">Szkenneld a vonalkódot</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <ScanIcon sx={{ fontSize: 28 }} color="primary" />
+                <Typography sx={{ fontSize: '1.15rem' }} color="text.secondary">Szkenneld a vonalkódot</Typography>
+              </Box>
+              {showPwaHint && (
+                <Typography component="span" sx={{ fontSize: '0.75rem' }} color="text.disabled">
+                  Ha a böngésző sáv látszik: indítsd a Kezdőképernyő ikonról
+                </Typography>
+              )}
             </Box>
           )}
         </Box>
