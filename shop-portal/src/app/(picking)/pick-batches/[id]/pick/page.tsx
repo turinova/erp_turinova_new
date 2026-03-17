@@ -37,12 +37,10 @@ export default function PickPage() {
   const [error, setError] = useState<string | null>(null)
   const [index, setIndex] = useState(0)
   const [picked, setPicked] = useState<Record<string, number>>({})
-  const [scanValue, setScanValue] = useState('')
   const [scanError, setScanError] = useState<string | null>(null)
   const [scanSuccess, setScanSuccess] = useState(false)
   const [completing, setCompleting] = useState(false)
   const [imageError, setImageError] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
   const scanBufferRef = useRef('')
   const scanTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -96,8 +94,8 @@ export default function PickPage() {
     return false
   }
 
-  const handleScan = useCallback((overrideVal?: string) => {
-    const val = normalizeBarcode(overrideVal ?? scanValue)
+  const handleScan = useCallback((scanned: string) => {
+    const val = normalizeBarcode(scanned)
     if (!val) return
     setScanError(null)
     setScanSuccess(false)
@@ -109,11 +107,9 @@ export default function PickPage() {
       const currentPickedForLine = picked[matchedWithRoom.order_item_id] ?? 0
       const nextPicked = Math.min(currentPickedForLine + 1, matchedWithRoom.quantity)
       setPicked((prev) => ({ ...prev, [matchedWithRoom.order_item_id]: nextPicked }))
-      setScanValue('')
       scanBufferRef.current = ''
       setScanSuccess(true)
       setTimeout(() => setScanSuccess(false), 1500)
-      inputRef.current?.focus()
       setIndex((i) => {
         const nextIncomplete = lines.findIndex((l) => {
           const count = l.order_item_id === matchedWithRoom.order_item_id ? nextPicked : (picked[l.order_item_id] ?? 0)
@@ -129,10 +125,8 @@ export default function PickPage() {
     } else {
       setScanError('Rossz vonalkód')
     }
-    setScanValue('')
     scanBufferRef.current = ''
-    inputRef.current?.focus()
-  }, [scanValue, picked, lines])
+  }, [picked, lines])
 
   const handleComplete = async () => {
     setCompleting(true)
@@ -156,11 +150,7 @@ export default function PickPage() {
     }
   }
 
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [index])
-
-  // Document-level key listener so PDA barcode scanner works even when no input is focused
+  // Document-level key listener for PDA barcode scanner (no input = keyboard never opens)
   useEffect(() => {
     if (!currentLine || allDone) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -259,33 +249,7 @@ export default function PickPage() {
         overflow: 'hidden'
       }}
     >
-      {/* Hidden input so barcode scanner (keyboard wedge) works without visible field */}
-      {!allDone && currentLine && (
-        <input
-          ref={inputRef}
-          type="text"
-          value={scanValue}
-          onChange={(e) => { setScanValue(e.target.value); setScanError(null) }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              const value = String(inputRef.current?.value ?? scanValue ?? '').trim()
-              if (value) handleScan(value)
-            }
-          }}
-          autoComplete="off"
-          autoFocus
-          aria-label="Vonalkód szkennelése"
-          style={{
-            position: 'absolute',
-            left: '-9999px',
-            width: '1px',
-            height: '1px',
-            opacity: 0,
-            overflow: 'hidden'
-          }}
-        />
-      )}
+      {/* No visible/hidden input: scan via document keydown + paste only, so PDA keyboard never opens */}
 
       {/* Header - compact on small viewports */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1.5 }, py: { xs: 1, sm: 2 }, flexShrink: 0 }}>
@@ -309,7 +273,7 @@ export default function PickPage() {
       />
 
       {/* Current item or Done - fills remaining space, no scroll */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, py: { xs: 0.75, sm: 2 } }}>
+      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, py: { xs: 0.5, sm: 1 } }}>
         {allDone ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: { xs: 1.5, sm: 3 }, minHeight: 0 }}>
             <CheckIcon sx={{ fontSize: { xs: 80, sm: 120 }, flexShrink: 0 }} color="success" />
@@ -342,7 +306,7 @@ export default function PickPage() {
                 width: '100%',
                 borderRadius: 2,
                 bgcolor: lineComplete ? 'rgba(46, 125, 50, 0.08)' : 'rgba(211, 47, 47, 0.06)',
-                py: { xs: 0.75, sm: 1.5 },
+                py: { xs: 0.5, sm: 1 },
                 px: 1
               }}
             >
@@ -359,8 +323,8 @@ export default function PickPage() {
                     onError={() => setImageError(true)}
                     sx={{
                       width: '100%',
-                      maxWidth: 320,
-                      maxHeight: 'min(24dvh, 180px)',
+                      maxWidth: 340,
+                      maxHeight: 'min(38dvh, 260px)',
                       objectFit: 'contain',
                       borderRadius: 1,
                       bgcolor: 'background.paper',
@@ -372,8 +336,8 @@ export default function PickPage() {
                   <Box
                     sx={{
                       width: '100%',
-                      maxWidth: 320,
-                      height: 'min(24dvh, 140px)',
+                      maxWidth: 340,
+                      height: 'min(38dvh, 180px)',
                       borderRadius: 1,
                       bgcolor: 'grey.100',
                       display: 'flex',
@@ -390,7 +354,7 @@ export default function PickPage() {
               })()}
               <Typography
                 sx={{
-                  mt: { xs: 0.5, sm: 1 },
+                  mt: { xs: 0.25, sm: 0.5 },
                   textAlign: 'center',
                   px: 0.5,
                   fontSize: { xs: '1rem', sm: '1.35rem' },
@@ -407,7 +371,7 @@ export default function PickPage() {
                 {currentLine.product_name}
               </Typography>
               <Typography
-                sx={{ mt: 0.5, fontSize: { xs: '0.85rem', sm: '1.15rem' }, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
+                sx={{ mt: 0.25, fontSize: { xs: '0.85rem', sm: '1.15rem' }, color: 'text.secondary', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}
               >
                 Cikkszám: {currentLine.product_sku}
                 {(currentLine.product_gtin || currentLine.internal_barcode) && (
@@ -419,9 +383,9 @@ export default function PickPage() {
                 color="primary"
                 variant="outlined"
                 size="small"
-                sx={{ mt: 0.5, fontSize: { xs: '0.8rem', sm: '1.1rem' }, fontWeight: 600 }}
+                sx={{ mt: 0.25, fontSize: { xs: '0.8rem', sm: '1.1rem' }, fontWeight: 600 }}
               />
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, mt: { xs: 0.75, sm: 1.5 } }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, mt: { xs: 0.5, sm: 0.75 } }}>
                 <Chip
                   label={`${currentPicked} / ${currentLine.quantity} kiszedve`}
                   color={lineComplete ? 'success' : 'error'}
@@ -449,7 +413,7 @@ export default function PickPage() {
             justifyContent: 'center',
             gap: { xs: 0.5, sm: 2 },
             width: '100%',
-            py: { xs: 1, sm: 1.5 },
+            py: { xs: 0.75, sm: 1 },
             px: 0.5,
             flexWrap: 'nowrap',
             borderTop: 1,
