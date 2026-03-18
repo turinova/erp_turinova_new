@@ -58,6 +58,8 @@ interface EditablePurchaseOrderItemsTableProps {
   canEdit?: boolean // Whether the purchase order can be edited
   showReceivedQuantity?: boolean // Show received quantity column
   poStatus?: string // Purchase order status
+  /** When set, prefer this supplier when adding a product (match by supplier_id); if product has no link for this supplier, backend will auto-link on PO save */
+  supplierId?: string
 }
 
 export default function EditablePurchaseOrderItemsTable({
@@ -69,7 +71,8 @@ export default function EditablePurchaseOrderItemsTable({
   orderChannels = [],
   canEdit = true,
   showReceivedQuantity = false,
-  poStatus = 'draft'
+  poStatus = 'draft',
+  supplierId
 }: EditablePurchaseOrderItemsTableProps) {
   const shouldShowReceived = showReceivedQuantity && poStatus !== 'draft'
   const [editingCell, setEditingCell] = useState<{ rowIndex: number; field: string } | null>(null)
@@ -185,10 +188,15 @@ export default function EditablePurchaseOrderItemsTable({
   const handleAddProduct = (product: any) => {
     if (!product) return
 
-    // Find the first supplier (or use product data directly)
-    const supplier = product.suppliers && product.suppliers.length > 0 
-      ? product.suppliers[0] 
-      : null
+    // When supplierId is set (new PO): use only the supplier that matches; if no match, add with no link (backend will auto-link on save). Otherwise use first supplier.
+    let supplier: any = null
+    if (product.suppliers && product.suppliers.length > 0) {
+      if (supplierId) {
+        supplier = product.suppliers.find((s: any) => s.supplier_id === supplierId) || null
+      } else {
+        supplier = product.suppliers[0]
+      }
+    }
 
     // Ensure unit_id is set from product, fallback to first unit if not available
     const productUnitId = product.unit_id || null
@@ -233,7 +241,9 @@ export default function EditablePurchaseOrderItemsTable({
       supplier_sku: supplier?.supplier_sku || product.model_number || product.product_sku,
       product_supplier_id: supplier?.product_supplier_id,
       quantity: 1,
-      unit_cost: product.cost || 0, // Use product cost, not supplier default_cost
+      unit_cost: (supplier?.default_cost != null && supplier?.default_cost !== '')
+        ? Number(supplier.default_cost)
+        : (product.cost || 0),
       vat_id: product.vat_id || vatRates[0]?.id || '',
       unit_id: validUnitId,
       currency_id: product.currency_id || ''

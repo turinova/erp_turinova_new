@@ -26,7 +26,12 @@ import {
   IconButton,
   Menu,
   Chip,
-  Tooltip
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -36,7 +41,10 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   ShoppingCart as ShoppingCartIcon,
-  LocalShipping as LocalShippingIcon
+  LocalShipping as LocalShippingIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import PurchaseOrderStatusChip from '@/components/purchasing/PurchaseOrderStatusChip'
@@ -69,6 +77,8 @@ interface PurchaseOrdersTableProps {
   limit: number
   initialStatus: string
   initialSearch: string
+  initialSupplierId?: string
+  suppliers?: Array<{ id: string; name: string }>
 }
 
 export default function PurchaseOrdersTable({
@@ -78,25 +88,35 @@ export default function PurchaseOrdersTable({
   currentPage,
   limit,
   initialStatus,
-  initialSearch
+  initialSearch,
+  initialSupplierId = '',
+  suppliers = []
 }: PurchaseOrdersTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // URL state management
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const debouncedSearchTerm = useDebounce(searchTerm, 600)
   const [statusFilter, setStatusFilter] = useState(initialStatus)
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplierId || '')
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>(initialPurchaseOrders)
   const [loading, setLoading] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; po: PurchaseOrder } | null>(null)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean
+    title: string
+    message: string
+    onConfirm: (() => void) | null
+  }>({ open: false, title: '', message: '', onConfirm: null })
 
   // Update URL when filters change
   useEffect(() => {
     const params = new URLSearchParams()
     if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
     if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+    if (supplierFilter) params.set('supplier_id', supplierFilter)
     if (currentPage > 1) params.set('page', currentPage.toString())
     params.set('limit', limit.toString())
 
@@ -104,7 +124,7 @@ export default function PurchaseOrdersTable({
     if (window.location.pathname + window.location.search !== newUrl) {
       router.push(newUrl)
     }
-  }, [debouncedSearchTerm, statusFilter, currentPage, limit, router])
+  }, [debouncedSearchTerm, statusFilter, supplierFilter, currentPage, limit, router])
 
   // Fetch data when filters change
   useEffect(() => {
@@ -114,6 +134,7 @@ export default function PurchaseOrdersTable({
         const params = new URLSearchParams()
         if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
         if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+        if (supplierFilter) params.set('supplier_id', supplierFilter)
         params.set('page', currentPage.toString())
         params.set('limit', limit.toString())
 
@@ -131,7 +152,7 @@ export default function PurchaseOrdersTable({
     }
 
     fetchData()
-  }, [debouncedSearchTerm, statusFilter, currentPage, limit])
+  }, [debouncedSearchTerm, statusFilter, supplierFilter, currentPage, limit])
 
   const handlePageChange = (_event: React.ChangeEvent<unknown>, page: number) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -232,6 +253,32 @@ export default function PurchaseOrdersTable({
   const isAllSelected = purchaseOrders.length > 0 && selectedIds.size === purchaseOrders.length
   const isIndeterminate = selectedIds.size > 0 && selectedIds.size < purchaseOrders.length
 
+  // Notion/Figma-style pastel palette: same-supplier rows share one color
+  const SUPPLIER_ROW_COLORS = [
+    '#E3F2FD', // blue
+    '#E8F5E9', // green
+    '#FFF8E1', // amber
+    '#FFE0B2', // orange
+    '#F3E5F5', // purple
+    '#FCE4EC', // pink
+    '#E0F2F1', // teal
+    '#E8EAF6'  // indigo
+  ]
+
+  // Same-supplier rows get the same background (by order of first appearance)
+  const supplierGroupIndex = useMemo(() => {
+    const order: string[] = []
+    const seen = new Set<string>()
+    purchaseOrders.forEach(po => {
+      const sid = po.supplier_id || ''
+      if (sid && !seen.has(sid)) {
+        seen.add(sid)
+        order.push(sid)
+      }
+    })
+    return new Map(order.map((id, i) => [id, i]))
+  }, [purchaseOrders])
+
   // Check if selected POs can create a shipment
   const canCreateShipment = useMemo(() => {
     if (selectedIds.size === 0) return false
@@ -260,6 +307,149 @@ export default function PurchaseOrdersTable({
     router.push(`/shipments/new?po_ids=${selectedPOIds}`)
   }
 
+  const selectedPOs = useMemo(
+    () => purchaseOrders.filter(po => selectedIds.has(po.id)),
+    [purchaseOrders, selectedIds]
+  )
+
+  const canBulkApprove = useMemo(() => {
+    if (selectedIds.size === 0) return false
+    return selectedPOs.every(po => po.status === 'draft' || po.status === 'pending_approval')
+  }, [selectedIds.size, selectedPOs])
+
+  const canBulkCancel = useMemo(() => {
+    if (selectedIds.size === 0) return false
+    return selectedPOs.every(po => po.status !== 'received' && po.status !== 'cancelled')
+  }, [selectedIds.size, selectedPOs])
+
+  const canBulkDelete = useMemo(() => {
+    if (selectedIds.size === 0) return false
+    return selectedPOs.every(po => po.status !== 'received')
+  }, [selectedIds.size, selectedPOs])
+
+  const refreshList = useCallback(async () => {
+    try {
+      const params = new URLSearchParams()
+      if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
+      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+      if (supplierFilter) params.set('supplier_id', supplierFilter)
+      params.set('page', currentPage.toString())
+      params.set('limit', limit.toString())
+      const res = await fetch(`/api/purchase-orders?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setPurchaseOrders(data.purchase_orders || [])
+      }
+    } catch {
+      // ignore
+    }
+  }, [debouncedSearchTerm, statusFilter, supplierFilter, currentPage, limit])
+
+  const handleBulkApprove = async () => {
+    if (!canBulkApprove || selectedIds.size === 0) return
+    setBulkLoading(true)
+    let ok = 0
+    let err = 0
+    for (const id of selectedIds) {
+      try {
+        const res = await fetch(`/api/purchase-orders/${id}/approve`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+        if (res.ok) ok++
+        else err++
+      } catch {
+        err++
+      }
+    }
+    setBulkLoading(false)
+    if (ok) {
+      await refreshList()
+      setSelectedIds(new Set())
+      toast.success(`${ok} rendelés jóváhagyva.`)
+    }
+    if (err) toast.error(`${err} rendelés jóváhagyása sikertelen.`)
+  }
+
+  const executeBulkCancel = useCallback(async () => {
+    setBulkLoading(true)
+    let ok = 0
+    let err = 0
+    for (const id of selectedIds) {
+      try {
+        const res = await fetch(`/api/purchase-orders/${id}/cancel`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: 'Tömeges stornó' }) })
+        if (res.ok) ok++
+        else err++
+      } catch {
+        err++
+      }
+    }
+    setBulkLoading(false)
+    if (ok) {
+      await refreshList()
+      setSelectedIds(new Set())
+      toast.success(`${ok} rendelés stornózva.`)
+    }
+    if (err) toast.error(`${err} rendelés stornózása sikertelen (pl. kapcsolódó szállítmány).`)
+  }, [selectedIds, refreshList])
+
+  const executeBulkDelete = useCallback(async () => {
+    setBulkLoading(true)
+    let ok = 0
+    let err = 0
+    for (const id of selectedIds) {
+      try {
+        const res = await fetch(`/api/purchase-orders/${id}`, { method: 'DELETE' })
+        if (res.ok) ok++
+        else err++
+      } catch {
+        err++
+      }
+    }
+    setBulkLoading(false)
+    if (ok) {
+      await refreshList()
+      setSelectedIds(new Set())
+      toast.success(`${ok} rendelés törölve.`)
+    }
+    if (err) toast.error(`${err} rendelés törlése sikertelen (pl. kapcsolódó szállítmány).`)
+  }, [selectedIds, refreshList])
+
+  const handleBulkCancel = () => {
+    if (!canBulkCancel || selectedIds.size === 0) return
+    setConfirmDialog({
+      open: true,
+      title: 'Stornó',
+      message: `Biztosan stornózza a ${selectedIds.size} kijelölt rendelést?`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))
+        executeBulkCancel()
+      }
+    })
+  }
+
+  const handleBulkDelete = () => {
+    if (!canBulkDelete || selectedIds.size === 0) return
+    setConfirmDialog({
+      open: true,
+      title: 'Törlés',
+      message: `Biztosan törli a ${selectedIds.size} kijelölt rendelést?`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))
+        executeBulkDelete()
+      }
+    })
+  }
+
+  const handleConfirmDialogClose = () => {
+    setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))
+  }
+
+  const hasActiveFilters = (statusFilter && statusFilter !== 'all') || !!supplierFilter || !!debouncedSearchTerm
+  const handleClearFilters = () => {
+    setStatusFilter('all')
+    setSupplierFilter('')
+    setSearchTerm('')
+    router.push(`/purchase-orders?limit=${limit}`)
+  }
+
   return (
     <Box>
       {/* Header */}
@@ -273,17 +463,6 @@ export default function PurchaseOrdersTable({
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
-          {canCreateShipment && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<LocalShippingIcon />}
-              onClick={handleCreateShipment}
-              sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
-            >
-              Szállítmány létrehozása ({selectedIds.size})
-            </Button>
-          )}
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -297,21 +476,7 @@ export default function PurchaseOrdersTable({
 
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          placeholder="Keresés (rendelésszám, beszállító)..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          size="small"
-          sx={{ minWidth: 300, flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            )
-          }}
-        />
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 180 }}>
           <InputLabel>Státusz</InputLabel>
           <Select
             value={statusFilter}
@@ -327,7 +492,111 @@ export default function PurchaseOrdersTable({
             <MenuItem value="cancelled">Törölve</MenuItem>
           </Select>
         </FormControl>
+        <FormControl size="small" sx={{ minWidth: 220 }}>
+          <InputLabel>Beszállító</InputLabel>
+          <Select
+            value={supplierFilter}
+            label="Beszállító"
+            onChange={(e) => setSupplierFilter(e.target.value)}
+          >
+            <MenuItem value="">Összes</MenuItem>
+            {suppliers.map((s) => (
+              <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <TextField
+          placeholder="Keresés: rendelésszám, beszállító, termék, cikkszám…"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ minWidth: 320, flexGrow: 1 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            )
+          }}
+        />
+        {hasActiveFilters && (
+          <Button size="small" onClick={handleClearFilters} sx={{ alignSelf: 'center' }}>
+            Szűrők törlése
+          </Button>
+        )}
       </Box>
+
+      {/* Bulk actions bar */}
+      {selectedIds.size > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            mb: 2,
+            py: 1.5,
+            px: 2,
+            borderRadius: 1,
+            bgcolor: 'action.selected',
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {selectedIds.size} kijelölve
+          </Typography>
+          {bulkLoading && (
+            <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <CircularProgress size={14} />
+              Folyamatban…
+            </Typography>
+          )}
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<CheckCircleIcon />}
+            onClick={handleBulkApprove}
+            disabled={!canBulkApprove || bulkLoading}
+          >
+            Jóváhagyás ({selectedIds.size})
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<CancelIcon />}
+            onClick={handleBulkCancel}
+            disabled={!canBulkCancel || bulkLoading}
+          >
+            Stornó ({selectedIds.size})
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleBulkDelete}
+            disabled={!canBulkDelete || bulkLoading}
+          >
+            Törlés ({selectedIds.size})
+          </Button>
+          {canCreateShipment && (
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              startIcon={<LocalShippingIcon />}
+              onClick={handleCreateShipment}
+              disabled={bulkLoading}
+            >
+              Szállítmány létrehozása ({selectedIds.size})
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" startIcon={<ClearIcon />} onClick={() => setSelectedIds(new Set())}>
+            Kijelölés törlése
+          </Button>
+        </Box>
+      )}
 
       {/* Table */}
       <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
@@ -384,13 +653,21 @@ export default function PurchaseOrdersTable({
                 </TableCell>
               </TableRow>
             ) : (
-              purchaseOrders.map((po) => (
+              purchaseOrders.map((po) => {
+                const groupIdx = supplierGroupIndex.get(po.supplier_id || '') ?? 0
+                const sameSupplierBg = SUPPLIER_ROW_COLORS[groupIdx % SUPPLIER_ROW_COLORS.length]
+                return (
                 <TableRow
                   key={po.id}
                   hover
                   selected={selectedIds.has(po.id)}
                   onClick={() => handleRowClick(po)}
-                  sx={{ cursor: 'pointer', '& td': { py: 1 } }}
+                  sx={{
+                    cursor: 'pointer',
+                    '& td': { py: 1 },
+                    backgroundColor: sameSupplierBg,
+                    '&:hover': { backgroundColor: 'action.hover' }
+                  }}
                 >
                   <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()} sx={{ width: 40, py: 1 }}>
                     <Checkbox
@@ -432,7 +709,7 @@ export default function PurchaseOrdersTable({
                     </IconButton>
                   </TableCell>
                 </TableRow>
-              ))
+              ); })
             )}
           </TableBody>
         </Table>
@@ -471,6 +748,35 @@ export default function PurchaseOrdersTable({
           Törlés
         </MenuItem>
       </Menu>
+
+      {/* Bulk confirmation dialog */}
+      <Dialog
+        open={confirmDialog.open}
+        onClose={handleConfirmDialogClose}
+        aria-labelledby="confirm-dialog-title"
+        aria-describedby="confirm-dialog-description"
+      >
+        <DialogTitle id="confirm-dialog-title">{confirmDialog.title}</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="confirm-dialog-description">
+            {confirmDialog.message}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleConfirmDialogClose} autoFocus>
+            Mégse
+          </Button>
+          <Button
+            onClick={() => {
+              confirmDialog.onConfirm?.()
+            }}
+            color="primary"
+            variant="contained"
+          >
+            OK
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

@@ -46,12 +46,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       iconColor: '#3498DB', // Blue for purchasing
       children: [
         {
-          label: 'Beszerzési rendelések',
-          href: '/purchase-orders'
+          label: 'Beszerzési várólista',
+          href: '/replenishment'
         },
         {
-          label: 'Beszállítói várólista',
-          href: '/replenishment'
+          label: 'Beszerzési rendelések',
+          href: '/purchase-orders'
         },
         {
           label: 'Szállítmányok',

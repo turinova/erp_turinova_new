@@ -1,6 +1,7 @@
 import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, Inventory2 as Inventory2Icon } from '@mui/icons-material'
 import NextLink from 'next/link'
+import { getTenantSupabase } from '@/lib/tenant-supabase'
 import ReplenishmentTable from './ReplenishmentTable'
 
 interface PageProps {
@@ -16,6 +17,19 @@ export default async function ReplenishmentPage({ searchParams }: PageProps = {}
   const supplierId = resolved.supplier_id || ''
   const groupBy = resolved.group_by || 'product'
   const orderId = resolved.order_id || ''
+
+  let suppliers: Array<{ id: string; name: string }> = []
+  try {
+    const supabase = await getTenantSupabase()
+    const { data: suppliersData } = await supabase
+      .from('suppliers')
+      .select('id, name')
+      .is('deleted_at', null)
+      .order('name', { ascending: true })
+    if (suppliersData) suppliers = suppliersData
+  } catch {
+    // ignore
+  }
 
   return (
     <Box sx={{ p: 3 }}>
@@ -37,7 +51,7 @@ export default async function ReplenishmentPage({ searchParams }: PageProps = {}
         </Link>
         <Typography color="text.primary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <Inventory2Icon fontSize="small" />
-          Beszállítói várólista
+          Beszerzési várólista
         </Typography>
       </Breadcrumbs>
 
@@ -45,6 +59,7 @@ export default async function ReplenishmentPage({ searchParams }: PageProps = {}
         initialSupplierId={supplierId}
         initialGroupBy={groupBy}
         initialOrderId={orderId}
+        suppliers={suppliers}
       />
     </Box>
   )

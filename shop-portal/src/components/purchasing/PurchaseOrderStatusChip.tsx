@@ -11,22 +11,22 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   draft: {
     label: 'Vázlat',
     color: '#ffffff',
-    bgColor: '#757575'
+    bgColor: '#78909c'
   },
   pending_approval: {
     label: 'Jóváhagyásra vár',
     color: '#ffffff',
-    bgColor: '#ff9800'
+    bgColor: '#ef6c00'
   },
   approved: {
     label: 'Jóváhagyva',
     color: '#ffffff',
-    bgColor: '#4caf50'
+    bgColor: '#1565c0'
   },
   partially_received: {
     label: 'Részben bevételezve',
     color: '#ffffff',
-    bgColor: '#2196f3'
+    bgColor: '#7b1fa2'
   },
   received: {
     label: 'Bevételezve',
@@ -36,7 +36,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
   cancelled: {
     label: 'Törölve',
     color: '#ffffff',
-    bgColor: '#f44336'
+    bgColor: '#c62828'
   }
 }
 
@@ -51,12 +51,12 @@ export default function PurchaseOrderStatusChip({ status, size = 'small' }: Purc
     <Chip
       label={config.label}
       size={size}
-      sx={{
-        bgcolor: config.bgColor,
+      style={{
+        backgroundColor: config.bgColor,
         color: config.color,
         fontWeight: 600,
         fontSize: size === 'small' ? '0.75rem' : '0.875rem',
-        height: size === 'small' ? '24px' : '32px'
+        height: size === 'small' ? 24 : 32
       }}
     />
   )

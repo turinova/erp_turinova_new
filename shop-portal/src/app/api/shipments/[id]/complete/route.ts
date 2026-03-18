@@ -127,6 +127,46 @@ export async function POST(
       }
     }
 
+    // Update supplier last purchase price (product_suppliers.default_cost, last_purchased_at) for received items
+    const receivedItems = (items || []).filter((item: any) => (item.received_quantity || 0) > 0 && item.unit_cost != null)
+    const poItemIds = receivedItems
+      .map((item: any) => item.purchase_order_item_id)
+      .filter(Boolean)
+    const poItemToProductSupplier: Map<string, string> = new Map()
+    if (poItemIds.length > 0) {
+      const { data: poItems } = await supabase
+        .from('purchase_order_items')
+        .select('id, product_supplier_id')
+        .in('id', poItemIds)
+        .is('deleted_at', null)
+      if (poItems) {
+        poItems.forEach((row: any) => {
+          if (row.product_supplier_id) poItemToProductSupplier.set(row.id, row.product_supplier_id)
+        })
+      }
+    }
+    const now = new Date().toISOString()
+    for (const item of receivedItems) {
+      const cost = parseFloat(item.unit_cost)
+      if (Number.isNaN(cost) || cost < 0) continue
+      if (item.purchase_order_item_id) {
+        const productSupplierId = poItemToProductSupplier.get(item.purchase_order_item_id)
+        if (productSupplierId) {
+          await supabase
+            .from('product_suppliers')
+            .update({ default_cost: cost, last_purchased_at: now })
+            .eq('id', productSupplierId)
+        }
+      } else {
+        await supabase
+          .from('product_suppliers')
+          .update({ default_cost: cost, last_purchased_at: now })
+          .eq('product_id', item.product_id)
+          .eq('supplier_id', shipment.supplier_id)
+          .is('deleted_at', null)
+      }
+    }
+
     // Update warehouse operation status
     if (warehouseOp) {
       await supabase

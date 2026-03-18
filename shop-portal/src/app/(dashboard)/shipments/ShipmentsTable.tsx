@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useDebounce } from '@/hooks/useDebounce'
 import {
@@ -26,7 +26,11 @@ import {
   IconButton,
   Menu,
   Chip,
-  Tooltip
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions
 } from '@mui/material'
 import {
   Search as SearchIcon,
@@ -34,7 +38,8 @@ import {
   Visibility as VisibilityIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
-  LocalShipping as LocalShippingIcon
+  LocalShipping as LocalShippingIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
@@ -63,45 +68,43 @@ interface ShipmentsTableProps {
   limit: number
   initialStatus: string
   initialSearch: string
+  initialSupplierId?: string
+  suppliers?: Array<{ id: string; name: string }>
 }
 
-// Status chip component for shipments
+const SHIPMENT_STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
+  waiting: { label: 'Várakozik', color: '#ffffff', bgColor: '#78909c' },
+  completed: { label: 'Bevételezve', color: '#ffffff', bgColor: '#2e7d32' },
+  cancelled: { label: 'Törölve', color: '#ffffff', bgColor: '#c62828' }
+}
+
 function ShipmentStatusChip({ status }: { status: string }) {
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'waiting':
-        return 'default'
-      case 'completed':
-        return 'success'
-      case 'cancelled':
-        return 'error'
-      default:
-        return 'default'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'waiting':
-        return 'Várakozik'
-      case 'completed':
-        return 'Bevételezve'
-      case 'cancelled':
-        return 'Törölve'
-      default:
-        return status
-    }
-  }
-
+  const config = SHIPMENT_STATUS_CONFIG[status] || { label: status, color: '#ffffff', bgColor: '#757575' }
   return (
     <Chip
-      label={getStatusLabel(status)}
-      color={getStatusColor(status) as any}
+      label={config.label}
       size="small"
-      sx={{ fontWeight: 500 }}
+      style={{
+        backgroundColor: config.bgColor,
+        color: config.color,
+        fontWeight: 600,
+        fontSize: '0.75rem',
+        height: 24
+      }}
     />
   )
 }
+
+const SUPPLIER_ROW_COLORS = [
+  '#E3F2FD',
+  '#E8F5E9',
+  '#FFF8E1',
+  '#FFE0B2',
+  '#F3E5F5',
+  '#FCE4EC',
+  '#E0F2F1',
+  '#E8EAF6'
+]
 
 export default function ShipmentsTable({
   initialShipments,
@@ -110,36 +113,43 @@ export default function ShipmentsTable({
   currentPage,
   limit,
   initialStatus,
-  initialSearch
+  initialSearch,
+  initialSupplierId = '',
+  suppliers = []
 }: ShipmentsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // URL state management
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const debouncedSearchTerm = useDebounce(searchTerm, 600)
   const [statusFilter, setStatusFilter] = useState(initialStatus)
+  const [supplierFilter, setSupplierFilter] = useState(initialSupplierId || '')
   const [shipments, setShipments] = useState<Shipment[]>(initialShipments)
   const [loading, setLoading] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; shipment: Shipment } | null>(null)
-  const [deleting, setDeleting] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean
+    title: string
+    message: string
+    onConfirm: (() => void) | null
+  }>({ open: false, title: '', message: '', onConfirm: null })
 
-  // Update URL when filters change
   useEffect(() => {
     const params = new URLSearchParams()
     if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
     if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+    if (supplierFilter) params.set('supplier_id', supplierFilter)
     if (currentPage > 1) params.set('page', currentPage.toString())
     params.set('limit', limit.toString())
 
     const newUrl = `/shipments?${params.toString()}`
-    if (window.location.pathname + window.location.search !== newUrl) {
+    if (typeof window !== 'undefined' && window.location.pathname + window.location.search !== newUrl) {
       router.push(newUrl)
     }
-  }, [debouncedSearchTerm, statusFilter, currentPage, limit, router])
+  }, [debouncedSearchTerm, statusFilter, supplierFilter, currentPage, limit, router])
 
-  // Fetch data when filters change
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
@@ -147,6 +157,7 @@ export default function ShipmentsTable({
         const params = new URLSearchParams()
         if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
         if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+        if (supplierFilter) params.set('supplier_id', supplierFilter)
         params.set('page', currentPage.toString())
         params.set('limit', limit.toString())
 
@@ -164,7 +175,7 @@ export default function ShipmentsTable({
     }
 
     fetchData()
-  }, [debouncedSearchTerm, statusFilter, currentPage, limit])
+  }, [debouncedSearchTerm, statusFilter, supplierFilter, currentPage, limit])
 
   const handlePageChange = (_event: React.ChangeEvent<unknown>, page: number) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -172,9 +183,10 @@ export default function ShipmentsTable({
     router.push(`/shipments?${params.toString()}`)
   }
 
+  const deletableShipments = useMemo(() => shipments.filter(s => s.status === 'waiting' || s.status === 'cancelled'), [shipments])
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
-      setSelectedIds(new Set(shipments.map(s => s.id)))
+      setSelectedIds(new Set(deletableShipments.map(s => s.id)))
     } else {
       setSelectedIds(new Set())
     }
@@ -254,49 +266,59 @@ export default function ShipmentsTable({
     }
   }
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return
-
-    const selectedShipments = shipments.filter(s => selectedIds.has(s.id))
-    
-    // Check if any selected shipment is completed
-    const hasCompleted = selectedShipments.some(s => s.status === 'completed')
-    if (hasCompleted) {
-      toast.error('Bevételezett szállítmányok nem törölhetők')
-      return
-    }
-
-    if (!confirm(`Biztosan törölni szeretné a kiválasztott ${selectedIds.size} szállítmányt?`)) {
-      return
-    }
-
-    setDeleting(true)
+  const refreshList = useCallback(async () => {
     try {
-      const response = await fetch('/api/shipments/bulk-delete', {
+      const params = new URLSearchParams()
+      if (debouncedSearchTerm) params.set('search', debouncedSearchTerm)
+      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter)
+      if (supplierFilter) params.set('supplier_id', supplierFilter)
+      params.set('page', currentPage.toString())
+      params.set('limit', limit.toString())
+      const res = await fetch(`/api/shipments?${params.toString()}`)
+      if (res.ok) {
+        const data = await res.json()
+        setShipments(data.shipments || [])
+      }
+    } catch {
+      // ignore
+    }
+  }, [debouncedSearchTerm, statusFilter, supplierFilter, currentPage, limit])
+
+  const executeBulkDelete = useCallback(async () => {
+    setBulkLoading(true)
+    try {
+      const res = await fetch('/api/shipments/bulk-delete', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids: Array.from(selectedIds) })
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Hiba a törlés során')
-      }
-
-      setShipments(prev => prev.filter(s => !selectedIds.has(s.id)))
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Hiba a törlés során')
+      await refreshList()
       setSelectedIds(new Set())
-      toast.success(`${selectedIds.size} szállítmány sikeresen törölve`)
-      
-      // Refresh data
-      router.refresh()
-    } catch (error) {
-      console.error('Error bulk deleting shipments:', error)
-      toast.error(
-        `Hiba a törlés során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`
-      )
+      toast.success(`${selectedIds.size} szállítmány törölve.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a törlés során')
     } finally {
-      setDeleting(false)
+      setBulkLoading(false)
     }
+  }, [selectedIds, refreshList])
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return
+    setConfirmDialog({
+      open: true,
+      title: 'Törlés',
+      message: `Biztosan törli a ${selectedIds.size} kijelölt szállítmányt?`,
+      onConfirm: () => {
+        setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))
+        executeBulkDelete()
+      }
+    })
+  }
+
+  const handleConfirmDialogClose = () => {
+    setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))
   }
 
   const formatDate = (date: string | null) => {
@@ -304,16 +326,35 @@ export default function ShipmentsTable({
     return new Date(date).toLocaleDateString('hu-HU')
   }
 
-  const isAllSelected = shipments.length > 0 && selectedIds.size === shipments.length
-  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < shipments.length
+  const isAllSelected = deletableShipments.length > 0 && selectedIds.size === deletableShipments.length
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < deletableShipments.length
 
-  // Check if selected shipments can be deleted
-  const canDeleteSelected = useMemo(() => {
+  const selectedShipments = useMemo(() => shipments.filter(s => selectedIds.has(s.id)), [shipments, selectedIds])
+  const canBulkDelete = useMemo(() => {
     if (selectedIds.size === 0) return false
-    const selectedShipments = shipments.filter(s => selectedIds.has(s.id))
-    // Can delete if all are 'waiting' or 'cancelled', but NOT 'completed'
     return selectedShipments.every(s => s.status === 'waiting' || s.status === 'cancelled')
-  }, [selectedIds, shipments])
+  }, [selectedIds.size, selectedShipments])
+
+  const supplierGroupIndex = useMemo(() => {
+    const order: string[] = []
+    const seen = new Set<string>()
+    shipments.forEach(s => {
+      const sid = s.supplier_id || ''
+      if (sid && !seen.has(sid)) {
+        seen.add(sid)
+        order.push(sid)
+      }
+    })
+    return new Map(order.map((id, i) => [id, i]))
+  }, [shipments])
+
+  const hasActiveFilters = (statusFilter && statusFilter !== 'all') || !!supplierFilter || !!debouncedSearchTerm
+  const handleClearFilters = () => {
+    setStatusFilter('all')
+    setSupplierFilter('')
+    setSearchTerm('')
+    router.push(`/shipments?limit=${limit}`)
+  }
 
   return (
     <Box>
@@ -327,37 +368,11 @@ export default function ShipmentsTable({
             Itt kezelheti a szállítmányokat. Tekintse meg a részleteket vagy törölje a meglévőket.
           </Typography>
         </Box>
-        {canDeleteSelected && (
-          <Button
-            variant="outlined"
-            color="error"
-            startIcon={<DeleteIcon />}
-            onClick={handleBulkDelete}
-            disabled={deleting}
-            sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
-          >
-            Törlés ({selectedIds.size})
-          </Button>
-        )}
       </Box>
 
       {/* Filters */}
       <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-        <TextField
-          placeholder="Keresés (szállítmányszám, beszállító, raktár)..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          size="small"
-          sx={{ minWidth: 300, flexGrow: 1 }}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            )
-          }}
-        />
-        <FormControl size="small" sx={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 180 }}>
           <InputLabel>Státusz</InputLabel>
           <Select
             value={statusFilter}
@@ -370,7 +385,81 @@ export default function ShipmentsTable({
             <MenuItem value="cancelled">Törölve</MenuItem>
           </Select>
         </FormControl>
+        <FormControl size="small" sx={{ minWidth: 220 }}>
+          <InputLabel>Beszállító</InputLabel>
+          <Select
+            value={supplierFilter}
+            label="Beszállító"
+            onChange={(e) => setSupplierFilter(e.target.value)}
+          >
+            <MenuItem value="">Összes</MenuItem>
+            {suppliers.map((s) => (
+              <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <TextField
+          placeholder="Keresés: szállítmányszám, beszállító, raktár…"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ minWidth: 320, flexGrow: 1 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            )
+          }}
+        />
+        {hasActiveFilters && (
+          <Button size="small" onClick={handleClearFilters} sx={{ alignSelf: 'center' }}>
+            Szűrők törlése
+          </Button>
+        )}
       </Box>
+
+      {/* Bulk actions bar */}
+      {selectedIds.size > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            mb: 2,
+            py: 1.5,
+            px: 2,
+            borderRadius: 1,
+            bgcolor: 'action.selected',
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {selectedIds.size} kijelölve
+          </Typography>
+          {bulkLoading && (
+            <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <CircularProgress size={14} />
+              Folyamatban…
+            </Typography>
+          )}
+          <Button
+            size="small"
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteIcon />}
+            onClick={handleBulkDelete}
+            disabled={!canBulkDelete || bulkLoading}
+          >
+            Törlés ({selectedIds.size})
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" startIcon={<ClearIcon />} onClick={() => setSelectedIds(new Set())}>
+            Kijelölés törlése
+          </Button>
+        </Box>
+      )}
 
       {/* Table */}
       <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
@@ -382,7 +471,7 @@ export default function ShipmentsTable({
                   checked={isAllSelected}
                   indeterminate={isIndeterminate}
                   onChange={handleSelectAll}
-                  disabled={shipments.length === 0}
+                  disabled={deletableShipments.length === 0}
                   size="small"
                 />
               </TableCell>
@@ -408,7 +497,7 @@ export default function ShipmentsTable({
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <LocalShippingIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
                     <Typography variant="body1" color="text.secondary">
-                      {searchTerm || statusFilter !== 'all' 
+                      {searchTerm || statusFilter !== 'all' || supplierFilter
                         ? 'Nincs találat a keresési feltételeknek megfelelően'
                         : 'Még nincs szállítmány létrehozva'}
                     </Typography>
@@ -418,14 +507,20 @@ export default function ShipmentsTable({
             ) : (
               shipments.map((shipment) => {
                 const canDelete = shipment.status === 'waiting' || shipment.status === 'cancelled'
-                
+                const groupIdx = supplierGroupIndex.get(shipment.supplier_id || '') ?? 0
+                const rowBg = SUPPLIER_ROW_COLORS[groupIdx % SUPPLIER_ROW_COLORS.length]
                 return (
                   <TableRow
                     key={shipment.id}
                     hover
                     selected={selectedIds.has(shipment.id)}
                     onClick={() => handleRowClick(shipment)}
-                    sx={{ cursor: 'pointer', '& td': { py: 1 } }}
+                    sx={{
+                      cursor: 'pointer',
+                      '& td': { py: 1 },
+                      backgroundColor: rowBg,
+                      '&:hover': { backgroundColor: 'action.hover' }
+                    }}
                   >
                     <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()} sx={{ width: 40, py: 1 }}>
                       <Checkbox
@@ -504,6 +599,23 @@ export default function ShipmentsTable({
           </MenuItem>
         )}
       </Menu>
+
+      <Dialog open={confirmDialog.open} onClose={handleConfirmDialogClose}>
+        <DialogTitle>{confirmDialog.title}</DialogTitle>
+        <DialogContent>
+          <DialogContentText>{confirmDialog.message}</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleConfirmDialogClose}>Mégse</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => confirmDialog.onConfirm?.()}
+          >
+            Törlés
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

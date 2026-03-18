@@ -484,6 +484,7 @@ export default function NewPurchaseOrderForm({
               units={units}
               onProductSearch={handleProductSearch}
               orderChannels={[]}
+              supplierId={formData.supplier_id || undefined}
             />
           </Paper>
         </Grid>

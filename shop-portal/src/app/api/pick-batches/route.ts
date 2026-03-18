@@ -16,57 +16,125 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
+    const search = searchParams.get('search')?.trim()
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100)
     const offset = (page - 1) * limit
 
-    let query = supabase
-      .from('pick_batches')
-      .select(`
-        id,
-        code,
-        name,
-        status,
-        created_by,
-        created_by_user:created_by(id, email, full_name),
-        started_at,
-        completed_at,
-        created_at,
-        updated_at
-      `, { count: 'exact' })
-      .order('created_at', { ascending: false })
+    const selectColumns = `
+      id,
+      code,
+      name,
+      status,
+      created_by,
+      created_by_user:created_by(id, email, full_name),
+      started_at,
+      completed_at,
+      created_at,
+      updated_at
+    `
 
-    if (status && status !== 'all') {
-      if (status === 'active') {
-        query = query.in('status', ['draft', 'in_progress'])
-      } else {
-        query = query.eq('status', status)
+    let batches: any[] = []
+    let count: number | null = 0
+
+    if (search) {
+      const byCode = await supabase
+        .from('pick_batches')
+        .select('id')
+        .ilike('code', `%${search}%`)
+      const idsByCode = (byCode.data || []).map((r: { id: string }) => r.id)
+
+      const { data: usersMatch } = await supabase
+        .from('users')
+        .select('id')
+        .or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
+      const creatorIds = (usersMatch || []).map((u: { id: string }) => u.id)
+      let idsByCreator: string[] = []
+      if (creatorIds.length > 0) {
+        const { data: batchesByCreator } = await supabase
+          .from('pick_batches')
+          .select('id')
+          .in('created_by', creatorIds)
+        idsByCreator = (batchesByCreator || []).map((r: { id: string }) => r.id)
       }
+
+      const mergedIds = [...new Set([...idsByCode, ...idsByCreator])]
+      if (mergedIds.length === 0) {
+        return NextResponse.json({
+          pick_batches: [],
+          pagination: { page, limit, total: 0, totalPages: 0 }
+        })
+      }
+
+      let listQuery = supabase
+        .from('pick_batches')
+        .select(selectColumns, { count: 'exact' })
+        .in('id', mergedIds)
+        .order('created_at', { ascending: false })
+      if (status && status !== 'all') {
+        if (status === 'active') {
+          listQuery = listQuery.in('status', ['draft', 'in_progress'])
+        } else {
+          listQuery = listQuery.eq('status', status)
+        }
+      }
+      const res = await listQuery.range(offset, offset + limit - 1)
+      if (res.error) {
+        console.error('Error fetching pick batches:', res.error)
+        return NextResponse.json(
+          { error: res.error.message || 'Hiba a begyűjtések lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+      batches = res.data || []
+      count = res.count
+    } else {
+      let query = supabase
+        .from('pick_batches')
+        .select(selectColumns, { count: 'exact' })
+        .order('created_at', { ascending: false })
+      if (status && status !== 'all') {
+        if (status === 'active') {
+          query = query.in('status', ['draft', 'in_progress'])
+        } else {
+          query = query.eq('status', status)
+        }
+      }
+      const res = await query.range(offset, offset + limit - 1)
+      if (res.error) {
+        console.error('Error fetching pick batches:', res.error)
+        return NextResponse.json(
+          { error: res.error.message || 'Hiba a begyűjtések lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+      batches = res.data || []
+      count = res.count
     }
 
-    query = query.range(offset, offset + limit - 1)
-    const { data: batches, error, count } = await query
-
-    if (error) {
-      console.error('Error fetching pick batches:', error)
-      return NextResponse.json(
-        { error: error.message || 'Hiba a begyűjtések lekérdezésekor' },
-        { status: 500 }
-      )
-    }
-
-    const batchesWithOrderCount = await Promise.all(
+    const batchesWithCounts = await Promise.all(
       (batches || []).map(async (b: any) => {
-        const { count: orderCount } = await supabase
+        const { data: orderRows } = await supabase
           .from('pick_batch_orders')
-          .select('*', { count: 'exact', head: true })
+          .select('order_id')
           .eq('pick_batch_id', b.id)
-        return { ...b, order_count: orderCount ?? 0 }
+        const orderIds = (orderRows || []).map((r: { order_id: string }) => r.order_id)
+        const orderCount = orderIds.length
+        let itemCount = 0
+        if (orderIds.length > 0) {
+          const { count: itemCountRes } = await supabase
+            .from('order_items')
+            .select('*', { count: 'exact', head: true })
+            .in('order_id', orderIds)
+            .is('deleted_at', null)
+          itemCount = itemCountRes ?? 0
+        }
+        return { ...b, order_count: orderCount, item_count: itemCount }
       })
     )
 
     return NextResponse.json({
-      pick_batches: batchesWithOrderCount,
+      pick_batches: batchesWithCounts,
       pagination: {
         page,
         limit,

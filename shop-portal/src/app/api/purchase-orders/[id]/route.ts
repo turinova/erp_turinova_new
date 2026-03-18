@@ -86,7 +86,7 @@ export async function PUT(
     // Check if PO exists
     const { data: existingPO, error: fetchError } = await supabase
       .from('purchase_orders')
-      .select('id, status')
+      .select('id, status, supplier_id')
       .eq('id', id)
       .is('deleted_at', null)
       .single()
@@ -114,7 +114,8 @@ export async function PUT(
       expected_delivery_date,
       currency_id,
       note,
-      status
+      status,
+      items: bodyItems
     } = body
 
     // Empty string is invalid for UUID columns; normalize to null
@@ -200,7 +201,175 @@ export async function PUT(
       )
     }
 
-    return NextResponse.json({ purchase_order: updatedPO })
+    const canEditItems = existingPO.status === 'draft' || existingPO.status === 'pending_approval'
+    const supplierIdForItems = updatedPO.supplier_id
+
+    if (canEditItems && Array.isArray(bodyItems) && bodyItems.length >= 0) {
+      const existingItemIds = new Set<string>()
+      const { data: existingItems } = await supabase
+        .from('purchase_order_items')
+        .select('id')
+        .eq('purchase_order_id', id)
+        .is('deleted_at', null)
+      if (existingItems) {
+        existingItems.forEach((row: { id: string }) => existingItemIds.add(row.id))
+      }
+
+      const isValidUuid = (v: unknown) =>
+        typeof v === 'string' && v.length === 36 && !v.startsWith('temp-') && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)
+
+      for (const item of bodyItems as any[]) {
+        const itemId = item.id
+        const qty = parseFloat(item.quantity)
+        const cost = parseFloat(item.unit_cost)
+        if (qty <= 0 || Number.isNaN(qty)) {
+          return NextResponse.json(
+            { error: 'A mennyiségnek pozitívnak kell lennie' },
+            { status: 400 }
+          )
+        }
+        if (cost < 0 || Number.isNaN(cost)) {
+          return NextResponse.json(
+            { error: 'Az egységár nem lehet negatív' },
+            { status: 400 }
+          )
+        }
+        if (!item.product_id || !item.vat_id || !item.unit_id) {
+          return NextResponse.json(
+            { error: 'Minden tételnek kell termék, ÁFA és mértékegység' },
+            { status: 400 }
+          )
+        }
+
+        if (isValidUuid(itemId) && existingItemIds.has(itemId)) {
+          const { error: itemUpdateError } = await supabase
+            .from('purchase_order_items')
+            .update({
+              quantity: qty,
+              unit_cost: cost,
+              vat_id: item.vat_id,
+              currency_id: item.currency_id || updatedPO.currency_id || null,
+              unit_id: item.unit_id,
+              description: item.description?.trim() || null,
+              product_supplier_id: item.product_supplier_id || null
+            })
+            .eq('id', itemId)
+            .eq('purchase_order_id', id)
+          if (itemUpdateError) {
+            console.error('Error updating PO item:', itemUpdateError)
+            return NextResponse.json(
+              { error: itemUpdateError.message || 'Hiba a tétel frissítésekor' },
+              { status: 500 }
+            )
+          }
+        } else {
+          let productSupplierId: string | null = item.product_supplier_id || null
+          if (productSupplierId && supplierIdForItems) {
+            const { data: ps } = await supabase
+              .from('product_suppliers')
+              .select('id')
+              .eq('id', productSupplierId)
+              .eq('supplier_id', supplierIdForItems)
+              .is('deleted_at', null)
+              .maybeSingle()
+            if (!ps) productSupplierId = null
+          }
+          if (!productSupplierId && item.product_id && supplierIdForItems) {
+            const { data: existing } = await supabase
+              .from('product_suppliers')
+              .select('id')
+              .eq('product_id', item.product_id)
+              .eq('supplier_id', supplierIdForItems)
+              .is('deleted_at', null)
+              .limit(1)
+              .maybeSingle()
+            if (existing) {
+              productSupplierId = existing.id
+            } else {
+              const { data: created } = await supabase
+                .from('product_suppliers')
+                .insert({
+                  product_id: item.product_id,
+                  supplier_id: supplierIdForItems,
+                  default_cost: cost,
+                  is_active: true
+                })
+                .select('id')
+                .single()
+              if (created) productSupplierId = created.id
+            }
+          }
+          const insertPayload = {
+            purchase_order_id: id,
+            product_id: item.product_id,
+            product_supplier_id: productSupplierId,
+            quantity: qty,
+            unit_cost: cost,
+            vat_id: item.vat_id,
+            currency_id: item.currency_id || updatedPO.currency_id || null,
+            unit_id: item.unit_id,
+            description: item.description?.trim() || null
+          }
+          const { error: itemInsertError } = await supabase
+            .from('purchase_order_items')
+            .insert(insertPayload)
+          if (itemInsertError) {
+            console.error('Error inserting PO item:', itemInsertError)
+            return NextResponse.json(
+              { error: itemInsertError.message || 'Hiba a tétel létrehozásakor' },
+              { status: 500 }
+            )
+          }
+        }
+      }
+
+      const requestItemIds = new Set(
+        (bodyItems as any[])
+          .filter((i: any) => isValidUuid(i.id))
+          .map((i: any) => i.id)
+      )
+      const toSoftDelete = [...existingItemIds].filter((oid) => !requestItemIds.has(oid))
+      if (toSoftDelete.length > 0) {
+        const now = new Date().toISOString()
+        await supabase
+          .from('purchase_order_items')
+          .update({ deleted_at: now })
+          .eq('purchase_order_id', id)
+          .in('id', toSoftDelete)
+      }
+
+      await recalculatePOTotals(supabase, id)
+    }
+
+    const { data: fullPO, error: fetchFullError } = await supabase
+      .from('purchase_orders')
+      .select(`
+        *,
+        suppliers:supplier_id(id, name, email, phone),
+        warehouses:warehouse_id(id, name, code),
+        currencies:currency_id(id, name, code, symbol),
+        approved_by_user:approved_by(id, email, full_name),
+        purchase_order_items(
+          *,
+          products:product_id(id, name, sku, gtin, internal_barcode),
+          product_suppliers:product_supplier_id(id, supplier_sku, supplier_barcode),
+          vat:vat_id(id, name, kulcs),
+          currencies:currency_id(id, name, code, symbol),
+          units:unit_id(id, name, shortform)
+        )
+      `)
+      .eq('id', id)
+      .is('deleted_at', null)
+      .single()
+
+    if (fetchFullError || !fullPO) {
+      return NextResponse.json({ purchase_order: updatedPO })
+    }
+    if (fullPO.purchase_order_items) {
+      fullPO.purchase_order_items = fullPO.purchase_order_items.filter((item: any) => !item.deleted_at)
+    }
+
+    return NextResponse.json({ purchase_order: fullPO })
   } catch (error) {
     console.error('Error in purchase orders PUT API:', error)
     return NextResponse.json(
@@ -208,6 +377,64 @@ export async function PUT(
       { status: 500 }
     )
   }
+}
+
+async function recalculatePOTotals(supabase: any, poId: string) {
+  const { data: items } = await supabase
+    .from('purchase_order_items')
+    .select('quantity, unit_cost, vat_id')
+    .eq('purchase_order_id', poId)
+    .is('deleted_at', null)
+
+  if (!items || items.length === 0) {
+    await supabase
+      .from('purchase_orders')
+      .update({
+        total_net: 0,
+        total_vat: 0,
+        total_gross: 0,
+        total_weight: 0,
+        item_count: 0,
+        total_quantity: 0
+      })
+      .eq('id', poId)
+    return
+  }
+
+  const { data: vatRates } = await supabase
+    .from('vat')
+    .select('id, kulcs')
+    .is('deleted_at', null)
+  const vatMap = new Map(vatRates?.map((v: any) => [v.id, v.kulcs || 0]) || [])
+
+  let totalNet = 0
+  let totalVat = 0
+  let totalGross = 0
+  let totalQuantity = 0
+  for (const item of items) {
+    const quantity = parseFloat(item.quantity) || 0
+    const unitCost = parseFloat(item.unit_cost) || 0
+    const vatRate = vatMap.get(item.vat_id) || 0
+    const lineNet = Math.round(unitCost * quantity)
+    const lineVat = Math.round(lineNet * vatRate / 100)
+    const lineGross = lineNet + lineVat
+    totalNet += lineNet
+    totalVat += lineVat
+    totalGross += lineGross
+    totalQuantity += quantity
+  }
+
+  await supabase
+    .from('purchase_orders')
+    .update({
+      total_net: totalNet,
+      total_vat: totalVat,
+      total_gross: totalGross,
+      total_weight: 0,
+      item_count: items.length,
+      total_quantity: totalQuantity
+    })
+    .eq('id', poId)
 }
 
 /**

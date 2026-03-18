@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Box,
@@ -26,12 +26,15 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField
+  TextField,
+  InputAdornment
 } from '@mui/material'
 import {
   Add as AddIcon,
   Inventory2 as Inventory2Icon,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material'
 import NextLink from 'next/link'
 
@@ -52,12 +55,25 @@ interface ReplenishmentTableProps {
   initialSupplierId?: string
   initialGroupBy?: string
   initialOrderId?: string
+  suppliers?: Array<{ id: string; name: string }>
 }
+
+const SUPPLIER_ROW_COLORS = [
+  '#E3F2FD',
+  '#E8F5E9',
+  '#FFF8E1',
+  '#FFE0B2',
+  '#F3E5F5',
+  '#FCE4EC',
+  '#E0F2F1',
+  '#E8EAF6'
+]
 
 export default function ReplenishmentTable({
   initialSupplierId = '',
   initialGroupBy = 'product',
-  initialOrderId = ''
+  initialOrderId = '',
+  suppliers = []
 }: ReplenishmentTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -69,9 +85,11 @@ export default function ReplenishmentTable({
   const [loading, setLoading] = useState(true)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [supplierFilter, setSupplierFilter] = useState(initialSupplierId)
-  const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
   const [createPoOpen, setCreatePoOpen] = useState(false)
   const [addToPoOpen, setAddToPoOpen] = useState(false)
+  // When true/false: we know if there is at least one draft/pending_approval PO; null = not fetched yet
+  const [hasDraftPos, setHasDraftPos] = useState<boolean | null>(null)
 
   const fetchReplenishment = useCallback(async () => {
     setLoading(true)
@@ -100,20 +118,58 @@ export default function ReplenishmentTable({
     fetchReplenishment()
   }, [fetchReplenishment])
 
+  // When selection is valid for "add to existing", check if any draft/pending_approval PO exists
+  const selectedRowsForDraftCheck = lines.filter((r) => selectedIds.has(r.product_id))
+  const selectionValidForAddToExisting =
+    selectedRowsForDraftCheck.length > 0 && selectedRowsForDraftCheck.every((r) => r.has_supplier)
   useEffect(() => {
-    const fetchSuppliers = async () => {
+    if (!selectionValidForAddToExisting) {
+      setHasDraftPos(null)
+      return
+    }
+    let cancelled = false
+    const fetchDraftPos = async () => {
       try {
-        const res = await fetch('/api/suppliers')
+        const res = await fetch('/api/purchase-orders?limit=100')
         const data = await res.json()
-        if (res.ok && data.suppliers) {
-          setSuppliers(data.suppliers.map((s: any) => ({ id: s.id, name: s.name || s.short_name || s.id })))
-        }
+        if (cancelled || !res.ok) return
+        const drafts =
+          (data.purchase_orders || []).filter(
+            (p: { status: string }) => p.status === 'draft' || p.status === 'pending_approval'
+          )
+        setHasDraftPos(drafts.length > 0)
       } catch {
-        // ignore
+        if (!cancelled) setHasDraftPos(false)
       }
     }
-    fetchSuppliers()
-  }, [])
+    fetchDraftPos()
+    return () => {
+      cancelled = true
+    }
+  }, [selectionValidForAddToExisting])
+
+  const filteredLines = useMemo(() => {
+    if (!searchTerm.trim()) return lines
+    const q = searchTerm.trim().toLowerCase()
+    return lines.filter(
+      (r) =>
+        (r.product_name || '').toLowerCase().includes(q) ||
+        (r.product_sku || '').toLowerCase().includes(q)
+    )
+  }, [lines, searchTerm])
+
+  const supplierGroupIndex = useMemo(() => {
+    const order: string[] = []
+    const seen = new Set<string>()
+    filteredLines.forEach((r) => {
+      const sid = r.supplier_id || ''
+      if (sid && !seen.has(sid)) {
+        seen.add(sid)
+        order.push(sid)
+      }
+    })
+    return new Map(order.map((id, i) => [id, i]))
+  }, [filteredLines])
 
   // Sync URL with filters (preserve order_id when present)
   useEffect(() => {
@@ -129,10 +185,24 @@ export default function ReplenishmentTable({
     }
   }, [supplierFilter, orderIdFromUrl, router, searchParams])
 
-  const selectableLines = lines.filter((r) => r.has_supplier)
+  const selectableLines = filteredLines.filter((r) => r.has_supplier)
   const selectedRows = lines.filter((r) => selectedIds.has(r.product_id))
   const canCreatePo = selectedRows.length > 0
   const hasMultipleSuppliers = selectedRows.length > 0 && new Set(selectedRows.map((r) => r.supplier_id)).size > 1
+  // "Hozzáadás meglévőhöz" only when every selected row has a supplier AND there is at least one draft/pending_approval PO
+  const canAddToExisting =
+    selectedRows.length > 0 &&
+    selectedRows.every((r) => r.has_supplier) &&
+    hasDraftPos === true
+
+  const hasActiveFilters = !!supplierFilter || !!searchTerm.trim()
+  const handleClearFilters = () => {
+    setSupplierFilter('')
+    setSearchTerm('')
+    const params = new URLSearchParams()
+    if (orderIdFromUrl) params.set('order_id', orderIdFromUrl)
+    router.replace(`/replenishment${params.toString() ? `?${params.toString()}` : ''}`, { scroll: false })
+  }
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -156,28 +226,15 @@ export default function ReplenishmentTable({
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2, mb: 2 }}>
-        <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Inventory2Icon />
-          Beszállítói várólista
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            disabled={!canCreatePo || hasMultipleSuppliers}
-            onClick={() => setCreatePoOpen(true)}
-          >
-            Új beszerzési rendelés
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<LinkIcon />}
-            disabled={!canCreatePo}
-            onClick={() => setAddToPoOpen(true)}
-          >
-            Hozzáadás meglévőhöz
-          </Button>
+      {/* Header - same structure as PO page */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
+            Beszerzési várólista
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Hiányzó tételek rendelései alapján. Válasszon termékeket, majd hozzon létre vagy bővítsen beszerzési rendelést.
+          </Typography>
         </Box>
       </Box>
 
@@ -187,7 +244,8 @@ export default function ReplenishmentTable({
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+      {/* Filters - aligned with PO page */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <FormControl size="small" sx={{ minWidth: 220 }}>
           <InputLabel>Beszállító</InputLabel>
           <Select
@@ -203,7 +261,70 @@ export default function ReplenishmentTable({
             ))}
           </Select>
         </FormControl>
+        <TextField
+          placeholder="Keresés: termék, cikkszám…"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          size="small"
+          sx={{ minWidth: 280, flexGrow: 1 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            )
+          }}
+        />
+        {hasActiveFilters && (
+          <Button size="small" onClick={handleClearFilters} sx={{ alignSelf: 'center' }}>
+            Szűrők törlése
+          </Button>
+        )}
       </Box>
+
+      {/* Bulk actions bar - same pattern as PO page */}
+      {selectedIds.size > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            mb: 2,
+            py: 1.5,
+            px: 2,
+            borderRadius: 1,
+            bgcolor: 'action.selected',
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {selectedIds.size} kijelölve
+          </Typography>
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<AddIcon />}
+            disabled={!canCreatePo || hasMultipleSuppliers}
+            onClick={() => setCreatePoOpen(true)}
+          >
+            Új beszerzési rendelés ({selectedIds.size})
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<LinkIcon />}
+            disabled={!canAddToExisting}
+            onClick={() => setAddToPoOpen(true)}
+          >
+            Hozzáadás meglévőhöz ({selectedIds.size})
+          </Button>
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" startIcon={<ClearIcon />} onClick={() => setSelectedIds(new Set())}>
+            Kijelölés törlése
+          </Button>
+        </Box>
+      )}
 
       {linesWithoutProduct.length > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }}>
@@ -212,55 +333,77 @@ export default function ReplenishmentTable({
         </Alert>
       )}
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
+      {/* Table - same container and row styling as PO page */}
+      <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ backgroundColor: 'action.hover' }}>
+              <TableCell padding="checkbox" sx={{ width: 40, py: 1 }}>
+                <Checkbox
+                  indeterminate={someSelected && !allSelected}
+                  checked={allSelected}
+                  onChange={(_, c) => handleSelectAll(c)}
+                  disabled={selectableLines.length === 0}
+                  size="small"
+                />
+              </TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Termék</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>SKU</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1, textAlign: 'right' }}>Mennyiség</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Forrás rendelések</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Beszállító</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading ? (
               <TableRow>
-                <TableCell padding="checkbox">
-                  <Checkbox
-                    indeterminate={someSelected && !allSelected}
-                    checked={allSelected}
-                    onChange={(_, c) => handleSelectAll(c)}
-                    disabled={selectableLines.length === 0}
-                  />
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <CircularProgress size={24} />
                 </TableCell>
-                <TableCell>Termék</TableCell>
-                <TableCell>SKU</TableCell>
-                <TableCell align="right">Mennyiség</TableCell>
-                <TableCell>Forrás rendelések</TableCell>
-                <TableCell>Beszállító</TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {lines.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
-                    Nincs hiányzó tétel a várólistán.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                lines.map((row) => (
-                  <TableRow key={row.product_id} hover>
-                    <TableCell padding="checkbox">
+            ) : filteredLines.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    <Inventory2Icon sx={{ fontSize: 48, color: 'text.secondary' }} />
+                    <Typography variant="body1" color="text.secondary">
+                      {lines.length === 0
+                        ? 'Nincs hiányzó tétel a várólistán.'
+                        : 'Nincs találat a keresésnek megfelelően.'}
+                    </Typography>
+                  </Box>
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredLines.map((row) => {
+                const groupIdx = (row.supplier_id && supplierGroupIndex.get(row.supplier_id)) ?? 0
+                const rowBg = SUPPLIER_ROW_COLORS[groupIdx % SUPPLIER_ROW_COLORS.length]
+                return (
+                  <TableRow
+                    key={row.product_id}
+                    hover
+                    sx={{
+                      '& td': { py: 1 },
+                      backgroundColor: rowBg,
+                      '&:hover': { backgroundColor: 'action.hover' }
+                    }}
+                  >
+                    <TableCell padding="checkbox" sx={{ width: 40, py: 1 }}>
                       <Checkbox
                         checked={selectedIds.has(row.product_id)}
                         disabled={!row.has_supplier}
                         onChange={(_, c) => handleSelectOne(row.product_id, c)}
+                        size="small"
                       />
                     </TableCell>
-                    <TableCell>
-                      <Link component={NextLink} href={`/products/${row.product_id}`} underline="hover">
+                    <TableCell sx={{ py: 1 }}>
+                      <Link component={NextLink} href={`/products/${row.product_id}`} underline="hover" sx={{ fontWeight: 600 }}>
                         {row.product_name || '—'}
                       </Link>
                     </TableCell>
-                    <TableCell>{row.product_sku || '—'}</TableCell>
-                    <TableCell align="right">{row.quantity}</TableCell>
-                    <TableCell>
+                    <TableCell sx={{ py: 1 }}>{row.product_sku || '—'}</TableCell>
+                    <TableCell align="right" sx={{ py: 1 }}>{row.quantity}</TableCell>
+                    <TableCell sx={{ py: 1 }}>
                       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                         {row.order_numbers.slice(0, 5).map((num, i) => (
                           <Chip
@@ -278,14 +421,14 @@ export default function ReplenishmentTable({
                         )}
                       </Box>
                     </TableCell>
-                    <TableCell>{row.has_supplier ? row.supplier_name : '— Nincs beszállító'}</TableCell>
+                    <TableCell sx={{ py: 1 }}>{row.has_supplier ? row.supplier_name : '— Nincs beszállító'}</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+                )
+              })
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
       {!loading && totalCount > 0 && (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

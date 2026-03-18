@@ -812,6 +812,7 @@ export default function PurchaseOrderEditForm({
               canEdit={canEdit}
               showReceivedQuantity={true}
               poStatus={purchaseOrder.status}
+              supplierId={purchaseOrder.supplier_id}
             />
           </Paper>
         </Grid>

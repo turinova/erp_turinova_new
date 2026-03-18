@@ -20,10 +20,6 @@ export default function PickBatchesPage() {
         </Typography>
       </Breadcrumbs>
 
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Begyűjtések
-      </Typography>
-
       <PickBatchesTable />
     </Box>
   )

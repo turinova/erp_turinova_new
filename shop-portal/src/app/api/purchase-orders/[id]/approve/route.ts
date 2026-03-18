@@ -50,17 +50,13 @@ export async function PUT(
       )
     }
 
-    const body = await request.json().catch(() => ({}))
-    const { note } = body
-
-    // Update purchase order
+    // Update purchase order (do not touch note — preserve existing value)
     const { data: updatedPO, error: updateError } = await supabase
       .from('purchase_orders')
       .update({
         status: 'approved',
         approved_at: new Date().toISOString(),
-        approved_by: user.id,
-        note: note?.trim() || existingPO.note || null
+        approved_by: user.id
       })
       .eq('id', id)
       .select(`

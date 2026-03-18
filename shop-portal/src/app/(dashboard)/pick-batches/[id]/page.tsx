@@ -78,6 +78,8 @@ export default async function PickBatchDetailPage({ params }: PageProps) {
       }
     }
 
+    const totalItems = Object.values(order_items_by_order).reduce((sum, items) => sum + items.length, 0)
+
     return (
       <Box sx={{ p: 3 }}>
         <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
@@ -98,6 +100,7 @@ export default async function PickBatchDetailPage({ params }: PageProps) {
           initialBatch={batch}
           initialOrders={orders}
           initialOrderItemsByOrder={order_items_by_order}
+          initialTotalItems={totalItems}
         />
       </Box>
     )

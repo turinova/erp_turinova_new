@@ -18,54 +18,105 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
-    const status = searchParams.get('status') // optional filter
-    const search = searchParams.get('search')?.trim() // optional search by shipment number or supplier name
+    const status = searchParams.get('status')
+    const search = searchParams.get('search')?.trim()
+    const rawSupplierId = searchParams.get('supplier_id')?.trim()
+    const supplier_id =
+      rawSupplierId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSupplierId)
+        ? rawSupplierId
+        : null
 
     const offset = (page - 1) * limit
 
-    // Build query
-    let query = supabase
-      .from('shipments')
-      .select(`
-        id,
-        shipment_number,
-        status,
-        supplier_id,
-        suppliers:supplier_id(id, name),
-        warehouse_id,
-        warehouses:warehouse_id(id, name, code),
-        expected_arrival_date,
-        actual_arrival_date,
-        purchased_date,
-        currency_id,
-        currencies:currency_id(id, name, code),
-        created_at,
-        updated_at
-      `, { count: 'exact' })
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+    const selectColumns = `
+      id,
+      shipment_number,
+      status,
+      supplier_id,
+      suppliers:supplier_id(id, name),
+      warehouse_id,
+      warehouses:warehouse_id(id, name, code),
+      expected_arrival_date,
+      actual_arrival_date,
+      purchased_date,
+      currency_id,
+      currencies:currency_id(id, name, code),
+      created_at,
+      updated_at
+    `
 
-    // Apply status filter
-    if (status && status !== 'all') {
-      query = query.eq('status', status)
-    }
+    let data: any[] = []
+    let count: number | null = 0
 
-    // Apply search filter (shipment number or supplier name)
     if (search) {
-      query = query.or(`shipment_number.ilike.%${search}%,suppliers.name.ilike.%${search}%`)
-    }
+      // Resolve shipment IDs from shipment_number, supplier name, warehouse name (PostgREST .or with relations is unreliable)
+      const byNumber = await supabase
+        .from('shipments')
+        .select('id')
+        .is('deleted_at', null)
+        .ilike('shipment_number', `%${search}%`)
+      let idsByNumber = (byNumber.data || []).map((r: { id: string }) => r.id)
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1)
+      const bySupplier = await supabase
+        .from('shipments')
+        .select('id,suppliers:supplier_id(name)')
+        .is('deleted_at', null)
+        .ilike('suppliers.name', `%${search}%`)
+      let idsBySupplier = (bySupplier.data || []).map((r: { id: string }) => r.id)
 
-    const { data, error, count } = await query
+      const byWarehouse = await supabase
+        .from('shipments')
+        .select('id,warehouses:warehouse_id(name)')
+        .is('deleted_at', null)
+        .ilike('warehouses.name', `%${search}%`)
+      let idsByWarehouse = (byWarehouse.data || []).map((r: { id: string }) => r.id)
 
-    if (error) {
-      console.error('Error fetching shipments:', error)
-      return NextResponse.json(
-        { error: error.message || 'Hiba a szállítmányok lekérdezésekor' },
-        { status: 500 }
-      )
+      const mergedIds = [...new Set([...idsByNumber, ...idsBySupplier, ...idsByWarehouse])]
+      if (mergedIds.length === 0) {
+        return NextResponse.json({
+          shipments: [],
+          pagination: { page, limit, total: 0, totalPages: 0 }
+        })
+      }
+
+      let listQuery = supabase
+        .from('shipments')
+        .select(selectColumns, { count: 'exact' })
+        .is('deleted_at', null)
+        .in('id', mergedIds)
+        .order('created_at', { ascending: false })
+      if (status && status !== 'all') listQuery = listQuery.eq('status', status)
+      if (supplier_id) listQuery = listQuery.eq('supplier_id', supplier_id)
+      listQuery = listQuery.range(offset, offset + limit - 1)
+      const res = await listQuery
+      if (res.error) {
+        console.error('Error fetching shipments:', res.error)
+        return NextResponse.json(
+          { error: res.error.message || 'Hiba a szállítmányok lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+      data = res.data || []
+      count = res.count
+    } else {
+      let query = supabase
+        .from('shipments')
+        .select(selectColumns, { count: 'exact' })
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+      if (status && status !== 'all') query = query.eq('status', status)
+      if (supplier_id) query = query.eq('supplier_id', supplier_id)
+      query = query.range(offset, offset + limit - 1)
+      const res = await query
+      if (res.error) {
+        console.error('Error fetching shipments:', res.error)
+        return NextResponse.json(
+          { error: res.error.message || 'Hiba a szállítmányok lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+      data = res.data || []
+      count = res.count
     }
 
     return NextResponse.json({

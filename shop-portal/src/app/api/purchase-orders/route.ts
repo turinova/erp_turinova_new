@@ -18,59 +18,113 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '20', 10)
-    const status = searchParams.get('status') // optional filter
-    const search = searchParams.get('search')?.trim() // optional search by PO number or supplier name
+    const status = searchParams.get('status')
+    const search = searchParams.get('search')?.trim()
+    const rawSupplierId = searchParams.get('supplier_id')?.trim()
+    const supplier_id = rawSupplierId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawSupplierId) ? rawSupplierId : null
 
     const offset = (page - 1) * limit
 
-    // Build query
-    let query = supabase
-      .from('purchase_orders')
-      .select(`
-        id,
-        po_number,
-        status,
-        supplier_id,
-        suppliers:supplier_id(id, name),
-        warehouse_id,
-        warehouses:warehouse_id(id, name),
-        order_date,
-        expected_delivery_date,
-        total_net,
-        total_vat,
-        total_gross,
-        total_weight,
-        item_count,
-        total_quantity,
-        email_sent,
-        email_sent_at,
-        created_at,
-        updated_at
-      `, { count: 'exact' })
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+    const selectColumns = `
+      id,
+      po_number,
+      status,
+      supplier_id,
+      suppliers:supplier_id(id, name),
+      warehouse_id,
+      warehouses:warehouse_id(id, name),
+      order_date,
+      expected_delivery_date,
+      total_net,
+      total_vat,
+      total_gross,
+      total_weight,
+      item_count,
+      total_quantity,
+      email_sent,
+      email_sent_at,
+      created_at,
+      updated_at
+    `
 
-    // Apply status filter
-    if (status && status !== 'all') {
-      query = query.eq('status', status)
-    }
+    let data: any[] = []
+    let count: number | null = 0
 
-    // Apply search filter (PO number or supplier name)
     if (search) {
-      query = query.or(`po_number.ilike.%${search}%,suppliers.name.ilike.%${search}%`)
-    }
+      // Resolve PO ids from text match (po_number, supplier name) and product match (product name/sku)
+      // PostgREST requires the relation in select to filter by suppliers.name
+      let textMatchQuery = supabase
+        .from('purchase_orders')
+        .select('id,suppliers:supplier_id(name)')
+        .is('deleted_at', null)
+        .or(`po_number.ilike.%${search}%,suppliers.name.ilike.%${search}%`)
+      if (status && status !== 'all') textMatchQuery = textMatchQuery.eq('status', status)
+      if (supplier_id) textMatchQuery = textMatchQuery.eq('supplier_id', supplier_id)
+      const { data: textIds } = await textMatchQuery
 
-    // Apply pagination
-    query = query.range(offset, offset + limit - 1)
+      let productPoIds: string[] = []
+      const { data: products } = await supabase
+        .from('shoprenter_products')
+        .select('id')
+        .or(`name.ilike.%${search}%,sku.ilike.%${search}%`)
+        .is('deleted_at', null)
+        .limit(5000)
+      if (products && products.length > 0) {
+        const productIds = products.map((p: { id: string }) => p.id)
+        const { data: poi } = await supabase
+          .from('purchase_order_items')
+          .select('purchase_order_id')
+          .in('product_id', productIds)
+          .is('deleted_at', null)
+        if (poi) productPoIds = [...new Set(poi.map((r: { purchase_order_id: string }) => r.purchase_order_id))]
+      }
 
-    const { data, error, count } = await query
+      const mergedIds = [...new Set([...(textIds || []).map((r: { id: string }) => r.id), ...productPoIds])]
+      if (mergedIds.length === 0) {
+        return NextResponse.json({
+          purchase_orders: [],
+          pagination: { page, limit, total: 0, totalPages: 0 }
+        })
+      }
 
-    if (error) {
-      console.error('Error fetching purchase orders:', error)
-      return NextResponse.json(
-        { error: error.message || 'Hiba a beszerzési rendelések lekérdezésekor' },
-        { status: 500 }
-      )
+      let listQuery = supabase
+        .from('purchase_orders')
+        .select(selectColumns, { count: 'exact' })
+        .is('deleted_at', null)
+        .in('id', mergedIds)
+        .order('created_at', { ascending: false })
+      if (status && status !== 'all') listQuery = listQuery.eq('status', status)
+      if (supplier_id) listQuery = listQuery.eq('supplier_id', supplier_id)
+      listQuery = listQuery.range(offset, offset + limit - 1)
+      const res = await listQuery
+      if (res.error) {
+        console.error('Error fetching purchase orders:', res.error)
+        return NextResponse.json(
+          { error: res.error.message || 'Hiba a beszerzési rendelések lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+      data = res.data || []
+      count = res.count
+    } else {
+      let query = supabase
+        .from('purchase_orders')
+        .select(selectColumns, { count: 'exact' })
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+      if (status && status !== 'all') query = query.eq('status', status)
+      if (supplier_id) query = query.eq('supplier_id', supplier_id)
+      query = query.range(offset, offset + limit - 1)
+      const res = await query
+      if (res.error) {
+        console.error('Error fetching purchase orders:', res.error)
+        return NextResponse.json(
+          { error: res.error.message || 'Hiba a beszerzési rendelések lekérdezésekor' },
+          { status: 500 }
+        )
+      }
+      data = res.data || []
+      count = res.count
     }
 
     return NextResponse.json({
@@ -224,11 +278,54 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Resolve product_supplier_id for each item: use provided if it belongs to PO supplier, else find-or-create link for (product_id, supplier_id)
+    const itemsWithResolvedSupplier: Array<{ product_supplier_id: string | null; item: any }> = []
+    for (const item of items) {
+      let productSupplierId: string | null = item.product_supplier_id || null
+      if (productSupplierId) {
+        const { data: ps } = await supabase
+          .from('product_suppliers')
+          .select('id')
+          .eq('id', productSupplierId)
+          .eq('supplier_id', supplier_id)
+          .is('deleted_at', null)
+          .single()
+        if (!ps) productSupplierId = null
+      }
+      if (!productSupplierId && item.product_id) {
+        const { data: existing } = await supabase
+          .from('product_suppliers')
+          .select('id')
+          .eq('product_id', item.product_id)
+          .eq('supplier_id', supplier_id)
+          .is('deleted_at', null)
+          .limit(1)
+          .maybeSingle()
+        if (existing) {
+          productSupplierId = existing.id
+        } else {
+          const defaultCost = item.unit_cost != null && item.unit_cost !== '' ? parseFloat(item.unit_cost) : null
+          const { data: created } = await supabase
+            .from('product_suppliers')
+            .insert({
+              product_id: item.product_id,
+              supplier_id,
+              default_cost: defaultCost,
+              is_active: true
+            })
+            .select('id')
+            .single()
+          if (created) productSupplierId = created.id
+        }
+      }
+      itemsWithResolvedSupplier.push({ product_supplier_id: productSupplierId, item })
+    }
+
     // Create purchase order items
-    const itemsToInsert = items.map((item: any) => ({
+    const itemsToInsert = itemsWithResolvedSupplier.map(({ product_supplier_id: resolvedId, item }) => ({
       purchase_order_id: purchaseOrder.id,
       product_id: item.product_id,
-      product_supplier_id: item.product_supplier_id || null,
+      product_supplier_id: resolvedId,
       quantity: parseFloat(item.quantity) || 0,
       unit_cost: parseFloat(item.unit_cost) || 0,
       vat_id: item.vat_id,
