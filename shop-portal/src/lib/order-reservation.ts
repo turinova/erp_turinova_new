@@ -155,3 +155,136 @@ export async function releaseReservedStockForOrder(
   const totalReleased = released.reduce((s, r) => s + r.quantity, 0)
   return { ok: true, released: totalReleased }
 }
+
+/**
+ * Consume reserved stock and post outbound when order is shipped or delivered.
+ * Idempotent: if out movements already exist for this order, skips.
+ * - Inserts 'released' for each reserved movement; inserts 'out' from order_items (source of truth).
+ * - Uses warehouse from reserved row per product, else default warehouse.
+ * - Clears orders.stock_reserved and order_items.reserved_quantity.
+ * Call refresh_stock_summary after (e.g. once per request if processing multiple orders).
+ */
+export async function consumeReservedAndPostOutbound(
+  supabase: { from: (table: string) => any; rpc: (name: string) => any },
+  orderId: string,
+  options?: { createdBy?: string | null }
+): Promise<{ ok: boolean; consumed: boolean; error?: string }> {
+  // Idempotency: already consumed if any 'out' exists for this order
+  const { data: existingOut, error: outCheckErr } = await supabase
+    .from('stock_movements')
+    .select('id')
+    .eq('source_type', 'order')
+    .eq('source_id', orderId)
+    .eq('movement_type', 'out')
+    .limit(1)
+
+  if (outCheckErr) {
+    return { ok: false, consumed: false, error: outCheckErr.message }
+  }
+  if (existingOut?.length) {
+    return { ok: true, consumed: false }
+  }
+
+  const defaultWarehouseId = await getDefaultWarehouseId(supabase)
+
+  // Reserved rows: for release and for warehouse-by-product
+  const { data: reservedRows, error: reservedErr } = await supabase
+    .from('stock_movements')
+    .select('warehouse_id, product_id, quantity')
+    .eq('source_type', 'order')
+    .eq('source_id', orderId)
+    .eq('movement_type', 'reserved')
+
+  if (reservedErr) {
+    return { ok: false, consumed: false, error: reservedErr.message }
+  }
+
+  const reserved = (reservedRows || []) as { warehouse_id: string; product_id: string; quantity: number }[]
+  const warehouseByProduct: Record<string, string> = {}
+  for (const r of reserved) {
+    if (r.product_id && !warehouseByProduct[r.product_id]) {
+      warehouseByProduct[r.product_id] = r.warehouse_id
+    }
+  }
+
+  // Order items with product_id (source of truth for outbound qty)
+  const { data: items, error: itemsErr } = await supabase
+    .from('order_items')
+    .select('id, product_id, quantity')
+    .eq('order_id', orderId)
+    .is('deleted_at', null)
+    .not('product_id', 'is', null)
+
+  if (itemsErr) {
+    return { ok: false, consumed: false, error: itemsErr.message }
+  }
+
+  const orderItems = (items || []) as { id: string; product_id: string; quantity: number }[]
+  const outRows: { warehouse_id: string; product_id: string; quantity: number; source_type: string; source_id: string; created_by?: string | null }[] = []
+
+  for (const item of orderItems) {
+    const qty = Math.abs(parseFloat(String(item.quantity)) || 0)
+    if (qty <= 0) continue
+    const warehouseId = warehouseByProduct[item.product_id] ?? defaultWarehouseId
+    if (!warehouseId) {
+      return { ok: false, consumed: false, error: 'No warehouse available for outbound' }
+    }
+    outRows.push({
+      warehouse_id: warehouseId,
+      product_id: item.product_id,
+      quantity: qty,
+      source_type: 'order',
+      source_id: orderId,
+      created_by: options?.createdBy ?? null
+    })
+  }
+
+  // 1) Insert 'released' for each reserved row
+  if (reserved.length > 0) {
+    const released = reserved
+      .filter((r) => (Math.abs(parseFloat(String(r.quantity)) || 0) > 0))
+      .map((r) => ({
+        warehouse_id: r.warehouse_id,
+        product_id: r.product_id,
+        movement_type: 'released' as const,
+        quantity: Math.abs(parseFloat(String(r.quantity)) || 0),
+        source_type: 'order' as const,
+        source_id: orderId
+      }))
+    if (released.length > 0) {
+      const { error: relErr } = await supabase.from('stock_movements').insert(released).select()
+      if (relErr) {
+        return { ok: false, consumed: false, error: relErr.message }
+      }
+    }
+  }
+
+  // 2) Insert 'out' for each order item (positive quantity so stock_summary subtracts it)
+  if (outRows.length > 0) {
+    const outMovements = outRows.map((row) => ({
+      warehouse_id: row.warehouse_id,
+      product_id: row.product_id,
+      movement_type: 'out' as const,
+      quantity: row.quantity,
+      source_type: row.source_type,
+      source_id: row.source_id,
+      created_by: row.created_by ?? null
+    }))
+    const { error: outErr } = await supabase.from('stock_movements').insert(outMovements).select()
+    if (outErr) {
+      return { ok: false, consumed: false, error: outErr.message }
+    }
+  }
+
+  // 3) Clear reservation flags
+  await supabase
+    .from('orders')
+    .update({ stock_reserved: false, updated_at: new Date().toISOString() })
+    .eq('id', orderId)
+  await supabase
+    .from('order_items')
+    .update({ reserved_quantity: 0, updated_at: new Date().toISOString() })
+    .eq('order_id', orderId)
+
+  return { ok: true, consumed: true }
+}

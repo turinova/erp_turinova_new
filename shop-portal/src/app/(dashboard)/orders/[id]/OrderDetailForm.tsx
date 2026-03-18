@@ -998,6 +998,17 @@ export default function OrderDetailForm({
                 </Select>
               </FormControl>
             )}
+            {(order.status === 'picked' || order.status === 'packing') && (
+              <Button
+                component={NextLink}
+                href={`/pack/orders/${order.id}`}
+                variant="contained"
+                color="primary"
+                size="small"
+              >
+                Csomagolás
+              </Button>
+            )}
             <Chip
               label={PAYMENT_STATUS_LABELS[order.payment_status] || order.payment_status}
               variant="outlined"

@@ -117,13 +117,16 @@ export async function PUT(
       status
     } = body
 
+    // Empty string is invalid for UUID columns; normalize to null
+    const uuid = (v: any) => (v === '' || v == null ? null : v)
+
     // Build update object
     const updateData: any = {}
-    if (supplier_id !== undefined) updateData.supplier_id = supplier_id
-    if (warehouse_id !== undefined) updateData.warehouse_id = warehouse_id
+    if (supplier_id !== undefined) updateData.supplier_id = uuid(supplier_id)
+    if (warehouse_id !== undefined) updateData.warehouse_id = uuid(warehouse_id)
     if (order_date !== undefined) updateData.order_date = order_date
-    if (expected_delivery_date !== undefined) updateData.expected_delivery_date = expected_delivery_date
-    if (currency_id !== undefined) updateData.currency_id = currency_id
+    if (expected_delivery_date !== undefined) updateData.expected_delivery_date = expected_delivery_date || null
+    if (currency_id !== undefined) updateData.currency_id = uuid(currency_id)
     if (note !== undefined) updateData.note = note?.trim() || null
 
     // Handle status change (but use dedicated endpoints for approve/cancel)

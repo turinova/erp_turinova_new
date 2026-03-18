@@ -29,6 +29,14 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
         {
           label: 'Begyűjtések',
           href: '/pick-batches'
+        },
+        {
+          label: 'Csomagolás',
+          href: '/pack'
+        },
+        {
+          label: 'Átadás',
+          href: '/dispatch'
         }
       ]
     },

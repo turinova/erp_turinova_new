@@ -12,7 +12,6 @@ import {
   TableRow,
   Paper,
   Button,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -21,7 +20,11 @@ import {
   Alert,
   Checkbox,
   Chip,
-  FormControlLabel
+  FormControlLabel,
+  InputLabel,
+  MenuItem,
+  Select,
+  FormControl
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -37,7 +40,12 @@ interface ShippingMethod {
   name: string
   code: string | null
   extension: string | null
+  requires_pickup_point?: boolean
+  supports_tracking?: boolean
   is_active: boolean
+  carrier_provider?: string | null
+  customer_code?: string | null
+  api_username?: string | null
   created_at: string
   updated_at: string
 }
@@ -55,7 +63,12 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
   const [deletingMethod, setDeletingMethod] = useState<ShippingMethod | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    is_active: true
+    is_active: true,
+    requires_pickup_point: false,
+    carrier_provider: '' as string,
+    customer_code: '',
+    api_username: '',
+    api_password: ''
   })
   const [errors, setErrors] = useState<{ name?: string }>({})
   const [saving, setSaving] = useState(false)
@@ -64,10 +77,26 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
   const handleOpenDialog = (method?: ShippingMethod) => {
     if (method) {
       setEditingMethod(method)
-      setFormData({ name: method.name, is_active: method.is_active })
+      setFormData({
+        name: method.name,
+        is_active: method.is_active,
+        requires_pickup_point: method.requires_pickup_point === true,
+        carrier_provider: method.carrier_provider || '',
+        customer_code: method.customer_code || '',
+        api_username: method.api_username || '',
+        api_password: ''
+      })
     } else {
       setEditingMethod(null)
-      setFormData({ name: '', is_active: true })
+      setFormData({
+        name: '',
+        is_active: true,
+        requires_pickup_point: false,
+        carrier_provider: '',
+        customer_code: '',
+        api_username: '',
+        api_password: ''
+      })
     }
     setErrors({})
     setDialogOpen(true)
@@ -76,7 +105,15 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
   const handleCloseDialog = () => {
     setDialogOpen(false)
     setEditingMethod(null)
-    setFormData({ name: '', is_active: true })
+    setFormData({
+      name: '',
+      is_active: true,
+      requires_pickup_point: false,
+      carrier_provider: '',
+      customer_code: '',
+      api_username: '',
+      api_password: ''
+    })
     setErrors({})
   }
 
@@ -118,15 +155,23 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
     try {
       const url = editingMethod ? `/api/shipping-methods/${editingMethod.id}` : '/api/shipping-methods'
       const method = editingMethod ? 'PUT' : 'POST'
+      const payload: Record<string, unknown> = {
+        name: formData.name.trim(),
+        code: editingMethod?.code ?? null,
+        extension: editingMethod?.extension ?? null,
+        is_active: formData.is_active,
+        requires_pickup_point: formData.requires_pickup_point,
+        carrier_provider: formData.carrier_provider?.trim() || null,
+        customer_code: formData.customer_code?.trim() || null,
+        api_username: formData.api_username?.trim() || null
+      }
+      if (formData.api_password.trim() !== '') {
+        payload.api_password = formData.api_password.trim()
+      }
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          code: editingMethod?.code ?? null,
-          extension: editingMethod?.extension ?? null,
-          is_active: formData.is_active
-        })
+        body: JSON.stringify(payload)
       })
       if (!res.ok) {
         const err = await res.json()
@@ -249,6 +294,7 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
                 />
               </TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Név</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Típus</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Kód</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Extension</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Státusz</TableCell>
@@ -257,7 +303,7 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
           <TableBody>
             {shippingMethods.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <ShippingIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
                     <Typography variant="body1" color="text.secondary">
@@ -290,6 +336,13 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
                     />
                   </TableCell>
                   <TableCell sx={{ py: 1, fontWeight: 500 }}>{method.name}</TableCell>
+                  <TableCell sx={{ py: 1 }}>
+                    {method.requires_pickup_point ? (
+                      <Chip size="small" label="Személyes átvétel" color="info" variant="outlined" />
+                    ) : (
+                      <Chip size="small" label="Futár" />
+                    )}
+                  </TableCell>
                   <TableCell sx={{ py: 1 }}>{method.code || '-'}</TableCell>
                   <TableCell sx={{ py: 1 }}>{method.extension || '-'}</TableCell>
                   <TableCell sx={{ py: 1 }}>
@@ -320,6 +373,60 @@ export default function ShippingMethodsTable({ initialShippingMethods }: Shippin
             error={!!errors.name}
             helperText={errors.name}
           />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={formData.requires_pickup_point}
+                onChange={e => setFormData(prev => ({ ...prev, requires_pickup_point: e.target.checked }))}
+              />
+            }
+            label="Személyes átvétel / Átvevőhely (nem futár)"
+          />
+          {!formData.requires_pickup_point && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Futár API (pl. Express One)</Typography>
+              <FormControl fullWidth size="small" margin="dense">
+                <InputLabel>Szolgáltató</InputLabel>
+                <Select
+                  value={formData.carrier_provider}
+                  label="Szolgáltató"
+                  onChange={e => setFormData(prev => ({ ...prev, carrier_provider: e.target.value }))}
+                >
+                  <MenuItem value="">—</MenuItem>
+                  <MenuItem value="manual">Kézi (címmatrica)</MenuItem>
+                  <MenuItem value="express_one">Express One</MenuItem>
+                  <MenuItem value="gls">GLS</MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                margin="dense"
+                label="Ügyfél kód"
+                fullWidth
+                size="small"
+                value={formData.customer_code}
+                onChange={e => setFormData(prev => ({ ...prev, customer_code: e.target.value }))}
+              />
+              <TextField
+                margin="dense"
+                label="API felhasználónév"
+                fullWidth
+                size="small"
+                value={formData.api_username}
+                onChange={e => setFormData(prev => ({ ...prev, api_username: e.target.value }))}
+              />
+              <TextField
+                margin="dense"
+                label="API jelszó"
+                fullWidth
+                size="small"
+                type="password"
+                autoComplete="new-password"
+                value={formData.api_password}
+                onChange={e => setFormData(prev => ({ ...prev, api_password: e.target.value }))}
+                placeholder={editingMethod ? 'Üres = nem változik' : ''}
+              />
+            </Box>
+          )}
           <FormControlLabel
             control={
               <Checkbox

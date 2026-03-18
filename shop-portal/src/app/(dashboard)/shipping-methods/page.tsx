@@ -10,7 +10,7 @@ export default async function ShippingMethodsPage() {
     const supabase = await getTenantSupabase()
     const { data, error } = await supabase
       .from('shipping_methods')
-      .select('id, name, code, extension, is_active, created_at, updated_at')
+      .select('id, name, code, extension, requires_pickup_point, supports_tracking, is_active, carrier_provider, customer_code, api_username, created_at, updated_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
 

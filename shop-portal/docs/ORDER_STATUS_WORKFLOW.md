@@ -26,8 +26,9 @@ Single pipeline per order. One value per order at any time.
 | `picked`          | Kiszedve       | Batch finished; items are at packing area. Not yet verified. |
 | `verifying`       | Ellenőrzés     | User is checking/confirming picked items. Optional step; can be merged with Kiszedve. |
 | `packing`         | Csomagolás     | User is packing this order (e.g. scanning items into box). One order at a time. |
-| `shipped`         | Átadva / Úton  | Box complete → system printed label or sent pickup email. Order left the warehouse (carrier or in-transit). |
-| `ready_for_pickup`| Átvehető       | (Store pickup) Ready for customer to collect. |
+| `awaiting_carrier`| Futárra vár    | (Carrier) Box complete, label printed or to be printed; parcel not yet handed to carrier. |
+| `shipped`         | Átadva / Úton  | Parcel handed to carrier / in transit. |
+| `ready_for_pickup`| Személyes átvételre vár | (Store pickup) Ready for customer to collect. |
 | `delivered`       | Kézbesítve     | Customer has it (carrier confirmed or picked up). |
 | `cancelled`       | Törölve        | Order cancelled. |
 | `refunded`        | Visszatérítve  | Refunded after delivery. |

@@ -74,6 +74,24 @@ Used when **cancelling** an order or when **soft-deleting** an order that had re
 
 Reserved and released quantities are balanced so `stock_summary.quantity_reserved` and `quantity_available` stay correct.
 
+## 3b. Consume on ship / deliver (release reservation + post outbound)
+
+**When:** Order status is set to `shipped` (handed to carrier) or `delivered` (customer collected).
+
+**Where:**  
+- `POST /api/dispatch/carrier/mark-shipped` (each order set to shipped)  
+- `POST /api/dispatch/pickup/mark-delivered` (each order set to delivered)  
+- `PATCH /api/orders/[id]` when `body.status` is `shipped` or `delivered`
+
+**Logic (idempotent):** If `stock_movements` already has `movement_type = 'out'` for this order, skip. Otherwise:
+
+1. Insert `released` for each reserved movement (same as cancel).
+2. Insert `out` for each order item with `product_id` (quantity positive; warehouse from reserved row for that product or default warehouse). This reduces `quantity_on_hand`.
+3. Set `orders.stock_reserved = false` and `order_items.reserved_quantity = 0`.
+4. Call `refresh_stock_summary()`.
+
+**Edge cases:** Order never reserved → only `out` from order_items (default warehouse). No product_id items → skipped. Double submit → skip when `out` already exists.
+
 ## 4. Delete order (soft delete from list)
 
 **Meaning:** Set `orders.deleted_at` (and optionally `order_items.deleted_at`). The order is hidden from the default list (`WHERE deleted_at IS NULL`) but remains in the DB.
@@ -97,6 +115,7 @@ We do **not** allow delete for `picking`, `picked`, `verifying`, `packing`, `shi
 |---------------|----------------------------------|---------------------------|-------------------|
 | Reserve       | At buffer takeover, fully fulfillable; or after PO receive / recheck when order becomes fully fulfillable and not yet reserved | Creates `reserved` movements | `stock_reserved = true` |
 | Cancel        | From new / picking / picked / verifying / packing | Release reserved          | status = cancelled, kept |
+| Ship/Deliver  | awaiting_carrier → shipped, or ready_for_pickup → delivered, or PATCH status to shipped/delivered | Release reserved + create `out` (reduce on_hand) | status = shipped or delivered |
 | Delete (soft) | pending_review, new, cancelled, refunded | Release reserved if any   | deleted_at set, kept in DB |
 
 ## 6. References
@@ -104,4 +123,4 @@ We do **not** allow delete for `picking`, `picked`, `verifying`, `packing`, `shi
 - Order status workflow: `docs/ORDER_STATUS_WORKFLOW.md`
 - Fulfillment plan: `docs/ORDER_FULFILLMENT_IMPLEMENTATION_PLAN.md`
 - Schema: `orders.stock_reserved`, `order_items.reserved_quantity`, `stock_movements` (`reserved` / `released`, `source_type` / `source_id`)
-- Lib: `src/lib/order-reservation.ts` (reserve/release), `src/lib/order-fulfillability.ts` (fulfillability, `getOrderIdsToReserveLinkedToPOs`)
+- Lib: `src/lib/order-reservation.ts` (reserve, release, consumeReservedAndPostOutbound), `src/lib/order-fulfillability.ts` (fulfillability, `getOrderIdsToReserveLinkedToPOs`)

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getAllowedNextStatus, canDeleteOrder } from '@/lib/order-status'
-import { releaseReservedStockForOrder } from '@/lib/order-reservation'
+import { releaseReservedStockForOrder, consumeReservedAndPostOutbound } from '@/lib/order-reservation'
 
 /**
  * PATCH /api/orders/[id]
@@ -90,6 +90,9 @@ export async function PATCH(
         )
       }
       update.status = body.status
+      if (body.status === 'shipped') {
+        update.shipped_at = new Date().toISOString()
+      }
       // When moving to cancelled, release any reserved stock first (see docs/ORDER_RESERVATION_AND_DELETE.md)
       if (body.status === 'cancelled' && currentOrder.stock_reserved) {
         const releaseResult = await releaseReservedStockForOrder(supabase, id)
@@ -134,6 +137,19 @@ export async function PATCH(
     }
     if (!order) {
       return NextResponse.json({ error: 'Rendelés nem található' }, { status: 404 })
+    }
+
+    // When status was set to shipped or delivered, consume reserved stock and post outbound
+    if (update.status === 'shipped' || update.status === 'delivered') {
+      const consumeResult = await consumeReservedAndPostOutbound(supabase, id, { createdBy: user.id })
+      if (!consumeResult.ok) {
+        console.error('[orders PATCH] consume stock failed for order', id, consumeResult.error)
+      }
+      try {
+        await supabase.rpc('refresh_stock_summary')
+      } catch {
+        // non-fatal
+      }
     }
 
     return NextResponse.json({ order })

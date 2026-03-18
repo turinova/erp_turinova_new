@@ -1,0 +1,53 @@
+-- Add packing-related migrations to tenant migration list
+-- Run on ADMIN DATABASE (where tenant_migrations and get_tenant_pending_migrations live)
+-- After running 20250415_orders_shipped_at and 20250415_add_packing_page_to_permissions on tenant DBs,
+-- run this so get_tenant_pending_migrations includes them for new/sample tenants.
+
+CREATE OR REPLACE FUNCTION public.get_tenant_pending_migrations(tenant_uuid UUID)
+RETURNS TABLE (
+  migration_name VARCHAR(255),
+  applied BOOLEAN,
+  applied_at TIMESTAMP WITH TIME ZONE
+) AS $$
+BEGIN
+  RETURN QUERY
+  WITH all_migrations AS (
+    SELECT unnest(ARRAY[
+      '20250218_create_permission_system',
+      '20250218_create_webshop_connections',
+      '20250218_fix_rls_policies',
+      '20250219_create_products_tables',
+      '20250125_add_vat_support',
+      '20250126_add_parameters_and_product_tags',
+      '20250127_add_subscription_system',
+      '20250128_add_unified_credit_system',
+      '20250220_create_competitors_system',
+      '20250220_add_pricing_fields',
+      '20250221_create_ai_description_system',
+      '20250222_create_search_console_tables',
+      '20250228_create_product_images_table',
+      '20250301_create_product_quality_scores',
+      '20250304_create_categories_tables',
+      '20250306_create_competitor_content_cache',
+      '20250329_orders_customer_company',
+      '20250330_customer_addresses_entity_id_nullable',
+      '20250401_order_items_discount',
+      '20250402_orders_status_workflow',
+      '20250413_add_replenishment_page_to_permissions',
+      '20250414_create_pick_batches',
+      '20250414_add_pick_batches_page_to_permissions',
+      '20250415_orders_shipped_at',
+      '20250415_add_packing_page_to_permissions'
+    ]) AS migration_name
+  )
+  SELECT
+    am.migration_name,
+    COALESCE(tm.migration_name IS NOT NULL, false) AS applied,
+    tm.applied_at
+  FROM all_migrations am
+  LEFT JOIN public.tenant_migrations tm
+    ON tm.tenant_id = tenant_uuid
+    AND tm.migration_name = am.migration_name
+  ORDER BY am.migration_name;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

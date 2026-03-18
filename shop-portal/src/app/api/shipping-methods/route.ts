@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('shipping_methods')
-      .select('id, name, code, extension, is_active, created_at, updated_at')
+      .select('id, name, code, extension, requires_pickup_point, supports_tracking, is_active, carrier_provider, customer_code, api_username, created_at, updated_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
 
@@ -56,7 +56,11 @@ export async function POST(request: NextRequest) {
       icon_url,
       requires_pickup_point,
       supports_tracking,
-      is_active
+      is_active,
+      carrier_provider,
+      customer_code,
+      api_username,
+      api_password
     } = body
 
     if (!name || !String(name).trim()) {
@@ -66,18 +70,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const insert: Record<string, unknown> = {
+      name: String(name).trim(),
+      code: code?.trim() || null,
+      extension: extension?.trim() || null,
+      icon_url: icon_url?.trim() || null,
+      requires_pickup_point: requires_pickup_point === true,
+      supports_tracking: supports_tracking !== false,
+      is_active: is_active !== false,
+      carrier_provider: carrier_provider?.trim() || null,
+      customer_code: customer_code?.trim() || null,
+      api_username: api_username?.trim() || null
+    }
+    if (api_password != null && String(api_password).trim() !== '') {
+      insert.api_password = String(api_password).trim()
+    }
+
     const { data, error } = await supabase
       .from('shipping_methods')
-      .insert({
-        name: String(name).trim(),
-        code: code?.trim() || null,
-        extension: extension?.trim() || null,
-        icon_url: icon_url?.trim() || null,
-        requires_pickup_point: requires_pickup_point === true,
-        supports_tracking: supports_tracking !== false,
-        is_active: is_active !== false
-      })
-      .select()
+      .insert(insert)
+      .select('id, name, code, extension, icon_url, requires_pickup_point, supports_tracking, is_active, carrier_provider, customer_code, api_username, created_at, updated_at')
       .single()
 
     if (error) {
