@@ -2,7 +2,7 @@ import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, ShoppingCart as ShoppingCartIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
-import OrdersTable from './OrdersTable'
+import OrdersPageClient from './OrdersPageClient'
 
 interface PageProps {
   searchParams?: Promise<{
@@ -30,7 +30,8 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
 
     let query = supabase
       .from('orders')
-      .select(`
+      .select(
+        `
         id,
         order_number,
         platform_order_id,
@@ -47,7 +48,9 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
         payment_method_name,
         order_date,
         created_at
-      `, { count: 'exact' })
+      `,
+        { count: 'exact' }
+      )
       .is('deleted_at', null)
       .order('order_date', { ascending: false })
 
@@ -57,7 +60,9 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
 
     if (search && search.trim()) {
       const term = `%${search.trim()}%`
-      query = query.or(`order_number.ilike.${term},customer_firstname.ilike.${term},customer_lastname.ilike.${term},customer_email.ilike.${term}`)
+      query = query.or(
+        `order_number.ilike.${term},customer_firstname.ilike.${term},customer_lastname.ilike.${term},customer_email.ilike.${term}`
+      )
     }
 
     query = query.range(offset, offset + limit - 1)
@@ -75,7 +80,9 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
 
   let batchByOrderId: Record<string, { id: string; code: string }> = {}
   try {
-    const pickingIds = (orders as any[]).filter((o: any) => o.status === 'picking' || o.status === 'picked').map((o: any) => o.id)
+    const pickingIds = (orders as any[])
+      .filter((o: any) => o.status === 'picking' || o.status === 'picked')
+      .map((o: any) => o.id)
     if (pickingIds.length > 0) {
       const supabase = await getTenantSupabase()
       const { data: pbo } = await supabase
@@ -106,35 +113,16 @@ export default async function OrdersPage({ searchParams }: PageProps = {}) {
         </Typography>
       </Breadcrumbs>
 
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Rendelések
-      </Typography>
-
-      <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
-        <Link component={NextLink} href="/orders/buffer" variant="body2">
-          Rendelés puffer →
-        </Link>
-      </Box>
-
-      <OrdersTable orders={orders} batchByOrderId={batchByOrderId} />
-
-      {totalPages > 1 && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 2, mt: 3 }}>
-          {page > 1 && (
-            <Link component={NextLink} href={`/orders?page=${page - 1}${status !== 'all' ? `&status=${status}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`}>
-              ← Előző
-            </Link>
-          )}
-          <Typography variant="body2" color="text.secondary">
-            {page}. oldal / {totalPages} ({totalCount} rendelés)
-          </Typography>
-          {page < totalPages && (
-            <Link component={NextLink} href={`/orders?page=${page + 1}${status !== 'all' ? `&status=${status}` : ''}${search ? `&search=${encodeURIComponent(search)}` : ''}`}>
-              Következő →
-            </Link>
-          )}
-        </Box>
-      )}
+      <OrdersPageClient
+        orders={orders}
+        batchByOrderId={batchByOrderId}
+        totalCount={totalCount}
+        totalPages={totalPages}
+        currentPage={page}
+        limit={limit}
+        initialStatus={status}
+        initialSearch={search}
+      />
     </Box>
   )
 }

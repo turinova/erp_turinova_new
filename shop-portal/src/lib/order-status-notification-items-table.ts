@@ -40,6 +40,25 @@ export function formatOrderMoney(amount: number, currencyCode: string): string {
   }
 }
 
+/** Class for the product-image column; hidden on narrow viewports (progressive enhancement). */
+const IMG_COL_CLASS = 'order-items-col-img'
+
+const ORDER_ITEMS_TABLE_RESPONSIVE_STYLE = `<style type="text/css">
+@media only screen and (max-width: 600px) {
+  .${IMG_COL_CLASS} {
+    display: none !important;
+    width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    overflow: hidden !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    visibility: hidden !important;
+  }
+}
+</style>`
+
 /**
  * Minimal Notion/Figma-adjacent styling (inline for e-mail clients).
  */
@@ -69,7 +88,7 @@ export function buildOrderItemsTableHtml(
       : `<div style="width:44px;height:44px;border-radius:8px;background:#F7F6F3;border:1px solid #E9E9E7;"></div>`
 
     return `<tr>
-<td style="width:52px;vertical-align:middle;padding:10px 8px;border-bottom:1px solid #ECECEA;">${imgCell}</td>
+<td class="${IMG_COL_CLASS}" style="width:52px;vertical-align:middle;padding:10px 8px;border-bottom:1px solid #ECECEA;">${imgCell}</td>
 <td style="vertical-align:middle;padding:10px 8px;border-bottom:1px solid #ECECEA;color:#37352F;">${name}</td>
 <td style="vertical-align:middle;padding:10px 8px;border-bottom:1px solid #ECECEA;color:#787774;font-size:13px;">${sku}</td>
 <td style="vertical-align:middle;text-align:right;padding:10px 8px;border-bottom:1px solid #ECECEA;color:#37352F;">${qty}</td>
@@ -79,10 +98,11 @@ export function buildOrderItemsTableHtml(
 
   const totalCell = escapeHtml(orderTotalFormatted)
 
-  return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;border-collapse:collapse;margin:16px 0;font-size:14px;line-height:1.45;color:#37352F;">
+  return `${ORDER_ITEMS_TABLE_RESPONSIVE_STYLE}
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;border-collapse:collapse;margin:16px 0;font-size:14px;line-height:1.45;color:#37352F;">
 <thead>
 <tr>
-<th style="text-align:left;padding:8px 8px 8px 8px;border-bottom:1px solid #E0E0DE;font-weight:600;font-size:12px;color:#787774;text-transform:uppercase;letter-spacing:0.02em;"></th>
+<th class="${IMG_COL_CLASS}" style="text-align:left;padding:8px 8px 8px 8px;border-bottom:1px solid #E0E0DE;font-weight:600;font-size:12px;color:#787774;text-transform:uppercase;letter-spacing:0.02em;"></th>
 <th style="text-align:left;padding:8px 8px 8px 8px;border-bottom:1px solid #E0E0DE;font-weight:600;font-size:12px;color:#787774;text-transform:uppercase;letter-spacing:0.02em;">Termék</th>
 <th style="text-align:left;padding:8px 8px 8px 8px;border-bottom:1px solid #E0E0DE;font-weight:600;font-size:12px;color:#787774;text-transform:uppercase;letter-spacing:0.02em;">Cikkszám</th>
 <th style="text-align:right;padding:8px 8px 8px 8px;border-bottom:1px solid #E0E0DE;font-weight:600;font-size:12px;color:#787774;text-transform:uppercase;letter-spacing:0.02em;">Menny.</th>

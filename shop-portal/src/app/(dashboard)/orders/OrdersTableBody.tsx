@@ -9,7 +9,8 @@ import {
   Chip,
   Checkbox,
   Link,
-  Tooltip
+  Tooltip,
+  Button
 } from '@mui/material'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -81,17 +82,40 @@ interface OrdersTableBodyProps {
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
   batchByOrderId?: Record<string, { id: string; code: string }>
+  hasActiveFilters?: boolean
 }
 
-export default function OrdersTableBody({ orders, selectedIds, onToggleSelect, batchByOrderId = {} }: OrdersTableBodyProps) {
+export default function OrdersTableBody({
+  orders,
+  selectedIds,
+  onToggleSelect,
+  batchByOrderId = {},
+  hasActiveFilters = false
+}: OrdersTableBodyProps) {
   const router = useRouter()
 
   if (orders.length === 0) {
     return (
       <TableBody>
         <TableRow>
-          <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
-            Nincs megjeleníthető rendelés.
+          <TableCell colSpan={11} align="center" sx={{ py: 5 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: 480, mx: 'auto' }}>
+              <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+                {hasActiveFilters
+                  ? 'Nincs a szűrőknek megfelelő rendelés.'
+                  : 'Még nincs megjeleníthető rendelés.'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+                {hasActiveFilters
+                  ? 'Próbáljon más státuszt vagy keresési feltételt, vagy törölje a szűrőket.'
+                  : 'Az új webshopos rendelések a rendelés pufferben jelennek meg, onnan feldolgozva kerülnek ide.'}
+              </Typography>
+              {!hasActiveFilters && (
+                <Button component={NextLink} href="/orders/buffer" variant="outlined" sx={{ textTransform: 'none', fontWeight: 600 }}>
+                  Rendelés puffer megnyitása
+                </Button>
+              )}
+            </Box>
           </TableCell>
         </TableRow>
       </TableBody>

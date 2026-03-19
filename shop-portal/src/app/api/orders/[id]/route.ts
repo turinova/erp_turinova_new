@@ -24,6 +24,9 @@ export async function PATCH(
     const body = await request.json()
 
     const update: Record<string, unknown> = {}
+    /** Set when body.status triggers a valid transition; used after update for customer e-mail. */
+    let previousStatusForEmail: string | null = null
+    let newStatusForEmail: string | null = null
 
     if (body.customer_person_id !== undefined) {
       update.customer_person_id = body.customer_person_id || null

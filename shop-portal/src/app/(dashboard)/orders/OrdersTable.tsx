@@ -18,7 +18,8 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  Tooltip
 } from '@mui/material'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
@@ -28,9 +29,11 @@ import { getAllowedNextStatus } from '@/lib/order-status'
 interface OrdersTableProps {
   orders: OrderRow[]
   batchByOrderId?: Record<string, { id: string; code: string }>
+  /** True when URL filters/search/limit differ from defaults — improves empty-state copy */
+  hasActiveFilters?: boolean
 }
 
-export default function OrdersTable({ orders, batchByOrderId = {} }: OrdersTableProps) {
+export default function OrdersTable({ orders, batchByOrderId = {}, hasActiveFilters = false }: OrdersTableProps) {
   const router = useRouter()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -165,28 +168,48 @@ export default function OrdersTable({ orders, batchByOrderId = {} }: OrdersTable
   const allSelected = orders.length > 0 && selectedIds.size === orders.length
   const someSelected = selectedIds.size > 0
 
+  const addToBatchTooltip = !someSelected
+    ? ''
+    : !canAddToBatch
+      ? 'Csak „Új” státuszú és teljes készletű (csomagolható) rendelések tehetők begyűjtésbe. A kijelölésnek kizárólag ilyen sorokból állhat.'
+      : ''
+
+  const bulkCancelTooltip = !someSelected
+    ? ''
+    : !hasCancelableSelected
+      ? 'A kijelöltek közül egyiknél sem engedélyezett a megszüntetés (a státusz már nem vihető „Törölve” állapotba).'
+      : ''
+
   return (
     <>
       {someSelected && (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-          <Button
-            variant="outlined"
-            color="primary"
-            size="small"
-            disabled={!canAddToBatch || bulkLoading}
-            onClick={openAddToBatchModal}
-          >
-            Begyűjtésbe ({selectedCsomagolhato.length})
-          </Button>
-          <Button
-            variant="outlined"
-            color="error"
-            size="small"
-            disabled={!hasCancelableSelected || bulkLoading}
-            onClick={handleBulkCancel}
-          >
-            {bulkLoading ? 'Folyamatban…' : `Kijelöltek törlése (${cancelableSelected.length})`}
-          </Button>
+          <Tooltip title={addToBatchTooltip} arrow disableHoverListener={canAddToBatch}>
+            <span>
+              <Button
+                variant="outlined"
+                color="primary"
+                size="small"
+                disabled={!canAddToBatch || bulkLoading}
+                onClick={openAddToBatchModal}
+              >
+                Begyűjtésbe ({selectedCsomagolhato.length})
+              </Button>
+            </span>
+          </Tooltip>
+          <Tooltip title={bulkCancelTooltip} arrow disableHoverListener={hasCancelableSelected}>
+            <span>
+              <Button
+                variant="outlined"
+                color="error"
+                size="small"
+                disabled={!hasCancelableSelected || bulkLoading}
+                onClick={handleBulkCancel}
+              >
+                {bulkLoading ? 'Folyamatban…' : `Kijelöltek törlése (${cancelableSelected.length})`}
+              </Button>
+            </span>
+          </Tooltip>
           <Button
             variant="text"
             size="small"
@@ -196,7 +219,11 @@ export default function OrdersTable({ orders, batchByOrderId = {} }: OrdersTable
           </Button>
         </Box>
       )}
-      <TableContainer component={Paper} variant="outlined">
+      <TableContainer
+        component={Paper}
+        elevation={0}
+        sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
+      >
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -212,8 +239,8 @@ export default function OrdersTable({ orders, batchByOrderId = {} }: OrdersTable
               <TableCell>Vásárló</TableCell>
               <TableCell>Forrás</TableCell>
               <TableCell>Bruttó összesen</TableCell>
-              <TableCell>Státusz</TableCell>
               <TableCell>Begyűjtés</TableCell>
+              <TableCell>Státusz</TableCell>
               <TableCell>Fizetés</TableCell>
               <TableCell>Szállítási mód</TableCell>
               <TableCell>Fizetési mód</TableCell>
@@ -225,6 +252,7 @@ export default function OrdersTable({ orders, batchByOrderId = {} }: OrdersTable
             selectedIds={selectedIds}
             onToggleSelect={handleToggleSelect}
             batchByOrderId={batchByOrderId}
+            hasActiveFilters={hasActiveFilters}
           />
         </Table>
       </TableContainer>
