@@ -20,11 +20,11 @@ export default function DispatchPage() {
         </Typography>
       </Breadcrumbs>
 
-      <Typography variant="h5" sx={{ mb: 2 }}>
+      <Typography variant="h4" sx={{ fontWeight: 600, mb: 1 }}>
         Átadás
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Futárnak átadandók és személyes átvételek. Jelöld ki a rendeléseket, majd egy kattintással Átadva vagy Átvéve.
+        Csomagok kiadása a futárnak vagy a vevőnek. A fül és a „Teendők” nézet mutatja, mit kell ma megcsinálni; a „Legutóbb…” nézet csak visszakereséshez.
       </Typography>
 
       <DispatchTabs />

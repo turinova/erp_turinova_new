@@ -20,13 +20,6 @@ export default function PackPage() {
         </Typography>
       </Breadcrumbs>
 
-      <Typography variant="h5" sx={{ mb: 2 }}>
-        Csomagolás
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Csomagolásra váró rendelések (Kiszedve vagy már Csomagolás alatt). Válassz egyet, majd szkenneld a termékeket a dobozba.
-      </Typography>
-
       <PackQueueTable />
     </Box>
   )
