@@ -54,9 +54,20 @@ function formatCurrency(amount: number | null, currency: string = 'HUF') {
   return new Intl.NumberFormat('hu-HU', { style: 'currency', currency, minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount)
 }
 
-function formatDate(dateString: string | null) {
+function formatOrderDateShort(dateString: string | null) {
   if (!dateString) return '-'
-  return new Date(dateString).toLocaleDateString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return new Date(dateString).toLocaleDateString('hu-HU', { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
+
+function formatOrderDateFull(dateString: string | null) {
+  if (!dateString) return ''
+  return new Date(dateString).toLocaleString('hu-HU', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
 }
 
 export interface OrderRow {
@@ -85,6 +96,35 @@ interface OrdersTableBodyProps {
   hasActiveFilters?: boolean
 }
 
+function MethodChip({
+  value,
+  compact
+}: {
+  value: string
+  compact?: boolean
+}) {
+  return (
+    <Chip
+      size="small"
+      label={value}
+      sx={{
+        height: compact ? 20 : 22,
+        maxWidth: '100%',
+        fontSize: '0.7rem',
+        fontWeight: 500,
+        border: '1px solid',
+        '& .MuiChip-label': {
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          px: 0.75
+        },
+        ...chipStyleForMethod(value)
+      }}
+    />
+  )
+}
+
 export default function OrdersTableBody({
   orders,
   selectedIds,
@@ -93,12 +133,13 @@ export default function OrdersTableBody({
   hasActiveFilters = false
 }: OrdersTableBodyProps) {
   const router = useRouter()
+  const tableColSpan = 9
 
   if (orders.length === 0) {
     return (
       <TableBody>
         <TableRow>
-          <TableCell colSpan={11} align="center" sx={{ py: 5 }}>
+          <TableCell colSpan={tableColSpan} align="center" sx={{ py: 5 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, maxWidth: 480, mx: 'auto' }}>
               <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
                 {hasActiveFilters
@@ -136,6 +177,21 @@ export default function OrdersTableBody({
         const fulfillStyle = isNew ? getFulfillabilityDisplayStyle(order.fulfillability_status) : null
         const rowBg = isNew && fulfillStyle ? fulfillStyle.rowBg : undefined
         const rowBgHover = isNew && fulfillStyle ? fulfillStyle.rowBgHover : undefined
+
+        // Secondary navigation inside the status cell: "next operational hub".
+        const status = (order.status ?? '').trim()
+        let nextHref: string | null = null
+
+        if (status === 'picking') {
+          const b = batchByOrderId[order.id]
+          if (b) {
+            nextHref = `/pick-batches/${b.id}`
+          }
+        } else if (status === 'picked' || status === 'verifying' || status === 'packing') {
+          nextHref = '/pack'
+        } else if (status === 'awaiting_carrier' || status === 'ready_for_pickup') {
+          nextHref = '/dispatch'
+        }
         return (
         <TableRow
           key={order.id}
@@ -160,13 +216,41 @@ export default function OrdersTableBody({
               {order.order_number}
             </Link>
           </TableCell>
-          <TableCell>
-            {order.customer_firstname} {order.customer_lastname}
-            {order.customer_email && (
-              <Typography variant="caption" display="block" color="text.secondary">
-                {order.customer_email}
-              </Typography>
-            )}
+          <TableCell sx={{ maxWidth: 200 }}>
+            {(() => {
+              const customerName =
+                `${(order.customer_firstname || '').trim()} ${(order.customer_lastname || '').trim()}`.trim() || '—'
+              const email = (order.customer_email || '').trim()
+              const titleNode =
+                email && customerName !== '—' ? (
+                  <>
+                    {customerName}
+                    <br />
+                    <Typography component="span" variant="caption" sx={{ color: 'inherit', opacity: 0.9 }}>
+                      {email}
+                    </Typography>
+                  </>
+                ) : email ? (
+                  email
+                ) : (
+                  customerName
+                )
+              return (
+                <Tooltip title={titleNode} placement="top" enterDelay={400}>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      cursor: 'default'
+                    }}
+                  >
+                    {customerName}
+                  </Typography>
+                </Tooltip>
+              )
+            })()}
           </TableCell>
           <TableCell>
             <OrderSourceCell
@@ -175,15 +259,6 @@ export default function OrdersTableBody({
             />
           </TableCell>
           <TableCell>{formatCurrency(order.total_gross ?? null, order.currency_code)}</TableCell>
-          <TableCell>
-            {batchByOrderId[order.id] ? (
-              <Link component={NextLink} href={`/pick-batches/${batchByOrderId[order.id].id}`} onClick={(e) => e.stopPropagation()} variant="body2">
-                {batchByOrderId[order.id].code}
-              </Link>
-            ) : (
-              '—'
-            )}
-          </TableCell>
           <TableCell>
             {isNew && fulfillStyle ? (
               <Tooltip title={`Új · ${fulfillStyle.label}`}>
@@ -207,12 +282,34 @@ export default function OrdersTableBody({
                 </Box>
               </Tooltip>
             ) : (
-              <Chip
-                size="small"
-                label={ORDER_STATUS_LABELS[order.status ?? ''] || order.status}
-                color={ORDER_STATUS_COLORS[order.status ?? ''] || 'default'}
-                variant="outlined"
-              />
+              (() => {
+                const baseLabel = ORDER_STATUS_LABELS[order.status ?? ''] || order.status
+
+                const chipNode = (
+                  <Chip
+                    size="small"
+                    label={baseLabel}
+                    color={ORDER_STATUS_COLORS[order.status ?? ''] || 'default'}
+                    variant="outlined"
+                  />
+                )
+
+                if (nextHref) {
+                  return (
+                    <Link
+                      component={NextLink}
+                      href={nextHref}
+                      onClick={(e) => e.stopPropagation()}
+                      underline="none"
+                      sx={{ display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      {chipNode}
+                    </Link>
+                  )
+                }
+
+                return chipNode
+              })()
             )}
           </TableCell>
           <TableCell>
@@ -222,57 +319,46 @@ export default function OrdersTableBody({
               variant="outlined"
             />
           </TableCell>
-          <TableCell sx={{ maxWidth: 100 }}>
-            {order.shipping_method_name ? (
-              <Tooltip title={order.shipping_method_name}>
-                <Chip
-                  size="small"
-                  label={order.shipping_method_name}
-                  sx={{
-                    height: 22,
-                    maxWidth: '100%',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    border: '1px solid',
-                    '& .MuiChip-label': {
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    },
-                    ...chipStyleForMethod(order.shipping_method_name)
-                  }}
-                />
+          <TableCell sx={{ maxWidth: 160, verticalAlign: 'top' }}>
+            {(() => {
+              const ship = order.shipping_method_name?.trim()
+              const pay = order.payment_method_name?.trim()
+              if (!ship && !pay) {
+                return (
+                  <Typography variant="body2" color="text.secondary">
+                    —
+                  </Typography>
+                )
+              }
+              const tipLines: string[] = []
+              if (ship) tipLines.push(`Szállítás: ${ship}`)
+              if (pay) tipLines.push(`Fizetés: ${pay}`)
+              const tip = tipLines.join('\n')
+              return (
+                <Tooltip
+                  title={<span style={{ whiteSpace: 'pre-line' }}>{tip}</span>}
+                  placement="top"
+                  enterDelay={300}
+                >
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start', py: 0.25 }}>
+                    {ship ? <MethodChip value={ship} compact /> : null}
+                    {pay ? <MethodChip value={pay} compact /> : null}
+                  </Box>
+                </Tooltip>
+              )
+            })()}
+          </TableCell>
+          <TableCell>
+            {order.order_date ? (
+              <Tooltip title={formatOrderDateFull(order.order_date)} placement="top" enterDelay={300}>
+                <Typography variant="body2" component="span" sx={{ cursor: 'default' }}>
+                  {formatOrderDateShort(order.order_date)}
+                </Typography>
               </Tooltip>
             ) : (
-              <Typography variant="body2" color="text.secondary">—</Typography>
+              '—'
             )}
           </TableCell>
-          <TableCell sx={{ maxWidth: 100 }}>
-            {order.payment_method_name ? (
-              <Tooltip title={order.payment_method_name}>
-                <Chip
-                  size="small"
-                  label={order.payment_method_name}
-                  sx={{
-                    height: 22,
-                    maxWidth: '100%',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    border: '1px solid',
-                    '& .MuiChip-label': {
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    },
-                    ...chipStyleForMethod(order.payment_method_name)
-                  }}
-                />
-              </Tooltip>
-            ) : (
-              <Typography variant="body2" color="text.secondary">—</Typography>
-            )}
-          </TableCell>
-          <TableCell>{formatDate(order.order_date ?? null)}</TableCell>
         </TableRow>
         );
       })}

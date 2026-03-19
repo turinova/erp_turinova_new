@@ -222,9 +222,14 @@ export default function OrdersTable({ orders, batchByOrderId = {}, hasActiveFilt
       <TableContainer
         component={Paper}
         elevation={0}
-        sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}
+        sx={{
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 1,
+          overflowX: 'auto'
+        }}
       >
-        <Table size="small">
+        <Table size="small" sx={{ minWidth: 960 }}>
           <TableHead>
             <TableRow>
               <TableCell padding="checkbox">
@@ -239,11 +244,9 @@ export default function OrdersTable({ orders, batchByOrderId = {}, hasActiveFilt
               <TableCell>Vásárló</TableCell>
               <TableCell>Forrás</TableCell>
               <TableCell>Bruttó összesen</TableCell>
-              <TableCell>Begyűjtés</TableCell>
               <TableCell>Státusz</TableCell>
               <TableCell>Fizetés</TableCell>
-              <TableCell>Szállítási mód</TableCell>
-              <TableCell>Fizetési mód</TableCell>
+              <TableCell sx={{ minWidth: 120, maxWidth: 160 }}>Szállítás / fizetés</TableCell>
               <TableCell>Dátum</TableCell>
             </TableRow>
           </TableHead>
