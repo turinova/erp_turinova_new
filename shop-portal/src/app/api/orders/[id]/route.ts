@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getAllowedNextStatus, canDeleteOrder } from '@/lib/order-status'
 import { releaseReservedStockForOrder, consumeReservedAndPostOutbound } from '@/lib/order-reservation'
+import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 
 /**
  * PATCH /api/orders/[id]
@@ -90,6 +91,8 @@ export async function PATCH(
         )
       }
       update.status = body.status
+      previousStatusForEmail = current
+      newStatusForEmail = body.status as string
       if (body.status === 'shipped') {
         update.shipped_at = new Date().toISOString()
       }
@@ -150,6 +153,15 @@ export async function PATCH(
       } catch {
         // non-fatal
       }
+    }
+
+    if (newStatusForEmail) {
+      await sendOrderStatusEmailNotification(supabase, {
+        orderId: id,
+        previousStatus: previousStatusForEmail,
+        newStatus: newStatusForEmail,
+        actingUserId: user.id
+      })
     }
 
     return NextResponse.json({ order })

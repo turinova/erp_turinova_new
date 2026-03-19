@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import SupplierEmailPoIntroEditor from '@/components/suppliers/SupplierEmailPoIntroEditor'
 import {
   Box,
   Paper,
@@ -49,6 +50,8 @@ interface OrderChannel {
 interface OrderChannelsCardProps {
   supplierId: string
   initialOrderChannels: OrderChannel[]
+  /** Beszállítói PO e-mail bevezető (suppliers.email_po_intro_html) — szerkesztés e-mail csatorna dialógusban */
+  emailPoIntroHtml?: string | null
   onUpdate: () => void
 }
 
@@ -59,7 +62,12 @@ const CHANNEL_TYPE_LABELS: Record<string, string> = {
   internet: 'Internet'
 }
 
-export default function OrderChannelsCard({ supplierId, initialOrderChannels, onUpdate }: OrderChannelsCardProps) {
+export default function OrderChannelsCard({
+  supplierId,
+  initialOrderChannels,
+  emailPoIntroHtml = null,
+  onUpdate
+}: OrderChannelsCardProps) {
   const [orderChannels, setOrderChannels] = useState<OrderChannel[]>(initialOrderChannels)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -75,8 +83,17 @@ export default function OrderChannelsCard({ supplierId, initialOrderChannels, on
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [emailPoIntroDraft, setEmailPoIntroDraft] = useState('')
+  const [introEditorMountKey, setIntroEditorMountKey] = useState(0)
+
+  useEffect(() => {
+    setOrderChannels(initialOrderChannels)
+  }, [initialOrderChannels])
 
   const handleOpenDialog = (channel?: OrderChannel) => {
+    const intro = emailPoIntroHtml ?? ''
+    setEmailPoIntroDraft(intro)
+    setIntroEditorMountKey((k) => k + 1)
     if (channel) {
       setEditingChannel(channel)
       setFormData({
@@ -172,6 +189,20 @@ export default function OrderChannelsCard({ supplierId, initialOrderChannels, on
 
       const result = await response.json()
       const updatedChannel = result.order_channel
+
+      if (formData.channel_type === 'email') {
+        const patchRes = await fetch(`/api/suppliers/${supplierId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email_po_intro_html: emailPoIntroDraft.trim() ? emailPoIntroDraft : null
+          })
+        })
+        if (!patchRes.ok) {
+          const errJson = await patchRes.json().catch(() => ({}))
+          throw new Error(errJson.error || 'Hiba a bevezető szöveg mentésekor')
+        }
+      }
 
       if (editingChannel) {
         // If setting as default, unset others
@@ -435,6 +466,23 @@ export default function OrderChannelsCard({ supplierId, initialOrderChannels, on
               fullWidth
               helperText="Opcionális név a csatornához (pl. 'Webshop keresés SKU alapján')"
             />
+
+            {formData.channel_type === 'email' && (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                  Beszerzési rendelés e-mail — bevezető szöveg
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Ez a szöveg a beszállítónak küldött rendelés e-mail elején jelenik meg (a tételek és aláírás
+                  utána következnek). A mentés a csatornával együtt történik.
+                </Typography>
+                <SupplierEmailPoIntroEditor
+                  key={introEditorMountKey}
+                  initialContent={emailPoIntroDraft}
+                  onHtmlChange={setEmailPoIntroDraft}
+                />
+              </Box>
+            )}
 
             {formData.channel_type === 'internet' && (
               <>

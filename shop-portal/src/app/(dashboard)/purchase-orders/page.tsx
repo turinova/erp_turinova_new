@@ -2,6 +2,10 @@ import { Box, Breadcrumbs, Link, Typography } from '@mui/material'
 import { Home as HomeIcon, ShoppingCart as ShoppingCartIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import {
+  enrichPurchaseOrdersWithSupplierEmailChannel,
+  type PoListRow
+} from '@/lib/enrich-purchase-orders-email-channel'
 import PurchaseOrdersTable from './PurchaseOrdersTable'
 
 interface PageProps {
@@ -130,6 +134,16 @@ export default async function PurchaseOrdersPage({ searchParams }: PageProps = {
     }
   } catch (error) {
     console.error('Error fetching purchase orders:', error)
+  }
+
+  try {
+    const supabaseEnrich = await getTenantSupabase()
+    purchaseOrders = await enrichPurchaseOrdersWithSupplierEmailChannel(
+      supabaseEnrich,
+      purchaseOrders as PoListRow[]
+    )
+  } catch (e) {
+    console.error('Error enriching purchase orders:', e)
   }
 
   // Fetch suppliers for filter dropdown

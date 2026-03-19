@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 
 /**
  * GET /api/pick-batches/[id]
@@ -183,6 +184,13 @@ export async function PATCH(
 
       const orderIds = (batchOrderRows || []).map((r: any) => r.order_id)
       if (orderIds.length > 0) {
+        const { data: beforeRows } = await supabase
+          .from('orders')
+          .select('id, status')
+          .in('id', orderIds)
+
+        const prevById = new Map((beforeRows || []).map((r: { id: string; status: string }) => [r.id, r.status]))
+
         const orderStatus = newStatus === 'in_progress' ? 'picking' : newStatus === 'completed' ? 'picked' : 'new'
         const { error: ordersUpdateError } = await supabase
           .from('orders')
@@ -191,6 +199,16 @@ export async function PATCH(
 
         if (ordersUpdateError) {
           console.error('Error updating order statuses:', ordersUpdateError)
+        } else {
+          for (const oid of orderIds) {
+            const prev = (prevById.get(oid) as string) || null
+            await sendOrderStatusEmailNotification(supabase, {
+              orderId: oid,
+              previousStatus: prev,
+              newStatus: orderStatus,
+              actingUserId: user.id
+            })
+          }
         }
       }
     }

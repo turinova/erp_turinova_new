@@ -1,6 +1,8 @@
 // Simple Permission System Utilities
 // Fast, session-based permission checking
 
+import { matchPageAccess } from './permission-match'
+
 export interface UserPermission {
   page_path: string
   can_access: boolean
@@ -24,8 +26,7 @@ export function hasPagePermission(
   sessionPermissions: UserPermission[]
 ): boolean {
   try {
-    const permission = sessionPermissions.find(p => p.page_path === pagePath)
-    return permission?.can_access ?? false
+    return matchPageAccess(pagePath, sessionPermissions)
   } catch (error) {
     console.error('Error checking page permission:', error)
     // Fail-closed: deny access on error

@@ -2,6 +2,7 @@
 // For use in middleware and API routes only
 
 import { UserPermission } from './permissions'
+import { matchPageAccess } from './permission-match'
 import { getTenantSupabase } from './tenant-supabase'
 
 /**
@@ -33,25 +34,16 @@ export async function hasPagePermission(
   sessionPermissions?: UserPermission[]
 ): Promise<boolean> {
   try {
-    // Handle dynamic routes: /orders/[id] should check /orders
-    const basePath = pagePath.split('/').slice(0, 2).join('/'); // e.g., /orders/123 -> /orders
-    const checkPath = basePath.length > 1 ? basePath : pagePath; // If basePath is just '/', use original path
-
-    // Only log in development to avoid performance impact in production
     if (process.env.NODE_ENV === 'development') {
-      console.log(`Permission check: ${pagePath} -> ${checkPath}`)
+      console.log(`Permission check (prefix match): ${pagePath}`)
     }
 
-    // If permissions are provided (from session cache), use them
     if (sessionPermissions) {
-      const permission = sessionPermissions.find(p => p.page_path === checkPath)
-      return permission?.can_access ?? false
+      return matchPageAccess(pagePath, sessionPermissions)
     }
 
-    // Fallback to database check (uses tenant-aware client)
     const permissions = await getUserPermissionsFromDB(userId)
-    const permission = permissions.find(p => p.page_path === checkPath)
-    return permission?.can_access ?? false
+    return matchPageAccess(pagePath, permissions)
   } catch (error) {
     console.error('Error checking page permission:', error)
     // Fail-closed: deny access on error

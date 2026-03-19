@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import {
+  enrichPurchaseOrdersWithSupplierEmailChannel,
+  type PoListRow
+} from '@/lib/enrich-purchase-orders-email-channel'
 
 /**
  * GET /api/purchase-orders
@@ -127,8 +131,13 @@ export async function GET(request: NextRequest) {
       count = res.count
     }
 
+    const enriched = await enrichPurchaseOrdersWithSupplierEmailChannel(
+      supabase,
+      (data || []) as PoListRow[]
+    )
+
     return NextResponse.json({
-      purchase_orders: data || [],
+      purchase_orders: enriched,
       pagination: {
         page,
         limit,

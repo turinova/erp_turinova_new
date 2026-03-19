@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { consumeReservedAndPostOutbound } from '@/lib/order-reservation'
+import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 
 /**
  * POST /api/dispatch/carrier/mark-shipped
@@ -51,6 +52,13 @@ export async function POST(request: NextRequest) {
 
       if (updateErr) continue
       updated.push(id)
+
+      await sendOrderStatusEmailNotification(supabase, {
+        orderId: id,
+        previousStatus: 'awaiting_carrier',
+        newStatus: 'shipped',
+        actingUserId: user.id
+      })
 
       const consumeResult = await consumeReservedAndPostOutbound(supabase, id, { createdBy: user.id })
       if (!consumeResult.ok) {

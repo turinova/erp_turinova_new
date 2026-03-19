@@ -37,6 +37,7 @@ interface Supplier {
   eu_tax_number: string | null
   note: string | null
   status: string
+  email_po_intro_html?: string | null
   addresses: any[]
   bank_accounts: any[]
   order_channels: any[]
@@ -529,6 +530,7 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
             key={`order-channels-${refreshKey}`}
             supplierId={initialSupplier.id}
             initialOrderChannels={initialSupplier.order_channels}
+            emailPoIntroHtml={initialSupplier.email_po_intro_html ?? null}
             onUpdate={handleUpdate}
           />
         </Grid>

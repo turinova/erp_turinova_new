@@ -3,6 +3,7 @@ import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { extractShopNameFromUrl } from '@/lib/shoprenter-api'
 import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
 import { reserveStockForOrder } from '@/lib/order-reservation'
+import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 
 /**
  * POST /api/orders/buffer/[id]/process
@@ -194,6 +195,13 @@ export async function POST(
           updated_at: new Date().toISOString()
         })
         .eq('id', bufferId)
+
+      await sendOrderStatusEmailNotification(supabase, {
+        orderId: newOrder.id,
+        previousStatus: null,
+        newStatus: 'new',
+        actingUserId: user.id
+      })
 
       return NextResponse.json({
         success: true,

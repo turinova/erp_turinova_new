@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { sanitizeSignatureHtml } from '@/lib/email-signature-sanitize'
 
 /**
  * GET /api/suppliers/[id]
@@ -106,6 +107,7 @@ export async function PUT(
       eu_tax_number, 
       note,
       status,
+      email_po_intro_html,
       default_payment_method_id,
       default_payment_terms_days,
       default_vat_id,
@@ -136,6 +138,20 @@ export async function PUT(
       )
     }
 
+    let introSanitized: string | null | undefined = undefined
+    if (email_po_intro_html !== undefined) {
+      if (email_po_intro_html === null || email_po_intro_html === '') {
+        introSanitized = null
+      } else {
+        try {
+          introSanitized = sanitizeSignatureHtml(String(email_po_intro_html))
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'Érvénytelen HTML'
+          return NextResponse.json({ error: msg }, { status: 400 })
+        }
+      }
+    }
+
     // Update supplier
     const { data, error } = await supabase
       .from('suppliers')
@@ -149,6 +165,7 @@ export async function PUT(
         eu_tax_number: eu_tax_number?.trim() || null,
         note: note?.trim() || null,
         status: status || 'active',
+        ...(introSanitized !== undefined ? { email_po_intro_html: introSanitized } : {}),
         default_payment_method_id: default_payment_method_id || null,
         default_payment_terms_days: default_payment_terms_days || null,
         default_vat_id: default_vat_id || null,
@@ -181,6 +198,75 @@ export async function PUT(
       { error: 'Internal server error' },
       { status: 500 }
     )
+  }
+}
+
+/**
+ * PATCH /api/suppliers/[id]
+ * Partial update — currently supports email_po_intro_html only (rendelési csatorna e-mail modal).
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const supabase = await getTenantSupabase()
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    if (!body || typeof body !== 'object' || !('email_po_intro_html' in body)) {
+      return NextResponse.json(
+        { error: 'Csak email_po_intro_html mező támogatott' },
+        { status: 400 }
+      )
+    }
+
+    const { email_po_intro_html } = body as { email_po_intro_html: unknown }
+
+    let introSanitized: string | null
+    if (email_po_intro_html === null || email_po_intro_html === '') {
+      introSanitized = null
+    } else {
+      try {
+        introSanitized = sanitizeSignatureHtml(String(email_po_intro_html))
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Érvénytelen HTML'
+        return NextResponse.json({ error: msg }, { status: 400 })
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('suppliers')
+      .update({
+        email_po_intro_html: introSanitized,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .is('deleted_at', null)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Error patching supplier:', error)
+      return NextResponse.json(
+        { error: error.message || 'Hiba a beszállító frissítésekor' },
+        { status: 500 }
+      )
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: 'Beszállító nem található' }, { status: 404 })
+    }
+
+    return NextResponse.json({ supplier: data })
+  } catch (error) {
+    console.error('Error in suppliers PATCH API:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 

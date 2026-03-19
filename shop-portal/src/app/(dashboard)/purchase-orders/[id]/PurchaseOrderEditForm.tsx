@@ -51,6 +51,7 @@ import {
 import { toast } from 'react-toastify'
 import PurchaseOrderStatusChip from '@/components/purchasing/PurchaseOrderStatusChip'
 import EditablePurchaseOrderItemsTable from '@/components/purchasing/EditablePurchaseOrderItemsTable'
+import PurchaseOrderEmailModal from '@/components/purchasing/PurchaseOrderEmailModal'
 
 interface PurchaseOrder {
   id: string
@@ -103,6 +104,7 @@ export default function PurchaseOrderEditForm({
   const [saving, setSaving] = useState(false)
   const [approving, setApproving] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [poEmailOpen, setPoEmailOpen] = useState(false)
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder>(initialPurchaseOrder)
   const [formData, setFormData] = useState({
     supplier_id: initialPurchaseOrder.supplier_id,
@@ -167,6 +169,14 @@ export default function PurchaseOrderEditForm({
     const itemsChanged = JSON.stringify(items) !== JSON.stringify(initialStateRef.current.items)
     setHasUnsavedChanges(formChanged || itemsChanged)
   }, [formData, items])
+
+  useEffect(() => {
+    setPurchaseOrder((prev) => ({
+      ...prev,
+      email_sent: initialPurchaseOrder.email_sent,
+      email_sent_at: initialPurchaseOrder.email_sent_at ?? null
+    }))
+  }, [initialPurchaseOrder.email_sent, initialPurchaseOrder.email_sent_at])
 
   // Warn on browser/tab close
   useEffect(() => {
@@ -365,6 +375,9 @@ export default function PurchaseOrderEditForm({
   const canApprove = purchaseOrder.status === 'draft' || purchaseOrder.status === 'pending_approval'
   const canCancel = purchaseOrder.status !== 'received'
   const canCreateShipment = purchaseOrder.status === 'approved'
+  const canSendPoEmail =
+    purchaseOrder.status === 'draft' &&
+    orderChannels.some((ch) => ch.channel_type === 'email')
 
   return (
     <Box>
@@ -392,31 +405,26 @@ export default function PurchaseOrderEditForm({
                 {cancelling ? 'Törlés...' : 'Törlés'}
               </Button>
             )}
+            {canSendPoEmail && (
+              <Button
+                variant="outlined"
+                color="primary"
+                startIcon={<SendIcon />}
+                onClick={() => setPoEmailOpen(true)}
+              >
+                E-mail küldés
+              </Button>
+            )}
             {canApprove && (
-              <>
-                {orderChannels.some(ch => ch.channel_type === 'email') && (
-                  <Button
-                    variant="outlined"
-                    color="primary"
-                    startIcon={<SendIcon />}
-                    onClick={() => {
-                      // TODO: Implement email sending functionality
-                      toast.info('E-mail küldés funkció hamarosan elérhető')
-                    }}
-                  >
-                    E-mail küldés
-                  </Button>
-                )}
-                <Button
-                  variant="contained"
-                  color="success"
-                  startIcon={<CheckCircleIcon />}
-                  onClick={handleApprove}
-                  disabled={approving}
-                >
-                  {approving ? 'Jóváhagyás...' : purchaseOrder.status === 'pending_approval' ? 'Jóváhagyva' : 'Jóváhagyás'}
-                </Button>
-              </>
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<CheckCircleIcon />}
+                onClick={handleApprove}
+                disabled={approving}
+              >
+                {approving ? 'Jóváhagyás...' : purchaseOrder.status === 'pending_approval' ? 'Jóváhagyva' : 'Jóváhagyás'}
+              </Button>
             )}
             {canEdit && (
               <Button
@@ -891,6 +899,15 @@ export default function PurchaseOrderEditForm({
           </Grid>
         )}
       </Grid>
+
+      <PurchaseOrderEmailModal
+        open={poEmailOpen}
+        purchaseOrderId={purchaseOrder.id}
+        onClose={() => setPoEmailOpen(false)}
+        onSent={() => {
+          router.refresh()
+        }}
+      />
 
       {/* Unsaved Changes Dialog */}
       <Dialog open={showUnsavedDialog} onClose={() => setShowUnsavedDialog(false)}>

@@ -23,9 +23,6 @@ import {
   FormControl,
   InputLabel,
   Button,
-  IconButton,
-  Menu,
-  Chip,
   Tooltip,
   Dialog,
   DialogTitle,
@@ -36,18 +33,19 @@ import {
 import {
   Search as SearchIcon,
   Add as AddIcon,
-  MoreVert as MoreVertIcon,
-  Visibility as VisibilityIcon,
-  Edit as EditIcon,
   Delete as DeleteIcon,
   ShoppingCart as ShoppingCartIcon,
   LocalShipping as LocalShippingIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  Send as SendIcon,
+  Check as CheckIcon,
+  EmailOutlined as EmailOutlinedIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import PurchaseOrderStatusChip from '@/components/purchasing/PurchaseOrderStatusChip'
+import PurchaseOrderEmailModal from '@/components/purchasing/PurchaseOrderEmailModal'
 
 interface PurchaseOrder {
   id: string
@@ -67,6 +65,8 @@ interface PurchaseOrder {
   email_sent_at: string | null
   created_at: string
   updated_at: string
+  /** Set by API/SSR enrichment from supplier_order_channels */
+  supplier_has_email_channel?: boolean
 }
 
 interface PurchaseOrdersTableProps {
@@ -103,13 +103,17 @@ export default function PurchaseOrdersTable({
   const [loading, setLoading] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [menuAnchor, setMenuAnchor] = useState<{ el: HTMLElement; po: PurchaseOrder } | null>(null)
   const [confirmDialog, setConfirmDialog] = useState<{
     open: boolean
     title: string
     message: string
     onConfirm: (() => void) | null
   }>({ open: false, title: '', message: '', onConfirm: null })
+  const [emailModalPoId, setEmailModalPoId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPurchaseOrders(initialPurchaseOrders)
+  }, [initialPurchaseOrders])
 
   // Update URL when filters change
   useEffect(() => {
@@ -181,59 +185,6 @@ export default function PurchaseOrdersTable({
 
   const handleRowClick = (po: PurchaseOrder) => {
     router.push(`/purchase-orders/${po.id}`)
-  }
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, po: PurchaseOrder) => {
-    event.stopPropagation()
-    setMenuAnchor({ el: event.currentTarget, po })
-  }
-
-  const handleMenuClose = () => {
-    setMenuAnchor(null)
-  }
-
-  const handleView = () => {
-    if (menuAnchor) {
-      router.push(`/purchase-orders/${menuAnchor.po.id}`)
-    }
-    handleMenuClose()
-  }
-
-  const handleEdit = () => {
-    if (menuAnchor) {
-      router.push(`/purchase-orders/${menuAnchor.po.id}`)
-    }
-    handleMenuClose()
-  }
-
-  const handleDelete = async () => {
-    if (!menuAnchor) return
-
-    const po = menuAnchor.po
-    handleMenuClose()
-
-    if (!confirm(`Biztosan törölni szeretné a ${po.po_number} rendelést?`)) {
-      return
-    }
-
-    try {
-      const response = await fetch(`/api/purchase-orders/${po.id}`, {
-        method: 'DELETE'
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Hiba a törlés során')
-      }
-
-      setPurchaseOrders(prev => prev.filter(p => p.id !== po.id))
-      toast.success('Beszerzési rendelés sikeresen törölve')
-    } catch (error) {
-      console.error('Error deleting purchase order:', error)
-      toast.error(
-        `Hiba a törlés során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`
-      )
-    }
   }
 
   const formatPrice = (price: number) => {
@@ -326,6 +277,40 @@ export default function PurchaseOrdersTable({
     if (selectedIds.size === 0) return false
     return selectedPOs.every(po => po.status !== 'received')
   }, [selectedIds.size, selectedPOs])
+
+  const canBulkSendEmail = useMemo(() => {
+    if (selectedIds.size !== 1) return false
+    const po = selectedPOs[0]
+    return Boolean(
+      po &&
+        po.status === 'draft' &&
+        po.supplier_has_email_channel === true
+    )
+  }, [selectedIds.size, selectedPOs])
+
+  const emailSendDisabledReason = useMemo(() => {
+    if (selectedIds.size === 0) {
+      return 'Jelöljön ki pontosan egy rendelést az e-mail küldéshez.'
+    }
+    if (selectedIds.size > 1) {
+      return 'Egyszerre csak egy rendeléshez küldhet e-mailt.'
+    }
+    const po = selectedPOs[0]
+    if (!po) return 'A kijelölt rendelés nem található a listában.'
+    if (po.status !== 'draft') {
+      return 'Csak vázlat státuszú rendeléshez küldhet e-mailt a beszállítónak.'
+    }
+    if (!po.supplier_has_email_channel) {
+      return 'A beszállítónak nincs e-mail típusú rendelési csatornája. Állítsa be a beszállító „Rendelési csatornák” között.'
+    }
+    return ''
+  }, [selectedIds.size, selectedPOs])
+
+  const handleBulkSendEmail = () => {
+    if (!canBulkSendEmail) return
+    const id = Array.from(selectedIds)[0]
+    if (id) setEmailModalPoId(id)
+  }
 
   const refreshList = useCallback(async () => {
     try {
@@ -551,9 +536,28 @@ export default function PurchaseOrdersTable({
               Folyamatban…
             </Typography>
           )}
+          <Tooltip
+            title={emailSendDisabledReason}
+            disableHoverListener={canBulkSendEmail}
+            arrow
+          >
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                color="info"
+                startIcon={<SendIcon />}
+                onClick={handleBulkSendEmail}
+                disabled={!canBulkSendEmail || bulkLoading}
+              >
+                E-mail küldés (1)
+              </Button>
+            </span>
+          </Tooltip>
           <Button
             size="small"
             variant="contained"
+            color="success"
             startIcon={<CheckCircleIcon />}
             onClick={handleBulkApprove}
             disabled={!canBulkApprove || bulkLoading}
@@ -562,7 +566,8 @@ export default function PurchaseOrdersTable({
           </Button>
           <Button
             size="small"
-            variant="outlined"
+            variant="contained"
+            color="warning"
             startIcon={<CancelIcon />}
             onClick={handleBulkCancel}
             disabled={!canBulkCancel || bulkLoading}
@@ -571,7 +576,7 @@ export default function PurchaseOrdersTable({
           </Button>
           <Button
             size="small"
-            variant="outlined"
+            variant="contained"
             color="error"
             startIcon={<DeleteIcon />}
             onClick={handleBulkDelete}
@@ -592,7 +597,14 @@ export default function PurchaseOrdersTable({
             </Button>
           )}
           <Box sx={{ flex: 1 }} />
-          <Button size="small" startIcon={<ClearIcon />} onClick={() => setSelectedIds(new Set())}>
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            startIcon={<ClearIcon />}
+            onClick={() => setSelectedIds(new Set())}
+            sx={{ borderColor: 'divider', color: 'text.secondary' }}
+          >
             Kijelölés törlése
           </Button>
         </Box>
@@ -620,7 +632,13 @@ export default function PurchaseOrdersTable({
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Várható szállítás</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1, textAlign: 'right' }}>Összesen</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1, textAlign: 'center' }}>Tételek</TableCell>
-              <TableCell sx={{ fontWeight: 600, py: 1, width: 50 }}></TableCell>
+              <TableCell
+                sx={{ fontWeight: 600, py: 1, textAlign: 'center', width: 40, maxWidth: 40, px: 0.5 }}
+              >
+                <Tooltip title="E-mail">
+                  <EmailOutlinedIcon sx={{ fontSize: 18, color: 'text.secondary', verticalAlign: 'middle' }} />
+                </Tooltip>
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -700,13 +718,28 @@ export default function PurchaseOrdersTable({
                   <TableCell sx={{ py: 1, textAlign: 'center' }}>
                     {po.item_count}
                   </TableCell>
-                  <TableCell sx={{ py: 1, width: 50 }} onClick={(e) => e.stopPropagation()}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => handleMenuOpen(e, po)}
-                    >
-                      <MoreVertIcon fontSize="small" />
-                    </IconButton>
+                  <TableCell
+                    sx={{ py: 1, textAlign: 'center', width: 40, maxWidth: 40, px: 0.5 }}
+                  >
+                    {po.email_sent ? (
+                      <Tooltip
+                        title={
+                          po.email_sent_at
+                            ? `Elküldve: ${new Date(po.email_sent_at).toLocaleString('hu-HU')}`
+                            : 'Elküldve'
+                        }
+                      >
+                        <CheckIcon
+                          fontSize="small"
+                          sx={{ color: 'success.main', verticalAlign: 'middle' }}
+                          aria-label="E-mail elküldve"
+                        />
+                      </Tooltip>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary" component="span">
+                        —
+                      </Typography>
+                    )}
                   </TableCell>
                 </TableRow>
               ); })
@@ -729,25 +762,18 @@ export default function PurchaseOrdersTable({
         </Box>
       )}
 
-      {/* Actions Menu */}
-      <Menu
-        anchorEl={menuAnchor?.el}
-        open={Boolean(menuAnchor)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem onClick={handleView}>
-          <VisibilityIcon fontSize="small" sx={{ mr: 1 }} />
-          Megtekintés
-        </MenuItem>
-        <MenuItem onClick={handleEdit}>
-          <EditIcon fontSize="small" sx={{ mr: 1 }} />
-          Szerkesztés
-        </MenuItem>
-        <MenuItem onClick={handleDelete} sx={{ color: 'error.main' }}>
-          <DeleteIcon fontSize="small" sx={{ mr: 1 }} />
-          Törlés
-        </MenuItem>
-      </Menu>
+      {emailModalPoId && (
+        <PurchaseOrderEmailModal
+          open={Boolean(emailModalPoId)}
+          purchaseOrderId={emailModalPoId}
+          onClose={() => setEmailModalPoId(null)}
+          onSent={async () => {
+            setEmailModalPoId(null)
+            setSelectedIds(new Set())
+            await refreshList()
+          }}
+        />
+      )}
 
       {/* Bulk confirmation dialog */}
       <Dialog

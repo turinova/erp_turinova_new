@@ -67,3 +67,19 @@ CREATE POLICY "Users can update their own permissions"
   ON user_permissions FOR UPDATE
   TO authenticated
   USING (auth.uid() = user_id);
+
+-- =============================================================================
+-- Email management (tenant DB)
+-- =============================================================================
+-- For new/sample tenants, run in order (after update_updated_at_column exists):
+--   supabase/migrations/20250418_create_email_management_tables.sql
+--   supabase/migrations/20250418_add_email_settings_page_permissions.sql
+--   supabase/migrations/20250419_email_outbound_channel_settings.sql
+--   supabase/migrations/20250420_suppliers_email_po_intro_html.sql
+--   supabase/migrations/20250421_order_status_email_notifications.sql
+--   supabase/migrations/20250421_add_order_status_notifications_page_permissions.sql
+-- Admin DB: supabase/migrations/20250418_tenant_migration_list_email_settings.sql
+--   then: supabase/migrations/20250419_tenant_migration_list_email_channel_settings.sql
+--   then: supabase/migrations/20250420_tenant_migration_list_suppliers_po_intro_html.sql
+--   then: supabase/migrations/20250421_tenant_migration_list_order_status_notifications.sql
+-- See also: supabase/tenant_sample_email_management.sql (checklist only)

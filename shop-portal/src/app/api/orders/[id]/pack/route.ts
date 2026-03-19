@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getAllowedNextStatus } from '@/lib/order-status'
 import { expressOneCreateLabels } from '@/lib/carriers/express-one'
+import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 
 /** Express One expects ISO 2-letter country code. Orders may store country name (e.g. Magyarország) in shipping_country_code. */
 function normalizeCountryCodeForExpressOne(value: string): string {
@@ -51,6 +52,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const actingUserId = user.id
+
     const { data: order, error: orderError } = await supabase
       .from('orders')
       .select(`
@@ -92,6 +95,13 @@ export async function GET(
         .from('orders')
         .update({ status: 'packing', updated_at: new Date().toISOString() })
         .eq('id', id)
+      const { data: { user: packUser } } = await supabase.auth.getUser()
+      await sendOrderStatusEmailNotification(supabase, {
+        orderId: id,
+        previousStatus: 'picked',
+        newStatus: 'packing',
+        actingUserId: packUser?.id ?? null
+      })
     }
 
     // Resolve is_pickup from shipping method (requires_pickup_point = store pickup)
@@ -344,6 +354,13 @@ export async function POST(
       console.error('Pack complete update error:', updateError)
       return NextResponse.json({ error: 'Nem sikerült frissíteni a rendelést' }, { status: 500 })
     }
+
+    await sendOrderStatusEmailNotification(supabase, {
+      orderId: id,
+      previousStatus: status,
+      newStatus: newStatus,
+      actingUserId: user.id
+    })
 
     const message = is_pickup
       ? 'Rendelés személyes átvételre vár.'
