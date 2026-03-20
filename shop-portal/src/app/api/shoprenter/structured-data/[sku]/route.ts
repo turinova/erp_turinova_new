@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase, getAdminSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 import { generateProductStructuredData } from '@/lib/structured-data-generator'
+import { fetchLiveOffersBySku } from '@/lib/shoprenter-live-offers'
 
 /**
  * CORS headers helper
@@ -74,7 +75,7 @@ export async function GET(
       
       const { data: tenant, error: tenantError } = await adminSupabase
         .from('tenants')
-        .select('id, name, slug, supabase_url, supabase_anon_key')
+        .select('id, name, slug, supabase_url, supabase_anon_key, supabase_service_role_key')
         .eq('slug', tenantSlug)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -95,10 +96,12 @@ export async function GET(
         )
       }
 
-      // Create Supabase client for this tenant's database
+      // Use service role when available because strict live-offer mode needs
+      // integration credentials from webshop_connections.
+      const tenantDbKey = tenant.supabase_service_role_key || tenant.supabase_anon_key
       supabase = createClient(
         tenant.supabase_url,
-        tenant.supabase_anon_key,
+        tenantDbKey,
         {
           auth: {
             autoRefreshToken: false,
@@ -156,7 +159,7 @@ export async function GET(
         name,
         model_number,
         gtin,
-        brand,
+        erp_manufacturer_id,
         price,
         status,
         product_url,
@@ -363,9 +366,23 @@ export async function GET(
     // Get connection to fetch shop URL
     const { data: connection } = await supabase
       .from('webshop_connections')
-      .select('api_url, name')
+      .select('api_url, name, username, password')
       .eq('id', product.connection_id)
       .single()
+
+    // Prefer explicit manufacturer/brand from ERP mapping when available
+    let manufacturerName: string | null = null
+    const erpManufacturerId = (product as any).erp_manufacturer_id
+    if (erpManufacturerId) {
+      const { data: manufacturer } = await supabase
+        .from('manufacturers')
+        .select('name')
+        .eq('id', erpManufacturerId)
+        .maybeSingle()
+      if (manufacturer?.name) {
+        manufacturerName = manufacturer.name
+      }
+    }
 
     // Extract shop URL for constructing absolute image URLs
     const shopUrl = connection?.api_url ? extractShopUrl(connection.api_url) : ''
@@ -388,6 +405,21 @@ export async function GET(
         return child
       })
     }
+
+    const relatedSkus = children.map((child: any) => child.sku).filter(Boolean)
+    const strictOfferMode = true
+    const liveOffersBySku = await fetchLiveOffersBySku({
+      tenantKey: tenantSlug || 'session',
+      rootSku: product.sku,
+      relatedSkus,
+      connection: connection
+        ? {
+            api_url: connection.api_url,
+            username: connection.username,
+            password: connection.password
+          }
+        : null
+    })
 
     // Generate structured data
     // Use description.name as fallback if product.name is null
@@ -419,6 +451,9 @@ export async function GET(
         currency: 'HUF', // Default to HUF, could be fetched from connection
         shopUrl: shopUrl, // Use already extracted shopUrl
         shopName: connection?.name || '',
+        brandName: manufacturerName || undefined,
+        strictOfferMode,
+        liveOffersBySku,
         vatRate: 27 // Default 27% VAT for Hungary (matches website display)
       }
     )
@@ -429,6 +464,8 @@ export async function GET(
       headers: {
         'Content-Type': 'application/ld+json; charset=UTF-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600', // Cache for 1 hour
+        'X-Schema-Offer-Mode': strictOfferMode ? 'strict-live' : 'best-effort',
+        'X-Schema-Live-Source': liveOffersBySku ? 'shoprenter-live' : 'none',
         ...corsHeaders
       }
     })

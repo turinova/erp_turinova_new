@@ -62,7 +62,18 @@ export interface StructuredDataOptions {
   currency?: string
   shopUrl?: string
   shopName?: string
+  brandName?: string
   vatRate?: number  // VAT rate percentage (e.g., 27 for 27%). Defaults to 27% for Hungary
+  strictOfferMode?: boolean
+  liveOffersBySku?: Record<
+    string,
+    {
+      priceGross: number
+      availability: 'https://schema.org/InStock' | 'https://schema.org/OutOfStock'
+      url: string
+      source: 'live'
+    }
+  > | null
 }
 
 /**
@@ -302,6 +313,60 @@ function extractValue(val: any): string | number | null {
 }
 
 /**
+ * Normalize text to an ASCII-safe slug segment.
+ */
+function slugifyAscii(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-')
+    .toUpperCase()
+}
+
+/**
+ * Remove encoded metadata/noise from attribute values.
+ */
+function sanitizePropertyValue(value: string | number | null): string | number | null {
+  if (value === null || value === undefined) return null
+  if (typeof value === 'number') return value
+
+  let cleaned = decodeHtmlEntities(String(value))
+    // remove long base64-like payload fragments
+    .replace(/\b[a-zA-Z0-9+/]{24,}={0,2}\b/g, '')
+    // remove extra separators left by previous replacement
+    .replace(/\s*,\s*,/g, ', ')
+    .replace(/\s*,\s*$/g, '')
+    .replace(/^\s*,\s*/g, '')
+    .replace(/\s*=\s*/g, ' ')
+    .replace(/[,\s;:]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+
+  // discard placeholder-like leftovers after cleanup
+  if (!/[a-zA-Z0-9\u00C0-\u017F]/.test(cleaned)) {
+    return null
+  }
+
+  return cleaned || null
+}
+
+type PropertyValueSchema = { '@type': 'PropertyValue'; name: string; value: string | number }
+
+function dedupePropertyValues(items: PropertyValueSchema[]): PropertyValueSchema[] {
+  const seen = new Set<string>()
+  const result: PropertyValueSchema[] = []
+  for (const item of items) {
+    const key = `${item.name}::${String(item.value)}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(item)
+  }
+  return result
+}
+
+/**
  * Determine if an attribute is variant-specific by comparing parent vs children
  * Generic approach - works for any product type (size, color, material, etc.)
  */
@@ -358,7 +423,7 @@ function generateProductGroupID(product: StructuredDataProduct): string {
         const value = extractValue(attr.value)
         if (value && typeof value === 'string' && !value.includes('-') && !value.includes('től')) {
           // Not a range, so it's a group-level attribute
-          keyAttributes.push(String(value).toUpperCase().replace(/\s+/g, '-'))
+          keyAttributes.push(slugifyAscii(String(value)))
         }
       }
     })
@@ -376,18 +441,18 @@ function generateProductGroupID(product: StructuredDataProduct): string {
     .split(/\s+/)
     .filter(part => part.length > 2 && !/^\d+$/.test(part))
     .slice(0, 4) // Take first 4 meaningful words
-    .map(part => part.toUpperCase().replace(/[^A-Z0-9]/g, '-'))
+    .map(part => slugifyAscii(part))
     .filter(part => part.length > 0)
   
   // Combine name parts with key attributes
   const identifierParts = [...nameParts, ...keyAttributes].filter(Boolean)
   
   if (identifierParts.length > 0) {
-    return identifierParts.join('-').substring(0, 100) // Limit length
+    return slugifyAscii(identifierParts.join('-')).substring(0, 100) // Limit length
   }
   
   // Fallback: use first part of SKU (before numbers) + key attributes
-  const skuBase = product.sku.replace(/\d+.*$/, '').toUpperCase()
+  const skuBase = slugifyAscii(product.sku.replace(/\d+.*$/, ''))
   return skuBase || `GROUP-${product.sku}`
 }
 
@@ -665,7 +730,10 @@ export function generateProductStructuredData(
   const currency = options.currency || 'HUF'
   const shopUrl = options.shopUrl || ''
   const shopName = options.shopName || ''
+  const explicitBrandName = options.brandName || ''
   const vatRate = options.vatRate || 27  // Default 27% VAT for Hungary
+  const strictOfferMode = options.strictOfferMode === true
+  const liveOffersBySku = options.liveOffersBySku || null
   
   // Helper function to calculate gross price from net price with Hungarian invoicing rounding
   // Rounds to nearest whole number (e.g., 9646.92 → 9647, 9959.34 → 9959)
@@ -771,7 +839,7 @@ export function generateProductStructuredData(
         return true
       })
       .map(attr => {
-        const extractedValue = extractValue(attr.value)
+        const extractedValue = sanitizePropertyValue(extractValue(attr.value))
 
         // Skip if we couldn't extract a valid value
         if (extractedValue === null || 
@@ -791,6 +859,7 @@ export function generateProductStructuredData(
       })
       .filter((item: any) => item !== null) // Remove null items
     
+    schema.additionalProperty = dedupePropertyValues(schema.additionalProperty)
     if (schema.additionalProperty.length === 0) {
       delete schema.additionalProperty
     }
@@ -799,7 +868,7 @@ export function generateProductStructuredData(
   // Add brand and manufacturer if available
   // Note: brandName should be passed from the caller who joins with manufacturers table
   // For now, we'll extract from attributes/name as fallback
-  let brandName = extractBrandName(product)
+  let brandName = explicitBrandName || extractBrandName(product)
   if (brandName) {
     schema.brand = {
       '@type': 'Brand',
@@ -815,93 +884,98 @@ export function generateProductStructuredData(
   // Add offers (only for Product type, not ProductGroup)
   // ProductGroup doesn't support offers - variants should have their own offers
   if (!hasVariants && product.price !== null && product.price !== undefined) {
-    const availability = product.status === 1 
-      ? 'https://schema.org/InStock' 
-      : 'https://schema.org/OutOfStock'
-    
-    // Calculate gross price from net price (website displays gross prices)
-    const grossPrice = calculateGrossPrice(product.price)
-    
-    const offer: any = {
-      '@type': 'Offer',
-      price: grossPrice.toString(),
-      priceCurrency: currency,
-      availability: availability,
-      itemCondition: 'https://schema.org/NewCondition',
-      url: product.product_url || `${shopUrl}/product/${product.sku}`,
-      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
-    }
-    
-    // Add commerce extras (optional but improves Google Shopping)
-    if (shopName) {
-      offer.seller = {
-        '@type': 'Organization',
-        name: shopName
+    const liveOffer = liveOffersBySku?.[product.sku]
+    if (strictOfferMode && !liveOffer) {
+      // Strict mode: never emit sensitive offer fields from ERP fallback.
+    } else {
+      const availability = liveOffer?.availability || (product.status === 1
+        ? 'https://schema.org/InStock'
+        : 'https://schema.org/OutOfStock')
+      const grossPrice = liveOffer?.priceGross ?? calculateGrossPrice(product.price)
+
+      const offer: any = {
+        '@type': 'Offer',
+        price: grossPrice.toString(),
+        priceCurrency: currency,
+        availability: availability,
+        itemCondition: 'https://schema.org/NewCondition',
+        url: liveOffer?.url || product.product_url || `${shopUrl}/product/${product.sku}`,
+        priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
       }
-    }
     
-    schema.offers = offer
+      // Add commerce extras (optional but improves Google Shopping)
+      if (shopName) {
+        offer.seller = {
+          '@type': 'Organization',
+          name: shopName
+        }
+      }
+      
+      schema.offers = offer
+    }
   }
   
   // For ProductGroup with variants, include parent product as first variant with its offer
   if (hasVariants && product.price !== null && product.price !== undefined) {
-    const availability = product.status === 1 
-      ? 'https://schema.org/InStock' 
-      : 'https://schema.org/OutOfStock'
-    
-    // Calculate gross price from net price (website displays gross prices)
-    const grossPrice = calculateGrossPrice(product.price)
-    
-    // Create parent product variant with offer
-    // Include all Product-specific fields (sku, gtin, model, image) in the variant
-    const parentOffer: any = {
-      '@type': 'Offer',
-      price: grossPrice.toString(),
-      priceCurrency: currency,
-      availability: availability,
-      itemCondition: 'https://schema.org/NewCondition',
-      url: product.product_url || `${shopUrl}/product/${product.sku}`,
-      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    }
-    
-    // Add commerce extras (optional but improves Google Shopping)
-    if (shopName) {
-      parentOffer.seller = {
-        '@type': 'Organization',
-        name: shopName
+    const liveOffer = liveOffersBySku?.[product.sku]
+    if (!strictOfferMode || liveOffer) {
+      const availability = liveOffer?.availability || (product.status === 1 
+        ? 'https://schema.org/InStock' 
+        : 'https://schema.org/OutOfStock')
+      
+      // Calculate gross price from net price (website displays gross prices)
+      const grossPrice = liveOffer?.priceGross ?? calculateGrossPrice(product.price)
+      
+      // Create parent product variant with offer
+      // Include all Product-specific fields (sku, gtin, model, image) in the variant
+      const parentOffer: any = {
+        '@type': 'Offer',
+        price: grossPrice.toString(),
+        priceCurrency: currency,
+        availability: availability,
+        itemCondition: 'https://schema.org/NewCondition',
+        url: liveOffer?.url || product.product_url || `${shopUrl}/product/${product.sku}`,
+        priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
       }
-    }
+      
+      // Add commerce extras (optional but improves Google Shopping)
+      if (shopName) {
+        parentOffer.seller = {
+          '@type': 'Organization',
+          name: shopName
+        }
+      }
+      
+      const parentVariant: any = {
+        '@type': 'Product',
+        sku: product.sku,
+        name: product.name || product.sku,
+        offers: parentOffer
+      }
     
-    const parentVariant: any = {
-      '@type': 'Product',
-      sku: product.sku,
-      name: product.name || product.sku,
-      offers: parentOffer
-    }
+      // Add GTIN (formatted as gtin13/gtin14) and mpn to parent variant
+      const parentGtinData = formatGTIN(product.gtin)
+      if (parentGtinData) {
+        Object.assign(parentVariant, parentGtinData)
+      }
+      if (product.model_number) {
+        parentVariant.mpn = product.model_number // Manufacturer Part Number (preferred)
+        parentVariant.model = product.model_number // Also keep model for compatibility
+      }
     
-    // Add GTIN (formatted as gtin13/gtin14) and mpn to parent variant
-    const parentGtinData = formatGTIN(product.gtin)
-    if (parentGtinData) {
-      Object.assign(parentVariant, parentGtinData)
-    }
-    if (product.model_number) {
-      parentVariant.mpn = product.model_number // Manufacturer Part Number (preferred)
-      parentVariant.model = product.model_number // Also keep model for compatibility
-    }
+      // Add image to parent variant (required by Google for Merchant Listings)
+      if (product.images && product.images.length > 0) {
+        parentVariant.image = product.images
+          .filter(img => img.url)
+          .map(img => img.url)
+      }
     
-    // Add image to parent variant (required by Google for Merchant Listings)
-    if (product.images && product.images.length > 0) {
-      parentVariant.image = product.images
-        .filter(img => img.url)
-        .map(img => img.url)
-    }
-    
-    // Add parent product attributes if available
-    if (product.product_attributes && product.product_attributes.length > 0) {
-      const parentAdditionalProperty = product.product_attributes
+      // Add parent product attributes if available
+      if (product.product_attributes && product.product_attributes.length > 0) {
+        const parentAdditionalProperty = product.product_attributes
         .filter(attr => attr.name && attr.value !== null && attr.value !== undefined && attr.value !== '')
         .map(attr => {
-          const extractedValue = extractValue(attr.value)
+          const extractedValue = sanitizePropertyValue(extractValue(attr.value))
           if (extractedValue === null || 
               extractedValue === undefined || 
               String(extractedValue) === 'null' || 
@@ -917,14 +991,16 @@ export function generateProductStructuredData(
           }
         })
         .filter((item: any) => item !== null)
+        const dedupedParentAdditionalProperty = dedupePropertyValues(parentAdditionalProperty)
       
-      if (parentAdditionalProperty.length > 0) {
-        parentVariant.additionalProperty = parentAdditionalProperty
+        if (dedupedParentAdditionalProperty.length > 0) {
+          parentVariant.additionalProperty = dedupedParentAdditionalProperty
+        }
       }
+      
+      // Store parent variant to prepend to hasVariant array
+      ;(schema as any)._parentVariant = parentVariant
     }
-    
-    // Store parent variant to prepend to hasVariant array
-    ;(schema as any)._parentVariant = parentVariant
   }
 
   // Handle parent-child relationships
@@ -961,7 +1037,7 @@ export function generateProductStructuredData(
           }
           
           // Extract value and check if it's a range
-          const extractedValue = extractValue(attr.value)
+          const extractedValue = sanitizePropertyValue(extractValue(attr.value))
           if (!extractedValue || 
               extractedValue === null || 
               extractedValue === undefined || 
@@ -996,7 +1072,7 @@ export function generateProductStructuredData(
           return true
         })
         .map(attr => {
-          const extractedValue = extractValue(attr.value)
+          const extractedValue = sanitizePropertyValue(extractValue(attr.value))
           
           return {
             '@type': 'PropertyValue',
@@ -1020,12 +1096,13 @@ export function generateProductStructuredData(
         product.children || []
       )
       childAdditionalProperty.push(...groupLevelProps)
+      const dedupedChildAdditionalProperty = dedupePropertyValues(childAdditionalProperty as PropertyValueSchema[])
 
       const childProduct: any = {
         '@type': 'Product',
         sku: child.sku,
         name: child.name || child.sku,
-        additionalProperty: childAdditionalProperty
+        additionalProperty: dedupedChildAdditionalProperty
       }
       
       // Add GTIN (formatted as gtin13/gtin14) and mpn if available (variant-specific identifiers)
@@ -1065,32 +1142,35 @@ export function generateProductStructuredData(
       // Add offer (CRITICAL - required for Google Merchant Listings)
       // Each variant must have its own offer with price, availability, and URL
       if (child.price !== null && child.price !== undefined) {
-        const availability = (child.status === 1 || child.status === undefined) 
-          ? 'https://schema.org/InStock' 
-          : 'https://schema.org/OutOfStock'
-        
-        // Calculate gross price from net price (website displays gross prices)
-        const grossPrice = calculateGrossPrice(child.price)
-        
-        const childOffer: any = {
-          '@type': 'Offer',
-          price: grossPrice.toString(),
-          priceCurrency: currency,
-          availability: availability,
-          itemCondition: 'https://schema.org/NewCondition',
-          url: child.product_url || (shopUrl ? `${shopUrl}/product/${child.sku}` : ''),
-          priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
-        }
-        
-        // Add commerce extras (optional but improves Google Shopping)
-        if (shopName) {
-          childOffer.seller = {
-            '@type': 'Organization',
-            name: shopName
+        const liveOffer = liveOffersBySku?.[child.sku]
+        if (!strictOfferMode || liveOffer) {
+          const availability = liveOffer?.availability || ((child.status === 1 || child.status === undefined) 
+            ? 'https://schema.org/InStock' 
+            : 'https://schema.org/OutOfStock')
+          
+          // Calculate gross price from net price (website displays gross prices)
+          const grossPrice = liveOffer?.priceGross ?? calculateGrossPrice(child.price)
+          
+          const childOffer: any = {
+            '@type': 'Offer',
+            price: grossPrice.toString(),
+            priceCurrency: currency,
+            availability: availability,
+            itemCondition: 'https://schema.org/NewCondition',
+            url: liveOffer?.url || child.product_url || (shopUrl ? `${shopUrl}/product/${child.sku}` : ''),
+            priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
           }
+          
+          // Add commerce extras (optional but improves Google Shopping)
+          if (shopName) {
+            childOffer.seller = {
+              '@type': 'Organization',
+              name: shopName
+            }
+          }
+          
+          childProduct.offers = childOffer
         }
-        
-        childProduct.offers = childOffer
       }
       
       return childProduct
@@ -1184,22 +1264,15 @@ function extractBrandName(product: StructuredDataProduct): string | null {
     const brandAttr = product.product_attributes.find(
       attr => attr.name.toLowerCase().includes('brand') || 
               attr.name.toLowerCase().includes('márka') ||
-              attr.name.toLowerCase().includes('gyártó')
+              attr.name.toLowerCase().includes('gyártó') ||
+              (attr.display_name || '').toLowerCase().includes('brand') ||
+              (attr.display_name || '').toLowerCase().includes('márka') ||
+              (attr.display_name || '').toLowerCase().includes('gyártó')
     )
     if (brandAttr && brandAttr.value) {
-      return String(brandAttr.value)
-    }
-  }
-
-  // Try to extract from product name (common patterns)
-  if (product.name) {
-    // Look for patterns like "BrandName Product Name"
-    const parts = product.name.split(' ')
-    if (parts.length > 1) {
-      // Common brand patterns in first 1-2 words
-      const potentialBrand = parts.slice(0, 2).join(' ')
-      if (potentialBrand.length > 2 && potentialBrand.length < 30) {
-        return potentialBrand
+      const sanitized = sanitizePropertyValue(extractValue(brandAttr.value))
+      if (typeof sanitized === 'string' && sanitized.length > 1) {
+        return sanitized
       }
     }
   }
