@@ -84,8 +84,8 @@
   }
 
   /**
-   * Remove previously injected enhanced schemas only.
-   * Never remove native ShopRenter Product/ProductGroup schemas.
+   * Remove all existing Product/ProductGroup/FAQPage structured data (including ShopRenter's default)
+   * Also removes any scripts with data-enhanced="true" to prevent duplicates
    */
   function removeExistingProductStructuredData() {
     const existingScripts = document.querySelectorAll('script[type="application/ld+json"]');
@@ -93,10 +93,16 @@
     
     existingScripts.forEach(script => {
       try {
-        if (script.hasAttribute('data-enhanced')) {
+        const data = JSON.parse(script.textContent || '{}');
+        // Remove any Product, ProductGroup, or FAQPage structured data
+        // Also remove any script with data-enhanced attribute (our enhanced schemas)
+        if (data['@type'] === 'Product' || 
+            data['@type'] === 'ProductGroup' || 
+            data['@type'] === 'FAQPage' ||
+            script.hasAttribute('data-enhanced')) {
           script.remove();
           removedCount++;
-          console.log('[ShopRenter Structured Data] Removed existing enhanced structured data');
+          console.log('[ShopRenter Structured Data] Removed existing', data['@type'] || 'enhanced', 'structured data');
         }
       } catch (e) {
         // Ignore parse errors, but still check if it's our enhanced version
@@ -111,13 +117,6 @@
     if (removedCount > 0) {
       console.log('[ShopRenter Structured Data] Removed', removedCount, 'existing structured data script(s)');
     }
-  }
-
-  function isValidSupplementalPayload(jsonLd) {
-    if (!jsonLd || typeof jsonLd !== 'object') return false;
-    if (Array.isArray(jsonLd['@graph'])) return jsonLd['@graph'].length > 0;
-    if (Array.isArray(jsonLd)) return jsonLd.length > 0;
-    return typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
   }
 
   /**
@@ -188,7 +187,7 @@
    * Handles both single schema objects and arrays of schemas (e.g., [Product, FAQPage])
    */
   function injectStructuredData(jsonLd) {
-    // Remove only previous enhanced injections from this script.
+    // Remove ALL existing Product/ProductGroup structured data (including ShopRenter's default)
     removeExistingProductStructuredData();
 
     // Handle both single schema and array of schemas
@@ -267,11 +266,37 @@
       return;
     }
 
-    // If product.tpl contains the dedicated enhanced placeholder, let product.tpl own injection.
-    // This avoids duplicate fetches and race conditions.
+    // Check if product.tpl script already injected structured data
+    // If so, skip this script (product.tpl solution takes precedence)
     const productTplScript = document.getElementById('enhanced-structured-data');
-    if (productTplScript) {
-      console.log('[ShopRenter Structured Data] Product.tpl enhanced schema placeholder found, skipping Script Tag API');
+    if (productTplScript && productTplScript.textContent && productTplScript.textContent.trim() !== '') {
+      // Also check if it contains FAQPage to avoid duplicates
+      try {
+        const content = productTplScript.textContent;
+        const data = JSON.parse(content);
+        // If it's an array, check if any item is FAQPage
+        if (Array.isArray(data)) {
+          const hasFAQPage = data.some(item => item && item['@type'] === 'FAQPage');
+          if (hasFAQPage) {
+            console.log('[ShopRenter Structured Data] Product.tpl script already injected structured data with FAQPage, skipping Script Tag API');
+            hasInitialized = true;
+            return;
+          }
+        } else if (data && data['@type'] === 'FAQPage') {
+          console.log('[ShopRenter Structured Data] Product.tpl script already injected FAQPage, skipping Script Tag API');
+          hasInitialized = true;
+          return;
+        }
+      } catch (e) {
+        // If parse fails, check string content for FAQPage
+        if (productTplScript.textContent.includes('"@type":"FAQPage"') || 
+            productTplScript.textContent.includes('FAQPage')) {
+          console.log('[ShopRenter Structured Data] Product.tpl script already contains FAQPage, skipping Script Tag API');
+          hasInitialized = true;
+          return;
+        }
+      }
+      console.log('[ShopRenter Structured Data] Product.tpl script already injected structured data, skipping Script Tag API');
       hasInitialized = true;
       return;
     }
@@ -317,13 +342,13 @@
           return;
         }
         
-        if (jsonLd && isValidSupplementalPayload(jsonLd)) {
+        if (jsonLd) {
           console.log('[ShopRenter Structured Data] Successfully fetched structured data, injecting...');
           injectStructuredData(jsonLd);
           console.log('[ShopRenter Structured Data] Enhanced structured data injected successfully');
           hasInitialized = true;
         } else {
-          console.warn('[ShopRenter Structured Data] No supplemental structured data returned from API');
+          console.warn('[ShopRenter Structured Data] No structured data returned from API');
         }
         isInitializing = false;
       })

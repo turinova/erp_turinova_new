@@ -53,7 +53,6 @@ export interface StructuredDataProduct {
     product_attributes: Array<{
       type: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
       name: string
-      display_name?: string | null
       value: any
     }> | null
   }> | null
@@ -64,17 +63,6 @@ export interface StructuredDataOptions {
   shopUrl?: string
   shopName?: string
   vatRate?: number  // VAT rate percentage (e.g., 27 for 27%). Defaults to 27% for Hungary
-  stripSensitiveCommercialFields?: boolean
-  strictOfferMode?: boolean
-  liveOffersBySku?: Record<
-    string,
-    {
-      priceGross: number
-      availability: 'https://schema.org/InStock' | 'https://schema.org/OutOfStock'
-      url: string
-      source: 'live'
-    }
-  > | null
 }
 
 /**
@@ -119,16 +107,6 @@ function decodeHtmlEntities(text: string): string {
     })
 }
 
-function decodeHtmlEntitiesDeep(text: string, maxPasses: number = 3): string {
-  let current = text
-  for (let i = 0; i < maxPasses; i++) {
-    const decoded = decodeHtmlEntities(current)
-    if (decoded === current) break
-    current = decoded
-  }
-  return current
-}
-
 /**
  * Extract FAQ questions and answers from description HTML
  */
@@ -146,55 +124,37 @@ function extractFAQFromDescription(description: string): Array<{ question: strin
   console.log('[FAQ EXTRACTION] Has encoded HTML entities:', hasEncodedEntities)
   
   // Decode HTML entities to get actual HTML tags
-  const decodedDescription = decodeHtmlEntitiesDeep(description)
+  const decodedDescription = decodeHtmlEntities(description)
   
   console.log('[FAQ EXTRACTION] Decoded description length:', decodedDescription.length)
   console.log('[FAQ EXTRACTION] Contains "Gyakran ismételt kérdések":', decodedDescription.includes('Gyakran ismételt kérdések'))
   console.log('[FAQ EXTRACTION] Contains "GYIK":', decodedDescription.includes('GYIK'))
   console.log('[FAQ EXTRACTION] Contains "Gyakori kérdések":', decodedDescription.includes('Gyakori kérdések'))
-  const faqAnchorIdx = decodedDescription.toLowerCase().indexOf('gyakran ismételt kérdések')
-  if (faqAnchorIdx >= 0) {
-    const snippetStart = Math.max(0, faqAnchorIdx - 80)
-    const snippetEnd = Math.min(decodedDescription.length, faqAnchorIdx + 1500)
-    const faqSnippet = decodedDescription.slice(snippetStart, snippetEnd)
-    console.log('[FAQ EXTRACTION] FAQ raw snippet:', faqSnippet)
-  } else {
-    console.log('[FAQ EXTRACTION] FAQ anchor not found in decoded description')
-  }
   
   const faqs: Array<{ question: string; answer: string }> = []
   
-  // Find all H2 sections and select the best FAQ candidate.
+  // Try multiple patterns to find FAQ section - more flexible matching
+  // Now using decoded description with actual HTML tags
+  const patterns = [
+    // Pattern 1: Standard format with optional text before/after heading keywords
+    /<h2[^>]*>(?:.*?)?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK)(?:.*?)?<\/h2>(.*?)(?=<h2|<\/body>|$)/is,
+    // Pattern 2: More flexible - heading text can appear anywhere in h2 tag
+    /<h2[^>]*>.*?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK).*?<\/h2>(.*?)(?=<h2|$)/is,
+    // Pattern 3: If FAQ is the last section (no following h2), capture everything after heading
+    /<h2[^>]*>.*?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK).*?<\/h2>(.*)/is,
+  ]
+  
   let faqContent = ''
   let matchedPattern = 0
-  const sectionPattern = /<h2[^>]*>([\s\S]*?)<\/h2>([\s\S]*?)(?=<h2[^>]*>|<\/body>|$)/gi
-  const candidates: Array<{ content: string; score: number }> = []
-  let sectionMatch
-
-  while ((sectionMatch = sectionPattern.exec(decodedDescription)) !== null) {
-    const headingText = decodeHtmlEntitiesDeep(sectionMatch[1] || '')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase()
-    const isFaqHeading =
-      headingText.includes('gyakran ismételt kérdések') ||
-      headingText.includes('gyakori kérdések') ||
-      headingText.includes('gyik')
-    if (!isFaqHeading) continue
-
-    const content = sectionMatch[2] || ''
-    const h3Count = (content.match(/<h3[^>]*>/gi) || []).length
-    const strongQCount = (content.match(/<p[^>]*>\s*<strong[^>]*>/gi) || []).length
-    const score = h3Count * 10 + strongQCount
-    candidates.push({ content, score })
-  }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => b.score - a.score)
-    faqContent = candidates[0].content
-    matchedPattern = 100 + candidates[0].score
-    console.log(`[FAQ EXTRACTION] Found FAQ section candidate, score=${candidates[0].score}, content length:`, faqContent.length)
+  
+  for (let i = 0; i < patterns.length; i++) {
+    const match = decodedDescription.match(patterns[i])
+    if (match && match[1] && match[1].trim().length > 0) {
+      faqContent = match[1]
+      matchedPattern = i + 1
+      console.log(`[FAQ EXTRACTION] Found FAQ section with pattern ${matchedPattern}, content length:`, faqContent.length)
+      break
+    }
   }
   
   if (!faqContent) {
@@ -216,99 +176,38 @@ function extractFAQFromDescription(description: string): Array<{ question: strin
     return cleaned
   }
   
-  // Extract Q&A pairs by section blocks:
-  // each <h3> is treated as a question, and all HTML until the next <h3>/<h2> is the answer block.
-  const blockPattern = /<h3[^>]*>(.*?)<\/h3>([\s\S]*?)(?=<h3[^>]*>|<h2[^>]*>|$)/gi
+  // Extract Q&A pairs: <h3>Question</h3> <p>Answer</p> or <h3>Question</h3> followed by <p>Answer</p>
+  // Pattern matches h3 followed by one or more p tags (handles multi-paragraph answers)
+  const qaPattern = /<h3[^>]*>(.*?)<\/h3>\s*(<p[^>]*>.*?<\/p>(?:\s*<p[^>]*>.*?<\/p>)*)/gis
   let match
   let qaCount = 0
   
-  while ((match = blockPattern.exec(faqContent)) !== null) {
+  while ((match = qaPattern.exec(faqContent)) !== null) {
     qaCount++
     const question = cleanText(match[1])
-    const answerBlockHtml = match[2] || ''
-
-    // Prefer paragraph content, but fall back to full block text if paragraph tags are missing.
-    const answerParagraphs = answerBlockHtml.match(/<p[^>]*>.*?<\/p>/gis)
-    let answer = ''
-    if (answerParagraphs && answerParagraphs.length > 0) {
-      answer = answerParagraphs
-        .map((p) => {
-          const pMatch = p.match(/<p[^>]*>(.*?)<\/p>/is)
-          return pMatch ? cleanText(pMatch[1]) : ''
-        })
-        .filter((p) => p.length > 0)
-        .join(' ')
-    } else {
-      answer = cleanText(answerBlockHtml)
+    
+    // Extract all paragraphs for the answer
+    const answerParagraphs = match[2].match(/<p[^>]*>(.*?)<\/p>/gis)
+    if (!answerParagraphs) {
+      console.log(`[FAQ EXTRACTION] Q&A ${qaCount}: No answer paragraphs found for question:`, question.substring(0, 50))
+      continue
     }
     
+    const answer = answerParagraphs
+      .map(p => {
+        const pMatch = p.match(/<p[^>]*>(.*?)<\/p>/is)
+        return pMatch ? cleanText(pMatch[1]) : ''
+      })
+      .filter(p => p.length > 0)
+      .join(' ')
+    
     // Only add if both question and answer are meaningful
-    if (question && answer && question.length > 8 && answer.length > 20) {
+    if (question && answer && question.length > 10 && answer.length > 20) {
       faqs.push({ question, answer })
       console.log(`[FAQ EXTRACTION] Extracted FAQ ${faqs.length}:`, question.substring(0, 60) + '...')
     } else {
       console.log(`[FAQ EXTRACTION] Q&A ${qaCount} rejected - Question length:`, question.length, 'Answer length:', answer.length)
     }
-  }
-
-  // Fallback parser: some editors store Q/A as
-  // <p><strong>Question</strong></p><p>Answer...</p> blocks instead of <h3>.
-  if (faqs.length === 0) {
-    const strongQuestionPattern = /<p[^>]*>\s*<strong[^>]*>(.*?)<\/strong>\s*<\/p>([\s\S]*?)(?=<p[^>]*>\s*<strong[^>]*>|<h2[^>]*>|$)/gi
-    let strongMatch
-    let strongCount = 0
-
-    while ((strongMatch = strongQuestionPattern.exec(faqContent)) !== null) {
-      strongCount++
-      const question = cleanText(strongMatch[1] || '')
-      const answerBlockHtml = strongMatch[2] || ''
-      const answer = cleanText(answerBlockHtml)
-
-      if (question && answer && question.length > 8 && answer.length > 20) {
-        faqs.push({ question, answer })
-        console.log(`[FAQ EXTRACTION] Extracted FAQ (strong fallback) ${faqs.length}:`, question.substring(0, 60) + '...')
-      }
-    }
-
-    console.log(`[FAQ EXTRACTION] Strong fallback parsed ${strongCount} blocks, accepted ${faqs.length}`)
-  }
-
-  // Final fallback for classic FAQ HTML:
-  // <h3>Question</h3><p>Answer...</p> repeated blocks under FAQ section.
-  if (faqs.length === 0) {
-    console.log('[FAQ EXTRACTION] faqContent preview:', faqContent.substring(0, 600))
-    const parts = faqContent.split(/<h3[^>]*>/i)
-    let splitCount = 0
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i]
-      const qEnd = part.search(/<\/h3>/i)
-      if (qEnd === -1) continue
-      splitCount++
-      const questionHtml = part.slice(0, qEnd)
-      const answerHtml = part.slice(qEnd + 5)
-      const question = cleanText(questionHtml)
-      const answer = cleanText(answerHtml)
-      if (question && answer && question.length > 8 && answer.length > 20) {
-        faqs.push({ question, answer })
-      }
-    }
-    console.log(`[FAQ EXTRACTION] H3 split fallback parsed ${splitCount} blocks, accepted ${faqs.length}`)
-  }
-
-  // Ultra-safe fallback: explicit H3 + first paragraph capture.
-  if (faqs.length === 0) {
-    const directPattern = /<h3[^>]*>([\s\S]*?)<\/h3>\s*<p[^>]*>([\s\S]*?)<\/p>/gi
-    let directMatch
-    let directCount = 0
-    while ((directMatch = directPattern.exec(faqContent)) !== null) {
-      directCount++
-      const question = cleanText(directMatch[1] || '')
-      const answer = cleanText(directMatch[2] || '')
-      if (question && answer && question.length > 8 && answer.length > 20) {
-        faqs.push({ question, answer })
-      }
-    }
-    console.log(`[FAQ EXTRACTION] Direct regex fallback parsed ${directCount} blocks, accepted ${faqs.length}`)
   }
   
   console.log(`[FAQ EXTRACTION] Total FAQs extracted: ${faqs.length} out of ${qaCount} Q&A pairs found`)
@@ -540,11 +439,11 @@ function extractNumericValueFromVariant(
  * Find range attribute and replace with specific value
  * Generic approach - works for any range attribute
  */
-function replaceRangeWithSpecificValue<T extends { name: string; display_name?: string | null; value: any }>(
-  attributes: T[],
+function replaceRangeWithSpecificValue(
+  attributes: Array<{ name: string; display_name?: string | null; value: any }>,
   specificValue: { value: number; unit: string } | null,
   attributeNamePattern: string // e.g., "hossz|length", "méret|size"
-): T[] {
+): Array<{ name: string; display_name?: string | null; value: any }> {
   if (!specificValue) return attributes
   
   return attributes.map(attr => {
@@ -767,70 +666,12 @@ export function generateProductStructuredData(
   const shopUrl = options.shopUrl || ''
   const shopName = options.shopName || ''
   const vatRate = options.vatRate || 27  // Default 27% VAT for Hungary
-  const stripSensitiveCommercialFields = options.stripSensitiveCommercialFields !== false
-  const strictOfferMode = options.strictOfferMode !== false
-  const liveOffersBySku = options.liveOffersBySku || null
   
   // Helper function to calculate gross price from net price with Hungarian invoicing rounding
   // Rounds to nearest whole number (e.g., 9646.92 → 9647, 9959.34 → 9959)
   const calculateGrossPrice = (netPrice: number): number => {
     const grossPrice = netPrice * (1 + vatRate / 100)
     return Math.round(grossPrice)  // Round to nearest integer for invoicing
-  }
-
-  const buildOfferForSku = (params: {
-    sku: string
-    netPrice: number | null | undefined
-    status: number | null | undefined
-    productUrl: string | null | undefined
-  }): any | null => {
-    const liveOffer = liveOffersBySku?.[params.sku]
-    const fallbackGross =
-      params.netPrice !== null && params.netPrice !== undefined ? calculateGrossPrice(params.netPrice) : null
-    const fallbackAvailability =
-      params.status === 1 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
-    const fallbackUrl = params.productUrl || `${shopUrl}/product/${params.sku}`
-
-    const resolvedPrice = liveOffer?.priceGross ?? fallbackGross
-    const resolvedAvailability = liveOffer?.availability ?? fallbackAvailability
-    const resolvedUrl = liveOffer?.url || fallbackUrl
-
-    const hasValidResolvedOffer =
-      typeof resolvedPrice === 'number' &&
-      Number.isFinite(resolvedPrice) &&
-      resolvedPrice > 0 &&
-      Boolean(resolvedUrl) &&
-      (resolvedAvailability === 'https://schema.org/InStock' ||
-        resolvedAvailability === 'https://schema.org/OutOfStock')
-
-    // Hard strict mode: never emit sensitive commerce fields unless they come from live ShopRenter data.
-    // This prevents ERP fallback prices/availability from leaking into structured data.
-    if (strictOfferMode && !liveOffer) {
-      return null
-    }
-
-    if (!hasValidResolvedOffer) {
-      return null
-    }
-
-    const offer: any = {
-      '@type': 'Offer',
-      price: resolvedPrice.toString(),
-      priceCurrency: currency,
-      availability: resolvedAvailability,
-      itemCondition: 'https://schema.org/NewCondition',
-      url: resolvedUrl,
-      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    }
-
-    if (shopName) {
-      offer.seller = {
-        '@type': 'Organization',
-        name: shopName
-      }
-    }
-
-    return offer
   }
 
   // IMPORTANT: Extract FAQ from ORIGINAL description BEFORE any processing
@@ -973,29 +814,64 @@ export function generateProductStructuredData(
 
   // Add offers (only for Product type, not ProductGroup)
   // ProductGroup doesn't support offers - variants should have their own offers
-  if (!hasVariants && !stripSensitiveCommercialFields) {
-    const offer = buildOfferForSku({
-      sku: product.sku,
-      netPrice: product.price,
-      status: product.status,
-      productUrl: product.product_url
-    })
-    if (offer) {
-      schema.offers = offer
+  if (!hasVariants && product.price !== null && product.price !== undefined) {
+    const availability = product.status === 1 
+      ? 'https://schema.org/InStock' 
+      : 'https://schema.org/OutOfStock'
+    
+    // Calculate gross price from net price (website displays gross prices)
+    const grossPrice = calculateGrossPrice(product.price)
+    
+    const offer: any = {
+      '@type': 'Offer',
+      price: grossPrice.toString(),
+      priceCurrency: currency,
+      availability: availability,
+      itemCondition: 'https://schema.org/NewCondition',
+      url: product.product_url || `${shopUrl}/product/${product.sku}`,
+      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
     }
+    
+    // Add commerce extras (optional but improves Google Shopping)
+    if (shopName) {
+      offer.seller = {
+        '@type': 'Organization',
+        name: shopName
+      }
+    }
+    
+    schema.offers = offer
   }
   
   // For ProductGroup with variants, include parent product as first variant with its offer
-  if (hasVariants && !stripSensitiveCommercialFields) {
-    const parentOffer = buildOfferForSku({
-      sku: product.sku,
-      netPrice: product.price,
-      status: product.status,
-      productUrl: product.product_url
-    })
-    if (!parentOffer && strictOfferMode) {
-      ;(schema as any)._parentVariant = null
-    } else if (parentOffer) {
+  if (hasVariants && product.price !== null && product.price !== undefined) {
+    const availability = product.status === 1 
+      ? 'https://schema.org/InStock' 
+      : 'https://schema.org/OutOfStock'
+    
+    // Calculate gross price from net price (website displays gross prices)
+    const grossPrice = calculateGrossPrice(product.price)
+    
+    // Create parent product variant with offer
+    // Include all Product-specific fields (sku, gtin, model, image) in the variant
+    const parentOffer: any = {
+      '@type': 'Offer',
+      price: grossPrice.toString(),
+      priceCurrency: currency,
+      availability: availability,
+      itemCondition: 'https://schema.org/NewCondition',
+      url: product.product_url || `${shopUrl}/product/${product.sku}`,
+      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    }
+    
+    // Add commerce extras (optional but improves Google Shopping)
+    if (shopName) {
+      parentOffer.seller = {
+        '@type': 'Organization',
+        name: shopName
+      }
+    }
+    
     const parentVariant: any = {
       '@type': 'Product',
       sku: product.sku,
@@ -1047,9 +923,8 @@ export function generateProductStructuredData(
       }
     }
     
-      // Store parent variant to prepend to hasVariant array
-      ;(schema as any)._parentVariant = parentVariant
-    }
+    // Store parent variant to prepend to hasVariant array
+    ;(schema as any)._parentVariant = parentVariant
   }
 
   // Handle parent-child relationships
@@ -1177,7 +1052,7 @@ export function generateProductStructuredData(
       
       if (child.images && child.images.length > 0) {
         childProduct.image = child.images
-          .map(img => ensureAbsoluteUrl(img))
+          .map(img => typeof img === 'string' ? ensureAbsoluteUrl(img) : ensureAbsoluteUrl(img.url || ''))
           .filter(url => url)
       } else if (product.images && product.images.length > 0) {
         // Fallback to parent image if child has no images
@@ -1187,33 +1062,47 @@ export function generateProductStructuredData(
           .filter(url => url)
       }
       
-      if (!stripSensitiveCommercialFields) {
-        const childOffer = buildOfferForSku({
-          sku: child.sku,
-          netPrice: child.price,
-          status: child.status,
-          productUrl: child.product_url
-        })
-        if (childOffer) {
-          childProduct.offers = childOffer
+      // Add offer (CRITICAL - required for Google Merchant Listings)
+      // Each variant must have its own offer with price, availability, and URL
+      if (child.price !== null && child.price !== undefined) {
+        const availability = (child.status === 1 || child.status === undefined) 
+          ? 'https://schema.org/InStock' 
+          : 'https://schema.org/OutOfStock'
+        
+        // Calculate gross price from net price (website displays gross prices)
+        const grossPrice = calculateGrossPrice(child.price)
+        
+        const childOffer: any = {
+          '@type': 'Offer',
+          price: grossPrice.toString(),
+          priceCurrency: currency,
+          availability: availability,
+          itemCondition: 'https://schema.org/NewCondition',
+          url: child.product_url || (shopUrl ? `${shopUrl}/product/${child.sku}` : ''),
+          priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
         }
+        
+        // Add commerce extras (optional but improves Google Shopping)
+        if (shopName) {
+          childOffer.seller = {
+            '@type': 'Organization',
+            name: shopName
+          }
+        }
+        
+        childProduct.offers = childOffer
       }
       
       return childProduct
     })
     
     // Prepend parent product as first variant (with its offer)
-    const safeVariants = variants.filter(Boolean)
     if ((schema as any)._parentVariant) {
-      schema.hasVariant = [(schema as any)._parentVariant, ...safeVariants]
+      schema.hasVariant = [(schema as any)._parentVariant, ...variants]
       delete (schema as any)._parentVariant
     } else {
-      schema.hasVariant = safeVariants
+      schema.hasVariant = variants
     }
-    if (!schema.hasVariant || schema.hasVariant.length === 0) {
-      delete schema.hasVariant
-    }
-    delete (schema as any)._parentVariant
   } else if (product.parent_product_id && product.parent && !isSelfReferencing) {
     // This is a child product - reference parent (only if not self-referencing)
     // Generate productGroupID from parent (same logic as ProductGroup)

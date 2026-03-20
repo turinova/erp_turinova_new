@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase, getAdminSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 import { generateProductStructuredData } from '@/lib/structured-data-generator'
-import { fetchLiveOffersBySku } from '@/lib/shoprenter-live-offers'
 
 /**
  * CORS headers helper
@@ -75,7 +74,7 @@ export async function GET(
       
       const { data: tenant, error: tenantError } = await adminSupabase
         .from('tenants')
-        .select('id, name, slug, supabase_url, supabase_anon_key, supabase_service_role_key')
+        .select('id, name, slug, supabase_url, supabase_anon_key')
         .eq('slug', tenantSlug)
         .eq('is_active', true)
         .is('deleted_at', null)
@@ -96,13 +95,10 @@ export async function GET(
         )
       }
 
-      // Create Supabase client for this tenant's database.
-      // Use service role when available because this public endpoint must read
-      // integration credentials from protected tables (e.g. webshop_connections).
-      const tenantDbKey = tenant.supabase_service_role_key || tenant.supabase_anon_key
+      // Create Supabase client for this tenant's database
       supabase = createClient(
         tenant.supabase_url,
-        tenantDbKey,
+        tenant.supabase_anon_key,
         {
           auth: {
             autoRefreshToken: false,
@@ -160,6 +156,7 @@ export async function GET(
         name,
         model_number,
         gtin,
+        brand,
         price,
         status,
         product_url,
@@ -366,7 +363,7 @@ export async function GET(
     // Get connection to fetch shop URL
     const { data: connection } = await supabase
       .from('webshop_connections')
-      .select('api_url, name, username, password')
+      .select('api_url, name')
       .eq('id', product.connection_id)
       .single()
 
@@ -390,36 +387,6 @@ export async function GET(
         }
         return child
       })
-    }
-
-    const relatedSkus = children.map((child: any) => child.sku).filter(Boolean)
-    // Keep strict mode enabled so commerce fields are emitted only from validated live data.
-    // This reduces mismatch risk for Google Ads.
-    const strictOfferMode = true
-    let liveSourceReason = 'unknown'
-    if (!connection) {
-      liveSourceReason = 'missing-connection'
-    } else if (!connection.api_url || !connection.username || !connection.password) {
-      liveSourceReason = 'missing-connection-credentials'
-    } else {
-      liveSourceReason = 'fetch-attempted'
-    }
-    const liveOffersBySku = await fetchLiveOffersBySku({
-      tenantKey: tenantSlug || 'session',
-      rootSku: product.sku,
-      relatedSkus,
-      connection: connection
-        ? {
-            api_url: connection.api_url,
-            username: connection.username,
-            password: connection.password
-          }
-        : null
-    })
-    if (liveOffersBySku) {
-      liveSourceReason = 'shoprenter-live'
-    } else if (liveSourceReason === 'fetch-attempted') {
-      liveSourceReason = 'shoprenter-fetch-failed-or-no-sku-match'
     }
 
     // Generate structured data
@@ -452,29 +419,16 @@ export async function GET(
         currency: 'HUF', // Default to HUF, could be fetched from connection
         shopUrl: shopUrl, // Use already extracted shopUrl
         shopName: connection?.name || '',
-        vatRate: 27, // Default 27% VAT for Hungary (matches website display)
-        stripSensitiveCommercialFields: false,
-        strictOfferMode,
-        liveOffersBySku
+        vatRate: 27 // Default 27% VAT for Hungary (matches website display)
       }
     )
 
-    // Hard safety rule:
-    // if live ShopRenter offers are unavailable, never expose enrichment Product/ProductGroup payload.
-    // This avoids publishing sensitive commerce fields from any fallback source.
-    const responsePayload =
-      strictOfferMode && !liveOffersBySku
-        ? extractNonProductSchema(structuredData) || {}
-        : structuredData
-
+    // Handle both single schema and array of schemas (Product + FAQPage)
     // Return as JSON-LD with proper headers and UTF-8 encoding
-    return NextResponse.json(responsePayload, {
+    return NextResponse.json(structuredData, {
       headers: {
         'Content-Type': 'application/ld+json; charset=UTF-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600', // Cache for 1 hour
-        'X-Schema-Offer-Mode': strictOfferMode ? 'strict-live' : 'best-effort',
-        'X-Schema-Live-Source': liveOffersBySku ? 'shoprenter-live' : 'erp-fallback',
-        'X-Schema-Live-Reason': liveSourceReason,
         ...corsHeaders
       }
     })
@@ -488,34 +442,6 @@ export async function GET(
       }
     )
   }
-}
-
-function extractNonProductSchema(data: any): any | null {
-  if (!data) return null
-
-  const isProductType = (node: any) =>
-    node && (node['@type'] === 'Product' || node['@type'] === 'ProductGroup')
-
-  if (Array.isArray(data?.['@graph'])) {
-    const graph = data['@graph'].filter((node: any) => !isProductType(node))
-    if (graph.length === 0) return null
-    return {
-      '@context': 'https://schema.org/',
-      '@graph': graph
-    }
-  }
-
-  if (Array.isArray(data)) {
-    const filtered = data.filter((node: any) => !isProductType(node))
-    if (filtered.length === 0) return null
-    return filtered.length === 1 ? filtered[0] : filtered
-  }
-
-  if (isProductType(data)) {
-    return null
-  }
-
-  return data
 }
 
 /**
