@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase, getAdminSupabase } from '@/lib/tenant-supabase'
 import { createClient } from '@supabase/supabase-js'
 import { generateProductStructuredData } from '@/lib/structured-data-generator'
+import { fetchLiveOffersBySku } from '@/lib/shoprenter-live-offers'
 
 /**
  * CORS headers helper
@@ -156,7 +157,6 @@ export async function GET(
         name,
         model_number,
         gtin,
-        brand,
         price,
         status,
         product_url,
@@ -363,7 +363,7 @@ export async function GET(
     // Get connection to fetch shop URL
     const { data: connection } = await supabase
       .from('webshop_connections')
-      .select('api_url, name')
+      .select('api_url, name, username, password')
       .eq('id', product.connection_id)
       .single()
 
@@ -388,6 +388,21 @@ export async function GET(
         return child
       })
     }
+
+    const relatedSkus = children.map((child: any) => child.sku).filter(Boolean)
+    const strictOfferMode = request.nextUrl.searchParams.get('strictOffers') !== '0'
+    const liveOffersBySku = await fetchLiveOffersBySku({
+      tenantKey: tenantSlug || 'session',
+      rootSku: product.sku,
+      relatedSkus,
+      connection: connection
+        ? {
+            api_url: connection.api_url,
+            username: connection.username,
+            password: connection.password
+          }
+        : null
+    })
 
     // Generate structured data
     // Use description.name as fallback if product.name is null
@@ -419,7 +434,10 @@ export async function GET(
         currency: 'HUF', // Default to HUF, could be fetched from connection
         shopUrl: shopUrl, // Use already extracted shopUrl
         shopName: connection?.name || '',
-        vatRate: 27 // Default 27% VAT for Hungary (matches website display)
+        vatRate: 27, // Default 27% VAT for Hungary (matches website display)
+        stripSensitiveCommercialFields: true,
+        strictOfferMode,
+        liveOffersBySku
       }
     )
 
@@ -429,6 +447,8 @@ export async function GET(
       headers: {
         'Content-Type': 'application/ld+json; charset=UTF-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600', // Cache for 1 hour
+        'X-Schema-Offer-Mode': strictOfferMode ? 'strict-live' : 'best-effort',
+        'X-Schema-Live-Source': liveOffersBySku ? 'shoprenter-live' : 'erp-fallback',
         ...corsHeaders
       }
     })

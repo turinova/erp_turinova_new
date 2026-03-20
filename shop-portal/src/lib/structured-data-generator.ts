@@ -53,6 +53,7 @@ export interface StructuredDataProduct {
     product_attributes: Array<{
       type: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT'
       name: string
+      display_name?: string | null
       value: any
     }> | null
   }> | null
@@ -63,6 +64,17 @@ export interface StructuredDataOptions {
   shopUrl?: string
   shopName?: string
   vatRate?: number  // VAT rate percentage (e.g., 27 for 27%). Defaults to 27% for Hungary
+  stripSensitiveCommercialFields?: boolean
+  strictOfferMode?: boolean
+  liveOffersBySku?: Record<
+    string,
+    {
+      priceGross: number
+      availability: 'https://schema.org/InStock' | 'https://schema.org/OutOfStock'
+      url: string
+      source: 'live'
+    }
+  > | null
 }
 
 /**
@@ -439,11 +451,11 @@ function extractNumericValueFromVariant(
  * Find range attribute and replace with specific value
  * Generic approach - works for any range attribute
  */
-function replaceRangeWithSpecificValue(
-  attributes: Array<{ name: string; display_name?: string | null; value: any }>,
+function replaceRangeWithSpecificValue<T extends { name: string; display_name?: string | null; value: any }>(
+  attributes: T[],
   specificValue: { value: number; unit: string } | null,
   attributeNamePattern: string // e.g., "hossz|length", "méret|size"
-): Array<{ name: string; display_name?: string | null; value: any }> {
+): T[] {
   if (!specificValue) return attributes
   
   return attributes.map(attr => {
@@ -666,12 +678,70 @@ export function generateProductStructuredData(
   const shopUrl = options.shopUrl || ''
   const shopName = options.shopName || ''
   const vatRate = options.vatRate || 27  // Default 27% VAT for Hungary
+  const stripSensitiveCommercialFields = options.stripSensitiveCommercialFields !== false
+  const strictOfferMode = options.strictOfferMode !== false
+  const liveOffersBySku = options.liveOffersBySku || null
   
   // Helper function to calculate gross price from net price with Hungarian invoicing rounding
   // Rounds to nearest whole number (e.g., 9646.92 → 9647, 9959.34 → 9959)
   const calculateGrossPrice = (netPrice: number): number => {
     const grossPrice = netPrice * (1 + vatRate / 100)
     return Math.round(grossPrice)  // Round to nearest integer for invoicing
+  }
+
+  const buildOfferForSku = (params: {
+    sku: string
+    netPrice: number | null | undefined
+    status: number | null | undefined
+    productUrl: string | null | undefined
+  }): any | null => {
+    const liveOffer = liveOffersBySku?.[params.sku]
+    const fallbackGross =
+      params.netPrice !== null && params.netPrice !== undefined ? calculateGrossPrice(params.netPrice) : null
+    const fallbackAvailability =
+      params.status === 1 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
+    const fallbackUrl = params.productUrl || `${shopUrl}/product/${params.sku}`
+
+    const resolvedPrice = liveOffer?.priceGross ?? fallbackGross
+    const resolvedAvailability = liveOffer?.availability ?? fallbackAvailability
+    const resolvedUrl = liveOffer?.url || fallbackUrl
+
+    const hasValidResolvedOffer =
+      typeof resolvedPrice === 'number' &&
+      Number.isFinite(resolvedPrice) &&
+      resolvedPrice > 0 &&
+      Boolean(resolvedUrl) &&
+      (resolvedAvailability === 'https://schema.org/InStock' ||
+        resolvedAvailability === 'https://schema.org/OutOfStock')
+
+    // Enforce strict live offers only when live source is available for this request.
+    // If live source is unavailable, fallback data is used to avoid empty ProductGroup/variant output.
+    if (strictOfferMode && liveOffersBySku && !liveOffer) {
+      return null
+    }
+
+    if (!hasValidResolvedOffer) {
+      return null
+    }
+
+    const offer: any = {
+      '@type': 'Offer',
+      price: resolvedPrice.toString(),
+      priceCurrency: currency,
+      availability: resolvedAvailability,
+      itemCondition: 'https://schema.org/NewCondition',
+      url: resolvedUrl,
+      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    }
+
+    if (shopName) {
+      offer.seller = {
+        '@type': 'Organization',
+        name: shopName
+      }
+    }
+
+    return offer
   }
 
   // IMPORTANT: Extract FAQ from ORIGINAL description BEFORE any processing
@@ -814,64 +884,29 @@ export function generateProductStructuredData(
 
   // Add offers (only for Product type, not ProductGroup)
   // ProductGroup doesn't support offers - variants should have their own offers
-  if (!hasVariants && product.price !== null && product.price !== undefined) {
-    const availability = product.status === 1 
-      ? 'https://schema.org/InStock' 
-      : 'https://schema.org/OutOfStock'
-    
-    // Calculate gross price from net price (website displays gross prices)
-    const grossPrice = calculateGrossPrice(product.price)
-    
-    const offer: any = {
-      '@type': 'Offer',
-      price: grossPrice.toString(),
-      priceCurrency: currency,
-      availability: availability,
-      itemCondition: 'https://schema.org/NewCondition',
-      url: product.product_url || `${shopUrl}/product/${product.sku}`,
-      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
+  if (!hasVariants && !stripSensitiveCommercialFields) {
+    const offer = buildOfferForSku({
+      sku: product.sku,
+      netPrice: product.price,
+      status: product.status,
+      productUrl: product.product_url
+    })
+    if (offer) {
+      schema.offers = offer
     }
-    
-    // Add commerce extras (optional but improves Google Shopping)
-    if (shopName) {
-      offer.seller = {
-        '@type': 'Organization',
-        name: shopName
-      }
-    }
-    
-    schema.offers = offer
   }
   
   // For ProductGroup with variants, include parent product as first variant with its offer
-  if (hasVariants && product.price !== null && product.price !== undefined) {
-    const availability = product.status === 1 
-      ? 'https://schema.org/InStock' 
-      : 'https://schema.org/OutOfStock'
-    
-    // Calculate gross price from net price (website displays gross prices)
-    const grossPrice = calculateGrossPrice(product.price)
-    
-    // Create parent product variant with offer
-    // Include all Product-specific fields (sku, gtin, model, image) in the variant
-    const parentOffer: any = {
-      '@type': 'Offer',
-      price: grossPrice.toString(),
-      priceCurrency: currency,
-      availability: availability,
-      itemCondition: 'https://schema.org/NewCondition',
-      url: product.product_url || `${shopUrl}/product/${product.sku}`,
-      priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-    }
-    
-    // Add commerce extras (optional but improves Google Shopping)
-    if (shopName) {
-      parentOffer.seller = {
-        '@type': 'Organization',
-        name: shopName
-      }
-    }
-    
+  if (hasVariants && !stripSensitiveCommercialFields) {
+    const parentOffer = buildOfferForSku({
+      sku: product.sku,
+      netPrice: product.price,
+      status: product.status,
+      productUrl: product.product_url
+    })
+    if (!parentOffer && strictOfferMode) {
+      ;(schema as any)._parentVariant = null
+    } else if (parentOffer) {
     const parentVariant: any = {
       '@type': 'Product',
       sku: product.sku,
@@ -923,8 +958,9 @@ export function generateProductStructuredData(
       }
     }
     
-    // Store parent variant to prepend to hasVariant array
-    ;(schema as any)._parentVariant = parentVariant
+      // Store parent variant to prepend to hasVariant array
+      ;(schema as any)._parentVariant = parentVariant
+    }
   }
 
   // Handle parent-child relationships
@@ -1052,7 +1088,7 @@ export function generateProductStructuredData(
       
       if (child.images && child.images.length > 0) {
         childProduct.image = child.images
-          .map(img => typeof img === 'string' ? ensureAbsoluteUrl(img) : ensureAbsoluteUrl(img.url || ''))
+          .map(img => ensureAbsoluteUrl(img))
           .filter(url => url)
       } else if (product.images && product.images.length > 0) {
         // Fallback to parent image if child has no images
@@ -1062,47 +1098,36 @@ export function generateProductStructuredData(
           .filter(url => url)
       }
       
-      // Add offer (CRITICAL - required for Google Merchant Listings)
-      // Each variant must have its own offer with price, availability, and URL
-      if (child.price !== null && child.price !== undefined) {
-        const availability = (child.status === 1 || child.status === undefined) 
-          ? 'https://schema.org/InStock' 
-          : 'https://schema.org/OutOfStock'
-        
-        // Calculate gross price from net price (website displays gross prices)
-        const grossPrice = calculateGrossPrice(child.price)
-        
-        const childOffer: any = {
-          '@type': 'Offer',
-          price: grossPrice.toString(),
-          priceCurrency: currency,
-          availability: availability,
-          itemCondition: 'https://schema.org/NewCondition',
-          url: child.product_url || (shopUrl ? `${shopUrl}/product/${child.sku}` : ''),
-          priceValidUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 1 year from now
+      if (!stripSensitiveCommercialFields) {
+        const childOffer = buildOfferForSku({
+          sku: child.sku,
+          netPrice: child.price,
+          status: child.status,
+          productUrl: child.product_url
+        })
+        if (childOffer) {
+          childProduct.offers = childOffer
         }
-        
-        // Add commerce extras (optional but improves Google Shopping)
-        if (shopName) {
-          childOffer.seller = {
-            '@type': 'Organization',
-            name: shopName
-          }
+        if (strictOfferMode && !childProduct.offers) {
+          return null
         }
-        
-        childProduct.offers = childOffer
       }
       
       return childProduct
     })
     
     // Prepend parent product as first variant (with its offer)
+    const safeVariants = variants.filter(Boolean)
     if ((schema as any)._parentVariant) {
-      schema.hasVariant = [(schema as any)._parentVariant, ...variants]
+      schema.hasVariant = [(schema as any)._parentVariant, ...safeVariants]
       delete (schema as any)._parentVariant
     } else {
-      schema.hasVariant = variants
+      schema.hasVariant = safeVariants
     }
+    if (!schema.hasVariant || schema.hasVariant.length === 0) {
+      delete schema.hasVariant
+    }
+    delete (schema as any)._parentVariant
   } else if (product.parent_product_id && product.parent && !isSelfReferencing) {
     // This is a child product - reference parent (only if not self-referencing)
     // Generate productGroupID from parent (same logic as ProductGroup)

@@ -6,8 +6,8 @@
 {% endblock %}
 
 {% block page_head %}
-    {# Enhanced Structured Data - MUST be in page_head to run BEFORE ShopRenter's schema #}
-    {# This removes ShopRenter's default schema immediately and injects our enhanced one #}
+    {# Enhanced Structured Data #}
+    {# Keep ShopRenter native Product schema; inject enrichment only #}
     <script type="application/ld+json" id="enhanced-structured-data"></script>
     <script>
     (function() {
@@ -15,74 +15,13 @@
         
         const API_URL = 'https://shop.turinova.hu';
         const TENANT_SLUG = 'tenant-1'; // Hardcoded tenant slug - change this if needed
-        let schemaReplaced = false;
-        
-        // IMMEDIATELY remove any existing Product/ProductGroup schemas
-        // This runs as soon as script loads, before DOM is ready
-        function removeDefaultSchemasImmediately() {
-            // Use querySelector on document (works even before DOM ready)
-            const existingScripts = document.querySelectorAll ? document.querySelectorAll('script[type="application/ld+json"]') : [];
-            let removed = 0;
-            
-            for (let i = 0; i < existingScripts.length; i++) {
-                const script = existingScripts[i];
-                if (script.id === 'enhanced-structured-data') {
-                    continue;
-                }
-                
-                try {
-                    const data = JSON.parse(script.textContent || '{}');
-                    if (data['@type'] === 'Product' || data['@type'] === 'ProductGroup') {
-                        script.remove();
-                        removed++;
-                    }
-                } catch(e) {
-                    // Ignore parse errors
-                }
-            }
-            
-            return removed;
-        }
-        
-        // Remove schemas immediately (before DOM ready)
-        removeDefaultSchemasImmediately();
-        
-        // Also use MutationObserver to catch schemas added later
-        if (typeof MutationObserver !== 'undefined') {
-            const observer = new MutationObserver(function(mutations) {
-                if (!schemaReplaced) {
-                    const removed = removeDefaultSchemasImmediately();
-                    if (removed > 0) {
-                        console.log('[Enhanced Schema] Removed', removed, 'ShopRenter schema(s) via MutationObserver');
-                    }
-                }
-            });
-            
-            // Start observing as soon as possible
-            if (document.head) {
-                observer.observe(document.head, { childList: true, subtree: true });
-            }
-            if (document.body) {
-                observer.observe(document.body, { childList: true, subtree: true });
-            }
-            
-            // Also observe when DOM is ready
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                    if (document.head) observer.observe(document.head, { childList: true, subtree: true });
-                    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
-                });
-            }
-        }
+        let schemaInjected = false;
         
         // Main function to fetch and inject schema
         function replaceSchema() {
-            if (schemaReplaced) {
+            if (schemaInjected) {
                 return;
             }
-            
-            // Always remove default schemas first
-            removeDefaultSchemasImmediately();
             
             // Check if ShopRenter is available
             if (typeof ShopRenter === 'undefined' || !ShopRenter.product || !ShopRenter.product.sku) {
@@ -108,14 +47,11 @@
                     return response.json();
                 })
                 .then(jsonLd => {
-                    // Remove default schemas again (in case they were added after)
-                    removeDefaultSchemasImmediately();
-                    
                     // Inject our enhanced schema
                     const script = document.getElementById('enhanced-structured-data');
                     if (script && jsonLd) {
                         script.textContent = JSON.stringify(jsonLd);
-                        schemaReplaced = true;
+                        schemaInjected = true;
                         console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
                     }
                 })
