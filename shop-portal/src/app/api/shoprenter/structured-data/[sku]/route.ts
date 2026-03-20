@@ -390,7 +390,9 @@ export async function GET(
     }
 
     const relatedSkus = children.map((child: any) => child.sku).filter(Boolean)
-    const strictOfferMode = request.nextUrl.searchParams.get('strictOffers') !== '0'
+    // Keep strict mode enabled so commerce fields are emitted only from validated live data.
+    // This reduces mismatch risk for Google Ads.
+    const strictOfferMode = true
     const liveOffersBySku = await fetchLiveOffersBySku({
       tenantKey: tenantSlug || 'session',
       rootSku: product.sku,
@@ -435,7 +437,7 @@ export async function GET(
         shopUrl: shopUrl, // Use already extracted shopUrl
         shopName: connection?.name || '',
         vatRate: 27, // Default 27% VAT for Hungary (matches website display)
-        stripSensitiveCommercialFields: true,
+        stripSensitiveCommercialFields: false,
         strictOfferMode,
         liveOffersBySku
       }

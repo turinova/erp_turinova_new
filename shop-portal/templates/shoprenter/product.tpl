@@ -22,7 +22,7 @@
 
             const merged = Object.assign({}, nativeNode);
 
-            // Merge only non-commercial enrichment fields.
+            // Merge enrichment fields.
             const simpleFields = ['description', 'brand', 'manufacturer', 'additionalProperty'];
             simpleFields.forEach(function(field) {
                 if (enrichmentNode[field] !== undefined && enrichmentNode[field] !== null) {
@@ -30,7 +30,46 @@
                 }
             });
 
-            // Preserve native offers and commerce data by design.
+            // Merge live commerce fields from enrichment endpoint.
+            if (enrichmentNode.offers) {
+                merged.offers = enrichmentNode.offers;
+            }
+            if (enrichmentNode.url) {
+                merged.url = enrichmentNode.url;
+            }
+
+            // Merge variant-level commerce by SKU to keep one canonical Product/ProductGroup.
+            if (Array.isArray(merged.hasVariant) && Array.isArray(enrichmentNode.hasVariant)) {
+                const enrichmentBySku = {};
+                for (let i = 0; i < enrichmentNode.hasVariant.length; i++) {
+                    const variant = enrichmentNode.hasVariant[i];
+                    if (variant && variant.sku) {
+                        enrichmentBySku[variant.sku] = variant;
+                    }
+                }
+
+                merged.hasVariant = merged.hasVariant.map(function(nativeVariant) {
+                    if (!nativeVariant || !nativeVariant.sku) return nativeVariant;
+                    const source = enrichmentBySku[nativeVariant.sku];
+                    if (!source) return nativeVariant;
+                    const mergedVariant = Object.assign({}, nativeVariant);
+
+                    if (source.additionalProperty !== undefined && source.additionalProperty !== null) {
+                        mergedVariant.additionalProperty = source.additionalProperty;
+                    }
+                    if (source.offers) {
+                        mergedVariant.offers = source.offers;
+                    }
+                    if (source.url) {
+                        mergedVariant.url = source.url;
+                    }
+                    if (source.name) {
+                        mergedVariant.name = source.name;
+                    }
+                    return mergedVariant;
+                });
+            }
+
             return merged;
         }
 
@@ -62,6 +101,30 @@
                 }
             }
             return null;
+        }
+
+        function extractSupplementalEntities(jsonLd) {
+            const entities = [];
+            if (!jsonLd) return entities;
+
+            let source = [];
+            if (Array.isArray(jsonLd['@graph'])) {
+                source = jsonLd['@graph'];
+            } else if (Array.isArray(jsonLd)) {
+                source = jsonLd;
+            } else if (jsonLd && typeof jsonLd === 'object') {
+                source = [jsonLd];
+            }
+
+            for (let i = 0; i < source.length; i++) {
+                const entity = source[i];
+                if (!entity || typeof entity !== 'object') continue;
+                const type = entity['@type'];
+                if (type === 'Product' || type === 'ProductGroup') continue;
+                entities.push(entity);
+            }
+
+            return entities;
         }
         
         // Main function to fetch and inject schema
@@ -96,6 +159,7 @@
                 .then(jsonLd => {
                     const enrichmentEntity = extractPrimaryEntity(jsonLd);
                     const nativeResult = findNativeProductScript();
+                    const supplementalEntities = extractSupplementalEntities(jsonLd);
 
                     if (enrichmentEntity && nativeResult) {
                         const mergedPrimary = deepMergeProductEnrichment(nativeResult.primary, enrichmentEntity);
@@ -119,12 +183,19 @@
                         schemaInjected = true;
                         console.log('[Enhanced Schema] ✅ Merged enrichment into native schema for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
                     } else {
-                        // FAQ-only fallback path
+                        // Never inject Product/ProductGroup as fallback to avoid duplicate Product entities.
+                        if (enrichmentEntity && !nativeResult) {
+                            console.warn('[Enhanced Schema] Native Product schema not found yet; skipping Product fallback injection to prevent duplicates.');
+                        }
+
+                        // FAQ / supplemental-only fallback path
                         const script = document.getElementById('enhanced-structured-data');
-                        const hasGraph = jsonLd && Array.isArray(jsonLd['@graph']) && jsonLd['@graph'].length > 0;
-                        const hasType = jsonLd && typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
-                        if (script && (hasGraph || hasType)) {
-                            script.textContent = JSON.stringify(jsonLd);
+                        if (script && supplementalEntities.length > 0) {
+                            const payload = supplementalEntities.length === 1 ? supplementalEntities[0] : {
+                                '@context': 'https://schema.org/',
+                                '@graph': supplementalEntities
+                            };
+                            script.textContent = JSON.stringify(payload);
                             schemaInjected = true;
                             console.log('[Enhanced Schema] ✅ Injected supplemental schema for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
                         } else {
