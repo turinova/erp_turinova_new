@@ -119,6 +119,16 @@ function decodeHtmlEntities(text: string): string {
     })
 }
 
+function decodeHtmlEntitiesDeep(text: string, maxPasses: number = 3): string {
+  let current = text
+  for (let i = 0; i < maxPasses; i++) {
+    const decoded = decodeHtmlEntities(current)
+    if (decoded === current) break
+    current = decoded
+  }
+  return current
+}
+
 /**
  * Extract FAQ questions and answers from description HTML
  */
@@ -136,37 +146,55 @@ function extractFAQFromDescription(description: string): Array<{ question: strin
   console.log('[FAQ EXTRACTION] Has encoded HTML entities:', hasEncodedEntities)
   
   // Decode HTML entities to get actual HTML tags
-  const decodedDescription = decodeHtmlEntities(description)
+  const decodedDescription = decodeHtmlEntitiesDeep(description)
   
   console.log('[FAQ EXTRACTION] Decoded description length:', decodedDescription.length)
   console.log('[FAQ EXTRACTION] Contains "Gyakran ismételt kérdések":', decodedDescription.includes('Gyakran ismételt kérdések'))
   console.log('[FAQ EXTRACTION] Contains "GYIK":', decodedDescription.includes('GYIK'))
   console.log('[FAQ EXTRACTION] Contains "Gyakori kérdések":', decodedDescription.includes('Gyakori kérdések'))
+  const faqAnchorIdx = decodedDescription.toLowerCase().indexOf('gyakran ismételt kérdések')
+  if (faqAnchorIdx >= 0) {
+    const snippetStart = Math.max(0, faqAnchorIdx - 80)
+    const snippetEnd = Math.min(decodedDescription.length, faqAnchorIdx + 1500)
+    const faqSnippet = decodedDescription.slice(snippetStart, snippetEnd)
+    console.log('[FAQ EXTRACTION] FAQ raw snippet:', faqSnippet)
+  } else {
+    console.log('[FAQ EXTRACTION] FAQ anchor not found in decoded description')
+  }
   
   const faqs: Array<{ question: string; answer: string }> = []
   
-  // Try multiple patterns to find FAQ section - more flexible matching
-  // Now using decoded description with actual HTML tags
-  const patterns = [
-    // Pattern 1: Standard format with optional text before/after heading keywords
-    /<h2[^>]*>(?:.*?)?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK)(?:.*?)?<\/h2>(.*?)(?=<h2|<\/body>|$)/is,
-    // Pattern 2: More flexible - heading text can appear anywhere in h2 tag
-    /<h2[^>]*>.*?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK).*?<\/h2>(.*?)(?=<h2|$)/is,
-    // Pattern 3: If FAQ is the last section (no following h2), capture everything after heading
-    /<h2[^>]*>.*?(?:Gyakran ismételt kérdések|Gyakori kérdések|GYIK).*?<\/h2>(.*)/is,
-  ]
-  
+  // Find all H2 sections and select the best FAQ candidate.
   let faqContent = ''
   let matchedPattern = 0
-  
-  for (let i = 0; i < patterns.length; i++) {
-    const match = decodedDescription.match(patterns[i])
-    if (match && match[1] && match[1].trim().length > 0) {
-      faqContent = match[1]
-      matchedPattern = i + 1
-      console.log(`[FAQ EXTRACTION] Found FAQ section with pattern ${matchedPattern}, content length:`, faqContent.length)
-      break
-    }
+  const sectionPattern = /<h2[^>]*>([\s\S]*?)<\/h2>([\s\S]*?)(?=<h2[^>]*>|<\/body>|$)/gi
+  const candidates: Array<{ content: string; score: number }> = []
+  let sectionMatch
+
+  while ((sectionMatch = sectionPattern.exec(decodedDescription)) !== null) {
+    const headingText = decodeHtmlEntitiesDeep(sectionMatch[1] || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+    const isFaqHeading =
+      headingText.includes('gyakran ismételt kérdések') ||
+      headingText.includes('gyakori kérdések') ||
+      headingText.includes('gyik')
+    if (!isFaqHeading) continue
+
+    const content = sectionMatch[2] || ''
+    const h3Count = (content.match(/<h3[^>]*>/gi) || []).length
+    const strongQCount = (content.match(/<p[^>]*>\s*<strong[^>]*>/gi) || []).length
+    const score = h3Count * 10 + strongQCount
+    candidates.push({ content, score })
+  }
+
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => b.score - a.score)
+    faqContent = candidates[0].content
+    matchedPattern = 100 + candidates[0].score
+    console.log(`[FAQ EXTRACTION] Found FAQ section candidate, score=${candidates[0].score}, content length:`, faqContent.length)
   }
   
   if (!faqContent) {
@@ -188,38 +216,99 @@ function extractFAQFromDescription(description: string): Array<{ question: strin
     return cleaned
   }
   
-  // Extract Q&A pairs: <h3>Question</h3> <p>Answer</p> or <h3>Question</h3> followed by <p>Answer</p>
-  // Pattern matches h3 followed by one or more p tags (handles multi-paragraph answers)
-  const qaPattern = /<h3[^>]*>(.*?)<\/h3>\s*(<p[^>]*>.*?<\/p>(?:\s*<p[^>]*>.*?<\/p>)*)/gis
+  // Extract Q&A pairs by section blocks:
+  // each <h3> is treated as a question, and all HTML until the next <h3>/<h2> is the answer block.
+  const blockPattern = /<h3[^>]*>(.*?)<\/h3>([\s\S]*?)(?=<h3[^>]*>|<h2[^>]*>|$)/gi
   let match
   let qaCount = 0
   
-  while ((match = qaPattern.exec(faqContent)) !== null) {
+  while ((match = blockPattern.exec(faqContent)) !== null) {
     qaCount++
     const question = cleanText(match[1])
-    
-    // Extract all paragraphs for the answer
-    const answerParagraphs = match[2].match(/<p[^>]*>(.*?)<\/p>/gis)
-    if (!answerParagraphs) {
-      console.log(`[FAQ EXTRACTION] Q&A ${qaCount}: No answer paragraphs found for question:`, question.substring(0, 50))
-      continue
+    const answerBlockHtml = match[2] || ''
+
+    // Prefer paragraph content, but fall back to full block text if paragraph tags are missing.
+    const answerParagraphs = answerBlockHtml.match(/<p[^>]*>.*?<\/p>/gis)
+    let answer = ''
+    if (answerParagraphs && answerParagraphs.length > 0) {
+      answer = answerParagraphs
+        .map((p) => {
+          const pMatch = p.match(/<p[^>]*>(.*?)<\/p>/is)
+          return pMatch ? cleanText(pMatch[1]) : ''
+        })
+        .filter((p) => p.length > 0)
+        .join(' ')
+    } else {
+      answer = cleanText(answerBlockHtml)
     }
     
-    const answer = answerParagraphs
-      .map(p => {
-        const pMatch = p.match(/<p[^>]*>(.*?)<\/p>/is)
-        return pMatch ? cleanText(pMatch[1]) : ''
-      })
-      .filter(p => p.length > 0)
-      .join(' ')
-    
     // Only add if both question and answer are meaningful
-    if (question && answer && question.length > 10 && answer.length > 20) {
+    if (question && answer && question.length > 8 && answer.length > 20) {
       faqs.push({ question, answer })
       console.log(`[FAQ EXTRACTION] Extracted FAQ ${faqs.length}:`, question.substring(0, 60) + '...')
     } else {
       console.log(`[FAQ EXTRACTION] Q&A ${qaCount} rejected - Question length:`, question.length, 'Answer length:', answer.length)
     }
+  }
+
+  // Fallback parser: some editors store Q/A as
+  // <p><strong>Question</strong></p><p>Answer...</p> blocks instead of <h3>.
+  if (faqs.length === 0) {
+    const strongQuestionPattern = /<p[^>]*>\s*<strong[^>]*>(.*?)<\/strong>\s*<\/p>([\s\S]*?)(?=<p[^>]*>\s*<strong[^>]*>|<h2[^>]*>|$)/gi
+    let strongMatch
+    let strongCount = 0
+
+    while ((strongMatch = strongQuestionPattern.exec(faqContent)) !== null) {
+      strongCount++
+      const question = cleanText(strongMatch[1] || '')
+      const answerBlockHtml = strongMatch[2] || ''
+      const answer = cleanText(answerBlockHtml)
+
+      if (question && answer && question.length > 8 && answer.length > 20) {
+        faqs.push({ question, answer })
+        console.log(`[FAQ EXTRACTION] Extracted FAQ (strong fallback) ${faqs.length}:`, question.substring(0, 60) + '...')
+      }
+    }
+
+    console.log(`[FAQ EXTRACTION] Strong fallback parsed ${strongCount} blocks, accepted ${faqs.length}`)
+  }
+
+  // Final fallback for classic FAQ HTML:
+  // <h3>Question</h3><p>Answer...</p> repeated blocks under FAQ section.
+  if (faqs.length === 0) {
+    console.log('[FAQ EXTRACTION] faqContent preview:', faqContent.substring(0, 600))
+    const parts = faqContent.split(/<h3[^>]*>/i)
+    let splitCount = 0
+    for (let i = 1; i < parts.length; i++) {
+      const part = parts[i]
+      const qEnd = part.search(/<\/h3>/i)
+      if (qEnd === -1) continue
+      splitCount++
+      const questionHtml = part.slice(0, qEnd)
+      const answerHtml = part.slice(qEnd + 5)
+      const question = cleanText(questionHtml)
+      const answer = cleanText(answerHtml)
+      if (question && answer && question.length > 8 && answer.length > 20) {
+        faqs.push({ question, answer })
+      }
+    }
+    console.log(`[FAQ EXTRACTION] H3 split fallback parsed ${splitCount} blocks, accepted ${faqs.length}`)
+  }
+
+  // Ultra-safe fallback: explicit H3 + first paragraph capture.
+  if (faqs.length === 0) {
+    const directPattern = /<h3[^>]*>([\s\S]*?)<\/h3>\s*<p[^>]*>([\s\S]*?)<\/p>/gi
+    let directMatch
+    let directCount = 0
+    while ((directMatch = directPattern.exec(faqContent)) !== null) {
+      directCount++
+      const question = cleanText(directMatch[1] || '')
+      const answer = cleanText(directMatch[2] || '')
+      if (question && answer && question.length > 8 && answer.length > 20) {
+        faqs.push({ question, answer })
+      }
+    }
+    console.log(`[FAQ EXTRACTION] Direct regex fallback parsed ${directCount} blocks, accepted ${faqs.length}`)
   }
   
   console.log(`[FAQ EXTRACTION] Total FAQs extracted: ${faqs.length} out of ${qaCount} Q&A pairs found`)
@@ -714,9 +803,9 @@ export function generateProductStructuredData(
       (resolvedAvailability === 'https://schema.org/InStock' ||
         resolvedAvailability === 'https://schema.org/OutOfStock')
 
-    // Enforce strict live offers only when live source is available for this request.
-    // If live source is unavailable, fallback data is used to avoid empty ProductGroup/variant output.
-    if (strictOfferMode && liveOffersBySku && !liveOffer) {
+    // Hard strict mode: never emit sensitive commerce fields unless they come from live ShopRenter data.
+    // This prevents ERP fallback prices/availability from leaking into structured data.
+    if (strictOfferMode && !liveOffer) {
       return null
     }
 
@@ -1107,9 +1196,6 @@ export function generateProductStructuredData(
         })
         if (childOffer) {
           childProduct.offers = childOffer
-        }
-        if (strictOfferMode && !childProduct.offers) {
-          return null
         }
       }
       
