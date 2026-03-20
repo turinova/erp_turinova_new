@@ -42,7 +42,8 @@ export const ORDER_STATUS_MERGE_GROUPS: MergeFieldGroup[] = [
       { key: 'order_number', label: 'Rendelésszám' },
       { key: 'status_label', label: 'Státusz (magyar)' },
       { key: 'order_total_gross', label: 'Bruttó végösszeg' },
-      { key: 'currency_code', label: 'Pénznem' }
+      { key: 'currency_code', label: 'Pénznem' },
+      { key: 'payment_method_name', label: 'Fizetési mód' }
     ]
   },
   {
@@ -87,6 +88,7 @@ export type OrderStatusNotificationMergeKey =
   | 'shop_name'
   | 'order_total_gross'
   | 'currency_code'
+  | 'payment_method_name'
   | 'shipping_method_name'
   | 'tracking_number'
   | 'order_items_table'
@@ -119,6 +121,7 @@ export type OrderRowForNotification = {
   customer_lastname: string | null
   customer_email: string | null
   shipping_method_name: string | null
+  payment_method_name: string | null
   total_gross: number | string | null
   currency_code: string | null
   tracking_number: string | null
@@ -153,6 +156,7 @@ export function buildOrderStatusNotificationContext(
     shop_name: (shopDisplayName || '').trim() || 'Webáruház',
     order_total_gross: formatOrderMoney(safeGross, cur),
     currency_code: cur || 'HUF',
+    payment_method_name: (order.payment_method_name || '').trim() || '—',
     shipping_method_name: (order.shipping_method_name || '').trim() || '—',
     tracking_number: (order.tracking_number || '').trim() || '—'
   }
@@ -197,6 +201,7 @@ export function sampleOrderStatusNotificationContext(): Record<string, string> {
     shop_name: 'Minta Webáruház Kft.',
     order_total_gross: '12 990 Ft',
     currency_code: 'HUF',
+    payment_method_name: 'Utánvét',
     shipping_method_name: 'Házhoz szállítás',
     tracking_number: 'EX123456789HU',
     order_items_table: buildSampleOrderItemsTableHtml()

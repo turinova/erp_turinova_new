@@ -60,7 +60,7 @@ export async function sendOrderStatusEmailNotification(
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .select(
-        'id, order_number, status, customer_firstname, customer_lastname, customer_email, shipping_method_name, total_gross, currency_code, tracking_number'
+        'id, order_number, status, customer_firstname, customer_lastname, customer_email, shipping_method_name, payment_method_name, total_gross, currency_code, tracking_number'
       )
       .eq('id', orderId)
       .is('deleted_at', null)
