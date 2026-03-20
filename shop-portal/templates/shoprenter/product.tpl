@@ -16,6 +16,53 @@
         const API_URL = 'https://shop.turinova.hu';
         const TENANT_SLUG = 'tenant-1'; // Hardcoded tenant slug - change this if needed
         let schemaInjected = false;
+
+        function deepMergeProductEnrichment(nativeNode, enrichmentNode) {
+            if (!nativeNode || !enrichmentNode) return nativeNode;
+
+            const merged = Object.assign({}, nativeNode);
+
+            // Merge only non-commercial enrichment fields.
+            const simpleFields = ['description', 'brand', 'manufacturer', 'additionalProperty'];
+            simpleFields.forEach(function(field) {
+                if (enrichmentNode[field] !== undefined && enrichmentNode[field] !== null) {
+                    merged[field] = enrichmentNode[field];
+                }
+            });
+
+            // Preserve native offers and commerce data by design.
+            return merged;
+        }
+
+        function extractPrimaryEntity(jsonLd) {
+            if (!jsonLd) return null;
+            if (Array.isArray(jsonLd['@graph']) && jsonLd['@graph'].length > 0) {
+                return jsonLd['@graph'].find(item => item && (item['@type'] === 'Product' || item['@type'] === 'ProductGroup')) || null;
+            }
+            if (Array.isArray(jsonLd) && jsonLd.length > 0) {
+                return jsonLd.find(item => item && (item['@type'] === 'Product' || item['@type'] === 'ProductGroup')) || null;
+            }
+            if (jsonLd['@type'] === 'Product' || jsonLd['@type'] === 'ProductGroup') {
+                return jsonLd;
+            }
+            return null;
+        }
+
+        function findNativeProductScript() {
+            const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+            for (let i = 0; i < scripts.length; i++) {
+                const script = scripts[i];
+                if (script.id === 'enhanced-structured-data' || script.hasAttribute('data-enhanced')) continue;
+                try {
+                    const data = JSON.parse(script.textContent || '{}');
+                    const primary = extractPrimaryEntity(data);
+                    if (primary) return { script, data, primary };
+                } catch (e) {
+                    // ignore parse errors
+                }
+            }
+            return null;
+        }
         
         // Main function to fetch and inject schema
         function replaceSchema() {
@@ -47,16 +94,42 @@
                     return response.json();
                 })
                 .then(jsonLd => {
-                    // Inject our enhanced schema
-                    const script = document.getElementById('enhanced-structured-data');
-                    const hasGraph = jsonLd && Array.isArray(jsonLd['@graph']) && jsonLd['@graph'].length > 0;
-                    const hasType = jsonLd && typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
-                    if (script && (hasGraph || hasType)) {
-                        script.textContent = JSON.stringify(jsonLd);
+                    const enrichmentEntity = extractPrimaryEntity(jsonLd);
+                    const nativeResult = findNativeProductScript();
+
+                    if (enrichmentEntity && nativeResult) {
+                        const mergedPrimary = deepMergeProductEnrichment(nativeResult.primary, enrichmentEntity);
+
+                        // Replace primary entity in-place while preserving native structure and offers.
+                        if (Array.isArray(nativeResult.data['@graph'])) {
+                            nativeResult.data['@graph'] = nativeResult.data['@graph'].map(item => {
+                                if (item === nativeResult.primary) return mergedPrimary;
+                                return item;
+                            });
+                        } else if (Array.isArray(nativeResult.data)) {
+                            nativeResult.data = nativeResult.data.map(item => {
+                                if (item === nativeResult.primary) return mergedPrimary;
+                                return item;
+                            });
+                        } else {
+                            nativeResult.data = mergedPrimary;
+                        }
+
+                        nativeResult.script.textContent = JSON.stringify(nativeResult.data);
                         schemaInjected = true;
-                        console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
+                        console.log('[Enhanced Schema] ✅ Merged enrichment into native schema for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
                     } else {
-                        console.log('[Enhanced Schema] No supplemental schema returned for SKU:', sku);
+                        // FAQ-only fallback path
+                        const script = document.getElementById('enhanced-structured-data');
+                        const hasGraph = jsonLd && Array.isArray(jsonLd['@graph']) && jsonLd['@graph'].length > 0;
+                        const hasType = jsonLd && typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
+                        if (script && (hasGraph || hasType)) {
+                            script.textContent = JSON.stringify(jsonLd);
+                            schemaInjected = true;
+                            console.log('[Enhanced Schema] ✅ Injected supplemental schema for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
+                        } else {
+                            console.log('[Enhanced Schema] No supplemental schema returned for SKU:', sku);
+                        }
                     }
                 })
                 .catch(error => {
