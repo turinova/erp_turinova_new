@@ -22,6 +22,49 @@ export async function getDefaultWarehouseId(
 }
 
 /**
+ * Reserved rows that are not yet cancelled by a released row (reversed_movement_id on released points to reserved.id).
+ * Historical reserved rows stay in the table; without pairing, release would duplicate Felszabadított movements.
+ */
+export async function fetchUnpairedReservedRowsForOrder(
+  supabase: { from: (table: string) => any },
+  orderId: string
+): Promise<{ id: string; warehouse_id: string; product_id: string; quantity: number }[]> {
+  const { data: reservedRows, error: fetchErr } = await supabase
+    .from('stock_movements')
+    .select('id, warehouse_id, product_id, quantity')
+    .eq('source_type', 'order')
+    .eq('source_id', orderId)
+    .eq('movement_type', 'reserved')
+
+  if (fetchErr || !reservedRows?.length) {
+    return []
+  }
+
+  const ids = (reservedRows as { id: string }[]).map((r) => r.id)
+  if (ids.length === 0) return []
+
+  const { data: pairedReleased, error: pairErr } = await supabase
+    .from('stock_movements')
+    .select('reversed_movement_id')
+    .eq('movement_type', 'released')
+    .in('reversed_movement_id', ids)
+
+  if (pairErr) {
+    return reservedRows as { id: string; warehouse_id: string; product_id: string; quantity: number }[]
+  }
+
+  const paired = new Set(
+    (pairedReleased || [])
+      .map((r: { reversed_movement_id: string | null }) => r.reversed_movement_id)
+      .filter(Boolean) as string[]
+  )
+
+  return (reservedRows as { id: string; warehouse_id: string; product_id: string; quantity: number }[]).filter(
+    (row) => !paired.has(row.id)
+  )
+}
+
+/**
  * Reserve stock for an order when it is fully fulfillable (e.g. at buffer takeover).
  * Inserts stock_movements (reserved), sets orders.stock_reserved and order_items.reserved_quantity.
  * Call refresh_stock_summary after.
@@ -99,16 +142,7 @@ export async function releaseReservedStockForOrder(
   supabase: { from: (table: string) => any },
   orderId: string
 ): Promise<{ ok: boolean; released: number; error?: string }> {
-  const { data: reservedRows, error: fetchErr } = await supabase
-    .from('stock_movements')
-    .select('warehouse_id, product_id, quantity')
-    .eq('source_type', 'order')
-    .eq('source_id', orderId)
-    .eq('movement_type', 'reserved')
-
-  if (fetchErr) {
-    return { ok: false, released: 0, error: fetchErr.message }
-  }
+  const reservedRows = await fetchUnpairedReservedRowsForOrder(supabase, orderId)
 
   if (!reservedRows?.length) {
     await supabase
@@ -122,14 +156,15 @@ export async function releaseReservedStockForOrder(
     return { ok: true, released: 0 }
   }
 
-  const released = (reservedRows as { warehouse_id: string; product_id: string; quantity: number }[]).map(
+  const released = (reservedRows as { id: string; warehouse_id: string; product_id: string; quantity: number }[]).map(
     (r) => ({
       warehouse_id: r.warehouse_id,
       product_id: r.product_id,
       movement_type: 'released',
       quantity: Math.abs(parseFloat(String(r.quantity)) || 0),
       source_type: 'order',
-      source_id: orderId
+      source_id: orderId,
+      reversed_movement_id: r.id
     })
   ).filter((r) => r.quantity > 0)
 
@@ -187,19 +222,7 @@ export async function consumeReservedAndPostOutbound(
 
   const defaultWarehouseId = await getDefaultWarehouseId(supabase)
 
-  // Reserved rows: for release and for warehouse-by-product
-  const { data: reservedRows, error: reservedErr } = await supabase
-    .from('stock_movements')
-    .select('warehouse_id, product_id, quantity')
-    .eq('source_type', 'order')
-    .eq('source_id', orderId)
-    .eq('movement_type', 'reserved')
-
-  if (reservedErr) {
-    return { ok: false, consumed: false, error: reservedErr.message }
-  }
-
-  const reserved = (reservedRows || []) as { warehouse_id: string; product_id: string; quantity: number }[]
+  const reserved = await fetchUnpairedReservedRowsForOrder(supabase, orderId)
   const warehouseByProduct: Record<string, string> = {}
   for (const r of reserved) {
     if (r.product_id && !warehouseByProduct[r.product_id]) {
@@ -239,7 +262,7 @@ export async function consumeReservedAndPostOutbound(
     })
   }
 
-  // 1) Insert 'released' for each reserved row
+  // 1) Insert 'released' for each unpaired reserved row (links via reversed_movement_id)
   if (reserved.length > 0) {
     const released = reserved
       .filter((r) => (Math.abs(parseFloat(String(r.quantity)) || 0) > 0))
@@ -249,7 +272,8 @@ export async function consumeReservedAndPostOutbound(
         movement_type: 'released' as const,
         quantity: Math.abs(parseFloat(String(r.quantity)) || 0),
         source_type: 'order' as const,
-        source_id: orderId
+        source_id: orderId,
+        reversed_movement_id: r.id
       }))
     if (released.length > 0) {
       const { error: relErr } = await supabase.from('stock_movements').insert(released).select()

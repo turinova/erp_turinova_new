@@ -13,6 +13,19 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+function carrierProviderLabelHu(provider: string | null | undefined): string | null {
+  const p = (provider || '').trim().toLowerCase()
+  if (!p) return null
+  if (p === 'express_one') return 'Express One'
+  if (p === 'gls') return 'GLS'
+  if (p === 'mpl') return 'MPL'
+  if (p === 'foxpost') return 'FOXPOST'
+  if (p === 'dpd') return 'DPD'
+  if (p === 'packeta') return 'Packeta'
+  if (p === 'manual') return 'Futárszolgálat'
+  return provider || null
+}
+
 export type SendOrderStatusNotificationParams = {
   orderId: string
   /** Previous DB status; null when first status (e.g. new order from buffer). */
@@ -60,7 +73,7 @@ export async function sendOrderStatusEmailNotification(
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .select(
-        'id, order_number, status, customer_firstname, customer_lastname, customer_email, shipping_method_name, payment_method_name, total_gross, currency_code, tracking_number'
+        'id, order_number, status, customer_firstname, customer_lastname, customer_email, shipping_method_id, shipping_method_name, payment_method_name, total_gross, currency_code, tracking_number'
       )
       .eq('id', orderId)
       .is('deleted_at', null)
@@ -141,7 +154,24 @@ export async function sendOrderStatusEmailNotification(
 
     const shopDisplayName = String(identityRow.from_name || '').trim()
 
-    const row = order as OrderRowForNotification
+    let shippingCarrier: string | null = null
+    const shippingMethodId = (order as Record<string, unknown>).shipping_method_id as string | null
+    if (shippingMethodId) {
+      const { data: shippingMethodRow } = await supabase
+        .from('shipping_methods')
+        .select('carrier_provider')
+        .eq('id', shippingMethodId)
+        .is('deleted_at', null)
+        .maybeSingle()
+      shippingCarrier = carrierProviderLabelHu(
+        (shippingMethodRow as { carrier_provider?: string | null } | null)?.carrier_provider || null
+      )
+    }
+
+    const row = {
+      ...(order as Record<string, unknown>),
+      shipping_carrier: shippingCarrier
+    } as OrderRowForNotification
     const ctx = buildOrderStatusNotificationContext(row, newStatus, shopDisplayName)
 
     const { data: itemRows } = await supabase

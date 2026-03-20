@@ -78,6 +78,12 @@ CREATE POLICY "Users can update their own permissions"
 --   supabase/migrations/20250420_suppliers_email_po_intro_html.sql
 --   supabase/migrations/20250421_order_status_email_notifications.sql
 --   supabase/migrations/20250421_add_order_status_notifications_page_permissions.sql
+--   supabase/migrations/20260320_payment_methods_import_payment_policy.sql
+--   supabase/migrations/20260322_stock_movements_reversed_movement_id.sql
+-- Admin DB: supabase/migrations/20260321_tenant_migration_list_payment_methods_import_policy.sql
+-- Admin DB: supabase/migrations/20260323_tenant_migration_list_stock_reversed_movement_id.sql
+--   (replaces get_tenant_pending_migrations; includes 20260322)
+--   (after prior tenant_migration_list_* files; replaces get_tenant_pending_migrations)
 -- Admin DB: supabase/migrations/20250418_tenant_migration_list_email_settings.sql
 --   then: supabase/migrations/20250419_tenant_migration_list_email_channel_settings.sql
 --   then: supabase/migrations/20250420_tenant_migration_list_suppliers_po_intro_html.sql

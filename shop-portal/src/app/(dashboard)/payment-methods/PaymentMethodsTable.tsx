@@ -20,7 +20,12 @@ import {
   Alert,
   Checkbox,
   Chip,
-  FormControlLabel
+  FormControlLabel,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  FormHelperText
 } from '@mui/material'
 import {
   Add as AddIcon,
@@ -31,13 +36,21 @@ import {
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
+type ImportPaymentPolicy = 'pending' | 'paid_on_import'
+
 interface PaymentMethod {
   id: string
   name: string
   comment: string | null
   active: boolean
+  import_payment_policy?: ImportPaymentPolicy
   created_at: string
   updated_at: string
+}
+
+const IMPORT_POLICY_LABEL: Record<ImportPaymentPolicy, string> = {
+  pending: 'Függőben marad',
+  paid_on_import: 'Importkor fizetett'
 }
 
 interface PaymentMethodsTableProps {
@@ -51,7 +64,12 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [editingMethod, setEditingMethod] = useState<PaymentMethod | null>(null)
   const [deletingMethod, setDeletingMethod] = useState<PaymentMethod | null>(null)
-  const [formData, setFormData] = useState({ name: '', comment: '', active: true })
+  const [formData, setFormData] = useState<{
+    name: string
+    comment: string
+    active: boolean
+    import_payment_policy: ImportPaymentPolicy
+  }>({ name: '', comment: '', active: true, import_payment_policy: 'pending' })
   const [errors, setErrors] = useState<{ name?: string }>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -62,11 +80,12 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
       setFormData({
         name: method.name,
         comment: method.comment || '',
-        active: method.active
+        active: method.active,
+        import_payment_policy: method.import_payment_policy ?? 'pending'
       })
     } else {
       setEditingMethod(null)
-      setFormData({ name: '', comment: '', active: true })
+      setFormData({ name: '', comment: '', active: true, import_payment_policy: 'pending' })
     }
     setErrors({})
     setDialogOpen(true)
@@ -75,7 +94,7 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
   const handleCloseDialog = () => {
     setDialogOpen(false)
     setEditingMethod(null)
-    setFormData({ name: '', comment: '', active: true })
+    setFormData({ name: '', comment: '', active: true, import_payment_policy: 'pending' })
     setErrors({})
   }
 
@@ -169,7 +188,8 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
         body: JSON.stringify({
           name: formData.name.trim(),
           comment: formData.comment.trim() || null,
-          active: formData.active
+          active: formData.active,
+          import_payment_policy: formData.import_payment_policy
         })
       })
 
@@ -260,6 +280,11 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
             <li>A fizetési módok <strong>globálisan</strong> elérhetők - egyszer hozza létre, minden beszállítónál használhatja</li>
             <li>A fizetési módokat a beszállítók fizetési beállításainál választhatja ki</li>
             <li>Inaktív módok nem jelennek meg a dropdown listában</li>
+            <li>
+              <strong>Webshop puffer import:</strong> az „Import fizetési szabály” határozza meg, hogy a webáruházból
+              átvett rendelésnél a rendszer automatikusan fizetettnek jelölje-e a rendelést (pl. online kártya), vagy
+              függőben hagyja (pl. átutalás, utánvét)
+            </li>
           </ul>
         </Typography>
       </Alert>
@@ -315,13 +340,14 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
               </TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Név</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Leírás</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Import</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Státusz</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {paymentMethods.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <PaymentIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
                     <Typography variant="body1" color="text.secondary">
@@ -362,6 +388,18 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
                     <Typography variant="body2" color="text.secondary">
                       {method.comment || '-'}
                     </Typography>
+                  </TableCell>
+                  <TableCell sx={{ py: 1 }} onClick={(e) => e.stopPropagation()}>
+                    <Chip
+                      label={IMPORT_POLICY_LABEL[method.import_payment_policy ?? 'pending']}
+                      size="small"
+                      sx={{
+                        ...(method.import_payment_policy === 'paid_on_import'
+                          ? { bgcolor: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }
+                          : { bgcolor: '#fff3e0', color: '#e65100', border: '1px solid #ffcc80' }
+                        )
+                      }}
+                    />
                   </TableCell>
                   <TableCell sx={{ py: 1 }}>
                     <Chip
@@ -408,6 +446,27 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
               rows={3}
               helperText="Opcionális leírás a fizetési módról"
             />
+            <FormControl fullWidth>
+              <InputLabel id="import-payment-policy-label">Webshop puffer import</InputLabel>
+              <Select
+                labelId="import-payment-policy-label"
+                label="Webshop puffer import"
+                value={formData.import_payment_policy}
+                onChange={(e) =>
+                  setFormData(prev => ({
+                    ...prev,
+                    import_payment_policy: e.target.value as ImportPaymentPolicy
+                  }))
+                }
+              >
+                <MenuItem value="pending">Függőben marad (alapértelmezett)</MenuItem>
+                <MenuItem value="paid_on_import">Importkor fizetettnek jelölés</MenuItem>
+              </Select>
+              <FormHelperText>
+                Banki átutalásnál általában hagyja függőben; online kártyánál használható a fizetett jelölés, ha a
+                webáruház a fizetést azonnal jóváírja.
+              </FormHelperText>
+            </FormControl>
             <FormControlLabel
               control={
                 <Checkbox

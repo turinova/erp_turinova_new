@@ -4,6 +4,7 @@ import { extractShopNameFromUrl } from '@/lib/shoprenter-api'
 import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
 import { reserveStockForOrder } from '@/lib/order-reservation'
 import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
+import { maybeInsertImportAutoPaidPayment } from '@/lib/order-payment-import'
 
 /**
  * POST /api/orders/buffer/[id]/process
@@ -160,6 +161,13 @@ export async function POST(
 
       // Step 7: Create order totals
       await createOrderTotals(supabase, newOrder.id, webhookData)
+
+      // Step 7b: Optional paid-on-import (ERP payment method policy + order_payments → DB trigger)
+      await maybeInsertImportAutoPaidPayment(supabase, {
+        orderId: newOrder.id,
+        paymentMethodId,
+        createdByUserId: user.id
+      })
 
       // Step 8: Create order status history
       await supabase

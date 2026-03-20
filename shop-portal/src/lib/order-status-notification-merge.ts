@@ -51,6 +51,7 @@ export const ORDER_STATUS_MERGE_GROUPS: MergeFieldGroup[] = [
     title: 'Szállítás',
     hint: 'Kézbesítés',
     fields: [
+      { key: 'shipping_carrier', label: 'Futárszolgálat' },
       { key: 'shipping_method_name', label: 'Szállítási mód' },
       { key: 'tracking_number', label: 'Követési szám' }
     ]
@@ -89,6 +90,7 @@ export type OrderStatusNotificationMergeKey =
   | 'order_total_gross'
   | 'currency_code'
   | 'payment_method_name'
+  | 'shipping_carrier'
   | 'shipping_method_name'
   | 'tracking_number'
   | 'order_items_table'
@@ -120,6 +122,7 @@ export type OrderRowForNotification = {
   customer_firstname: string | null
   customer_lastname: string | null
   customer_email: string | null
+  shipping_carrier: string | null
   shipping_method_name: string | null
   payment_method_name: string | null
   total_gross: number | string | null
@@ -157,6 +160,7 @@ export function buildOrderStatusNotificationContext(
     order_total_gross: formatOrderMoney(safeGross, cur),
     currency_code: cur || 'HUF',
     payment_method_name: (order.payment_method_name || '').trim() || '—',
+    shipping_carrier: (order.shipping_carrier || '').trim() || '—',
     shipping_method_name: (order.shipping_method_name || '').trim() || '—',
     tracking_number: (order.tracking_number || '').trim() || '—'
   }
@@ -202,6 +206,7 @@ export function sampleOrderStatusNotificationContext(): Record<string, string> {
     order_total_gross: '12 990 Ft',
     currency_code: 'HUF',
     payment_method_name: 'Utánvét',
+    shipping_carrier: 'GLS',
     shipping_method_name: 'Házhoz szállítás',
     tracking_number: 'EX123456789HU',
     order_items_table: buildSampleOrderItemsTableHtml()

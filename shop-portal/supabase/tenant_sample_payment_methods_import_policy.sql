@@ -1,0 +1,9 @@
+-- =============================================================================
+-- SAMPLE / NEW TENANT DATABASE — payment_methods.import_payment_policy (manual run)
+-- =============================================================================
+-- Run on the TENANT database (Supabase SQL Editor):
+--   supabase/migrations/20260320_payment_methods_import_payment_policy.sql
+-- Then on the ADMIN database (where get_tenant_pending_migrations lives):
+--   supabase/migrations/20260321_tenant_migration_list_payment_methods_import_policy.sql
+-- See also: supabase/database-setup.sql (checklist)
+-- =============================================================================

@@ -75,16 +75,13 @@ import {
   Clear as ClearIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  Schedule as ScheduleIcon,
-  Refresh as RefreshIcon
+  Schedule as ScheduleIcon
 } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
-  getAllowedNextStatus,
-  isTerminalStatus,
   getFulfillabilityDisplayStyle
 } from '@/lib/order-status'
 
@@ -100,6 +97,68 @@ const PAYMENT_STATUS_COLORS: Record<string, 'default' | 'success' | 'warning' | 
   partial: 'warning',
   paid: 'success',
   refunded: 'error'
+}
+
+type OrderPayment = {
+  id: string
+  order_id: string
+  amount: number
+  payment_method_id: string | null
+  payment_method_name: string | null
+  payment_date: string
+  transaction_id: string | null
+  reference_number: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+}
+
+function resolvePaymentStatusFromLedger(totalPaid: number, totalGross: number): 'pending' | 'partial' | 'paid' {
+  if (totalPaid <= 0) return 'pending'
+  if (totalPaid < totalGross) return 'partial'
+  return 'paid'
+}
+
+const PAYMENT_STATUS_DISPLAY_STYLE: Record<
+  string,
+  { label: string; chipStyle: { bgcolor: string; color: string; borderColor: string }; icon: React.ElementType }
+> = {
+  pending: {
+    label: 'Fizetés: Függőben',
+    chipStyle: {
+      bgcolor: 'rgba(255, 152, 0, 0.12)',
+      color: '#B26A00',
+      borderColor: 'rgba(255, 152, 0, 0.35)'
+    },
+    icon: ScheduleIcon
+  },
+  partial: {
+    label: 'Fizetés: Részben fizetve',
+    chipStyle: {
+      bgcolor: 'rgba(255, 152, 0, 0.12)',
+      color: '#B26A00',
+      borderColor: 'rgba(255, 152, 0, 0.35)'
+    },
+    icon: ScheduleIcon
+  },
+  paid: {
+    label: 'Fizetés: Fizetve',
+    chipStyle: {
+      bgcolor: 'rgba(46, 125, 50, 0.12)',
+      color: '#1F6D2C',
+      borderColor: 'rgba(46, 125, 50, 0.35)'
+    },
+    icon: CheckCircleIcon
+  },
+  refunded: {
+    label: 'Fizetés: Visszatérítve',
+    chipStyle: {
+      bgcolor: 'rgba(211, 47, 47, 0.12)',
+      color: '#B3261E',
+      borderColor: 'rgba(211, 47, 47, 0.35)'
+    },
+    icon: ErrorIcon
+  }
 }
 
 // Read-only display row: label (muted) + value (dark, larger for easy reading)
@@ -243,8 +302,6 @@ export default function OrderDetailForm({
 }: OrderDetailFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
-  const [statusChanging, setStatusChanging] = useState(false)
-  const [recheckingFulfillability, setRecheckingFulfillability] = useState(false)
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
   const [customerSearchQuery, setCustomerSearchQuery] = useState('')
   const [customerSearchResults, setCustomerSearchResults] = useState<{ persons: Array<{ id: string; type: 'person'; label: string; email?: string }>; companies: Array<{ id: string; type: 'company'; label: string; email?: string }> }>({ persons: [], companies: [] })
@@ -265,6 +322,19 @@ export default function OrderDetailForm({
   const [newCustomerError, setNewCustomerError] = useState<string | null>(null)
   const [paymentEditOpen, setPaymentEditOpen] = useState(false)
   const [shippingEditOpen, setShippingEditOpen] = useState(false)
+  const [payments, setPayments] = useState<OrderPayment[]>([])
+  const [paymentsLoading, setPaymentsLoading] = useState(false)
+  const [paymentsDialogOpen, setPaymentsDialogOpen] = useState(false)
+  const [paymentAction, setPaymentAction] = useState<'payment' | 'refund'>('payment')
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false)
+  const [paymentForm, setPaymentForm] = useState({
+    amount: '',
+    payment_method_id: order.payment_method_id ?? '',
+    payment_date: new Date().toISOString().slice(0, 10),
+    transaction_id: '',
+    reference_number: '',
+    notes: ''
+  })
 
   const [vatRates, setVatRates] = useState<Array<{ id: string; name: string; kulcs: number }>>([])
   const [items, setItems] = useState<Array<{
@@ -309,6 +379,9 @@ export default function OrderDetailForm({
   const [selectedProduct, setSelectedProduct] = useState<typeof productSearchResults[0] | null>(null)
   const [itemAvailability, setItemAvailability] = useState<Record<string, { quantity_available: number; quantity_on_hand: number; quantity_reserved: number; quantity_incoming: number }>>({})
   const [itemAvailabilitySkuToId, setItemAvailabilitySkuToId] = useState<Record<string, string>>({})
+  const [displayFulfillability, setDisplayFulfillability] = useState(() =>
+    String(order.fulfillability_status ?? 'unknown')
+  )
 
   useEffect(() => {
     setItems(orderItems.map((it: any) => ({
@@ -325,6 +398,7 @@ export default function OrderDetailForm({
     })))
     setOrderDiscountValue(parseFloat(String((order as any).discount_amount)) || 0)
     setOrderDiscountMode('amount')
+    setDisplayFulfillability(String(order.fulfillability_status ?? 'unknown'))
   }, [orderItems, order])
 
   useEffect(() => {
@@ -366,6 +440,25 @@ export default function OrderDetailForm({
     load()
     return () => { cancelled = true }
   }, [])
+
+  const loadPayments = useCallback(async () => {
+    setPaymentsLoading(true)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/payments`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Hiba a fizetési tételek betöltésekor')
+      setPayments(data.payments || [])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a fizetési tételek betöltésekor')
+      setPayments([])
+    } finally {
+      setPaymentsLoading(false)
+    }
+  }, [order.id])
+
+  useEffect(() => {
+    loadPayments()
+  }, [loadPayments])
 
   const fetchProductSearch = useCallback(async () => {
     if (productSearchTerm.trim().length < 2) {
@@ -422,8 +515,11 @@ export default function OrderDetailForm({
     setItems(prev => prev.filter((_, i) => i !== index))
   }, [])
 
-  const saveItems = useCallback(async (optionalItems?: typeof items) => {
-    const itemsToSave = optionalItems ?? items
+  const saveItems = useCallback(async (
+    optionalItems?: typeof items,
+    options?: { silent?: boolean }
+  ): Promise<boolean> => {
+    const itemsToSave = Array.isArray(optionalItems) ? optionalItems : items
     setItemsSaving(true)
     try {
       const payload = itemsToSave.map(it => {
@@ -457,9 +553,14 @@ export default function OrderDetailForm({
       const data = await res.json()
       if (!res.ok) {
         toast.error(data.error || 'Hiba a tételek mentésekor')
-        return
+        return false
       }
-      toast.success('Mentve.')
+      if (!options?.silent) {
+        toast.success('Mentve.')
+      }
+      if (typeof data.fulfillability_status === 'string') {
+        setDisplayFulfillability(data.fulfillability_status)
+      }
       setItems((data.items || []).map((it: any) => ({
         id: it.id,
         product_id: it.product_id ?? null,
@@ -475,8 +576,10 @@ export default function OrderDetailForm({
       setOrderDiscountValue(parseFloat(String(data.discount_amount ?? (order as any).discount_amount)) || 0)
       setOrderDiscountMode('amount')
       router.refresh()
+      return true
     } catch (e) {
       toast.error('Hiba a tételek mentésekor.')
+      return false
     } finally {
       setItemsSaving(false)
     }
@@ -517,9 +620,21 @@ export default function OrderDetailForm({
     expected_delivery_date: order.expected_delivery_date ?? '',
     payment_method_id: order.payment_method_id ?? '',
     payment_method_name: order.payment_method_name ?? '',
-    payment_method_after: order.payment_method_after ?? true,
-    payment_status: order.payment_status ?? 'pending'
+    payment_method_after: order.payment_method_after ?? true
   })
+
+  const paymentsTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  const orderTotalGrossNum = Number(order.total_gross) || 0
+  const livePaymentStatus = resolvePaymentStatusFromLedger(paymentsTotal, orderTotalGrossNum)
+  const paymentsCount = payments.filter((p) => Number(p.amount) > 0).length
+  const refundsCount = payments.filter((p) => Number(p.amount) < 0).length
+  const latestPaymentDate = payments[0]?.payment_date || payments[0]?.created_at || null
+  const statusKey = String(order.status || '').trim()
+  const isStatusEditable = statusKey === 'pending_review' || statusKey === 'new'
+  const isItemsEditable = isStatusEditable
+  const editLockReason = !isStatusEditable
+    ? `A rendelés jelenlegi állapotban nem szerkeszthető (${ORDER_STATUS_LABELS[statusKey] || statusKey}).`
+    : null
 
   const formatCurrency = (amount: number | string | null, currency: string = 'HUF') => {
     if (amount == null) return '-'
@@ -798,8 +913,16 @@ export default function OrderDetailForm({
   }
 
   const handleSave = async () => {
+    if (!isStatusEditable) {
+      toast.error(editLockReason || 'A rendelés ebben az állapotban nem szerkeszthető.')
+      return
+    }
     setSaving(true)
     try {
+      if (isItemsEditable) {
+        const itemsOk = await saveItems(undefined, { silent: true })
+        if (!itemsOk) return
+      }
       const res = await fetch(`/api/orders/${order.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -833,8 +956,7 @@ export default function OrderDetailForm({
           expected_delivery_date: form.expected_delivery_date || null,
           payment_method_id: form.payment_method_id || null,
           payment_method_name: form.payment_method_name || null,
-          payment_method_after: form.payment_method_after,
-          payment_status: form.payment_status
+          payment_method_after: form.payment_method_after
         })
       })
       if (!res.ok) {
@@ -847,6 +969,84 @@ export default function OrderDetailForm({
       toast.error(e instanceof Error ? e.message : 'Hiba a mentés során')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openPaymentDialog = (action: 'payment' | 'refund') => {
+    setPaymentAction(action)
+    setPaymentForm({
+      amount: '',
+      payment_method_id: form.payment_method_id || '',
+      payment_date: new Date().toISOString().slice(0, 10),
+      transaction_id: '',
+      reference_number: '',
+      notes: ''
+    })
+    setPaymentsDialogOpen(true)
+  }
+
+  const handleSubmitPayment = async () => {
+    const amountRaw = parseFloat(paymentForm.amount)
+    if (!Number.isFinite(amountRaw) || amountRaw <= 0) {
+      toast.error('Adjon meg 0-nál nagyobb összeget.')
+      return
+    }
+
+    const signedAmount = paymentAction === 'refund' ? -amountRaw : amountRaw
+    if (paymentAction === 'refund' && !paymentForm.notes.trim()) {
+      toast.error('Visszatérítésnél kötelező megadni a megjegyzést.')
+      return
+    }
+
+    setPaymentSubmitting(true)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/payments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: signedAmount,
+          payment_method_id: paymentForm.payment_method_id || null,
+          payment_date: paymentForm.payment_date || null,
+          transaction_id: paymentForm.transaction_id || null,
+          reference_number: paymentForm.reference_number || null,
+          notes: paymentForm.notes || null
+        })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Hiba a fizetési tétel rögzítésekor')
+      }
+      toast.success(paymentAction === 'refund' ? 'Visszatérítés rögzítve.' : 'Fizetés rögzítve.')
+      setPaymentsDialogOpen(false)
+      await loadPayments()
+      router.refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a fizetési tétel rögzítésekor')
+    } finally {
+      setPaymentSubmitting(false)
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!window.confirm('Biztosan törli ezt a fizetési tételt?')) return
+    const reason = window.prompt('Törlés indoka (kötelező):', '')
+    if (!reason || !reason.trim()) {
+      toast.error('A törlés indoka kötelező.')
+      return
+    }
+    try {
+      const res = await fetch(`/api/orders/${order.id}/payments/${paymentId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() })
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Hiba a fizetési tétel törlésekor')
+      toast.success('Fizetési tétel törölve.')
+      await loadPayments()
+      router.refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a fizetési tétel törlésekor')
     }
   }
 
@@ -877,7 +1077,7 @@ export default function OrderDetailForm({
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
             {order.status === 'new' ? (() => {
-              const fulfillStyle = getFulfillabilityDisplayStyle(order.fulfillability_status)
+              const fulfillStyle = getFulfillabilityDisplayStyle(displayFulfillability)
               const FulfillIcon = fulfillStyle.label === 'Csomagolható' ? CheckCircleIcon
                 : fulfillStyle.label === 'Hiány' ? ErrorIcon
                 : fulfillStyle.label === 'Beszerzés alatt' ? LocalShippingIcon
@@ -920,7 +1120,7 @@ export default function OrderDetailForm({
               </>
             )}
             {order.status === 'new' &&
-              (order.fulfillability_status === 'not_fulfillable' || order.fulfillability_status === 'partially_fulfillable') && (
+              (displayFulfillability === 'not_fulfillable' || displayFulfillability === 'partially_fulfillable') && (
               <Button
                 component={NextLink}
                 href={`/replenishment?order_id=${order.id}`}
@@ -931,72 +1131,6 @@ export default function OrderDetailForm({
               >
                 Hiány pótlása
               </Button>
-            )}
-            {order.status === 'new' && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<RefreshIcon />}
-                sx={{ height: 32 }}
-                disabled={recheckingFulfillability}
-                onClick={async () => {
-                  setRecheckingFulfillability(true)
-                  try {
-                    const res = await fetch(`/api/orders/${order.id}/recheck-fulfillability`, { method: 'POST' })
-                    const data = await res.json().catch(() => ({}))
-                    if (!res.ok) {
-                      toast.error(data.error || 'Készlet újraellenőrzés sikertelen')
-                      return
-                    }
-                    toast.success('Készlet frissítve')
-                    router.refresh()
-                  } catch {
-                    toast.error('Készlet újraellenőrzés sikertelen')
-                  } finally {
-                    setRecheckingFulfillability(false)
-                  }
-                }}
-              >
-                Készlet újraellenőrzése
-              </Button>
-            )}
-            {!isTerminalStatus(order.status) && getAllowedNextStatus(order.status).length > 0 && (
-              <FormControl size="small" sx={{ minWidth: 160 }}>
-                <Select
-                  value=""
-                  displayEmpty
-                  onChange={async (e) => {
-                    const nextStatus = e.target.value as string
-                    if (!nextStatus) return
-                    setStatusChanging(true)
-                    try {
-                      const res = await fetch(`/api/orders/${order.id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: nextStatus })
-                      })
-                      if (!res.ok) {
-                        const data = await res.json().catch(() => ({}))
-                        toast.error(data.error || 'Állapotváltás sikertelen')
-                        return
-                      }
-                      toast.success('Állapot frissítve')
-                      router.refresh()
-                    } finally {
-                      setStatusChanging(false)
-                    }
-                  }}
-                  disabled={statusChanging}
-                  sx={{ height: 32, fontSize: '0.875rem' }}
-                >
-                  <MenuItem value="" disabled>Állapot váltás…</MenuItem>
-                  {getAllowedNextStatus(order.status).map((s) => (
-                    <MenuItem key={s} value={s}>
-                      {ORDER_STATUS_LABELS[s] || s}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
             )}
             {(order.status === 'picked' || order.status === 'packing') && (
               <Button
@@ -1009,18 +1143,36 @@ export default function OrderDetailForm({
                 Csomagolás
               </Button>
             )}
-            <Chip
-              label={PAYMENT_STATUS_LABELS[order.payment_status] || order.payment_status}
-              variant="outlined"
-              size="small"
-              color={order.payment_status === 'paid' ? 'success' : 'default'}
-            />
+            {(() => {
+              const key = String(livePaymentStatus || 'pending').trim()
+              const style = PAYMENT_STATUS_DISPLAY_STYLE[key] || PAYMENT_STATUS_DISPLAY_STYLE.pending
+              const Icon = style.icon
+              return (
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    border: '1px solid',
+                    padding: '4px 10px',
+                    borderRadius: 1,
+                    fontSize: '0.875rem',
+                    fontWeight: 600,
+                    ...style.chipStyle
+                  }}
+                >
+                  <Icon sx={{ fontSize: 18 }} />
+                  {style.label}
+                </Box>
+              )
+            })()}
             <Button
               variant="contained"
               size="small"
               startIcon={<SaveIcon />}
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !isStatusEditable}
             >
               {saving ? 'Mentés...' : 'Mentés'}
             </Button>
@@ -1029,6 +1181,23 @@ export default function OrderDetailForm({
       </Box>
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        {editLockReason && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              bgcolor: 'rgba(255, 152, 0, 0.08)',
+              border: '1px solid',
+              borderColor: 'rgba(255, 152, 0, 0.35)',
+              borderRadius: 2
+            }}
+          >
+            <Typography variant="body2" sx={{ color: '#7A4A00', fontWeight: 600 }}>
+              {editLockReason}
+            </Typography>
+          </Paper>
+        )}
+
         {/* 1. Rendelési adatok — at top */}
         <Paper
           elevation={0}
@@ -1149,7 +1318,7 @@ export default function OrderDetailForm({
                     Vevő adatok
                   </Typography>
                   {!customerEditOpen && (
-                    <IconButton size="small" onClick={() => setCustomerEditOpen(true)} aria-label="Vevő adatok szerkesztése">
+                    <IconButton size="small" onClick={() => setCustomerEditOpen(true)} aria-label="Vevő adatok szerkesztése" disabled={!isStatusEditable}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   )}
@@ -1236,7 +1405,7 @@ export default function OrderDetailForm({
                     Számlázási adatok
                   </Typography>
                   {!billingEditOpen && (
-                    <IconButton size="small" onClick={() => setBillingEditOpen(true)} aria-label="Számlázási cím szerkesztése">
+                    <IconButton size="small" onClick={() => setBillingEditOpen(true)} aria-label="Számlázási cím szerkesztése" disabled={!isStatusEditable}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   )}
@@ -1332,7 +1501,7 @@ export default function OrderDetailForm({
                     Szállítási adatok
                   </Typography>
                   {!shippingEditOpen && (
-                    <IconButton size="small" onClick={() => setShippingEditOpen(true)} aria-label="Szállítási adatok szerkesztése">
+                    <IconButton size="small" onClick={() => setShippingEditOpen(true)} aria-label="Szállítási adatok szerkesztése" disabled={!isStatusEditable}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   )}
@@ -1438,7 +1607,7 @@ export default function OrderDetailForm({
                     Fizetési adatok
                   </Typography>
                   {!paymentEditOpen && (
-                    <IconButton size="small" onClick={() => setPaymentEditOpen(true)} aria-label="Fizetési adatok szerkesztése">
+                    <IconButton size="small" onClick={() => setPaymentEditOpen(true)} aria-label="Fizetési adatok szerkesztése" disabled={!isStatusEditable}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                   )}
@@ -1453,8 +1622,8 @@ export default function OrderDetailForm({
                       <Typography component="dd" variant="body1" sx={{ m: 0, fontWeight: 600, color: 'text.primary', fontSize: '1.05rem' }}>
                         <Chip
                           size="small"
-                          label={PAYMENT_STATUS_LABELS[form.payment_status] || form.payment_status}
-                          color={PAYMENT_STATUS_COLORS[form.payment_status] || 'default'}
+                          label={PAYMENT_STATUS_LABELS[livePaymentStatus] || livePaymentStatus}
+                          color={PAYMENT_STATUS_COLORS[livePaymentStatus] || 'default'}
                           variant="filled"
                           sx={{ fontWeight: 600 }}
                         />
@@ -1485,18 +1654,9 @@ export default function OrderDetailForm({
                         </FormControl>
                       </Grid>
                       <Grid item xs={12}>
-                        <FormControl fullWidth size="small" sx={inputSx}>
-                          <InputLabel>Fizetési státusz</InputLabel>
-                          <Select
-                            value={form.payment_status}
-                            label="Fizetési státusz"
-                            onChange={(e) => setForm((f) => ({ ...f, payment_status: e.target.value as string }))}
-                          >
-                            {Object.entries(PAYMENT_STATUS_LABELS).map(([k, v]) => (
-                              <MenuItem key={k} value={k}>{v}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
+                        <Typography variant="body2" color="text.secondary">
+                          A fizetési státusz automatikusan számolódik a fizetési tételekből.
+                        </Typography>
                       </Grid>
                       <Grid item xs={12}>
                         <Button size="small" variant="text" onClick={() => setPaymentEditOpen(false)}>Kész</Button>
@@ -1507,6 +1667,124 @@ export default function OrderDetailForm({
               </Box>
             </Grid>
           </Grid>
+        </Paper>
+
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            bgcolor: 'white',
+            border: '2px solid',
+            borderColor: SECTION_COLORS.payment.main,
+            borderRadius: 2,
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
+          <SectionHeader icon={PaymentIcon} title="Fizetéskövetés és tranzakciók" colorKey="payment" />
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, mb: 2 }}>
+            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openPaymentDialog('payment')}>
+              Fizetés rögzítése
+            </Button>
+            <Button variant="outlined" color="error" size="small" startIcon={<DeleteIcon />} onClick={() => openPaymentDialog('refund')}>
+              Visszatérítés rögzítése
+            </Button>
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <Typography variant="body2" color="text.secondary">
+                Rögzített egyenleg: <strong>{formatCurrency(paymentsTotal, order.currency_code)}</strong>
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Hátralék: <strong>{formatCurrency(Math.max(0, orderTotalGrossNum - paymentsTotal), order.currency_code)}</strong>
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            <Chip size="small" variant="outlined" label={`Tranzakciók: ${payments.length}`} />
+            <Chip size="small" color="success" variant="outlined" label={`Fizetések: ${paymentsCount}`} />
+            <Chip size="small" color="error" variant="outlined" label={`Visszatérítések: ${refundsCount}`} />
+            <Chip
+              size="small"
+              variant="outlined"
+              label={`Utolsó mozgás: ${latestPaymentDate ? formatDate(latestPaymentDate) : '—'}`}
+            />
+          </Box>
+          <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700 }}>Dátum</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Típus</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Fizetési mód</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Azonosítók</TableCell>
+                  <TableCell sx={{ fontWeight: 700 }}>Megjegyzés</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>Összeg</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700 }}>Művelet</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {paymentsLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      <CircularProgress size={20} />
+                    </TableCell>
+                  </TableRow>
+                ) : payments.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center">
+                      <Typography variant="body2" color="text.secondary">
+                        Még nincs rögzített fizetési tranzakció.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  payments.map((p) => {
+                    const isRefund = Number(p.amount) < 0
+                    return (
+                      <TableRow key={p.id}>
+                        <TableCell>{formatDate(p.payment_date || p.created_at)}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={isRefund ? 'Visszatérítés' : 'Fizetés'}
+                            color={isRefund ? 'error' : 'success'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>{p.payment_method_name || '—'}</TableCell>
+                        <TableCell>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Tx: {p.transaction_id || '—'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            Ref: {p.reference_number || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell sx={{ maxWidth: 260 }}>
+                          <Typography variant="body2" noWrap title={p.notes || ''}>
+                            {p.notes || '—'}
+                          </Typography>
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, color: isRefund ? 'error.main' : 'success.main' }}>
+                          {isRefund ? '−' : '+'}
+                          {formatCurrency(Math.abs(Number(p.amount) || 0), order.currency_code)}
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleDeletePayment(p.id)}
+                            aria-label="Fizetési tétel törlése"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </Paper>
 
         {/* 3. Tételek */}
@@ -1523,6 +1801,11 @@ export default function OrderDetailForm({
           }}
         >
           <SectionHeader icon={ShoppingCartIcon} title="Tételek" colorKey="items" />
+          {isStatusEditable && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
+              A tételek mentésekor a teljesíthetőség és a készletfoglalás automatikusan újraszámolódik. Üres lista mentésekor minden tétel törlődik a rendelésből. A lap tetején lévő „Mentés” gomb a tételeket is elmenti (nem csak a vevő- és címmezőket).
+            </Typography>
+          )}
           <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
             <Autocomplete
               sx={{ minWidth: 280, flexGrow: 1 }}
@@ -1538,6 +1821,7 @@ export default function OrderDetailForm({
                   setSelectedProduct(null)
                 }
               }}
+              disabled={!isItemsEditable}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -1577,8 +1861,8 @@ export default function OrderDetailForm({
               variant="outlined"
               size="small"
               startIcon={<SaveIcon />}
-              onClick={saveItems}
-              disabled={itemsSaving || items.length === 0}
+              onClick={() => saveItems()}
+              disabled={itemsSaving || !isItemsEditable}
             >
               {itemsSaving ? 'Mentés…' : 'Tételek mentése'}
             </Button>
@@ -1622,6 +1906,7 @@ export default function OrderDetailForm({
                             size="small"
                             value={item.quantity}
                             onChange={(e) => updateItem(index, 'quantity', Math.max(1, parseInt(e.target.value, 10) || 1))}
+                            disabled={!isItemsEditable}
                             inputProps={{ min: 1, style: { textAlign: 'right', width: 48 } }}
                           />
                         </TableCell>
@@ -1653,6 +1938,7 @@ export default function OrderDetailForm({
                             size="small"
                             value={item.unit_price_gross}
                             onChange={(e) => updateItem(index, 'unit_price_gross', Math.max(0, parseFloat(e.target.value) || 0))}
+                            disabled={!isItemsEditable}
                             inputProps={{ min: 0, step: 0.01, style: { textAlign: 'right', width: 88 } }}
                           />
                         </TableCell>
@@ -1662,6 +1948,7 @@ export default function OrderDetailForm({
                               value={vatRates.some(v => v.kulcs === item.tax_rate) ? item.tax_rate : (vatRates[0]?.kulcs ?? item.tax_rate)}
                               onChange={(e) => updateItem(index, 'tax_rate', Number(e.target.value))}
                               displayEmpty
+                              disabled={!isItemsEditable}
                               renderValue={(v) => (v != null && v !== '' ? `${v}%` : '')}
                             >
                               {vatRates.map((v) => (
@@ -1678,15 +1965,16 @@ export default function OrderDetailForm({
                                 sx={{ fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2, '&:hover': { color: 'primary.main' } }}
                                 onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode(item.discount_mode); setItemDiscountModalValue(String(item.discount_value || '')); }}
                                 title="Kedvezmény szerkesztése"
+                                sx={!isItemsEditable ? { pointerEvents: 'none', opacity: 0.5, textDecoration: 'none' } : undefined}
                               >
                                 {item.discount_mode === 'percent' ? `${item.discount_value} %` : formatCurrency(item.discount_value, order.currency_code)}
                               </Typography>
                             ) : (
                               <>
-                                <IconButton size="small" onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode('percent'); setItemDiscountModalValue(''); }} aria-label="Kedvezmény %" title="Kedvezmény %">
+                                <IconButton size="small" onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode('percent'); setItemDiscountModalValue(''); }} aria-label="Kedvezmény %" title="Kedvezmény %" disabled={!isItemsEditable}>
                                   <PercentIcon fontSize="small" />
                                 </IconButton>
-                                <IconButton size="small" onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode('amount'); setItemDiscountModalValue(''); }} aria-label="Kedvezmény Ft" title="Kedvezmény Ft">
+                                <IconButton size="small" onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode('amount'); setItemDiscountModalValue(''); }} aria-label="Kedvezmény Ft" title="Kedvezmény Ft" disabled={!isItemsEditable}>
                                   <AttachMoneyIcon fontSize="small" />
                                 </IconButton>
                               </>
@@ -1706,7 +1994,7 @@ export default function OrderDetailForm({
                           </Box>
                         </TableCell>
                         <TableCell>
-                          <IconButton size="small" onClick={() => removeItem(index)} aria-label="Tétel törlése" color="error">
+                          <IconButton size="small" onClick={() => removeItem(index)} aria-label="Tétel törlése" color="error" disabled={!isItemsEditable}>
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </TableCell>
@@ -1935,6 +2223,100 @@ export default function OrderDetailForm({
             </Paper>
           )
         })()}
+
+        <Dialog open={paymentsDialogOpen} onClose={() => !paymentSubmitting && setPaymentsDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{paymentAction === 'refund' ? 'Visszatérítés rögzítése' : 'Fizetés rögzítése'}</DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 1, display: 'grid', gap: 2 }}>
+              {paymentAction === 'payment' && (
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: 1.5,
+                    bgcolor: 'rgba(21, 101, 192, 0.06)',
+                    border: '1px solid',
+                    borderColor: 'rgba(21, 101, 192, 0.2)'
+                  }}
+                >
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Rendelés összege: <strong>{formatCurrency(orderTotalGrossNum, order.currency_code)}</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                    Már rögzítve: <strong>{formatCurrency(paymentsTotal, order.currency_code)}</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700, color: 'primary.dark' }}>
+                    Fizetetlen összeg: {formatCurrency(Math.max(0, orderTotalGrossNum - paymentsTotal), order.currency_code)}
+                  </Typography>
+                </Box>
+              )}
+              <TextField
+                label={paymentAction === 'refund' ? 'Visszatérítés összege' : 'Fizetés összege'}
+                type="number"
+                fullWidth
+                size="small"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                inputProps={{ min: 0, step: 0.01 }}
+                sx={inputSx}
+              />
+              <FormControl fullWidth size="small" sx={inputSx}>
+                <InputLabel>Fizetési mód</InputLabel>
+                <Select
+                  value={paymentForm.payment_method_id}
+                  label="Fizetési mód"
+                  onChange={(e) => setPaymentForm((f) => ({ ...f, payment_method_id: e.target.value as string }))}
+                >
+                  <MenuItem value="">—</MenuItem>
+                  {paymentMethods.map((m) => (
+                    <MenuItem key={m.id} value={m.id}>{m.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Dátum"
+                type="date"
+                fullWidth
+                size="small"
+                value={paymentForm.payment_date}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, payment_date: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+                sx={inputSx}
+              />
+              <TextField
+                label="Tranzakció azonosító"
+                fullWidth
+                size="small"
+                value={paymentForm.transaction_id}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, transaction_id: e.target.value }))}
+                sx={inputSx}
+              />
+              <TextField
+                label="Hivatkozás"
+                fullWidth
+                size="small"
+                value={paymentForm.reference_number}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, reference_number: e.target.value }))}
+                sx={inputSx}
+              />
+              <TextField
+                label="Megjegyzés"
+                fullWidth
+                size="small"
+                multiline
+                minRows={2}
+                value={paymentForm.notes}
+                onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
+                sx={inputSx}
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setPaymentsDialogOpen(false)} disabled={paymentSubmitting}>Mégse</Button>
+            <Button onClick={handleSubmitPayment} variant="contained" disabled={paymentSubmitting}>
+              {paymentSubmitting ? 'Mentés...' : paymentAction === 'refund' ? 'Visszatérítés mentése' : 'Fizetés mentése'}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Új vevő modal */}
         <Dialog open={newCustomerModalOpen} onClose={() => !newCustomerSaving && setNewCustomerModalOpen(false)} maxWidth="sm" fullWidth>

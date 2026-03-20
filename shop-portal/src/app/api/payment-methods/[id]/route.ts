@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import type { ImportPaymentPolicy } from '@/lib/order-payment-import'
+
+const IMPORT_PAYMENT_POLICIES: ImportPaymentPolicy[] = ['pending', 'paid_on_import']
+
+function parseImportPaymentPolicyForUpdate(
+  body: Record<string, unknown>
+): ImportPaymentPolicy | { error: string } | undefined {
+  if (!('import_payment_policy' in body)) return undefined
+  const v = body.import_payment_policy
+  if (v === null) return 'pending'
+  if (typeof v === 'string' && IMPORT_PAYMENT_POLICIES.includes(v as ImportPaymentPolicy)) {
+    return v as ImportPaymentPolicy
+  }
+  return { error: 'Érvénytelen import fizetési szabály' }
+}
 
 /**
  * PUT /api/payment-methods/[id]
@@ -21,6 +36,10 @@ export async function PUT(
 
     const body = await request.json()
     const { name, comment, active } = body
+    const policyParsed = parseImportPaymentPolicyForUpdate(body as Record<string, unknown>)
+    if (typeof policyParsed === 'object' && policyParsed !== null && 'error' in policyParsed) {
+      return NextResponse.json({ error: policyParsed.error }, { status: 400 })
+    }
 
     // Validation
     if (!name || !name.trim()) {
@@ -47,14 +66,19 @@ export async function PUT(
     }
 
     // Update payment method
+    const updatePayload: Record<string, unknown> = {
+      name: name.trim(),
+      comment: comment?.trim() || null,
+      active: active !== undefined ? active : true,
+      updated_at: new Date().toISOString()
+    }
+    if (policyParsed !== undefined) {
+      updatePayload.import_payment_policy = policyParsed
+    }
+
     const { data, error } = await supabase
       .from('payment_methods')
-      .update({
-        name: name.trim(),
-        comment: comment?.trim() || null,
-        active: active !== undefined ? active : true,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single()

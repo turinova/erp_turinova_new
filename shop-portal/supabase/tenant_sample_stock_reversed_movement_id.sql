@@ -1,0 +1,4 @@
+-- Tenant DB checklist: run after manual migrations
+-- supabase/migrations/20260322_stock_movements_reversed_movement_id.sql
+-- Adds stock_movements.reversed_movement_id and backfills legacy released↔reserved pairs.
+-- Admin DB: supabase/migrations/20260323_tenant_migration_list_stock_reversed_movement_id.sql

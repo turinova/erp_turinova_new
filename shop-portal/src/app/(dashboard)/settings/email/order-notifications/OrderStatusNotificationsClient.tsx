@@ -434,7 +434,12 @@ export default function OrderStatusNotificationsClient() {
           <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
             Levéltörzs
           </Typography>
-          <OrderStatusTemplateRichEditor html={bodyDraft} onHtmlChange={setBodyDraft} />
+          <OrderStatusTemplateRichEditor
+            key={edit?.id ?? 'closed'}
+            html={bodyDraft}
+            onHtmlChange={setBodyDraft}
+            defaultMode="html"
+          />
         </DialogContent>
         <DialogActions
           sx={{

@@ -63,12 +63,14 @@ This document describes how we align with common e‑commerce practice (reserve 
 
 ## 3. Release reserved stock (shared logic)
 
-Used when **cancelling** an order or when **soft-deleting** an order that had reserved stock.
+Used when **cancelling** an order or when **soft-deleting** an order that had reserved stock, and when **re-reserving** after line-item edits (release → reserve again).
+
+**Immutable ledger:** `reserved` rows are never deleted. Each `released` row must reference the reserved row it cancels via **`reversed_movement_id`** (`released.reversed_movement_id` → `reserved.id`). Only **unpaired** reserved rows (no `released` row pointing at them yet) are released. Otherwise every new release would match **all** historical `reserved` rows and duplicate “Felszabadított” lines.
 
 **Logic:**
 
-1. Find all `stock_movements` where `source_type = 'order'`, `source_id = order.id`, `movement_type = 'reserved'`.
-2. For each such row, insert a `stock_movements` row with `movement_type = 'released'`, same `warehouse_id`, `product_id`, and `quantity` (positive), `source_type = 'order'`, `source_id = order.id`.
+1. Find **unpaired** `reserved` movements for this order (`fetchUnpairedReservedRowsForOrder` in `order-reservation.ts`).
+2. For each, insert `movement_type = 'released'` with the same `warehouse_id`, `product_id`, `quantity`, `source_type = 'order'`, `source_id`, and **`reversed_movement_id = reserved.id`**.
 3. Set `orders.stock_reserved = false` and `order_items.reserved_quantity = 0` for that order.
 4. Call `refresh_stock_summary()`.
 

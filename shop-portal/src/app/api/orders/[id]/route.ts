@@ -73,7 +73,6 @@ export async function PATCH(
     if (body.payment_method_id !== undefined) update.payment_method_id = body.payment_method_id
     if (body.payment_method_name !== undefined) update.payment_method_name = body.payment_method_name
     if (body.payment_method_after !== undefined) update.payment_method_after = body.payment_method_after
-    if (body.payment_status !== undefined) update.payment_status = body.payment_status
 
     if (body.status !== undefined) {
       const { data: currentOrder } = await supabase

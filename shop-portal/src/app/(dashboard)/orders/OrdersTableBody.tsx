@@ -24,7 +24,11 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Schedule as ScheduleIcon,
-  LocalShipping as LocalShippingIcon
+  LocalShipping as LocalShippingIcon,
+  Payments as PaymentsIcon,
+  DoneAll as DoneAllIcon,
+  Autorenew as AutorenewIcon,
+  Undo as UndoIcon
 } from '@mui/icons-material'
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -32,6 +36,28 @@ const PAYMENT_STATUS_LABELS: Record<string, string> = {
   partial: 'Részben',
   paid: 'Fizetve',
   refunded: 'Visszatérítve'
+}
+
+const PAYMENT_STATUS_DISPLAY_STYLE: Record<
+  string,
+  { chipStyle: { bgcolor: string; color: string; borderColor: string }; icon: React.ElementType }
+> = {
+  pending: {
+    chipStyle: { bgcolor: '#FFF8E1', color: '#7A5D00', borderColor: '#FFE082' },
+    icon: ScheduleIcon
+  },
+  partial: {
+    chipStyle: { bgcolor: '#E3F2FD', color: '#0D47A1', borderColor: '#90CAF9' },
+    icon: PaymentsIcon
+  },
+  paid: {
+    chipStyle: { bgcolor: '#E8F5E9', color: '#1B5E20', borderColor: '#A5D6A7' },
+    icon: DoneAllIcon
+  },
+  refunded: {
+    chipStyle: { bgcolor: '#F3E5F5', color: '#4A148C', borderColor: '#CE93D8' },
+    icon: UndoIcon
+  }
 }
 
 const METHOD_CHIP_PALETTE = [
@@ -313,11 +339,31 @@ export default function OrdersTableBody({
             )}
           </TableCell>
           <TableCell>
-            <Chip
-              size="small"
-              label={PAYMENT_STATUS_LABELS[order.payment_status ?? ''] || order.payment_status || 'Függőben'}
-              variant="outlined"
-            />
+            {(() => {
+              const key = String(order.payment_status || 'pending').trim()
+              const style = PAYMENT_STATUS_DISPLAY_STYLE[key] || PAYMENT_STATUS_DISPLAY_STYLE.pending
+              const Icon = style.icon
+              const label = PAYMENT_STATUS_LABELS[key] || key || 'Függőben'
+              return (
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    border: '1px solid',
+                    padding: '2px 8px',
+                    borderRadius: 1,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    ...style.chipStyle
+                  }}
+                >
+                  <Icon sx={{ fontSize: 16 }} />
+                  {label}
+                </Box>
+              )
+            })()}
           </TableCell>
           <TableCell sx={{ maxWidth: 160, verticalAlign: 'top' }}>
             {(() => {

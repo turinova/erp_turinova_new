@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { reconcileOrderStockAfterLineItemsSave } from '@/lib/order-items-stock-reconcile'
 
 /**
  * PUT /api/orders/[id]/items
@@ -21,7 +22,7 @@ export async function PUT(
 
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, subtotal_net, subtotal_gross, tax_amount, discount_amount, shipping_total_net, shipping_total_gross, payment_total_net, payment_total_gross, total_net, total_gross, currency_code')
+      .select('id, status, stock_reserved, subtotal_net, subtotal_gross, tax_amount, discount_amount, shipping_total_net, shipping_total_gross, payment_total_net, payment_total_gross, total_net, total_gross, currency_code')
       .eq('id', orderId)
       .is('deleted_at', null)
       .single()
@@ -30,6 +31,15 @@ export async function PUT(
       return NextResponse.json(
         { error: 'Rendelés nem található' },
         { status: 404 }
+      )
+    }
+
+    const status = String((order as any).status || '').trim()
+    const editableStatuses = new Set(['pending_review', 'new'])
+    if (!editableStatuses.has(status)) {
+      return NextResponse.json(
+        { error: `A tételek ebben az állapotban nem szerkeszthetők (${status || 'ismeretlen'}).` },
+        { status: 409 }
       )
     }
 
@@ -266,6 +276,17 @@ export async function PUT(
     await updateTotal('TAX', taxAmount, taxAmount)
     await updateTotal('TOTAL', totalNet, totalGross)
 
+    const reconcileResult = await reconcileOrderStockAfterLineItemsSave(supabase, orderId, {
+      createdBy: user.id
+    })
+    if (!reconcileResult.ok) {
+      console.error('Order items save: stock reconcile failed', reconcileResult.error)
+      return NextResponse.json(
+        { error: reconcileResult.error || 'A tételek mentve, de a készletfoglalás frissítése sikertelen.' },
+        { status: 500 }
+      )
+    }
+
     const { data: updatedItems } = await supabase
       .from('order_items')
       .select('*')
@@ -280,7 +301,9 @@ export async function PUT(
       discount_amount: orderDiscount,
       tax_amount: taxAmount,
       total_net: totalNet,
-      total_gross: totalGross
+      total_gross: totalGross,
+      fulfillability_status: reconcileResult.fulfillability_status,
+      stock_reserved: reconcileResult.stock_reserved
     })
   } catch (error) {
     console.error('Error in orders items PUT API:', error)

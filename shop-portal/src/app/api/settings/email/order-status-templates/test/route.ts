@@ -10,6 +10,10 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+/** When the UI does not pass `to`, send test e-mails here (override with ORDER_STATUS_NOTIFICATION_TEST_TO). */
+const DEFAULT_ORDER_STATUS_TEST_EMAIL =
+  process.env.ORDER_STATUS_NOTIFICATION_TEST_TO?.trim() || 'mezo.david@baugeneral.hu'
+
 const ALLOWED = new Set([
   'pending_review',
   'new',
@@ -27,6 +31,7 @@ const ALLOWED = new Set([
 
 /**
  * POST — test send for one status template (sample merge data). Body: { order_status, to? }
+ * If `to` is omitted, mail goes to ORDER_STATUS_NOTIFICATION_TEST_TO or the default test address.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -45,8 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!to) {
-      const u = user as { email?: string }
-      to = (u.email || '').trim()
+      to = DEFAULT_ORDER_STATUS_TEST_EMAIL
     }
     if (!to || !EMAIL_RE.test(to)) {
       return NextResponse.json({ error: 'Érvényes címzett e-mail szükséges (to vagy bejelentkezett user e-mail)' }, { status: 400 })

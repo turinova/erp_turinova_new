@@ -1,5 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import type { ImportPaymentPolicy } from '@/lib/order-payment-import'
+
+const IMPORT_PAYMENT_POLICIES: ImportPaymentPolicy[] = ['pending', 'paid_on_import']
+
+function parseImportPaymentPolicyForCreate(body: Record<string, unknown>): ImportPaymentPolicy | { error: string } {
+  const v = body.import_payment_policy
+  if (v === undefined || v === null) return 'pending'
+  if (typeof v === 'string' && IMPORT_PAYMENT_POLICIES.includes(v as ImportPaymentPolicy)) {
+    return v as ImportPaymentPolicy
+  }
+  return { error: 'Érvénytelen import fizetési szabály' }
+}
 
 /**
  * GET /api/payment-methods
@@ -18,7 +30,7 @@ export async function GET(request: NextRequest) {
     // Fetch all active payment methods
     const { data: paymentMethods, error } = await supabase
       .from('payment_methods')
-      .select('id, name, comment, active, created_at, updated_at')
+      .select('id, name, comment, active, import_payment_policy, created_at, updated_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
 
@@ -56,6 +68,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { name, comment, active } = body
+    const policyParsed = parseImportPaymentPolicyForCreate(body as Record<string, unknown>)
+    if ('error' in policyParsed) {
+      return NextResponse.json({ error: policyParsed.error }, { status: 400 })
+    }
 
     // Validation
     if (!name || !name.trim()) {
@@ -86,7 +102,8 @@ export async function POST(request: NextRequest) {
       .insert({
         name: name.trim(),
         comment: comment?.trim() || null,
-        active: active !== undefined ? active : true
+        active: active !== undefined ? active : true,
+        import_payment_policy: policyParsed
       })
       .select()
       .single()

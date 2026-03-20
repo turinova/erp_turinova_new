@@ -11,7 +11,7 @@ export default async function PaymentMethodsPage() {
     const supabase = await getTenantSupabase()
     const { data, error } = await supabase
       .from('payment_methods')
-      .select('id, name, comment, active, created_at, updated_at')
+      .select('id, name, comment, active, import_payment_policy, created_at, updated_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
 
