@@ -441,9 +441,12 @@ export async function GET(
       }
     )
 
-    // Handle both single schema and array of schemas (Product + FAQPage)
+    // Return supplemental schema only (FAQPage) to avoid emitting a second Product/ProductGroup.
+    // ShopRenter native product schema remains canonical for commercial fields.
+    const supplementalStructuredData = extractSupplementalSchema(structuredData)
+
     // Return as JSON-LD with proper headers and UTF-8 encoding
-    return NextResponse.json(structuredData, {
+    return NextResponse.json(supplementalStructuredData || {}, {
       headers: {
         'Content-Type': 'application/ld+json; charset=UTF-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600', // Cache for 1 hour
@@ -462,6 +465,35 @@ export async function GET(
       }
     )
   }
+}
+
+function extractSupplementalSchema(data: any): any | null {
+  if (!data) return null
+
+  // @graph format
+  if (Array.isArray(data?.['@graph'])) {
+    const faqNode = data['@graph'].find((node: any) => node?.['@type'] === 'FAQPage')
+    if (faqNode) {
+      return {
+        '@context': 'https://schema.org/',
+        ...faqNode
+      }
+    }
+    return null
+  }
+
+  // Array format [Product, FAQPage]
+  if (Array.isArray(data)) {
+    const faqNode = data.find((node: any) => node?.['@type'] === 'FAQPage')
+    return faqNode || null
+  }
+
+  // Single object format
+  if (data?.['@type'] === 'FAQPage') {
+    return data
+  }
+
+  return null
 }
 
 /**

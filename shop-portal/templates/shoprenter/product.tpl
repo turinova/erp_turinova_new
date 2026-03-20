@@ -49,10 +49,14 @@
                 .then(jsonLd => {
                     // Inject our enhanced schema
                     const script = document.getElementById('enhanced-structured-data');
-                    if (script && jsonLd) {
+                    const hasGraph = jsonLd && Array.isArray(jsonLd['@graph']) && jsonLd['@graph'].length > 0;
+                    const hasType = jsonLd && typeof jsonLd['@type'] === 'string' && jsonLd['@type'].length > 0;
+                    if (script && (hasGraph || hasType)) {
                         script.textContent = JSON.stringify(jsonLd);
                         schemaInjected = true;
                         console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
+                    } else {
+                        console.log('[Enhanced Schema] No supplemental schema returned for SKU:', sku);
                     }
                 })
                 .catch(error => {
