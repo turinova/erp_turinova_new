@@ -6,137 +6,68 @@
 {% endblock %}
 
 {% block page_head %}
-    {# Enhanced Structured Data - MUST be in page_head to run BEFORE ShopRenter's schema #}
-    {# This removes ShopRenter's default schema immediately and injects our enhanced one #}
+    {# Enhanced JSON-LD: inject-only after successful API fetch. ShopRenter default schema stays if fetch fails. #}
     <script type="application/ld+json" id="enhanced-structured-data"></script>
     <script>
     (function() {
         'use strict';
-        
+
         const API_URL = 'https://shop.turinova.hu';
         const TENANT_SLUG = 'tenant-1'; // Hardcoded tenant slug - change this if needed
-        let schemaReplaced = false;
-        
-        // IMMEDIATELY remove any existing Product/ProductGroup schemas
-        // This runs as soon as script loads, before DOM is ready
-        function removeDefaultSchemasImmediately() {
-            // Use querySelector on document (works even before DOM ready)
-            const existingScripts = document.querySelectorAll ? document.querySelectorAll('script[type="application/ld+json"]') : [];
-            let removed = 0;
-            
-            for (let i = 0; i < existingScripts.length; i++) {
-                const script = existingScripts[i];
-                if (script.id === 'enhanced-structured-data') {
-                    continue;
-                }
-                
-                try {
-                    const data = JSON.parse(script.textContent || '{}');
-                    if (data['@type'] === 'Product' || data['@type'] === 'ProductGroup') {
-                        script.remove();
-                        removed++;
-                    }
-                } catch(e) {
-                    // Ignore parse errors
-                }
-            }
-            
-            return removed;
-        }
-        
-        // Remove schemas immediately (before DOM ready)
-        removeDefaultSchemasImmediately();
-        
-        // Also use MutationObserver to catch schemas added later
-        if (typeof MutationObserver !== 'undefined') {
-            const observer = new MutationObserver(function(mutations) {
-                if (!schemaReplaced) {
-                    const removed = removeDefaultSchemasImmediately();
-                    if (removed > 0) {
-                        console.log('[Enhanced Schema] Removed', removed, 'ShopRenter schema(s) via MutationObserver');
-                    }
-                }
-            });
-            
-            // Start observing as soon as possible
-            if (document.head) {
-                observer.observe(document.head, { childList: true, subtree: true });
-            }
-            if (document.body) {
-                observer.observe(document.body, { childList: true, subtree: true });
-            }
-            
-            // Also observe when DOM is ready
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                    if (document.head) observer.observe(document.head, { childList: true, subtree: true });
-                    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
-                });
-            }
-        }
-        
-        // Main function to fetch and inject schema
-        function replaceSchema() {
-            if (schemaReplaced) {
+        var schemaInjected = false;
+        var fetchStarted = false;
+
+        function injectEnhancedSchema() {
+            if (schemaInjected || fetchStarted) {
                 return;
             }
-            
-            // Always remove default schemas first
-            removeDefaultSchemasImmediately();
-            
-            // Check if ShopRenter is available
             if (typeof ShopRenter === 'undefined' || !ShopRenter.product || !ShopRenter.product.sku) {
-                // Retry after short delay
-                setTimeout(replaceSchema, 100);
+                setTimeout(injectEnhancedSchema, 100);
                 return;
             }
-            
-            const sku = ShopRenter.product.sku;
-            
-            // Build API URL with tenant parameter if available
-            let apiUrl = `${API_URL}/api/shoprenter/structured-data/${encodeURIComponent(sku)}.jsonld`;
+
+            fetchStarted = true;
+            var sku = ShopRenter.product.sku;
+            var apiUrl = API_URL + '/api/shoprenter/structured-data/' + encodeURIComponent(sku) + '.jsonld';
             if (TENANT_SLUG) {
-                apiUrl += `?tenant=${encodeURIComponent(TENANT_SLUG)}`;
+                apiUrl += '?tenant=' + encodeURIComponent(TENANT_SLUG);
             }
-            
-            // Fetch enhanced structured data
+
             fetch(apiUrl)
-                .then(response => {
+                .then(function(response) {
                     if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
+                        throw new Error('HTTP ' + response.status);
                     }
                     return response.json();
                 })
-                .then(jsonLd => {
-                    // Remove default schemas again (in case they were added after)
-                    removeDefaultSchemasImmediately();
-                    
-                    // Inject our enhanced schema
-                    const script = document.getElementById('enhanced-structured-data');
-                    if (script && jsonLd) {
-                        script.textContent = JSON.stringify(jsonLd);
-                        schemaReplaced = true;
-                        console.log('[Enhanced Schema] ✅ Injected enhanced structured data for SKU:', sku, TENANT_SLUG ? `(tenant: ${TENANT_SLUG})` : '');
+                .then(function(jsonLd) {
+                    if (!jsonLd) {
+                        fetchStarted = false;
+                        return;
                     }
+                    var script = document.getElementById('enhanced-structured-data');
+                    if (!script) {
+                        fetchStarted = false;
+                        return;
+                    }
+                    script.textContent = JSON.stringify(jsonLd);
+                    schemaInjected = true;
+                    console.log('[Enhanced Schema] Injected for SKU:', sku, TENANT_SLUG ? '(tenant: ' + TENANT_SLUG + ')' : '');
                 })
-                .catch(error => {
-                    console.error('[Enhanced Schema] ❌ Failed to load:', error);
+                .catch(function(error) {
+                    console.error('[Enhanced Schema] Failed to load (ShopRenter default schema remains):', error);
+                    fetchStarted = false;
                 });
         }
-        
-        // Start immediately (even before DOM ready)
-        replaceSchema();
-        
-        // Also try when DOM is ready
+
+        injectEnhancedSchema();
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', replaceSchema);
+            document.addEventListener('DOMContentLoaded', injectEnhancedSchema);
         } else {
-            replaceSchema();
+            injectEnhancedSchema();
         }
-        
-        // Keep trying with delays
-        setTimeout(replaceSchema, 500);
-        setTimeout(replaceSchema, 1000);
+        setTimeout(injectEnhancedSchema, 500);
+        setTimeout(injectEnhancedSchema, 1000);
     })();
     </script>
 {% endblock %}
