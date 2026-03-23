@@ -1,0 +1,10 @@
+-- Tenant DB checklist: durable product sync progress
+-- Run the full migration in your tenant Supabase SQL Editor:
+--   supabase/migrations/20260324_create_sync_jobs.sql
+--
+-- Prerequisites: sync_audit_logs (20250308), webshop_connections, update_updated_at_column()
+--
+-- Admin DB (migration tracking list):
+--   supabase/migrations/20260324_tenant_migration_list_sync_jobs.sql
+--
+-- See also: supabase/migrations/README_MANUAL_SQL_ORDER.md (section "Durable product sync jobs")

@@ -65,3 +65,21 @@ Run in **tenant** DB after order management and customer persons/companies exist
 | 1 | **20250329_orders_customer_company.sql** | Add `customer_company_id`, `customer_company_name` to `orders`; make `customer_firstname`/`customer_lastname` nullable |
 
 Prerequisites: `orders`, `customer_companies` tables must exist (from 20250130 and 20250326 migrations).
+
+---
+
+## Durable product sync jobs (20260324)
+
+Run in **tenant** DB **after** `sync_audit_logs` exists (see `20250308_create_sync_audit_logs.sql`).
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | **20260324_create_sync_jobs.sql** | Table `sync_jobs`: durable progress for ShopRenter → ERP product sync (survives refresh / multiple app instances) |
+
+**Admin database:** also run **`20260324_tenant_migration_list_sync_jobs.sql`** so `get_tenant_pending_migrations` includes this migration name.
+
+Verify:
+
+```sql
+SELECT id, status, total_units, synced_units, error_units FROM sync_jobs ORDER BY started_at DESC LIMIT 5;
+```

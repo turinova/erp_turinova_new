@@ -1244,40 +1244,46 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     return formDataChanged || productDataChanged || tagsChanged || urlSlugChanged || attributesChanged || categoriesChanged || productClassChanged
   }
 
-  // Check if product needs to be synced to ShopRenter
-  // This only checks saved database state, not unsaved form changes
+  // Check if product needs to be synced to ShopRenter (saved DB state only — not unsaved form edits)
   const needsSync = (): boolean => {
     if (!product || isNewProduct) return false
-    
-    // Check if product was updated after last sync (only saved changes matter)
-    const lastSyncedTo = (product as any)?.last_synced_to_shoprenter_at
+
+    if (product.sync_status === 'pending') {
+      return true
+    }
+
+    const lastSyncedTo = (product as any)?.last_synced_to_shoprenter_at as string | null | undefined
     const updatedAt = product.updated_at
-    
-    // If never synced, needs sync
+    const lastSyncedFrom = (product as any)?.last_synced_from_shoprenter_at as string | null | undefined
+
     if (!lastSyncedTo) {
       return true
     }
-    
-    // If ERP was updated after last sync, needs sync
-    if (updatedAt && lastSyncedTo) {
-      try {
-        const updatedAtDate = new Date(updatedAt)
-        const lastSyncedDate = new Date(lastSyncedTo)
-        
-        // Add a small buffer (1 second) to handle timestamp precision issues
-        // If updated_at is more than 1 second newer than last_synced_to, it needs sync
-        const timeDiff = updatedAtDate.getTime() - lastSyncedDate.getTime()
-        const needsSyncResult = timeDiff > 1000 // More than 1 second difference
-        
-        return needsSyncResult
-      } catch (error) {
-        // If date parsing fails, assume needs sync
-        console.error('Error parsing dates for sync check:', error)
-        return true
-      }
+
+    if (!updatedAt) {
+      return false
     }
-    
-    return false
+
+    try {
+      const u = new Date(updatedAt).getTime()
+      const to = new Date(lastSyncedTo).getTime()
+      if (u - to <= 1000) {
+        return false
+      }
+
+      // After a pull-only refresh, updated_at and last_synced_from are ~same; don't flag "must push"
+      if (lastSyncedFrom) {
+        const f = new Date(lastSyncedFrom).getTime()
+        if (!Number.isNaN(f) && u <= f + 2000) {
+          return false
+        }
+      }
+
+      return u - to > 1000
+    } catch (error) {
+      console.error('Error parsing dates for sync check:', error)
+      return true
+    }
   }
 
   // Handle navigation with unsaved changes check
@@ -2859,6 +2865,17 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
             </Alert>
           )}
         </Paper>
+      )}
+
+      {!isNewProduct && (product as any)?.connection_id && (
+        <Alert severity="info" sx={{ mb: 2 }} icon={<InfoIcon />}>
+          <Typography variant="body2">
+            <strong>Frissítés a webshopból:</strong> a ShopRenter legújabb adatait tölti be az ERP-be (pl. attribútumok, árak).
+          </Typography>
+          <Typography variant="body2" sx={{ mt: 0.5 }}>
+            <strong>Szinkronizálás a webshopba:</strong> az ERP-ben <em>mentett</em> változásokat küldi ki. Mentse a terméket a szinkron előtt; a webshop push-hoz szükség van legalább egy mentett termékleírásra is.
+          </Typography>
+        </Alert>
       )}
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

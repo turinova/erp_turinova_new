@@ -121,9 +121,8 @@ async function processBulkSyncInBackground(
 
   try {
     // Import batch fetch function and sync function
-    const syncProductsModule = await import('@/app/api/connections/[id]/sync-products/route')
-    const batchFetchAttributeDescriptions = syncProductsModule.batchFetchAttributeDescriptions
-    const syncProductToDatabase = syncProductsModule.syncProductToDatabase
+    const { batchFetchAttributeDescriptions } = await import('@/lib/shoprenter-attribute-sync')
+    const { syncProductToDatabase } = await import('@/app/api/connections/[id]/sync-products/sync-product-db')
 
     // Process each connection group
     for (const [connectionId, connectionProducts] of productsByConnection.entries()) {

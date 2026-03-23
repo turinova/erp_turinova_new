@@ -83,7 +83,6 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [syncDialogOpen, setSyncDialogOpen] = useState(false)
   const [syncDialogConnection, setSyncDialogConnection] = useState<WebshopConnection | null>(null)
-  const [forceSyncEnabled, setForceSyncEnabled] = useState(false) // Force full sync option
   const [vatMappingDialogOpen, setVatMappingDialogOpen] = useState(false)
   const [vatMappingConnection, setVatMappingConnection] = useState<WebshopConnection | null>(null)
   const [vatRates, setVatRates] = useState<Array<{ id: string; name: string; kulcs: number }>>([])
@@ -94,6 +93,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null)
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
+  const [fullSyncConnectionId, setFullSyncConnectionId] = useState<string | null>(null)
+  const [fullSyncStep, setFullSyncStep] = useState<'idle' | 'categories' | 'product_classes' | 'products'>('idle')
   const [syncHistoryDialogOpen, setSyncHistoryDialogOpen] = useState(false)
   const [syncHistoryConnection, setSyncHistoryConnection] = useState<WebshopConnection | null>(null)
   const [settingUpWebhooks, setSettingUpWebhooks] = useState(false)
@@ -1171,8 +1172,79 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
     
     setSyncDialogConnection(connection)
-    setForceSyncEnabled(false) // Reset to default (incremental sync)
     setSyncDialogOpen(true)
+  }
+
+  const handleRecoverySync = async (connection: WebshopConnection) => {
+    toast.info('Helyreállítási szinkron indul: változások szinkronja (ajánlott).')
+    await handleSyncProducts(connection, false)
+  }
+
+  const waitForCategorySyncCompletion = async (connectionId: string): Promise<void> => {
+    const startedAt = Date.now()
+    const timeoutMs = 10 * 60 * 1000
+    while (Date.now() - startedAt < timeoutMs) {
+      const res = await fetch(`/api/connections/${connectionId}/sync-categories`)
+      if (res.ok) {
+        const data = await res.json()
+        const status = data?.progress?.status
+        if (status === 'completed') return
+        if (status === 'error' || status === 'stopped') {
+          throw new Error('Kategória szinkronizálás nem fejeződött be sikeresen.')
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+    throw new Error('Kategória szinkronizálás időtúllépés (10 perc).')
+  }
+
+  const handleGuidedFullSync = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('Csak ShopRenter kapcsolatokhoz érhető el a teljes frissítés.')
+      return
+    }
+    if (fullSyncConnectionId || syncingConnectionId || syncingCategoriesConnectionId || syncingProductClassesConnectionId) {
+      toast.warning('Már fut egy szinkronizálás. Várja meg a befejezést.')
+      return
+    }
+
+    try {
+      setFullSyncConnectionId(connection.id)
+      toast.info('Teljes frissítés indul: Kategóriák -> Termék típusok -> Termékek.')
+
+      setFullSyncStep('categories')
+      const catStart = await fetch(`/api/connections/${connection.id}/sync-categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!catStart.ok) {
+        const err = await catStart.json().catch(() => null)
+        throw new Error(err?.error || 'Kategória szinkronizálás indítása sikertelen')
+      }
+      await waitForCategorySyncCompletion(connection.id)
+      toast.success('1/3 Kategóriák szinkronizálva')
+
+      setFullSyncStep('product_classes')
+      const classRes = await fetch(`/api/connections/${connection.id}/sync-product-classes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      const classData = await classRes.json().catch(() => null)
+      if (!classRes.ok || !classData?.success) {
+        throw new Error(classData?.error || 'Termék típusok szinkronizálása sikertelen')
+      }
+      toast.success('2/3 Termék típusok szinkronizálva')
+
+      setFullSyncStep('products')
+      toast.info('3/3 Teljes termék szinkron indul...')
+      await handleSyncProducts(connection, true)
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Ismeretlen hiba'
+      toast.error(`Teljes frissítés megszakadt: ${msg}`)
+    } finally {
+      setFullSyncStep('idle')
+      setFullSyncConnectionId(null)
+    }
   }
 
   const handleSyncCategoriesClick = async (connection: WebshopConnection) => {
@@ -1597,7 +1669,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         // Handle 429 (Rate Limit) - rate limit exceeded
         if (response.status === 429) {
           toast.error(
-            'A webshop API túl sok kérést kapott. Kérjük, várjon 2-3 percet, majd próbálja újra. Ha a probléma továbbra is fennáll, ellenőrizze a kapcsolat beállításait.',
+            'A webshop API túl sok kérést kapott (429). Várjon 2-3 percet, majd indítsa újra a "Változások szinkronja (ajánlott)" módot. Ha ismétlődik, ellenőrizze a hitelesítést és a ShopRenter API limitet.',
             { autoClose: 10000 }
           )
           setSyncingConnectionId(null)
@@ -1911,14 +1983,14 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                             borderColor: 'divider'
                           }}>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                              Szinkronizálási állapot
+                              Áttekintés
                             </Typography>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', mb: 1 }}>
                               {getStatusIndicator(connection)}
                               {isSyncing && syncProgress && (
                                 <Chip
                                   size="small"
-                                  label={`Importálás: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')}`}
+                                  label={`Termék szinkron: ${syncProgress.synced.toLocaleString('hu-HU')}/${syncProgress.total.toLocaleString('hu-HU')}`}
                                   color="primary"
                                   sx={{ height: '24px', fontWeight: 600 }}
                                 />
@@ -1958,7 +2030,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                 {syncStatus.lastSync?.productsFrom && (
                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                                     <Typography variant="caption" color="text.secondary">
-                                      Utolsó importálás:
+                                      Utolsó webshop - ERP szinkron:
                                     </Typography>
                                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
                                       {formatTimeAgo(syncStatus.lastSync.productsFrom.date)}
@@ -1968,13 +2040,36 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                 {syncStatus.lastSync?.productsTo && (
                                   <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                     <Typography variant="caption" color="text.secondary">
-                                      Utolsó szinkronizálás webshopba:
+                                      Utolsó ERP - webshop szinkron:
                                     </Typography>
                                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
                                       {formatTimeAgo(syncStatus.lastSync.productsTo.date)}
                                     </Typography>
                                   </Box>
                                 )}
+                                <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px dashed', borderColor: 'divider' }}>
+                                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                                    Előzmény gyorskártyák
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ display: 'block' }}>
+                                    Utolsó sikeres webshop - ERP: {syncStatus.recovery?.lastSuccessfulProductsFrom?.date ? formatTimeAgo(syncStatus.recovery.lastSuccessfulProductsFrom.date) : 'Nincs'}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ display: 'block', color: syncStatus.recovery?.lastFailedProductsFrom ? 'error.main' : 'text.secondary' }}>
+                                    Utolsó hiba: {syncStatus.recovery?.lastFailedProductsFrom?.error || (syncStatus.recovery?.lastFailedProductsFrom ? 'Ismeretlen hiba' : 'Nincs')}
+                                  </Typography>
+                                  {syncStatus.recovery?.suggested && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="warning"
+                                      sx={{ mt: 1 }}
+                                      onClick={() => handleRecoverySync(connection)}
+                                      disabled={isSyncing}
+                                    >
+                                      Helyreállítási szinkron indítása
+                                    </Button>
+                                  )}
+                                </Box>
                               </Box>
                             )}
                           </Box>
@@ -1988,7 +2083,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                             borderColor: 'divider'
                           }}>
                             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                              További információk
+                              Felkészültség
                             </Typography>
                             {syncStatus && (
                               <>
@@ -2003,7 +2098,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                 {syncStatus.lastSync?.categories && (
                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
                                     <Typography variant="caption" color="text.secondary">
-                                      Utolsó kategória szinkronizálás:
+                                      Utolsó kategória szinkron:
                                     </Typography>
                                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
                                       {formatTimeAgo(syncStatus.lastSync.categories.date)}
@@ -2016,6 +2111,22 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                   </Typography>
                                   <Typography variant="caption" sx={{ fontWeight: 600 }}>
                                     {syncStatus.counts?.taxMappings || 0}
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Fizetési mód leképezések:
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                    {syncStatus.counts?.paymentMappings ?? 0}
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">
+                                    Szállítási mód leképezések:
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                    {syncStatus.counts?.shippingMappings ?? 0}
                                   </Typography>
                                 </Box>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, pt: 1, borderTop: '1px solid', borderColor: 'divider' }}>
@@ -2046,6 +2157,9 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                   })()}
 
                   {/* Actions Section - Modern Clean Design */}
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                    Termékszinkron
+                  </Typography>
                   <Box sx={{ 
                     display: 'flex', 
                     alignItems: 'center',
@@ -2054,7 +2168,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                     borderTop: '1px solid',
                     borderColor: 'divider'
                   }}>
-                    {/* Primary Action: Import (most common) */}
+                    {/* Primary Action: Product sync (most common) */}
                     {connection.connection_type === 'shoprenter' && (
                       <Button
                         variant="contained"
@@ -2076,7 +2190,30 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                           }
                         }}
                       >
-                        {isSyncing ? 'Importálás...' : 'Importálás webshopból'}
+                        {isSyncing ? 'Szinkronizálás...' : 'Gyors frissítés (ajánlott)'}
+                      </Button>
+                    )}
+                    {connection.connection_type === 'shoprenter' && (
+                      <Button
+                        variant="outlined"
+                        size="medium"
+                        startIcon={fullSyncConnectionId === connection.id ? <CircularProgress size={18} /> : <SyncIcon />}
+                        onClick={() => handleGuidedFullSync(connection)}
+                        disabled={isSyncing || fullSyncConnectionId === connection.id}
+                        sx={{
+                          fontWeight: 600,
+                          px: 2.5,
+                        }}
+                      >
+                        {fullSyncConnectionId === connection.id
+                          ? (fullSyncStep === 'categories'
+                              ? 'Teljes frissítés: kategóriák...'
+                              : fullSyncStep === 'product_classes'
+                                ? 'Teljes frissítés: termék típusok...'
+                                : fullSyncStep === 'products'
+                                  ? 'Teljes frissítés: termékek...'
+                                  : 'Teljes frissítés...')
+                          : 'Teljes frissítés'}
                       </Button>
                     )}
                     
@@ -2144,6 +2281,13 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                       }}
                     >
                       {connection.connection_type === 'shoprenter' && (
+                        <MenuItem disabled sx={{ opacity: 1 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                            Termékszinkron
+                          </Typography>
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
                         <MenuItem
                           onClick={() => {
                             handleSyncCategoriesClick(connection)
@@ -2180,6 +2324,13 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         >
                           <PeopleIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
                           {isSyncingCustomers ? 'Szinkronizálás...' : 'Vevők szinkronizálása'}
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
+                        <MenuItem disabled sx={{ opacity: 1 }}>
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                            Felkészültség
+                          </Typography>
                         </MenuItem>
                       )}
                       {connection.connection_type === 'shoprenter' && (
@@ -2232,6 +2383,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         </MenuItem>
                       )}
                       {connection.connection_type === 'shoprenter' && <Divider />}
+                      <MenuItem disabled sx={{ opacity: 1 }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                          Előzmények
+                        </Typography>
+                      </MenuItem>
                       <MenuItem
                         onClick={() => {
                           setSyncHistoryConnection(connection)
@@ -2246,6 +2402,86 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                       </MenuItem>
                     </Menu>
                   </Box>
+                  {connection.connection_type === 'shoprenter' && (
+                    <Box
+                      sx={{
+                        mt: 1.5,
+                        p: 1.5,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 1.5,
+                        bgcolor: 'rgba(25, 118, 210, 0.03)',
+                      }}
+                    >
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        Teljes frissítés folyamata
+                      </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                          size="small"
+                          icon={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'categories'
+                              ? <CircularProgress size={12} />
+                              : <CheckCircleIcon />
+                          }
+                          label="1. Kategóriák"
+                          color={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'categories'
+                              ? 'primary'
+                              : 'default'
+                          }
+                          variant={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'categories'
+                              ? 'filled'
+                              : 'outlined'
+                          }
+                        />
+                        <Typography variant="caption" color="text.secondary">→</Typography>
+                        <Chip
+                          size="small"
+                          icon={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'product_classes'
+                              ? <CircularProgress size={12} />
+                              : <CheckCircleIcon />
+                          }
+                          label="2. Termék típusok"
+                          color={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'product_classes'
+                              ? 'primary'
+                              : 'default'
+                          }
+                          variant={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'product_classes'
+                              ? 'filled'
+                              : 'outlined'
+                          }
+                        />
+                        <Typography variant="caption" color="text.secondary">→</Typography>
+                        <Chip
+                          size="small"
+                          icon={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'products'
+                              ? <CircularProgress size={12} />
+                              : <CheckCircleIcon />
+                          }
+                          label="3. Termékek"
+                          color={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'products'
+                              ? 'primary'
+                              : 'default'
+                          }
+                          variant={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'products'
+                              ? 'filled'
+                              : 'outlined'
+                          }
+                        />
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                        Gyors frissítés csak a 3. lépést futtatja (termékek változásai).
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
               </Grid>
             )
@@ -2299,7 +2535,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                                                           syncProgress.status === 'error' ? '#c62828' : 
                                                                           syncProgress.status === 'stopped' ? '#e65100' : 
                                                                           '#616161' }}>
-                  Importálás webshopból
+                  Termék szinkron (webshop - ERP)
                 </Typography>
                 {currentSyncingConnectionRef.current && (
                   <Typography variant="body2" color="text.secondary">
@@ -2373,11 +2609,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 <>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography variant="body2" color="text.secondary">
-                      {syncProgress.status === 'completed' ? 'Importálás befejezve!' : 
-                       syncProgress.status === 'error' ? 'Importálás hibával leállt!' :
-                       syncProgress.status === 'stopped' ? 'Importálás leállítva' :
-                       syncProgress.status === 'syncing' || !syncProgress.status ? 'Importálás folyamatban...' :
-                       'Importálás folyamatban...'}
+                      {syncProgress.status === 'completed' ? 'Szinkronizálás befejezve!' : 
+                       syncProgress.status === 'error' ? 'Szinkronizálás hibával leállt!' :
+                       syncProgress.status === 'stopped' ? 'Szinkronizálás leállítva' :
+                       syncProgress.status === 'syncing' || !syncProgress.status ? 'Szinkronizálás folyamatban...' :
+                       'Szinkronizálás folyamatban...'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary" fontWeight="medium">
                       {syncProgress.synced} / {syncProgress.total} termék
@@ -3450,7 +3686,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               <CloudDownloadIcon sx={{ color: 'white', fontSize: '24px' }} />
             </Box>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#616161' }}>
-              Importálás webshopból
+              Termékek szinkronizálása a webshopból
             </Typography>
           </Box>
         </DialogTitle>
@@ -3458,63 +3694,50 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           <Alert severity="warning" sx={{ mb: 2 }}>
             <AlertTitle>Mikor használja ezt?</AlertTitle>
             <Typography variant="body2">
-              Csak akkor importáljon a webshopból, ha a webshopban történt módosítás, amit az ERP-ben nem lehet megtenni.
+              Csak akkor töltse le / szinkronizálja a webshopból a termékeket, ha a webshopban történt olyan változás, amit az ERP-ben nem tud kezelni.
               <br />
-              <strong>Példa:</strong> Termékek tömeges módosítása a webshop admin felületén.
+              <strong>Példa:</strong> tömeges módosítás a ShopRenter admin felületén.
             </Typography>
           </Alert>
           
           <Alert severity="error" sx={{ mb: 2 }}>
             <AlertTitle>Figyelem</AlertTitle>
             <Typography variant="body2">
-              Az importálás <strong>felülírhatja az ERP-ben lévő adatokat</strong>. Csak akkor importáljon, ha biztos benne, 
-              hogy a webshop változásai fontosabbak, mint az ERP-ben lévő adatok.
+              A webshopból érkező szinkron <strong>felülírhatja az ERP-ben lévő termékmezőket</strong>. Csak akkor indítsa, ha biztos benne,
+              hogy a webshop adatai most fontosabbak.
               <br />
-              <strong>Az ERP az adatok forrása - általában nem szükséges importálni!</strong>
+              <strong>Általában az ERP a vezérlő rendszer — a teljes letöltés csak szükség esetén kell.</strong>
             </Typography>
           </Alert>
 
           <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-              {forceSyncEnabled ? 'Teljes importálás' : 'Inkrementális importálás (ajánlott)'}
+              Gyors frissítés (ajánlott)
             </Typography>
             <Typography variant="body2">
-              {forceSyncEnabled ? (
-                <>
-                  A teljes importálás során <strong>minden termékadat</strong> frissül a webshopból. 
-                  Ez biztosítja, hogy az ERP adatbázis pontosan egyezzen a ShopRenter webshop adataival.
-                </>
-              ) : (
-                <>
-                  Az inkrementális importálás csak az <strong>új vagy módosított termékeket</strong> importálja, 
-                  ami <strong>80-90%-kal gyorsabb</strong> lehet. Automatikusan észleli a törölt termékeket is.
-                </>
-              )}
+              Ez a művelet csak az új vagy módosult termékeket frissíti a webshopból az ERP-be.
+              A webshopból eltűnt termékeket az ERP töröltként jelöli. Ez a leggyorsabb és napi használatra ajánlott mód.
             </Typography>
           </Alert>
-          <Box sx={{ mb: 2 }}>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={forceSyncEnabled}
-                  onChange={(e) => setForceSyncEnabled(e.target.checked)}
-                  color="primary"
-                />
-              }
-              label={
-                <Box>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    Teljes szinkronizálás kényszerítése
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Minden termék szinkronizálása, még akkor is, ha nem változott
-                  </Typography>
-                </Box>
-              }
-            />
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <Typography variant="body2">
+              A termék szinkron önmagában nem frissíti automatikusan a kategória- és termék típus törzseket.
+              Teljes egyeztetéshez használja a kártyán a <strong>Teljes frissítés</strong> gombot (Kategóriák - Termék típusok - Termékek).
+            </Typography>
+          </Alert>
+          <Box sx={{ mb: 2, p: 2, bgcolor: 'rgba(25, 118, 210, 0.04)', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+              Mi fog most történni?
+            </Typography>
+            <Box component="ol" sx={{ pl: 2, m: 0 }}>
+              <li><Typography variant="body2" color="text.secondary">Lekérdezzük a webshop terméklistát.</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Kiválasztjuk csak a változott / új termékeket.</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Frissítjük az ERP termékadatokat (képek, attribútumok, kapcsolatok).</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">A hiányzó webshop termékeket töröltként jelöljük.</Typography></li>
+            </Box>
           </Box>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            Biztosan szeretné importálni a termékeket a webshopból?
+            Biztosan elindítja a termékek szinkronizálását a webshopból az ERP-be?
           </Typography>
           <Box sx={{ 
             p: 2, 
@@ -3546,14 +3769,14 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
             onClick={() => {
               if (syncDialogConnection) {
                 setSyncDialogOpen(false)
-                handleSyncProducts(syncDialogConnection, forceSyncEnabled)
+                handleSyncProducts(syncDialogConnection, false)
               }
             }}
             variant="contained"
             color="primary"
             startIcon={<CloudDownloadIcon />}
           >
-            Importálás indítása
+            Szinkron indítása
           </Button>
         </DialogActions>
       </Dialog>
@@ -3992,7 +4215,29 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               </Typography>
             </Box>
           ) : (
-            <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
+            <>
+              <Box sx={{ mb: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.5 }}>
+                <Alert severity="success" variant="outlined">
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Utolsó sikeres webshop - ERP
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {(syncLogs.find(l => l.sync_direction === 'from_shoprenter' && l.status === 'completed')?.started_at
+                      ? new Date(syncLogs.find(l => l.sync_direction === 'from_shoprenter' && l.status === 'completed')!.started_at).toLocaleString('hu-HU')
+                      : 'Nincs sikeres bejegyzés')}
+                  </Typography>
+                </Alert>
+                <Alert severity="error" variant="outlined">
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                    Utolsó hiba oka
+                  </Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {(syncLogs.find(l => l.sync_direction === 'from_shoprenter' && (l.status === 'failed' || l.status === 'stopped'))?.error_message
+                      || 'Nincs hiba bejegyzés')}
+                  </Typography>
+                </Alert>
+              </Box>
+              <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid', borderColor: 'divider' }}>
               <Table>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: 'action.hover' }}>
@@ -4145,6 +4390,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 </TableBody>
               </Table>
             </TableContainer>
+            </>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 1 }}>
@@ -4186,7 +4432,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                 Cél kapcsolat:
               </Typography>
               <Chip 
-                label={migrationConnection.name || migrationConnection.shop_name || 'Ismeretlen'} 
+                label={migrationConnection.name || 'Ismeretlen'} 
                 color="primary" 
                 size="small"
               />

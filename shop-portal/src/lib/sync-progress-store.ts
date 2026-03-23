@@ -14,6 +14,8 @@ export interface SyncProgress {
   currentBatch?: number
   totalBatches?: number
   batchProgress?: number // products processed in current batch
+  /** PostgreSQL sync_jobs.id — durable progress across instances / refresh */
+  syncJobId?: string
 }
 
 // Global in-memory progress store
@@ -109,7 +111,9 @@ export function clearProgress(connectionId: string) {
 }
 
 /**
- * Stop sync (set shouldStop flag)
+ * Stop sync (set shouldStop flag).
+ * If no in-memory progress exists (e.g. stop hit a different instance), still insert a minimal
+ * entry so the same process can observe shouldStop once progress is created, or for tests.
  */
 export function stopSync(connectionId: string) {
   const store = getProgressStore()
@@ -122,7 +126,16 @@ export function stopSync(connectionId: string) {
     })
     console.log(`[PROGRESS] Stopped sync for ${connectionId}, storeSize=${store.size}`)
   } else {
-    console.log(`[PROGRESS] Cannot stop sync for ${connectionId}: progress not found`)
+    store.set(connectionId, {
+      total: 0,
+      synced: 0,
+      current: 0,
+      status: 'stopped',
+      errors: 0,
+      startTime: Date.now(),
+      shouldStop: true
+    })
+    console.log(`[PROGRESS] Stopped sync for ${connectionId}: created minimal progress (stop without prior entry)`)
   }
 }
 

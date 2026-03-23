@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
+import { syncSingleProductFromShopRenter } from '@/lib/sync-single-shoprenter-product'
 import { getConnectionById } from '@/lib/connections-server'
 import {
   extractShopNameFromUrl,
@@ -260,7 +261,7 @@ export async function POST(
     }
 
     // Get authentication
-    const { authHeader, apiBaseUrl, useOAuth } = await getShopRenterAuthHeader(
+    const { authHeader, apiBaseUrl } = await getShopRenterAuthHeader(
       shopName,
       connection.username,
       connection.password,
@@ -3598,42 +3599,24 @@ export async function POST(
       console.warn(`[SYNC] Error syncing promotions:`, promotionSyncError?.message || promotionSyncError)
     }
 
-    // Now pull back from ShopRenter to verify
-    const pullUrl = useOAuth 
-      ? `${apiBaseUrl}/productExtend/${product.shoprenter_id}?full=1`
-      : `${apiBaseUrl}/productExtend/${product.shoprenter_id}?full=1`
-    
-    const pullResponse = await fetch(pullUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'Authorization': authHeader
-      },
-      signal: AbortSignal.timeout(30000)
+    // Pull back from ShopRenter to verify (inline — no HTTP self-call to /sync-products)
+    const tenantCtx = await getTenantFromSession()
+    const tenantIdForPull = tenantCtx?.id
+    const connectionForPull = Array.isArray(product.webshop_connections)
+      ? product.webshop_connections[0]
+      : product.webshop_connections
+
+    const verifyResult = await syncSingleProductFromShopRenter({
+      supabase,
+      connection: connectionForPull,
+      shoprenterProductId: product.shoprenter_id,
+      forceSync: false,
+      tenantId: tenantIdForPull,
+      apiUrl: apiBaseUrl,
+      authHeader,
     })
-
-    if (pullResponse.ok) {
-      const pullData = await pullResponse.json().catch(() => null)
-      
-      if (pullData) {
-        // Update local database with pulled data (sync from ShopRenter)
-        // This ensures local DB matches what's in ShopRenter
-        const syncResponse = await fetch(`${request.nextUrl.origin}/api/connections/${connection.id}/sync-products`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            product_id: product.shoprenter_id
-          })
-        })
-
-        // Don't fail if pull sync fails, we already pushed successfully
-        if (!syncResponse.ok) {
-          console.warn('[SYNC] Pull verification failed, but push was successful')
-        }
-      }
+    if (verifyResult.ok === false) {
+      console.warn('[SYNC] Pull verification failed, but push was successful:', verifyResult.error)
     }
 
     // Update product sync status

@@ -26,6 +26,10 @@ export interface ShopRenterProduct {
   url_alias_id: string | null  // ShopRenter URL alias resource ID
   last_url_synced_at: string | null
   last_synced_at: string | null
+  /** Last successful pull from ShopRenter → ERP */
+  last_synced_from_shoprenter_at?: string | null
+  /** Last successful push from ERP → ShopRenter */
+  last_synced_to_shoprenter_at?: string | null
   sync_status: string
   sync_error: string | null
   // Product attributes (from ShopRenter productAttributeExtend)

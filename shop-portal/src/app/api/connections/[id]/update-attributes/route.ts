@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
-import { batchFetchAttributeDescriptions, batchFetchAttributeWidgetDescriptions } from '../sync-products/route'
+import { batchFetchAttributeDescriptions, batchFetchAttributeWidgetDescriptions } from '@/lib/shoprenter-attribute-sync'
 
 /**
  * POST /api/connections/[id]/update-attributes

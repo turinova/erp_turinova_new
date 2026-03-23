@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import { getProgress } from '@/lib/sync-progress-store'
+import { reconcileStaleRunningSyncJob } from '@/lib/sync-job-db'
 
 /**
  * GET /api/connections/[id]/sync-status
@@ -29,8 +30,34 @@ export async function GET(
       return NextResponse.json({ error: 'Connection not found or invalid type' }, { status: 404 })
     }
 
-    // Get current sync progress (if any)
-    const currentProductProgress = getProgress(connectionId)
+    // Current product sync: in-memory first, then durable sync_jobs (refresh / multi-instance)
+    let currentProductProgress = getProgress(connectionId)
+    if (!currentProductProgress) {
+      try {
+        await reconcileStaleRunningSyncJob(supabase, connectionId)
+        const { data: runningJob } = await supabase
+          .from('sync_jobs')
+          .select('synced_units, total_units, error_units, status')
+          .eq('connection_id', connectionId)
+          .eq('status', 'running')
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (runningJob) {
+          currentProductProgress = {
+            total: runningJob.total_units ?? 0,
+            synced: runningJob.synced_units ?? 0,
+            current: (runningJob.synced_units ?? 0) + (runningJob.error_units ?? 0),
+            status: 'syncing',
+            errors: runningJob.error_units ?? 0,
+            startTime: Date.now(),
+          }
+        }
+      } catch (e) {
+        console.warn('[sync-status] sync_jobs fallback skipped:', e)
+      }
+    }
+
     const currentCategoryProgress = getProgress(`categories-${connectionId}`)
 
     // Get last sync information from audit logs
@@ -60,6 +87,26 @@ export async function GET(
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
+
+    const { data: lastSuccessfulProductsFrom } = await supabase
+      .from('sync_audit_logs')
+      .select('*')
+      .eq('connection_id', connectionId)
+      .eq('sync_direction', 'from_shoprenter')
+      .eq('status', 'completed')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const { data: lastFailedProductsFrom } = await supabase
+      .from('sync_audit_logs')
+      .select('*')
+      .eq('connection_id', connectionId)
+      .eq('sync_direction', 'from_shoprenter')
+      .in('status', ['failed', 'stopped'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     // Get product counts
     const { count: totalProducts, error: productsCountError } = await supabase
@@ -92,6 +139,16 @@ export async function GET(
     // Get tax mapping counts
     const { count: taxMappingsCount, error: taxMappingsError } = await supabase
       .from('shoprenter_tax_class_mappings')
+      .select('*', { count: 'exact', head: true })
+      .eq('connection_id', connectionId)
+
+    const { count: paymentMappingsCount } = await supabase
+      .from('connection_payment_method_mappings')
+      .select('*', { count: 'exact', head: true })
+      .eq('connection_id', connectionId)
+
+    const { count: shippingMappingsCount } = await supabase
+      .from('connection_shipping_method_mappings')
       .select('*', { count: 'exact', head: true })
       .eq('connection_id', connectionId)
 
@@ -165,6 +222,23 @@ export async function GET(
           user: lastCategorySync.user_email || null
         } : null
       },
+      recovery: {
+        suggested: Boolean(
+          lastFailedProductsFrom &&
+          (!lastSuccessfulProductsFrom || new Date(lastFailedProductsFrom.created_at) > new Date(lastSuccessfulProductsFrom.created_at))
+        ),
+        lastSuccessfulProductsFrom: lastSuccessfulProductsFrom ? {
+          date: lastSuccessfulProductsFrom.created_at,
+          synced: lastSuccessfulProductsFrom.synced_count || 0,
+          total: lastSuccessfulProductsFrom.total_products || 0,
+          status: lastSuccessfulProductsFrom.status
+        } : null,
+        lastFailedProductsFrom: lastFailedProductsFrom ? {
+          date: lastFailedProductsFrom.created_at,
+          status: lastFailedProductsFrom.status,
+          error: lastFailedProductsFrom.error_message || null
+        } : null
+      },
       counts: {
         products: {
           total: totalProducts || 0,
@@ -176,7 +250,9 @@ export async function GET(
           synced: syncedCategories || 0,
           status: categorySyncStatus
         },
-        taxMappings: taxMappingsCount || 0
+        taxMappings: taxMappingsCount || 0,
+        paymentMappings: paymentMappingsCount || 0,
+        shippingMappings: shippingMappingsCount || 0
       }
     })
   } catch (error) {
