@@ -11,7 +11,7 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   verifying: 'Ellenőrzés',
   packing: 'Csomagolás',
   awaiting_carrier: 'Futárra vár',
-  shipped: 'Átadva / Úton',
+  shipped: 'Futárnak átadva',
   ready_for_pickup: 'Személyes átvételre vár',
   delivered: 'Kézbesítve',
   cancelled: 'Törölve',
@@ -71,6 +71,72 @@ export const DELETABLE_ORDER_STATUSES = ['pending_review', 'new', 'cancelled', '
 
 export function canDeleteOrder(status: string): boolean {
   return DELETABLE_ORDER_STATUSES.includes(status)
+}
+
+export type OrderStatusLabelContext = {
+  shippingMethodName?: string | null
+  shippingMethodCode?: string | null
+  /**
+   * Prefer explicit fulfillment-type signal when available.
+   * If omitted, pickup/carrier is inferred from shipping method fields.
+   */
+  fulfillmentKind?: 'pickup' | 'carrier' | null
+}
+
+/**
+ * Heuristic for pickup-like shipping methods in HU naming conventions.
+ */
+export function isPickupLikeShippingMethod(
+  shippingMethodName?: string | null,
+  shippingMethodCode?: string | null
+): boolean {
+  const n = String(shippingMethodName || '').trim().toLowerCase()
+  const c = String(shippingMethodCode || '').trim().toLowerCase()
+  const raw = `${n} ${c}`
+  if (!raw.trim()) return false
+
+  return (
+    raw.includes('pickup') ||
+    raw.includes('pick up') ||
+    raw.includes('személyes') ||
+    raw.includes('szemelyes') ||
+    raw.includes('átvétel') ||
+    raw.includes('atvetel') ||
+    raw.includes('bolt') ||
+    raw.includes('üzlet') ||
+    raw.includes('uzlet') ||
+    raw.includes('store') ||
+    raw.includes('click&collect') ||
+    raw.includes('click and collect')
+  )
+}
+
+/**
+ * Context-aware status label:
+ * - shipped: carrier handover wording
+ * - delivered: "Átadva vevőnek" for pickup, "Kézbesítve" for carrier
+ */
+export function getOrderStatusLabel(
+  status: string | null | undefined,
+  context?: OrderStatusLabelContext
+): string {
+  const key = String(status || '').trim()
+  if (!key) return ''
+
+  if (key === 'shipped') {
+    return 'Futárnak átadva'
+  }
+
+  if (key === 'delivered') {
+    const explicitPickup = context?.fulfillmentKind === 'pickup'
+    const inferredPickup = isPickupLikeShippingMethod(
+      context?.shippingMethodName,
+      context?.shippingMethodCode
+    )
+    return explicitPickup || inferredPickup ? 'Átadva vevőnek' : 'Kézbesítve'
+  }
+
+  return ORDER_STATUS_LABELS[key] || key
 }
 
 /** Fulfillability badge (only for status === 'new') */

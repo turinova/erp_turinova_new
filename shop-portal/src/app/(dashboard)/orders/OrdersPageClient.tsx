@@ -15,7 +15,7 @@ import {
   Pagination,
   Paper
 } from '@mui/material'
-import { Search as SearchIcon } from '@mui/icons-material'
+import { Search as SearchIcon, Add as AddIcon } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { useDebounce } from '@/hooks/useDebounce'
 import OrdersTable from './OrdersTable'
@@ -136,9 +136,20 @@ export default function OrdersPageClient({
             részletekhez kattintson a sorra.
           </Typography>
         </Box>
-        <Button component={NextLink} href="/orders/buffer" variant="outlined" sx={{ textTransform: 'none', fontWeight: 600 }}>
-          Rendelés puffer →
-        </Button>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5, alignItems: 'center' }}>
+          <Button
+            component={NextLink}
+            href="/orders/new"
+            variant="contained"
+            startIcon={<AddIcon />}
+            sx={{ textTransform: 'none', fontWeight: 600 }}
+          >
+            Új rendelés
+          </Button>
+          <Button component={NextLink} href="/orders/buffer" variant="outlined" sx={{ textTransform: 'none', fontWeight: 600 }}>
+            Rendelés puffer →
+          </Button>
+        </Box>
       </Box>
 
       <Paper

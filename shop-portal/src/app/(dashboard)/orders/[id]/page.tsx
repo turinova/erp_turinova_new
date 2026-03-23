@@ -9,6 +9,31 @@ interface PageProps {
   params: Promise<{ id: string }>
 }
 
+type OrderHistoryRow = {
+  id: string
+  status: string
+  comment: string | null
+  source: string
+  changed_at: string
+  changed_by: string | null
+  platform_status_id: string | null
+  platform_status_text: string | null
+}
+
+type OrderPaymentRow = {
+  id: string
+  order_id: string
+  amount: number
+  payment_method_id: string | null
+  payment_method_name: string | null
+  payment_date: string
+  transaction_id: string | null
+  reference_number: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+}
+
 export default async function OrderDetailPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await getTenantSupabase()
@@ -24,7 +49,7 @@ export default async function OrderDetailPage({ params }: PageProps) {
     notFound()
   }
 
-  const [orderItemsRes, orderTotalsRes, shippingMethodsRes, paymentMethodsRes, connectionRes] = await Promise.all([
+  const [orderItemsRes, orderTotalsRes, shippingMethodsRes, paymentMethodsRes, connectionRes, orderHistoryRes, orderPaymentsRes] = await Promise.all([
     supabase
       .from('order_items')
       .select('*')
@@ -52,7 +77,21 @@ export default async function OrderDetailPage({ params }: PageProps) {
           .select('id, name, platform_type')
           .eq('id', order.connection_id)
           .single()
-      : Promise.resolve({ data: null })
+      : Promise.resolve({ data: null }),
+    supabase
+      .from('order_status_history')
+      .select('id, status, comment, source, changed_at, changed_by, platform_status_id, platform_status_text')
+      .eq('order_id', id)
+      .order('changed_at', { ascending: false }),
+    supabase
+      .from('order_payments')
+      .select(
+        'id, order_id, amount, payment_method_id, payment_method_name, payment_date, transaction_id, reference_number, notes, created_by, created_at'
+      )
+      .eq('order_id', id)
+      .is('deleted_at', null)
+      .order('payment_date', { ascending: false })
+      .order('created_at', { ascending: false })
   ])
 
   const orderItems = orderItemsRes.data ?? []
@@ -60,6 +99,26 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const shippingMethods = shippingMethodsRes.data ?? []
   const paymentMethods = paymentMethodsRes.data ?? []
   const connection = connectionRes.data
+  const orderHistory = (orderHistoryRes.data ?? []) as OrderHistoryRow[]
+  const initialOrderPayments = (orderPaymentsRes.data ?? []) as OrderPaymentRow[]
+
+  const changedByIds = [
+    ...new Set(
+      [...orderHistory.map((h) => h.changed_by), ...initialOrderPayments.map((p) => p.created_by)].filter(
+        Boolean
+      )
+    )
+  ] as string[]
+  let actorNameById: Record<string, string> = {}
+  if (changedByIds.length > 0) {
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', changedByIds)
+    actorNameById = Object.fromEntries(
+      (users ?? []).map((u: any) => [u.id, (u.full_name || u.email || '').trim() || u.id])
+    )
+  }
 
   let pickBatch: { id: string; code: string } | null = null
   if (order.status === 'picking' || order.status === 'picked') {
@@ -100,6 +159,9 @@ export default async function OrderDetailPage({ params }: PageProps) {
         connectionName={connection?.name ?? null}
         connectionPlatform={connection?.platform_type ?? null}
         pickBatch={pickBatch}
+        orderHistory={orderHistory}
+        initialOrderPayments={initialOrderPayments}
+        actorNameById={actorNameById}
       />
     </Box>
   )

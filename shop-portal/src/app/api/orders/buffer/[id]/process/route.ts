@@ -5,6 +5,8 @@ import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
 import { reserveStockForOrder } from '@/lib/order-reservation'
 import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 import { maybeInsertImportAutoPaidPayment } from '@/lib/order-payment-import'
+import { generateOrderNumber } from '@/lib/order-number'
+import { recomputeOrderTotalsFromItems } from '@/lib/order-totals-recompute'
 
 /**
  * POST /api/orders/buffer/[id]/process
@@ -531,28 +533,6 @@ async function matchPaymentAndShippingMethods(
 }
 
 /**
- * Generate unique order number
- */
-async function generateOrderNumber(supabase: any): Promise<string> {
-  const { data, error } = await supabase.rpc('generate_order_number')
-  
-  if (error || !data) {
-    // Fallback: manual generation
-    const today = new Date().toISOString().split('T')[0].replace(/-/g, '-')
-    const { count } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .like('order_number', `ORD-${today}-%`)
-      .is('deleted_at', null)
-    
-    const sequence = ((count || 0) + 1).toString().padStart(3, '0')
-    return `ORD-${today}-${sequence}`
-  }
-
-  return data
-}
-
-/**
  * Normalize order products from webhook payload.
  * ShopRenter may send orderProducts as array or as { orderProduct: [...] }.
  */
@@ -647,63 +627,6 @@ async function createOrderItems(
   }
 
   return []
-}
-
-/**
- * Recompute order subtotal/tax/total from order_items and update the order row.
- * Ensures order.total_gross etc. match the actual items (avoids webhook sending net as gross).
- */
-async function recomputeOrderTotalsFromItems(supabase: any, orderId: string): Promise<void> {
-  const { data: order } = await supabase
-    .from('orders')
-    .select('currency_code, discount_amount, shipping_total_net, shipping_total_gross, payment_total_net, payment_total_gross')
-    .eq('id', orderId)
-    .single()
-  if (!order) return
-
-  const { data: activeItems } = await supabase
-    .from('order_items')
-    .select('line_total_net, line_total_gross')
-    .eq('order_id', orderId)
-    .is('deleted_at', null)
-
-  let subtotalNet = 0
-  let subtotalGross = 0
-  for (const row of activeItems || []) {
-    subtotalNet += parseFloat(String(row.line_total_net)) || 0
-    subtotalGross += parseFloat(String(row.line_total_gross)) || 0
-  }
-  const isHuf = (order.currency_code || 'HUF').toUpperCase() === 'HUF'
-  const round = (x: number) => (isHuf ? Math.round(x) : Math.round(x * 100) / 100)
-  subtotalNet = round(subtotalNet)
-  subtotalGross = round(subtotalGross)
-
-  const orderDiscount = Math.max(0, round(parseFloat(String(order.discount_amount)) || 0))
-  const discountAmount = Math.min(orderDiscount, subtotalGross)
-  const afterDiscountGross = round(subtotalGross - discountAmount)
-  const afterDiscountNet = subtotalGross > 0
-    ? round(subtotalNet - round(discountAmount * subtotalNet / subtotalGross))
-    : subtotalNet
-  const taxAmount = round(afterDiscountGross - afterDiscountNet)
-  const shippingNet = parseFloat(String(order.shipping_total_net)) || 0
-  const shippingGross = parseFloat(String(order.shipping_total_gross)) || 0
-  const paymentNet = parseFloat(String(order.payment_total_net)) || 0
-  const paymentGross = parseFloat(String(order.payment_total_gross)) || 0
-  const totalNet = round(afterDiscountNet + shippingNet + paymentNet)
-  const totalGross = round(afterDiscountGross + shippingGross + paymentGross)
-
-  await supabase
-    .from('orders')
-    .update({
-      subtotal_net: subtotalNet,
-      subtotal_gross: subtotalGross,
-      discount_amount: discountAmount,
-      tax_amount: taxAmount,
-      total_net: totalNet,
-      total_gross: totalGross,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', orderId)
 }
 
 /**

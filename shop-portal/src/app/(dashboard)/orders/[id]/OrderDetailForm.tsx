@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -65,6 +65,7 @@ import {
   Event as EventIcon,
   Store as StoreIcon,
   MonetizationOn as MonetizationOnIcon,
+  History as HistoryIcon,
   Add as AddIcon,
   Payment as PaymentIcon,
   Edit as EditIcon,
@@ -80,9 +81,9 @@ import {
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import {
-  ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
-  getFulfillabilityDisplayStyle
+  getFulfillabilityDisplayStyle,
+  getOrderStatusLabel
 } from '@/lib/order-status'
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
@@ -111,6 +112,17 @@ type OrderPayment = {
   notes: string | null
   created_by: string | null
   created_at: string
+}
+
+type OrderStatusHistoryRow = {
+  id: string
+  status: string
+  comment: string | null
+  source: string
+  changed_at: string
+  changed_by: string | null
+  platform_status_id: string | null
+  platform_status_text: string | null
 }
 
 function resolvePaymentStatusFromLedger(totalPaid: number, totalGross: number): 'pending' | 'partial' | 'paid' {
@@ -288,6 +300,12 @@ interface OrderDetailFormProps {
   connectionName: string | null
   connectionPlatform: string | null
   pickBatch?: { id: string; code: string } | null
+  orderHistory?: OrderStatusHistoryRow[]
+  /** SSR fizetési tételek — azonnal megjelennek az előzményekben, majd a kliens betöltés frissíti */
+  initialOrderPayments?: OrderPayment[]
+  actorNameById?: Record<string, string>
+  /** `create` = új helyi rendelés (POST /api/orders), same layout as szerkesztés */
+  mode?: 'create' | 'edit'
 }
 
 export default function OrderDetailForm({
@@ -298,8 +316,13 @@ export default function OrderDetailForm({
   paymentMethods,
   connectionName,
   connectionPlatform,
-  pickBatch = null
+  pickBatch = null,
+  orderHistory = [],
+  initialOrderPayments = [],
+  actorNameById = {},
+  mode = 'edit'
 }: OrderDetailFormProps) {
+  const isCreateMode = mode === 'create'
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [customerSearchOpen, setCustomerSearchOpen] = useState(false)
@@ -322,7 +345,7 @@ export default function OrderDetailForm({
   const [newCustomerError, setNewCustomerError] = useState<string | null>(null)
   const [paymentEditOpen, setPaymentEditOpen] = useState(false)
   const [shippingEditOpen, setShippingEditOpen] = useState(false)
-  const [payments, setPayments] = useState<OrderPayment[]>([])
+  const [payments, setPayments] = useState<OrderPayment[]>(() => initialOrderPayments ?? [])
   const [paymentsLoading, setPaymentsLoading] = useState(false)
   const [paymentsDialogOpen, setPaymentsDialogOpen] = useState(false)
   const [paymentAction, setPaymentAction] = useState<'payment' | 'refund'>('payment')
@@ -403,7 +426,7 @@ export default function OrderDetailForm({
 
   useEffect(() => {
     let cancelled = false
-    if (!order?.id || items.length === 0) {
+    if (items.length === 0) {
       setItemAvailability({})
       setItemAvailabilitySkuToId({})
       return
@@ -411,8 +434,17 @@ export default function OrderDetailForm({
     const load = async () => {
       try {
         const ids = items.map((it) => it.product_id).filter(Boolean) as string[]
-        const qs = ids.length > 0 ? `?product_ids=${ids.join(',')}` : ''
-        const res = await fetch(`/api/orders/${order.id}/item-availability${qs}`)
+        if (ids.length === 0) {
+          if (!cancelled) {
+            setItemAvailability({})
+            setItemAvailabilitySkuToId({})
+          }
+          return
+        }
+        const qs = `?product_ids=${ids.join(',')}`
+        const res = isCreateMode
+          ? await fetch(`/api/orders/item-availability-preview${qs}`)
+          : await fetch(`/api/orders/${order.id}/item-availability${qs}`)
         const data = await res.json()
         if (cancelled) return
         if (res.ok) {
@@ -428,7 +460,7 @@ export default function OrderDetailForm({
     }
     load()
     return () => { cancelled = true }
-  }, [order?.id, items.length, items.map((i) => i.product_id).filter(Boolean).join(',')])
+  }, [isCreateMode, order?.id, items.length, items.map((i) => i.product_id).filter(Boolean).join(',')])
 
   useEffect(() => {
     let cancelled = false
@@ -457,8 +489,10 @@ export default function OrderDetailForm({
   }, [order.id])
 
   useEffect(() => {
-    loadPayments()
-  }, [loadPayments])
+    if (!isCreateMode && order?.id) {
+      loadPayments()
+    }
+  }, [loadPayments, isCreateMode, order?.id])
 
   const fetchProductSearch = useCallback(async () => {
     if (productSearchTerm.trim().length < 2) {
@@ -519,6 +553,9 @@ export default function OrderDetailForm({
     optionalItems?: typeof items,
     options?: { silent?: boolean }
   ): Promise<boolean> => {
+    if (isCreateMode) {
+      return true
+    }
     const itemsToSave = Array.isArray(optionalItems) ? optionalItems : items
     setItemsSaving(true)
     try {
@@ -583,11 +620,11 @@ export default function OrderDetailForm({
     } finally {
       setItemsSaving(false)
     }
-  }, [items, order.id, order, orderDiscountValue, orderDiscountMode, router])
+  }, [items, order.id, order, orderDiscountValue, orderDiscountMode, router, isCreateMode])
 
   const handleOrderDiscountBlur = useCallback(() => {
-    saveItems()
-  }, [saveItems])
+    if (!isCreateMode) saveItems()
+  }, [saveItems, isCreateMode])
 
   const [form, setForm] = useState({
     customer_person_id: order.customer_person_id ?? null as string | null,
@@ -624,16 +661,44 @@ export default function OrderDetailForm({
   })
 
   const paymentsTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
-  const orderTotalGrossNum = Number(order.total_gross) || 0
-  const livePaymentStatus = resolvePaymentStatusFromLedger(paymentsTotal, orderTotalGrossNum)
+  const livePreviewTotalGross = useMemo(() => {
+    if (!isCreateMode) return Number(order.total_gross) || 0
+    const itemsWithLineTotals = items.map((it) => {
+      const lineGross = it.quantity * it.unit_price_gross
+      const itemDisc = it.discount_mode === 'percent'
+        ? lineGross * (it.discount_value || 0) / 100
+        : (it.discount_value || 0)
+      const lineTotalGross = Math.max(0, lineGross - itemDisc)
+      const lineTotalNet = it.tax_rate != null && it.tax_rate > 0
+        ? lineTotalGross / (1 + it.tax_rate / 100)
+        : lineTotalGross
+      return { lineTotalGross, lineTotalNet }
+    })
+    const itemsSubtotalGross = itemsWithLineTotals.reduce((s, x) => s + x.lineTotalGross, 0)
+    const effectiveOrderDiscount = orderDiscountMode === 'percent'
+      ? itemsSubtotalGross * (orderDiscountValue || 0) / 100
+      : (orderDiscountValue || 0)
+    const discountAmount = Math.min(effectiveOrderDiscount, itemsSubtotalGross)
+    const shippingGross = parseFloat(String((order as any).shipping_total_gross)) || 0
+    const paymentGross = parseFloat(String((order as any).payment_total_gross)) || 0
+    const afterDiscountGross = Math.max(0, itemsSubtotalGross - discountAmount)
+    return Math.round((afterDiscountGross + shippingGross + paymentGross) * 100) / 100
+  }, [isCreateMode, items, orderDiscountValue, orderDiscountMode, order])
+  const orderTotalGrossNum = isCreateMode ? livePreviewTotalGross : Number(order.total_gross) || 0
+  const livePaymentStatus = isCreateMode
+    ? 'pending'
+    : resolvePaymentStatusFromLedger(paymentsTotal, orderTotalGrossNum)
   const paymentsCount = payments.filter((p) => Number(p.amount) > 0).length
   const refundsCount = payments.filter((p) => Number(p.amount) < 0).length
   const latestPaymentDate = payments[0]?.payment_date || payments[0]?.created_at || null
   const statusKey = String(order.status || '').trim()
-  const isStatusEditable = statusKey === 'pending_review' || statusKey === 'new'
+  const isStatusEditable = isCreateMode || statusKey === 'pending_review' || statusKey === 'new'
   const isItemsEditable = isStatusEditable
-  const editLockReason = !isStatusEditable
-    ? `A rendelés jelenlegi állapotban nem szerkeszthető (${ORDER_STATUS_LABELS[statusKey] || statusKey}).`
+  const editLockReason = !isCreateMode && !isStatusEditable
+    ? `A rendelés jelenlegi állapotban nem szerkeszthető (${getOrderStatusLabel(statusKey, {
+      shippingMethodName: order.shipping_method_name,
+      shippingMethodCode: order.shipping_method_code
+    }) || statusKey}).`
     : null
 
   const formatCurrency = (amount: number | string | null, currency: string = 'HUF') => {
@@ -663,9 +728,46 @@ export default function OrderDetailForm({
     return new Date(dateString).toISOString().slice(0, 10)
   }
 
-  const sourceLabel = connectionName
-    ? `Webshop${connectionPlatform ? ` (${connectionPlatform})` : ''}: ${connectionName}`
-    : 'Webshop'
+  const formatHistorySource = (source: string | null | undefined) => {
+    const s = String(source || '').trim().toLowerCase()
+    if (s === 'manual') return 'Manuális'
+    if (s === 'api') return 'API'
+    if (s === 'webhook') return 'Webhook'
+    return s || 'Rendszer'
+  }
+
+  const orderHistoryTimelineItems = useMemo(() => {
+    type Entry =
+      | { kind: 'status'; id: string; sortAt: number; row: OrderStatusHistoryRow }
+      | { kind: 'payment'; id: string; sortAt: number; row: OrderPayment }
+    const entries: Entry[] = []
+    for (const h of orderHistory) {
+      entries.push({
+        kind: 'status',
+        id: h.id,
+        sortAt: new Date(h.changed_at).getTime(),
+        row: h
+      })
+    }
+    for (const p of payments) {
+      // Rögzítés ideje (created_at) — a payment_date gyakran csak nap (YYYY-MM-DD), ezért 00:00-ként tárolódik
+      const sortAt = new Date(p.created_at || p.payment_date).getTime()
+      entries.push({
+        kind: 'payment',
+        id: p.id,
+        sortAt,
+        row: p
+      })
+    }
+    entries.sort((a, b) => b.sortAt - a.sortAt)
+    return entries
+  }, [orderHistory, payments])
+
+  const sourceLabel = isCreateMode
+    ? 'Helyi (ERP)'
+    : connectionName
+      ? `Webshop${connectionPlatform ? ` (${connectionPlatform})` : ''}: ${connectionName}`
+      : 'Webshop'
 
   const isCustomerCompany = !!form.customer_company_id
 
@@ -913,12 +1015,119 @@ export default function OrderDetailForm({
   }
 
   const handleSave = async () => {
-    if (!isStatusEditable) {
+    if (!isCreateMode && !isStatusEditable) {
       toast.error(editLockReason || 'A rendelés ebben az állapotban nem szerkeszthető.')
       return
     }
     setSaving(true)
     try {
+      if (isCreateMode) {
+        if (items.length === 0) {
+          toast.error('Legalább egy tétel szükséges.')
+          return
+        }
+        const emailTrim = (form.customer_email || '').trim().toLowerCase()
+        if (!emailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+          toast.error('Érvényes vevő e-mail cím kötelező.')
+          return
+        }
+        if (!form.customer_company_id) {
+          if (!form.customer_firstname?.trim() || !form.customer_lastname?.trim()) {
+            toast.error('Vevő keresztnév és vezetéknév kötelező (cég esetén válasszon a keresőből).')
+            return
+          }
+        }
+        const requiredAddr = (v: string, msg: string) => {
+          if (!(v || '').trim()) {
+            toast.error(msg)
+            return false
+          }
+          return true
+        }
+        if (!requiredAddr(form.shipping_firstname, 'Szállítás: keresztnév kötelező')) return
+        if (!requiredAddr(form.shipping_lastname, 'Szállítás: vezetéknév kötelező')) return
+        if (!requiredAddr(form.shipping_address1, 'Szállítás: cím kötelező')) return
+        if (!requiredAddr(form.shipping_city, 'Szállítás: város kötelező')) return
+        if (!requiredAddr(form.shipping_postcode, 'Szállítás: irányítószám kötelező')) return
+        if (!(form.shipping_method_id || '').trim()) {
+          toast.error('Válasszon szállítási módot.')
+          return
+        }
+        if (!(form.payment_method_id || '').trim()) {
+          toast.error('Válasszon fizetési módot.')
+          return
+        }
+
+        const payloadItems = items.map((it) => {
+          const out: Record<string, unknown> = {
+            product_id: it.product_id,
+            product_name: it.product_name,
+            product_sku: it.product_sku,
+            quantity: it.quantity,
+            unit_price_gross: it.unit_price_gross,
+            tax_rate: it.tax_rate
+          }
+          if (it.discount_mode === 'percent' && it.discount_value > 0) {
+            out.discount_percent = it.discount_value
+          } else if (it.discount_value > 0) {
+            out.discount_amount = it.discount_value
+          }
+          return out
+        })
+        const body: Record<string, unknown> = {
+          customer_person_id: form.customer_person_id || null,
+          customer_company_id: form.customer_company_id || null,
+          customer_company_name: form.customer_company_name || null,
+          customer_firstname: form.customer_firstname || null,
+          customer_lastname: form.customer_lastname || null,
+          customer_email: emailTrim,
+          customer_phone: form.customer_phone || null,
+          billing_firstname: form.billing_firstname,
+          billing_lastname: form.billing_lastname,
+          billing_company: form.billing_company || null,
+          billing_address1: form.billing_address1,
+          billing_address2: form.billing_address2 || null,
+          billing_city: form.billing_city,
+          billing_postcode: form.billing_postcode,
+          billing_country_code: form.billing_country_code || null,
+          billing_tax_number: isCustomerCompany ? (form.billing_tax_number || null) : null,
+          shipping_firstname: form.shipping_firstname,
+          shipping_lastname: form.shipping_lastname,
+          shipping_company: form.shipping_company || null,
+          shipping_address1: form.shipping_address1,
+          shipping_address2: form.shipping_address2 || null,
+          shipping_city: form.shipping_city,
+          shipping_postcode: form.shipping_postcode,
+          shipping_country_code: form.shipping_country_code || null,
+          shipping_method_id: form.shipping_method_id || null,
+          payment_method_id: form.payment_method_id || null,
+          payment_method_after: form.payment_method_after,
+          currency_code: order.currency_code || 'HUF',
+          items: payloadItems
+        }
+        if (orderDiscountMode === 'percent' && orderDiscountValue > 0) {
+          body.order_discount_percent = orderDiscountValue
+        } else if (orderDiscountValue > 0) {
+          body.order_discount_amount = orderDiscountValue
+        }
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          throw new Error(data.error || 'Hiba a rendelés létrehozásakor')
+        }
+        if (data.warning) {
+          toast.warning(data.warning)
+        }
+        toast.success('Rendelés létrejött')
+        router.push(`/orders/${data.order_id}`)
+        router.refresh()
+        return
+      }
+
       if (isItemsEditable) {
         const itemsOk = await saveItems(undefined, { silent: true })
         if (!itemsOk) return
@@ -973,6 +1182,10 @@ export default function OrderDetailForm({
   }
 
   const openPaymentDialog = (action: 'payment' | 'refund') => {
+    if (isCreateMode) {
+      toast.info('A rendelés létrehozása után rögzíthet fizetést és tranzakciókat.')
+      return
+    }
     setPaymentAction(action)
     setPaymentForm({
       amount: '',
@@ -1068,15 +1281,33 @@ export default function OrderDetailForm({
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
           <Box>
             <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
-              {order.order_number}
+              {isCreateMode ? 'Új rendelés' : order.order_number}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Létrehozva: {formatDate(order.order_date)}
-              {connectionName != null && ` · Forrás: ${sourceLabel}`}
+              {isCreateMode ? (
+                <>
+                  Töltse ki az adatokat, majd kattintson a <strong>Rendelés létrehozása</strong> gombra.
+                  <Typography component="span" display="block" sx={{ mt: 0.5 }}>
+                    Forrás: Helyi (ERP) — nem szinkronizálunk webshopba.
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  Létrehozva: {formatDate(order.order_date)}
+                  {connectionName != null && ` · Forrás: ${sourceLabel}`}
+                </>
+              )}
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-            {order.status === 'new' ? (() => {
+            {isCreateMode ? (
+              <Chip
+                label="Teljesíthetőség: mentés után"
+                size="small"
+                variant="outlined"
+                sx={{ fontWeight: 600 }}
+              />
+            ) : order.status === 'new' ? (() => {
               const fulfillStyle = getFulfillabilityDisplayStyle(displayFulfillability)
               const FulfillIcon = fulfillStyle.label === 'Csomagolható' ? CheckCircleIcon
                 : fulfillStyle.label === 'Hiány' ? ErrorIcon
@@ -1107,7 +1338,10 @@ export default function OrderDetailForm({
             })() : (
               <>
                 <Chip
-                  label={ORDER_STATUS_LABELS[order.status] || order.status}
+                  label={getOrderStatusLabel(order.status, {
+                    shippingMethodName: order.shipping_method_name,
+                    shippingMethodCode: order.shipping_method_code
+                  }) || order.status}
                   color={ORDER_STATUS_COLORS[order.status] || 'default'}
                   variant="outlined"
                   size="small"
@@ -1119,7 +1353,7 @@ export default function OrderDetailForm({
                 )}
               </>
             )}
-            {order.status === 'new' &&
+            {!isCreateMode && order.status === 'new' &&
               (displayFulfillability === 'not_fulfillable' || displayFulfillability === 'partially_fulfillable') && (
               <Button
                 component={NextLink}
@@ -1172,9 +1406,9 @@ export default function OrderDetailForm({
               size="small"
               startIcon={<SaveIcon />}
               onClick={handleSave}
-              disabled={saving || !isStatusEditable}
+              disabled={saving || (!isCreateMode && !isStatusEditable)}
             >
-              {saving ? 'Mentés...' : 'Mentés'}
+              {saving ? (isCreateMode ? 'Létrehozás…' : 'Mentés...') : isCreateMode ? 'Rendelés létrehozása' : 'Mentés'}
             </Button>
           </Box>
         </Box>
@@ -1214,16 +1448,16 @@ export default function OrderDetailForm({
           <SectionHeader icon={InfoIcon} title="Rendelési adatok" colorKey="info" />
           <Grid container spacing={2}>
             <Grid item xs={6} sm={3}>
-              <InfoRow icon={TagIcon} label="Rendelésszám" value={order.order_number} />
+              <InfoRow icon={TagIcon} label="Rendelésszám" value={isCreateMode ? '— (mentés után)' : order.order_number} />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <InfoRow icon={EventIcon} label="Létrehozva" value={formatDate(order.order_date)} />
+              <InfoRow icon={EventIcon} label="Létrehozva" value={isCreateMode ? '—' : formatDate(order.order_date)} />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <InfoRow icon={StoreIcon} label="Forrás" value={connectionName ? sourceLabel : 'Webshop'} iconColor={SECTION_COLORS.info.dark} />
+              <InfoRow icon={StoreIcon} label="Forrás" value={isCreateMode ? 'Helyi (ERP)' : (connectionName ? sourceLabel : 'Webshop')} iconColor={SECTION_COLORS.info.dark} />
             </Grid>
             <Grid item xs={6} sm={3}>
-              <InfoRow icon={MonetizationOnIcon} label="Összesen" value={formatCurrency(order.total_gross, order.currency_code)} iconColor={SECTION_COLORS.info.main} />
+              <InfoRow icon={MonetizationOnIcon} label="Összesen" value={formatCurrency(orderTotalGrossNum, order.currency_code)} iconColor={SECTION_COLORS.info.main} />
             </Grid>
             {order.customer_comment && (
               <Grid item xs={12}>
@@ -1629,7 +1863,7 @@ export default function OrderDetailForm({
                         />
                       </Typography>
                     </Box>
-                    <DisplayRow label="Összesen" value={formatCurrency(order.total_gross, order.currency_code)} />
+                    <DisplayRow label="Összesen" value={formatCurrency(orderTotalGrossNum, order.currency_code)} />
                   </Box>
                 ) : (
                   <Box>
@@ -1682,13 +1916,22 @@ export default function OrderDetailForm({
           }}
         >
           <SectionHeader icon={PaymentIcon} title="Fizetéskövetés és tranzakciók" colorKey="payment" />
+          {isCreateMode && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
+              A rendelés létrehozása után itt rögzíthet fizetéseket és visszatérítéseket. Új rendelésnél a fizetési státusz alapértelmezés szerint <strong>függőben</strong>.
+            </Typography>
+          )}
           <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5, mb: 2 }}>
-            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openPaymentDialog('payment')}>
-              Fizetés rögzítése
-            </Button>
-            <Button variant="outlined" color="error" size="small" startIcon={<DeleteIcon />} onClick={() => openPaymentDialog('refund')}>
-              Visszatérítés rögzítése
-            </Button>
+            {!isCreateMode && (
+              <>
+                <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openPaymentDialog('payment')}>
+                  Fizetés rögzítése
+                </Button>
+                <Button variant="outlined" color="error" size="small" startIcon={<DeleteIcon />} onClick={() => openPaymentDialog('refund')}>
+                  Visszatérítés rögzítése
+                </Button>
+              </>
+            )}
             <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
               <Typography variant="body2" color="text.secondary">
                 Rögzített egyenleg: <strong>{formatCurrency(paymentsTotal, order.currency_code)}</strong>
@@ -1803,7 +2046,9 @@ export default function OrderDetailForm({
           <SectionHeader icon={ShoppingCartIcon} title="Tételek" colorKey="items" />
           {isStatusEditable && (
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
-              A tételek mentésekor a teljesíthetőség és a készletfoglalás automatikusan újraszámolódik. Üres lista mentésekor minden tétel törlődik a rendelésből. A lap tetején lévő „Mentés” gomb a tételeket is elmenti (nem csak a vevő- és címmezőket).
+              {isCreateMode
+                ? 'Új tétel hozzáadása ugyanúgy működik, mint meglévő rendelésnél. A tételek a lap tetején lévő „Rendelés létrehozása” gombbal mentődnek (nem külön „Tételek mentése”).'
+                : 'A tételek mentésekor a teljesíthetőség és a készletfoglalás automatikusan újraszámolódik. Üres lista mentésekor minden tétel törlődik a rendelésből. A lap tetején lévő „Mentés” gomb a tételeket is elmenti (nem csak a vevő- és címmezőket).'}
             </Typography>
           )}
           <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1857,15 +2102,17 @@ export default function OrderDetailForm({
               )}
               noOptionsText={productSearchTerm.length < 2 ? 'Írjon be legalább 2 karaktert' : 'Nincs találat'}
             />
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={<SaveIcon />}
-              onClick={() => saveItems()}
-              disabled={itemsSaving || !isItemsEditable}
-            >
-              {itemsSaving ? 'Mentés…' : 'Tételek mentése'}
-            </Button>
+            {!isCreateMode && (
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<SaveIcon />}
+                onClick={() => saveItems()}
+                disabled={itemsSaving || !isItemsEditable}
+              >
+                {itemsSaving ? 'Mentés…' : 'Tételek mentése'}
+              </Button>
+            )}
           </Box>
           <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
             <Table size="small">
@@ -2223,6 +2470,188 @@ export default function OrderDetailForm({
             </Paper>
           )
         })()}
+
+        {!isCreateMode && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              mt: 2,
+              bgcolor: 'white',
+              border: '2px solid',
+              borderColor: SECTION_COLORS.info.main,
+              borderRadius: 2
+            }}
+          >
+            <SectionHeader icon={HistoryIcon} title="Állapot és fizetési előzmények" colorKey="info" />
+            {orderHistoryTimelineItems.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Még nincs rögzített állapotváltozás vagy fizetési tétel ehhez a rendeléshez.
+              </Typography>
+            ) : (
+              <Box
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1.5,
+                  overflow: 'hidden'
+                }}
+              >
+                {orderHistoryTimelineItems.map((entry, idx) => {
+                  if (entry.kind === 'status') {
+                    const h = entry.row
+                    const statusLabel = getOrderStatusLabel(h.status, {
+                      shippingMethodName: order.shipping_method_name,
+                      shippingMethodCode: order.shipping_method_code
+                    }) || h.status
+                    const actor = h.changed_by ? (actorNameById[h.changed_by] || h.changed_by) : null
+                    const srcLabel = formatHistorySource(h.source)
+                    const sourceChipSx =
+                      srcLabel === 'Manuális'
+                        ? { bgcolor: 'rgba(46, 125, 50, 0.12)', color: '#1B5E20', borderColor: 'rgba(46, 125, 50, 0.35)' }
+                        : srcLabel === 'Webhook'
+                          ? { bgcolor: 'rgba(25, 118, 210, 0.12)', color: '#1565C0', borderColor: 'rgba(25, 118, 210, 0.35)' }
+                          : { bgcolor: 'rgba(117, 117, 117, 0.12)', color: '#424242', borderColor: 'rgba(117, 117, 117, 0.35)' }
+
+                    return (
+                      <Box
+                        key={`status-${h.id}`}
+                        sx={{
+                          px: 1.5,
+                          py: 1,
+                          bgcolor: idx % 2 === 0 ? 'white' : 'rgba(0,0,0,0.015)',
+                          borderBottom: idx < orderHistoryTimelineItems.length - 1 ? '1px solid' : 'none',
+                          borderColor: 'divider'
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          <Chip
+                            size="small"
+                            label={statusLabel}
+                            color={ORDER_STATUS_COLORS[h.status] || 'default'}
+                            variant="outlined"
+                            sx={{ fontWeight: 600, height: 22 }}
+                          />
+                          <Chip
+                            size="small"
+                            label={srcLabel}
+                            variant="outlined"
+                            sx={{ fontWeight: 600, height: 22, ...sourceChipSx }}
+                          />
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                            {formatDate(h.changed_at)}
+                          </Typography>
+                        </Box>
+
+                        {(actor || h.comment || h.platform_status_text) && (
+                          <Box sx={{ mt: 0.5, display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                            {actor && (
+                              <Typography variant="caption" color="text.secondary">
+                                Módosította: <strong>{actor}</strong>
+                              </Typography>
+                            )}
+                            {h.comment && (
+                              <Typography variant="caption" color="text.secondary">
+                                Megjegyzés: {h.comment}
+                              </Typography>
+                            )}
+                            {h.platform_status_text && (
+                              <Typography variant="caption" color="text.secondary">
+                                Platform: {h.platform_status_text}{h.platform_status_id ? ` (${h.platform_status_id})` : ''}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+                    )
+                  }
+
+                  const p = entry.row
+                  const amt = Number(p.amount) || 0
+                  const isRefund = amt < 0
+                  const payActor = p.created_by ? (actorNameById[p.created_by] || p.created_by) : null
+                  // Előzménynél a rögzítés pillanata (created_at); payment_date a formában csak nap, ezért 00:00
+                  const when = p.created_at || p.payment_date
+                  const payDateDay = p.payment_date ? formatDateOnly(p.payment_date) : ''
+                  const createdDay = p.created_at ? formatDateOnly(p.created_at) : ''
+                  const showAccountingDate = payDateDay && createdDay && payDateDay !== createdDay
+
+                  return (
+                    <Box
+                      key={`payment-${p.id}`}
+                      sx={{
+                        px: 1.5,
+                        py: 1,
+                        bgcolor: idx % 2 === 0 ? 'white' : 'rgba(0,0,0,0.015)',
+                        borderBottom: idx < orderHistoryTimelineItems.length - 1 ? '1px solid' : 'none',
+                        borderColor: 'divider'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                          size="small"
+                          icon={<PaymentIcon sx={{ fontSize: 16 }} />}
+                          label={isRefund ? 'Visszatérítés' : 'Fizetés'}
+                          color={isRefund ? 'error' : 'success'}
+                          variant="outlined"
+                          sx={{ fontWeight: 600, height: 22 }}
+                        />
+                        <Chip
+                          size="small"
+                          label={p.payment_method_name?.trim() || 'Módszer nélkül'}
+                          variant="outlined"
+                          sx={{
+                            fontWeight: 600,
+                            height: 22,
+                            bgcolor: 'rgba(0, 150, 136, 0.08)',
+                            color: '#00695C',
+                            borderColor: 'rgba(0, 150, 136, 0.35)'
+                          }}
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                          {formatDate(when)}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ mt: 0.5, display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Összeg:{' '}
+                          <strong style={{ color: isRefund ? 'inherit' : undefined }}>
+                            {formatCurrency(amt, order.currency_code)}
+                          </strong>
+                        </Typography>
+                        {payActor && (
+                          <Typography variant="caption" color="text.secondary">
+                            Rögzítette: <strong>{payActor}</strong>
+                          </Typography>
+                        )}
+                        {p.transaction_id && (
+                          <Typography variant="caption" color="text.secondary">
+                            Tranzakció: {p.transaction_id}
+                          </Typography>
+                        )}
+                        {p.reference_number && (
+                          <Typography variant="caption" color="text.secondary">
+                            Hivatkozás: {p.reference_number}
+                          </Typography>
+                        )}
+                        {p.notes && (
+                          <Typography variant="caption" color="text.secondary">
+                            Megjegyzés: {p.notes}
+                          </Typography>
+                        )}
+                        {showAccountingDate && (
+                          <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                            Számviteli / teljesítés dátuma: {payDateDay.replace(/-/g, '. ')}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  )
+                })}
+              </Box>
+            )}
+          </Paper>
+        )}
 
         <Dialog open={paymentsDialogOpen} onClose={() => !paymentSubmitting && setPaymentsDialogOpen(false)} maxWidth="sm" fullWidth>
           <DialogTitle>{paymentAction === 'refund' ? 'Visszatérítés rögzítése' : 'Fizetés rögzítése'}</DialogTitle>

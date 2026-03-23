@@ -30,6 +30,7 @@ import Squares from '@/components/Squares'
 
 // Config Imports
 import themeConfig from '@configs/themeConfig'
+import { resolveLandingPageFromPermissions } from '@/lib/auth-redirect'
 
 // Hook Imports
 import { useImageVariant } from '@core/hooks/useImageVariant'
@@ -196,8 +197,7 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
               if (permissionsResponse.ok) {
                 const permissions = await permissionsResponse.json()
-                const firstAllowed = permissions.find((p: any) => p.can_access === true)
-                const redirectPath = firstAllowed?.page_path || '/home'
+                const redirectPath = resolveLandingPageFromPermissions(permissions)
                 
                 console.log('Redirecting to first permitted page:', redirectPath)
                 router.push(redirectPath)

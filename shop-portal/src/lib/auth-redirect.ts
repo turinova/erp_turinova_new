@@ -2,7 +2,22 @@
 // Helper functions to determine where to redirect users based on their permissions
 
 import { getUserPermissionsFromDB } from './permissions-server'
-import { UserPermission } from './permissions'
+import { UserPermission, hasPagePermission } from './permissions'
+
+/**
+ * Preferred post-login / logo landing path: /home first when the user may access it,
+ * otherwise the first permitted page in DB order (from get_user_permissions).
+ */
+export function resolveLandingPageFromPermissions(permissions: UserPermission[]): string {
+  if (!permissions || permissions.length === 0) {
+    return '/home'
+  }
+  if (hasPagePermission('/home', permissions)) {
+    return '/home'
+  }
+  const firstAllowed = permissions.find(p => p.can_access === true)
+  return firstAllowed?.page_path ?? '/home'
+}
 
 /**
  * Get the first page the user has permission to access
@@ -23,24 +38,12 @@ export async function getFirstPermittedPage(userId: string): Promise<string> {
     if (process.env.NODE_ENV === 'development') {
       console.log('[AUTH REDIRECT] User has', permissions.length, 'permissions loaded')
     }
-    
-    // Find first page with can_access = true
-    const firstAllowed = permissions.find(p => p.can_access === true)
-    
-    if (firstAllowed) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[AUTH REDIRECT] Redirecting to first permitted page:', firstAllowed.page_path)
-      }
-      return firstAllowed.page_path
-    }
-    
-    // No permissions found - redirect to /home as default for authenticated users
-    // This prevents redirect loops when users have no permissions yet
+
+    const path = resolveLandingPageFromPermissions(permissions)
     if (process.env.NODE_ENV === 'development') {
-      console.log('[AUTH REDIRECT] No permissions found, redirecting to /home (default for authenticated users)')
+      console.log('[AUTH REDIRECT] Redirecting to:', path)
     }
-    return '/home'
-    
+    return path
   } catch (error) {
     console.error('[AUTH REDIRECT] Error getting first permitted page:', error)
     // On error, safe fallback to login
@@ -55,10 +58,5 @@ export async function getFirstPermittedPage(userId: string): Promise<string> {
  * @returns The path to redirect to
  */
 export function getFirstPermittedPageClient(permissions: UserPermission[]): string {
-  if (!permissions || permissions.length === 0) {
-    return '/home'
-  }
-  
-  const firstAllowed = permissions.find(p => p.can_access === true)
-  return firstAllowed?.page_path || '/home'
+  return resolveLandingPageFromPermissions(permissions)
 }

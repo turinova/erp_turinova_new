@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { usePermissions } from '@/contexts/PermissionContext'
+import { resolveLandingPageFromPermissions } from '@/lib/auth-redirect'
 import Logo from './Logo'
 
 /**
@@ -16,9 +17,7 @@ const SmartLogoLink = () => {
   const handleLogoClick = (e: React.MouseEvent) => {
     e.preventDefault()
     
-    // Find first permitted page
-    const firstAllowed = permissions.find(p => p.can_access === true)
-    const redirectPath = firstAllowed?.page_path || '/login'
+    const redirectPath = resolveLandingPageFromPermissions(permissions)
     
     console.log('[LOGO] Redirecting to first permitted page:', redirectPath)
     router.push(redirectPath)

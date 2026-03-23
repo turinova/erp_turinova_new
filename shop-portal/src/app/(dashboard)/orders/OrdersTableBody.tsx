@@ -16,9 +16,9 @@ import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import OrderSourceCell from './OrderSourceCell'
 import {
-  ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
-  getFulfillabilityDisplayStyle
+  getFulfillabilityDisplayStyle,
+  getOrderStatusLabel
 } from '@/lib/order-status'
 import {
   CheckCircle as CheckCircleIcon,
@@ -309,7 +309,9 @@ export default function OrdersTableBody({
               </Tooltip>
             ) : (
               (() => {
-                const baseLabel = ORDER_STATUS_LABELS[order.status ?? ''] || order.status
+                const baseLabel = getOrderStatusLabel(order.status, {
+                  shippingMethodName: order.shipping_method_name
+                })
 
                 const chipNode = (
                   <Chip
