@@ -94,10 +94,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
   const [fullSyncConnectionId, setFullSyncConnectionId] = useState<string | null>(null)
-  const [fullSyncStep, setFullSyncStep] = useState<'idle' | 'categories' | 'product_classes' | 'products'>('idle')
+  const [fullSyncStep, setFullSyncStep] = useState<'idle' | 'categories' | 'product_classes' | 'products' | 'manufacturers'>('idle')
   const [syncHistoryDialogOpen, setSyncHistoryDialogOpen] = useState(false)
   const [syncHistoryConnection, setSyncHistoryConnection] = useState<WebshopConnection | null>(null)
   const [settingUpWebhooks, setSettingUpWebhooks] = useState(false)
+  const [settingUpWebhookConnectionId, setSettingUpWebhookConnectionId] = useState<string | null>(null)
   const [syncLogs, setSyncLogs] = useState<Array<{
     id: string
     sync_type: string
@@ -1198,6 +1199,45 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     throw new Error('Kategória szinkronizálás időtúllépés (10 perc).')
   }
 
+  const waitForProductSyncCompletion = async (connectionId: string): Promise<void> => {
+    const startedAt = Date.now()
+    const timeoutMs = 30 * 60 * 1000
+    while (Date.now() - startedAt < timeoutMs) {
+      const res = await fetch(`/api/connections/${connectionId}/sync-progress`)
+      if (res.ok) {
+        const data = await res.json()
+        const status = data?.progress?.status
+        if (status === 'completed') return
+        if (status === 'error' || status === 'stopped') {
+          throw new Error('Termék szinkronizálás nem fejeződött be sikeresen.')
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+    throw new Error('Termék szinkronizálás időtúllépés (30 perc).')
+  }
+
+  const runManufacturersBackfill = async () => {
+    const response = await fetch('/api/products/backfill-manufacturers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      const errorResult = await response.json().catch(() => null)
+      throw new Error(errorResult?.error || 'Hiba a gyártók szinkronizálásakor')
+    }
+
+    const result = await response.json()
+    if (!result.success) {
+      throw new Error(result.error || 'Ismeretlen hiba')
+    }
+
+    return result
+  }
+
   const handleGuidedFullSync = async (connection: WebshopConnection) => {
     if (connection.connection_type !== 'shoprenter') {
       toast.error('Csak ShopRenter kapcsolatokhoz érhető el a teljes frissítés.')
@@ -1210,7 +1250,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
     try {
       setFullSyncConnectionId(connection.id)
-      toast.info('Teljes frissítés indul: Kategóriák -> Termék típusok -> Termékek.')
+      toast.info('Teljes frissítés indul: Kategóriák -> Termék típusok -> Termékek -> Gyártók.')
 
       setFullSyncStep('categories')
       const catStart = await fetch(`/api/connections/${connection.id}/sync-categories`, {
@@ -1222,7 +1262,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         throw new Error(err?.error || 'Kategória szinkronizálás indítása sikertelen')
       }
       await waitForCategorySyncCompletion(connection.id)
-      toast.success('1/3 Kategóriák szinkronizálva')
+      toast.success('1/4 Kategóriák szinkronizálva')
 
       setFullSyncStep('product_classes')
       const classRes = await fetch(`/api/connections/${connection.id}/sync-product-classes`, {
@@ -1233,11 +1273,23 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       if (!classRes.ok || !classData?.success) {
         throw new Error(classData?.error || 'Termék típusok szinkronizálása sikertelen')
       }
-      toast.success('2/3 Termék típusok szinkronizálva')
+      toast.success('2/4 Termék típusok szinkronizálva')
 
       setFullSyncStep('products')
-      toast.info('3/3 Teljes termék szinkron indul...')
+      toast.info('3/4 Teljes termék szinkron indul...')
       await handleSyncProducts(connection, true)
+      if (currentSyncingConnectionRef.current?.id !== connection.id) {
+        throw new Error('Termék szinkronizálás indítása sikertelen')
+      }
+      await waitForProductSyncCompletion(connection.id)
+      toast.success('3/4 Termékek szinkronizálva')
+
+      setFullSyncStep('manufacturers')
+      toast.info('4/4 Gyártók szinkronizálása indul...')
+      const manufacturerBackfillResult = await runManufacturersBackfill()
+      toast.success(
+        manufacturerBackfillResult.message || `4/4 Gyártók szinkronizálása befejezve: ${manufacturerBackfillResult.updated} termék frissítve`
+      )
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Ismeretlen hiba'
       toast.error(`Teljes frissítés megszakadt: ${msg}`)
@@ -1580,28 +1632,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     try {
       setBackfillingManufacturers(true)
       toast.info('Gyártók szinkronizálása elindítva...')
-      
-      const response = await fetch('/api/products/backfill-manufacturers', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      })
-
-      if (!response.ok) {
-        const errorResult = await response.json()
-        throw new Error(errorResult.error || 'Hiba a gyártók szinkronizálásakor')
-      }
-
-      const result = await response.json()
-      
-      if (result.success) {
-        toast.success(result.message || `Gyártók szinkronizálása befejezve: ${result.updated} termék frissítve`)
-        if (result.errors > 0) {
-          toast.warning(`${result.errors} hiba történt a szinkronizálás során`)
-        }
-      } else {
-        throw new Error(result.error || 'Ismeretlen hiba')
+      const result = await runManufacturersBackfill()
+      toast.success(result.message || `Gyártók szinkronizálása befejezve: ${result.updated} termék frissítve`)
+      if (result.errors > 0) {
+        toast.warning(`${result.errors} hiba történt a szinkronizálás során`)
       }
     } catch (error) {
       console.error('Error backfilling manufacturers:', error)
@@ -1609,6 +1643,43 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       toast.error(`Hiba a gyártók szinkronizálásakor: ${errorMessage}`)
     } finally {
       setBackfillingManufacturers(false)
+    }
+  }
+
+  const handleSetupWebhookForConnection = async (connection: WebshopConnection) => {
+    if (connection.connection_type !== 'shoprenter') {
+      toast.error('Csak ShopRenter kapcsolatokhoz állítható be webhook')
+      return
+    }
+
+    try {
+      setSettingUpWebhookConnectionId(connection.id)
+      toast.info(`Webhook beállítása elindítva: ${connection.name}`)
+
+      const response = await fetch(`/api/connections/${connection.id}/setup-webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        const errorResult = await response.json().catch(() => null)
+        throw new Error(errorResult?.error || 'Hiba a webhook beállításakor')
+      }
+
+      const result = await response.json()
+      if (!result.success) {
+        throw new Error(result.error || 'Ismeretlen hiba')
+      }
+
+      toast.success(`Webhook sikeresen beállítva: ${connection.name}`)
+    } catch (error) {
+      console.error('Error setting up webhook for connection:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Ismeretlen hiba'
+      toast.error(`Hiba a webhook beállításakor: ${errorMessage}`)
+    } finally {
+      setSettingUpWebhookConnectionId(null)
     }
   }
 
@@ -1791,25 +1862,6 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               Törlés ({selectedConnections.length})
             </Button>
           )}
-          <Button
-            variant="outlined"
-            startIcon={backfillingManufacturers ? <CircularProgress size={18} /> : <BusinessIcon />}
-            onClick={handleBackfillManufacturers}
-            disabled={backfillingManufacturers}
-            sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
-          >
-            {backfillingManufacturers ? 'Gyártók szinkronizálása...' : 'Gyártók szinkronizálása'}
-          </Button>
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={settingUpWebhooks ? <CircularProgress size={18} /> : <LinkIcon />}
-            onClick={handleSetupAllWebhooks}
-            disabled={settingUpWebhooks}
-            sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
-          >
-            {settingUpWebhooks ? 'Webhook-ok beállítása...' : 'Webhook-ok beállítása'}
-          </Button>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -2212,6 +2264,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                                 ? 'Teljes frissítés: termék típusok...'
                                 : fullSyncStep === 'products'
                                   ? 'Teljes frissítés: termékek...'
+                                  : fullSyncStep === 'manufacturers'
+                                    ? 'Teljes frissítés: gyártók...'
                                   : 'Teljes frissítés...')
                           : 'Teljes frissítés'}
                       </Button>
@@ -2237,6 +2291,27 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                     >
                       {testingConnectionId === connection.id ? 'Tesztelés...' : 'Tesztelés'}
                     </Button>
+                    {connection.connection_type === 'shoprenter' && (
+                      <Button
+                        variant="outlined"
+                        size="medium"
+                        startIcon={settingUpWebhookConnectionId === connection.id ? <CircularProgress size={18} /> : <LinkIcon />}
+                        onClick={() => handleSetupWebhookForConnection(connection)}
+                        disabled={settingUpWebhookConnectionId === connection.id}
+                        sx={{
+                          borderColor: 'rgba(0, 0, 0, 0.23)',
+                          color: 'rgba(0, 0, 0, 0.87)',
+                          fontWeight: 500,
+                          px: 2.5,
+                          '&:hover': {
+                            borderColor: 'rgba(0, 0, 0, 0.4)',
+                            bgcolor: 'rgba(0, 0, 0, 0.04)'
+                          }
+                        }}
+                      >
+                        {settingUpWebhookConnectionId === connection.id ? 'Webhook...' : 'Webhook'}
+                      </Button>
+                    )}
                     
                     {/* More Actions Menu (Three-dot menu) */}
                     <IconButton
@@ -2327,6 +2402,20 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         </MenuItem>
                       )}
                       {connection.connection_type === 'shoprenter' && (
+                        <MenuItem
+                          onClick={() => {
+                            handleBackfillManufacturers()
+                            setMenuAnchorEl(null)
+                            setMenuConnectionId(null)
+                          }}
+                          disabled={backfillingManufacturers}
+                        >
+                          <BusinessIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
+                          {backfillingManufacturers ? 'Gyártók szinkronizálása...' : 'Gyártók szinkronizálása'}
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && <Divider />}
+                      {connection.connection_type === 'shoprenter' && (
                         <MenuItem disabled sx={{ opacity: 1 }}>
                           <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
                             Felkészültség
@@ -2380,6 +2469,19 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         >
                           <WarningIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
                           {checkingOrphaned ? 'Ellenőrzés...' : 'Árva termékek'}
+                        </MenuItem>
+                      )}
+                      {connection.connection_type === 'shoprenter' && (
+                        <MenuItem
+                          onClick={() => {
+                            handleSetupAllWebhooks()
+                            setMenuAnchorEl(null)
+                            setMenuConnectionId(null)
+                          }}
+                          disabled={settingUpWebhooks}
+                        >
+                          <LinkIcon sx={{ mr: 2, fontSize: 20, color: 'rgba(0, 0, 0, 0.54)' }} />
+                          {settingUpWebhooks ? 'Webhook-ok beállítása...' : 'Webhook-ok beállítása (összes kapcsolat)'}
                         </MenuItem>
                       )}
                       {connection.connection_type === 'shoprenter' && <Divider />}
@@ -2476,9 +2578,29 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                               : 'outlined'
                           }
                         />
+                        <Typography variant="caption" color="text.secondary">→</Typography>
+                        <Chip
+                          size="small"
+                          icon={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'manufacturers'
+                              ? <CircularProgress size={12} />
+                              : <CheckCircleIcon />
+                          }
+                          label="4. Gyártók"
+                          color={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'manufacturers'
+                              ? 'primary'
+                              : 'default'
+                          }
+                          variant={
+                            fullSyncConnectionId === connection.id && fullSyncStep === 'manufacturers'
+                              ? 'filled'
+                              : 'outlined'
+                          }
+                        />
                       </Box>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                        Gyors frissítés csak a 3. lépést futtatja (termékek változásai).
+                        Gyors frissítés csak a 3. lépést futtatja (termékek változásai), a 4. lépés gyártó egyeztetés nélkül.
                       </Typography>
                     </Box>
                   )}
