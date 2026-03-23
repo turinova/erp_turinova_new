@@ -78,13 +78,39 @@ export interface ProductsPaginationResult {
   limit: number
 }
 
+export type ProductStructureFilter = 'all' | 'parents' | 'variants' | 'standalone' | 'by_parent'
+
+export interface ProductsFilterOptions {
+  structure?: ProductStructureFilter
+  parentId?: string
+  includeParent?: boolean
+}
+
+async function getParentProductIdsForTenant(supabase: any): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('shoprenter_products')
+    .select('parent_product_id')
+    .is('deleted_at', null)
+    .not('parent_product_id', 'is', null)
+
+  if (error || !data) {
+    if (error) {
+      console.error('Error fetching parent product ids:', error.message)
+    }
+    return []
+  }
+
+  return [...new Set(data.map((r: any) => r.parent_product_id).filter(Boolean))]
+}
+
 /**
  * Get all products with pagination and search (server-side)
  */
 export async function getAllProducts(
   page: number = 1,
   limit: number = 50,
-  search: string = ''
+  search: string = '',
+  filters: ProductsFilterOptions = {}
 ): Promise<ProductsPaginationResult> {
   try {
     const supabase = await getTenantSupabase()
@@ -101,6 +127,10 @@ export async function getAllProducts(
         limit
       }
     }
+
+    const structure = filters.structure || 'all'
+    const parentId = filters.parentId || ''
+    const includeParent = filters.includeParent === true
 
     // Build single optimized query with count and data
     // Only select necessary columns for list view (exclude large JSONB fields)
@@ -134,6 +164,45 @@ export async function getAllProducts(
         deleted_at
       `, { count: 'exact' })
       .is('deleted_at', null)
+
+    if (structure === 'variants') {
+      query = query.not('parent_product_id', 'is', null)
+    } else if (structure === 'parents' || structure === 'standalone') {
+      const parentIds = await getParentProductIdsForTenant(supabase)
+      if (structure === 'parents') {
+        if (parentIds.length === 0) {
+          return {
+            products: [],
+            totalCount: 0,
+            totalPages: 0,
+            currentPage: page,
+            limit
+          }
+        }
+        query = query.in('id', parentIds)
+      } else {
+        // standalone = no parent + no children
+        query = query.is('parent_product_id', null)
+        if (parentIds.length > 0) {
+          query = query.not('id', 'in', `(${parentIds.join(',')})`)
+        }
+      }
+    } else if (structure === 'by_parent') {
+      if (!parentId) {
+        return {
+          products: [],
+          totalCount: 0,
+          totalPages: 0,
+          currentPage: page,
+          limit
+        }
+      }
+      if (includeParent) {
+        query = query.or(`parent_product_id.eq.${parentId},id.eq.${parentId}`)
+      } else {
+        query = query.eq('parent_product_id', parentId)
+      }
+    }
 
     // Apply search filter - use ilike with trigram indexes for better performance
     // Minimum 2 characters for search to avoid too many results

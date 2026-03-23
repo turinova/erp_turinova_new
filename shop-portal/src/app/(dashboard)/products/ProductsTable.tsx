@@ -23,10 +23,12 @@ import {
   MenuItem,
   FormControl,
   InputLabel,
+  FormControlLabel,
   Button,
   Tooltip,
   Alert,
   LinearProgress,
+  Autocomplete,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -53,8 +55,14 @@ import {
 } from '@mui/icons-material'
 import { Avatar, IconButton } from '@mui/material'
 import { toast } from 'react-toastify'
-import type { ShopRenterProduct } from '@/lib/products-server'
+import type { ShopRenterProduct, ProductStructureFilter } from '@/lib/products-server'
 import ProductQualityScore from '@/components/ProductQualityScore'
+
+interface ParentOption {
+  id: string
+  sku: string
+  name: string | null
+}
 
 interface IndexingStatus {
   product_id: string
@@ -72,6 +80,9 @@ interface ProductsTableProps {
   currentPage: number
   limit: number
   initialSearch: string
+  initialStructure?: ProductStructureFilter
+  initialParentId?: string
+  initialIncludeParent?: boolean
 }
 
 export default function ProductsTable({ 
@@ -82,7 +93,10 @@ export default function ProductsTable({
   totalPages,
   currentPage,
   limit,
-  initialSearch
+  initialSearch,
+  initialStructure = 'all',
+  initialParentId = '',
+  initialIncludeParent = false
 }: ProductsTableProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -90,6 +104,12 @@ export default function ProductsTable({
   // URL state management - read from URL or use initial values
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const debouncedSearchTerm = useDebounce(searchTerm, 600) // Increased to 600ms for better typing experience
+  const [structureFilter, setStructureFilter] = useState<ProductStructureFilter>(initialStructure)
+  const [selectedParentId, setSelectedParentId] = useState(initialParentId)
+  const [includeParent, setIncludeParent] = useState(initialIncludeParent)
+  const [parentOptions, setParentOptions] = useState<ParentOption[]>([])
+  const [parentSearchInput, setParentSearchInput] = useState('')
+  const [loadingParentOptions, setLoadingParentOptions] = useState(false)
   
   // Selection state (for bulk operations)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -200,7 +220,15 @@ export default function ProductsTable({
   const [productsTotalPages, setProductsTotalPages] = useState(totalPages)
 
   // Unified fetch function for both search and pagination
-  const fetchProducts = useCallback(async (pageNum: number, pageSize: number, search: string, isSearch: boolean = false) => {
+  const fetchProducts = useCallback(async (
+    pageNum: number,
+    pageSize: number,
+    search: string,
+    structure: ProductStructureFilter,
+    parentId: string,
+    includeParentRows: boolean,
+    isSearch: boolean = false
+  ) => {
     // Use separate loading state for search vs pagination
     if (isSearch) {
       setIsSearching(true)
@@ -215,6 +243,15 @@ export default function ProductsTable({
       })
       if (search && search.trim().length >= 2) {
         params.append('search', search.trim())
+      }
+      if (structure !== 'all') {
+        params.append('structure', structure)
+      }
+      if (structure === 'by_parent' && parentId) {
+        params.append('parentId', parentId)
+        if (includeParentRows) {
+          params.append('includeParent', '1')
+        }
       }
       
       const response = await fetch(`/api/products/paginated?${params.toString()}`)
@@ -239,11 +276,23 @@ export default function ProductsTable({
   }, [])
 
   // Update URL with current search and page state
-  const updateURL = useCallback((newPage: number, newLimit: number, newSearch: string) => {
+  const updateURL = useCallback((
+    newPage: number,
+    newLimit: number,
+    newSearch: string,
+    structure: ProductStructureFilter,
+    parentId: string,
+    includeParentRows: boolean
+  ) => {
     const params = new URLSearchParams()
     if (newPage > 1) params.set('page', newPage.toString())
     if (newLimit !== 50) params.set('limit', newLimit.toString())
     if (newSearch && newSearch.trim().length >= 2) params.set('search', newSearch.trim())
+    if (structure !== 'all') params.set('structure', structure)
+    if (structure === 'by_parent' && parentId) {
+      params.set('parentId', parentId)
+      if (includeParentRows) params.set('includeParent', '1')
+    }
     
     const queryString = params.toString()
     const newUrl = queryString ? `/products?${queryString}` : '/products'
@@ -258,15 +307,41 @@ export default function ProductsTable({
     
     if (trimmedTerm.length >= 2) {
       // Search with term (mark as search operation)
-      fetchProducts(1, currentPageSize, trimmedTerm, true)
-      updateURL(1, currentPageSize, trimmedTerm)
+      fetchProducts(1, currentPageSize, trimmedTerm, structureFilter, selectedParentId, includeParent, true)
+      updateURL(1, currentPageSize, trimmedTerm, structureFilter, selectedParentId, includeParent)
     } else if (trimmedTerm.length === 0 && !isInitialMount) {
       // Clear search - fetch first page without search (only if user cleared it)
-      fetchProducts(1, currentPageSize, '', true)
-      updateURL(1, currentPageSize, '')
+      fetchProducts(1, currentPageSize, '', structureFilter, selectedParentId, includeParent, true)
+      updateURL(1, currentPageSize, '', structureFilter, selectedParentId, includeParent)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedSearchTerm, currentPageSize])
+  }, [debouncedSearchTerm, currentPageSize, structureFilter, selectedParentId, includeParent])
+
+  useEffect(() => {
+    if (structureFilter !== 'by_parent') return
+
+    const loadParentOptions = async () => {
+      setLoadingParentOptions(true)
+      try {
+        const params = new URLSearchParams()
+        if (parentSearchInput.trim().length >= 2) {
+          params.set('q', parentSearchInput.trim())
+        }
+        params.set('limit', '30')
+        const response = await fetch(`/api/products/parents?${params.toString()}`)
+        if (response.ok) {
+          const data = await response.json()
+          setParentOptions(data.parents || [])
+        }
+      } catch (error) {
+        console.error('Error loading parent products:', error)
+      } finally {
+        setLoadingParentOptions(false)
+      }
+    }
+
+    loadParentOptions()
+  }, [structureFilter, parentSearchInput])
 
   // Fetch quality scores for displayed products (batch API)
   const fetchQualityScores = async (productIds: string[]) => {
@@ -833,13 +908,13 @@ export default function ProductsTable({
       const trimmedTerm = searchTerm.trim()
       if (trimmedTerm.length >= 2) {
         // Trigger immediate search (bypass debounce, mark as search operation)
-        fetchProducts(1, currentPageSize, trimmedTerm, true)
-        updateURL(1, currentPageSize, trimmedTerm)
+        fetchProducts(1, currentPageSize, trimmedTerm, structureFilter, selectedParentId, includeParent, true)
+        updateURL(1, currentPageSize, trimmedTerm, structureFilter, selectedParentId, includeParent)
         setPage(1)
       } else if (trimmedTerm.length === 0) {
         // Clear search immediately
-        fetchProducts(1, currentPageSize, '', true)
-        updateURL(1, currentPageSize, '')
+        fetchProducts(1, currentPageSize, '', structureFilter, selectedParentId, includeParent, true)
+        updateURL(1, currentPageSize, '', structureFilter, selectedParentId, includeParent)
         setPage(1)
       }
     }
@@ -849,16 +924,45 @@ export default function ProductsTable({
   const handleClearSearch = () => {
     setSearchTerm('')
     setPage(1)
-    fetchProducts(1, currentPageSize, '', true)
-    updateURL(1, currentPageSize, '')
+    fetchProducts(1, currentPageSize, '', structureFilter, selectedParentId, includeParent, true)
+    updateURL(1, currentPageSize, '', structureFilter, selectedParentId, includeParent)
+  }
+
+  const handleStructureFilterChange = (value: ProductStructureFilter) => {
+    setStructureFilter(value)
+    if (value !== 'by_parent') {
+      setSelectedParentId('')
+      setIncludeParent(false)
+      fetchProducts(1, currentPageSize, debouncedSearchTerm.trim(), value, '', false, true)
+      updateURL(1, currentPageSize, debouncedSearchTerm.trim(), value, '', false)
+      setPage(1)
+    } else {
+      fetchProducts(1, currentPageSize, debouncedSearchTerm.trim(), value, selectedParentId, includeParent, true)
+      updateURL(1, currentPageSize, debouncedSearchTerm.trim(), value, selectedParentId, includeParent)
+      setPage(1)
+    }
+  }
+
+  const handleParentSelectionChange = (parentId: string) => {
+    setSelectedParentId(parentId)
+    setPage(1)
+    fetchProducts(1, currentPageSize, debouncedSearchTerm.trim(), 'by_parent', parentId, includeParent, true)
+    updateURL(1, currentPageSize, debouncedSearchTerm.trim(), 'by_parent', parentId, includeParent)
+  }
+
+  const handleIncludeParentToggle = (checked: boolean) => {
+    setIncludeParent(checked)
+    setPage(1)
+    fetchProducts(1, currentPageSize, debouncedSearchTerm.trim(), structureFilter, selectedParentId, checked, true)
+    updateURL(1, currentPageSize, debouncedSearchTerm.trim(), structureFilter, selectedParentId, checked)
   }
 
   // Handle page change - unified pagination that preserves search context
   const handlePageChange = async (_event: React.ChangeEvent<unknown>, newPage: number) => {
     setPage(newPage)
     const currentSearch = debouncedSearchTerm.trim()
-    fetchProducts(newPage, currentPageSize, currentSearch)
-    updateURL(newPage, currentPageSize, currentSearch)
+    fetchProducts(newPage, currentPageSize, currentSearch, structureFilter, selectedParentId, includeParent)
+    updateURL(newPage, currentPageSize, currentSearch, structureFilter, selectedParentId, includeParent)
   }
 
   // Handle limit change - unified pagination that preserves search context
@@ -867,8 +971,8 @@ export default function ProductsTable({
     setCurrentPageSize(newPageSize)
     setPage(1) // Reset to first page when changing page size
     const currentSearch = debouncedSearchTerm.trim()
-    fetchProducts(1, newPageSize, currentSearch)
-    updateURL(1, newPageSize, currentSearch)
+    fetchProducts(1, newPageSize, currentSearch, structureFilter, selectedParentId, includeParent)
+    updateURL(1, newPageSize, currentSearch, structureFilter, selectedParentId, includeParent)
   }
 
   // Display products (unified - no need for separate search results)
@@ -886,18 +990,22 @@ export default function ProductsTable({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayProducts.length, displayProducts.map(p => p.id).join(',')])
 
-  // Identify parent products (products that have children)
+  // Identify parent products (products that have children on this page), OR all rows when filter = "Csak szülők"
+  // (children are not loaded in that mode, so co-occurrence on the page would miss every parent)
   useEffect(() => {
     const parentIds = new Set<string>()
-    displayProducts.forEach(product => {
-      // Check if any other product has this product as parent
-      const hasChildren = displayProducts.some(p => p.parent_product_id === product.id)
-      if (hasChildren) {
-        parentIds.add(product.id)
-      }
-    })
+    if (structureFilter === 'parents') {
+      displayProducts.forEach(p => parentIds.add(p.id))
+    } else {
+      displayProducts.forEach(product => {
+        const hasChildren = displayProducts.some(p => p.parent_product_id === product.id)
+        if (hasChildren) {
+          parentIds.add(product.id)
+        }
+      })
+    }
     setParentProductIds(parentIds)
-  }, [displayProducts])
+  }, [displayProducts, structureFilter])
 
   // Fetch indexing status when products change
   useEffect(() => {
@@ -993,8 +1101,66 @@ export default function ProductsTable({
 
   // Get variant indicator chip
   const getVariantChip = (product: ShopRenterProduct) => {
-    // Priority 1: Show "Szülő" for parent products (has children)
-    // A product that has children is a parent, even if it also has parent_product_id set incorrectly
+    // Server-filtered: "Csak szülők" — every row is a parent (children not in this result set)
+    if (structureFilter === 'parents') {
+      return (
+        <Tooltip title="Ez egy szülő termék - van változatai">
+          <Chip 
+            icon={<ArrowDownwardIcon />}
+            label="Szülő" 
+            size="small" 
+            color="primary"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: '20px' }}
+          />
+        </Tooltip>
+      )
+    }
+
+    // Server-filtered: "Csak változatok" — every row is a variant
+    if (structureFilter === 'variants') {
+      return (
+        <Tooltip title="Ez egy változat termék - van szülő terméke">
+          <Chip 
+            icon={<ArrowUpwardIcon />}
+            label="Változat" 
+            size="small" 
+            color="info"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: '20px' }}
+          />
+        </Tooltip>
+      )
+    }
+
+    // Server-filtered: "Konkrét szülő változatai"
+    if (structureFilter === 'by_parent' && selectedParentId) {
+      return product.id === selectedParentId ? (
+        <Tooltip title="Szülő termék (választott)">
+          <Chip 
+            icon={<ArrowDownwardIcon />}
+            label="Szülő" 
+            size="small" 
+            color="primary"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: '20px' }}
+          />
+        </Tooltip>
+      ) : (
+        <Tooltip title="Ez egy változat termék - van szülő terméke">
+          <Chip 
+            icon={<ArrowUpwardIcon />}
+            label="Változat" 
+            size="small" 
+            color="info"
+            variant="outlined"
+            sx={{ fontSize: '0.7rem', height: '20px' }}
+          />
+        </Tooltip>
+      )
+    }
+
+    // "Mind" / "Önálló" / default: infer from rows visible on this page
     if (parentProductIds.has(product.id)) {
       return (
         <Tooltip title="Ez egy szülő termék - van változatai">
@@ -1009,9 +1175,7 @@ export default function ProductsTable({
         </Tooltip>
       )
     }
-    
-    // Priority 2: Show "Változat" only for child products (has parent_product_id but no children)
-    // Only show if it's not also a parent
+
     if (product.parent_product_id && !parentProductIds.has(product.id)) {
       return (
         <Tooltip title="Ez egy változat termék - van szülő terméke">
@@ -1026,8 +1190,7 @@ export default function ProductsTable({
         </Tooltip>
       )
     }
-    
-    // Regular product - no chip
+
     return null
   }
 
@@ -1137,7 +1300,6 @@ export default function ProductsTable({
 
           // Remove product from local state
           setProducts(prev => prev.filter(p => p.id !== productId))
-          setSearchResults(prev => prev.filter(p => p.id !== productId))
         } catch (error) {
           console.error(`Error deleting product ${productId}:`, error)
           errorCount++
@@ -1343,6 +1505,70 @@ export default function ProductsTable({
           ) : null,
         }}
       />
+
+      <Box sx={{ mb: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '220px 1fr auto' }, gap: 1.5, alignItems: 'center' }}>
+        <FormControl size="small">
+          <InputLabel id="structure-filter-label">Kapcsolat</InputLabel>
+          <Select
+            labelId="structure-filter-label"
+            value={structureFilter}
+            label="Kapcsolat"
+            onChange={(e) => handleStructureFilterChange(e.target.value as ProductStructureFilter)}
+          >
+            <MenuItem value="all">Mind</MenuItem>
+            <MenuItem value="parents">Csak szülők</MenuItem>
+            <MenuItem value="variants">Csak változatok</MenuItem>
+            <MenuItem value="standalone">Önálló termékek</MenuItem>
+            <MenuItem value="by_parent">Konkrét szülő változatai</MenuItem>
+          </Select>
+        </FormControl>
+
+        {structureFilter === 'by_parent' ? (
+          <Autocomplete
+            size="small"
+            options={parentOptions}
+            loading={loadingParentOptions}
+            value={parentOptions.find(p => p.id === selectedParentId) || null}
+            onInputChange={(_e, value) => setParentSearchInput(value)}
+            onChange={(_e, value) => handleParentSelectionChange(value?.id || '')}
+            getOptionLabel={(option) => `${option.sku}${option.name ? ` - ${option.name}` : ''}`}
+            isOptionEqualToValue={(option, value) => option.id === value.id}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                label="Szülő termék"
+                placeholder="SKU vagy név alapján..."
+                InputProps={{
+                  ...params.InputProps,
+                  endAdornment: (
+                    <>
+                      {loadingParentOptions ? <CircularProgress color="inherit" size={16} /> : null}
+                      {params.InputProps.endAdornment}
+                    </>
+                  ),
+                }}
+              />
+            )}
+          />
+        ) : (
+          <Box />
+        )}
+
+        {structureFilter === 'by_parent' ? (
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={includeParent}
+                onChange={(e) => handleIncludeParentToggle(e.target.checked)}
+                disabled={!selectedParentId}
+              />
+            }
+            label="Szülő sor megjelenítése"
+          />
+        ) : (
+          <Box />
+        )}
+      </Box>
 
       {/* Selected count indicator and actions */}
       {selectedIds.size > 0 && (

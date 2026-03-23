@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAllProducts } from '@/lib/products-server'
+import { getAllProducts, type ProductStructureFilter } from '@/lib/products-server'
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,6 +7,9 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1', 10)
     const limit = parseInt(searchParams.get('limit') || '50', 10)
     const search = searchParams.get('search') || ''
+    const structure = (searchParams.get('structure') || 'all') as ProductStructureFilter
+    const parentId = searchParams.get('parentId') || ''
+    const includeParent = searchParams.get('includeParent') === '1'
 
     // Validate parameters
     if (page < 1) {
@@ -17,7 +20,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Limit must be 25, 50, 100, or 200' }, { status: 400 })
     }
 
-    const result = await getAllProducts(page, limit, search)
+    const result = await getAllProducts(page, limit, search, {
+      structure,
+      parentId,
+      includeParent
+    })
 
     return NextResponse.json(result, {
       headers: {
