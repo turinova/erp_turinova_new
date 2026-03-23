@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { getAllConnections } from '@/lib/connections-server'
 import { setupShopRenterWebhook } from '@/lib/webhook-setup'
+import { normalizeSzamlazzApiUrl } from '@/lib/szamlazz-agent'
 
 /**
  * GET /api/connections
@@ -40,12 +41,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { 
-      name, 
-      connection_type, 
-      api_url, 
-      username, 
-      password, 
+    const {
+      name,
+      connection_type,
+      api_url,
+      username,
+      password,
+      agent_key,
       is_active,
       search_console_property_url,
       search_console_client_email,
@@ -53,16 +55,39 @@ export async function POST(request: NextRequest) {
       search_console_enabled
     } = body
 
-    // Validation
-    if (!name || !connection_type || !api_url || !username || !password) {
+    if (!name || !connection_type) {
       return NextResponse.json(
-        { error: 'Minden mező kitöltése kötelező' },
+        { error: 'A kapcsolat neve és típusa kötelező' },
+        { status: 400 }
+      )
+    }
+
+    const isShopRenter = connection_type === 'shoprenter'
+    const isSzamlazz = connection_type === 'szamlazz'
+
+    if (!isShopRenter && !isSzamlazz) {
+      return NextResponse.json(
+        { error: 'Ismeretlen kapcsolat típus' },
+        { status: 400 }
+      )
+    }
+
+    if (isShopRenter && (!api_url || !username || !password)) {
+      return NextResponse.json(
+        { error: 'ShopRenter kapcsolathoz az API URL, Client ID és Client Secret kötelező' },
+        { status: 400 }
+      )
+    }
+
+    if (isSzamlazz && !String(agent_key || password || '').trim()) {
+      return NextResponse.json(
+        { error: 'Szamlazz.hu kapcsolathoz az Agent Key kötelező' },
         { status: 400 }
       )
     }
 
     // Validate Search Console fields if enabled
-    if (search_console_enabled) {
+    if (search_console_enabled && isShopRenter) {
       if (!search_console_property_url || !search_console_client_email || !search_console_private_key) {
         return NextResponse.json(
           { error: 'Search Console mezők kitöltése kötelező, ha az integráció engedélyezve van' },
@@ -72,19 +97,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Create connection
+    const bufferAuto =
+      isSzamlazz && Boolean((body as { buffer_auto_proforma_enabled?: boolean }).buffer_auto_proforma_enabled)
+    const rawDueDays = (body as { buffer_auto_proforma_due_days?: unknown }).buffer_auto_proforma_due_days
+    const nDue =
+      rawDueDays === undefined || rawDueDays === null || rawDueDays === ''
+        ? 8
+        : typeof rawDueDays === 'number'
+          ? rawDueDays
+          : parseInt(String(rawDueDays), 10)
+    const dueDaysParsed = Number.isFinite(nDue) ? Math.min(365, Math.max(0, Math.round(nDue))) : 8
+
     const { data, error } = await supabase
       .from('webshop_connections')
       .insert({
         name: name.trim(),
         connection_type,
-        api_url: api_url.trim(),
-        username: username.trim(),
-        password, // TODO: Encrypt in production
+        api_url: isShopRenter ? api_url.trim() : normalizeSzamlazzApiUrl(typeof api_url === 'string' ? api_url : ''),
+        username: isShopRenter ? username.trim() : '',
+        password: isShopRenter ? password : String(agent_key || password || '').trim(), // TODO: Encrypt in production
         is_active: is_active !== false,
-        search_console_property_url: search_console_enabled ? search_console_property_url?.trim() || null : null,
-        search_console_client_email: search_console_enabled ? search_console_client_email?.trim() || null : null,
-        search_console_private_key: search_console_enabled ? search_console_private_key || null : null,
-        search_console_enabled: search_console_enabled || false
+        buffer_auto_proforma_enabled: isSzamlazz ? bufferAuto : false,
+        buffer_auto_proforma_due_days: isSzamlazz ? dueDaysParsed : 8,
+        search_console_property_url: search_console_enabled && isShopRenter ? search_console_property_url?.trim() || null : null,
+        search_console_client_email: search_console_enabled && isShopRenter ? search_console_client_email?.trim() || null : null,
+        search_console_private_key: search_console_enabled && isShopRenter ? search_console_private_key || null : null,
+        search_console_enabled: Boolean(search_console_enabled && isShopRenter)
       })
       .select()
       .single()

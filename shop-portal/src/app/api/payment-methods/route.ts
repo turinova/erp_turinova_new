@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     // Fetch all active payment methods
     const { data: paymentMethods, error } = await supabase
       .from('payment_methods')
-      .select('id, name, comment, active, import_payment_policy, created_at, updated_at')
+      .select('id, name, comment, active, import_payment_policy, auto_proforma_on_import, created_at, updated_at')
       .is('deleted_at', null)
       .order('name', { ascending: true })
 
@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const { name, comment, active } = body
+    const autoProformaOnImport = Boolean((body as { auto_proforma_on_import?: boolean }).auto_proforma_on_import)
     const policyParsed = parseImportPaymentPolicyForCreate(body as Record<string, unknown>)
     if ('error' in policyParsed) {
       return NextResponse.json({ error: policyParsed.error }, { status: 400 })
@@ -103,7 +104,8 @@ export async function POST(request: NextRequest) {
         name: name.trim(),
         comment: comment?.trim() || null,
         active: active !== undefined ? active : true,
-        import_payment_policy: policyParsed
+        import_payment_policy: policyParsed,
+        auto_proforma_on_import: autoProformaOnImport
       })
       .select()
       .single()

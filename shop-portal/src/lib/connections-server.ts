@@ -6,7 +6,7 @@ import { getTenantSupabase } from './tenant-supabase'
 export interface WebshopConnection {
   id: string
   name: string
-  connection_type: 'shoprenter' | 'unas' | 'shopify'
+  connection_type: 'shoprenter' | 'unas' | 'shopify' | 'szamlazz'
   api_url: string
   username: string
   password: string // Encrypted in production
@@ -18,6 +18,10 @@ export interface WebshopConnection {
   search_console_client_email: string | null
   search_console_private_key: string | null
   search_console_enabled: boolean
+  /** Számlázz: buffer→order importkor automatikus díjbekérő (fizetési mód + kapcsoló) */
+  buffer_auto_proforma_enabled?: boolean
+  /** Automatikus díjbekérő: napok száma a kiállítás napjától a fizetési határidőig (0–365) */
+  buffer_auto_proforma_due_days?: number
   created_at: string
   updated_at: string
 }

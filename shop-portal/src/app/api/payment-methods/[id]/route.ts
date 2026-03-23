@@ -75,6 +75,9 @@ export async function PUT(
     if (policyParsed !== undefined) {
       updatePayload.import_payment_policy = policyParsed
     }
+    if ('auto_proforma_on_import' in (body as Record<string, unknown>)) {
+      updatePayload.auto_proforma_on_import = Boolean((body as { auto_proforma_on_import?: boolean }).auto_proforma_on_import)
+    }
 
     const { data, error } = await supabase
       .from('payment_methods')

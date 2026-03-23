@@ -31,7 +31,10 @@ import {
   ToggleButtonGroup,
   IconButton,
   InputAdornment,
-  Tooltip
+  Tooltip,
+  Checkbox,
+  FormControlLabel,
+  Stack
 } from '@mui/material'
 
 // Common countries for order addresses (ISO code -> label)
@@ -76,7 +79,10 @@ import {
   Clear as ClearIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  Schedule as ScheduleIcon
+  Schedule as ScheduleIcon,
+  ReceiptLong as ReceiptLongIcon,
+  Undo as UndoIcon,
+  PictureAsPdf as PictureAsPdfIcon
 } from '@mui/icons-material'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
@@ -85,6 +91,7 @@ import {
   getFulfillabilityDisplayStyle,
   getOrderStatusLabel
 } from '@/lib/order-status'
+import OrderInvoiceModal from './OrderInvoiceModal'
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   pending: 'Függőben',
@@ -123,6 +130,80 @@ type OrderStatusHistoryRow = {
   changed_by: string | null
   platform_status_id: string | null
   platform_status_text: string | null
+}
+
+type OrderInvoiceRow = {
+  id: string
+  internal_number: string
+  provider_invoice_number: string | null
+  invoice_type: string
+  gross_total: number | null
+  payment_status: string | null
+  pdf_url: string | null
+  connection_id: string | null
+  created_at: string
+  payment_due_date?: string | null
+  fulfillment_date?: string | null
+  is_storno_of_invoice_id?: string | null
+}
+
+function invoiceTypeChipLabel(t: string): string {
+  switch (t) {
+    case 'szamla':
+      return 'Számla'
+    case 'elolegszamla':
+      return 'Előleg számla'
+    case 'dijbekero':
+      return 'Díjbekérő'
+    case 'sztorno':
+      return 'Sztornó'
+    default:
+      return t || '—'
+  }
+}
+
+function invoiceTypeChipColor(
+  t: string
+): 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' {
+  switch (t) {
+    case 'sztorno':
+      return 'error'
+    case 'elolegszamla':
+      return 'warning'
+    case 'dijbekero':
+      return 'info'
+    case 'szamla':
+      return 'primary'
+    default:
+      return 'default'
+  }
+}
+
+function invoicePaymentChipLabel(status: string | null | undefined): string {
+  if (!status) return '—'
+  switch (status) {
+    case 'fizetve':
+      return 'Fizetve'
+    case 'fizetesre_var':
+      return 'Fizetésre vár'
+    case 'pending':
+      return 'Függőben'
+    case 'nem_lesz_fizetve':
+      return 'Nem lesz fizetve'
+    case 'partial':
+      return 'Részben fizetve'
+    default:
+      return status
+  }
+}
+
+function invoicePaymentChipColor(
+  status: string | null | undefined
+): 'default' | 'success' | 'warning' | 'error' {
+  if (!status) return 'default'
+  if (status === 'fizetve') return 'success'
+  if (status === 'fizetesre_var' || status === 'pending' || status === 'partial') return 'warning'
+  return 'default'
 }
 
 function resolvePaymentStatusFromLedger(totalPaid: number, totalGross: number): 'pending' | 'partial' | 'paid' {
@@ -304,6 +385,10 @@ interface OrderDetailFormProps {
   /** SSR fizetési tételek — azonnal megjelennek az előzményekben, majd a kliens betöltés frissíti */
   initialOrderPayments?: OrderPayment[]
   actorNameById?: Record<string, string>
+  /** Kimutatott számlák (Számlázz) — SSR */
+  initialInvoices?: OrderInvoiceRow[]
+  /** Van-e aktív Számlázz kapcsolat a bérlőnél */
+  hasSzamlazzConnection?: boolean
   /** `create` = új helyi rendelés (POST /api/orders), same layout as szerkesztés */
   mode?: 'create' | 'edit'
 }
@@ -320,6 +405,8 @@ export default function OrderDetailForm({
   orderHistory = [],
   initialOrderPayments = [],
   actorNameById = {},
+  initialInvoices = [],
+  hasSzamlazzConnection = false,
   mode = 'edit'
 }: OrderDetailFormProps) {
   const isCreateMode = mode === 'create'
@@ -350,6 +437,11 @@ export default function OrderDetailForm({
   const [paymentsDialogOpen, setPaymentsDialogOpen] = useState(false)
   const [paymentAction, setPaymentAction] = useState<'payment' | 'refund'>('payment')
   const [paymentSubmitting, setPaymentSubmitting] = useState(false)
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false)
+  const [stornoDialogOpen, setStornoDialogOpen] = useState(false)
+  const [stornoTarget, setStornoTarget] = useState<OrderInvoiceRow | null>(null)
+  const [stornoSubmitting, setStornoSubmitting] = useState(false)
+  const [pdfLoadingId, setPdfLoadingId] = useState<string | null>(null)
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
     payment_method_id: order.payment_method_id ?? '',
@@ -661,6 +753,68 @@ export default function OrderDetailForm({
   })
 
   const paymentsTotal = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  /** Aktív végszámla: számla típusú sor, amire még nincs sztornó (a sztornó sor is_storno_of_invoice_id-ja erre mutat). */
+  const hasFinalInvoice = useMemo(() => {
+    const list = initialInvoices
+    const stornoedInvoiceIds = new Set(
+      list
+        .filter((i) => i.invoice_type === 'sztorno' && i.is_storno_of_invoice_id)
+        .map((i) => String(i.is_storno_of_invoice_id))
+    )
+    return list.some(
+      (i) => i.invoice_type === 'szamla' && !stornoedInvoiceIds.has(String(i.id))
+    )
+  }, [initialInvoices])
+
+  const invoiceModalOrder = useMemo(() => {
+    const billingName = order.billing_company?.trim()
+      ? String(order.billing_company).trim()
+      : [order.billing_firstname, order.billing_lastname].filter(Boolean).join(' ').trim()
+    return {
+      id: order.id,
+      order_number: order.order_number,
+      customer_name:
+        [order.customer_firstname, order.customer_lastname].filter(Boolean).join(' ') ||
+        order.customer_email ||
+        null,
+      customer_email: order.customer_email ?? null,
+      customer_mobile: order.customer_phone ?? null,
+      billing_name: billingName || null,
+      billing_country: order.billing_country_code ?? null,
+      billing_city: order.billing_city ?? null,
+      billing_postal_code: order.billing_postcode ?? null,
+      billing_street: order.billing_address1 ?? null,
+      billing_house_number: order.billing_address2 ?? null,
+      billing_tax_number: order.billing_tax_number ?? null,
+      billing_company_reg_number: null,
+      discount_percentage: Number(order.discount_percentage) || 0,
+      discount_amount: Number(order.discount_amount) || 0,
+      subtotal_net: Number(order.subtotal_net) || 0,
+      total_vat: Number(order.total_vat) || 0,
+      total_gross: Number(order.total_gross) || 0,
+      created_at: order.created_at
+    }
+  }, [order])
+
+  const invoiceModalItems = useMemo(
+    () =>
+      orderItems.map((i: Record<string, unknown>) => ({
+        id: String(i.id),
+        item_type: 'product' as const,
+        product_type: 'accessory' as const,
+        product_name: String(i.product_name ?? ''),
+        sku: i.product_sku != null ? String(i.product_sku) : null,
+        quantity: Number(i.quantity) || 1,
+        unit_price_net: Number(i.unit_price_net) || 0,
+        unit_price_gross: Number(i.unit_price_gross) || 0,
+        vat_id: i.vat_id != null ? String(i.vat_id) : '',
+        total_net: Math.round(Number(i.line_total_net ?? 0)),
+        total_vat: Math.round(Number(i.line_total_gross ?? 0) - Number(i.line_total_net ?? 0)),
+        total_gross: Math.round(Number(i.line_total_gross ?? 0)),
+        unit: undefined
+      })),
+    [orderItems]
+  )
   const livePreviewTotalGross = useMemo(() => {
     if (!isCreateMode) return Number(order.total_gross) || 0
     const itemsWithLineTotals = items.map((it) => {
@@ -1240,6 +1394,86 @@ export default function OrderDetailForm({
     }
   }
 
+  const handleOpenStornoDialog = (inv: OrderInvoiceRow) => {
+    setStornoTarget(inv)
+    setStornoDialogOpen(true)
+  }
+
+  const handleCloseStornoDialog = () => {
+    if (stornoSubmitting) return
+    setStornoDialogOpen(false)
+    setStornoTarget(null)
+  }
+
+  const handleConfirmStorno = async () => {
+    if (!stornoTarget?.provider_invoice_number) {
+      toast.error('Hiányzik a számlaszám a sztornóhoz')
+      return
+    }
+    setStornoSubmitting(true)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/storno-invoice`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerInvoiceNumber: stornoTarget.provider_invoice_number })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Hiba a művelet során')
+      }
+      if (data.deleted) {
+        toast.success(data.message || 'Díjbekérő sikeresen törölve')
+      } else {
+        toast.success(`Sztornó számla létrehozva: ${data.invoiceNumber || '—'}`)
+      }
+      setStornoDialogOpen(false)
+      setStornoTarget(null)
+      router.refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a művelet során')
+    } finally {
+      setStornoSubmitting(false)
+    }
+  }
+
+  const handleOpenInvoicePdf = async (inv: OrderInvoiceRow) => {
+    if (inv.pdf_url) {
+      window.open(inv.pdf_url, '_blank', 'noopener')
+      return
+    }
+    if (!inv.provider_invoice_number) {
+      toast.info('Nincs számlaszám a PDF lekéréshez')
+      return
+    }
+    setPdfLoadingId(inv.id)
+    try {
+      const res = await fetch(`/api/orders/${order.id}/query-invoice-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceNumber: inv.provider_invoice_number })
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'PDF lekérési hiba')
+      }
+      if (data.pdf) {
+        const binary = atob(data.pdf)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i)
+        }
+        const blob = new Blob([bytes], { type: data.mimeType || 'application/pdf' })
+        const url = URL.createObjectURL(blob)
+        window.open(url, '_blank', 'noopener')
+        setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF hiba')
+    } finally {
+      setPdfLoadingId(null)
+    }
+  }
+
   const handleDeletePayment = async (paymentId: string) => {
     if (!window.confirm('Biztosan törli ezt a fizetési tételt?')) return
     const reason = window.prompt('Törlés indoka (kötelező):', '')
@@ -1376,6 +1610,29 @@ export default function OrderDetailForm({
               >
                 Csomagolás
               </Button>
+            )}
+            {!isCreateMode && hasSzamlazzConnection && (
+              <Tooltip
+                title={
+                  hasFinalInvoice
+                    ? 'Ehhez a rendeléshez már van kiállított számla.'
+                    : 'Számla kiállítása a Számlázz.hu-n (Agent)'
+                }
+              >
+                <span>
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    size="small"
+                    startIcon={<ReceiptLongIcon />}
+                    onClick={() => setInvoiceDialogOpen(true)}
+                    disabled={hasFinalInvoice}
+                    sx={{ height: 32 }}
+                  >
+                    Számlázás
+                  </Button>
+                </span>
+              </Tooltip>
             )}
             {(() => {
               const key = String(livePaymentStatus || 'pending').trim()
@@ -2030,6 +2287,133 @@ export default function OrderDetailForm({
           </TableContainer>
         </Paper>
 
+        {!isCreateMode && (hasSzamlazzConnection || initialInvoices.length > 0) && (
+          <Paper
+            elevation={0}
+            sx={{
+              p: 3,
+              bgcolor: 'white',
+              border: '2px solid',
+              borderColor: 'warning.main',
+              borderRadius: 2,
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+          >
+            <SectionHeader icon={ReceiptLongIcon} title="Kimenő számlák" colorKey="payment" />
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 720 }}>
+              Számlák a Számlázz.hu Agenttel kiállítva; PDF megnyitás és sztornó / díjbekérő törlés.
+            </Typography>
+            {initialInvoices.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Még nincs rögzített számla ehhez a rendeléshez.
+              </Typography>
+            ) : (
+              <TableContainer sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700 }}>Belső szám</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Számlázz szám</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Típus</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Fizetési határidő</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Teljesítés</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        Bruttó
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Fizetés</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}>Kelte</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700 }}>
+                        Műveletek
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {initialInvoices.map((inv) => {
+                      const isStorno = inv.invoice_type === 'sztorno'
+                      return (
+                        <TableRow key={inv.id}>
+                          <TableCell>{inv.internal_number}</TableCell>
+                          <TableCell>{inv.provider_invoice_number ?? '—'}</TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={invoiceTypeChipLabel(inv.invoice_type)}
+                              color={invoiceTypeChipColor(inv.invoice_type)}
+                              variant="outlined"
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {inv.payment_due_date ? formatDate(inv.payment_due_date) : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {inv.fulfillment_date ? formatDate(inv.fulfillment_date) : '—'}
+                          </TableCell>
+                          <TableCell align="right">
+                            {inv.gross_total != null
+                              ? formatCurrency(inv.gross_total, order.currency_code)
+                              : '—'}
+                          </TableCell>
+                          <TableCell>
+                            {inv.payment_status ? (
+                              <Chip
+                                size="small"
+                                label={invoicePaymentChipLabel(inv.payment_status)}
+                                color={invoicePaymentChipColor(inv.payment_status)}
+                                variant="outlined"
+                              />
+                            ) : (
+                              '—'
+                            )}
+                          </TableCell>
+                          <TableCell>{formatDate(inv.created_at)}</TableCell>
+                          <TableCell align="right">
+                            <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                              <Tooltip title="Sztornó / díjbekérő törlése">
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    disabled={isStorno}
+                                    onClick={() => handleOpenStornoDialog(inv)}
+                                    aria-label="Sztornó"
+                                  >
+                                    <UndoIcon fontSize="small" />
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                              <Tooltip title="PDF megnyitás">
+                                <span>
+                                  <IconButton
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => handleOpenInvoicePdf(inv)}
+                                    disabled={
+                                      pdfLoadingId === inv.id ||
+                                      (!inv.pdf_url && !inv.provider_invoice_number)
+                                    }
+                                    aria-label="PDF"
+                                  >
+                                    {pdfLoadingId === inv.id ? (
+                                      <CircularProgress size={18} />
+                                    ) : (
+                                      <PictureAsPdfIcon fontSize="small" />
+                                    )}
+                                  </IconButton>
+                                </span>
+                              </Tooltip>
+                            </Stack>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        )}
+
         {/* 3. Tételek */}
         <Paper
           elevation={0}
@@ -2196,7 +2580,9 @@ export default function OrderDetailForm({
                               onChange={(e) => updateItem(index, 'tax_rate', Number(e.target.value))}
                               displayEmpty
                               disabled={!isItemsEditable}
-                              renderValue={(v) => (v != null && v !== '' ? `${v}%` : '')}
+                              renderValue={(v) =>
+                                v !== null && v !== undefined && String(v) !== '' ? `${v}%` : ''
+                              }
                             >
                               {vatRates.map((v) => (
                                 <MenuItem key={v.id} value={v.kulcs}>{v.kulcs}%</MenuItem>
@@ -2209,10 +2595,16 @@ export default function OrderDetailForm({
                             {(item.discount_value ?? 0) > 0 ? (
                               <Typography
                                 variant="body2"
-                                sx={{ fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 2, '&:hover': { color: 'primary.main' } }}
-                                onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode(item.discount_mode); setItemDiscountModalValue(String(item.discount_value || '')); }}
                                 title="Kedvezmény szerkesztése"
-                                sx={!isItemsEditable ? { pointerEvents: 'none', opacity: 0.5, textDecoration: 'none' } : undefined}
+                                onClick={() => { setItemDiscountModalRow(index); setItemDiscountModalMode(item.discount_mode); setItemDiscountModalValue(String(item.discount_value || '')); }}
+                                sx={{
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  textDecoration: 'underline',
+                                  textUnderlineOffset: 2,
+                                  '&:hover': { color: 'primary.main' },
+                                  ...(!isItemsEditable ? { pointerEvents: 'none', opacity: 0.5, textDecoration: 'none' } : {})
+                                }}
                               >
                                 {item.discount_mode === 'percent' ? `${item.discount_value} %` : formatCurrency(item.discount_value, order.currency_code)}
                               </Typography>
@@ -2839,6 +3231,53 @@ export default function OrderDetailForm({
             </Button>
           </DialogActions>
         </Dialog>
+
+        <Dialog
+          open={stornoDialogOpen}
+          onClose={handleCloseStornoDialog}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            {stornoTarget?.invoice_type === 'dijbekero' ? 'Díjbekérő törlése' : 'Sztornó számla'}
+          </DialogTitle>
+          <DialogContent>
+            <Typography>
+              {stornoTarget?.invoice_type === 'dijbekero'
+                ? 'Biztosan törölni szeretné ezt a díjbekérőt?'
+                : 'Biztosan létrehozza a sztornó számlát a következő számlához?'}
+            </Typography>
+            <Typography sx={{ mt: 1 }} fontWeight="bold">
+              {stornoTarget?.provider_invoice_number ?? '—'}
+            </Typography>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseStornoDialog} disabled={stornoSubmitting}>
+              Mégse
+            </Button>
+            <Button color="error" variant="contained" onClick={handleConfirmStorno} disabled={stornoSubmitting}>
+              {stornoSubmitting
+                ? 'Folyamatban…'
+                : stornoTarget?.invoice_type === 'dijbekero'
+                  ? 'Törlés'
+                  : 'Sztornó létrehozása'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {!isCreateMode && (
+          <OrderInvoiceModal
+            open={invoiceDialogOpen}
+            onClose={() => {
+              setInvoiceDialogOpen(false)
+              router.refresh()
+            }}
+            order={invoiceModalOrder as any}
+            items={invoiceModalItems as any}
+            tenantCompany={null}
+            vatRates={vatRates}
+          />
+        )}
       </Box>
     </Box>
   )

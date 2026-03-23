@@ -44,6 +44,7 @@ interface PaymentMethod {
   comment: string | null
   active: boolean
   import_payment_policy?: ImportPaymentPolicy
+  auto_proforma_on_import?: boolean
   created_at: string
   updated_at: string
 }
@@ -69,7 +70,8 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
     comment: string
     active: boolean
     import_payment_policy: ImportPaymentPolicy
-  }>({ name: '', comment: '', active: true, import_payment_policy: 'pending' })
+    auto_proforma_on_import: boolean
+  }>({ name: '', comment: '', active: true, import_payment_policy: 'pending', auto_proforma_on_import: false })
   const [errors, setErrors] = useState<{ name?: string }>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -81,11 +83,18 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
         name: method.name,
         comment: method.comment || '',
         active: method.active,
-        import_payment_policy: method.import_payment_policy ?? 'pending'
+        import_payment_policy: method.import_payment_policy ?? 'pending',
+        auto_proforma_on_import: Boolean(method.auto_proforma_on_import)
       })
     } else {
       setEditingMethod(null)
-      setFormData({ name: '', comment: '', active: true, import_payment_policy: 'pending' })
+      setFormData({
+        name: '',
+        comment: '',
+        active: true,
+        import_payment_policy: 'pending',
+        auto_proforma_on_import: false
+      })
     }
     setErrors({})
     setDialogOpen(true)
@@ -94,7 +103,13 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
   const handleCloseDialog = () => {
     setDialogOpen(false)
     setEditingMethod(null)
-    setFormData({ name: '', comment: '', active: true, import_payment_policy: 'pending' })
+    setFormData({
+      name: '',
+      comment: '',
+      active: true,
+      import_payment_policy: 'pending',
+      auto_proforma_on_import: false
+    })
     setErrors({})
   }
 
@@ -189,7 +204,8 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
           name: formData.name.trim(),
           comment: formData.comment.trim() || null,
           active: formData.active,
-          import_payment_policy: formData.import_payment_policy
+          import_payment_policy: formData.import_payment_policy,
+          auto_proforma_on_import: formData.auto_proforma_on_import
         })
       })
 
@@ -285,6 +301,11 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
               átvett rendelésnél a rendszer automatikusan fizetettnek jelölje-e a rendelést (pl. online kártya), vagy
               függőben hagyja (pl. átutalás, utánvét)
             </li>
+            <li>
+              <strong>Automatikus díjbekérő:</strong> ha a Kapcsolatoknál a Számlázz.hu kapcsolaton be van kapcsolva,
+              és itt is engedélyezi ehhez a fizetési módhoz, a pufferből importált rendeléshez automatikus díjbekérő készül
+              (teljes számlázási cím szükséges).
+            </li>
           </ul>
         </Typography>
       </Alert>
@@ -341,6 +362,7 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Név</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Leírás</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Import</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Díjbekérő</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Státusz</TableCell>
             </TableRow>
           </TableHead>
@@ -398,6 +420,17 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
                           ? { bgcolor: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }
                           : { bgcolor: '#fff3e0', color: '#e65100', border: '1px solid #ffcc80' }
                         )
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ py: 1 }} onClick={(e) => e.stopPropagation()}>
+                    <Chip
+                      label={method.auto_proforma_on_import ? 'Automatikus' : '—'}
+                      size="small"
+                      sx={{
+                        ...(method.auto_proforma_on_import
+                          ? { bgcolor: '#e3f2fd', color: '#1565c0', border: '1px solid #90caf9' }
+                          : {})
                       }}
                     />
                   </TableCell>
@@ -467,6 +500,20 @@ export default function PaymentMethodsTable({ initialPaymentMethods }: PaymentMe
                 webáruház a fizetést azonnal jóváírja.
               </FormHelperText>
             </FormControl>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.auto_proforma_on_import}
+                  onChange={(e) =>
+                    setFormData((prev) => ({ ...prev, auto_proforma_on_import: e.target.checked }))
+                  }
+                />
+              }
+              label="Automatikus díjbekérő (puffer import, ha a Számlázz kapcsolón is be van kapcsolva)"
+            />
+            <FormHelperText sx={{ mt: -1 }}>
+              Csak akkor fut le, ha a Kapcsolatok → Számlázz.hu sorban az „Automatikus díjbekérő” is engedélyezve van.
+            </FormHelperText>
             <FormControlLabel
               control={
                 <Checkbox

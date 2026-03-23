@@ -91,6 +91,27 @@ export default function OrderBufferDetail({ initialEntry, stockStatuses = {} }: 
 
       const data = await response.json()
       toast.success(`Rendelés létrehozva: ${data.order_number || data.order_id}`)
+
+      const ap = data.auto_proforma as
+        | { status: string; reason?: string; invoiceNumber?: string; message?: string; details?: string }
+        | undefined
+      if (ap?.status === 'created' && ap.invoiceNumber) {
+        toast.info(`Automatikus díjbekérő: ${ap.invoiceNumber}`)
+      } else if (ap?.status === 'error') {
+        toast.warning(
+          `Díjbekérő nem készült: ${ap.message || 'ismeretlen hiba'}${ap.details ? ` (${String(ap.details).slice(0, 120)})` : ''}`
+        )
+      } else if (ap?.status === 'skipped' && ap.reason) {
+        const hints: Record<string, string> = {
+          no_payment_method_on_order: 'Nincs ERP fizetési mód a rendelésen — mapping?',
+          payment_method_auto_proforma_disabled: 'A fizetési módnál nincs bekapcsolva az automatikus díjbekérő',
+          no_active_szamlazz_with_buffer_auto_proforma:
+            'Nincs aktív Számlázz kapcsolat „Automatikus díjbekérő” kapcsolóval',
+          dijbekero_already_exists: 'Már volt díjbekérő ehhez a rendeléshez',
+          incomplete_billing_address: 'Hiányos számlázási cím (város, irsz, utca) — díjbekérő kihagyva'
+        }
+        toast.info(`Díjbekérő kihagyva: ${hints[ap.reason] ?? ap.reason}`)
+      }
       
       // Refresh entry
       const refreshResponse = await fetch(`/api/orders/buffer/${entry.id}`)

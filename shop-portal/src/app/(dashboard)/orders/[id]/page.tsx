@@ -34,6 +34,21 @@ type OrderPaymentRow = {
   created_at: string
 }
 
+type OrderInvoiceRow = {
+  id: string
+  internal_number: string
+  provider_invoice_number: string | null
+  invoice_type: string
+  gross_total: number | null
+  payment_status: string | null
+  pdf_url: string | null
+  connection_id: string | null
+  created_at: string
+  payment_due_date: string | null
+  fulfillment_date: string | null
+  is_storno_of_invoice_id: string | null
+}
+
 export default async function OrderDetailPage({ params }: PageProps) {
   const { id } = await params
   const supabase = await getTenantSupabase()
@@ -49,7 +64,17 @@ export default async function OrderDetailPage({ params }: PageProps) {
     notFound()
   }
 
-  const [orderItemsRes, orderTotalsRes, shippingMethodsRes, paymentMethodsRes, connectionRes, orderHistoryRes, orderPaymentsRes] = await Promise.all([
+  const [
+    orderItemsRes,
+    orderTotalsRes,
+    shippingMethodsRes,
+    paymentMethodsRes,
+    connectionRes,
+    orderHistoryRes,
+    orderPaymentsRes,
+    invoicesRes,
+    szamlazzCountRes
+  ] = await Promise.all([
     supabase
       .from('order_items')
       .select('*')
@@ -91,7 +116,22 @@ export default async function OrderDetailPage({ params }: PageProps) {
       .eq('order_id', id)
       .is('deleted_at', null)
       .order('payment_date', { ascending: false })
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('invoices')
+      .select(
+        'id, internal_number, provider_invoice_number, invoice_type, gross_total, payment_status, pdf_url, connection_id, created_at, payment_due_date, fulfillment_date, is_storno_of_invoice_id'
+      )
+      .eq('related_order_type', 'order')
+      .eq('related_order_id', id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('webshop_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('connection_type', 'szamlazz')
+      .eq('is_active', true)
+      .is('deleted_at', null)
   ])
 
   const orderItems = orderItemsRes.data ?? []
@@ -101,6 +141,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
   const connection = connectionRes.data
   const orderHistory = (orderHistoryRes.data ?? []) as OrderHistoryRow[]
   const initialOrderPayments = (orderPaymentsRes.data ?? []) as OrderPaymentRow[]
+  const initialInvoices = (invoicesRes.error ? [] : (invoicesRes.data ?? [])) as OrderInvoiceRow[]
+  const hasSzamlazzConnection = (szamlazzCountRes.count ?? 0) > 0
 
   const changedByIds = [
     ...new Set(
@@ -128,9 +170,11 @@ export default async function OrderDetailPage({ params }: PageProps) {
       .eq('order_id', id)
       .limit(1)
     const pbo = Array.isArray(pboList) ? pboList[0] : null
-    if (pbo?.pick_batches?.id) {
-      const pb = pbo.pick_batches as { id: string; code: string; status: string }
-      pickBatch = { id: pbo.pick_batch_id, code: pb?.code || pbo.pick_batch_id }
+    const pbRaw = pbo?.pick_batches
+    const pb = Array.isArray(pbRaw) ? pbRaw[0] : pbRaw
+    if (pbo && pb && typeof pb === 'object' && 'id' in pb) {
+      const p = pb as { id: string; code: string; status: string }
+      pickBatch = { id: pbo.pick_batch_id, code: p.code || pbo.pick_batch_id }
     }
   }
 
@@ -162,6 +206,8 @@ export default async function OrderDetailPage({ params }: PageProps) {
         orderHistory={orderHistory}
         initialOrderPayments={initialOrderPayments}
         actorNameById={actorNameById}
+        initialInvoices={initialInvoices}
+        hasSzamlazzConnection={hasSzamlazzConnection}
       />
     </Box>
   )

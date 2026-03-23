@@ -2,6 +2,14 @@
 
 import { revalidatePath } from 'next/cache'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { normalizeSzamlazzApiUrl } from '@/lib/szamlazz-agent'
+
+function parseBufferAutoProformaDueDays(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') return 8
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10)
+  if (!Number.isFinite(n)) return 8
+  return Math.min(365, Math.max(0, Math.round(n)))
+}
 
 export interface ConnectionFormData {
   name: string
@@ -11,6 +19,10 @@ export interface ConnectionFormData {
   password?: string
   agent_key?: string // For szamlazz.hu
   is_active?: boolean
+  /** Számlázz: automatikus díjbekérő puffer import után (fizetési mód flaggel együtt) */
+  buffer_auto_proforma_enabled?: boolean
+  /** Számlázz: díjbekérő fizetési határideje = kiállítás + ennyi nap (0–365, alap 8) */
+  buffer_auto_proforma_due_days?: number
   search_console_property_url?: string
   search_console_client_email?: string
   search_console_private_key?: string
@@ -28,6 +40,8 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       password, 
       agent_key,
       is_active = true,
+      buffer_auto_proforma_enabled = false,
+      buffer_auto_proforma_due_days,
       search_console_property_url,
       search_console_client_email,
       search_console_private_key,
@@ -44,7 +58,7 @@ export async function createConnectionAction(formData: ConnectionFormData) {
         return { success: false, error: 'ShopRenter kapcsolathoz az API URL, Client ID és Client Secret kötelező' }
       }
     } else if (connection_type === 'szamlazz') {
-      if (!agent_key) {
+      if (!String(agent_key || '').trim()) {
         return { success: false, error: 'Szamlazz.hu kapcsolathoz az Agent Key kötelező' }
       }
     }
@@ -65,31 +79,49 @@ export async function createConnectionAction(formData: ConnectionFormData) {
       return { success: false, error: 'Unauthorized' }
     }
 
-    // Build credentials for matching
+    const dueDays = parseBufferAutoProformaDueDays(buffer_auto_proforma_due_days)
+
+    // Build credentials for matching / restore
     let matchApiUrl = ''
     let matchUsername = ''
-    let matchPassword = ''
-    
+    let matchPassword: string = ''
+
     if (connection_type === 'shoprenter') {
       matchApiUrl = api_url!.trim()
       matchUsername = username!.trim()
-      matchPassword = password
+      matchPassword = password!
     } else if (connection_type === 'szamlazz') {
-      matchApiUrl = '' // Not used for szamlazz
-      matchUsername = '' // Not used for szamlazz
-      matchPassword = agent_key
+      matchPassword = String(agent_key).trim()
     }
 
     // Check if deleted connection exists with same credentials (restoration)
-    const { data: deletedConnection, error: checkError } = await supabase
-      .from('webshop_connections')
-      .select('*')
-      .eq('connection_type', connection_type)
-      .eq('api_url', matchApiUrl)
-      .eq('username', matchUsername)
-      .eq('password', matchPassword)
-      .not('deleted_at', 'is', null)
-      .maybeSingle()
+    let deletedConnection: { id: string; [key: string]: unknown } | null = null
+    let checkError: { code?: string; message?: string } | null = null
+
+    if (connection_type === 'shoprenter') {
+      const res = await supabase
+        .from('webshop_connections')
+        .select('*')
+        .eq('connection_type', connection_type)
+        .eq('api_url', matchApiUrl)
+        .eq('username', matchUsername)
+        .eq('password', matchPassword)
+        .not('deleted_at', 'is', null)
+        .maybeSingle()
+      deletedConnection = res.data
+      checkError = res.error
+    } else if (connection_type === 'szamlazz') {
+      const res = await supabase
+        .from('webshop_connections')
+        .select('*')
+        .eq('connection_type', 'szamlazz')
+        .eq('username', '')
+        .eq('password', matchPassword)
+        .not('deleted_at', 'is', null)
+        .maybeSingle()
+      deletedConnection = res.data
+      checkError = res.error
+    }
 
     if (checkError && checkError.code !== 'PGRST116') {
       console.error('Error checking for deleted connection:', checkError)
@@ -113,6 +145,12 @@ export async function createConnectionAction(formData: ConnectionFormData) {
         updateData.search_console_property_url = search_console_enabled ? search_console_property_url?.trim() || null : null
         updateData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
         updateData.search_console_private_key = search_console_enabled ? search_console_private_key || null : null
+      } else if (connection_type === 'szamlazz') {
+        updateData.api_url = normalizeSzamlazzApiUrl(api_url)
+        updateData.password = matchPassword
+        updateData.username = ''
+        updateData.buffer_auto_proforma_enabled = Boolean(buffer_auto_proforma_enabled)
+        updateData.buffer_auto_proforma_due_days = dueDays
       }
 
       const { data: restoredConnection, error: restoreError } = await supabase
@@ -146,10 +184,11 @@ export async function createConnectionAction(formData: ConnectionFormData) {
         insertData.search_console_client_email = search_console_enabled ? search_console_client_email?.trim() || null : null
         insertData.search_console_private_key = search_console_enabled ? search_console_private_key || null : null
       } else if (connection_type === 'szamlazz') {
-        // For szamlazz, store agent_key in password field (temporary solution until schema is updated)
-        insertData.api_url = '' // Not used for szamlazz
-        insertData.username = '' // Not used for szamlazz
-        insertData.password = matchPassword // Store agent_key in password field for now
+        insertData.api_url = normalizeSzamlazzApiUrl(api_url)
+        insertData.username = ''
+        insertData.password = matchPassword
+        insertData.buffer_auto_proforma_enabled = Boolean(buffer_auto_proforma_enabled)
+        insertData.buffer_auto_proforma_due_days = dueDays
       }
 
       // TODO: Encrypt password/agent_key in production
@@ -190,6 +229,8 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       password, 
       agent_key,
       is_active = true,
+      buffer_auto_proforma_enabled = false,
+      buffer_auto_proforma_due_days,
       search_console_property_url,
       search_console_client_email,
       search_console_private_key,
@@ -200,14 +241,12 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       return { success: false, error: 'A kapcsolat neve és típusa kötelező' }
     }
 
+    const dueDaysUpdate = parseBufferAutoProformaDueDays(buffer_auto_proforma_due_days)
+
     // Validate based on connection type
     if (connection_type === 'shoprenter') {
       if (!api_url || !username) {
         return { success: false, error: 'ShopRenter kapcsolathoz az API URL és Client ID kötelező' }
-      }
-    } else if (connection_type === 'szamlazz') {
-      if (!agent_key) {
-        return { success: false, error: 'Szamlazz.hu kapcsolathoz az Agent Key kötelező' }
       }
     }
 
@@ -233,6 +272,16 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
       .select('password, search_console_private_key, connection_type')
       .eq('id', id)
       .single()
+
+    if (connection_type === 'szamlazz') {
+      const trimmedKey = String(agent_key || '').trim()
+      if (!trimmedKey && !existingConnection?.password) {
+        return {
+          success: false,
+          error: 'Szamlazz.hu: adja meg az Agent Key-t, vagy hagyja a meglévő kulcsot.'
+        }
+      }
+    }
 
     // Build update object
     const updateData: any = {
@@ -274,14 +323,18 @@ export async function updateConnectionAction(id: string, formData: ConnectionFor
         updateData.search_console_private_key = null
       }
     } else if (connection_type === 'szamlazz') {
-      // For szamlazz, store agent_key in password field (temporary solution until schema is updated)
-      updateData.api_url = '' // Not used for szamlazz
-      updateData.username = '' // Not used for szamlazz
-      updateData.password = agent_key // Store agent_key in password field
+      updateData.api_url = normalizeSzamlazzApiUrl(api_url)
+      updateData.username = ''
       updateData.search_console_enabled = false
       updateData.search_console_property_url = null
       updateData.search_console_client_email = null
       updateData.search_console_private_key = null
+      updateData.buffer_auto_proforma_enabled = Boolean(buffer_auto_proforma_enabled)
+      updateData.buffer_auto_proforma_due_days = dueDaysUpdate
+      const trimmedKey = String(agent_key || '').trim()
+      if (trimmedKey) {
+        updateData.password = trimmedKey
+      }
     }
 
     // TODO: Encrypt password in production

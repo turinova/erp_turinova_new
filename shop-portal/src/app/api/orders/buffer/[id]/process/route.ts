@@ -5,6 +5,7 @@ import { computeOrderFulfillabilityFromStock } from '@/lib/order-fulfillability'
 import { reserveStockForOrder } from '@/lib/order-reservation'
 import { sendOrderStatusEmailNotification } from '@/lib/order-status-notification-send'
 import { maybeInsertImportAutoPaidPayment } from '@/lib/order-payment-import'
+import { maybeCreateBufferAutoProformaInvoice } from '@/lib/buffer-auto-proforma'
 import { generateOrderNumber } from '@/lib/order-number'
 import { recomputeOrderTotalsFromItems } from '@/lib/order-totals-recompute'
 
@@ -171,6 +172,12 @@ export async function POST(
         createdByUserId: user.id
       })
 
+      const autoProformaResult = await maybeCreateBufferAutoProformaInvoice(supabase, {
+        orderId: newOrder.id,
+        paymentMethodId,
+        createdByUserId: user.id
+      })
+
       // Step 8: Create order status history
       await supabase
         .from('order_status_history')
@@ -218,7 +225,8 @@ export async function POST(
         message: 'Order created successfully',
         order_id: newOrder.id,
         order_number: newOrder.order_number,
-        items_count: orderItems.length
+        items_count: orderItems.length,
+        auto_proforma: autoProformaResult
       })
 
     } catch (error) {

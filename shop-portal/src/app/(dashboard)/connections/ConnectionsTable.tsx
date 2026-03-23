@@ -479,6 +479,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     password: '',
     agent_key: '', // For szamlazz.hu
     is_active: true,
+    buffer_auto_proforma_enabled: false,
+    buffer_auto_proforma_due_days: 8,
     search_console_property_url: '',
     search_console_client_email: '',
     search_console_private_key: '',
@@ -494,6 +496,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     password: '',
     agent_key: '', // For szamlazz.hu
     is_active: true,
+    buffer_auto_proforma_enabled: false,
+    buffer_auto_proforma_due_days: 8,
     search_console_property_url: '',
     search_console_client_email: '',
     search_console_private_key: '',
@@ -558,7 +562,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         requestBody.password = connection.password // Client Secret
         requestBody.shop_name = shopName
       } else if (connection.connection_type === 'szamlazz') {
-        requestBody.agent_key = connection.password // For szamlazz, agent_key is stored in password field
+        requestBody.agent_key = connection.password
+        requestBody.api_url = connection.api_url?.trim()
+          ? connection.api_url
+          : 'https://www.szamlazz.hu/szamla/'
       }
 
       const response = await fetch('/api/connections/test', {
@@ -627,6 +634,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
           password: '',
           agent_key: '',
           is_active: true,
+          buffer_auto_proforma_enabled: false,
+          buffer_auto_proforma_due_days: 8,
           search_console_property_url: '',
           search_console_client_email: '',
           search_console_private_key: '',
@@ -658,6 +667,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       password: '', // Don't pre-fill password for security
       agent_key: connection.connection_type === 'szamlazz' ? connection.password || '' : '', // For szamlazz.hu, agent_key is stored in password field
       is_active: connection.is_active,
+      buffer_auto_proforma_enabled: Boolean(connection.buffer_auto_proforma_enabled),
+      buffer_auto_proforma_due_days:
+        typeof connection.buffer_auto_proforma_due_days === 'number'
+          ? connection.buffer_auto_proforma_due_days
+          : 8,
       search_console_property_url: connection.search_console_property_url || '',
       search_console_client_email: connection.search_console_client_email || '',
       search_console_private_key: '', // Don't pre-fill private key for security
@@ -681,8 +695,9 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         return
       }
     } else if (editFormData.connection_type === 'szamlazz') {
-      if (!editFormData.agent_key) {
-        toast.error('Szamlazz.hu kapcsolathoz az Agent Key kötelező')
+      const hasKey = editFormData.agent_key?.trim()
+      if (!hasKey && !editingConnection?.password) {
+        toast.error('Szamlazz.hu: adja meg az Agent Key-t (vagy tartsa meg a meglévőt).')
         return
       }
     }
@@ -2975,7 +2990,14 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                       <InputLabel>Típus *</InputLabel>
                       <Select
                         value={newConnection.connection_type}
-                        onChange={(e) => setNewConnection(prev => ({ ...prev, connection_type: e.target.value as any }))}
+                        onChange={(e) => {
+                          const v = e.target.value as 'shoprenter' | 'szamlazz'
+                          setNewConnection(prev => ({
+                            ...prev,
+                            connection_type: v,
+                            ...(v === 'szamlazz' ? { api_url: '' } : {})
+                          }))
+                        }}
                         label="Típus *"
                         required
                         sx={{
@@ -3162,6 +3184,66 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                             }
                           }
                         }}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Számla Agent URL (opcionális)"
+                        value={newConnection.api_url}
+                        onChange={(e) => setNewConnection(prev => ({ ...prev, api_url: e.target.value }))}
+                        placeholder="https://www.szamlazz.hu/szamla/"
+                        helperText="Általában a gyári cím. Csak akkor változtassa meg, ha a Számlázz.hu mást adott meg."
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={newConnection.buffer_auto_proforma_enabled}
+                            onChange={(e) =>
+                              setNewConnection((prev) => ({
+                                ...prev,
+                                buffer_auto_proforma_enabled: e.target.checked
+                              }))
+                            }
+                          />
+                        }
+                        label="Automatikus díjbekérő (puffer import után)"
+                      />
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: 0.5 }}>
+                        Ha be van kapcsolva, a kiválasztott fizetési módnál (Fizetési módok → automatikus díjbekérő) a webshop pufferből
+                        importált rendeléshez a rendszer díjbekérőt hoz létre a Számlázz.hu-n. Teljes számlázási cím szükséges.
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Fizetési határidő (nap)"
+                        value={newConnection.buffer_auto_proforma_due_days}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          setNewConnection((prev) => ({
+                            ...prev,
+                            buffer_auto_proforma_due_days: Number.isFinite(v)
+                              ? Math.min(365, Math.max(0, v))
+                              : 8
+                          }))
+                        }}
+                        inputProps={{ min: 0, max: 365, step: 1 }}
+                        helperText="A díjbekérő kiállításának napjától számított napok (fizetési határidő a Számlázzon)."
                       />
                     </Grid>
                   </Grid>
@@ -3589,6 +3671,65 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                         }}
                       />
                     </Grid>
+                    <Grid item xs={12}>
+                      <TextField
+                        fullWidth
+                        label="Számla Agent URL (opcionális)"
+                        value={editFormData.api_url}
+                        onChange={(e) => setEditFormData(prev => ({ ...prev, api_url: e.target.value }))}
+                        placeholder="https://www.szamlazz.hu/szamla/"
+                        helperText="Általában a gyári cím; hagyja üresen az alapértelmezett használatához."
+                        sx={{
+                          '& .MuiOutlinedInput-root': {
+                            bgcolor: 'rgba(0, 0, 0, 0.02)',
+                            '&:hover': {
+                              bgcolor: 'rgba(0, 0, 0, 0.04)'
+                            },
+                            '&.Mui-focused': {
+                              bgcolor: 'white'
+                            }
+                          }
+                        }}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={editFormData.buffer_auto_proforma_enabled}
+                            onChange={(e) =>
+                              setEditFormData((prev) => ({
+                                ...prev,
+                                buffer_auto_proforma_enabled: e.target.checked
+                              }))
+                            }
+                          />
+                        }
+                        label="Automatikus díjbekérő (puffer import után)"
+                      />
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ pl: 0.5 }}>
+                        A fizetési módnál engedélyezze az „automatikus díjbekérő” opciót; csak akkor fut le, ha ez a kapcsoló is be van kapcsolva.
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Fizetési határidő (nap)"
+                        value={editFormData.buffer_auto_proforma_due_days}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10)
+                          setEditFormData((prev) => ({
+                            ...prev,
+                            buffer_auto_proforma_due_days: Number.isFinite(v)
+                              ? Math.min(365, Math.max(0, v))
+                              : 8
+                          }))
+                        }}
+                        inputProps={{ min: 0, max: 365, step: 1 }}
+                        helperText="Kiállítás napjától számított napok a Számlázz fizetési határidő mezőjéhez."
+                      />
+                    </Grid>
                   </Grid>
                 </Paper>
               </Grid>
@@ -3735,7 +3876,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               updatingConnection || 
               !editFormData.name || 
               (editFormData.connection_type === 'shoprenter' && (!editFormData.api_url || !editFormData.username)) ||
-              (editFormData.connection_type === 'szamlazz' && !editFormData.agent_key)
+              (editFormData.connection_type === 'szamlazz' && !editFormData.agent_key?.trim() && !editingConnection?.password)
             }
             sx={{ minWidth: 120 }}
           >

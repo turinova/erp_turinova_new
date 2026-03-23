@@ -68,6 +68,30 @@ Prerequisites: `orders`, `customer_companies` tables must exist (from 20250130 a
 
 ---
 
+## Optional tenant sample data (connections)
+
+For **dev/demo** seed rows (ShopRenter / Számlázz placeholders), see:
+
+- **`supabase/tenant_sample_webshop_connections.sql`**
+
+Run only after `20250218_create_webshop_connections.sql`. Edit placeholders before running; safe to re-run (Számlázz insert is idempotent by name + type).
+
+---
+
+## Outgoing invoices (20260325)
+
+Run in **tenant** DB **after** `webshop_connections` and `orders` exist.
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | **20260325_create_invoices_table.sql** | Table `invoices` + internal invoice numbers + RLS; `connection_id` → Számlázz kapcsolat |
+
+**Admin database:** run **`20260325_tenant_migration_list_invoices.sql`** so `get_tenant_pending_migrations` includes this migration name.
+
+Optional sample / notes: **`supabase/tenant_sample_invoices.sql`**.
+
+---
+
 ## Durable product sync jobs (20260324)
 
 Run in **tenant** DB **after** `sync_audit_logs` exists (see `20250308_create_sync_audit_logs.sql`).

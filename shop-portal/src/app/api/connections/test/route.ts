@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
+import { normalizeSzamlazzApiUrl, testSzamlazzAgentConnection } from '@/lib/szamlazz-agent'
 
 /**
  * POST /api/connections/test
@@ -17,11 +18,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { connection_type, api_url, username, password, connection_id, shop_name } = body
+    const { connection_type, api_url, username, password, connection_id, shop_name, agent_key } = body
 
-    if (!connection_type || !api_url || !username || !password) {
+    if (!connection_type) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required field: connection_type' },
         { status: 400 }
       )
     }
@@ -29,6 +30,12 @@ export async function POST(request: NextRequest) {
     // Test connection based on type
     let testResult
     if (connection_type === 'shoprenter') {
+      if (!api_url || !username || !password) {
+        return NextResponse.json(
+          { error: 'Missing required fields for ShopRenter test' },
+          { status: 400 }
+        )
+      }
       // For ShopRenter, username = client_id, password = client_secret
       // shop_name can be extracted from api_url or provided separately
       const extractedShopName = shop_name || extractShopNameFromUrl(api_url)
@@ -45,6 +52,16 @@ export async function POST(request: NextRequest) {
       
       console.log('Extracted shop name:', extractedShopName, 'from URL:', api_url)
       testResult = await testShopRenterConnection(extractedShopName, username, password, api_url)
+    } else if (connection_type === 'szamlazz') {
+      const resolvedAgentKey = String(agent_key || password || '').trim()
+      const resolvedApiUrl = normalizeSzamlazzApiUrl(api_url)
+      if (!resolvedAgentKey) {
+        return NextResponse.json(
+          { error: 'Missing required field for Szamlazz: agent_key' },
+          { status: 400 }
+        )
+      }
+      testResult = await testSzamlazzAgentConnection(resolvedAgentKey, resolvedApiUrl)
     } else {
       return NextResponse.json(
         { error: `Connection type ${connection_type} not yet supported` },
