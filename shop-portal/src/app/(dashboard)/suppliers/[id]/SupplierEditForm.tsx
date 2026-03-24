@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useState, useEffect, useRef } from 'react'
+
 import { useRouter } from 'next/navigation'
+
 import {
   Box,
   Typography,
@@ -21,6 +23,7 @@ import {
 } from '@mui/material'
 import { Save as SaveIcon, Info as InfoIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+
 import AddressesCard from '@/components/suppliers/AddressesCard'
 import BankAccountsCard from '@/components/suppliers/BankAccountsCard'
 import OrderChannelsCard from '@/components/suppliers/OrderChannelsCard'
@@ -52,6 +55,7 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+
   const [formData, setFormData] = useState({
     name: initialSupplier.name || '',
     short_name: initialSupplier.short_name || '',
@@ -63,18 +67,21 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
     note: initialSupplier.note || '',
     status: initialSupplier.status || 'active'
   })
+
   const [paymentSettings, setPaymentSettings] = useState({
     default_payment_method_id: (initialSupplier as any).default_payment_method_id || null,
     default_payment_terms_days: (initialSupplier as any).default_payment_terms_days || null,
     default_vat_id: (initialSupplier as any).default_vat_id || null,
     default_currency_id: (initialSupplier as any).default_currency_id || null
   })
+
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Unsaved changes tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null)
+
   const initialStateRef = useRef<{
     formData: typeof formData
     paymentSettings: typeof paymentSettings
@@ -90,7 +97,9 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
           paymentSettings: { ...paymentSettings }
         }
       }, 100)
-      return () => clearTimeout(timer)
+
+      
+return () => clearTimeout(timer)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -101,12 +110,15 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
   // Track changes
   useEffect(() => {
     if (!initialStateRef.current) return
+
     const current = {
       formData,
       paymentSettings
     }
+
     const initial = initialStateRef.current
     const changed = !deepEqual(current, initial)
+
     setHasUnsavedChanges(changed)
   }, [formData, paymentSettings])
 
@@ -117,22 +129,14 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
       e.preventDefault()
       e.returnValue = ''
     }
+
     window.addEventListener('beforeunload', handler)
-    return () => {
+
+    
+return () => {
       window.removeEventListener('beforeunload', handler)
     }
   }, [hasUnsavedChanges])
-
-  // Handle navigation with unsaved changes check
-  const handleNavigation = (url: string, e?: React.MouseEvent) => {
-    if (hasUnsavedChanges) {
-      e?.preventDefault()
-      setPendingNavigation(url)
-      setShowUnsavedDialog(true)
-      return false
-    }
-    return true
-  }
 
   // Intercept link clicks within the component
   useEffect(() => {
@@ -144,9 +148,13 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
       
       if (link && link.href) {
         const url = new URL(link.href)
+
+
         // Only intercept internal navigation (same origin)
         if (url.origin === window.location.origin) {
           const pathname = url.pathname
+
+
           // Don't intercept if navigating to the same page
           if (pathname !== window.location.pathname) {
             e.preventDefault()
@@ -158,7 +166,8 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
     }
 
     document.addEventListener('click', handleLinkClick, true)
-    return () => document.removeEventListener('click', handleLinkClick, true)
+    
+return () => document.removeEventListener('click', handleLinkClick, true)
   }, [hasUnsavedChanges])
 
   const handleUpdate = () => {
@@ -174,8 +183,13 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
       newErrors.name = 'A beszállító neve kötelező'
     }
 
+    if (!formData.short_name.trim()) {
+      newErrors.short_name = 'A beszállító kód kötelező'
+    }
+
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    
+return Object.keys(newErrors).length === 0
   }
 
   const handleSave = async () => {
@@ -184,6 +198,7 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
     }
 
     setSaving(true)
+
     try {
       const response = await fetch(`/api/suppliers/${initialSupplier.id}`, {
         method: 'PUT',
@@ -206,11 +221,14 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
 
       if (!response.ok) {
         const errorData = await response.json()
+
         throw new Error(errorData.error || 'Hiba a mentés során')
       }
 
       toast.success('Beszállító sikeresen frissítve')
       setHasUnsavedChanges(false)
+
+
       // Update initial state ref after successful save
       if (initialStateRef.current) {
         initialStateRef.current = {
@@ -218,6 +236,8 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
           paymentSettings
         }
       }
+
+
       // Refresh page data
       router.refresh()
     } catch (error) {
@@ -329,10 +349,13 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
               </Grid>
               <Grid item xs={12} md={4}>
                 <TextField
-                  label="Rövid név / Alias"
+                  label="Beszállító kód *"
                   value={formData.short_name}
                   onChange={(e) => setFormData(prev => ({ ...prev, short_name: e.target.value }))}
                   fullWidth
+                  required
+                  error={!!errors.short_name}
+                  helperText={errors.short_name || 'Egyedi, kötelező kód (pl. SUP-0001)'}
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -593,11 +616,13 @@ export default function SupplierEditForm({ initialSupplier, vatRates }: Supplier
               // Discard changes and navigate
               setHasUnsavedChanges(false)
               setShowUnsavedDialog(false)
+
               if (pendingNavigation) {
                 router.push(pendingNavigation)
               } else {
                 router.push('/suppliers')
               }
+
               setPendingNavigation(null)
             }}
             variant="contained"

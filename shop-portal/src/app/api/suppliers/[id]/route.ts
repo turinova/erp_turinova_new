@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { sanitizeSignatureHtml } from '@/lib/email-signature-sanitize'
 
@@ -16,6 +18,7 @@ export async function GET(
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
+
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -71,7 +74,8 @@ export async function GET(
     })
   } catch (error) {
     console.error('Error in suppliers GET API:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
@@ -92,11 +96,13 @@ export async function PUT(
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
+
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
+
     const { 
       name, 
       short_name, 
@@ -122,6 +128,13 @@ export async function PUT(
       )
     }
 
+    if (!short_name || !String(short_name).trim()) {
+      return NextResponse.json(
+        { error: 'A beszállító kód kötelező' },
+        { status: 400 }
+      )
+    }
+
     // Check if name already exists (excluding current record)
     const { data: existingByName } = await supabase
       .from('suppliers')
@@ -138,7 +151,25 @@ export async function PUT(
       )
     }
 
+    const supplierCode = String(short_name).trim()
+
+    const { data: existingByCode } = await supabase
+      .from('suppliers')
+      .select('id')
+      .neq('id', id)
+      .ilike('short_name', supplierCode)
+      .is('deleted_at', null)
+      .single()
+
+    if (existingByCode) {
+      return NextResponse.json(
+        { error: 'Már létezik beszállító ezzel a beszállító kóddal' },
+        { status: 400 }
+      )
+    }
+
     let introSanitized: string | null | undefined = undefined
+
     if (email_po_intro_html !== undefined) {
       if (email_po_intro_html === null || email_po_intro_html === '') {
         introSanitized = null
@@ -147,7 +178,9 @@ export async function PUT(
           introSanitized = sanitizeSignatureHtml(String(email_po_intro_html))
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'Érvénytelen HTML'
-          return NextResponse.json({ error: msg }, { status: 400 })
+
+          
+return NextResponse.json({ error: msg }, { status: 400 })
         }
       }
     }
@@ -157,7 +190,7 @@ export async function PUT(
       .from('suppliers')
       .update({
         name: name.trim(),
-        short_name: short_name?.trim() || null,
+        short_name: supplierCode,
         email: email?.trim() || null,
         phone: phone?.trim() || null,
         website: website?.trim() || null,
@@ -178,7 +211,8 @@ export async function PUT(
 
     if (error) {
       console.error('Error updating supplier:', error)
-      return NextResponse.json(
+      
+return NextResponse.json(
         { error: error.message || 'Hiba a beszállító frissítésekor' },
         { status: 500 }
       )
@@ -194,7 +228,8 @@ export async function PUT(
     return NextResponse.json({ supplier: data })
   } catch (error) {
     console.error('Error in suppliers PUT API:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
@@ -214,11 +249,13 @@ export async function PATCH(
     const supabase = await getTenantSupabase()
 
     const { data: { user }, error: userError } = await supabase.auth.getUser()
+
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
+
     if (!body || typeof body !== 'object' || !('email_po_intro_html' in body)) {
       return NextResponse.json(
         { error: 'Csak email_po_intro_html mező támogatott' },
@@ -229,6 +266,7 @@ export async function PATCH(
     const { email_po_intro_html } = body as { email_po_intro_html: unknown }
 
     let introSanitized: string | null
+
     if (email_po_intro_html === null || email_po_intro_html === '') {
       introSanitized = null
     } else {
@@ -236,7 +274,9 @@ export async function PATCH(
         introSanitized = sanitizeSignatureHtml(String(email_po_intro_html))
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Érvénytelen HTML'
-        return NextResponse.json({ error: msg }, { status: 400 })
+
+        
+return NextResponse.json({ error: msg }, { status: 400 })
       }
     }
 
@@ -253,7 +293,8 @@ export async function PATCH(
 
     if (error) {
       console.error('Error patching supplier:', error)
-      return NextResponse.json(
+      
+return NextResponse.json(
         { error: error.message || 'Hiba a beszállító frissítésekor' },
         { status: 500 }
       )
@@ -266,7 +307,8 @@ export async function PATCH(
     return NextResponse.json({ supplier: data })
   } catch (error) {
     console.error('Error in suppliers PATCH API:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -284,6 +326,7 @@ export async function DELETE(
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
+
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -298,7 +341,8 @@ export async function DELETE(
 
     if (error) {
       console.error('Error deleting supplier:', error)
-      return NextResponse.json(
+      
+return NextResponse.json(
         { error: error.message || 'Hiba a beszállító törlésekor' },
         { status: 500 }
       )
@@ -307,7 +351,8 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error in suppliers DELETE API:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )

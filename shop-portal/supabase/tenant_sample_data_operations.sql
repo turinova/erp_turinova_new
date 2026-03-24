@@ -1,0 +1,18 @@
+-- Tenant DB checklist: Adatműveletek (XLSX import/export központ)
+--
+-- Run tenant migrations:
+--   supabase/migrations/20260330_add_data_operations_page_to_permissions.sql
+--   supabase/migrations/20260330_suppliers_short_name_required_unique_code.sql
+--
+-- Admin DB migration-list patch:
+--   supabase/migrations/20260330_tenant_migration_list_data_operations.sql
+--
+-- Feature scope v1:
+--   - /data-operations top-level page
+--   - Beszállítók XLSX export/import wizard
+--   - Export szerkezete = Import szerkezete
+--   - Beszállító kód (short_name) kötelező egyedi azonosító
+--
+-- NOTE:
+--   This file is intentionally a checklist/reference only.
+--   No sample rows are required for this feature.

@@ -1,6 +1,9 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
+
+import NextLink from 'next/link'
+
 import {
   Box,
   Typography,
@@ -9,6 +12,12 @@ import {
   CircularProgress,
   Alert,
   Chip,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
   Collapse,
   IconButton,
   Table,
@@ -31,11 +40,8 @@ import {
   Warehouse as WarehouseIcon,
   Inventory as InventoryIcon,
   TrendingUp as TrendingUpIcon,
-  TrendingDown as TrendingDownIcon,
-  LocalShipping as LocalShippingIcon,
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material'
-import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 
 interface ProductInventoryTabProps {
@@ -90,6 +96,19 @@ interface StockMovement {
   source_type?: string | null
   source_id?: string | null
   source_order_number?: string | null
+}
+
+interface WebshopSyncPreview {
+  erp_available_stock: number
+  stock_to_push: number
+  webshop_current_stock: number | null
+  delta: number | null
+  status: 'in_sync' | 'drift' | 'unknown' | 'error'
+  can_push: boolean
+  block_reason: string | null
+  fetch_warning: string | null
+  last_pushed_at: string | null
+  last_sync_error: string | null
 }
 
 function MovementTypeChip({ type }: { type: string }) {
@@ -154,7 +173,8 @@ function WarehouseInventoryCard({ warehouse, expanded, onToggle }: { warehouse: 
 
   const formatDate = (date: string | null) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('hu-HU', {
+    
+return new Date(date).toLocaleDateString('hu-HU', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -166,7 +186,8 @@ function WarehouseInventoryCard({ warehouse, expanded, onToggle }: { warehouse: 
   const getStockColor = (quantity: number) => {
     if (quantity > 0) return 'success.main'
     if (quantity < 0) return 'error.main'
-    return 'text.secondary'
+    
+return 'text.secondary'
   }
 
   const getOperationTypeLabel = (type: string) => {
@@ -399,6 +420,10 @@ function WarehouseInventoryCard({ warehouse, expanded, onToggle }: { warehouse: 
 export default function ProductInventoryTab({ productId }: ProductInventoryTabProps) {
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [webshopSync, setWebshopSync] = useState<WebshopSyncPreview | null>(null)
+  const [webshopSyncLoading, setWebshopSyncLoading] = useState(false)
+  const [webshopSyncSubmitting, setWebshopSyncSubmitting] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const [warehouses, setWarehouses] = useState<Warehouse[]>([])
   const [stockMovements, setStockMovements] = useState<StockMovement[]>([])
   const [expandedWarehouses, setExpandedWarehouses] = useState<Set<string>>(new Set())
@@ -408,20 +433,42 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
   const [warehouseFilter, setWarehouseFilter] = useState('all')
   const [movementTypeFilter, setMovementTypeFilter] = useState('all')
 
+  const fetchWebshopSyncPreview = useCallback(async () => {
+    setWebshopSyncLoading(true)
+
+    try {
+      const response = await fetch(`/api/products/${productId}/inventory/webshop-sync`)
+
+      if (!response.ok) throw new Error('Failed to fetch webshop sync preview')
+      const data = await response.json()
+
+      setWebshopSync(data)
+    } catch (error) {
+      console.error('Error fetching webshop sync preview:', error)
+      setWebshopSync(null)
+    } finally {
+      setWebshopSyncLoading(false)
+    }
+  }, [productId])
+
   useEffect(() => {
     const fetchInventory = async () => {
       setLoading(true)
+
       try {
         const params = new URLSearchParams()
+
         params.set('page', movementsPage.toString())
         params.set('limit', movementsLimit.toString())
         if (warehouseFilter !== 'all') params.set('warehouse_id', warehouseFilter)
         if (movementTypeFilter !== 'all') params.set('movement_type', movementTypeFilter)
 
         const response = await fetch(`/api/products/${productId}/inventory?${params.toString()}`)
+
         if (!response.ok) throw new Error('Failed to fetch inventory')
 
         const data = await response.json()
+
         setSummary(data.summary)
         setWarehouses(data.warehouses || [])
         setStockMovements(data.stock_movements || [])
@@ -437,14 +484,20 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
     fetchInventory()
   }, [productId, movementsPage, movementsLimit, warehouseFilter, movementTypeFilter])
 
+  useEffect(() => {
+    fetchWebshopSyncPreview()
+  }, [fetchWebshopSyncPreview])
+
   const handleWarehouseToggle = (warehouseId: string) => {
     setExpandedWarehouses(prev => {
       const newSet = new Set(prev)
+
       if (newSet.has(warehouseId)) {
         newSet.delete(warehouseId)
       } else {
         newSet.add(warehouseId)
       }
+
       return newSet
     })
   }
@@ -471,7 +524,62 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
   const getQuantityColor = (quantity: number) => {
     if (quantity > 0) return 'success.main'
     if (quantity < 0) return 'error.main'
-    return 'text.primary'
+    
+return 'text.primary'
+  }
+
+  const getWebshopSyncStatusLabel = (status: WebshopSyncPreview['status']) => {
+    switch (status) {
+      case 'in_sync':
+        return 'Szinkronban'
+      case 'drift':
+        return 'Eltérés'
+      case 'unknown':
+        return 'Nem ellenőrizhető'
+      case 'error':
+      default:
+        return 'Hiba'
+    }
+  }
+
+  const getWebshopSyncStatusColor = (status: WebshopSyncPreview['status']): 'success' | 'warning' | 'error' | 'default' => {
+    switch (status) {
+      case 'in_sync':
+        return 'success'
+      case 'drift':
+        return 'warning'
+      case 'unknown':
+        return 'default'
+      case 'error':
+      default:
+        return 'error'
+    }
+  }
+
+  const handlePushStock = async () => {
+    setWebshopSyncSubmitting(true)
+
+    try {
+      const response = await fetch(`/api/products/${productId}/inventory/webshop-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'A közzététel nem sikerült')
+      }
+
+      toast.success(data?.message || 'Készlet sikeresen közzétéve')
+      setConfirmOpen(false)
+      await fetchWebshopSyncPreview()
+    } catch (error: any) {
+      console.error('Error publishing webshop stock:', error)
+      toast.error(error?.message || 'A készlet közzététele sikertelen')
+    } finally {
+      setWebshopSyncSubmitting(false)
+    }
   }
 
   if (loading) {
@@ -484,6 +592,132 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
 
   return (
     <Grid container spacing={3}>
+      {/* Webshop publish card */}
+      <Grid item xs={12}>
+        <Paper
+          elevation={0}
+          sx={{
+            p: 3,
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 2
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <Box
+                sx={{
+                  p: 1,
+                  borderRadius: '8px',
+                  bgcolor: 'success.main',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <CheckCircleIcon sx={{ color: 'white', fontSize: 22 }} />
+              </Box>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Webshop készlet közzététel
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  A webshop felé küldendő készlet az elérhető készlet alapján számolva.
+                </Typography>
+              </Box>
+            </Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {webshopSync ? (
+                <Chip
+                  size="small"
+                  label={getWebshopSyncStatusLabel(webshopSync.status)}
+                  color={getWebshopSyncStatusColor(webshopSync.status)}
+                />
+              ) : null}
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={fetchWebshopSyncPreview}
+                disabled={webshopSyncLoading || webshopSyncSubmitting}
+              >
+                Frissítés
+              </Button>
+              <Button
+                variant="contained"
+                color="success"
+                onClick={() => setConfirmOpen(true)}
+                disabled={webshopSyncLoading || webshopSyncSubmitting || !webshopSync?.can_push}
+              >
+                Készlet küldése
+              </Button>
+            </Box>
+          </Box>
+
+          <Divider sx={{ my: 2 }} />
+
+          {webshopSyncLoading ? (
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={22} />
+            </Box>
+          ) : webshopSync ? (
+            <>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Typography variant="body2" color="text.secondary">Küldendő készlet</Typography>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main' }}>
+                    {webshopSync.stock_to_push}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Typography variant="body2" color="text.secondary">ERP elérhető készlet</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    {webshopSync.erp_available_stock.toFixed(2)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Typography variant="body2" color="text.secondary">Webshop jelenlegi</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    {webshopSync.webshop_current_stock === null ? '-' : webshopSync.webshop_current_stock}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Typography variant="body2" color="text.secondary">Eltérés</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700, color: getQuantityColor(webshopSync.delta || 0) }}>
+                    {webshopSync.delta === null ? '-' : (webshopSync.delta > 0 ? `+${webshopSync.delta}` : webshopSync.delta)}
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Utolsó közzététel: {webshopSync.last_pushed_at ? formatDate(webshopSync.last_pushed_at) : '-'}
+                </Typography>
+              </Box>
+
+              {webshopSync.fetch_warning ? (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  {webshopSync.fetch_warning}
+                </Alert>
+              ) : null}
+
+              {webshopSync.block_reason ? (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {webshopSync.block_reason}
+                </Alert>
+              ) : null}
+
+              {webshopSync.last_sync_error ? (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  Legutóbbi szinkron hiba: {webshopSync.last_sync_error}
+                </Alert>
+              ) : null}
+            </>
+          ) : (
+            <Alert severity="info">A webshop szinkron előnézet most nem érhető el.</Alert>
+          )}
+        </Paper>
+      </Grid>
+
       {/* Summary Card */}
       {summary && (
         <Grid item xs={12}>
@@ -696,6 +930,7 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
                       const quantity = parseFloat(movement.quantity.toString())
                       const unitCost = movement.unit_cost ? parseFloat(movement.unit_cost.toString()) : null
                       const total = unitCost ? Math.abs(quantity) * unitCost : null
+
                       const sourceNode =
                         movement.warehouse_operations ? (
                           <MuiLink
@@ -767,6 +1002,39 @@ export default function ProductInventoryTab({ productId }: ProductInventoryTabPr
           )}
         </Paper>
       </Grid>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => {
+          if (!webshopSyncSubmitting) setConfirmOpen(false)
+        }}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Készlet közzététele webshopba</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Ezt a készletet küldjük a webshopba:
+            <strong> {webshopSync?.stock_to_push ?? '-'} db</strong>.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setConfirmOpen(false)}
+            disabled={webshopSyncSubmitting}
+          >
+            Mégse
+          </Button>
+          <Button
+            variant="contained"
+            color="success"
+            onClick={handlePushStock}
+            disabled={webshopSyncSubmitting || !webshopSync?.can_push}
+          >
+            {webshopSyncSubmitting ? 'Küldés...' : 'Készlet küldése'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Grid>
   )
 }

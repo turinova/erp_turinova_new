@@ -1,16 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 
 /**
  * GET /api/suppliers
  * Fetch all active suppliers from the database
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const supabase = await getTenantSupabase()
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
+
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -24,7 +27,8 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching suppliers:', error)
-      return NextResponse.json(
+      
+return NextResponse.json(
         { error: error.message || 'Hiba a beszállítók lekérdezésekor' },
         { status: 500 }
       )
@@ -33,7 +37,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ suppliers: suppliers || [] })
   } catch (error) {
     console.error('Error in suppliers API:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )
@@ -50,11 +55,13 @@ export async function POST(request: NextRequest) {
 
     // Get auth user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
+
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const body = await request.json()
+
     const { 
       name, 
       short_name, 
@@ -75,6 +82,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!short_name || !String(short_name).trim()) {
+      return NextResponse.json(
+        { error: 'A beszállító kód kötelező' },
+        { status: 400 }
+      )
+    }
+
     // Check if name already exists
     const { data: existingByName } = await supabase
       .from('suppliers')
@@ -90,12 +104,28 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const supplierCode = String(short_name).trim()
+
+    const { data: existingByCode } = await supabase
+      .from('suppliers')
+      .select('id')
+      .ilike('short_name', supplierCode)
+      .is('deleted_at', null)
+      .single()
+
+    if (existingByCode) {
+      return NextResponse.json(
+        { error: 'Már létezik beszállító ezzel a beszállító kóddal' },
+        { status: 400 }
+      )
+    }
+
     // Create supplier
     const { data, error } = await supabase
       .from('suppliers')
       .insert({
         name: name.trim(),
-        short_name: short_name?.trim() || null,
+        short_name: supplierCode,
         email: email?.trim() || null,
         phone: phone?.trim() || null,
         website: website?.trim() || null,
@@ -109,7 +139,8 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating supplier:', error)
-      return NextResponse.json(
+      
+return NextResponse.json(
         { error: error.message || 'Hiba a beszállító létrehozásakor' },
         { status: 500 }
       )
@@ -118,7 +149,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ supplier: data }, { status: 201 })
   } catch (error) {
     console.error('Error in suppliers POST API:', error)
-    return NextResponse.json(
+    
+return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
     )

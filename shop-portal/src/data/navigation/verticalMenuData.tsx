@@ -8,6 +8,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       label: 'Kezdőlap',
       href: '/home',
       icon: 'ri-home-smile-line',
+
       // Notion-inspired colors for menu icons
       iconColor: '#0B6E99' // Blue for home/dashboard
     },
@@ -163,6 +164,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
           ]
         }
       ]
+    },
+    {
+      label: 'Adatműveletek',
+      href: '/data-operations',
+      icon: 'ri-file-transfer-line',
+      iconColor: '#5B7CFA'
     },
     {
       label: 'Beállítások',

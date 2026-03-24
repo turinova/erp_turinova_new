@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
+
 import { useRouter } from 'next/navigation'
+
 import {
   Box,
   Typography,
@@ -9,7 +11,6 @@ import {
   CardContent,
   TextField,
   Button,
-  Alert,
   MenuItem,
   Select,
   FormControl,
@@ -18,14 +19,12 @@ import {
 import { Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 
-interface SupplierNewFormProps {
-  initialSupplier: null
-  vatRates: Array<{ id: string; name: string; rate: number }>
-}
+interface SupplierNewFormProps { initialSupplier: null }
 
-export default function SupplierNewForm({ vatRates }: SupplierNewFormProps) {
+export default function SupplierNewForm({}: SupplierNewFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
+
   const [formData, setFormData] = useState({
     name: '',
     short_name: '',
@@ -38,6 +37,7 @@ export default function SupplierNewForm({ vatRates }: SupplierNewFormProps) {
     status: 'active',
     default_vat_id: ''
   })
+
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const validateForm = (): boolean => {
@@ -47,8 +47,13 @@ export default function SupplierNewForm({ vatRates }: SupplierNewFormProps) {
       newErrors.name = 'A beszállító neve kötelező'
     }
 
+    if (!formData.short_name.trim()) {
+      newErrors.short_name = 'A beszállító kód kötelező'
+    }
+
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    
+return Object.keys(newErrors).length === 0
   }
 
   const handleSave = async () => {
@@ -57,6 +62,7 @@ export default function SupplierNewForm({ vatRates }: SupplierNewFormProps) {
     }
 
     setSaving(true)
+
     try {
       const response = await fetch('/api/suppliers', {
         method: 'POST',
@@ -78,10 +84,12 @@ export default function SupplierNewForm({ vatRates }: SupplierNewFormProps) {
 
       if (!response.ok) {
         const errorData = await response.json()
+
         throw new Error(errorData.error || 'Hiba a mentés során')
       }
 
       const result = await response.json()
+
       toast.success('Beszállító sikeresen létrehozva')
       router.push(`/suppliers/${result.supplier.id}`)
     } catch (error) {
@@ -119,11 +127,13 @@ export default function SupplierNewForm({ vatRates }: SupplierNewFormProps) {
             />
 
             <TextField
-              label="Rövid név / Alias"
+              label="Beszállító kód *"
               value={formData.short_name}
               onChange={(e) => setFormData(prev => ({ ...prev, short_name: e.target.value }))}
               fullWidth
-              helperText="Opcionális rövid név vagy alias"
+              required
+              error={!!errors.short_name}
+              helperText={errors.short_name || 'Egyedi, kötelező kód (pl. SUP-0001)'}
             />
 
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>

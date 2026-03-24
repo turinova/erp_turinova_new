@@ -123,3 +123,20 @@ Verify:
 ```sql
 SELECT id, status, total_units, synced_units, error_units FROM sync_jobs ORDER BY started_at DESC LIMIT 5;
 ```
+
+---
+
+## Adatműveletek oldal + beszállító XLSX import/export (20260330)
+
+Run in **tenant** DB:
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | **20260330_add_data_operations_page_to_permissions.sql** | Adds `/data-operations` to `pages` and grants default `user_permissions` |
+| 2 | **20260330_suppliers_short_name_required_unique_code.sql** | Beszállító kód (`short_name`) kötelező + egyedi azonosító az import/export folyamathoz |
+
+**Admin database:** also run **`20260330_tenant_migration_list_data_operations.sql`** so `get_tenant_pending_migrations` includes the new migration name.
+
+Optional checklist / notes:
+
+- **`supabase/tenant_sample_data_operations.sql`**

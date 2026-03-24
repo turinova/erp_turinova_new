@@ -1,6 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
+
+import { useRouter } from 'next/navigation'
+
 import {
   Box,
   Typography,
@@ -16,20 +19,18 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Alert,
   Checkbox,
   Chip
 } from '@mui/material'
 import {
   Add as AddIcon,
-  Edit as EditIcon,
   Delete as DeleteIcon,
   Info as InfoIcon,
-  LocalShipping as LocalShippingIcon
+  LocalShipping as LocalShippingIcon,
+  ImportExport as ImportExportIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
-import { useRouter } from 'next/navigation'
 
 interface Supplier {
   id: string
@@ -54,11 +55,6 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
   const [deletingSupplier, setDeletingSupplier] = useState<Supplier | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  const handleOpenDeleteDialog = (supplier: Supplier) => {
-    setDeletingSupplier(supplier)
-    setDeleteDialogOpen(true)
-  }
-
   const handleCloseDeleteDialog = () => {
     setDeleteDialogOpen(false)
     setDeletingSupplier(null)
@@ -76,11 +72,13 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
   const handleSelectOne = (supplierId: string, event: React.ChangeEvent<HTMLInputElement>) => {
     event.stopPropagation()
     const newSelected = new Set(selectedIds)
+
     if (newSelected.has(supplierId)) {
       newSelected.delete(supplierId)
     } else {
       newSelected.add(supplierId)
     }
+
     setSelectedIds(newSelected)
   }
 
@@ -96,6 +94,7 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
   const handleBulkDelete = () => {
     if (selectedIds.size === 0) return
     const selectedSuppliers = suppliers.filter(s => selectedIds.has(s.id))
+
     if (selectedSuppliers.length === 1) {
       setDeletingSupplier(selectedSuppliers[0])
       setDeleteDialogOpen(true)
@@ -110,6 +109,7 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
     if (!deletingSupplier) return
 
     setDeleting(true)
+
     try {
       const response = await fetch(`/api/suppliers/${deletingSupplier.id}`, {
         method: 'DELETE'
@@ -117,14 +117,17 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
 
       if (!response.ok) {
         const errorData = await response.json()
+
         throw new Error(errorData.error || 'Hiba a törlés során')
       }
 
       setSuppliers(prev => prev.filter(supplier => supplier.id !== deletingSupplier.id))
       setSelectedIds(prev => {
         const newSet = new Set(prev)
+
         newSet.delete(deletingSupplier.id)
-        return newSet
+        
+return newSet
       })
       toast.success('Beszállító sikeresen törölve')
       handleCloseDeleteDialog()
@@ -172,6 +175,14 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
 
       {/* Action Buttons - Above Table */}
       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'nowrap', alignItems: 'center' }}>
+        <Button
+          variant="outlined"
+          startIcon={<ImportExportIcon />}
+          onClick={() => router.push('/data-operations?entity=suppliers')}
+          sx={{ whiteSpace: 'nowrap', minWidth: 'auto' }}
+        >
+          Tömeges import/export
+        </Button>
         {selectedIds.size > 0 && (
           <Button
             variant="outlined"
@@ -209,7 +220,7 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
                 />
               </TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Név</TableCell>
-              <TableCell sx={{ fontWeight: 600, py: 1 }}>Rövid név</TableCell>
+              <TableCell sx={{ fontWeight: 600, py: 1 }}>Beszállító kód</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>E-mail</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Telefon</TableCell>
               <TableCell sx={{ fontWeight: 600, py: 1 }}>Státusz</TableCell>
@@ -294,7 +305,7 @@ export default function SuppliersTable({ initialSuppliers }: SuppliersTableProps
         <DialogTitle>Törlés megerősítése</DialogTitle>
         <DialogContent>
           <Typography>
-            Biztosan törölni szeretné a <strong>"{deletingSupplier?.name}"</strong> beszállítót?
+            Biztosan törölni szeretné a <strong>&quot;{deletingSupplier?.name}&quot;</strong> beszállítót?
           </Typography>
           <Alert severity="warning" sx={{ mt: 2 }}>
             <Typography variant="body2">

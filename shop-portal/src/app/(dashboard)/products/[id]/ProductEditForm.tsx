@@ -32,9 +32,12 @@ import {
   InputAdornment,
   Radio,
   RadioGroup,
-  FormControlLabel
+  FormControlLabel,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material'
-import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon, Add as AddIcon, Close as CloseIcon, Delete as DeleteIcon, Edit as EditIcon, Inventory as InventoryIcon } from '@mui/icons-material'
+import { Save as SaveIcon, Sync as SyncIcon, AutoAwesome as AutoAwesomeIcon, Link as LinkIcon, Refresh as RefreshIcon, FamilyRestroom as FamilyRestroomIcon, ArrowUpward as ArrowUpwardIcon, ArrowDownward as ArrowDownwardIcon, Category as CategoryIcon, OpenInNew as OpenInNewIcon, Info as InfoIcon, Label as LabelIcon, Receipt as ReceiptIcon, AttachMoney as AttachMoneyIcon, Description as DescriptionIcon, Analytics as AnalyticsIcon, Calculate as CalculateIcon, PhotoLibrary as PhotoLibraryIcon, TextFields as ShortTextIcon, Settings as SettingsIcon, LocalOffer as LocalOfferIcon, Title as TitleIcon, Search as SearchIcon, Article as ArticleIcon, Assessment as AssessmentIcon, Store as StoreIcon, Add as AddIcon, Close as CloseIcon, Delete as DeleteIcon, Edit as EditIcon, Inventory as InventoryIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import NextLink from 'next/link'
 import type { ProductWithDescriptions } from '@/lib/products-server'
@@ -522,26 +525,28 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     setIsEditingMultiplier(true)
     setIsEditingCost(false)
     setIsEditingGross(false)
-    
-    const multiplier = parseFloat(value) || 0
+
+    const multiplier = parseFloat(value.replace(',', '.')) || 0
     setProductData(prev => {
       const cost = parseFloat(prev.cost.toString() || '0')
-      const newNetPrice = cost > 0 ? cost * multiplier : prev.price
-      
-      // Calculate gross price immediately
+      const rawNet = cost > 0 ? cost * multiplier : parseFloat(prev.price.toString() || '0')
+      const newNetPrice =
+        typeof rawNet === 'number' && !Number.isNaN(rawNet) ? Math.round(rawNet * 100) / 100 : 0
+
       const vat = vatRates.find(v => v.id === prev.vat_id)
-      const newGrossPrice = vat && newNetPrice > 0 
-        ? Math.round(newNetPrice * (1 + vat.kulcs / 100))
-        : null
-      
+      const newGrossPrice =
+        vat && newNetPrice > 0 ? Math.round(newNetPrice * (1 + vat.kulcs / 100)) : null
+
       if (newGrossPrice !== null) {
         setGrossPrice(newGrossPrice)
+      } else if (newNetPrice <= 0) {
+        setGrossPrice(null)
       }
-      
+
       return {
         ...prev,
-        multiplier: multiplier,
-        price: typeof newNetPrice === 'number' ? newNetPrice : parseFloat(newNetPrice.toString() || '0')
+        multiplier,
+        price: cost > 0 ? newNetPrice : prev.price
       }
     })
   }
@@ -4382,155 +4387,352 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
           <Grid container spacing={3}>
             {/* Base Pricing Information - Red Theme */}
             <Grid item xs={12}>
-              <Paper 
+              <Paper
                 elevation={0}
-                sx={{ 
+                sx={{
                   p: 3,
                   bgcolor: 'white',
                   border: '2px solid',
-                  borderColor: '#e74c3c',
+                  borderColor: '#4caf50',
                   borderRadius: 2,
                   position: 'relative',
                   overflow: 'hidden'
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, position: 'relative', zIndex: 1 }}>
-                  <Box sx={{ 
-                    p: 1, 
-                    borderRadius: '50%', 
-                    bgcolor: '#e74c3c',
+                <Box
+                  sx={{
                     display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 4px 12px rgba(231, 76, 60, 0.3)'
-                  }}>
-                    <ReceiptIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 2,
+                    mb: 2,
+                    flexWrap: 'wrap'
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0 }}>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: '50%',
+                        bgcolor: '#4caf50',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 4px 12px rgba(76, 175, 80, 0.3)',
+                        flexShrink: 0
+                      }}
+                    >
+                      <ReceiptIcon sx={{ color: 'white', fontSize: '24px' }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32', lineHeight: 1.3 }}>
+                        Alapadatok
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.25 }}>
+                        Beszerzés × szorzó → nettó · nettó + ÁFA → bruttó (Ft, kerekítve)
+                      </Typography>
+                    </Box>
                   </Box>
-                  <Typography variant="h6" sx={{ fontWeight: 700, color: '#c0392b' }}>
-                    Alapadatok
-                  </Typography>
                 </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      fullWidth
-                      label="Beszerzési ár (Nettó)"
-                      type="number"
-                      value={productData.cost && (typeof productData.cost === 'number' ? productData.cost > 0 : parseFloat(String(productData.cost)) > 0) ? productData.cost : ''}
-                      onChange={(e) => handleCostChange(e.target.value)}
-                      helperText="A termék beszerzési ára"
-                      inputProps={{ step: '0.01', min: '0' }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
+
+                <Accordion
+                  disableGutters
+                  elevation={0}
+                  sx={{
+                    mb: 2,
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 1,
+                    bgcolor: 'grey.50',
+                    '&:before': { display: 'none' }
+                  }}
+                >
+                  <AccordionSummary
+                    expandIcon={<ExpandMoreIcon sx={{ fontSize: 20, color: 'text.secondary' }} />}
+                    sx={{ minHeight: 40, py: 0.5, px: 1.5, '& .MuiAccordionSummary-content': { my: 0.75 } }}
+                  >
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary', letterSpacing: 0.2 }}>
+                      Számítási szabályok
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails sx={{ pt: 0, px: 1.5, pb: 1.5 }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.25, fontSize: '0.8125rem' }}>
+                      <strong>Alapelv:</strong> beszerzési ár × árazási szorzó = eladási nettó; a bruttó a nettóból és az ÁFA kulcsból kerekítve (egész Ft).
+                    </Typography>
+                    <Box component="ul" sx={{ m: 0, pl: 2, color: 'text.secondary', fontSize: '0.8125rem' }}>
+                      <li>
+                        <strong>Nettót</strong> módosítod → a szorzó és a bruttó újraszámolódik (nettó ÷ beszerzés = szorzó, ha van beszerzés).
+                      </li>
+                      <li>
+                        <strong>Bruttót</strong> módosítod → a nettó és a szorzó visszafejtve (bruttó egész Ft; nettó = bruttó − számított ÁFA).
+                      </li>
+                      <li>
+                        <strong>Beszerzést</strong> módosítod → a nettó változatlan marad, a szorzó igazodik.
+                      </li>
+                      <li>
+                        <strong>Szorzót</strong> módosítod → nettó = beszerzés × szorzó (ha van beszerzési ár).
+                      </li>
+                      <li>
+                        A nettó- és bruttó-szerkesztés <strong>nem mindig ugyanazt az eredményt adja vissza egymás után</strong> (tipikusan legfeljebb 1 Ft eltérés a kerekítés miatt). Ez normális.
+                      </li>
+                    </Box>
+                  </AccordionDetails>
+                </Accordion>
+
+                <Typography
+                  variant="caption"
+                  sx={{
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.6,
+                    fontWeight: 600,
+                    fontSize: '0.65rem',
+                    display: 'block',
+                    mb: 1,
+                    color: 'success.dark'
+                  }}
+                >
+                  Beszerzés → eladási nettó
+                </Typography>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    mb: 2,
+                    borderRadius: 1,
+                    bgcolor: 'rgba(255, 255, 255, 0.85)',
+                    border: '1px solid',
+                    borderColor: 'rgba(76, 175, 80, 0.28)'
+                  }}
+                >
+                  <Grid container spacing={1.5} alignItems="flex-end">
+                    <Grid item xs={12} md={3}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Beszerzés (nettó)"
+                        type="number"
+                        value={
+                          productData.cost &&
+                          (typeof productData.cost === 'number'
+                            ? productData.cost > 0
+                            : parseFloat(String(productData.cost)) > 0)
+                            ? productData.cost
+                            : ''
                         }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      fullWidth
-                      label="Eladási ár (Nettó)"
-                      type="number"
-                      value={productData.price || ''}
-                      onChange={(e) => handleNetPriceChange(e.target.value)}
-                      helperText="Alapértelmezett eladási ár (nettó)"
-                      inputProps={{ step: '0.01', min: '0' }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
-                        }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <TextField
-                      fullWidth
-                      label="Eladási ár (Bruttó)"
-                      type="number"
-                      value={grossPrice || ''}
-                      onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
-                      helperText="Bruttó ár (ÁFÁ-val együtt)"
-                      inputProps={{ step: '1', min: '0' }}
-                      InputProps={{
-                        readOnly: false
-                      }}
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          bgcolor: 'rgba(0, 0, 0, 0.02)',
-                          '&:hover': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused': {
-                            bgcolor: 'white'
-                          }
-                        }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} md={6}>
-                    <FormControl fullWidth>
-                      <InputLabel>ÁFA kulcs</InputLabel>
-                      <Select
-                        value={productData.vat_id || ''}
-                        onChange={(e) => handleVatChange(e.target.value)}
-                        label="ÁFA kulcs"
+                        onChange={(e) => handleCostChange(e.target.value)}
+                        placeholder="Ft"
+                        inputProps={{ step: '0.01', min: '0' }}
                         sx={{
-                          '& .MuiOutlinedInput-notchedOutline': {
-                            bgcolor: 'rgba(0, 0, 0, 0.02)'
-                          },
-                          '&:hover .MuiOutlinedInput-notchedOutline': {
-                            bgcolor: 'rgba(0, 0, 0, 0.04)'
-                          },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
-                            bgcolor: 'white'
-                          }
+                          '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' }
+                        }}
+                      />
+                    </Grid>
+                    <Grid
+                      item
+                      md={1}
+                      sx={{
+                        display: { xs: 'none', md: 'flex' },
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        pb: 1.25
+                      }}
+                    >
+                      <Typography variant="body2" color="text.disabled" sx={{ fontWeight: 600, userSelect: 'none' }}>
+                        ×
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={3}>
+                      <Tooltip title="Beszerzési ár × szorzó = eladási nettó (ha meg van adva a beszerzési ár)." placement="top" arrow>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Szorzó"
+                          type="number"
+                          value={productData.multiplier ?? ''}
+                          onChange={(e) => handleMultiplierChange(e.target.value)}
+                          inputProps={{ step: '0.001', min: '0' }}
+                          sx={{
+                            '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' }
+                          }}
+                        />
+                      </Tooltip>
+                    </Grid>
+                    <Grid
+                      item
+                      md={1}
+                      sx={{
+                        display: { xs: 'none', md: 'flex' },
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        pb: 1.25
+                      }}
+                    >
+                      <Typography variant="body2" color="text.disabled" sx={{ fontWeight: 600, userSelect: 'none' }}>
+                        =
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Eladási nettó"
+                        type="number"
+                        value={productData.price || ''}
+                        onChange={(e) => handleNetPriceChange(e.target.value)}
+                        inputProps={{ step: '0.01', min: '0' }}
+                        sx={{
+                          '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' }
+                        }}
+                      />
+                    </Grid>
+                  </Grid>
+                </Box>
+
+                <Typography
+                  variant="caption"
+                  sx={{
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.6,
+                    fontWeight: 600,
+                    fontSize: '0.65rem',
+                    display: 'block',
+                    mb: 1,
+                    color: 'text.secondary'
+                  }}
+                >
+                  ÁFA és bruttó eladási ár
+                </Typography>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    mb: 2,
+                    borderRadius: 1,
+                    bgcolor: 'grey.50',
+                    border: '1px solid',
+                    borderColor: 'divider'
+                  }}
+                >
+                  <Grid container spacing={1.5} alignItems="flex-end">
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>ÁFA kulcs</InputLabel>
+                        <Select
+                          value={productData.vat_id || ''}
+                          onChange={(e) => handleVatChange(e.target.value)}
+                          label="ÁFA kulcs"
+                          sx={{ bgcolor: 'background.paper' }}
+                        >
+                          {vatRates.map(vat => (
+                            <MenuItem key={vat.id} value={vat.id}>
+                              {vat.name} ({vat.kulcs}%)
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6}>
+                      <Box
+                        sx={{
+                          p: 1.5,
+                          borderRadius: 1,
+                          borderLeft: '3px solid #4caf50',
+                          bgcolor: 'rgba(76, 175, 80, 0.08)'
                         }}
                       >
-                        {vatRates.map(vat => (
-                          <MenuItem key={vat.id} value={vat.id}>
-                            {vat.name} ({vat.kulcs}%)
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            display: 'block',
+                            mb: 0.75,
+                            fontWeight: 700,
+                            letterSpacing: 0.2,
+                            color: '#2e7d32',
+                            textTransform: 'uppercase',
+                            fontSize: '0.65rem'
+                          }}
+                        >
+                          Eladási bruttó ár
+                        </Typography>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Eladási bruttó"
+                          type="number"
+                          value={grossPrice || ''}
+                          onChange={(e) => handleGrossPriceChange(parseFloat(e.target.value) || 0)}
+                          inputProps={{ step: '1', min: '0' }}
+                          InputProps={{
+                            endAdornment: (
+                              <InputAdornment position="end">
+                                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                                  Ft
+                                </Typography>
+                              </InputAdornment>
+                            )
+                          }}
+                          sx={{
+                            '& .MuiOutlinedInput-root': {
+                              bgcolor: 'background.paper',
+                              fontWeight: 600
+                            }
+                          }}
+                        />
+                      </Box>
+                    </Grid>
                   </Grid>
-                  {(() => {
-                    const cost = productData.cost !== null && productData.cost !== undefined && productData.cost !== '' 
-                      ? (typeof productData.cost === 'number' ? productData.cost : parseFloat(String(productData.cost)))
-                      : null;
-                    const price = productData.price !== null && productData.price !== undefined && productData.price !== ''
-                      ? (typeof productData.price === 'number' ? productData.price : parseFloat(String(productData.price)))
-                      : null;
-                    
-                    if (cost && price && cost > 0 && price > 0 && !isNaN(cost) && !isNaN(price)) {
-                      const margin = price - cost;
-                      const marginPercent = ((margin / cost) * 100).toFixed(1);
-                      return (
-                        <Grid item xs={12}>
-                          <Alert severity="success" icon={<InfoIcon />}>
-                            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
-                              Árrés: {margin.toLocaleString('hu-HU')} Ft ({marginPercent}%) | Bruttó: {grossPrice ? grossPrice.toLocaleString('hu-HU') : 'N/A'} Ft
-                            </Typography>
-                          </Alert>
-                        </Grid>
-                      );
-                    }
-                    return null;
-                  })()}
-                </Grid>
+                </Box>
+
+                {(() => {
+                  const cost =
+                    productData.cost !== null && productData.cost !== undefined && productData.cost !== ''
+                      ? typeof productData.cost === 'number'
+                        ? productData.cost
+                        : parseFloat(String(productData.cost))
+                      : null
+                  const price =
+                    productData.price !== null && productData.price !== undefined && productData.price !== ''
+                      ? typeof productData.price === 'number'
+                        ? productData.price
+                        : parseFloat(String(productData.price))
+                      : null
+                  const mult =
+                    productData.multiplier !== null && productData.multiplier !== undefined
+                      ? typeof productData.multiplier === 'number'
+                        ? productData.multiplier
+                        : parseFloat(String(productData.multiplier))
+                      : null
+
+                  if (cost && price && cost > 0 && price > 0 && !isNaN(cost) && !isNaN(price)) {
+                    const margin = price - cost
+                    const marginPercent = ((margin / cost) * 100).toFixed(1)
+                    const multLabel =
+                      mult !== null && !Number.isNaN(mult)
+                        ? mult.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
+                        : '—'
+                    return (
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          alignItems: 'center',
+                          gap: 1.5,
+                          py: 1.25,
+                          px: 1.5,
+                          borderRadius: 1,
+                          borderLeft: '3px solid',
+                          borderLeftColor: 'success.main',
+                          bgcolor: 'rgba(46, 125, 50, 0.06)'
+                        }}
+                      >
+                        <CalculateIcon sx={{ fontSize: 18, color: 'success.dark', opacity: 0.85 }} />
+                        <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', fontSize: '0.8125rem' }}>
+                          Árrés {margin.toLocaleString('hu-HU')} Ft ({marginPercent}%) · Szorzó {multLabel} · Bruttó{' '}
+                          {grossPrice ? grossPrice.toLocaleString('hu-HU') : '—'} Ft
+                        </Typography>
+                      </Box>
+                    )
+                  }
+                  return null
+                })()}
               </Paper>
             </Grid>
 
@@ -5460,8 +5662,11 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               {productData.cost && (
                 <li>Beszerzési ár: <strong>{parseFloat(productData.cost.toString()).toLocaleString('hu-HU')} Ft</strong> (csak információs, nem szinkronizálódik)</li>
               )}
-              <li>Árazási szorzó: <strong>{productData.multiplier}</strong> (csak információs, ShopRenter-ben 1.0 lesz)</li>
-              <li>ShopRenter számítás: <strong>Nettó ár × 1.0 × ÁFA</strong> (a szorzó már benne van a nettó árban)</li>
+              <li>
+                Árazási szorzó: <strong>{productData.multiplier}</strong> — ERP / import mező; a webshop felé a{' '}
+                <strong>nettó ár</strong> kerül (a szorzó a nettóban érvényesül, nem külön mezőként a ShopRenterben).
+              </li>
+              <li>ShopRenter: a kiküldött nettó árhoz tartozó ÁFA osztály alapján számolódik a bruttó.</li>
               {productData.vat_id && vatMappingStatus?.hasMapping && (
                 <li>ÁFA kulcs: <strong>{vatRates.find(v => v.id === productData.vat_id)?.name}</strong> → ShopRenter: <strong>{vatMappingStatus.shoprenterTaxClassName}</strong></li>
               )}
