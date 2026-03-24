@@ -91,7 +91,13 @@ import {
   getFulfillabilityDisplayStyle,
   getOrderStatusLabel
 } from '@/lib/order-status'
+import {
+  DIJBEKERO_DELETE_BLOCKED_MESSAGE,
+  isDijbekeroDeletionBlockedForOrderInvoices
+} from '@/lib/invoice-dijbekero-delete-guard'
+import { buildOrderFeeBreakdown } from '@/lib/order-fee-breakdown'
 import OrderInvoiceModal from './OrderInvoiceModal'
+import OrderFeesEditor from './OrderFeesEditor'
 
 const PAYMENT_STATUS_LABELS: Record<string, string> = {
   pending: 'Függőben',
@@ -480,6 +486,29 @@ export default function OrderDetailForm({
   const [itemDiscountModalRow, setItemDiscountModalRow] = useState<number | null>(null)
   const [itemDiscountModalMode, setItemDiscountModalMode] = useState<'percent' | 'amount'>('percent')
   const [itemDiscountModalValue, setItemDiscountModalValue] = useState('')
+  const [invoiceFeeItems, setInvoiceFeeItems] = useState<Array<{
+    id: string
+    item_type: 'fee'
+    product_type: 'accessory'
+    product_name: string
+    sku: string | null
+    quantity: number
+    unit_price_net: number
+    unit_price_gross: number
+    fee_type?: string
+    vat_id: string
+    total_net: number
+    total_vat: number
+    total_gross: number
+    unit: undefined
+  }>>([])
+  const [orderFeeRows, setOrderFeeRows] = useState<Array<Record<string, unknown>>>([])
+  const [createOrderFees, setCreateOrderFees] = useState<Array<{
+    fee_definition_id: string
+    quantity: number
+    unit_gross: number
+    vat_rate: number
+  }>>([])
   const [itemsSaving, setItemsSaving] = useState(false)
   const [productSearchTerm, setProductSearchTerm] = useState('')
   const [productSearchResults, setProductSearchResults] = useState<Array<{
@@ -511,8 +540,6 @@ export default function OrderDetailForm({
       discount_value: parseFloat(it.discount_amount) || 0,
       discount_mode: 'amount' as const
     })))
-    setOrderDiscountValue(parseFloat(String((order as any).discount_amount)) || 0)
-    setOrderDiscountMode('amount')
     setDisplayFulfillability(String(order.fulfillability_status ?? 'unknown'))
   }, [orderItems, order])
 
@@ -564,6 +591,25 @@ export default function OrderDetailForm({
     load()
     return () => { cancelled = true }
   }, [])
+
+  const loadOrderFees = useCallback(async () => {
+    if (isCreateMode || !order?.id) {
+      setOrderFeeRows([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/orders/${order.id}/fees`)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Hiba a díjak betöltésekor')
+      setOrderFeeRows(Array.isArray(data.fees) ? data.fees : [])
+    } catch {
+      setOrderFeeRows([])
+    }
+  }, [isCreateMode, order?.id])
+
+  useEffect(() => {
+    loadOrderFees()
+  }, [loadOrderFees])
 
   const loadPayments = useCallback(async () => {
     setPaymentsLoading(true)
@@ -715,7 +761,7 @@ export default function OrderDetailForm({
   }, [items, order.id, order, orderDiscountValue, orderDiscountMode, router, isCreateMode])
 
   const handleOrderDiscountBlur = useCallback(() => {
-    if (!isCreateMode) saveItems()
+    if (!isCreateMode) saveItems(undefined, { silent: true })
   }, [saveItems, isCreateMode])
 
   const [form, setForm] = useState({
@@ -766,7 +812,29 @@ export default function OrderDetailForm({
     )
   }, [initialInvoices])
 
+  /** Díjbekérő törlés csak ha nincs aktív számla/előleg ugyanazon a rendelésen. */
+  const dijbekeroDeletionBlocked = useMemo(
+    () => isDijbekeroDeletionBlockedForOrderInvoices(initialInvoices),
+    [initialInvoices]
+  )
+
   const invoiceModalOrder = useMemo(() => {
+    const itemsSubtotalGross = items.reduce((sum, it) => {
+      const lineGross = (Number(it.quantity) || 0) * (Number(it.unit_price_gross) || 0)
+      const itemDiscount = it.discount_mode === 'percent'
+        ? lineGross * (Number(it.discount_value) || 0) / 100
+        : (Number(it.discount_value) || 0)
+      return sum + Math.max(0, lineGross - itemDiscount)
+    }, 0)
+    const effectiveOrderDiscount = orderDiscountMode === 'percent'
+      ? itemsSubtotalGross * (orderDiscountValue || 0) / 100
+      : (orderDiscountValue || 0)
+    const liveOrderDiscountAmount = Math.min(effectiveOrderDiscount, itemsSubtotalGross)
+    const liveOrderDiscountPercent =
+      orderDiscountMode === 'percent'
+        ? (orderDiscountValue || 0)
+        : (itemsSubtotalGross > 0 ? (liveOrderDiscountAmount / itemsSubtotalGross) * 100 : 0)
+
     const billingName = order.billing_company?.trim()
       ? String(order.billing_company).trim()
       : [order.billing_firstname, order.billing_lastname].filter(Boolean).join(' ').trim()
@@ -787,18 +855,71 @@ export default function OrderDetailForm({
       billing_house_number: order.billing_address2 ?? null,
       billing_tax_number: order.billing_tax_number ?? null,
       billing_company_reg_number: null,
-      discount_percentage: Number(order.discount_percentage) || 0,
-      discount_amount: Number(order.discount_amount) || 0,
+      display_discount_amount: Math.round(liveOrderDiscountAmount * 100) / 100,
+      discount_percentage: Math.round(liveOrderDiscountPercent * 100) / 100,
+      discount_amount: Math.round(liveOrderDiscountAmount * 100) / 100,
+      shipping_total_net: Number((order as any).shipping_total_net) || 0,
+      shipping_total_gross: Number((order as any).shipping_total_gross) || 0,
+      payment_total_net: Number((order as any).payment_total_net) || 0,
+      payment_total_gross: Number((order as any).payment_total_gross) || 0,
       subtotal_net: Number(order.subtotal_net) || 0,
       total_vat: Number(order.total_vat) || 0,
       total_gross: Number(order.total_gross) || 0,
       created_at: order.created_at
     }
-  }, [order])
+  }, [order, items, orderDiscountMode, orderDiscountValue])
+
+  const handleOpenInvoiceDialog = useCallback(async () => {
+    if (isCreateMode) {
+      setInvoiceFeeItems([])
+      setInvoiceDialogOpen(true)
+      return
+    }
+    const ok = await saveItems(undefined, { silent: true })
+    if (!ok) return
+
+    try {
+      const res = await fetch(`/api/orders/${order.id}/fees`)
+      const data = await res.json()
+      if (res.ok) {
+        const feeRows = (Array.isArray(data.fees) ? data.fees : []).map((f: any) => {
+          const qty = Number(f.quantity) || 1
+          const unitGross = Number(f.unit_gross) || 0
+          const unitNet = Number(f.unit_net) || 0
+          const lineGross = Number(f.line_gross) || Math.round(qty * unitGross)
+          const lineNet = Number(f.line_net) || Math.round(qty * unitNet)
+          return {
+            id: String(f.id),
+            item_type: 'fee' as const,
+            product_type: 'accessory' as const,
+            product_name: String(f.name || 'Díj'),
+            sku: null,
+            quantity: qty,
+            unit_price_net: unitNet,
+            unit_price_gross: unitGross,
+            fee_type: String(f.type || 'OTHER'),
+            vat_id: '',
+            total_net: Math.round(lineNet),
+            total_vat: Math.round(lineGross - lineNet),
+            total_gross: Math.round(lineGross),
+            unit: undefined
+          }
+        })
+        setInvoiceFeeItems(feeRows)
+      } else {
+        setInvoiceFeeItems([])
+      }
+    } catch {
+      setInvoiceFeeItems([])
+    }
+
+    setInvoiceDialogOpen(true)
+  }, [isCreateMode, saveItems, order.id])
 
   const invoiceModalItems = useMemo(
     () =>
-      orderItems.map((i: Record<string, unknown>) => ({
+      [
+        ...orderItems.map((i: Record<string, unknown>) => ({
         id: String(i.id),
         item_type: 'product' as const,
         product_type: 'accessory' as const,
@@ -813,7 +934,9 @@ export default function OrderDetailForm({
         total_gross: Math.round(Number(i.line_total_gross ?? 0)),
         unit: undefined
       })),
-    [orderItems]
+        ...invoiceFeeItems
+      ],
+    [orderItems, invoiceFeeItems]
   )
   const livePreviewTotalGross = useMemo(() => {
     if (!isCreateMode) return Number(order.total_gross) || 0
@@ -1257,7 +1380,8 @@ export default function OrderDetailForm({
           payment_method_id: form.payment_method_id || null,
           payment_method_after: form.payment_method_after,
           currency_code: order.currency_code || 'HUF',
-          items: payloadItems
+          items: payloadItems,
+          fees: createOrderFees
         }
         if (orderDiscountMode === 'percent' && orderDiscountValue > 0) {
           body.order_discount_percent = orderDiscountValue
@@ -1395,6 +1519,10 @@ export default function OrderDetailForm({
   }
 
   const handleOpenStornoDialog = (inv: OrderInvoiceRow) => {
+    if (inv.invoice_type === 'dijbekero' && dijbekeroDeletionBlocked) {
+      toast.error(DIJBEKERO_DELETE_BLOCKED_MESSAGE)
+      return
+    }
     setStornoTarget(inv)
     setStornoDialogOpen(true)
   }
@@ -1625,7 +1753,7 @@ export default function OrderDetailForm({
                     color="warning"
                     size="small"
                     startIcon={<ReceiptLongIcon />}
-                    onClick={() => setInvoiceDialogOpen(true)}
+                    onClick={handleOpenInvoiceDialog}
                     disabled={hasFinalInvoice}
                     sx={{ height: 32 }}
                   >
@@ -2369,12 +2497,21 @@ export default function OrderDetailForm({
                           <TableCell>{formatDate(inv.created_at)}</TableCell>
                           <TableCell align="right">
                             <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                              <Tooltip title="Sztornó / díjbekérő törlése">
+                              <Tooltip
+                                title={
+                                  inv.invoice_type === 'dijbekero' && dijbekeroDeletionBlocked
+                                    ? DIJBEKERO_DELETE_BLOCKED_MESSAGE
+                                    : 'Sztornó / díjbekérő törlése'
+                                }
+                              >
                                 <span>
                                   <IconButton
                                     size="small"
                                     color="error"
-                                    disabled={isStorno}
+                                    disabled={
+                                      isStorno ||
+                                      (inv.invoice_type === 'dijbekero' && dijbekeroDeletionBlocked)
+                                    }
                                     onClick={() => handleOpenStornoDialog(inv)}
                                     aria-label="Sztornó"
                                   >
@@ -2413,6 +2550,14 @@ export default function OrderDetailForm({
             )}
           </Paper>
         )}
+
+        <OrderFeesEditor
+          orderId={String(order.id || '')}
+          isCreateMode={isCreateMode}
+          vatRates={vatRates}
+          onCreateFeesChange={setCreateOrderFees}
+          onFeesChanged={loadOrderFees}
+        />
 
         {/* 3. Tételek */}
         <Paper
@@ -2734,16 +2879,22 @@ export default function OrderDetailForm({
             : (orderDiscountValue || 0)
           const discountAmount = Math.min(effectiveOrderDiscount, itemsSubtotalGross)
           const discountPercent = itemsSubtotalGross > 0 ? (discountAmount / itemsSubtotalGross) * 100 : 0
-          const shippingGross = parseFloat(String((order as any).shipping_total_gross)) || 0
-          const shippingNet = parseFloat(String((order as any).shipping_total_net)) || 0
-          const paymentGross = parseFloat(String((order as any).payment_total_gross)) || 0
-          const paymentNet = parseFloat(String((order as any).payment_total_net)) || 0
+          const feeBreakdown = buildOrderFeeBreakdown(orderFeeRows as Array<Record<string, unknown>>)
+          const shippingGross = feeBreakdown.shippingGross
+          const shippingNet = feeBreakdown.shippingNet
+          const paymentGross = feeBreakdown.paymentGross
+          const paymentNet = feeBreakdown.paymentNet
+          const otherGross = feeBreakdown.otherGross
+          const otherNet = feeBreakdown.otherNet
+          const shippingVat = Math.round((shippingGross - shippingNet) * 100) / 100
+          const paymentVat = Math.round((paymentGross - paymentNet) * 100) / 100
+          const otherVat = Math.round((otherGross - otherNet) * 100) / 100
           const afterDiscountGross = Math.max(0, itemsSubtotalGross - discountAmount)
           const afterDiscountNet = itemsSubtotalGross > 0
             ? Math.max(0, itemsSubtotalNet - (discountAmount * itemsSubtotalNet / itemsSubtotalGross))
             : itemsSubtotalNet
-          const orderTotalGross = Math.round((afterDiscountGross + shippingGross + paymentGross) * 100) / 100
-          const orderTotalNet = Math.round((afterDiscountNet + shippingNet + paymentNet) * 100) / 100
+          const orderTotalGross = Math.round((afterDiscountGross + shippingGross + paymentGross + otherGross) * 100) / 100
+          const orderTotalNet = Math.round((afterDiscountNet + shippingNet + paymentNet + otherNet) * 100) / 100
           const orderTax = Math.round((orderTotalGross - orderTotalNet) * 100) / 100
           const summaryRowSx = { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 2, py: 0.5 }
           const summaryLabelSx = { color: 'text.secondary', fontSize: '0.875rem' }
@@ -2850,6 +3001,31 @@ export default function OrderDetailForm({
                     <Typography variant="overline" sx={{ color: 'text.secondary', fontSize: '0.7rem', letterSpacing: 1, display: 'block', mb: 0.75 }}>
                       Végső összesen
                     </Typography>
+                    {(shippingGross !== 0 || paymentGross !== 0 || otherGross !== 0) ? (
+                      <Box sx={{ pb: 0.75, mb: 0.75, borderBottom: '1px dashed', borderColor: 'divider' }}>
+                        {shippingGross !== 0 || shippingNet !== 0 ? (
+                          <>
+                            <Box sx={summaryRowSx}><Typography sx={summaryLabelSx}>Szállítás (nettó)</Typography><Typography sx={summaryValueSx}>{formatCurrency(shippingNet, order.currency_code)}</Typography></Box>
+                            <Box sx={summaryRowSx}><Typography sx={summaryLabelSx}>Szállítás ÁFA</Typography><Typography sx={summaryValueSx}>{formatCurrency(shippingVat, order.currency_code)}</Typography></Box>
+                            <Box sx={summaryRowSx}><Typography sx={{ ...summaryLabelSx, fontWeight: 600 }}>Szállítás (bruttó)</Typography><Typography sx={{ ...summaryValueSx, fontWeight: 700 }}>{formatCurrency(shippingGross, order.currency_code)}</Typography></Box>
+                          </>
+                        ) : null}
+                        {paymentGross !== 0 || paymentNet !== 0 ? (
+                          <>
+                            <Box sx={{ ...summaryRowSx, mt: 0.5 }}><Typography sx={summaryLabelSx}>Fizetési díj (nettó)</Typography><Typography sx={summaryValueSx}>{formatCurrency(paymentNet, order.currency_code)}</Typography></Box>
+                            <Box sx={summaryRowSx}><Typography sx={summaryLabelSx}>Fizetési díj ÁFA</Typography><Typography sx={summaryValueSx}>{formatCurrency(paymentVat, order.currency_code)}</Typography></Box>
+                            <Box sx={summaryRowSx}><Typography sx={{ ...summaryLabelSx, fontWeight: 600 }}>Fizetési díj (bruttó)</Typography><Typography sx={{ ...summaryValueSx, fontWeight: 700 }}>{formatCurrency(paymentGross, order.currency_code)}</Typography></Box>
+                          </>
+                        ) : null}
+                        {otherGross !== 0 || otherNet !== 0 ? (
+                          <>
+                            <Box sx={{ ...summaryRowSx, mt: 0.5 }}><Typography sx={summaryLabelSx}>Egyéb díjak (nettó)</Typography><Typography sx={summaryValueSx}>{formatCurrency(otherNet, order.currency_code)}</Typography></Box>
+                            <Box sx={summaryRowSx}><Typography sx={summaryLabelSx}>Egyéb díjak ÁFA</Typography><Typography sx={summaryValueSx}>{formatCurrency(otherVat, order.currency_code)}</Typography></Box>
+                            <Box sx={summaryRowSx}><Typography sx={{ ...summaryLabelSx, fontWeight: 600 }}>Egyéb díjak (bruttó)</Typography><Typography sx={{ ...summaryValueSx, fontWeight: 700 }}>{formatCurrency(otherGross, order.currency_code)}</Typography></Box>
+                          </>
+                        ) : null}
+                      </Box>
+                    ) : null}
                     <Box sx={summaryRowSx}><Typography sx={summaryLabelSx}>Nettó összesen</Typography><Typography sx={summaryValueSx}>{formatCurrency(orderTotalNet, order.currency_code)}</Typography></Box>
                     <Box sx={summaryRowSx}><Typography sx={summaryLabelSx}>ÁFA összesen</Typography><Typography sx={summaryValueSx}>{formatCurrency(orderTax, order.currency_code)}</Typography></Box>
                     <Box sx={{ ...summaryRowSx, pt: 0.75, borderTop: '1px solid', borderColor: 'divider', mt: 0.5 }}>

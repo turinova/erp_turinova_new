@@ -63,7 +63,34 @@ export async function POST(
       return NextResponse.json({ error: itemsError.message }, { status: 500 })
     }
 
-    const items = itemsData ?? []
+    const baseItems = itemsData ?? []
+
+    const { data: orderFeesData, error: orderFeesError } = await supabase
+      .from('order_fees')
+      .select('id, type, name, quantity, unit_net, unit_gross, vat_rate, line_net, line_gross')
+      .eq('order_id', orderId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+
+    if (orderFeesError) {
+      return NextResponse.json({ error: orderFeesError.message }, { status: 500 })
+    }
+
+    const feeItems = (orderFeesData || [])
+      .filter((f) => String(f.type || '').toUpperCase() !== 'SHIPPING')
+      .map((f) => ({
+        id: String(f.id),
+        product_name: String(f.name || 'Díj'),
+        quantity: Number(f.quantity) || 1,
+        unit_price_net: Number(f.unit_net) || 0,
+        unit_price_gross: Number(f.unit_gross) || 0,
+        tax_rate: Number(f.vat_rate) || 0,
+        line_total_net: Number(f.line_net) || 0,
+        line_total_gross: Number(f.line_gross) || 0
+      }))
+
+    const items = [...baseItems, ...feeItems]
     if (items.length === 0) {
       return NextResponse.json(
         { error: 'A rendeléshez nincs tétel — nem készíthető előnézet.' },

@@ -104,6 +104,17 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
       ]
     },
     {
+      label: 'Pénzügy',
+      icon: 'ri-bank-line',
+      iconColor: '#0B6E99',
+      children: [
+        {
+          label: 'Kimenő számlák',
+          href: '/finance/outgoing-invoices'
+        }
+      ]
+    },
+    {
       label: 'Raktár',
       icon: 'ri-archive-line',
       iconColor: '#D35400', // Orange for warehouse
@@ -146,6 +157,7 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
             { label: 'Súlymértékek', href: '/weight-units' },
             { label: 'Fizetési módok', href: '/payment-methods' },
             { label: 'Szállítási módok', href: '/shipping-methods' },
+            { label: 'Díjak', href: '/fees' },
             { label: 'Pénznemek', href: '/currencies' },
             { label: 'Raktárak', href: '/warehouses' }
           ]

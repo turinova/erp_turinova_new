@@ -3,6 +3,7 @@ import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { generateOrderNumber } from '@/lib/order-number'
 import { recomputeOrderTotalsFromItems, upsertStandardOrderTotalsRows } from '@/lib/order-totals-recompute'
 import { reconcileOrderStockAfterLineItemsSave } from '@/lib/order-items-stock-reconcile'
+import { recomputeOrderAfterFeesChange } from '@/lib/order-fees-recompute'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -39,6 +40,12 @@ type Body = {
   internal_notes?: string | null
   order_discount_amount?: number | null
   order_discount_percent?: number | null
+  fees?: Array<{
+    fee_definition_id: string
+    quantity?: number
+    unit_gross?: number
+    vat_rate?: number
+  }>
   items: Array<{
     product_id?: string
     product_name: string
@@ -66,6 +73,7 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as Body
     const items = Array.isArray(body.items) ? body.items : []
+    const fees = Array.isArray(body.fees) ? body.fees : []
 
     if (items.length === 0) {
       return NextResponse.json({ error: 'Legalább egy tétel szükséges' }, { status: 400 })
@@ -97,6 +105,13 @@ export async function POST(request: NextRequest) {
           { error: 'A tétel kedvezmény nem lehet negatív, és a százalék 0–100 között kell legyen' },
           { status: 400 }
         )
+      }
+    }
+
+    for (const fee of fees) {
+      const feeDefinitionId = String(fee.fee_definition_id || '').trim()
+      if (!feeDefinitionId) {
+        return NextResponse.json({ error: 'Minden díjhoz fee_definition_id kötelező' }, { status: 400 })
       }
     }
 
@@ -395,6 +410,44 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    for (const fee of fees) {
+      const feeDefinitionId = String(fee.fee_definition_id || '').trim()
+      const { data: def } = await supabase
+        .from('fee_definitions')
+        .select('id, type, name, default_vat_rate, default_gross, sort_order')
+        .eq('id', feeDefinitionId)
+        .is('deleted_at', null)
+        .eq('is_active', true)
+        .single()
+      if (!def) continue
+
+      const quantity = Math.max(0.001, Number(fee.quantity ?? 1) || 1)
+      const vatRate = Number(fee.vat_rate ?? def.default_vat_rate ?? 27) || 27
+      const unitGross = roundHuf(Number(fee.unit_gross ?? def.default_gross ?? 0))
+      const unitNet = vatRate > 0 ? roundHuf(unitGross / (1 + vatRate / 100)) : unitGross
+      const lineGross = roundHuf(unitGross * quantity)
+      const lineNet = roundHuf(unitNet * quantity)
+
+      const { error: feeErr } = await supabase.from('order_fees').insert({
+        order_id: orderId,
+        fee_definition_id: def.id,
+        source: 'manual',
+        type: def.type,
+        name: def.name,
+        quantity,
+        unit_net: unitNet,
+        unit_gross: unitGross,
+        vat_rate: vatRate,
+        line_net: lineNet,
+        line_gross: lineGross,
+        currency_code: currencyCode,
+        sort_order: Number(def.sort_order ?? 100) || 100
+      })
+      if (feeErr) {
+        return NextResponse.json({ error: feeErr.message || 'Díj sor létrehozása sikertelen' }, { status: 500 })
+      }
+    }
+
     if (orderDiscountPercent != null && !isNaN(orderDiscountPercent)) {
       const { data: activeItems } = await supabase
         .from('order_items')
@@ -418,8 +471,12 @@ export async function POST(request: NextRequest) {
         .eq('id', orderId)
     }
 
-    await recomputeOrderTotalsFromItems(supabase, orderId)
-    await upsertStandardOrderTotalsRows(supabase, orderId)
+    if (fees.length > 0) {
+      await recomputeOrderAfterFeesChange(supabase, orderId)
+    } else {
+      await recomputeOrderTotalsFromItems(supabase, orderId)
+      await upsertStandardOrderTotalsRows(supabase, orderId)
+    }
 
     await supabase.from('order_status_history').insert({
       order_id: orderId,

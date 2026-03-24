@@ -8,6 +8,7 @@ import { maybeInsertImportAutoPaidPayment } from '@/lib/order-payment-import'
 import { maybeCreateBufferAutoProformaInvoice } from '@/lib/buffer-auto-proforma'
 import { generateOrderNumber } from '@/lib/order-number'
 import { recomputeOrderTotalsFromItems } from '@/lib/order-totals-recompute'
+import { recomputeOrderAfterFeesChange } from '@/lib/order-fees-recompute'
 
 /**
  * POST /api/orders/buffer/[id]/process
@@ -163,9 +164,15 @@ export async function POST(
       }
 
       // Step 7: Create order totals
-      await createOrderTotals(supabase, newOrder.id, webhookData)
+      await createOrderTotals(supabase, newOrder.id, webhookData, orderData)
 
-      // Step 7b: Optional paid-on-import (ERP payment method policy + order_payments → DB trigger)
+      // Step 7a: Auto-import shipping fee row for better UX in order screen.
+      await upsertImportedShippingFeeForOrder(supabase, newOrder.id, orderData)
+
+      // Step 7b: Recompute header totals from fee lines (shipping/payment) + items.
+      await recomputeOrderAfterFeesChange(supabase, newOrder.id)
+
+      // Step 7c: Optional paid-on-import (ERP payment method policy + order_payments → DB trigger)
       await maybeInsertImportAutoPaidPayment(supabase, {
         orderId: newOrder.id,
         paymentMethodId,
@@ -262,12 +269,102 @@ export async function POST(
   }
 }
 
+async function upsertImportedShippingFeeForOrder(
+  supabase: any,
+  orderId: string,
+  extractedOrderData: Record<string, unknown>
+): Promise<void> {
+  const shippingNet = parseFloat(String(extractedOrderData.shipping_total_net ?? '0')) || 0
+  const shippingGross = parseFloat(String(extractedOrderData.shipping_total_gross ?? '0')) || 0
+
+  // Only create auto shipping fee if order actually has shipping amount.
+  if (shippingNet === 0 && shippingGross === 0) return
+
+  const { data: shippingDef } = await supabase
+    .from('fee_definitions')
+    .select('id, name, type, default_vat_rate, sort_order')
+    .eq('code', 'SHIPPING')
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (!shippingDef?.id) return
+
+  const { data: orderRow } = await supabase
+    .from('orders')
+    .select('currency_code, shipping_method_name')
+    .eq('id', orderId)
+    .single()
+
+  const currencyCode = String(orderRow?.currency_code || extractedOrderData.currency_code || 'HUF').toUpperCase()
+  const isHuf = currencyCode === 'HUF'
+  const roundCurrency = (x: number) => (isHuf ? Math.round(x) : Math.round(x * 100) / 100)
+
+  const vatRateFromMath = shippingNet > 0 ? Math.max(0, ((shippingGross / shippingNet) - 1) * 100) : null
+  const vatRate = Number.isFinite(vatRateFromMath) && vatRateFromMath != null
+    ? Math.round(vatRateFromMath * 100) / 100
+    : Number(shippingDef.default_vat_rate ?? 27) || 27
+
+  const labelSuffix = orderRow?.shipping_method_name ? ` (${String(orderRow.shipping_method_name)})` : ''
+  const feeName = `${String(shippingDef.name || 'Szállítási díj')}${labelSuffix}`
+
+  const { data: existingShippingFee } = await supabase
+    .from('order_fees')
+    .select('id, source')
+    .eq('order_id', orderId)
+    .eq('type', 'SHIPPING')
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+    .maybeSingle()
+
+  const rowPayload = {
+    fee_definition_id: shippingDef.id,
+    source: 'import_webshop',
+    type: 'SHIPPING',
+    name: feeName,
+    quantity: 1,
+    unit_net: roundCurrency(shippingNet),
+    unit_gross: roundCurrency(shippingGross),
+    vat_rate: vatRate,
+    line_net: roundCurrency(shippingNet),
+    line_gross: roundCurrency(shippingGross),
+    currency_code: currencyCode,
+    sort_order: Number(shippingDef.sort_order ?? 10) || 10,
+    is_locked: false,
+    updated_at: new Date().toISOString()
+  }
+
+  if (existingShippingFee?.id) {
+    // Idempotent: update existing imported row instead of inserting duplicates.
+    const { error: updateErr } = await supabase
+      .from('order_fees')
+      .update(rowPayload)
+      .eq('id', existingShippingFee.id)
+      .eq('order_id', orderId)
+    if (updateErr) {
+      console.warn('[BUFFER PROCESS] Could not update existing imported shipping fee:', updateErr)
+    }
+    return
+  }
+
+  const { error: insertErr } = await supabase
+    .from('order_fees')
+    .insert({
+      order_id: orderId,
+      ...rowPayload
+    })
+  if (insertErr) {
+    console.warn('[BUFFER PROCESS] Could not insert imported shipping fee:', insertErr)
+  }
+}
+
 /**
  * Extract order data from webhook payload
  */
 function extractOrderDataFromWebhook(webhookData: any, connectionId: string) {
   // Handle different webhook formats
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
+  const shippingAmounts = parseShippingAmountsFromOrderData(orderData)
 
   return {
     platform_order_id: orderData.innerId || orderData.id,
@@ -295,8 +392,8 @@ function extractOrderDataFromWebhook(webhookData: any, connectionId: string) {
     shipping_method_code: orderData.shippingMethodExtension || null,
     shipping_method_extension: orderData.shippingMethodExtension || null,
     shipping_receiving_point_id: orderData.shippingReceivingPointId || orderData.pickPackPontShopCode || null,
-    shipping_net_price: parseFloat(orderData.shippingNetPrice || '0') || 0,
-    shipping_gross_price: parseFloat(orderData.shippingGrossPrice || '0') || 0,
+    shipping_net_price: shippingAmounts.net,
+    shipping_gross_price: shippingAmounts.gross,
     
     // Billing address
     billing_firstname: orderData.paymentFirstname || orderData.firstname || '',
@@ -321,8 +418,8 @@ function extractOrderDataFromWebhook(webhookData: any, connectionId: string) {
     subtotal_gross: parseFloat(orderData.totalGross || orderData.total || '0') || 0,
     tax_amount: parseFloat(orderData.taxPrice || '0') || 0,
     discount_amount: parseFloat(orderData.couponGrossPrice || '0') || 0,
-    shipping_total_net: parseFloat(orderData.shippingNetPrice || '0') || 0,
-    shipping_total_gross: parseFloat(orderData.shippingGrossPrice || '0') || 0,
+    shipping_total_net: shippingAmounts.net,
+    shipping_total_gross: shippingAmounts.gross,
     payment_total_net: 0,
     payment_total_gross: 0,
     total_net: parseFloat(orderData.total || '0') || 0,
@@ -643,10 +740,11 @@ async function createOrderItems(
 async function createOrderTotals(
   supabase: any,
   orderId: string,
-  webhookData: any
+  webhookData: any,
+  extractedOrderData: Record<string, unknown>
 ): Promise<void> {
   const orderData = webhookData.orders?.order?.[0] || webhookData.order || webhookData
-  const orderTotals = orderData.orderTotals || []
+  const orderTotals = normalizeOrderTotals(orderData)
 
   if (Array.isArray(orderTotals) && orderTotals.length > 0) {
     const totals = orderTotals.map((total: any, index: number) => ({
@@ -668,6 +766,28 @@ async function createOrderTotals(
       // Don't throw - totals are not critical
     }
   }
+
+  const shippingNet = parseFloat(String(extractedOrderData.shipping_total_net ?? '0')) || 0
+  const shippingGross = parseFloat(String(extractedOrderData.shipping_total_gross ?? '0')) || 0
+  const hasShippingRow = orderTotals.some((row: any) => mapTotalType(row?.type || row?.code || '') === 'SHIPPING')
+  if (!hasShippingRow && (shippingNet !== 0 || shippingGross !== 0)) {
+    const shippingName = orderData.shippingMethodName
+      ? `Szállítás (${String(orderData.shippingMethodName)})`
+      : 'Szállítás'
+    const { error: shippingRowError } = await supabase
+      .from('order_totals')
+      .insert({
+        order_id: orderId,
+        name: shippingName,
+        value_net: shippingNet,
+        value_gross: shippingGross,
+        type: 'SHIPPING',
+        sort_order: 90
+      })
+    if (shippingRowError) {
+      console.warn('[BUFFER PROCESS] Could not create fallback SHIPPING total row:', shippingRowError)
+    }
+  }
 }
 
 /**
@@ -686,4 +806,39 @@ function mapTotalType(shoprenterType: string): string {
   }
 
   return typeMap[shoprenterType.toLowerCase()] || 'TOTAL'
+}
+
+function normalizeOrderTotals(orderData: any): any[] {
+  const raw = orderData?.orderTotals
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (Array.isArray(raw?.orderTotal)) return raw.orderTotal
+  if (Array.isArray(raw?.orderTotals)) return raw.orderTotals
+  return []
+}
+
+function parseShippingAmountsFromOrderData(orderData: any): { net: number; gross: number } {
+  const directNet = parseFloat(orderData?.shippingNetPrice || '0') || 0
+  const directGross = parseFloat(orderData?.shippingGrossPrice || '0') || 0
+  if (directNet !== 0 || directGross !== 0) {
+    return { net: directNet, gross: directGross }
+  }
+
+  const totals = normalizeOrderTotals(orderData)
+  const shippingTotal = totals.find((total: any) => mapTotalType(total?.type || total?.code || '') === 'SHIPPING')
+  if (!shippingTotal) return { net: 0, gross: 0 }
+
+  const valueNetRaw = parseFloat(String(shippingTotal?.valueNet ?? ''))
+  const valueGrossRaw = parseFloat(String(shippingTotal?.valueGross ?? ''))
+  const fallbackValue = parseFloat(String(shippingTotal?.value ?? '0')) || 0
+
+  const gross = Number.isFinite(valueGrossRaw) ? valueGrossRaw : fallbackValue
+  const hasNet = Number.isFinite(valueNetRaw)
+  if (hasNet) return { net: valueNetRaw, gross }
+
+  const taxRateRaw = parseFloat(String(shippingTotal?.taxRate ?? orderData?.shippingMethodTaxRate ?? ''))
+  const taxRate = Number.isFinite(taxRateRaw) && taxRateRaw >= 0 ? taxRateRaw : 27
+  if (taxRate <= 0) return { net: gross, gross }
+  const net = gross / (1 + taxRate / 100)
+  return { net: Math.round(net * 100) / 100, gross }
 }

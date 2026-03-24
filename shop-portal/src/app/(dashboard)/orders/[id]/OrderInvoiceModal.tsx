@@ -48,6 +48,7 @@ interface TenantCompany {
 interface CustomerOrderItem {
   id: string
   item_type: 'product' | 'fee'
+  fee_type?: string
   product_type?: 'accessory' | 'material' | 'linear_material'
   product_name: string
   sku: string | null
@@ -79,8 +80,13 @@ interface CustomerOrder {
   billing_house_number: string | null
   billing_tax_number: string | null
   billing_company_reg_number: string | null
+  display_discount_amount?: number | null
   discount_percentage: number
   discount_amount: number
+  shipping_total_net?: number | null
+  shipping_total_gross?: number | null
+  payment_total_net?: number | null
+  payment_total_gross?: number | null
   subtotal_net: number
   total_vat: number
   total_gross: number
@@ -228,39 +234,117 @@ export default function OrderInvoiceModal({
   // Calculate totals from items (matches frontend display and invoice creation)
   // This ensures the modal shows the same total as the page and the created invoice
   const totals = useMemo(() => {
-    // Sum all item totals (products and fees)
-    let totalGrossBeforeDiscount = 0
-    let totalNetBeforeDiscount = 0
-    let totalVatBeforeDiscount = 0
+    // Sum product rows separately from fee rows.
+    let productGrossAfterItemDiscount = 0
+    let productNetBeforeDiscount = 0
+    let productVatBeforeDiscount = 0
+    let feeGrossTotal = 0
+    let feeNetTotal = 0
+    let itemsGrossBeforeItemDiscount = 0
+    let itemDiscountGross = 0
+    let shippingLikeFeeGross = 0
+    let paymentLikeFeeGross = 0
+    let otherFeeGross = 0
+    let hasFeeRows = false
     
     items.forEach(item => {
       const gross = Math.round(Number(item.total_gross || 0))
       const net = Math.round(Number(item.total_net || 0))
-      const vat = Math.round(Number(item.total_vat || 0))
-      totalGrossBeforeDiscount += gross
-      totalNetBeforeDiscount += net
-      totalVatBeforeDiscount += vat
+      if (item.item_type === 'fee') {
+        feeGrossTotal += gross
+        feeNetTotal += net
+      } else {
+        const vat = Math.round(Number(item.total_vat || 0))
+        productGrossAfterItemDiscount += gross
+        productNetBeforeDiscount += net
+        productVatBeforeDiscount += vat
+      }
+      const lineGrossBeforeItemDiscount = Math.round((Number(item.quantity) || 0) * (Number(item.unit_price_gross) || 0))
+      if (item.item_type !== 'fee') {
+        const lineItemDiscount = Math.max(0, lineGrossBeforeItemDiscount - gross)
+        itemsGrossBeforeItemDiscount += lineGrossBeforeItemDiscount
+        itemDiscountGross += lineItemDiscount
+      }
+      const itemName = String(item.product_name || '').toLowerCase()
+      const feeType = String(item.fee_type || '').toUpperCase()
+      if (item.item_type === 'fee') hasFeeRows = true
+      if (item.item_type === 'fee' && (feeType === 'SHIPPING' || itemName.includes('száll'))) {
+        shippingLikeFeeGross += gross
+      }
+      if (item.item_type === 'fee' && (feeType === 'PAYMENT' || itemName.includes('fizet') || itemName.includes('utánvét'))) {
+        paymentLikeFeeGross += gross
+      }
+      if (
+        item.item_type === 'fee' &&
+        feeType !== 'SHIPPING' &&
+        feeType !== 'PAYMENT' &&
+        !itemName.includes('száll') &&
+        !itemName.includes('fizet') &&
+        !itemName.includes('utánvét')
+      ) {
+        otherFeeGross += gross
+      }
     })
     
-    // Apply global discount (same logic as frontend and invoice creation)
-    const discountAmountValue = Number(order.discount_amount) || 0
-    const grossAfterDiscountRaw = totalGrossBeforeDiscount - discountAmountValue
-    const totalGrossAfterDiscount = Math.round(grossAfterDiscountRaw)
+    // Apply global order-level discount on top of already item-discounted lines.
+    const discountAmountValue = Math.min(
+      Number(order.display_discount_amount ?? order.discount_amount) || 0,
+      productGrossAfterItemDiscount
+    )
+    const productGrossAfterDiscountRaw = productGrossAfterItemDiscount - discountAmountValue
+    const productGrossAfterDiscount = Math.round(productGrossAfterDiscountRaw)
     
     // Recalculate net and VAT proportionally after discount
-    let totalNetAfterDiscount = totalNetBeforeDiscount
-    let totalVatAfterDiscount = totalVatBeforeDiscount
-    if (discountAmountValue > 0 && totalGrossBeforeDiscount > 0) {
+    let productNetAfterDiscount = productNetBeforeDiscount
+    let productVatAfterDiscount = productVatBeforeDiscount
+    if (discountAmountValue > 0 && productGrossAfterItemDiscount > 0) {
       // Calculate proportional reduction
-      const discountRatio = discountAmountValue / totalGrossBeforeDiscount
-      totalNetAfterDiscount = Math.round(totalNetBeforeDiscount * (1 - discountRatio))
-      totalVatAfterDiscount = totalGrossAfterDiscount - totalNetAfterDiscount
+      const discountRatio = discountAmountValue / productGrossAfterItemDiscount
+      productNetAfterDiscount = Math.round(productNetBeforeDiscount * (1 - discountRatio))
+      productVatAfterDiscount = productGrossAfterDiscount - productNetAfterDiscount
     }
+
+    const totalGrossAfterDiscount = productGrossAfterDiscount + feeGrossTotal
+    const totalNetAfterDiscount = productNetAfterDiscount + feeNetTotal
+    const totalVatAfterDiscount = productVatAfterDiscount + (feeGrossTotal - feeNetTotal)
+
+    // Order-level fees are kept outside item rows and must be added explicitly.
+    const shippingNet = Math.round(Number(order.shipping_total_net || 0))
+    const shippingGross = Math.round(Number(order.shipping_total_gross || 0))
+    const shippingVat = shippingGross - shippingNet
+
+    const paymentNet = Math.round(Number(order.payment_total_net || 0))
+    const paymentGross = Math.round(Number(order.payment_total_gross || 0))
+    const paymentVat = paymentGross - paymentNet
+
+    const shouldApplyShippingAsHeaderFee = !hasFeeRows && shippingGross !== 0 && shippingLikeFeeGross === 0
+    const shouldApplyPaymentAsHeaderFee = !hasFeeRows && paymentGross !== 0 && paymentLikeFeeGross === 0
+
+    const shippingGrossDisplay = hasFeeRows ? shippingLikeFeeGross : (shouldApplyShippingAsHeaderFee ? shippingGross : 0)
+    const paymentGrossDisplay = hasFeeRows ? paymentLikeFeeGross : (shouldApplyPaymentAsHeaderFee ? paymentGross : 0)
+
+    const netWithFees = totalNetAfterDiscount + (shouldApplyShippingAsHeaderFee ? shippingNet : 0) + (shouldApplyPaymentAsHeaderFee ? paymentNet : 0)
+    const grossWithFees = totalGrossAfterDiscount + (shouldApplyShippingAsHeaderFee ? shippingGross : 0) + (shouldApplyPaymentAsHeaderFee ? paymentGross : 0)
+    const vatWithFees = grossWithFees - netWithFees
     
     return { 
-      net: totalNetAfterDiscount, 
-      vat: totalVatAfterDiscount, 
-      gross: totalGrossAfterDiscount // After discount, matches frontend display
+      net: netWithFees,
+      vat: vatWithFees,
+      gross: grossWithFees,
+      itemsNet: totalNetAfterDiscount,
+      itemsVat: totalVatAfterDiscount,
+      itemsGross: totalGrossAfterDiscount,
+      itemsGrossBeforeItemDiscount,
+      itemDiscountGross,
+      itemsGrossAfterItemDiscount: productGrossAfterItemDiscount,
+      orderDiscountGross: discountAmountValue,
+      shippingNet,
+      shippingVat,
+      shippingGross: shippingGrossDisplay,
+      paymentNet,
+      paymentVat,
+      paymentGross: paymentGrossDisplay,
+      otherFeeGross
     }
   }, [order, items])
 
@@ -903,6 +987,23 @@ export default function OrderInvoiceModal({
                     return 'Előnézet'
                   })()}
                 </Typography>
+                <Box sx={{ mt: 1.25, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1, bgcolor: 'rgba(0,0,0,0.02)' }}>
+                  <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary', mb: 0.75 }}>
+                    Díj bontás (számla alap)
+                  </Typography>
+                  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+                    <Typography variant="body2">Tételek (listaár): <strong>{formatCurrency(totals.itemsGrossBeforeItemDiscount)}</strong></Typography>
+                    {totals.itemDiscountGross > 0 ? (
+                      <Typography variant="body2">Tételkedvezmény: <strong>-{formatCurrency(totals.itemDiscountGross)}</strong></Typography>
+                    ) : null}
+                    <Typography variant="body2">Tételek (tételkedv. után): <strong>{formatCurrency(totals.itemsGrossAfterItemDiscount)}</strong></Typography>
+                    <Typography variant="body2">Szállítás: <strong>{formatCurrency(totals.shippingGross)}</strong></Typography>
+                    {totals.paymentGross !== 0 ? <Typography variant="body2">Fizetési díj: <strong>{formatCurrency(totals.paymentGross)}</strong></Typography> : null}
+                    {totals.otherFeeGross !== 0 ? <Typography variant="body2">Egyéb díjak: <strong>{formatCurrency(totals.otherFeeGross)}</strong></Typography> : null}
+                    <Typography variant="body2">Rendelési kedvezmény: <strong>-{formatCurrency(totals.orderDiscountGross)}</strong></Typography>
+                    <Typography variant="body2">Végösszeg: <strong>{formatCurrency(totals.gross)}</strong></Typography>
+                  </Stack>
+                </Box>
               </Box>
               
               <Box sx={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0 }}>

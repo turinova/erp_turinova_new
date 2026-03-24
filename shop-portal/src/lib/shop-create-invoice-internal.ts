@@ -100,7 +100,34 @@ export async function createShopInvoiceInternal(
       return { ok: false, error: itemsError.message, status: 500 }
     }
 
-    const items = itemsData ?? []
+    const baseItems = itemsData ?? []
+
+    const { data: orderFeesData, error: orderFeesError } = await supabase
+      .from('order_fees')
+      .select('id, type, name, quantity, unit_net, unit_gross, vat_rate, line_net, line_gross')
+      .eq('order_id', orderId)
+      .is('deleted_at', null)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+
+    if (orderFeesError) {
+      return { ok: false, error: orderFeesError.message, status: 500 }
+    }
+
+    const feeItems = (orderFeesData || [])
+      .filter((f) => String(f.type || '').toUpperCase() !== 'SHIPPING')
+      .map((f) => ({
+        id: String(f.id),
+        product_name: String(f.name || 'Díj'),
+        quantity: Number(f.quantity) || 1,
+        unit_price_net: Number(f.unit_net) || 0,
+        unit_price_gross: Number(f.unit_gross) || 0,
+        tax_rate: Number(f.vat_rate) || 0,
+        line_total_net: Number(f.line_net) || 0,
+        line_total_gross: Number(f.line_gross) || 0
+      }))
+
+    const items = [...baseItems, ...feeItems]
     if (items.length === 0) {
       return { ok: false, error: 'A rendeléshez nincs tétel — nem állítható ki számla.', status: 400 }
     }
@@ -143,7 +170,8 @@ export async function createShopInvoiceInternal(
       }
     }
 
-    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest && !hasPartialProforma) {
+    const isDeferredPaymentOrder = Boolean((order as { payment_method_after?: boolean | null }).payment_method_after)
+    if (!isAdvanceInvoiceRequest && !isProformaInvoiceRequest && !hasPartialProforma && !isDeferredPaymentOrder) {
       const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount || 0), 0)
       const totalDue = calculateShopOrderTotalGross(order as Record<string, unknown>, items as Record<string, unknown>[])
       if (totalDue - totalPaid > 1) {
@@ -378,8 +406,7 @@ export async function createShopInvoiceInternal(
 
     let responseText = ''
     if (isPdf) {
-      const buf = await response.arrayBuffer()
-      responseText = Buffer.from(buf).toString('binary')
+      await response.arrayBuffer()
     } else {
       responseText = await response.text()
     }

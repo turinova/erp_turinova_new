@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { normalizeSzamlazzApiUrl } from '@/lib/szamlazz-agent'
 import { getSzamlazzConnectionForOrder } from '@/lib/shop-szamlazz-connection'
+import {
+  DIJBEKERO_DELETE_BLOCKED_MESSAGE,
+  isDijbekeroDeletionBlockedForOrder
+} from '@/lib/invoice-dijbekero-delete-guard'
 
 const RELATED = 'order' as const
 const PROVIDER = 'szamlazz_hu'
@@ -98,6 +102,17 @@ export async function POST(
     const apiUrl = normalizeSzamlazzApiUrl(connection.api_url)
 
     if (originalInvoice.invoice_type === 'dijbekero') {
+      const blocked = await isDijbekeroDeletionBlockedForOrder(supabase, orderId)
+      if (blocked) {
+        return NextResponse.json(
+          {
+            error: DIJBEKERO_DELETE_BLOCKED_MESSAGE,
+            code: 'DijbekeroDeletionBlocked'
+          },
+          { status: 409 }
+        )
+      }
+
       const deleteXml = `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamladbkdel xmlns="http://www.szamlazz.hu/xmlszamladbkdel" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamladbkdel http://www.szamlazz.hu/docs/xsds/szamladbkdel/xmlszamladbkdel.xsd">
   <beallitasok>

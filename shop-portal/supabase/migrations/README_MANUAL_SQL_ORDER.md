@@ -78,17 +78,33 @@ Run only after `20250218_create_webshop_connections.sql`. Edit placeholders befo
 
 ---
 
-## Outgoing invoices (20260325)
+## Outgoing invoices (20260325) + Kimenő számlák UI (20260328)
 
 Run in **tenant** DB **after** `webshop_connections` and `orders` exist.
 
 | Order | File | Purpose |
 |-------|------|---------|
 | 1 | **20260325_create_invoices_table.sql** | Table `invoices` + internal invoice numbers + RLS; `connection_id` → Számlázz kapcsolat |
+| 2 | **20260328_add_outgoing_invoices_page_to_permissions.sql** | `pages` + `user_permissions`: **Pénzügy → Kimenő számlák** (`/finance/outgoing-invoices`) |
 
-**Admin database:** run **`20260325_tenant_migration_list_invoices.sql`** so `get_tenant_pending_migrations` includes this migration name.
+**Admin database:** run the latest migration-list patch so `get_tenant_pending_migrations` stays in sync — currently **`20260328_tenant_migration_list_outgoing_invoices_permissions.sql`** (includes `20260328_add_outgoing_invoices_page_to_permissions` and prior names). Older files such as `20260325_tenant_migration_list_invoices.sql` are superseded by this chain.
 
 Optional sample / notes: **`supabase/tenant_sample_invoices.sql`**.
+
+---
+
+## Fees catalog + order fees (20260329)
+
+Run in **tenant** DB after order management tables already exist.
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | **20260329_create_fees_tables.sql** | Create `fee_definitions` and `order_fees` tables (+ RLS, indexes, defaults) |
+| 2 | **20260329_add_fees_page_to_permissions.sql** | `pages` + `user_permissions`: **Törzsadatok → Rendszer → Díjak** (`/fees`) |
+
+**Admin database:** run **`20260329_tenant_migration_list_fees.sql`** so `get_tenant_pending_migrations` includes both new migration names.
+
+Optional sample / notes: **`supabase/tenant_sample_fees.sql`**.
 
 ---
 
