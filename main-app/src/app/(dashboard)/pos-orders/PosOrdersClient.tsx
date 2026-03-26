@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Box,
   Typography,
+  Button,
   Table,
   TableBody,
   TableCell,
@@ -23,11 +24,16 @@ import {
   MenuItem,
   FormControl,
   Stack,
-  Checkbox
+  Checkbox,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material'
 import NextLink from 'next/link'
 import { Search as SearchIcon, Home as HomeIcon } from '@mui/icons-material'
 import { usePagePermission } from '@/hooks/usePagePermission'
+import { toast } from 'react-toastify'
 
 interface PosOrder {
   id: string
@@ -68,6 +74,9 @@ export default function PosOrdersClient({
   const [pageSize, setPageSize] = useState(initialPageSize)
   const [clientPage, setClientPage] = useState(currentPage)
   const [loading, setLoading] = useState(false)
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -93,6 +102,7 @@ export default function PosOrdersClient({
   useEffect(() => {
     setOrders(initialOrders)
     setClientPage(currentPage)
+    setSelectedOrderIds(new Set())
   }, [initialOrders, currentPage])
 
   // Handle page change
@@ -120,6 +130,70 @@ export default function PosOrdersClient({
   // Handle row click (navigate to detail page)
   const handleRowClick = (orderId: string) => {
     router.push(`/pos-orders/${orderId}`)
+  }
+
+  const isAllSelected = orders.length > 0 && orders.every(order => selectedOrderIds.has(order.id))
+  const isIndeterminate = selectedOrderIds.size > 0 && !isAllSelected
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedOrderIds(new Set(orders.map(order => order.id)))
+      return
+    }
+    setSelectedOrderIds(new Set())
+  }
+
+  const handleToggleOrderSelection = (orderId: string, checked: boolean) => {
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev)
+      if (checked) next.add(orderId)
+      else next.delete(orderId)
+      return next
+    })
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedOrderIds.size === 0) return
+
+    setBulkDeleting(true)
+    try {
+      const response = await fetch('/api/pos-orders/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: Array.from(selectedOrderIds) })
+      })
+      const data = await response.json()
+
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Hiba a torles kozben')
+      }
+
+      const deletedCount = Number(data?.deleted_count || 0)
+      const blockedCount = Number(data?.blocked_count || 0)
+      const alreadyDeletedCount = Number(data?.already_deleted_count || 0)
+      const notFoundCount = Number(data?.not_found_count || 0)
+
+      if (deletedCount > 0) {
+        toast.success(`${deletedCount} rendelés torolve, keszlet visszairva.`)
+      }
+      if (blockedCount > 0) {
+        toast.warning(`${blockedCount} rendelés nem torolheto (aktiv szamla miatt).`)
+      }
+      if (alreadyDeletedCount > 0) {
+        toast.info(`${alreadyDeletedCount} rendelés mar torolve volt.`)
+      }
+      if (notFoundCount > 0) {
+        toast.info(`${notFoundCount} rendelés nem talalhato.`)
+      }
+
+      setDeleteDialogOpen(false)
+      setSelectedOrderIds(new Set())
+      router.refresh()
+    } catch (error: any) {
+      toast.error(error?.message || 'Hiba a rendelesek torlese kozben.')
+    } finally {
+      setBulkDeleting(false)
+    }
   }
 
   // Format currency
@@ -220,7 +294,7 @@ export default function PosOrdersClient({
       </Typography>
 
       {/* Search */}
-      <Stack direction="row" spacing={2} sx={{ mb: 2 }} alignItems="center">
+      <Stack direction="row" spacing={2} sx={{ mb: 1 }} alignItems="center">
         <TextField
           fullWidth
           size="small"
@@ -237,6 +311,24 @@ export default function PosOrdersClient({
         />
       </Stack>
 
+      {selectedOrderIds.size > 0 && (
+        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'flex-start' }}>
+          <Button
+            variant="contained"
+            color="error"
+            disabled={bulkDeleting}
+            onClick={() => setDeleteDialogOpen(true)}
+            sx={{
+              whiteSpace: 'nowrap',
+              minWidth: 'fit-content',
+              flexShrink: 0
+            }}
+          >
+            Torles ({selectedOrderIds.size})
+          </Button>
+        </Box>
+      )}
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
@@ -248,9 +340,9 @@ export default function PosOrdersClient({
               <TableRow>
                 <TableCell padding="checkbox">
                   <Checkbox
-                    disabled
-                    indeterminate={false}
-                    checked={false}
+                    indeterminate={isIndeterminate}
+                    checked={isAllSelected}
+                    onChange={(e) => handleToggleSelectAll(e.target.checked)}
                   />
                 </TableCell>
                 <TableCell>Rendelés szám</TableCell>
@@ -283,8 +375,8 @@ export default function PosOrdersClient({
                   >
                     <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
-                        disabled
-                        checked={false}
+                        checked={selectedOrderIds.has(order.id)}
+                        onChange={(e) => handleToggleOrderSelection(order.id, e.target.checked)}
                       />
                     </TableCell>
                     <TableCell><strong>{order.pos_order_number}</strong></TableCell>
@@ -378,6 +470,34 @@ export default function PosOrdersClient({
           showLastButton
         />
       </Box>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => !bulkDeleting && setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Rendelesek torlese</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Biztosan torli a kijelolt rendeleseket? A keszlet mozgasok visszairasra kerulnek.
+          </Typography>
+          <Typography sx={{ mt: 1, fontWeight: 600 }}>
+            Kijelolt rendelesek: {selectedOrderIds.size}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Megjegyzes: amelyik rendeleshez aktiv szamla tartozik, nem torolheto.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={bulkDeleting}>
+            Megse
+          </Button>
+          <Button color="error" variant="contained" onClick={handleBulkDelete} disabled={bulkDeleting}>
+            {bulkDeleting ? 'Torles...' : 'Torles'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

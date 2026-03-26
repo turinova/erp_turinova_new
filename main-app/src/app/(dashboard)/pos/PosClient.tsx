@@ -37,7 +37,6 @@ import {
 import {
   Search as SearchIcon,
   Delete as DeleteIcon,
-  Image as ImageIcon,
   AddCircle as AddCircleIcon,
   RemoveCircle as RemoveCircleIcon,
   Add as AddIcon,
@@ -229,13 +228,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [pendingPaymentType, setPendingPaymentType] = useState<'cash' | 'card' | null>(null)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false)
-  const [imageModalOpen, setImageModalOpen] = useState(false)
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null)
-  const [selectedImageName, setSelectedImageName] = useState<string>('')
   // State for expanded cart item accordions
   const [expandedCartItems, setExpandedCartItems] = useState<Set<string>>(new Set())
   // State for discount input mode per item (percentage or amount)
   const [itemDiscountMode, setItemDiscountMode] = useState<Record<string, 'percentage' | 'amount'>>({})
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0)
 
   // Helper function to fetch accessory data by ID
   const fetchAccessoryData = async (accessoryId: string): Promise<{ vat_id: string; currency_id: string } | null> => {
@@ -405,6 +402,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     }
   }, [selectedWorker])
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isScanningRef = useRef<boolean>(false)
   const lastScannedBarcodeRef = useRef<{ barcode: string; timestamp: number } | null>(null)
@@ -419,6 +417,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   const CACHE_MAX_SIZE = 50
 
   const debouncedSearchTerm = useDebounce(searchTerm, 150)
+  const visibleSearchResults = useMemo(() => searchResults.slice(0, 20), [searchResults])
 
   // Auto-focus barcode input on mount
   useEffect(() => {
@@ -550,6 +549,10 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       }
     }
   }, [debouncedSearchTerm])
+
+  useEffect(() => {
+    setSelectedSearchIndex(0)
+  }, [visibleSearchResults.length, searchTerm])
 
   // Normalize barcode input (fix keyboard layout issues from scanner)
   // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö', 'Z' -> 'Y'
@@ -764,6 +767,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       if (!response.ok) {
         if (response.status === 404) {
           toast.error('Vonalkód nem található')
+          setSearchTerm(normalizedBarcode)
+          setTimeout(() => {
+            searchInputRef.current?.focus()
+            searchInputRef.current?.select()
+          }, 80)
         } else {
           toast.error('Hiba történt a keresés során')
         }
@@ -945,31 +953,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     if (numValue <= 0 && skipRemove) {
       return
     }
-    // Round to 2 decimal places
-    const roundedQuantity = Math.round(numValue * 100) / 100
+    // Hardware store fast lane: keep integer quantity for quick cashier flow.
+    const roundedQuantity = Math.max(1, Math.round(numValue))
     setCartItems(prev =>
       prev.map(item =>
         item.id === itemId ? { ...item, quantity: roundedQuantity } : item
       )
     )
-  }
-
-  // Multiply quantity by a factor (supports decimals)
-  const handleQuantityMultiply = (itemId: string, multiplier: number) => {
-    setCartItems(prev =>
-      prev.map(item => {
-        if (item.id !== itemId) return item
-        const newQuantity = item.quantity * multiplier
-        const roundedQuantity = Math.round(newQuantity * 100) / 100
-        return { ...item, quantity: roundedQuantity }
-      })
-    )
-    // Clear the quantity input state for this item to show the new value
-    setQuantityInputs(prev => {
-      const newState = { ...prev }
-      delete newState[itemId]
-      return newState
-    })
   }
 
   // Toggle accordion for cart item
@@ -1188,28 +1178,16 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   // Update discount percentage
   const handleDiscountPercentageChange = (newPercentage: number) => {
     if (!discount) return
+    const normalized = Math.max(0, Math.min(100, Math.round(newPercentage)))
     setDiscount({
       ...discount,
-      percentage: newPercentage >= 0 && newPercentage <= 100 ? newPercentage : discount.percentage
+      percentage: normalized
     })
-  }
-
-  // Handle payment button click - opens payment modal (original behavior)
-  const handlePaymentClick = () => {
-    if (cartItems.length === 0) {
-      toast.warning('A kosár üres')
-      return
-    }
-    if (!selectedWorker) {
-      toast.warning('Válasszon dolgozót')
-      return
-    }
-    setEditingCustomer(selectedCustomer)
-    setPaymentModalOpen(true)
   }
 
   // Handle payment type selection in payment modal - opens confirmation
   const handlePaymentTypeClick = (paymentType: 'cash' | 'card') => {
+    setEditingCustomer(selectedCustomer)
     setPendingPaymentType(paymentType)
     setPaymentModalOpen(false)
     setConfirmModalOpen(true)
@@ -1413,7 +1391,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   return (
     <Box
       sx={{
-        height: 'calc(100vh - 64px - 48px)', // Account for navbar (64px) + layout padding top/bottom (24px * 2 = 48px)
+        height: 'calc(100dvh - 48px)', // POS hides header/footer on this route, keep only layout paddings accounted for.
         display: 'flex',
         flexDirection: 'column',
         p: 0,
@@ -1561,7 +1539,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
           <Grid container spacing={2} sx={{ height: '100%', flex: 1, minHeight: 0, overflow: 'hidden' }}>
             {/* Left Side - Search and Results */}
-            <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <Grid item xs={12} md={5} lg={5} sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
               <Typography variant="h6" sx={{ mb: 1, flexShrink: 0 }}>
                 Termék keresés
               </Typography>
@@ -1569,11 +1547,36 @@ export default function PosClient({ customers, workers }: PosClientProps) {
               {/* Search Bar */}
               <TextField
                 id="search-field"
+                inputRef={searchInputRef}
                 fullWidth
                 size="small"
-                placeholder="Keresés név vagy SKU alapján..."
+                placeholder="Vonalkód / SKU / Név"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value)
+                  setSelectedSearchIndex(0)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    if (visibleSearchResults.length > 0) {
+                      setSelectedSearchIndex((prev) => Math.min(prev + 1, visibleSearchResults.length - 1))
+                    }
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    if (visibleSearchResults.length > 0) {
+                      setSelectedSearchIndex((prev) => Math.max(prev - 1, 0))
+                    }
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const selected = visibleSearchResults[selectedSearchIndex] || visibleSearchResults[0]
+                    if (selected) {
+                      handleAddToCart(selected)
+                      setSearchTerm('')
+                      setSearchResults([])
+                    }
+                  }
+                }}
                 onBlur={(e) => {
                   // When search field loses focus, refocus barcode input after a delay
                   // But only if focus is not going to another input field
@@ -1633,14 +1636,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 ) : searchResults.length === 0 ? (
                   <Box sx={{ p: 4, textAlign: 'center' }}>
                     <Typography color="text.secondary">
-                      {searchTerm.trim().length >= 2 ? 'Nincs találat' : 'Kezdjen el gépelni a kereséshez...'}
+                      {searchTerm.trim().length >= 2 ? 'Nincs találat' : 'Kezdjen el gepelni a kereseshez...'}
                     </Typography>
                   </Box>
                 ) : (
                   <Table size="small" stickyHeader>
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 'bold' }} width={80}>Kép</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Termék neve</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }}>Típus / Méretek</TableCell>
                         <TableCell sx={{ fontWeight: 'bold' }} align="right">Készlet</TableCell>
@@ -1648,7 +1650,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {searchResults.map((product) => {
+                      {visibleSearchResults.map((product, index) => {
                         const roundedPrice = Math.round(product.gross_price) // Round to integer only, no rounding to nearest 5
                         const getTypeLabel = () => {
                           switch (product.product_type) {
@@ -1687,69 +1689,13 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             key={`${product.product_type}_${product.id}`}
                             sx={{
                               cursor: 'pointer',
+                              backgroundColor: index === selectedSearchIndex ? 'action.selected' : 'inherit',
                               '&:hover': {
                                 backgroundColor: (theme) => theme.palette.action.hover
                               }
                             }}
                             onClick={() => handleAddToCart(product)}
                           >
-                            <TableCell>
-                              <Box
-                                sx={{
-                                  width: 60,
-                                  height: 60,
-                                  bgcolor: 'grey.200',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  borderRadius: 1,
-                                  overflow: 'hidden',
-                                  position: 'relative',
-                                  cursor: product.image_url ? 'pointer' : 'default',
-                                  '&:hover': product.image_url ? {
-                                    opacity: 0.8,
-                                    transform: 'scale(1.05)',
-                                    transition: 'all 0.2s ease'
-                                  } : {}
-                                }}
-                                onClick={(e) => {
-                                  if (product.image_url) {
-                                    e.stopPropagation() // Prevent row click
-                                    setSelectedImageUrl(product.image_url)
-                                    setSelectedImageName(product.name)
-                                    setImageModalOpen(true)
-                                  }
-                                }}
-                              >
-                                {/* Placeholder icon - always present */}
-                                <ImageIcon 
-                                  sx={{ 
-                                    fontSize: 30, 
-                                    color: 'grey.400',
-                                    position: 'absolute',
-                                    zIndex: 0
-                                  }} 
-                                />
-                                {/* Product image - overlays icon if available */}
-                                {product.image_url && (
-                                  <img
-                                    src={product.image_url}
-                                    alt={product.name}
-                                    style={{
-                                      width: '100%',
-                                      height: '100%',
-                                      objectFit: 'cover',
-                                      position: 'relative',
-                                      zIndex: 1
-                                    }}
-                                    onError={(e) => {
-                                      // Hide image on error, icon will show through
-                                      e.currentTarget.style.display = 'none'
-                                    }}
-                                  />
-                                )}
-                              </Box>
-                            </TableCell>
                             <TableCell>
                               <Typography variant="subtitle2" fontWeight="bold">
                                 {product.name}
@@ -1784,19 +1730,21 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               />
                             </TableCell>
                               <TableCell align="right">
-                                <Typography 
-                                  variant="body2"
-                                  sx={{
-                                    color: product.quantity_on_hand < 0 ? 'error.main' : 'text.primary',
-                                    fontWeight: product.quantity_on_hand < 0 ? 'bold' : 'normal'
-                                  }}
-                                >
-                                  {product.quantity_on_hand} {
-                                    product.product_type === 'material' ? 'm²' :
-                                    product.product_type === 'linear_material' ? 'm' :
-                                    'db'
-                                  }
-                                </Typography>
+                                {product.product_type === 'material' ? (
+                                  <Typography
+                                    variant="body2"
+                                    sx={{
+                                      color: product.quantity_on_hand < 0 ? 'error.main' : 'text.primary',
+                                      fontWeight: product.quantity_on_hand < 0 ? 'bold' : 'normal'
+                                    }}
+                                  >
+                                    {product.quantity_on_hand} m²
+                                  </Typography>
+                                ) : (
+                                  <Typography variant="body2" color="text.secondary">
+                                    -
+                                  </Typography>
+                                )}
                               </TableCell>
                             <TableCell align="right">
                               <Typography variant="subtitle2" color="primary" fontWeight="bold">
@@ -1821,7 +1769,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
             </Grid>
 
             {/* Right Side - Customer and Cart */}
-            <Grid item xs={12} md={6} sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <Grid item xs={12} md={7} lg={7} sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
               <Typography variant="h6" sx={{ mb: 1, flexShrink: 0 }}>
                 Vásárlás
               </Typography>
@@ -1890,14 +1838,24 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     </Typography>
                   </Box>
                 ) : (
-                  <Table size="small" stickyHeader>
+                  <Table
+                    size="small"
+                    stickyHeader
+                    sx={{
+                      tableLayout: 'fixed',
+                      '& .MuiTableCell-root': {
+                        py: 0.5,
+                        px: 1
+                      }
+                    }}
+                  >
                     <TableHead>
                       <TableRow>
-                        <TableCell sx={{ fontWeight: 'bold' }}>Termék</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }} align="center">Mennyiség</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }} align="center">Egység</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }} align="right">Bruttó Részösszeg</TableCell>
-                        <TableCell sx={{ fontWeight: 'bold' }} align="center" width={60}></TableCell>
+                        <TableCell sx={{ fontWeight: 'bold', width: '44%' }}>Termék</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold', width: '24%' }} align="center">Mennyiség</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold', width: '8%' }} align="center">Egység</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold', width: '16%' }} align="right">Részösszeg</TableCell>
+                        <TableCell sx={{ fontWeight: 'bold', width: '8%' }} align="center"></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1906,6 +1864,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                         <React.Fragment key={item.id}>
                         <TableRow
                           sx={{
+                            height: 50,
                             transition: 'border-color 0.3s ease-in-out',
                             ...(highlightedCartItemId === item.id && {
                               border: '2px solid',
@@ -1918,21 +1877,43 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                         >
                           {/* Column 1: Name, Type, and Details */}
                           <TableCell>
-                            <Typography variant="subtitle2" fontWeight="bold">
+                            <Typography
+                              variant="body2"
+                              fontWeight={700}
+                              sx={{
+                                lineHeight: 1.25,
+                                wordBreak: 'break-word'
+                              }}
+                            >
                               {item.name}
                             </Typography>
-                            {item.product_type === 'accessory' && item.sku && (
-                              <Typography variant="caption" color="text.secondary" display="block">
+                            {expandedCartItems.has(item.id) && item.product_type === 'accessory' && item.sku && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                                sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              >
                                 SKU: {item.sku}
                               </Typography>
                             )}
-                            {item.product_type === 'material' && (
-                              <Typography variant="caption" color="text.secondary" display="block">
+                            {expandedCartItems.has(item.id) && item.product_type === 'material' && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                                sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              >
                                 {item.length_mm}×{item.width_mm}×{item.thickness_mm} mm
                               </Typography>
                             )}
-                            {item.product_type === 'linear_material' && (
-                              <Typography variant="caption" color="text.secondary" display="block">
+                            {expandedCartItems.has(item.id) && item.product_type === 'linear_material' && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                display="block"
+                                sx={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                              >
                                 {item.length}×{item.width}×{item.thickness} mm
                               </Typography>
                             )}
@@ -1945,7 +1926,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 size="small"
                                 color="primary"
                                 onClick={() => handleQuantityChange(item.id, item.quantity - 1.00)}
-                                disabled={item.quantity <= 0.01}
+                                disabled={item.quantity <= 1}
                                 sx={{ 
                                   width: 32, 
                                   height: 32,
@@ -1985,7 +1966,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                       })
                                     } else {
                                       // Set to minimum
-                                      handleQuantityChange(item.id, 0.01, false)
+                                      handleQuantityChange(item.id, 1, false)
                                       setQuantityInputs(prev => {
                                         const newState = { ...prev }
                                         delete newState[item.id]
@@ -2011,8 +1992,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   }
                                 }}
                                 inputProps={{
-                                  min: 0.01,
-                                  step: 0.01,
+                                  min: 1,
+                                  step: 1,
                                   style: { textAlign: 'center', width: '50px', padding: '4px' }
                                 }}
                                 sx={{
@@ -2048,93 +2029,55 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 <AddIcon fontSize="small" />
                               </IconButton>
                             </Box>
-                            {/* Multiplier Buttons - Always visible below quantity controls */}
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mt: 0.5 }}>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleQuantityMultiply(item.id, 10)}
-                                sx={{
-                                  minWidth: 'auto',
-                                  px: 1,
-                                  py: 0.5,
-                                  fontSize: '0.75rem',
-                                  borderColor: '#60a5fa',
-                                  color: '#1e40af',
-                                  backgroundColor: '#dbeafe',
-                                  '&:hover': {
-                                    borderColor: '#3b82f6',
-                                    backgroundColor: '#bfdbfe'
-                                  }
-                                }}
-                              >
-                                ×10
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleQuantityMultiply(item.id, 100)}
-                                sx={{
-                                  minWidth: 'auto',
-                                  px: 1,
-                                  py: 0.5,
-                                  fontSize: '0.75rem',
-                                  borderColor: '#60a5fa',
-                                  color: '#1e40af',
-                                  backgroundColor: '#dbeafe',
-                                  '&:hover': {
-                                    borderColor: '#3b82f6',
-                                    backgroundColor: '#bfdbfe'
-                                  }
-                                }}
-                              >
-                                ×100
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleQuantityMultiply(item.id, 1000)}
-                                sx={{
-                                  minWidth: 'auto',
-                                  px: 1,
-                                  py: 0.5,
-                                  fontSize: '0.75rem',
-                                  borderColor: '#60a5fa',
-                                  color: '#1e40af',
-                                  backgroundColor: '#dbeafe',
-                                  '&:hover': {
-                                    borderColor: '#3b82f6',
-                                    backgroundColor: '#bfdbfe'
-                                  }
-                                }}
-                              >
-                                ×1000
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleQuantityChange(item.id, 1)}
-                                sx={{
-                                  minWidth: 'auto',
-                                  px: 1,
-                                  py: 0.5,
-                                  fontSize: '0.75rem',
-                                  borderColor: '#f87171',
-                                  color: '#991b1b',
-                                  backgroundColor: '#fee2e2',
-                                  '&:hover': {
-                                    borderColor: '#ef4444',
-                                    backgroundColor: '#fecaca'
-                                  }
-                                }}
-                              >
-                                1
-                              </Button>
-                            </Box>
+                            {item.product_type === 'accessory' && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5, mt: 0.5, flexWrap: 'wrap' }}>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
+                                  sx={{ minWidth: 'auto', px: 0.9, py: 0.3, fontSize: '0.72rem' }}
+                                >
+                                  +1
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleQuantityChange(item.id, item.quantity + 10)}
+                                  sx={{ minWidth: 'auto', px: 0.9, py: 0.3, fontSize: '0.72rem' }}
+                                >
+                                  +10
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleQuantityChange(item.id, item.quantity + 100)}
+                                  sx={{ minWidth: 'auto', px: 0.9, py: 0.3, fontSize: '0.72rem' }}
+                                >
+                                  +100
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleQuantityChange(item.id, item.quantity + 1000)}
+                                  sx={{ minWidth: 'auto', px: 0.9, py: 0.3, fontSize: '0.72rem' }}
+                                >
+                                  +1000
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="error"
+                                  onClick={() => handleQuantityChange(item.id, 1)}
+                                  sx={{ minWidth: 'auto', px: 0.9, py: 0.3, fontSize: '0.72rem' }}
+                                >
+                                  1
+                                </Button>
+                              </Box>
+                            )}
                           </TableCell>
 
                           {/* Column 3: Egység */}
-                          <TableCell align="center">
+                          <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
                             {item.product_type === 'material' ? 'm²' :
                              item.product_type === 'linear_material' ? 'm' :
                              item.unit_shortform || item.unit_name || '-'}
@@ -2160,12 +2103,12 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                   })()}
                                 </Typography>
                                 {/* Discounted price */}
-                                <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                                <Typography variant="body2" fontWeight={700} color="primary">
                                   {formatPriceInteger(getItemSubtotal(item))} {item.currency_name}
                                 </Typography>
                               </Box>
                             ) : (
-                              <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                              <Typography variant="body2" fontWeight={700} color="primary" sx={{ whiteSpace: 'nowrap' }}>
                                 {formatPriceInteger(getItemSubtotal(item))} {item.currency_name}
                               </Typography>
                             )}
@@ -2341,7 +2284,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       {/* Fees Header Row */}
                       {fees.length > 0 && (
                         <TableRow>
-                          <TableCell colSpan={4} sx={{ fontWeight: 'bold', bgcolor: 'action.hover', py: 1 }}>
+                          <TableCell colSpan={5} sx={{ fontWeight: 'bold', bgcolor: 'action.hover', py: 0.75 }}>
                             Díjak
                           </TableCell>
                         </TableRow>
@@ -2365,14 +2308,17 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               renderInput={(params) => (
                                 <TextField {...params} />
                               )}
-                              sx={{ minWidth: 200 }}
+                              sx={{ minWidth: 160 }}
                             />
                           </TableCell>
 
                           {/* Column 2: Mennyiség - Empty for fees */}
                           <TableCell align="center"></TableCell>
 
-                          {/* Column 3: Bruttó Részösszeg */}
+                          {/* Column 3: Egység - Empty for fees */}
+                          <TableCell align="center"></TableCell>
+
+                          {/* Column 4: Bruttó Részösszeg */}
                           <TableCell align="right">
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
                               <TextField
@@ -2449,7 +2395,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             </Box>
                           </TableCell>
 
-                          {/* Column 4: Delete */}
+                          {/* Column 5: Delete */}
                           <TableCell align="center">
                             <IconButton
                               color="error"
@@ -2465,7 +2411,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       {/* Discount Header Row */}
                       {discount && (
                         <TableRow>
-                          <TableCell colSpan={4} sx={{ fontWeight: 'bold', bgcolor: 'action.hover', py: 1 }}>
+                          <TableCell colSpan={5} sx={{ fontWeight: 'bold', bgcolor: 'action.hover', py: 0.75 }}>
                             Kedvezmény
                           </TableCell>
                         </TableRow>
@@ -2483,55 +2429,79 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
                           {/* Column 2: Mennyiség - Percentage */}
                           <TableCell align="center">
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={discount.percentage}
-                              onChange={(e) =>
-                                handleDiscountPercentageChange(parseFloat(e.target.value) || 0)
-                              }
-                              onFocus={() => {
-                                // Set editing flag to prevent barcode input interference
-                                setIsEditingField(true)
-                                // Clear barcode input and any pending scans when editing discount
-                                setBarcodeInput('')
-                                if (scanTimeoutRef.current) {
-                                  clearTimeout(scanTimeoutRef.current)
-                                  scanTimeoutRef.current = null
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleDiscountPercentageChange(discount.percentage - 1)}
+                                disabled={discount.percentage <= 0}
+                                sx={{ width: 30, height: 30 }}
+                              >
+                                <RemoveIcon fontSize="small" />
+                              </IconButton>
+                              <TextField
+                                id="discount-percentage-input"
+                                type="number"
+                                size="small"
+                                value={discount.percentage}
+                                onChange={(e) =>
+                                  handleDiscountPercentageChange(parseInt(e.target.value || '0', 10) || 0)
                                 }
-                              }}
-                              onBlur={() => {
-                                // Clear editing flag after a short delay
-                                setTimeout(() => {
-                                  setIsEditingField(false)
-                                  refocusBarcodeInput()
-                                }, 200)
-                              }}
-                              onKeyDown={(e) => {
-                                // Stop event propagation to prevent barcode input from receiving it
-                                e.stopPropagation()
-                              }}
-                              inputProps={{
-                                min: 0,
-                                max: 100,
-                                step: 0.1,
-                                style: { textAlign: 'center' }
-                              }}
-                              sx={{ width: '120px' }}
-                              InputProps={{
-                                endAdornment: <InputAdornment position="end">%</InputAdornment>
-                              }}
-                            />
+                                onFocus={() => {
+                                  // Set editing flag to prevent barcode input interference
+                                  setIsEditingField(true)
+                                  // Clear barcode input and any pending scans when editing discount
+                                  setBarcodeInput('')
+                                  if (scanTimeoutRef.current) {
+                                    clearTimeout(scanTimeoutRef.current)
+                                    scanTimeoutRef.current = null
+                                  }
+                                }}
+                                onBlur={() => {
+                                  // Clear editing flag after a short delay
+                                  setTimeout(() => {
+                                    setIsEditingField(false)
+                                    refocusBarcodeInput()
+                                  }, 200)
+                                }}
+                                onKeyDown={(e) => {
+                                  // Stop event propagation to prevent barcode input from receiving it
+                                  e.stopPropagation()
+                                }}
+                                inputProps={{
+                                  min: 0,
+                                  max: 100,
+                                  step: 1,
+                                  style: { textAlign: 'center' }
+                                }}
+                                sx={{ width: '100px' }}
+                                InputProps={{
+                                  endAdornment: <InputAdornment position="end">%</InputAdornment>
+                                }}
+                              />
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                onClick={() => handleDiscountPercentageChange(discount.percentage + 1)}
+                                disabled={discount.percentage >= 100}
+                                sx={{ width: 30, height: 30 }}
+                              >
+                                <AddIcon fontSize="small" />
+                              </IconButton>
+                            </Box>
                           </TableCell>
 
-                          {/* Column 3: Bruttó Részösszeg - Discount Amount */}
+                          {/* Column 3: Egység - Empty for discount */}
+                          <TableCell align="center"></TableCell>
+
+                          {/* Column 4: Bruttó Részösszeg - Discount Amount */}
                           <TableCell align="right">
                             <Typography variant="body2" color="error" fontWeight="bold">
                               -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
                             </Typography>
                           </TableCell>
 
-                          {/* Column 4: Delete */}
+                          {/* Column 5: Delete */}
                           <TableCell align="center">
                             <IconButton
                               color="error"
@@ -2589,24 +2559,44 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                     <RemoveCircleIcon />
                   </IconButton>
                 </Box>
-                {/* Worker Switcher and Fizetés Button */}
+                {/* Worker Switcher and Direct Payment Buttons */}
                 <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    size="large"
-                    sx={{ 
-                      py: 3, 
-                      fontSize: '1.1rem', 
-                      fontWeight: 'bold', 
-                      width: '65%',
-                      height: '48px' // Explicit height to match worker input
-                    }}
-                    disabled={cartItems.length === 0}
-                    onClick={handlePaymentClick}
-                  >
-                    Fizetés
-                  </Button>
+                  <Box sx={{ width: '65%', display: 'flex', gap: 1 }}>
+                    <Button
+                      variant="contained"
+                      color="success"
+                      size="large"
+                      startIcon={<CashIcon />}
+                      sx={{
+                        py: 3,
+                        fontSize: '1.05rem',
+                        fontWeight: 'bold',
+                        height: '48px',
+                        flex: 1
+                      }}
+                      disabled={cartItems.length === 0 || !selectedWorker}
+                      onClick={() => handlePaymentTypeClick('cash')}
+                    >
+                      Készpénz
+                    </Button>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      size="large"
+                      startIcon={<CardIcon />}
+                      sx={{
+                        py: 3,
+                        fontSize: '1.05rem',
+                        fontWeight: 'bold',
+                        height: '48px',
+                        flex: 1
+                      }}
+                      disabled={cartItems.length === 0 || !selectedWorker}
+                      onClick={() => handlePaymentTypeClick('card')}
+                    >
+                      Kártya
+                    </Button>
+                  </Box>
                   <Autocomplete
                     size="small"
                     options={workers}
@@ -2721,7 +2711,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             </Typography>
                           </TableCell>
                           <TableCell align="center">
-                            {item.quantity.toFixed(2)}
+                            {item.quantity}
                           </TableCell>
                           <TableCell align="center">
                             {item.product_type === 'material' ? 'm²' :
@@ -3039,7 +3029,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           {item.sku}
                         </Typography>
                       </TableCell>
-                      <TableCell align="center">{item.quantity.toFixed(2)}</TableCell>
+                      <TableCell align="center">{item.quantity}</TableCell>
                       <TableCell align="center">
                         {item.product_type === 'material' ? 'm²' :
                          item.product_type === 'linear_material' ? 'm' :
@@ -3163,68 +3153,6 @@ export default function PosClient({ customers, workers }: PosClientProps) {
         </DialogActions>
       </Dialog>
 
-      {/* Image Modal */}
-      <Dialog
-        open={imageModalOpen}
-        onClose={() => setImageModalOpen(false)}
-        maxWidth="md"
-        fullWidth
-        PaperProps={{
-          sx: {
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column'
-          }
-        }}
-      >
-        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Box component="span">{selectedImageName}</Box>
-          <IconButton
-            onClick={() => setImageModalOpen(false)}
-            size="small"
-            sx={{ ml: 2 }}
-          >
-            <CloseIcon />
-          </IconButton>
-        </DialogTitle>
-        <DialogContent
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            p: 2,
-            overflow: 'auto',
-            flex: 1
-          }}
-        >
-          {selectedImageUrl && (
-            <Box
-              sx={{
-                width: '100%',
-                height: '100%',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-            >
-              <img
-                src={selectedImageUrl}
-                alt={selectedImageName}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '70vh',
-                  objectFit: 'contain',
-                  borderRadius: 8
-                }}
-                onError={(e) => {
-                  console.error('Error loading image:', selectedImageUrl)
-                  e.currentTarget.style.display = 'none'
-                }}
-              />
-            </Box>
-          )}
-        </DialogContent>
-      </Dialog>
     </Box>
   )
 }
