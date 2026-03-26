@@ -1,7 +1,9 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+
 import { useRouter } from 'next/navigation'
+
 import { 
   Box, 
   Typography, 
@@ -10,15 +12,9 @@ import {
   Grid, 
   Button, 
   TextField, 
-  Card, 
-  CardHeader, 
-  CardContent, 
   Switch, 
   FormControlLabel,
   CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Table,
   TableBody,
   TableCell,
@@ -36,18 +32,30 @@ import {
   FormControl,
   InputLabel,
   Checkbox,
-  IconButton,
-  Tooltip
+  Stack,
+  Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material'
-import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon, ExpandMore as ExpandMoreIcon, Add as AddIcon, Delete as DeleteIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material'
+import {
+  Home as HomeIcon,
+  ArrowBack as ArrowBackIcon,
+  Save as SaveIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  ExpandMore as ExpandMoreIcon
+} from '@mui/icons-material'
 import { toast } from 'react-toastify'
-import { invalidateApiCache } from '@/hooks/useApiCache'
+
 import TabContext from '@mui/lab/TabContext'
-import CustomTabList from '@core/components/mui/TabList'
+
 import Tab from '@mui/material/Tab'
 import TabPanel from '@mui/lab/TabPanel'
-import { LocalizationProvider, TimePicker } from '@mui/x-date-pickers'
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
+
+import CustomTabList from '@core/components/mui/TabList'
+import { invalidateApiCache } from '@/hooks/useApiCache'
+import AttendanceMonthView from '@/components/attendance/AttendanceMonthView'
 
 interface Employee {
   id: string
@@ -59,854 +67,25 @@ interface Employee {
   lunch_break_start: string | null
   lunch_break_end: string | null
   works_on_saturday: boolean
+
+  /** Planned paid shift (TIME from DB); use HH:mm in forms */
+  shift_start_time: string | null
+  shift_end_time: string | null
+  timezone: string
   created_at: string
   updated_at: string
+}
+
+function timeInputValue(t: string | null | undefined): string {
+  if (!t) return ''
+  
+return t.length >= 5 ? t.slice(0, 5) : t
 }
 
 interface EmployeeEditClientProps {
   initialEmployee: Employee
 }
 
-// Helper function to get all days in a month
-function getDaysInMonth(year: number, month: number): Date[] {
-  const days: Date[] = []
-  const date = new Date(year, month - 1, 1)
-  
-  while (date.getMonth() === month - 1) {
-    days.push(new Date(date))
-    date.setDate(date.getDate() + 1)
-  }
-  
-  return days
-}
-
-// Helper function to format date as YYYY-MM-DD in local timezone (not UTC)
-function formatDateLocal(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-// Helper function to format date as "MM.DD DayName"
-function formatDate(date: Date): string {
-  const dayNames = ['Vasárnap', 'Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat']
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  const dayName = dayNames[date.getDay()]
-  
-  return `${month}.${day} ${dayName}`
-}
-
-// Helper function to check if date is Sunday
-function isSunday(date: Date): boolean {
-  return date.getDay() === 0
-}
-
-// Helper function to check if date is Saturday
-function isSaturday(date: Date): boolean {
-  return date.getDay() === 6
-}
-
-// Helper function to check if date is today
-function isToday(date: Date): boolean {
-  const today = new Date()
-  return date.toDateString() === today.toDateString()
-}
-
-// Helper function to check if date falls within any holiday range
-function isHoliday(date: Date, holidays: Array<{ start_date: string; end_date: string }>): boolean {
-  if (!holidays || holidays.length === 0) return false
-  
-  const dateStr = date.toISOString().split('T')[0]
-  
-  return holidays.some(holiday => {
-    const startDate = new Date(holiday.start_date)
-    const endDate = new Date(holiday.end_date)
-    const checkDate = new Date(dateStr)
-    
-    return checkDate >= startDate && checkDate <= endDate
-  })
-}
-
-// Helper function to calculate hours worked
-// Formula: (Departure - Arrival) - (Lunch End - Lunch Start)
-function calculateHours(startTime: string | null, endTime: string | null, lunchStart: string | null, lunchEnd: string | null): number {
-  // Need both arrival and departure to calculate hours
-  if (!startTime || !endTime) return 0
-  
-  const start = new Date(`2000-01-01T${startTime}`)
-  const end = new Date(`2000-01-01T${endTime}`)
-  
-  // Calculate total minutes from arrival to departure
-  let totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60)
-  
-  // Deduct lunch break time if both lunch start and end are provided
-  if (lunchStart && lunchEnd) {
-    const lunchStartTime = new Date(`2000-01-01T${lunchStart}`)
-    const lunchEndTime = new Date(`2000-01-01T${lunchEnd}`)
-    const lunchMinutes = (lunchEndTime.getTime() - lunchStartTime.getTime()) / (1000 * 60)
-    
-    // Only deduct if lunch minutes is positive (valid time range)
-    if (lunchMinutes > 0) {
-      totalMinutes -= lunchMinutes
-    }
-  }
-  
-  // Return hours rounded to 2 decimals, ensure non-negative
-  const hours = Math.max(0, totalMinutes / 60)
-  return Math.round(hours * 100) / 100
-}
-
-// Helper function to convert "HH:MM" string to Date object for TimePicker
-function timeStringToDate(timeStr: string | null): Date | null {
-  if (!timeStr) return null
-  const [hours, minutes] = timeStr.split(':').map(Number)
-  if (isNaN(hours) || isNaN(minutes)) return null
-  const date = new Date()
-  date.setHours(hours, minutes, 0, 0)
-  return date
-}
-
-// Helper function to convert Date object to "HH:MM" string
-function dateToTimeString(date: Date | null): string {
-  if (!date) return ''
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${hours}:${minutes}`
-}
-
-interface DayData {
-  date: Date
-  arrival: string | null
-  arrivalLogId: string | null
-  arrivalManuallyEdited: boolean
-  lunchStart: string | null
-  lunchEnd: string | null
-  departure: string | null
-  departureLogId: string | null
-  departureManuallyEdited: boolean
-  hoursWorked: number
-  isDisabled: boolean
-  isEmployeeHoliday: boolean
-  holidayType?: string
-}
-
-interface AttendanceAccordionProps {
-  employeeId: string
-  lunchBreakStart: string | null
-  lunchBreakEnd: string | null
-  worksOnSaturday: boolean
-  year: number
-  month: number // 1-12
-}
-
-function AttendanceAccordion({ employeeId, lunchBreakStart, lunchBreakEnd, worksOnSaturday, year, month }: AttendanceAccordionProps) {
-  
-  const monthNames = ['Január', 'Február', 'Március', 'Április', 'Május', 'Június', 'Július', 'Augusztus', 'Szeptember', 'Október', 'November', 'December']
-  const monthName = monthNames[month - 1]
-  
-  // Get all days in the month
-  const daysInMonth = getDaysInMonth(year, month)
-  
-  // Initialize day data with lunch break times pre-filled
-  const [daysData, setDaysData] = useState<DayData[]>(
-    daysInMonth.map(date => ({
-      date,
-      arrival: null,
-      arrivalLogId: null,
-      arrivalManuallyEdited: false,
-      lunchStart: lunchBreakStart || null,
-      lunchEnd: lunchBreakEnd || null,
-      departure: null,
-      departureLogId: null,
-      departureManuallyEdited: false,
-      hoursWorked: 0,
-      isDisabled: isSunday(date) || (!worksOnSaturday && isSaturday(date)),
-      isEmployeeHoliday: false,
-      holidayType: undefined
-    }))
-  )
-  
-  const [locationId, setLocationId] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
-  const [pdfMode, setPdfMode] = useState<'holiday' | 'work'>('holiday')
-  const [holidays, setHolidays] = useState<Array<{ start_date: string; end_date: string }>>([])
-  const [employeeHolidays, setEmployeeHolidays] = useState<Array<{ id: string; date: string; type: string; name: string | null }>>([])
-  
-  // Fetch default location ID, attendance logs, and holidays on mount
-  // Optimized: All API calls run in parallel for faster loading
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true)
-      try {
-        // Calculate date range for the month
-        const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
-        const endDate = new Date(year, month, 0).toISOString().split('T')[0]
-        
-        // Fetch all data in parallel for faster loading
-        const [locationResponse, holidaysResponse, employeeHolidaysResponse, logsResponse] = await Promise.all([
-          fetch('/api/locations?active=true&limit=1'),
-          fetch(`/api/holidays?start_date=${startDate}&end_date=${endDate}`),
-          fetch(`/api/employees/${employeeId}/holidays?year=${year}&month=${month}`),
-          fetch(`/api/employees/${employeeId}/attendance?year=${year}&month=${month}`)
-        ])
-        
-        // Process location response
-        if (locationResponse.ok) {
-          const locations = await locationResponse.json()
-          if (locations && locations.length > 0) {
-            setLocationId(locations[0].id)
-          }
-        }
-        
-        // Process holidays response
-        let activeHolidays: Array<{ start_date: string; end_date: string }> = []
-        if (holidaysResponse.ok) {
-          const holidaysData = await holidaysResponse.json()
-          activeHolidays = holidaysData.filter((h: any) => h.active)
-          setHolidays(activeHolidays)
-        }
-        
-        // Process employee holidays response
-        let empHolidays: Array<{ id: string; date: string; type: string; name: string | null }> = []
-        if (employeeHolidaysResponse.ok) {
-          empHolidays = await employeeHolidaysResponse.json()
-          setEmployeeHolidays(empHolidays)
-        }
-        
-        // Process attendance logs response
-        if (logsResponse.ok) {
-          const logs = await logsResponse.json()
-          
-          // Map logs to days and update disabled status based on holidays
-          setDaysData(prev => prev.map(day => {
-            const dateStr = formatDateLocal(day.date)
-            const dayLog = logs.find((log: any) => log.date === dateStr)
-            const empHoliday = empHolidays.find((h: any) => h.date === dateStr)
-            
-            const isHolidayDay = isHoliday(day.date, activeHolidays)
-            const isEmpHoliday = !!empHoliday
-            // Holidays are now editable - only disable Sundays, Saturdays (if not working), and national/company holidays
-            const shouldBeDisabled = isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay
-            
-            const updatedDay = {
-              ...day,
-              isDisabled: shouldBeDisabled,
-              isEmployeeHoliday: isEmpHoliday,
-              holidayType: empHoliday?.type
-            }
-            
-            if (dayLog) {
-              const arrival = dayLog.arrival?.time || null
-              const departure = dayLog.departure?.time || null
-              
-              // Calculate hours worked (always calculate if there are logs, even on holidays)
-              const hours = calculateHours(arrival, departure, day.lunchStart, day.lunchEnd)
-              
-              // Debug log for Saturday
-              if (isSaturday(day.date)) {
-                console.log(`Saturday ${dateStr}: arrival=${arrival}, departure=${departure}, hours=${hours}, isEmpHoliday=${isEmpHoliday}, isDisabled=${shouldBeDisabled}, worksOnSaturday=${worksOnSaturday}`)
-              }
-              
-              return {
-                ...updatedDay,
-                arrival,
-                arrivalLogId: dayLog.arrival?.id || null,
-                arrivalManuallyEdited: dayLog.arrival?.manually_edited || false,
-                departure,
-                departureLogId: dayLog.departure?.id || null,
-                departureManuallyEdited: dayLog.departure?.manually_edited || false,
-                hoursWorked: hours
-              }
-            } else {
-              // Debug log for Saturday when no log found
-              if (isSaturday(day.date)) {
-                console.log(`Saturday ${dateStr}: No log found. Available logs:`, logs.map((l: any) => l.date))
-              }
-            }
-            
-            // Even if no log, keep existing hoursWorked if it was set
-            return updatedDay
-          }))
-        } else {
-          // If logs fetch fails, still update disabled status based on holidays
-          setDaysData(prev => prev.map(day => {
-            const dateStr = formatDateLocal(day.date)
-            const empHoliday = empHolidays.find((h: any) => h.date === dateStr)
-            const isHolidayDay = isHoliday(day.date, activeHolidays)
-            const isEmpHoliday = !!empHoliday
-            return {
-              ...day,
-              isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay,
-              isEmployeeHoliday: isEmpHoliday,
-              holidayType: empHoliday?.type,
-              hoursWorked: day.hoursWorked // Always keep calculated hours, even on holidays
-            }
-          }))
-        }
-      } catch (error) {
-        console.error('Error fetching attendance data:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-    
-    fetchData()
-    
-    // Listen for holiday changes from EmployeeHolidaysTab
-    const handleHolidayChange = () => {
-      fetchData()
-    }
-    
-    window.addEventListener(`employee-holiday-changed-${employeeId}`, handleHolidayChange)
-    
-    return () => {
-      window.removeEventListener(`employee-holiday-changed-${employeeId}`, handleHolidayChange)
-    }
-  }, [employeeId, year, month])
-  
-  // Update disabled status when holidays or employee holidays change
-  useEffect(() => {
-    setDaysData(prev => prev.map(day => {
-      const dateStr = formatDateLocal(day.date)
-      const empHoliday = employeeHolidays.find((h: any) => h.date === dateStr)
-      const isHolidayDay = isHoliday(day.date, holidays)
-      const isEmpHoliday = !!empHoliday
-      
-      // Recalculate hours if we have arrival and departure (always calculate, even if it's a holiday)
-      let hoursWorked = day.hoursWorked
-      if (day.arrival && day.departure) {
-        // Always calculate hours if we have both arrival and departure, even on holidays
-        hoursWorked = calculateHours(day.arrival, day.departure, day.lunchStart, day.lunchEnd)
-      }
-      
-      // Debug log for Saturday
-      if (isSaturday(day.date) && day.arrival && day.departure) {
-        console.log(`Saturday useEffect ${dateStr}: arrival=${day.arrival}, departure=${day.departure}, hours=${hoursWorked}, isDisabled=${isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay}`)
-      }
-      
-      // Holidays are now editable - only disable Sundays, Saturdays (if not working), and national/company holidays
-      return {
-        ...day,
-        isDisabled: isSunday(day.date) || (!worksOnSaturday && isSaturday(day.date)) || isHolidayDay,
-        isEmployeeHoliday: isEmpHoliday,
-        holidayType: empHoliday?.type,
-        hoursWorked: hoursWorked
-      }
-    }))
-  }, [holidays, worksOnSaturday, employeeHolidays])
-  
-  const handleTimeChange = async (dayIndex: number, field: 'arrival' | 'lunchStart' | 'lunchEnd' | 'departure', value: string) => {
-    if (!locationId) {
-      toast.error('Helyszín ID hiányzik', { position: "top-right" })
-      return
-    }
-
-    const day = daysData[dayIndex]
-    const dateStr = formatDateLocal(day.date)
-
-    // Business logic validation
-    if (field === 'arrival' || field === 'departure') {
-      // Validate time format
-      if (value && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
-        toast.error('Érvénytelen időformátum. Használja az ÓÓ:PP formátumot.', { position: "top-right" })
-        return
-      }
-
-      // Check arrival before departure
-      if (field === 'departure' && value && day.arrival) {
-        const arrivalTime = new Date(`2000-01-01T${day.arrival}`)
-        const departureTime = new Date(`2000-01-01T${value}`)
-        if (departureTime <= arrivalTime) {
-          toast.error('A távozás ideje nem lehet korábbi vagy egyenlő az érkezés idejével.', { position: "top-right" })
-          return
-        }
-
-        // Check for reasonable working hours (max 12 hours)
-        const hoursDiff = (departureTime.getTime() - arrivalTime.getTime()) / (1000 * 60 * 60)
-        if (hoursDiff > 12) {
-          toast.error('A munkavégzés időtartama nem lehet több 12 óránál.', { position: "top-right" })
-          return
-        }
-      }
-
-      // Check departure after arrival
-      if (field === 'arrival' && value && day.departure) {
-        const arrivalTime = new Date(`2000-01-01T${value}`)
-        const departureTime = new Date(`2000-01-01T${day.departure}`)
-        if (arrivalTime >= departureTime) {
-          toast.error('Az érkezés ideje nem lehet későbbi vagy egyenlő a távozás idejével.', { position: "top-right" })
-          return
-        }
-      }
-    }
-
-    // Lunch break validation
-    if (field === 'lunchStart' || field === 'lunchEnd') {
-      // Validate time format
-      if (value && !/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)) {
-        toast.error('Érvénytelen időformátum. Használja az ÓÓ:PP formátumot.', { position: "top-right" })
-        return
-      }
-
-      // Check lunch start before lunch end
-      if (field === 'lunchEnd' && value && day.lunchStart) {
-        const lunchStartTime = new Date(`2000-01-01T${day.lunchStart}`)
-        const lunchEndTime = new Date(`2000-01-01T${value}`)
-        if (lunchEndTime <= lunchStartTime) {
-          toast.error('Az ebéd vége nem lehet korábbi vagy egyenlő az ebéd kezdetével.', { position: "top-right" })
-          return
-        }
-      }
-
-      if (field === 'lunchStart' && value && day.lunchEnd) {
-        const lunchStartTime = new Date(`2000-01-01T${value}`)
-        const lunchEndTime = new Date(`2000-01-01T${day.lunchEnd}`)
-        if (lunchStartTime >= lunchEndTime) {
-          toast.error('Az ebéd kezdete nem lehet későbbi vagy egyenlő az ebéd végével.', { position: "top-right" })
-          return
-        }
-      }
-    }
-    
-    // Update local state immediately
-    setDaysData(prev => {
-      const updated = [...prev]
-      const updatedDay = {
-        ...updated[dayIndex],
-        [field]: value || null
-      }
-      
-      // Recalculate hours worked
-      updatedDay.hoursWorked = calculateHours(
-        updatedDay.arrival,
-        updatedDay.departure,
-        updatedDay.lunchStart,
-        updatedDay.lunchEnd
-      )
-      
-      updated[dayIndex] = updatedDay
-      return updated
-    })
-    
-    // Handle arrival/departure changes (save to database)
-    if (field === 'arrival' || field === 'departure') {
-      setIsSaving(true)
-      try {
-        const scanType = field === 'arrival' ? 'arrival' : 'departure'
-        
-        if (value) {
-          // Create or update log
-          const response = await fetch(`/api/employees/${employeeId}/attendance`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              date: dateStr,
-              scanType,
-              time: value,
-              locationId
-            })
-          })
-          
-          if (response.ok) {
-            const log = await response.json()
-            
-            // Update log ID and manually_edited flag in state
-            setDaysData(prev => {
-              const updated = [...prev]
-              if (field === 'arrival') {
-                updated[dayIndex].arrivalLogId = log.id
-                updated[dayIndex].arrivalManuallyEdited = log.manually_edited || false
-              } else {
-                updated[dayIndex].departureLogId = log.id
-                updated[dayIndex].departureManuallyEdited = log.manually_edited || false
-              }
-              return updated
-            })
-          } else {
-            const errorData = await response.json()
-            throw new Error(errorData.error || 'Mentés sikertelen')
-          }
-        } else {
-          // Delete log if time is cleared
-          const logId = field === 'arrival' ? day.arrivalLogId : day.departureLogId
-          
-          if (logId) {
-            const response = await fetch(`/api/employees/${employeeId}/attendance?logId=${logId}`, {
-              method: 'DELETE'
-            })
-            
-            if (!response.ok) {
-              const errorData = await response.json()
-              throw new Error(errorData.error || 'Törlés sikertelen')
-            }
-            
-            // Clear log ID in state
-            setDaysData(prev => {
-              const updated = [...prev]
-              if (field === 'arrival') {
-                updated[dayIndex].arrivalLogId = null
-              } else {
-                updated[dayIndex].departureLogId = null
-              }
-              return updated
-            })
-          }
-        }
-      } catch (error) {
-        console.error('Error saving attendance log:', error)
-        toast.error(`Hiba történt a mentés során: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`, {
-          position: "top-right"
-        })
-        
-        // Revert local state on error
-        setDaysData(prev => {
-          const updated = [...prev]
-          updated[dayIndex] = {
-            ...day,
-            [field]: day[field === 'arrival' ? 'arrival' : 'departure']
-          }
-          return updated
-        })
-      } finally {
-        setIsSaving(false)
-      }
-    }
-  }
-  
-  // Calculate summary statistics
-  // Total hours includes all hours, even on holidays (since employees can work on holidays)
-  const totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
-  // Days worked: count days with attendance, excluding only disabled days (Sundays, non-working Saturdays, national holidays)
-  // Employee holidays are now editable, so if they have attendance, count them
-  const daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
-  // Absent days: only count holidays that don't have any attendance
-  const absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.arrival && !day.departure).length
-
-  // Handle PDF generation
-  const handleGeneratePdf = async () => {
-    setIsGeneratingPdf(true)
-    try {
-      const response = await fetch(`/api/employees/${employeeId}/attendance/pdf?year=${year}&month=${month}&mode=${pdfMode}`)
-      
-      if (!response.ok) {
-        let errorMessage = 'Hiba történt a PDF generálása során'
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
-          if (errorData.details) {
-            errorMessage += `: ${errorData.details}`
-          }
-        } catch (e) {
-          // If response is not JSON, try to get text
-          const text = await response.text().catch(() => '')
-          errorMessage = text || errorMessage
-        }
-        throw new Error(errorMessage)
-      }
-
-      // Check if response is actually a PDF
-      const contentType = response.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/pdf')) {
-        const text = await response.text()
-        console.error('Unexpected response type:', contentType, text)
-        throw new Error('A válasz nem PDF formátumú')
-      }
-
-      // Get PDF blob
-      const blob = await response.blob()
-      
-      if (blob.size === 0) {
-        throw new Error('A generált PDF üres')
-      }
-      
-      // Create download link
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      // Use ASCII-safe month names for filename
-      const monthNamesAscii = ['Januar', 'Februar', 'Marcius', 'Aprilis', 'Majus', 'Junius', 'Julius', 'Augusztus', 'Szeptember', 'Oktober', 'November', 'December']
-      const monthNameForFile = monthNamesAscii[month - 1]
-      link.download = `Jelenleti-iv-${year}-${monthNameForFile}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-
-      toast.success('PDF sikeresen generálva és letöltve', { position: "top-right" })
-    } catch (error: any) {
-      console.error('Error generating PDF:', error)
-      toast.error('Hiba történt a PDF generálása során: ' + (error.message || 'Ismeretlen hiba'), {
-        position: "top-right"
-      })
-    } finally {
-      setIsGeneratingPdf(false)
-    }
-  }
-  
-  return (
-    <Accordion>
-      <AccordionSummary
-        expandIcon={<ExpandMoreIcon />}
-        aria-controls={`attendance-${year}-${month}-content`}
-        id={`attendance-${year}-${month}-header`}
-      >
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', pr: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            {year} {monthName}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Chip 
-              label={`Összes óra: ${totalHours.toFixed(2)} óra`} 
-              color="primary" 
-              variant="outlined"
-              size="small"
-            />
-            <Chip 
-              label={`Dolgozott napok: ${daysWorked}`} 
-              color="success" 
-              variant="outlined"
-              size="small"
-            />
-            <Chip 
-              label={`Távollét: ${absentDays}`} 
-              color="warning" 
-              variant="outlined"
-              size="small"
-            />
-            <FormControl size="small" sx={{ minWidth: 150, ml: 1 }}>
-              <Select
-                value={pdfMode}
-                onChange={(e) => setPdfMode(e.target.value as 'holiday' | 'work')}
-                disabled={isGeneratingPdf}
-                sx={{ fontSize: '0.875rem' }}
-              >
-                <MenuItem value="holiday">PDF (Szabadság mód)</MenuItem>
-                <MenuItem value="work">PDF (Munka mód)</MenuItem>
-              </Select>
-            </FormControl>
-            <Button
-              variant="outlined"
-              size="small"
-              startIcon={isGeneratingPdf ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleGeneratePdf()
-              }}
-              disabled={isGeneratingPdf}
-              sx={{ ml: 1 }}
-            >
-              {isGeneratingPdf ? 'Generálás...' : 'PDF'}
-            </Button>
-          </Box>
-        </Box>
-      </AccordionSummary>
-      <AccordionDetails id={`attendance-${year}-${month}-content`}>
-        {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-          <TableContainer component={Paper} variant="outlined">
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell sx={{ fontWeight: 600 }}>Dátum</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Érkezés</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Ebédszünet kezdet</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Ebédszünet vége</TableCell>
-                <TableCell sx={{ fontWeight: 600 }}>Távozás</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Dolgozott óra</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {daysData.map((day, index) => {
-                const isTodayDate = isToday(day.date)
-                return (
-                <TableRow 
-                  key={index}
-                  sx={{
-                    backgroundColor: day.isEmployeeHoliday 
-                      ? (day.holidayType === 'Betegszabadság' ? '#ffebee' : 'success.light')
-                      : day.isDisabled 
-                        ? 'action.disabledBackground' 
-                        : 'inherit',
-                    borderLeft: day.isEmployeeHoliday && !isTodayDate ? '4px solid' : (isTodayDate ? '2px solid' : 'none'),
-                    borderRight: isTodayDate ? '2px solid' : 'none',
-                    borderTop: isTodayDate ? '2px solid' : 'none',
-                    borderBottom: isTodayDate ? '2px solid' : 'none',
-                    borderColor: isTodayDate ? 'success.main' : (day.isEmployeeHoliday ? (day.holidayType === 'Betegszabadság' ? 'error.main' : 'success.main') : 'transparent'),
-                    '&:hover': day.isDisabled ? {} : { backgroundColor: day.isEmployeeHoliday ? (day.holidayType === 'Betegszabadság' ? '#ffebee' : 'success.light') : 'action.hover' }
-                  }}
-                >
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {day.isEmployeeHoliday && (
-                        <Typography 
-                          variant="body2" 
-                          sx={{ 
-                            color: day.holidayType === 'Betegszabadság' ? 'error.main' : 'success.main',
-                            fontWeight: 600
-                          }}
-                        >
-                          {day.holidayType === 'Betegszabadság' ? '🌡️' : '☀️'}
-                        </Typography>
-                      )}
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          color: day.isDisabled ? 'text.disabled' : 'text.primary',
-                          fontWeight: day.isDisabled ? 'normal' : 500
-                        }}
-                      >
-                        {formatDate(day.date)}
-                      </Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <TimePicker
-                        value={timeStringToDate(day.arrival)}
-                        onChange={(newValue) => {
-                          const timeStr = newValue ? dateToTimeString(newValue) : ''
-                          handleTimeChange(index, 'arrival', timeStr)
-                        }}
-                        disabled={day.isDisabled}
-                        ampm={false}
-                        slotProps={{
-                          textField: {
-                            size: 'small',
-                            error: !day.isDisabled && !day.arrival && !!day.departure,
-                            sx: { width: 120 }
-                          }
-                        }}
-                      />
-                      {day.arrival && (
-                        <Tooltip title={day.arrivalManuallyEdited ? 'Kézi bevitel' : 'Olvasás'}>
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              color: day.arrivalManuallyEdited ? 'primary.main' : 'text.secondary',
-                              fontSize: '0.75rem',
-                              ml: 0.5
-                            }}
-                          >
-                            {day.arrivalManuallyEdited ? '✏️' : '📱'}
-                          </Typography>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <TimePicker
-                      value={timeStringToDate(day.lunchStart)}
-                      onChange={(newValue) => {
-                        const timeStr = newValue ? dateToTimeString(newValue) : ''
-                        handleTimeChange(index, 'lunchStart', timeStr)
-                      }}
-                      disabled={day.isDisabled}
-                      ampm={false}
-                      slotProps={{
-                        textField: {
-                          size: 'small',
-                          sx: { width: 120 }
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <TimePicker
-                      value={timeStringToDate(day.lunchEnd)}
-                      onChange={(newValue) => {
-                        const timeStr = newValue ? dateToTimeString(newValue) : ''
-                        handleTimeChange(index, 'lunchEnd', timeStr)
-                      }}
-                      disabled={day.isDisabled}
-                      ampm={false}
-                      slotProps={{
-                        textField: {
-                          size: 'small',
-                          sx: { width: 120 }
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <TimePicker
-                        value={timeStringToDate(day.departure)}
-                        onChange={(newValue) => {
-                          const timeStr = newValue ? dateToTimeString(newValue) : ''
-                          handleTimeChange(index, 'departure', timeStr)
-                        }}
-                        disabled={day.isDisabled}
-                        ampm={false}
-                        slotProps={{
-                          textField: {
-                            size: 'small',
-                            error: !day.isDisabled && !!day.arrival && !day.departure,
-                            sx: { width: 120 }
-                          }
-                        }}
-                      />
-                      {day.departure && (
-                        <Tooltip title={day.departureManuallyEdited ? 'Kézi bevitel' : 'Olvasás'}>
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              color: day.departureManuallyEdited ? 'primary.main' : 'text.secondary',
-                              fontSize: '0.75rem',
-                              ml: 0.5
-                            }}
-                          >
-                            {day.departureManuallyEdited ? '✏️' : '📱'}
-                          </Typography>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                      <Typography 
-                        variant="body2" 
-                        sx={{ 
-                          fontWeight: 600,
-                          color: day.hoursWorked > 0 ? 'text.primary' : 'text.disabled'
-                        }}
-                      >
-                        {day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'}
-                      </Typography>
-                      {day.isEmployeeHoliday && day.hoursWorked > 0 && (
-                        <Tooltip title={day.holidayType === 'Betegszabadság' ? 'Betegszabadság' : 'Szabadság'}>
-                          <Typography 
-                            variant="caption" 
-                            sx={{ 
-                              color: day.holidayType === 'Betegszabadság' ? 'error.main' : 'success.main',
-                              fontSize: '0.7rem'
-                            }}
-                          >
-                            {day.holidayType === 'Betegszabadság' ? '🌡️' : '☀️'}
-                          </Typography>
-                        </Tooltip>
-                      )}
-                    </Box>
-                  </TableCell>
-                </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </TableContainer>
-        </LocalizationProvider>
-        )}
-      </AccordionDetails>
-    </Accordion>
-  )
-}
 
 export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClientProps) {
   const router = useRouter()
@@ -914,8 +93,12 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
   // Ensure works_on_saturday has a default value if undefined (for existing employees before migration)
   const [employee, setEmployee] = useState<Employee>({
     ...initialEmployee,
-    works_on_saturday: initialEmployee.works_on_saturday !== undefined ? initialEmployee.works_on_saturday : false
+    works_on_saturday: initialEmployee.works_on_saturday !== undefined ? initialEmployee.works_on_saturday : false,
+    shift_start_time: initialEmployee.shift_start_time ?? null,
+    shift_end_time: initialEmployee.shift_end_time ?? null,
+    timezone: initialEmployee.timezone || 'Europe/Budapest'
   })
+
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
   const [activeTab, setActiveTab] = useState<string>('1')
@@ -934,6 +117,10 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }))
+    }
+
+    if (field === 'shift_start_time' || field === 'shift_end_time') {
+      setErrors(prev => (prev.shift ? { ...prev, shift: '' } : prev))
     }
   }
 
@@ -954,14 +141,23 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
     // Validate PIN code format if provided
     if (employee.pin_code && employee.pin_code.trim() !== '') {
       const pinRegex = /^[0-9]{4}$/
+
       if (!pinRegex.test(employee.pin_code.trim())) {
         newErrors.pin_code = 'A PIN kód pontosan 4 számjegyből kell álljon'
       }
     }
-    
+
+    const ss = employee.shift_start_time?.trim() || null
+    const se = employee.shift_end_time?.trim() || null
+
+    if ((ss && !se) || (!ss && se)) {
+      newErrors.shift = 'A műszak kezdetét és végét együtt adja meg, vagy mindkettőt hagyja üresen.'
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
-      return
+      
+return
     }
     
     setIsSaving(true)
@@ -981,6 +177,9 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
           lunch_break_start: employee.lunch_break_start || null,
           lunch_break_end: employee.lunch_break_end || null,
           works_on_saturday: employee.works_on_saturday !== undefined ? employee.works_on_saturday : false,
+          shift_start_time: ss || null,
+          shift_end_time: se || null,
+          timezone: employee.timezone?.trim() || 'Europe/Budapest'
         }),
       })
       
@@ -1003,6 +202,7 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
         invalidateApiCache('/api/employees')
       } else {
         const errorData = await response.json()
+
         throw new Error(errorData.error || 'Mentés sikertelen')
       }
     } catch (error) {
@@ -1056,15 +256,17 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
             onClick={handleSave}
             color="primary"
             disabled={isSaving}
+            aria-label="Dolgozó adatainak mentése"
           >
-            {isSaving ? 'Mentés...' : 'Mentés'}
+            {isSaving ? 'Mentés...' : 'Adatok mentése'}
           </Button>
           <Button
             variant="outlined"
             startIcon={<ArrowBackIcon />}
             onClick={handleBack}
+            aria-label="Vissza a lista nézethez"
           >
-            Vissza
+            Vissza a listához
           </Button>
         </Box>
       </Box>
@@ -1072,160 +274,220 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
       {/* Tabs */}
       <TabContext value={activeTab}>
         <CustomTabList pill='true' onChange={handleTabChange} aria-label='employee tabs'>
-          <Tab value='1' label='Alap adatok' />
-          <Tab value='2' label='Jelenlét' />
+          <Tab value='1' label='Jelenlét' />
+          <Tab value='2' label='Alap adatok' />
           <Tab value='3' label='Távollét' />
         </CustomTabList>
 
-        {/* Tab 1: Alap adatok */}
-        <TabPanel value='1' sx={{ p: 0, pt: 3 }}>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <Card>
-                <CardHeader title="Alap adatok" />
-                <CardContent>
+        {/* Tab 1: Jelenlét */}
+        <TabPanel value='1' sx={{ p: 0, pt: 3, width: '100%', maxWidth: '100%' }}>
+          <AttendanceMonthView
+            employeeId={employee.id}
+            lunchBreakStart={employee.lunch_break_start}
+            lunchBreakEnd={employee.lunch_break_end}
+            worksOnSaturday={employee.works_on_saturday !== undefined ? employee.works_on_saturday : false}
+            shiftStart={timeInputValue(employee.shift_start_time)}
+            shiftEnd={timeInputValue(employee.shift_end_time)}
+          />
+        </TabPanel>
+
+        {/* Tab 2: Alap adatok */}
+        <TabPanel value='2' sx={{ p: 0, pt: 3 }}>
+          <Stack spacing={2.5}>
+            <Box>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                Alap adatok
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 720 }}>
+                Itt állítod be, mi számít fizetett órának ennél a dolgozónál.
+              </Typography>
+            </Box>
+
+            <Paper variant="outlined" sx={{ p: 3, borderRadius: 2.5 }}>
+              <Stack spacing={3}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                    Azonosítás
+                  </Typography>
                   <Grid container spacing={3}>
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
                         label="Név"
                         value={employee.name}
-                        onChange={(e) => handleInputChange('name', e.target.value)}
+                        onChange={e => handleInputChange('name', e.target.value)}
                         error={!!errors.name}
                         helperText={errors.name}
                         required
                       />
                     </Grid>
-                    
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
                         label="Dolgozói kód"
                         value={employee.employee_code}
-                        onChange={(e) => handleInputChange('employee_code', e.target.value)}
+                        onChange={e => handleInputChange('employee_code', e.target.value)}
                         error={!!errors.employee_code}
                         helperText={errors.employee_code}
                         required
                       />
                     </Grid>
-
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
                         label="RFID kártya ID"
                         value={employee.rfid_card_id || ''}
-                        onChange={(e) => handleInputChange('rfid_card_id', e.target.value || null)}
-                        helperText="RFID kártya egyedi azonosítója"
+                        onChange={e => handleInputChange('rfid_card_id', e.target.value || null)}
+                        helperText="Opcionális"
                       />
                     </Grid>
-
                     <Grid item xs={12} md={6}>
                       <TextField
                         fullWidth
                         label="PIN kód"
                         value={employee.pin_code || ''}
-                        onChange={(e) => handleInputChange('pin_code', e.target.value || null)}
+                        onChange={e => handleInputChange('pin_code', e.target.value || null)}
                         error={!!errors.pin_code}
-                        helperText={errors.pin_code || '4 számjegyű PIN kód'}
+                        helperText={errors.pin_code || '4 számjegy'}
                         inputProps={{ maxLength: 4, pattern: '[0-9]*' }}
                       />
                     </Grid>
+                  </Grid>
+                </Box>
 
-                    <Grid item xs={12} md={6}>
+                <Divider />
+
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Fizetett idő szabály
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    A fizetett óra csak a műszakon belül számolódik. Korai/késői jelenlét csak ellenőrzés.
+                  </Typography>
+                  {errors.shift && (
+                    <Typography variant="body2" color="error" sx={{ mb: 2 }}>
+                      {errors.shift}
+                    </Typography>
+                  )}
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Műszak kezdete"
+                        type="time"
+                        value={timeInputValue(employee.shift_start_time)}
+                        onChange={e => handleInputChange('shift_start_time', e.target.value || null)}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ step: 300 }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <TextField
+                        fullWidth
+                        label="Műszak vége"
+                        type="time"
+                        value={timeInputValue(employee.shift_end_time)}
+                        onChange={e => handleInputChange('shift_end_time', e.target.value || null)}
+                        InputLabelProps={{ shrink: true }}
+                        inputProps={{ step: 300 }}
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
                       <TextField
                         fullWidth
                         label="Ebéd kezdete"
                         type="time"
-                        value={employee.lunch_break_start || ''}
-                        onChange={(e) => handleInputChange('lunch_break_start', e.target.value || null)}
+                        value={timeInputValue(employee.lunch_break_start)}
+                        onChange={e => handleInputChange('lunch_break_start', e.target.value || null)}
                         InputLabelProps={{ shrink: true }}
                         inputProps={{ step: 300 }}
                       />
                     </Grid>
-
-                    <Grid item xs={12} md={6}>
+                    <Grid item xs={12} sm={6} md={3}>
                       <TextField
                         fullWidth
                         label="Ebéd vége"
                         type="time"
-                        value={employee.lunch_break_end || ''}
-                        onChange={(e) => handleInputChange('lunch_break_end', e.target.value || null)}
+                        value={timeInputValue(employee.lunch_break_end)}
+                        onChange={e => handleInputChange('lunch_break_end', e.target.value || null)}
                         InputLabelProps={{ shrink: true }}
                         inputProps={{ step: 300 }}
                       />
                     </Grid>
-
-                    <Grid item xs={12}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={employee.active}
-                            onChange={(e) => handleInputChange('active', e.target.checked)}
-                            color="primary"
-                          />
-                        }
-                        label="Aktív"
-                      />
-                    </Grid>
-
-                    <Grid item xs={12}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={employee.works_on_saturday !== undefined ? employee.works_on_saturday : false}
-                            onChange={(e) => handleInputChange('works_on_saturday', e.target.checked)}
-                            color="primary"
-                          />
-                        }
-                        label="Dolgozik szombaton"
-                      />
-                    </Grid>
-
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="Létrehozva"
-                        value={new Date(employee.created_at).toLocaleString('hu-HU')}
-                        disabled
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField
-                        fullWidth
-                        label="Frissítve"
-                        value={new Date(employee.updated_at).toLocaleString('hu-HU')}
-                        disabled
-                        InputLabelProps={{ shrink: true }}
-                      />
-                    </Grid>
                   </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </TabPanel>
+                </Box>
 
-        {/* Tab 2: Jelenlét */}
-        <TabPanel value='2' sx={{ p: 0, pt: 3 }}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {(() => {
-              const currentYear = new Date().getFullYear()
-              const months = Array.from({ length: 12 }, (_, i) => i + 1) // 1-12
-              
-              return months.map((month) => (
-                <AttendanceAccordion 
-                  key={`${employee.id}-${currentYear}-${month}`}
-                  employeeId={employee.id} 
-                  lunchBreakStart={employee.lunch_break_start}
-                  lunchBreakEnd={employee.lunch_break_end}
-                  worksOnSaturday={employee.works_on_saturday !== undefined ? employee.works_on_saturday : false}
-                  year={currentYear}
-                  month={month}
-                />
-              ))
-            })()}
-          </Box>
+                <Divider />
+
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                    Elérhetőség
+                  </Typography>
+                  <Stack spacing={1.5}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={employee.active}
+                          onChange={e => handleInputChange('active', e.target.checked)}
+                          color="primary"
+                        />
+                      }
+                      label="Aktív dolgozó"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={employee.works_on_saturday !== undefined ? employee.works_on_saturday : false}
+                          onChange={e => handleInputChange('works_on_saturday', e.target.checked)}
+                          color="primary"
+                        />
+                      }
+                      label="Dolgozik szombaton"
+                    />
+                  </Stack>
+                </Box>
+              </Stack>
+            </Paper>
+
+            <Accordion disableGutters elevation={0} sx={{ border: theme => `1px solid ${theme.palette.divider}`, borderRadius: 2, '&:before': { display: 'none' } }}>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ px: 2.5 }}>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Technikai adatok
+                </Typography>
+              </AccordionSummary>
+              <AccordionDetails sx={{ px: 2.5, pb: 2.5 }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Időzóna"
+                      value={employee.timezone}
+                      onChange={e => handleInputChange('timezone', e.target.value)}
+                      helperText="Alapértelmezés: Europe/Budapest"
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Létrehozva"
+                      value={new Date(employee.created_at).toLocaleString('hu-HU')}
+                      disabled
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      label="Utoljára frissítve"
+                      value={new Date(employee.updated_at).toLocaleString('hu-HU')}
+                      disabled
+                      InputLabelProps={{ shrink: true }}
+                    />
+                  </Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          </Stack>
         </TabPanel>
 
         {/* Tab 3: Szabadságok */}
@@ -1257,10 +519,13 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
   useEffect(() => {
     const fetchHolidays = async () => {
       setIsLoading(true)
+
       try {
         const response = await fetch(`/api/employees/${employeeId}/holidays`)
+
         if (response.ok) {
           const data = await response.json()
+
           setHolidays(data)
         }
       } catch (error) {
@@ -1277,10 +542,12 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
   const handleAddHoliday = async () => {
     if (!newHolidayDate) {
       toast.error('Dátum megadása kötelező', { position: "top-right" })
-      return
+      
+return
     }
 
     setIsSaving(true)
+
     try {
       const response = await fetch(`/api/employees/${employeeId}/holidays`, {
         method: 'POST',
@@ -1298,16 +565,22 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
         setNewHolidayDate('')
         setNewHolidayType('Szabadság')
         setNewHolidayName('')
+
         // Refresh holidays list
         const refreshResponse = await fetch(`/api/employees/${employeeId}/holidays`)
+
         if (refreshResponse.ok) {
           const data = await refreshResponse.json()
+
           setHolidays(data)
         }
+
+
         // Dispatch event to refresh attendance data
         window.dispatchEvent(new CustomEvent(`employee-holiday-changed-${employeeId}`))
       } else {
         const errorData = await response.json()
+
         toast.error(errorData.error || 'Hiba történt a szabadság hozzáadása során', { position: "top-right" })
       }
     } catch (error) {
@@ -1320,6 +593,7 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
 
   const handleDeleteHolidays = async () => {
     setIsSaving(true)
+
     try {
       const deletePromises = selectedHolidays.map(holidayId =>
         fetch(`/api/employees/${employeeId}/holidays/${holidayId}`, { method: 'DELETE' })
@@ -1332,12 +606,17 @@ function EmployeeHolidaysTab({ employeeId }: EmployeeHolidaysTabProps) {
         toast.success(`${selectedHolidays.length} szabadság sikeresen törölve`, { position: "top-right" })
         setSelectedHolidays([])
         setDeleteDialogOpen(false)
+
         // Refresh holidays list
         const refreshResponse = await fetch(`/api/employees/${employeeId}/holidays`)
+
         if (refreshResponse.ok) {
           const data = await refreshResponse.json()
+
           setHolidays(data)
         }
+
+
         // Dispatch event to refresh attendance data
         window.dispatchEvent(new CustomEvent(`employee-holiday-changed-${employeeId}`))
       } else {

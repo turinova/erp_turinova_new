@@ -24,13 +24,24 @@ function escapeXml(unsafe: string | null | undefined): string {
     .replace(/'/g, '&apos;')
 }
 
+function maskEmailForLog(value: string | null | undefined): string {
+  const email = String(value || '').trim()
+  if (!email) return ''
+  const [local, domain] = email.split('@')
+  if (!domain) return email
+  if (local.length <= 2) return `${local[0] || '*'}*@${domain}`
+  return `${local.slice(0, 2)}***@${domain}`
+}
+
 function buildStornoXml(agentKey: string, invoiceNumber: string, buyerEmail?: string | null) {
   const today = new Date().toISOString().split('T')[0]
+  const email = String(buyerEmail || '').trim()
+  const shouldSendEmail = email.length > 0
   return `<?xml version="1.0" encoding="UTF-8"?>
 <xmlszamlast xmlns="http://www.szamlazz.hu/xmlszamlast" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.szamlazz.hu/xmlszamlast https://www.szamlazz.hu/szamla/docs/xsds/agentst/xmlszamlast.xsd">
   <beallitasok>
     <szamlaagentkulcs>${escapeXml(agentKey)}</szamlaagentkulcs>
-    <eszamla>false</eszamla>
+    <eszamla>${shouldSendEmail ? 'true' : 'false'}</eszamla>
     <szamlaLetoltes>true</szamlaLetoltes>
     <szamlaLetoltesPld>1</szamlaLetoltesPld>
   </beallitasok>
@@ -39,9 +50,12 @@ function buildStornoXml(agentKey: string, invoiceNumber: string, buyerEmail?: st
     <keltDatum>${today}</keltDatum>
     <tipus>SS</tipus>
   </fejlec>
-  <elado></elado>
+  <elado>
+    <emailTargy>${escapeXml(`Sztornó számla - ${invoiceNumber}`)}</emailTargy>
+    <emailSzoveg>${escapeXml('Tisztelettel küldjük a sztornó számlát.')}</emailSzoveg>
+  </elado>
   <vevo>
-    ${buyerEmail ? `<email>${escapeXml(buyerEmail)}</email>` : ''}
+    ${shouldSendEmail ? `<email>${escapeXml(email)}</email>` : ''}
   </vevo>
 </xmlszamlast>`
 }
@@ -167,6 +181,11 @@ export async function POST(
     }
 
     const buyerEmail = orderRow?.customer_email ? String(orderRow.customer_email).trim() : null
+    console.info('[storno-email-debug] recipient resolution', {
+      orderId,
+      originalInvoiceNumber: body.providerInvoiceNumber,
+      buyerEmailMasked: maskEmailForLog(buyerEmail)
+    })
     const xml = buildStornoXml(agentKey, body.providerInvoiceNumber, buyerEmail)
 
     const formData = new FormData()
@@ -174,6 +193,12 @@ export async function POST(
     formData.append('action-szamla_agent_st', xmlBlob, 'storno.xml')
 
     const response = await fetch(apiUrl, { method: 'POST', body: formData })
+    console.info('[storno-email-debug] request sent to provider', {
+      orderId,
+      originalInvoiceNumber: body.providerInvoiceNumber,
+      buyerEmailMasked: maskEmailForLog(buyerEmail),
+      apiUrl
+    })
 
     const contentType = response.headers.get('content-type') || ''
     const isPdf = contentType.includes('application/pdf') || contentType.includes('pdf')

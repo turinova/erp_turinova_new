@@ -23,7 +23,9 @@ export async function GET(
 
     const { data, error } = await supabase
       .from('employees')
-      .select('id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
+      .select(
+        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, created_at, updated_at'
+      )
       .eq('id', resolvedParams.id)
       .single()
 
@@ -60,7 +62,19 @@ export async function PUT(
     )
 
     const body = await request.json()
-    const { name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday } = body
+    const {
+      name,
+      employee_code,
+      rfid_card_id,
+      pin_code,
+      active,
+      lunch_break_start,
+      lunch_break_end,
+      works_on_saturday,
+      shift_start_time,
+      shift_end_time,
+      timezone
+    } = body
 
     // Validation
     if (!name || name.trim() === '') {
@@ -79,6 +93,15 @@ export async function PUT(
       }
     }
 
+    const ss = shift_start_time?.trim() || null
+    const se = shift_end_time?.trim() || null
+    if ((ss && !se) || (!ss && se)) {
+      return NextResponse.json(
+        { error: 'A műszak kezdetét és végét együtt kell megadni, vagy mindkettőt üresen hagyni.' },
+        { status: 400 }
+      )
+    }
+
     const { data, error } = await supabase
       .from('employees')
       .update({
@@ -90,10 +113,15 @@ export async function PUT(
         lunch_break_start: lunch_break_start || null,
         lunch_break_end: lunch_break_end || null,
         works_on_saturday: works_on_saturday !== undefined ? works_on_saturday : false,
+        shift_start_time: ss,
+        shift_end_time: se,
+        timezone: typeof timezone === 'string' && timezone.trim() ? timezone.trim() : 'Europe/Budapest',
         updated_at: new Date().toISOString()
       })
       .eq('id', resolvedParams.id)
-      .select('id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
+      .select(
+        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, created_at, updated_at'
+      )
       .single()
 
     if (error) {

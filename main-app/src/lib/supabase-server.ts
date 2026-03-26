@@ -2806,7 +2806,9 @@ export async function getAllEmployees() {
 export async function getEmployeeById(id: string) {
   const { data, error } = await supabaseServer
     .from('employees')
-    .select('id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
+    .select(
+      'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, created_at, updated_at'
+    )
     .eq('id', id)
     .is('deleted_at', null)
     .single()

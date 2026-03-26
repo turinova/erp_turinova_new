@@ -875,8 +875,12 @@ export default function OrderDetailForm({
       setInvoiceDialogOpen(true)
       return
     }
-    const ok = await saveItems(undefined, { silent: true })
-    if (!ok) return
+    // In locked statuses (e.g. shipped) item editing is blocked, but invoicing must still stay available.
+    const canEditItemsInStatus = isCreateMode || ['pending_review', 'new'].includes(String(order.status || '').trim())
+    if (canEditItemsInStatus) {
+      const ok = await saveItems(undefined, { silent: true })
+      if (!ok) return
+    }
 
     try {
       const res = await fetch(`/api/orders/${order.id}/fees`)
@@ -914,7 +918,7 @@ export default function OrderDetailForm({
     }
 
     setInvoiceDialogOpen(true)
-  }, [isCreateMode, saveItems, order.id])
+  }, [isCreateMode, saveItems, order.id, order.status])
 
   const invoiceModalItems = useMemo(
     () =>
@@ -1743,7 +1747,7 @@ export default function OrderDetailForm({
               <Tooltip
                 title={
                   hasFinalInvoice
-                    ? 'Ehhez a rendeléshez már van kiállított számla.'
+                    ? 'Ehhez a rendeléshez már van kiállított számla. A modalban ettől még kezelhető a számlázás/sztornó.'
                     : 'Számla kiállítása a Számlázz.hu-n (Agent)'
                 }
               >
@@ -1754,7 +1758,6 @@ export default function OrderDetailForm({
                     size="small"
                     startIcon={<ReceiptLongIcon />}
                     onClick={handleOpenInvoiceDialog}
-                    disabled={hasFinalInvoice}
                     sx={{ height: 32 }}
                   >
                     Számlázás

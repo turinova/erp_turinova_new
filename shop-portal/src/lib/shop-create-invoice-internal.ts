@@ -37,6 +37,15 @@ export type CreateShopInvoiceInternalOptions = {
   forcedSzamlazzConnectionId?: string | null
 }
 
+function maskEmailForLog(value: string | null | undefined): string {
+  const email = String(value || '').trim()
+  if (!email) return ''
+  const [local, domain] = email.split('@')
+  if (!domain) return email
+  if (local.length <= 2) return `${local[0] || '*'}*@${domain}`
+  return `${local.slice(0, 2)}***@${domain}`
+}
+
 /**
  * Create invoice via Számlázz Agent and persist `invoices` row.
  */
@@ -77,6 +86,15 @@ export async function createShopInvoiceInternal(
       typeof body.customerEmail === 'string' ? String(body.customerEmail).trim() : ''
     const customerEmailResolved =
       customerEmailFromBody || String((order as { customer_email?: string | null }).customer_email ?? '').trim()
+
+    console.info('[invoice-email-debug] recipient resolution', {
+      orderId,
+      invoiceType: invoiceTypeRaw,
+      sendEmail,
+      customerEmailFromBodyMasked: maskEmailForLog(customerEmailFromBody),
+      orderCustomerEmailMasked: maskEmailForLog((order as { customer_email?: string | null }).customer_email ?? ''),
+      customerEmailResolvedMasked: maskEmailForLog(customerEmailResolved)
+    })
 
     if (sendEmail && !customerEmailResolved) {
       return {
@@ -396,6 +414,14 @@ export async function createShopInvoiceInternal(
       method: 'POST',
       body: formData,
       signal: AbortSignal.timeout(120000)
+    })
+
+    console.info('[invoice-email-debug] request sent to provider', {
+      orderId,
+      invoiceType: settings.invoiceType,
+      sendEmail: settings.sendEmail,
+      customerEmailResolvedMasked: maskEmailForLog(customerEmailResolved),
+      apiUrl
     })
 
     const contentType = response.headers.get('content-type') || ''

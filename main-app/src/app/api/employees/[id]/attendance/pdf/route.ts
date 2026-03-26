@@ -1,7 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { readFile } from 'fs/promises'
+
 import { join } from 'path'
+
+import type { NextRequest} from 'next/server';
+import { NextResponse } from 'next/server'
+
+
 import { getEmployeeById, getAttendanceLogsForMonth, getHolidaysForDateRange, getEmployeeHolidays } from '@/lib/supabase-server'
+import { computeAttendanceMetrics } from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from './pdf-template'
 
 // Dynamic imports based on environment
@@ -24,6 +30,7 @@ export async function GET(
 
     // Fetch employee data
     const employee = await getEmployeeById(id)
+
     if (!employee) {
       return NextResponse.json({ error: 'Alkalmazott nem található' }, { status: 404 })
     }
@@ -31,6 +38,7 @@ export async function GET(
     // Calculate date range for the month
     // month is 1-indexed (1 = January), so month - 1 is 0-indexed for Date constructor
     const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
+
     // new Date(year, month, 0) gives last day of previous month, so with 1-indexed month, this gives last day of current month
     const endDate = new Date(year, month, 0).toISOString().split('T')[0]
 
@@ -44,6 +52,7 @@ export async function GET(
     // Get all days in the month
     const daysInMonth: Date[] = []
     const date = new Date(year, month - 1, 1)
+
     while (date.getMonth() === month - 1) {
       daysInMonth.push(new Date(date))
       date.setDate(date.getDate() + 1)
@@ -59,37 +68,30 @@ export async function GET(
       
       const dayLog = attendanceLogs.find((log: any) => log.date === dateStr)
       const empHoliday = employeeHolidays.find((h: any) => h.date === dateStr)
+
       const isHolidayDay = holidays.some(h => {
         const start = new Date(h.start_date)
         const end = new Date(h.end_date)
         const checkDate = new Date(dateStr)
-        return checkDate >= start && checkDate <= end
+
+        
+return checkDate >= start && checkDate <= end
       })
+
       const isEmpHoliday = !!empHoliday
 
       const arrival = dayLog?.arrival?.time || null
       const departure = dayLog?.departure?.time || null
       const lunchStart = employee.lunch_break_start || null
       const lunchEnd = employee.lunch_break_end || null
+      const shiftS = employee.shift_start_time ? String(employee.shift_start_time).slice(0, 5) : null
+      const shiftE = employee.shift_end_time ? String(employee.shift_end_time).slice(0, 5) : null
 
-      // Calculate hours worked (always calculate if arrival and departure exist, even on holidays)
+      // Fizetett óra: műszakhoz képest (ugyanaz a logika, mint a jelenlét nézetben)
       let hoursWorked = 0
+
       if (arrival && departure) {
-        const start = new Date(`2000-01-01T${arrival}`)
-        const end = new Date(`2000-01-01T${departure}`)
-        let totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60)
-        
-        if (lunchStart && lunchEnd) {
-          const lunchStartTime = new Date(`2000-01-01T${lunchStart}`)
-          const lunchEndTime = new Date(`2000-01-01T${lunchEnd}`)
-          const lunchMinutes = (lunchEndTime.getTime() - lunchStartTime.getTime()) / (1000 * 60)
-          if (lunchMinutes > 0) {
-            totalMinutes -= lunchMinutes
-          }
-        }
-        
-        hoursWorked = Math.max(0, totalMinutes / 60)
-        hoursWorked = Math.round(hoursWorked * 100) / 100
+        hoursWorked = computeAttendanceMetrics(arrival, departure, lunchStart, lunchEnd, shiftS, shiftE).paidHours
       }
 
       return {
@@ -125,6 +127,7 @@ export async function GET(
       // Work mode: include all hours, even on holidays
       totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
       daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
+
       // Count holidays that don't have attendance as absent
       absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.arrival && !day.departure).length
     }
@@ -134,7 +137,8 @@ export async function GET(
       .then(buf => buf.toString('base64'))
       .catch(() => {
         console.warn('Could not load Turinova logo file')
-        return ''
+        
+return ''
       })
 
     // Generate HTML string
@@ -247,14 +251,14 @@ export async function GET(
     await browser.close()
 
     // Return PDF
-    const monthNames = ['Január', 'Február', 'Március', 'Április', 'Május', 'Június', 'Július', 'Augusztus', 'Szeptember', 'Október', 'November', 'December']
-    const monthName = monthNames[month - 1]
     // Sanitize filename by removing special characters and using ASCII-safe version
     const sanitizedName = employee.name.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '-')
+
     // Use ASCII-safe month name for filename
     const monthNamesAscii = ['Januar', 'Februar', 'Marcius', 'Aprilis', 'Majus', 'Junius', 'Julius', 'Augusztus', 'Szeptember', 'Oktober', 'November', 'December']
     const monthNameAscii = monthNamesAscii[month - 1]
     const filename = `Jelenleti-iv-${sanitizedName}-${year}-${monthNameAscii}.pdf`
+
     // RFC 5987 encoded filename for proper UTF-8 support
     const encodedFilename = encodeURIComponent(filename)
 
@@ -269,7 +273,8 @@ export async function GET(
   } catch (error: any) {
     console.error('Error generating attendance PDF:', error)
     console.error('Error stack:', error.stack)
-    return NextResponse.json({ 
+    
+return NextResponse.json({ 
       error: 'Hiba történt a PDF generálása során',
       details: error.message,
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
