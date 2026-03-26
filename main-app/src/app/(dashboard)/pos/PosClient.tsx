@@ -164,6 +164,45 @@ interface CartItem {
   unit_shortform?: string
 }
 
+/** Min quantity for m² / m lines (matches numeric(10,2) style in DB) */
+const MEASURE_MIN_QTY = 0.01
+
+function normalizeQuantityForType(
+  productType: CartItem['product_type'],
+  numValue: number
+): number {
+  if (productType === 'accessory') {
+    return Math.max(1, Math.round(numValue))
+  }
+  const rounded = Math.round(numValue * 100) / 100
+  return Math.max(MEASURE_MIN_QTY, rounded)
+}
+
+function parseQuantityInput(value: string): number | null {
+  const raw = value.trim()
+  if (raw === '') return null
+
+  // Handle Hungarian decimal separator and also values like "1.234,56".
+  // If both '.' and ',' exist, assume '.' are thousands separators.
+  if (raw.includes(',') && raw.includes('.')) {
+    const withoutThousands = raw.replace(/\./g, '')
+    return parseFloat(withoutThousands.replace(',', '.'))
+  }
+
+  if (raw.includes(',') && !raw.includes('.')) {
+    return parseFloat(raw.replace(',', '.'))
+  }
+
+  return parseFloat(raw)
+}
+
+function formatQuantityDisplay(item: CartItem): string {
+  if (item.product_type === 'accessory') {
+    return String(Math.round(item.quantity))
+  }
+  return item.quantity.toLocaleString('hu-HU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
 interface FeeType {
   id: string
   name: string
@@ -430,12 +469,12 @@ export default function PosClient({ customers, workers }: PosClientProps) {
   // Refocus after cart or fees changes
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!isScanningRef.current) {
+      if (!isScanningRef.current && !isEditingField) {
         refocusBarcodeInput()
       }
     }, 150)
     return () => clearTimeout(timer)
-  }, [cartItems, fees, discount])
+  }, [cartItems, fees, discount, isEditingField])
 
   // Auto-add discount when customer is selected
   useEffect(() => {
@@ -939,8 +978,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     if (newQuantity === '' || newQuantity === null || newQuantity === undefined) {
       return
     }
-    const numValue = typeof newQuantity === 'string' ? parseFloat(newQuantity) : newQuantity
-    if (isNaN(numValue)) {
+    const numValue = typeof newQuantity === 'string' ? parseQuantityInput(newQuantity) : newQuantity
+    if (numValue === null || isNaN(numValue)) {
       return
     }
     // Only remove if explicitly set to 0 or negative, and not skipping removal (for typing)
@@ -953,12 +992,12 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     if (numValue <= 0 && skipRemove) {
       return
     }
-    // Hardware store fast lane: keep integer quantity for quick cashier flow.
-    const roundedQuantity = Math.max(1, Math.round(numValue))
     setCartItems(prev =>
-      prev.map(item =>
-        item.id === itemId ? { ...item, quantity: roundedQuantity } : item
-      )
+      prev.map(item => {
+        if (item.id !== itemId) return item
+        const quantity = normalizeQuantityForType(item.product_type, numValue)
+        return { ...item, quantity }
+      })
     )
   }
 
@@ -1897,7 +1936,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 SKU: {item.sku}
                               </Typography>
                             )}
-                            {expandedCartItems.has(item.id) && item.product_type === 'material' && (
+                            {item.product_type === 'material' && (
                               <Typography
                                 variant="caption"
                                 color="text.secondary"
@@ -1907,7 +1946,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 {item.length_mm}×{item.width_mm}×{item.thickness_mm} mm
                               </Typography>
                             )}
-                            {expandedCartItems.has(item.id) && item.product_type === 'linear_material' && (
+                            {item.product_type === 'linear_material' && (
                               <Typography
                                 variant="caption"
                                 color="text.secondary"
@@ -1925,8 +1964,19 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                               <IconButton
                                 size="small"
                                 color="primary"
-                                onClick={() => handleQuantityChange(item.id, item.quantity - 1.00)}
-                                disabled={item.quantity <= 1}
+                                onClick={() => {
+                                  if (item.product_type === 'accessory') {
+                                    handleQuantityChange(item.id, item.quantity - 1.0)
+                                  } else {
+                                    const next = Math.max(MEASURE_MIN_QTY, item.quantity - 1)
+                                    handleQuantityChange(item.id, next)
+                                  }
+                                }}
+                                disabled={
+                                  item.product_type === 'accessory'
+                                    ? item.quantity <= 1
+                                    : item.quantity <= MEASURE_MIN_QTY + 1e-9
+                                }
                                 sx={{ 
                                   width: 32, 
                                   height: 32,
@@ -1938,9 +1988,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 <RemoveIcon fontSize="small" />
                               </IconButton>
                               <TextField
-                                type="number"
+                                // Use text input to avoid browser locale/step issues with decimals
+                                type="text"
                                 size="small"
                                 value={quantityInputs[item.id] !== undefined ? quantityInputs[item.id] : item.quantity.toString()}
+                                onFocus={() => setIsEditingField(true)}
                                 onChange={(e) => {
                                   const inputValue = e.target.value
                                   // Update local input state to allow empty values and "0"
@@ -1952,9 +2004,9 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                 onBlur={(e) => {
                                   // On blur, validate and apply the final value
                                   const inputValue = e.target.value
-                                  const numValue = parseFloat(inputValue)
+                                  const numValue = parseQuantityInput(inputValue)
                                   
-                                  if (inputValue === '' || isNaN(numValue)) {
+                                  if (inputValue === '' || numValue === null || isNaN(numValue)) {
                                     // If empty or invalid, restore to current quantity
                                     const currentItem = cartItems.find(i => i.id === item.id)
                                     if (currentItem && currentItem.quantity > 0) {
@@ -1966,7 +2018,11 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                       })
                                     } else {
                                       // Set to minimum
-                                      handleQuantityChange(item.id, 1, false)
+                                      handleQuantityChange(
+                                        item.id,
+                                        item.product_type === 'accessory' ? 1 : MEASURE_MIN_QTY,
+                                        false
+                                      )
                                       setQuantityInputs(prev => {
                                         const newState = { ...prev }
                                         delete newState[item.id]
@@ -1990,11 +2046,16 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                                       return newState
                                     })
                                   }
+
+                                  // Mark editing as finished so the barcode scanner can safely resume
+                                  setTimeout(() => {
+                                    setIsEditingField(false)
+                                    refocusBarcodeInput()
+                                  }, 100)
                                 }}
                                 inputProps={{
-                                  min: 1,
-                                  step: 1,
-                                  style: { textAlign: 'center', width: '50px', padding: '4px' }
+                                  inputMode: 'decimal',
+                                  style: { textAlign: 'center', width: '56px', padding: '4px' }
                                 }}
                                 sx={{
                                   width: '70px',
@@ -2711,7 +2772,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                             </Typography>
                           </TableCell>
                           <TableCell align="center">
-                            {item.quantity}
+                            {formatQuantityDisplay(item)}
                           </TableCell>
                           <TableCell align="center">
                             {item.product_type === 'material' ? 'm²' :
@@ -3029,7 +3090,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           {item.sku}
                         </Typography>
                       </TableCell>
-                      <TableCell align="center">{item.quantity}</TableCell>
+                      <TableCell align="center">{formatQuantityDisplay(item)}</TableCell>
                       <TableCell align="center">
                         {item.product_type === 'material' ? 'm²' :
                          item.product_type === 'linear_material' ? 'm' :
