@@ -64,7 +64,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch POS orders
-    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const posOrderIds = [
+      ...(sourceIdsByType.get('pos_sale') || []),
+      ...(sourceIdsByType.get('pos_order_delete') || [])
+    ]
     const { data: posOrders } = posOrderIds.length > 0
       ? await supabaseServer
           .from('pos_orders')
@@ -126,7 +129,7 @@ export async function GET(request: NextRequest) {
 
       // Get source reference
       let sourceReference = '-'
-      if (sm.source_type === 'pos_sale' && sm.source_id) {
+      if ((sm.source_type === 'pos_sale' || sm.source_type === 'pos_order_delete') && sm.source_id) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id

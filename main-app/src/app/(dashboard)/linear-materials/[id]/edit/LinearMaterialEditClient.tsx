@@ -195,6 +195,8 @@ export default function LinearMaterialEditClient({
   const getSourceLink = (row: StockMovementRow) => {
     if (row.source_type === 'pos_sale' && row.source_id) {
       return `/pos-orders/${row.source_id}`
+    } else if (row.source_type === 'pos_order_delete' && row.source_id) {
+      return `/pos-orders/${row.source_id}`
     } else if (row.source_type === 'purchase_receipt' && row.source_id) {
       return `/shipments/${row.source_id}`
     } else if (row.source_type === 'customer_order_handover' && row.source_id) {
@@ -209,6 +211,7 @@ export default function LinearMaterialEditClient({
   const getSourceTypeLabel = (sourceType: string) => {
     const labels: Record<string, string> = {
       'pos_sale': 'POS eladás',
+      'pos_order_delete': 'POS rendelés törlése',
       'purchase_receipt': 'Beszerzési bevételezés',
       'quote': 'Árajánlat',
       'adjustment': 'Készletigazítás',

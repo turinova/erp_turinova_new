@@ -5066,7 +5066,10 @@ export async function getAllStockMovements() {
     }
 
     // Fetch POS orders
-    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const posOrderIds = [
+      ...(sourceIdsByType.get('pos_sale') || []),
+      ...(sourceIdsByType.get('pos_order_delete') || [])
+    ]
     const { data: posOrders } = posOrderIds.length > 0
       ? await supabaseServer
           .from('pos_orders')
@@ -5139,7 +5142,7 @@ export async function getAllStockMovements() {
       }
 
       let sourceReference = '-'
-      if (sm.source_type === 'pos_sale' && sm.source_id) {
+      if ((sm.source_type === 'pos_sale' || sm.source_type === 'pos_order_delete') && sm.source_id) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
@@ -5259,7 +5262,10 @@ export async function getStockMovementsWithPagination(
     }
 
     // Fetch POS orders
-    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const posOrderIds = [
+      ...(sourceIdsByType.get('pos_sale') || []),
+      ...(sourceIdsByType.get('pos_order_delete') || [])
+    ]
     const { data: posOrders } = posOrderIds.length > 0
       ? await supabaseServer
           .from('pos_orders')
@@ -5348,7 +5354,7 @@ export async function getStockMovementsWithPagination(
       }
 
       let sourceReference = '-'
-      if (sm.source_type === 'pos_sale' && sm.source_id) {
+      if ((sm.source_type === 'pos_sale' || sm.source_type === 'pos_order_delete') && sm.source_id) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
@@ -5483,7 +5489,10 @@ export async function getStockMovementsByAccessory(
     }
 
     // Fetch POS orders
-    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const posOrderIds = [
+      ...(sourceIdsByType.get('pos_sale') || []),
+      ...(sourceIdsByType.get('pos_order_delete') || [])
+    ]
     const { data: posOrders } = posOrderIds.length > 0
       ? await supabaseServer
           .from('pos_orders')
@@ -5547,7 +5556,7 @@ export async function getStockMovementsByAccessory(
       const sku = sm.accessories?.sku || ''
 
       let sourceReference = '-'
-      if (sm.source_type === 'pos_sale' && sm.source_id) {
+      if ((sm.source_type === 'pos_sale' || sm.source_type === 'pos_order_delete') && sm.source_id) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
@@ -5718,7 +5727,10 @@ export async function getStockMovementsByMaterial(
     }
 
     // Fetch POS orders
-    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const posOrderIds = [
+      ...(sourceIdsByType.get('pos_sale') || []),
+      ...(sourceIdsByType.get('pos_order_delete') || [])
+    ]
     const { data: posOrders } = posOrderIds.length > 0
       ? await supabaseServer
           .from('pos_orders')
@@ -5798,7 +5810,7 @@ export async function getStockMovementsByMaterial(
       const sku = '' // Materials don't have SKU
 
       let sourceReference = '-'
-      if (sm.source_type === 'pos_sale' && sm.source_id) {
+      if ((sm.source_type === 'pos_sale' || sm.source_type === 'pos_order_delete') && sm.source_id) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
@@ -5973,7 +5985,10 @@ export async function getStockMovementsByLinearMaterial(
     }
 
     // Fetch POS orders
-    const posOrderIds = sourceIdsByType.get('pos_sale') || []
+    const posOrderIds = [
+      ...(sourceIdsByType.get('pos_sale') || []),
+      ...(sourceIdsByType.get('pos_order_delete') || [])
+    ]
     const { data: posOrders } = posOrderIds.length > 0
       ? await supabaseServer
           .from('pos_orders')
@@ -6037,7 +6052,7 @@ export async function getStockMovementsByLinearMaterial(
       const sku = '' // Linear materials don't have SKU
 
       let sourceReference = '-'
-      if (sm.source_type === 'pos_sale' && sm.source_id) {
+      if ((sm.source_type === 'pos_sale' || sm.source_type === 'pos_order_delete') && sm.source_id) {
         sourceReference = posOrderMap.get(sm.source_id) || sm.source_id
       } else if (sm.source_type === 'purchase_receipt' && sm.source_id) {
         sourceReference = shipmentMap.get(sm.source_id) || sm.source_id
