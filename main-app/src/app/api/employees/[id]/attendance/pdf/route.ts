@@ -7,11 +7,18 @@ import { NextResponse } from 'next/server'
 
 
 import { getEmployeeById, getAttendanceLogsForMonth, getHolidaysForDateRange, getEmployeeHolidays } from '@/lib/supabase-server'
-import { computeAttendanceMetrics } from '@/components/attendance/attendanceUtils'
+import { computeAttendanceMetrics, computeOvertimeMinutes, getPolicyDisplayRange } from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from './pdf-template'
 
 // Dynamic imports based on environment
 const isProduction = process.env.VERCEL || process.env.NODE_ENV === 'production'
+
+function formatDateLocal(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
 
 export async function GET(
   request: NextRequest,
@@ -20,12 +27,22 @@ export async function GET(
   try {
     const { id } = await params
     const { searchParams } = new URL(request.url)
-    const year = parseInt(searchParams.get('year') || '2026')
-    const month = parseInt(searchParams.get('month') || '1')
-    const mode = searchParams.get('mode') || 'holiday' // 'holiday' or 'work'
+    const year = parseInt(searchParams.get('year') || String(new Date().getFullYear()))
+    const month = parseInt(searchParams.get('month') || String(new Date().getMonth() + 1))
+    const modeRaw = searchParams.get('mode') || 'paper'
+    const mode = modeRaw === 'holiday' ? 'paper' : modeRaw === 'work' ? 'actual' : modeRaw // backward compatibility
 
     if (!id) {
       return NextResponse.json({ error: 'Érvénytelen alkalmazott azonosító' }, { status: 400 })
+    }
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+      return NextResponse.json({ error: 'Érvénytelen év paraméter' }, { status: 400 })
+    }
+    if (!Number.isInteger(month) || month < 1 || month > 12) {
+      return NextResponse.json({ error: 'Érvénytelen hónap paraméter' }, { status: 400 })
+    }
+    if (mode !== 'paper' && mode !== 'actual') {
+      return NextResponse.json({ error: 'Érvénytelen mód. Használja: paper | actual' }, { status: 400 })
     }
 
     // Fetch employee data
@@ -37,10 +54,10 @@ export async function GET(
 
     // Calculate date range for the month
     // month is 1-indexed (1 = January), so month - 1 is 0-indexed for Date constructor
-    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
+    const startDate = formatDateLocal(new Date(year, month - 1, 1))
 
     // new Date(year, month, 0) gives last day of previous month, so with 1-indexed month, this gives last day of current month
-    const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+    const endDate = formatDateLocal(new Date(year, month, 0))
 
     // Fetch attendance logs, holidays, and employee holidays in parallel
     const [attendanceLogs, holidays, employeeHolidays] = await Promise.all([
@@ -78,14 +95,27 @@ export async function GET(
 return checkDate >= start && checkDate <= end
       })
 
-      const isEmpHoliday = !!empHoliday
-
       const arrival = dayLog?.arrival?.time || null
       const departure = dayLog?.departure?.time || null
+      const isEmpHoliday = !!empHoliday
+      const isWeekendOff = day.getDay() === 0 || ((employee.works_on_saturday === false) && day.getDay() === 6)
+      const hasAttendance = !!(arrival || departure)
+      const hasCompleteAttendance = !!(arrival && departure)
+      const isConflictHolidayWork = isEmpHoliday && hasAttendance
       const lunchStart = employee.lunch_break_start || null
       const lunchEnd = employee.lunch_break_end || null
       const shiftS = employee.shift_start_time ? String(employee.shift_start_time).slice(0, 5) : null
       const shiftE = employee.shift_end_time ? String(employee.shift_end_time).slice(0, 5) : null
+      const policyRange = getPolicyDisplayRange(arrival, departure, shiftS, shiftE)
+      const overtimeEnabled = employee.overtime_enabled === true
+      const overtimeMinutes = computeOvertimeMinutes(arrival, departure, shiftS, shiftE, {
+        enabled: overtimeEnabled,
+        graceMinutes: Number.isFinite(employee.overtime_grace_minutes) ? Number(employee.overtime_grace_minutes) : 10,
+        roundingMinutes: Number.isFinite(employee.overtime_rounding_minutes) ? Number(employee.overtime_rounding_minutes) : 15,
+        roundingMode: ['floor', 'nearest', 'ceil'].includes(employee.overtime_rounding_mode) ? employee.overtime_rounding_mode : 'floor',
+        dailyCapMinutes: Number.isFinite(employee.overtime_daily_cap_minutes) ? Number(employee.overtime_daily_cap_minutes) : 120,
+        requiresCompleteDay: employee.overtime_requires_complete_day !== false
+      })
 
       // Fizetett óra: műszakhoz képest (ugyanaz a logika, mint a jelenlét nézetben)
       let hoursWorked = 0
@@ -100,13 +130,19 @@ return checkDate >= start && checkDate <= end
         dayOfWeek: day.getDay(), // 0 = Sunday, 6 = Saturday
         arrival,
         departure,
+        displayArrival: policyRange ? policyRange.start : arrival,
+        displayDeparture: policyRange ? policyRange.end : departure,
         lunchStart,
         lunchEnd,
         hoursWorked,
+        overtimeMinutes,
+        hasAttendance,
+        hasCompleteAttendance,
         isEmployeeHoliday: isEmpHoliday,
         holidayType: empHoliday?.type || null,
+        isConflictHolidayWork,
         isGlobalHoliday: isHolidayDay,
-        isDisabled: day.getDay() === 0 || ((employee.works_on_saturday === false) && day.getDay() === 6) || isHolidayDay || isEmpHoliday
+        isDisabled: isWeekendOff || isHolidayDay || isEmpHoliday
       }
     })
 
@@ -114,22 +150,25 @@ return checkDate >= start && checkDate <= end
     let totalHours: number
     let daysWorked: number
     let absentDays: number
+    let totalOvertimeMinutes: number
+    const conflictDays = daysData.filter(day => day.isConflictHolidayWork).length
     
-    if (mode === 'holiday') {
-      // Holiday mode: exclude holidays from totals
+    if (mode === 'paper') {
+      // Paper mode: holiday days are treated as leave even if attendance exists
       totalHours = daysData.reduce((sum, day) => {
-        // Don't count hours on holidays
         return sum + (day.isEmployeeHoliday ? 0 : day.hoursWorked)
       }, 0)
-      daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled && !day.isEmployeeHoliday).length
+      totalOvertimeMinutes = 0
+      daysWorked = daysData.filter(day => day.hasCompleteAttendance && !day.isEmployeeHoliday && !day.isGlobalHoliday).length
       absentDays = daysData.filter(day => day.isEmployeeHoliday).length
     } else {
-      // Work mode: include all hours, even on holidays
+      // Actual mode: count all real worked hours/days, including attendance on holidays
       totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
-      daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
+      totalOvertimeMinutes = daysData.reduce((sum, day) => sum + day.overtimeMinutes, 0)
+      daysWorked = daysData.filter(day => day.hasCompleteAttendance).length
 
       // Count holidays that don't have attendance as absent
-      absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.arrival && !day.departure).length
+      absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.hasAttendance).length
     }
 
     // Fetch Turinova logo
@@ -153,10 +192,12 @@ return ''
       summary: {
         totalHours,
         daysWorked,
-        absentDays
+        absentDays,
+        conflictDays,
+        totalOvertimeMinutes
       },
       turinovaLogoBase64,
-      mode: mode as 'holiday' | 'work'
+      mode: mode as 'paper' | 'actual'
     })
 
     // Launch Puppeteer

@@ -41,6 +41,9 @@ import {
   findPublicHolidayForDate,
   type PublicHolidayRow,
   computeAttendanceMetrics,
+  computeOvertimeMinutes,
+  type OvertimePolicy,
+  getPolicyDisplayRange,
   timeStringToDate,
   dateToTimeString,
   getCalendarCells,
@@ -63,6 +66,7 @@ export interface DayData {
 
   /** Full span minus lunch (audit) */
   actualHours: number
+  overtimeMinutes: number
   earlyMinutes: number
   lateMinutes: number
   isDisabled: boolean
@@ -79,6 +83,7 @@ interface AttendanceMonthViewProps {
   /** Planned paid window (HH:mm). Both null = no clipping; paid = actual. */
   shiftStart?: string | null
   shiftEnd?: string | null
+  overtimePolicy?: Partial<OvertimePolicy>
 }
 
 type DraftDayTimes = {
@@ -135,6 +140,7 @@ function buildEmptyMonth(
     departureManuallyEdited: false,
     hoursWorked: 0,
     actualHours: 0,
+    overtimeMinutes: 0,
     earlyMinutes: 0,
     lateMinutes: 0,
     isDisabled: isSunday(date) || (!worksOnSaturday && isSaturday(date)),
@@ -146,7 +152,10 @@ function buildEmptyMonth(
 function getDayCellVisual(
   day: DayData,
   publicHolidays: PublicHolidayRow[],
-  worksOnSaturday: boolean
+  worksOnSaturday: boolean,
+  shiftStart: string | null,
+  shiftEnd: string | null,
+  overtimePolicy?: Partial<OvertimePolicy>
 ): {
   line1: string
   line2: string
@@ -170,6 +179,33 @@ function getDayCellVisual(
       tooltip: sick ? 'Betegszabadság' : 'Szabadság',
       bgcolor: sick ? 'rgba(211, 47, 47, 0.08)' : 'rgba(46, 125, 50, 0.1)',
       borderColor: 'transparent',
+      emphasizeLine1: false
+    }
+  }
+
+  if (day.isEmployeeHoliday && (day.arrival || day.departure)) {
+    const policyRange = getPolicyDisplayRange(day.arrival, day.departure, shiftStart, shiftEnd)
+    const displayRange = policyRange ? `${policyRange.start} – ${policyRange.end}` : (day.arrival && day.departure ? `${day.arrival} – ${day.departure}` : (day.arrival || day.departure || '—'))
+
+    if (day.arrival && day.departure) {
+      return {
+        line1: displayRange,
+        line2: `${day.hoursWorked.toFixed(1)} ó`,
+        tooltip: policyRange?.usesPolicy
+          ? `Szabadságra jelölt nap, de munkaidő is rögzítve · Nyers: ${day.arrival} – ${day.departure}`
+          : 'Szabadságra jelölt nap, de munkaidő is rögzítve',
+        bgcolor: 'rgba(2, 136, 209, 0.12)',
+        borderColor: 'info.main',
+        emphasizeLine1: true
+      }
+    }
+
+    return {
+      line1: day.arrival || day.departure || '—',
+      line2: '',
+      tooltip: 'Szabadságra jelölt nap, részleges munkaidő-rögzítéssel',
+      bgcolor: 'rgba(2, 136, 209, 0.12)',
+      borderColor: 'info.main',
       emphasizeLine1: false
     }
   }
@@ -210,18 +246,28 @@ function getDayCellVisual(
   }
 
   if (day.arrival && day.departure) {
+    const policyRange = getPolicyDisplayRange(day.arrival, day.departure, shiftStart, shiftEnd)
     const tipParts = [`Fizetett: ${day.hoursWorked.toFixed(2)} ó`]
+    const overtimeHours = day.overtimeMinutes > 0 ? day.overtimeMinutes / 60 : 0
 
     if (Math.abs(day.actualHours - day.hoursWorked) > 0.01) {
       tipParts.push(`Teljes jelenlét (ebéd nélkül): ${day.actualHours.toFixed(2)} ó`)
+    }
+    if (day.overtimeMinutes > 0 && overtimePolicy?.enabled) {
+      tipParts.push(`Túlóra: ${overtimeHours.toFixed(2)} ó`)
+    }
+    if (policyRange?.usesPolicy) {
+      tipParts.push(`Nyers: ${day.arrival} – ${day.departure}`)
     }
 
     if (day.earlyMinutes > 0) tipParts.push(`Korán: ${day.earlyMinutes} p (ellenőrzés)`)
     if (day.lateMinutes > 0) tipParts.push(`Későn: ${day.lateMinutes} p (ellenőrzés)`)
 
     return {
-      line1: `${day.arrival} – ${day.departure}`,
-      line2: `${day.hoursWorked.toFixed(1)} ó`,
+      line1: policyRange ? `${policyRange.start} – ${policyRange.end}` : `${day.arrival} – ${day.departure}`,
+      line2: day.overtimeMinutes > 0 && overtimePolicy?.enabled
+        ? `${day.hoursWorked.toFixed(1)} ó · +${overtimeHours.toFixed(1)} ó túlóra`
+        : `${day.hoursWorked.toFixed(1)} ó`,
       tooltip: tipParts.join(' · '),
       bgcolor: 'background.paper',
       borderColor: 'divider',
@@ -231,8 +277,8 @@ function getDayCellVisual(
 
   if (day.arrival || day.departure) {
     return {
-      line1: 'Hiányos',
-      line2: day.arrival || day.departure || '—',
+      line1: day.arrival || day.departure || '—',
+      line2: '',
       tooltip: 'Hiányos rögzítés',
       bgcolor: 'rgba(237, 108, 2, 0.1)',
       borderColor: 'warning.main',
@@ -259,6 +305,10 @@ function getDayStatus(day: DayData, publicHolidays: PublicHolidayRow[], worksOnS
   const ph = findPublicHolidayForDate(day.date, publicHolidays)
   const weekendOff = isSunday(day.date) || (isSaturday(day.date) && !worksOnSaturday)
 
+  if (day.isEmployeeHoliday && (day.arrival || day.departure)) {
+    return { label: 'Szabadság + Munka', color: 'info' }
+  }
+
   if (day.isEmployeeHoliday && !day.arrival && !day.departure) {
     return {
       label: day.holidayType === 'Betegszabadság' ? 'Betegszabadság' : 'Szabadság',
@@ -270,6 +320,7 @@ function getDayStatus(day: DayData, publicHolidays: PublicHolidayRow[], worksOnS
 
   if (day.arrival || day.departure) {
     if (!(day.arrival && day.departure)) return { label: 'Hiányos', color: 'warning' }
+    if (day.overtimeMinutes > 0) return { label: 'OK', color: 'success' }
     if (day.earlyMinutes > 0 && day.lateMinutes > 0) return { label: 'Korai + Késői', color: 'warning' }
     if (day.earlyMinutes > 0) return { label: 'Korai', color: 'info' }
     if (day.lateMinutes > 0) return { label: 'Késői', color: 'info' }
@@ -286,7 +337,8 @@ export default function AttendanceMonthView({
   lunchBreakEnd,
   worksOnSaturday,
   shiftStart = null,
-  shiftEnd = null
+  shiftEnd = null,
+  overtimePolicy
 }: AttendanceMonthViewProps) {
   const now = new Date()
   const [viewYear, setViewYear] = useState(now.getFullYear())
@@ -378,6 +430,7 @@ export default function AttendanceMonthView({
             shiftStart,
             shiftEnd
           )
+          const overtimeMinutes = computeOvertimeMinutes(arrival, departure, shiftStart, shiftEnd, overtimePolicy)
 
           return {
             ...updatedDay,
@@ -389,6 +442,7 @@ export default function AttendanceMonthView({
             departureManuallyEdited: dayLog.departure?.manually_edited || false,
             hoursWorked: m.paidHours,
             actualHours: m.actualHours,
+            overtimeMinutes,
             earlyMinutes: m.earlyMinutes,
             lateMinutes: m.lateMinutes
           }
@@ -398,12 +452,13 @@ export default function AttendanceMonthView({
           ...updatedDay,
           hoursWorked: 0,
           actualHours: 0,
+          overtimeMinutes: 0,
           earlyMinutes: 0,
           lateMinutes: 0
         }
       })
     },
-    [worksOnSaturday, shiftStart, shiftEnd]
+    [worksOnSaturday, shiftStart, shiftEnd, overtimePolicy]
   )
 
   useEffect(() => {
@@ -484,6 +539,7 @@ export default function AttendanceMonthView({
         const isHolidayDay = !!findPublicHolidayForDate(day.date, holidays)
         const isEmpHoliday = !!empHoliday
         let metrics = { paid: 0, actual: 0, early: 0, late: 0 }
+        let overtimeMinutes = 0
 
         if (day.arrival && day.departure) {
           const m = computeAttendanceMetrics(
@@ -496,6 +552,7 @@ export default function AttendanceMonthView({
           )
 
           metrics = { paid: m.paidHours, actual: m.actualHours, early: m.earlyMinutes, late: m.lateMinutes }
+          overtimeMinutes = computeOvertimeMinutes(day.arrival, day.departure, shiftStart, shiftEnd, overtimePolicy)
         }
 
         return {
@@ -505,12 +562,13 @@ export default function AttendanceMonthView({
           holidayType: empHoliday?.type,
           hoursWorked: metrics.paid,
           actualHours: metrics.actual,
+          overtimeMinutes,
           earlyMinutes: metrics.early,
           lateMinutes: metrics.late
         }
       })
     )
-  }, [holidays, worksOnSaturday, employeeHolidays, shiftStart, shiftEnd])
+  }, [holidays, worksOnSaturday, employeeHolidays, shiftStart, shiftEnd, overtimePolicy])
 
   const updateDraftTime = (field: 'arrival' | 'lunchStart' | 'lunchEnd' | 'departure', value: string) => {
     setDraftTimes(prev => ({ ...prev, [field]: normalizeTimeValue(value) }))
@@ -565,6 +623,7 @@ export default function AttendanceMonthView({
 
   const totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
   const totalActualHours = daysData.reduce((sum, day) => sum + day.actualHours, 0)
+  const totalOvertimeMinutes = daysData.reduce((sum, day) => sum + day.overtimeMinutes, 0)
   const totalEarlyMinutes = daysData.reduce((sum, day) => sum + day.earlyMinutes, 0)
   const totalLateMinutes = daysData.reduce((sum, day) => sum + day.lateMinutes, 0)
   const daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
@@ -572,6 +631,11 @@ export default function AttendanceMonthView({
   const incompleteDays = daysData.filter(
     day => !day.isDisabled && (day.arrival || day.departure) && !(day.arrival && day.departure)
   ).length
+  const conflictDays = daysData.filter(day => day.isEmployeeHoliday && (day.arrival || day.departure)).length
+  const holidayDays = daysData.filter(day => day.isEmployeeHoliday).length
+  const sickLeaveDays = daysData.filter(day => day.isEmployeeHoliday && day.holidayType === 'Betegszabadság').length
+  const vacationDays = Math.max(0, holidayDays - sickLeaveDays)
+  const hoursDelta = Math.round((totalActualHours - totalHours) * 100) / 100
 
   const handleSaveDay = async () => {
     if (selectedIndex === null || !selectedDay) return
@@ -671,9 +735,17 @@ export default function AttendanceMonthView({
           shiftStart,
           shiftEnd
         )
+        const overtimeMinutes = computeOvertimeMinutes(
+          u[dayIndex].arrival,
+          u[dayIndex].departure,
+          shiftStart,
+          shiftEnd,
+          overtimePolicy
+        )
 
         u[dayIndex].hoursWorked = m.paidHours
         u[dayIndex].actualHours = m.actualHours
+        u[dayIndex].overtimeMinutes = overtimeMinutes
         u[dayIndex].earlyMinutes = m.earlyMinutes
         u[dayIndex].lateMinutes = m.lateMinutes
 
@@ -692,14 +764,12 @@ export default function AttendanceMonthView({
     }
   }
 
-  const handleGeneratePdf = async (mode: 'holiday' | 'work') => {
+  const handleGeneratePdf = async (mode: 'paper' | 'actual') => {
     setIsGeneratingPdf(true)
     setExportMenuAnchor(null)
 
     try {
-      const response = await fetch(
-        `/api/employees/${employeeId}/attendance/pdf?year=${viewYear}&month=${viewMonth}&mode=${mode}`
-      )
+      const response = await fetch(`/api/employees/${employeeId}/attendance/pdf?year=${viewYear}&month=${viewMonth}&mode=${mode}`)
 
       if (!response.ok) {
         let errorMessage = 'Hiba történt a PDF generálása során'
@@ -921,11 +991,11 @@ export default function AttendanceMonthView({
               open={Boolean(exportMenuAnchor)}
               onClose={() => setExportMenuAnchor(null)}
             >
-              <MenuItem onClick={() => handleGeneratePdf('holiday')} disabled={isGeneratingPdf}>
-                PDF — szabadság nézet
+              <MenuItem onClick={() => handleGeneratePdf('paper')} disabled={isGeneratingPdf}>
+                PDF — papír nézet
               </MenuItem>
-              <MenuItem onClick={() => handleGeneratePdf('work')} disabled={isGeneratingPdf}>
-                PDF — munka nézet
+              <MenuItem onClick={() => handleGeneratePdf('actual')} disabled={isGeneratingPdf}>
+                PDF — tényleges nézet
               </MenuItem>
             </Menu>
           </Stack>
@@ -933,23 +1003,76 @@ export default function AttendanceMonthView({
 
         <Box sx={{ px: 2.5, py: 2 }}>
           <Paper variant='outlined' sx={{ p: 2, mb: 2 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} flexWrap='wrap' sx={{ gap: 1 }}>
-              <Chip
-                label={`Fizetett összesen: ${totalHours.toFixed(2)} ó`}
-                color='primary'
-                variant='outlined'
-                size='small'
-              />
-              <Chip label={`Tényleges összesen: ${totalActualHours.toFixed(2)} ó`} size='small' variant='outlined' />
-              <Chip label={`Korai: ${totalEarlyMinutes} p`} size='small' variant='outlined' />
-              <Chip label={`Késői: ${totalLateMinutes} p`} size='small' variant='outlined' />
-              <Chip label={`Teljes napok: ${daysWorked}`} size='small' variant='outlined' />
-              <Chip
-                label={`Hiányos napok: ${incompleteDays}`}
-                size='small'
-                variant='outlined'
-                color={incompleteDays > 0 ? 'warning' : 'default'}
-              />
+            <Stack spacing={1.5}>
+              <Box>
+                <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mb: 0.75 }}>
+                  Munkaidő összesítés
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} flexWrap='wrap' sx={{ gap: 1 }}>
+                  <Chip
+                    label={`Fizetett összesen: ${totalHours.toFixed(2)} ó`}
+                    color='primary'
+                    variant='outlined'
+                    size='small'
+                  />
+                  <Chip label={`Tényleges összesen: ${totalActualHours.toFixed(2)} ó`} size='small' variant='outlined' />
+                  <Chip
+                    label={`Eltérés: ${hoursDelta >= 0 ? '+' : ''}${hoursDelta.toFixed(2)} ó`}
+                    size='small'
+                    variant='outlined'
+                    color={Math.abs(hoursDelta) > 0.01 ? 'info' : 'default'}
+                  />
+                  {overtimePolicy?.enabled && (
+                    <Chip
+                      label={`Túlóra összesen: ${(totalOvertimeMinutes / 60).toFixed(2)} ó`}
+                      size='small'
+                      variant='outlined'
+                      color={totalOvertimeMinutes > 0 ? 'secondary' : 'default'}
+                    />
+                  )}
+                </Stack>
+                <Typography variant='caption' color='text.secondary' sx={{ mt: 0.75, display: 'block' }}>
+                  Fizetett = műszak + türelmi szabály szerint, tényleges = nyers rögzített idő.
+                  {overtimePolicy?.enabled ? ' Túlóra külön, műszakon túli időből számolódik.' : ''}
+                </Typography>
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mb: 0.75 }}>
+                  Napok állapota
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} flexWrap='wrap' sx={{ gap: 1 }}>
+                  <Chip label={`Ledolgozott napok: ${daysWorked}`} size='small' variant='outlined' color='success' />
+                  <Chip label={`Szabadság napok: ${vacationDays}`} size='small' variant='outlined' color='default' />
+                  <Chip label={`Betegszabadság: ${sickLeaveDays}`} size='small' variant='outlined' color='error' />
+                  <Chip
+                    label={`Szabadság + munka: ${conflictDays}`}
+                    size='small'
+                    variant='outlined'
+                    color={conflictDays > 0 ? 'info' : 'default'}
+                  />
+                  <Chip
+                    label={`Hiányos napok: ${incompleteDays}`}
+                    size='small'
+                    variant='outlined'
+                    color={incompleteDays > 0 ? 'warning' : 'default'}
+                  />
+                </Stack>
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mb: 0.75 }}>
+                  Ellenőrzés (audit)
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} flexWrap='wrap' sx={{ gap: 1 }}>
+                  <Chip label={`Korai: ${totalEarlyMinutes} p`} size='small' variant='outlined' />
+                  <Chip label={`Késői: ${totalLateMinutes} p`} size='small' variant='outlined' />
+                </Stack>
+              </Box>
             </Stack>
           </Paper>
 
@@ -998,7 +1121,7 @@ export default function AttendanceMonthView({
                     }
 
                     const day = daysData[dayIdx]
-                    const visual = getDayCellVisual(day, holidays, worksOnSaturday)
+                    const visual = getDayCellVisual(day, holidays, worksOnSaturday, shiftStart, shiftEnd, overtimePolicy)
                     const status = getDayStatus(day, holidays, worksOnSaturday)
                     const today = isToday(day.date)
 
@@ -1114,6 +1237,7 @@ export default function AttendanceMonthView({
                     { label: 'Céges ünnep', bg: 'rgba(123, 31, 162, 0.08)' },
                     { label: 'Szabadság', bg: 'rgba(46, 125, 50, 0.1)' },
                     { label: 'Betegszabadság', bg: 'rgba(211, 47, 47, 0.08)' },
+                    { label: 'Szabadság + munka', bg: 'rgba(2, 136, 209, 0.12)' },
                     { label: 'Hiányos', bg: 'rgba(237, 108, 2, 0.1)' },
                     { label: 'Teljes nap (fizetett)', bg: 'background.paper' }
                   ].map(item => (
@@ -1182,6 +1306,26 @@ export default function AttendanceMonthView({
 
                 return (
                   <>
+                    {linkedHoliday && (selectedDay.arrival || selectedDay.departure) && (
+                      <Paper
+                        variant='outlined'
+                        sx={{
+                          p: 1.5,
+                          mb: 2,
+                          borderColor: 'info.main',
+                          bgcolor: 'rgba(2, 136, 209, 0.08)'
+                        }}
+                      >
+                        <Typography variant='subtitle2' color='info.dark' sx={{ mb: 0.5 }}>
+                          Szabadság + munka rögzítve
+                        </Typography>
+                        <Typography variant='body2' color='text.secondary'>
+                          Erre a napra távollét van beállítva, de munkaidő is rögzítve lett. A papír alapú és
+                          tényleges nézet eltérhet.
+                        </Typography>
+                      </Paper>
+                    )}
+
                     {canQuickHoliday && (
                       <Paper variant='outlined' sx={{ p: 1.5, mb: 2 }}>
                         <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 1 }}>

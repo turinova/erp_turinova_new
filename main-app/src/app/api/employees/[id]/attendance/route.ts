@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+function formatDateLocal(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 // GET /api/employees/[id]/attendance?year=2026&month=1
 // Fetch attendance logs for a specific employee and month
 export async function GET(
@@ -28,8 +35,8 @@ export async function GET(
     )
 
     // Calculate date range for the month
-    const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
-    const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+    const startDate = formatDateLocal(new Date(year, month - 1, 1))
+    const endDate = formatDateLocal(new Date(year, month, 0))
 
     // Use optimized view instead of raw table - eliminates JavaScript processing
     const { data, error } = await supabase
@@ -110,7 +117,8 @@ export async function POST(
     )
 
     // Combine date and time into a timestamp
-    const scanTime = new Date(`${date}T${time}:00`).toISOString()
+    // Persist manual edits as UTC wall-clock to avoid timezone hour shifts on later reads.
+    const scanTime = new Date(`${date}T${time}:00Z`).toISOString()
 
     // Check if a log already exists for this employee, location, date, and scan type
     // Prioritize manually edited logs, then latest by time

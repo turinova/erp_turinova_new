@@ -2807,7 +2807,7 @@ export async function getEmployeeById(id: string) {
   const { data, error } = await supabaseServer
     .from('employees')
     .select(
-      'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, created_at, updated_at'
+      'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
     )
     .eq('id', id)
     .is('deleted_at', null)
@@ -2881,8 +2881,10 @@ export async function getHolidaysForDateRange(startDate: string, endDate: string
 // Attendance logs functions
 // Optimized: Uses attendance_daily_summary view for faster queries
 export async function getAttendanceLogsForMonth(employeeId: string, year: number, month: number) {
-  const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
-  const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+  const start = new Date(year, month - 1, 1)
+  const end = new Date(year, month, 0)
+  const startDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`
+  const endDate = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`
 
   // Use optimized view instead of raw table - eliminates JavaScript processing
   const { data, error } = await supabaseServer

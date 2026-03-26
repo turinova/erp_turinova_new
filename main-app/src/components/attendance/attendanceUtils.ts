@@ -110,12 +110,78 @@ export type AttendanceMetrics = {
   lateMinutes: number
 }
 
+export type OvertimePolicy = {
+  enabled: boolean
+  graceMinutes: number
+  roundingMinutes: number
+  roundingMode: 'floor' | 'nearest' | 'ceil'
+  dailyCapMinutes: number
+  requiresCompleteDay: boolean
+}
+
+export const DEFAULT_OVERTIME_POLICY: OvertimePolicy = {
+  enabled: false,
+  graceMinutes: 10,
+  roundingMinutes: 15,
+  roundingMode: 'floor',
+  dailyCapMinutes: 120,
+  requiresCompleteDay: true
+}
+
+export const DEFAULT_ARRIVAL_GRACE_MINUTES = 10
+export const DEFAULT_DEPARTURE_GRACE_MINUTES = 10
+
 function parseTimeToMinutes(t: string | null): number | null {
   if (!t) return null
   const parts = t.split(':').map(Number)
   if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return null
 
   return parts[0] * 60 + parts[1]
+}
+
+function minutesToTimeString(totalMinutes: number): string {
+  const h = String(Math.floor(totalMinutes / 60)).padStart(2, '0')
+  const m = String(totalMinutes % 60).padStart(2, '0')
+  return `${h}:${m}`
+}
+
+/**
+ * Returns policy display range for paid-window visualization.
+ * - If shift is invalid/missing, returns raw range.
+ * - Applies same grace + clipping logic as paid-hour calculation.
+ */
+export function getPolicyDisplayRange(
+  arrival: string | null,
+  departure: string | null,
+  shiftStart: string | null,
+  shiftEnd: string | null,
+  arrivalGraceMinutes: number = DEFAULT_ARRIVAL_GRACE_MINUTES,
+  departureGraceMinutes: number = DEFAULT_DEPARTURE_GRACE_MINUTES
+): { start: string; end: string; usesPolicy: boolean } | null {
+  if (!arrival || !departure) return null
+
+  const a = parseTimeToMinutes(arrival)
+  const d = parseTimeToMinutes(departure)
+  if (a === null || d === null || d <= a) return null
+
+  const s0 = parseTimeToMinutes(shiftStart)
+  const s1 = parseTimeToMinutes(shiftEnd)
+  if (s0 === null || s1 === null || s1 <= s0) {
+    return { start: arrival, end: departure, usesPolicy: false }
+  }
+
+  const safeArrivalGrace = Math.max(0, Math.floor(arrivalGraceMinutes))
+  const safeDepartureGrace = Math.max(0, Math.floor(departureGraceMinutes))
+  const adjustedArrival = Math.abs(a - s0) <= safeArrivalGrace ? s0 : a
+  const adjustedDeparture = Math.abs(d - s1) <= safeDepartureGrace ? s1 : d
+  const paidStart = Math.max(adjustedArrival, s0)
+  const paidEnd = Math.min(adjustedDeparture, s1)
+
+  if (paidStart >= paidEnd) {
+    return { start: arrival, end: departure, usesPolicy: false }
+  }
+
+  return { start: minutesToTimeString(paidStart), end: minutesToTimeString(paidEnd), usesPolicy: true }
 }
 
 /**
@@ -128,7 +194,9 @@ export function computeAttendanceMetrics(
   lunchStart: string | null,
   lunchEnd: string | null,
   shiftStart: string | null,
-  shiftEnd: string | null
+  shiftEnd: string | null,
+  arrivalGraceMinutes: number = DEFAULT_ARRIVAL_GRACE_MINUTES,
+  departureGraceMinutes: number = DEFAULT_DEPARTURE_GRACE_MINUTES
 ): AttendanceMetrics {
   const actualHours = calculateHours(arrival, departure, lunchStart, lunchEnd)
 
@@ -152,8 +220,14 @@ export function computeAttendanceMetrics(
   const earlyMinutes = Math.max(0, s0 - a)
   const lateMinutes = Math.max(0, d - s1)
 
-  const paidStart = Math.max(a, s0)
-  const paidEnd = Math.min(d, s1)
+  // Apply grace only to paid-time clipping, while audit (early/late) remains raw.
+  const safeArrivalGrace = Math.max(0, Math.floor(arrivalGraceMinutes))
+  const safeDepartureGrace = Math.max(0, Math.floor(departureGraceMinutes))
+  const adjustedArrival = Math.abs(a - s0) <= safeArrivalGrace ? s0 : a
+  const adjustedDeparture = Math.abs(d - s1) <= safeDepartureGrace ? s1 : d
+
+  const paidStart = Math.max(adjustedArrival, s0)
+  const paidEnd = Math.min(adjustedDeparture, s1)
 
   if (paidStart >= paidEnd) {
     return { actualHours, paidHours: 0, earlyMinutes, lateMinutes }
@@ -176,6 +250,41 @@ export function computeAttendanceMetrics(
   const paidHours = Math.max(0, Math.round((paidGross / 60) * 100) / 100)
 
   return { actualHours, paidHours, earlyMinutes, lateMinutes }
+}
+
+function roundOvertimeMinutes(value: number, step: number, mode: OvertimePolicy['roundingMode']): number {
+  if (value <= 0) return 0
+  const safeStep = Math.max(1, Math.floor(step))
+  const ratio = value / safeStep
+  if (mode === 'ceil') return Math.ceil(ratio) * safeStep
+  if (mode === 'nearest') return Math.round(ratio) * safeStep
+  return Math.floor(ratio) * safeStep
+}
+
+export function computeOvertimeMinutes(
+  arrival: string | null,
+  departure: string | null,
+  shiftStart: string | null,
+  shiftEnd: string | null,
+  policy?: Partial<OvertimePolicy>
+): number {
+  const p: OvertimePolicy = {
+    ...DEFAULT_OVERTIME_POLICY,
+    ...policy
+  }
+  if (!p.enabled) return 0
+  if (p.requiresCompleteDay && (!arrival || !departure)) return 0
+
+  const d = parseTimeToMinutes(departure)
+  const s1 = parseTimeToMinutes(shiftEnd)
+  const s0 = parseTimeToMinutes(shiftStart)
+  if (d === null || s1 === null || s0 === null || s1 <= s0) return 0
+
+  const rawAfterShift = Math.max(0, d - s1)
+  const minusGrace = Math.max(0, rawAfterShift - Math.max(0, Math.floor(p.graceMinutes)))
+  const rounded = roundOvertimeMinutes(minusGrace, p.roundingMinutes, p.roundingMode)
+  const capped = Math.min(Math.max(0, Math.floor(p.dailyCapMinutes)), rounded)
+  return capped
 }
 
 export function timeStringToDate(timeStr: string | null): Date | null {

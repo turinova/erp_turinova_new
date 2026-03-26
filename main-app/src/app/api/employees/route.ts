@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase
       .from('employees')
       .select(
-        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, created_at, updated_at'
+        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
       )
       .eq('active', true)
       .is('deleted_at', null)
@@ -65,7 +65,13 @@ export async function POST(request: NextRequest) {
       lunch_break_end,
       shift_start_time,
       shift_end_time,
-      timezone
+      timezone,
+      overtime_enabled,
+      overtime_grace_minutes,
+      overtime_rounding_minutes,
+      overtime_rounding_mode,
+      overtime_daily_cap_minutes,
+      overtime_requires_complete_day
     } = body
 
     // Validation
@@ -107,10 +113,16 @@ export async function POST(request: NextRequest) {
         works_on_saturday: body.works_on_saturday !== undefined ? body.works_on_saturday : false,
         shift_start_time: ss,
         shift_end_time: se,
-        timezone: typeof timezone === 'string' && timezone.trim() ? timezone.trim() : 'Europe/Budapest'
+        timezone: typeof timezone === 'string' && timezone.trim() ? timezone.trim() : 'Europe/Budapest',
+        overtime_enabled: overtime_enabled === true,
+        overtime_grace_minutes: Number.isFinite(Number(overtime_grace_minutes)) ? Math.max(0, Math.min(180, Number(overtime_grace_minutes))) : 10,
+        overtime_rounding_minutes: Number.isFinite(Number(overtime_rounding_minutes)) ? Math.max(1, Math.min(60, Number(overtime_rounding_minutes))) : 15,
+        overtime_rounding_mode: ['floor', 'nearest', 'ceil'].includes(overtime_rounding_mode) ? overtime_rounding_mode : 'floor',
+        overtime_daily_cap_minutes: Number.isFinite(Number(overtime_daily_cap_minutes)) ? Math.max(0, Math.min(1440, Number(overtime_daily_cap_minutes))) : 120,
+        overtime_requires_complete_day: overtime_requires_complete_day !== false
       })
       .select(
-        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, created_at, updated_at'
+        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
       )
       .single()
 

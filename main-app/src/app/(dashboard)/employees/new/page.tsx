@@ -15,10 +15,17 @@ import {
   Switch,
   FormControlLabel,
   Paper,
-  Stack
+  Stack,
+  MenuItem,
+  Select,
+  InputLabel,
+  FormControl
 } from '@mui/material'
 import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import { LocalizationProvider, TimePicker } from '@mui/x-date-pickers'
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
+import { hu } from 'date-fns/locale'
 
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -35,6 +42,12 @@ interface Employee {
   shift_start_time: string | null
   shift_end_time: string | null
   timezone: string
+  overtime_enabled: boolean
+  overtime_grace_minutes: number
+  overtime_rounding_minutes: number
+  overtime_rounding_mode: 'floor' | 'nearest' | 'ceil'
+  overtime_daily_cap_minutes: number
+  overtime_requires_complete_day: boolean
   created_at: string
   updated_at: string
 }
@@ -43,6 +56,23 @@ function timeInputValue(t: string | null | undefined): string {
   if (!t) return ''
   
 return t.length >= 5 ? t.slice(0, 5) : t
+}
+
+function timeStringToDate(value: string | null | undefined): Date | null {
+  const t = timeInputValue(value)
+  if (!t) return null
+  const [h, m] = t.split(':')
+  if (h === undefined || m === undefined) return null
+  const d = new Date()
+  d.setHours(Number(h), Number(m), 0, 0)
+  return d
+}
+
+function dateToTimeString(value: Date | null): string | null {
+  if (!value) return null
+  const h = String(value.getHours()).padStart(2, '0')
+  const m = String(value.getMinutes()).padStart(2, '0')
+  return `${h}:${m}`
 }
 
 export default function NewEmployeePage() {
@@ -59,7 +89,13 @@ export default function NewEmployeePage() {
     works_on_saturday: false,
     shift_start_time: null,
     shift_end_time: null,
-    timezone: 'Europe/Budapest'
+    timezone: 'Europe/Budapest',
+    overtime_enabled: false,
+    overtime_grace_minutes: 10,
+    overtime_rounding_minutes: 15,
+    overtime_rounding_mode: 'floor',
+    overtime_daily_cap_minutes: 120,
+    overtime_requires_complete_day: true
   })
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -69,7 +105,7 @@ export default function NewEmployeePage() {
     router.push('/employees')
   }
 
-  const handleInputChange = (field: keyof Employee, value: string | boolean | null) => {
+  const handleInputChange = (field: keyof Employee, value: string | boolean | number | null) => {
     setEmployee(prev => ({ ...prev, [field]: value }))
 
     if (errors[field]) {
@@ -132,7 +168,13 @@ return
           works_on_saturday: employee.works_on_saturday !== undefined ? employee.works_on_saturday : false,
           shift_start_time: ss || null,
           shift_end_time: se || null,
-          timezone: employee.timezone?.trim() || 'Europe/Budapest'
+          timezone: employee.timezone?.trim() || 'Europe/Budapest',
+          overtime_enabled: employee.overtime_enabled === true,
+          overtime_grace_minutes: Number(employee.overtime_grace_minutes) || 0,
+          overtime_rounding_minutes: Number(employee.overtime_rounding_minutes) || 15,
+          overtime_rounding_mode: employee.overtime_rounding_mode || 'floor',
+          overtime_daily_cap_minutes: Number(employee.overtime_daily_cap_minutes) || 0,
+          overtime_requires_complete_day: employee.overtime_requires_complete_day !== false
         })
       })
 
@@ -314,38 +356,126 @@ return
               {errors.shift}
             </Typography>
           )}
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={hu}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} sm={6} md={4}>
+                <TimePicker
+                  label="Műszak kezdete"
+                  value={timeStringToDate(employee.shift_start_time)}
+                  onChange={newValue => handleInputChange('shift_start_time', dateToTimeString(newValue))}
+                  ampm={false}
+                  disabled={isSaving}
+                  minutesStep={5}
+                  slotProps={{
+                    textField: {
+                      fullWidth: true,
+                      size: 'small',
+                      helperText: 'Példa: 08:00 — üresen: nincs műszakkorlát'
+                    }
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6} md={4}>
+                <TimePicker
+                  label="Műszak vége"
+                  value={timeStringToDate(employee.shift_end_time)}
+                  onChange={newValue => handleInputChange('shift_end_time', dateToTimeString(newValue))}
+                  ampm={false}
+                  disabled={isSaving}
+                  minutesStep={5}
+                  slotProps={{ textField: { fullWidth: true, size: 'small', helperText: 'Példa: 17:00' } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  label="Időzóna"
+                  value={employee.timezone || ''}
+                  onChange={e => handleInputChange('timezone', e.target.value)}
+                  helperText="Általában: Europe/Budapest"
+                />
+              </Grid>
+            </Grid>
+          </LocalizationProvider>
+        </Paper>
+
+        <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+            Túlóra szabály (dolgozó szint)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Alapból kikapcsolt. Ha engedélyezed, a műszak utáni percekből túlórát számolunk.
+          </Typography>
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Műszak kezdete"
-                type="time"
-                value={timeInputValue(employee.shift_start_time)}
-                onChange={e => handleInputChange('shift_start_time', e.target.value || null)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 300 }}
-                helperText="Példa: 08:00 — üresen: nincs műszakkorlát"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={4}>
-              <TextField
-                fullWidth
-                label="Műszak vége"
-                type="time"
-                value={timeInputValue(employee.shift_end_time)}
-                onChange={e => handleInputChange('shift_end_time', e.target.value || null)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 300 }}
-                helperText="Példa: 17:00"
-              />
-            </Grid>
             <Grid item xs={12} md={4}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={employee.overtime_enabled === true}
+                    onChange={e => handleInputChange('overtime_enabled', e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Túlóra engedélyezve"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
               <TextField
                 fullWidth
-                label="Időzóna"
-                value={employee.timezone || ''}
-                onChange={e => handleInputChange('timezone', e.target.value)}
-                helperText="Általában: Europe/Budapest"
+                type="number"
+                label="Grace (perc)"
+                value={employee.overtime_grace_minutes ?? 10}
+                onChange={e => handleInputChange('overtime_grace_minutes', Number(e.target.value))}
+                inputProps={{ min: 0, max: 180 }}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Kerekítés (perc)"
+                value={employee.overtime_rounding_minutes ?? 15}
+                onChange={e => handleInputChange('overtime_rounding_minutes', Number(e.target.value))}
+                inputProps={{ min: 1, max: 60 }}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Kerekítés mód</InputLabel>
+                <Select
+                  label="Kerekítés mód"
+                  value={employee.overtime_rounding_mode || 'floor'}
+                  onChange={e => handleInputChange('overtime_rounding_mode', e.target.value as Employee['overtime_rounding_mode'])}
+                >
+                  <MenuItem value="floor">Lefelé</MenuItem>
+                  <MenuItem value="nearest">Legközelebbi</MenuItem>
+                  <MenuItem value="ceil">Felfelé</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <TextField
+                fullWidth
+                type="number"
+                label="Napi limit (perc)"
+                value={employee.overtime_daily_cap_minutes ?? 120}
+                onChange={e => handleInputChange('overtime_daily_cap_minutes', Number(e.target.value))}
+                inputProps={{ min: 0, max: 1440 }}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={employee.overtime_requires_complete_day !== false}
+                    onChange={e => handleInputChange('overtime_requires_complete_day', e.target.checked)}
+                    color="primary"
+                  />
+                }
+                label="Csak teljes napnál számoljon túlórát (érkezés + távozás)"
               />
             </Grid>
           </Grid>
@@ -358,30 +488,32 @@ return
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Levonjuk a tényleges és a fizetett időből is, ha az ebéd átfed a munkaidővel.
           </Typography>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Ebéd kezdete"
-                type="time"
-                value={timeInputValue(employee.lunch_break_start)}
-                onChange={e => handleInputChange('lunch_break_start', e.target.value || null)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 300 }}
-              />
+          <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={hu}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <TimePicker
+                  label="Ebéd kezdete"
+                  value={timeStringToDate(employee.lunch_break_start)}
+                  onChange={newValue => handleInputChange('lunch_break_start', dateToTimeString(newValue))}
+                  ampm={false}
+                  disabled={isSaving}
+                  minutesStep={5}
+                  slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TimePicker
+                  label="Ebéd vége"
+                  value={timeStringToDate(employee.lunch_break_end)}
+                  onChange={newValue => handleInputChange('lunch_break_end', dateToTimeString(newValue))}
+                  ampm={false}
+                  disabled={isSaving}
+                  minutesStep={5}
+                  slotProps={{ textField: { fullWidth: true, size: 'small' } }}
+                />
+              </Grid>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Ebéd vége"
-                type="time"
-                value={timeInputValue(employee.lunch_break_end)}
-                onChange={e => handleInputChange('lunch_break_end', e.target.value || null)}
-                InputLabelProps={{ shrink: true }}
-                inputProps={{ step: 300 }}
-              />
-            </Grid>
-          </Grid>
+          </LocalizationProvider>
         </Paper>
 
         <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
