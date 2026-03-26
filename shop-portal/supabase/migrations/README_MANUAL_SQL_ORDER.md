@@ -140,3 +140,21 @@ Run in **tenant** DB:
 Optional checklist / notes:
 
 - **`supabase/tenant_sample_data_operations.sql`**
+
+---
+
+## Termék-beszállító XLSX import/export (20260401)
+
+Run in **tenant** DB:
+
+| Order | File | Purpose |
+|-------|------|---------|
+| 1 | **20260401_product_suppliers_single_preferred_per_product.sql** | DB kényszer: egy termékhez egyszerre legfeljebb 1 preferált beszállító (`is_preferred=true`) |
+
+**Admin database:** also run **`20260401_tenant_migration_list_product_suppliers_preferred.sql`** so `get_tenant_pending_migrations` includes this migration name.
+
+Feature notes:
+
+- `/data-operations` új entitás: **Termék-beszállítók**
+- import/export kulcs: `termek_azonosito (SKU)` + `beszallito_azonosito (suppliers.short_name)`
+- webshop push nincs ehhez a folyamathoz

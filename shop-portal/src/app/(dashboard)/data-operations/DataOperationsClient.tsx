@@ -40,7 +40,7 @@ import { toast } from 'react-toastify'
 import * as XLSX from 'xlsx'
 
 type ActionType = 'import' | 'export'
-type EntityType = 'suppliers' | 'products'
+type EntityType = 'suppliers' | 'products' | 'product-suppliers' | 'competitor-links'
 
 type PreviewRow = {
   rowNumber: number
@@ -61,6 +61,8 @@ type SyncCandidate = {
   sku: string
   isNew: boolean
   changedFields: string[]
+  previousGrossPrice: number | null
+  nextGrossPrice: number | null
 }
 
 const stepsByAction: Record<ActionType, string[]> = {
@@ -79,24 +81,12 @@ function downloadBlob(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(url)
 }
 
-const PRODUCT_SYNCABLE_FIELDS = new Set([
-  'name',
-  'erp_manufacturer_id',
-  'gtin',
-  'model_number',
-  'unit_id',
-  'length',
-  'width',
-  'height',
-  'weight',
-  'erp_weight_unit_id',
-  'cost',
-  'multiplier',
-  'vat_id',
-  'price',
-  'gross_price',
-  'status'
-])
+function formatHuf(value: number | null): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '-'
+  return new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 2 }).format(value)
+}
+
+const PRODUCT_PRICE_FIELDS = new Set(['cost', 'multiplier', 'vat_id', 'price', 'gross_price'])
 
 const PRODUCT_FIELD_LABELS: Record<string, string> = {
   name: 'Termék neve',
@@ -116,6 +106,13 @@ const PRODUCT_FIELD_LABELS: Record<string, string> = {
   price: 'Nettó ár (számolt)',
   gross_price: 'Bruttó ár (számolt)',
   status: 'Státusz'
+}
+
+const ENTITY_LABELS: Record<EntityType, string> = {
+  suppliers: 'Beszállítók',
+  products: 'Termékek',
+  'product-suppliers': 'Termék-beszállító kapcsolatok',
+  'competitor-links': 'Versenytárs linkek'
 }
 
 export default function DataOperationsClient() {
@@ -148,19 +145,24 @@ export default function DataOperationsClient() {
   const steps = stepsByAction[action]
   const errorCount = useMemo(() => previewRows.reduce((sum, row) => sum + row.errors.length, 0), [previewRows])
   const warningCount = useMemo(() => previewRows.reduce((sum, row) => sum + row.warnings.length, 0), [previewRows])
-  const syncableProductIds = useMemo(
-    () => syncCandidates.filter((item) => item.changedFields.some((field) => PRODUCT_SYNCABLE_FIELDS.has(field))).map((item) => item.productId),
+  const priceChangedCandidates = useMemo(
+    () => syncCandidates.filter((item) => item.changedFields.some((field) => PRODUCT_PRICE_FIELDS.has(field))),
     [syncCandidates]
   )
-  const syncableChangedFieldLabels = useMemo(() => {
+  const syncablePriceChangedCandidates = useMemo(
+    () => priceChangedCandidates.filter((item) => !item.isNew),
+    [priceChangedCandidates]
+  )
+  const priceChangedProductIds = useMemo(() => syncablePriceChangedCandidates.map((item) => item.productId), [syncablePriceChangedCandidates])
+  const priceChangedFieldLabels = useMemo(() => {
     const fields = new Set<string>()
-    syncCandidates.forEach((item) => {
+    priceChangedCandidates.forEach((item) => {
       item.changedFields.forEach((field) => {
-        if (PRODUCT_SYNCABLE_FIELDS.has(field)) fields.add(field)
+        if (PRODUCT_PRICE_FIELDS.has(field)) fields.add(field)
       })
     })
     return [...fields].map((field) => PRODUCT_FIELD_LABELS[field] || field)
-  }, [syncCandidates])
+  }, [priceChangedCandidates])
 
   useEffect(() => {
     const fetchConnections = async () => {
@@ -208,7 +210,14 @@ export default function DataOperationsClient() {
       const response = await fetch(`/api/data-operations/${entity}/template`)
       if (!response.ok) throw new Error('Nem sikerült letölteni a sablont.')
       const blob = await response.blob()
-      const prefix = entity === 'suppliers' ? 'beszallitok' : 'termekek'
+      const prefix =
+        entity === 'suppliers'
+          ? 'beszallitok'
+          : entity === 'products'
+            ? 'termekek'
+            : entity === 'product-suppliers'
+              ? 'termek_beszallitok'
+              : 'versenytars_linkek'
       downloadBlob(blob, `${prefix}_sablon_${new Date().toISOString().split('T')[0]}.xlsx`)
     } catch (error: any) {
       toast.error(error?.message || 'Sablon letöltési hiba')
@@ -224,8 +233,8 @@ export default function DataOperationsClient() {
       toast.error('Csak .xlsx fájl tölthető fel.')
       return
     }
-    if (entity === 'products' && !selectedConnectionId) {
-      toast.error('Termék importhoz válassz webshop kapcsolatot.')
+    if (entity !== 'suppliers' && !selectedConnectionId) {
+      toast.error('Termék alapú importhoz válassz webshop kapcsolatot.')
       return
     }
 
@@ -249,8 +258,8 @@ export default function DataOperationsClient() {
   }
 
   const handleExecuteImport = async () => {
-    if (entity === 'products' && !selectedConnectionId) {
-      toast.error('Termék importhoz webshop kapcsolat szükséges.')
+    if (entity !== 'suppliers' && !selectedConnectionId) {
+      toast.error('Termék alapú importhoz webshop kapcsolat szükséges.')
       return
     }
 
@@ -260,7 +269,7 @@ export default function DataOperationsClient() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          connection_id: entity === 'products' ? selectedConnectionId : undefined,
+          connection_id: entity !== 'suppliers' ? selectedConnectionId : undefined,
           rows: previewRows
         })
       })
@@ -270,7 +279,7 @@ export default function DataOperationsClient() {
       setFailedRows(data.failedRows || [])
       setSyncCandidates(data.syncCandidates || [])
       setStepIndex(2)
-      if (entity === 'products' && (data.syncCandidates || []).length > 0) {
+      if (entity === 'products' && (data.syncCandidates || []).some((item: SyncCandidate) => item.changedFields.some((field) => PRODUCT_PRICE_FIELDS.has(field)))) {
         setSyncDialogOpen(true)
       }
       toast.success('Import futtatás kész')
@@ -282,8 +291,8 @@ export default function DataOperationsClient() {
   }
 
   const handleSyncImportedProducts = async () => {
-    if (syncableProductIds.length === 0) {
-      toast.info('Nincs azonnal szinkronizálható termék.')
+    if (priceChangedProductIds.length === 0) {
+      toast.info('Nincs árváltozásos termék webshop szinkronhoz.')
       setSyncDialogOpen(false)
       return
     }
@@ -292,11 +301,39 @@ export default function DataOperationsClient() {
       const response = await fetch('/api/data-operations/products/sync-to-webshop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productIds: syncableProductIds })
+        body: JSON.stringify({ productIds: priceChangedProductIds })
       })
       const data = await response.json()
       if (!response.ok) throw new Error(data?.error || 'Webshop szinkron indítás sikertelen')
-      toast.success('Webshop ár/adat szinkron elindult a módosított termékekre.')
+      const progressKey = data?.progressKey
+      if (progressKey) {
+        let finished = false
+        for (let i = 0; i < 20 && !finished; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500))
+          const progressRes = await fetch(`/api/products/bulk-sync-progress?key=${encodeURIComponent(progressKey)}`)
+          if (!progressRes.ok) continue
+          const progressData = await progressRes.json()
+          const status = progressData?.progress?.status
+          const synced = Number(progressData?.progress?.synced || 0)
+          const errors = Number(progressData?.progress?.errors || 0)
+          if (status === 'completed') {
+            finished = true
+            if (errors > 0) {
+              toast.warning(`Webshop ár push kész: ${synced} sikeres, ${errors} hibás.`)
+            } else {
+              toast.success(`Webshop ár push kész: ${synced} termék szinkronizálva.`)
+            }
+          } else if (status === 'error' || status === 'stopped') {
+            finished = true
+            toast.error('A webshop ár push nem fejeződött be sikeresen.')
+          }
+        }
+        if (!finished) {
+          toast.info('Webshop ár push elindult. Az eredményt a szinkron folyamatoknál tudod követni.')
+        }
+      } else {
+        toast.info('Webshop ár push elindult az árváltozott termékekre.')
+      }
       setSyncDialogOpen(false)
     } catch (error: any) {
       toast.error(error?.message || 'Webshop szinkron hiba')
@@ -316,7 +353,14 @@ export default function DataOperationsClient() {
     const ws = XLSX.utils.json_to_sheet(rows)
     XLSX.utils.book_append_sheet(wb, ws, 'Hibas_sorok')
     const buffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
-    const prefix = entity === 'suppliers' ? 'beszallitok' : 'termekek'
+    const prefix =
+      entity === 'suppliers'
+        ? 'beszallitok'
+        : entity === 'products'
+          ? 'termekek'
+          : entity === 'product-suppliers'
+            ? 'termek_beszallitok'
+            : 'versenytars_linkek'
     downloadBlob(
       new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
       `${prefix}_hibas_sorok_${new Date().toISOString().split('T')[0]}.xlsx`
@@ -324,8 +368,8 @@ export default function DataOperationsClient() {
   }
 
   const handleExport = async () => {
-    if (entity === 'products' && !selectedConnectionId) {
-      toast.error('Termék exporthoz webshop kapcsolat kiválasztása kötelező.')
+    if (entity !== 'suppliers' && !selectedConnectionId) {
+      toast.error('Termék alapú exporthoz webshop kapcsolat kiválasztása kötelező.')
       return
     }
 
@@ -334,7 +378,7 @@ export default function DataOperationsClient() {
       const body =
         entity === 'suppliers'
           ? { status: exportStatus, hasEmail: 'all', hasTaxNumber: 'all' }
-          : { status: exportStatus, connection_id: selectedConnectionId, includeCalculated: true }
+          : { status: exportStatus, connection_id: selectedConnectionId }
 
       const response = await fetch(`/api/data-operations/${entity}/export`, {
         method: 'POST',
@@ -346,7 +390,14 @@ export default function DataOperationsClient() {
         throw new Error(bodyData?.error || 'Export sikertelen')
       }
       const blob = await response.blob()
-      const prefix = entity === 'suppliers' ? 'beszallitok' : 'termekek'
+      const prefix =
+        entity === 'suppliers'
+          ? 'beszallitok'
+          : entity === 'products'
+            ? 'termekek'
+            : entity === 'product-suppliers'
+              ? 'termek_beszallitok'
+              : 'versenytars_linkek'
       downloadBlob(blob, `${prefix}_export_${new Date().toISOString().split('T')[0]}.xlsx`)
       setStepIndex(2)
       toast.success('Export elkészült')
@@ -357,7 +408,24 @@ export default function DataOperationsClient() {
     }
   }
 
-  const previewNameField = entity === 'suppliers' ? 'nev' : 'termek_neve'
+  const previewIdentifierField =
+    entity === 'suppliers' ? 'azonosito' : entity === 'products' ? 'azonosito' : 'termek_azonosito'
+  const previewNameField =
+    entity === 'suppliers'
+      ? 'nev'
+      : entity === 'products'
+        ? 'termek_neve'
+        : entity === 'product-suppliers'
+          ? 'beszallito_azonosito'
+          : 'versenytars'
+  const previewSecondColumnLabel =
+    entity === 'suppliers'
+      ? 'Név'
+      : entity === 'products'
+        ? 'Termék neve'
+        : entity === 'product-suppliers'
+          ? 'Beszállító'
+          : 'Versenytárs'
 
   return (
     <Stack spacing={3}>
@@ -394,6 +462,8 @@ export default function DataOperationsClient() {
           <ToggleButtonGroup value={entity} exclusive onChange={handleEntityChange} size="small">
             <ToggleButton value="suppliers">Beszállítók</ToggleButton>
             <ToggleButton value="products">Termékek</ToggleButton>
+            <ToggleButton value="product-suppliers">Termék-beszállítók</ToggleButton>
+            <ToggleButton value="competitor-links">Versenytárs linkek</ToggleButton>
           </ToggleButtonGroup>
 
           <ToggleButtonGroup value={action} exclusive onChange={handleActionChange} size="small">
@@ -401,7 +471,7 @@ export default function DataOperationsClient() {
             <ToggleButton value="export">Exportálás</ToggleButton>
           </ToggleButtonGroup>
 
-          {entity === 'products' ? (
+          {entity !== 'suppliers' ? (
             <FormControl size="small" sx={{ maxWidth: 420 }}>
               <InputLabel>Webshop kapcsolat</InputLabel>
               <Select
@@ -443,7 +513,11 @@ export default function DataOperationsClient() {
               <Alert severity="info">
                 {entity === 'suppliers'
                   ? 'Egyedi kulcs: azonosito (Beszállító kód).'
-                  : 'Egyedi kulcs: azonosito (SKU). Ár importnál kötelező együtt: beszerzesi_ar + arazasi_szorzo + afa.'}
+                  : entity === 'products'
+                    ? 'Egyedi kulcs: azonosito (SKU). Ár importnál kötelező együtt: beszerzesi_ar + arazasi_szorzo + afa.'
+                    : entity === 'product-suppliers'
+                      ? 'Egyedi kulcs: termek_azonosito (SKU) + beszallito_azonosito (beszállító kód).'
+                      : 'Egyedi kulcs: termek_azonosito (SKU) + versenytars.'}
               </Alert>
               {entity === 'products' ? (
                 <Alert severity="warning">
@@ -487,7 +561,7 @@ export default function DataOperationsClient() {
                     <TableRow>
                       <TableCell>Sor</TableCell>
                       <TableCell>Azonosító</TableCell>
-                      <TableCell>Név</TableCell>
+                      <TableCell>{previewSecondColumnLabel}</TableCell>
                       <TableCell>Hiba / állapot</TableCell>
                     </TableRow>
                   </TableHead>
@@ -495,7 +569,7 @@ export default function DataOperationsClient() {
                     {previewRows.slice(0, 120).map((row) => (
                       <TableRow key={row.rowNumber}>
                         <TableCell>{row.rowNumber}</TableCell>
-                        <TableCell>{row.values.azonosito || '-'}</TableCell>
+                        <TableCell>{row.values[previewIdentifierField] || '-'}</TableCell>
                         <TableCell>{row.values[previewNameField] || '-'}</TableCell>
                         <TableCell>
                           {row.errors.length > 0 ? (
@@ -567,7 +641,7 @@ export default function DataOperationsClient() {
         <Paper sx={{ p: 3, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
           <Stack spacing={2}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              {stepIndex + 1}. {entity === 'suppliers' ? 'Beszállító export' : 'Termék export'}
+              {stepIndex + 1}. {ENTITY_LABELS[entity]} export
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Az exportált XLSX szerkezete megegyezik az import sablonnal.
@@ -592,12 +666,12 @@ export default function DataOperationsClient() {
         </Paper>
       )}
 
-      <Dialog open={syncDialogOpen} onClose={() => (syncingNow ? null : setSyncDialogOpen(false))} maxWidth="sm" fullWidth>
-        <DialogTitle>Webshop szinkron megerősítése</DialogTitle>
+      <Dialog open={syncDialogOpen} onClose={() => (syncingNow ? null : setSyncDialogOpen(false))} maxWidth="md" fullWidth>
+        <DialogTitle>Árváltozások webshop szinkronja</DialogTitle>
         <DialogContent>
           <Stack spacing={1.5} sx={{ mt: 0.5 }}>
             <Alert severity="info">
-              Az import lefutott. Most eldöntheted, hogy a módosított import mezők azonnal menjenek-e a webshopba.
+              Az import lefutott. Az alábbi termékeknél ár jellegű módosítás történt. Eldöntheted, hogy ezeket most pusholod-e a webshopba.
             </Alert>
             <Typography variant="body2">
               Új termékek: <strong>{syncCandidates.filter((item) => item.isNew).length}</strong>
@@ -606,20 +680,55 @@ export default function DataOperationsClient() {
               Frissített termékek: <strong>{syncCandidates.filter((item) => !item.isNew).length}</strong>
             </Typography>
             <Typography variant="body2">
-              Azonnal szinkronizálható (nem készlet): <strong>{syncableProductIds.length}</strong>
+              Árváltozott termékek: <strong>{priceChangedProductIds.length}</strong>
+            </Typography>
+            <Typography variant="body2">
+              Nem pusholható új termékek (előbb létrehozás szükséges a webshopban):{' '}
+              <strong>{priceChangedCandidates.filter((item) => item.isNew).length}</strong>
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Szinkronizálható mezők: {syncableChangedFieldLabels.length > 0 ? syncableChangedFieldLabels.join(', ') : 'nincs'}
+              Változott ármezők: {priceChangedFieldLabels.length > 0 ? priceChangedFieldLabels.join(', ') : 'nincs'}
             </Typography>
+            {priceChangedCandidates.length > 0 ? (
+              <TableContainer component={Paper} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, maxHeight: 260 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>SKU</TableCell>
+                      <TableCell>Típus</TableCell>
+                      <TableCell align="right">Jelenlegi bruttó eladási ár</TableCell>
+                      <TableCell align="right">Új bruttó eladási ár</TableCell>
+                      <TableCell>Változott mezők</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {priceChangedCandidates.slice(0, 200).map((item) => (
+                      <TableRow key={item.productId}>
+                        <TableCell>{item.sku}</TableCell>
+                        <TableCell>{item.isNew ? 'Új' : 'Frissített'}</TableCell>
+                        <TableCell align="right">{formatHuf(item.previousGrossPrice)}</TableCell>
+                        <TableCell align="right">{formatHuf(item.nextGrossPrice)}</TableCell>
+                        <TableCell>
+                          {item.changedFields
+                            .filter((field) => PRODUCT_PRICE_FIELDS.has(field))
+                            .map((field) => PRODUCT_FIELD_LABELS[field] || field)
+                            .join(', ')}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : null}
             <Alert severity="warning">
-              Készlet módosítás ebben a folyamatban nincs. Csak az importálható termék adatok mennek.
+              Készlet módosítás ebben a folyamatban nincs. Csak árhoz kapcsolódó termék adatok mennek. Új termékek árváltozása nem pusholható ebből a lépésből.
             </Alert>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setSyncDialogOpen(false)} disabled={syncingNow}>Később</Button>
           <Button onClick={handleSyncImportedProducts} variant="contained" disabled={syncingNow}>
-            {syncingNow ? 'Indítás...' : 'Szinkron indítása'}
+            {syncingNow ? 'Indítás...' : 'Árváltozások push a webshopba'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -20,6 +20,8 @@ type SyncCandidate = {
   sku: string
   isNew: boolean
   changedFields: string[]
+  previousGrossPrice: number | null
+  nextGrossPrice: number | null
 }
 
 function normalizeLookupKey(value: string | null | undefined): string {
@@ -295,9 +297,23 @@ export async function POST(request: NextRequest) {
           }
 
           created += 1
-          syncCandidates.push({ productId: inserted.id, sku: inserted.sku, isNew: true, changedFields })
+          syncCandidates.push({
+            productId: inserted.id,
+            sku: inserted.sku,
+            isNew: true,
+            changedFields,
+            previousGrossPrice: null,
+            nextGrossPrice: payload.gross_price ?? null
+          })
           bySku.set(normalizeLookupKey(n.sku), { ...inserted, ...insertPayload })
         } else {
+          const previousGrossPrice = target?.gross_price !== null && target?.gross_price !== undefined
+            ? Number(target.gross_price)
+            : null
+          const nextGrossPrice = payload.gross_price !== undefined
+            ? Number(payload.gross_price)
+            : previousGrossPrice
+
           const { error: updateError } = await supabase
             .from('shoprenter_products')
             .update(payload)
@@ -310,7 +326,14 @@ export async function POST(request: NextRequest) {
           }
 
           updated += 1
-          syncCandidates.push({ productId: target.id, sku: target.sku, isNew: false, changedFields })
+          syncCandidates.push({
+            productId: target.id,
+            sku: target.sku,
+            isNew: false,
+            changedFields,
+            previousGrossPrice,
+            nextGrossPrice
+          })
         }
       } catch (error: any) {
         skipped += 1

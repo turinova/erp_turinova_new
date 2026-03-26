@@ -17,7 +17,8 @@ import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { productIds } = body
+    const { productIds, mode } = body
+    const syncMode = mode === 'price_only' ? 'price_only' : 'full'
 
     if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
       return NextResponse.json({ 
@@ -83,7 +84,8 @@ export async function POST(request: NextRequest) {
       supabase,
       productsByConnection,
       progressKey,
-      request.nextUrl.origin
+      request.nextUrl.origin,
+      syncMode
     ).catch(error => {
       console.error('[BULK SYNC TO SHOPRENTER] Background sync error:', error)
       updateProgress(progressKey, {
@@ -117,7 +119,8 @@ async function processBulkSyncToShopRenterInBackground(
   supabase: any,
   productsByConnection: Map<string, any[]>,
   progressKey: string,
-  origin: string
+  origin: string,
+  syncMode: 'full' | 'price_only'
 ) {
   const rateLimiter = getShopRenterRateLimiter()
   let totalSynced = 0
@@ -127,6 +130,7 @@ async function processBulkSyncToShopRenterInBackground(
   try {
     // Process each connection group
     for (const [connectionId, connectionProducts] of productsByConnection.entries()) {
+      const isPriceOnly = syncMode === 'price_only'
       // Get connection
       const connection = await getConnectionById(connectionId)
       if (!connection || connection.connection_type !== 'shoprenter') {
@@ -160,11 +164,13 @@ async function processBulkSyncToShopRenterInBackground(
         continue
       }
 
-      // Filter products with Hungarian descriptions
-      const productsWithDescriptions = connectionProducts.filter(p => {
-        const descriptions = p.shoprenter_product_descriptions || []
-        return descriptions.some((d: any) => d.language_code === 'hu')
-      })
+      // Full sync needs descriptions, price-only sync does not.
+      const productsWithDescriptions = isPriceOnly
+        ? connectionProducts
+        : connectionProducts.filter(p => {
+            const descriptions = p.shoprenter_product_descriptions || []
+            return descriptions.some((d: any) => d.language_code === 'hu')
+          })
 
       if (productsWithDescriptions.length === 0) {
         console.warn(`[BULK SYNC TO SHOPRENTER] No products with Hungarian descriptions for connection ${connectionId}`)
@@ -205,6 +211,7 @@ async function processBulkSyncToShopRenterInBackground(
           try {
             // Build batch requests for product updates
             const productBatchRequests: any[] = []
+            const productBatchProducts: any[] = []
             const descriptionBatchRequests: any[] = []
             const productMapping: Map<number, { product: any; descriptionId: string | null }> = new Map()
 
@@ -213,30 +220,43 @@ async function processBulkSyncToShopRenterInBackground(
               const descriptions = product.shoprenter_product_descriptions || []
               const huDescription = descriptions.find((d: any) => d.language_code === 'hu') || descriptions[0]
 
-              if (!huDescription) {
+              if (!isPriceOnly && !huDescription) {
                 batchResults.errors++
                 continue
               }
 
               // Prepare product update payload
               const productPayload: any = {}
-              if (product.model_number !== null && product.model_number !== undefined) {
-                productPayload.modelNumber = product.model_number || ''
-              }
-              if (product.gtin !== null && product.gtin !== undefined) {
-                productPayload.gtin = product.gtin || ''
-              }
-              if (product.price !== null && product.price !== undefined) {
-                productPayload.price = String(product.price)
-              }
-              if (product.cost !== null && product.cost !== undefined) {
-                productPayload.cost = String(product.cost)
-              }
-              if (product.multiplier !== null && product.multiplier !== undefined) {
-                productPayload.multiplier = String(product.multiplier)
-              }
-              if (product.multiplier_lock !== null && product.multiplier_lock !== undefined) {
-                productPayload.multiplierLock = product.multiplier_lock ? '1' : '0'
+              if (isPriceOnly) {
+                const grossPriceNum = Number(product.gross_price)
+                const netPriceNum = Number(product.price)
+                const resolvedPrice = Number.isFinite(grossPriceNum) && grossPriceNum > 0
+                  ? grossPriceNum
+                  : Number.isFinite(netPriceNum) && netPriceNum > 0
+                    ? netPriceNum
+                    : null
+                if (resolvedPrice !== null) {
+                  productPayload.price = String(Math.round(resolvedPrice * 100) / 100)
+                }
+              } else {
+                if (product.model_number !== null && product.model_number !== undefined) {
+                  productPayload.modelNumber = product.model_number || ''
+                }
+                if (product.gtin !== null && product.gtin !== undefined) {
+                  productPayload.gtin = product.gtin || ''
+                }
+                if (product.price !== null && product.price !== undefined) {
+                  productPayload.price = String(product.price)
+                }
+                if (product.cost !== null && product.cost !== undefined) {
+                  productPayload.cost = String(product.cost)
+                }
+                if (product.multiplier !== null && product.multiplier !== undefined) {
+                  productPayload.multiplier = String(product.multiplier)
+                }
+                if (product.multiplier_lock !== null && product.multiplier_lock !== undefined) {
+                  productPayload.multiplierLock = product.multiplier_lock ? '1' : '0'
+                }
               }
 
               // Add product update to batch if there's data to update
@@ -244,8 +264,13 @@ async function processBulkSyncToShopRenterInBackground(
                 productBatchRequests.push({
                   method: 'PUT',
                   uri: `${apiBaseUrl}/products/${product.shoprenter_id}`,
-                  body: productPayload
+                  data: productPayload
                 })
+                productBatchProducts.push(product)
+              }
+
+              if (isPriceOnly) {
+                continue
               }
 
               // Get description ID
@@ -285,13 +310,13 @@ async function processBulkSyncToShopRenterInBackground(
                 descriptionBatchRequests.push({
                   method: 'PUT',
                   uri: `${apiBaseUrl}/productDescriptions/${descriptionId}`,
-                  body: descriptionPayload
+                  data: descriptionPayload
                 })
               } else {
                 descriptionBatchRequests.push({
                   method: 'POST',
                   uri: `${apiBaseUrl}/productDescriptions`,
-                  body: descriptionPayload
+                  data: descriptionPayload
                 })
               }
 
@@ -306,7 +331,7 @@ async function processBulkSyncToShopRenterInBackground(
                 }
               }
 
-              await rateLimiter.execute(async () => {
+              const productBatchResponse = await rateLimiter.execute(async () => {
                 const productBatchResponse = await fetch(`${apiBaseUrl}/batch`, {
                   method: 'POST',
                   headers: {
@@ -318,10 +343,56 @@ async function processBulkSyncToShopRenterInBackground(
                   signal: AbortSignal.timeout(600000)
                 })
 
-                if (!productBatchResponse.ok) {
-                  console.warn(`[BULK SYNC TO SHOPRENTER] Product batch update failed: ${productBatchResponse.status}`)
-                }
+                return productBatchResponse
               })
+
+              if (!productBatchResponse.ok) {
+                const errorText = await productBatchResponse.text().catch(() => 'Unknown error')
+                console.error(`[BULK SYNC TO SHOPRENTER] Product batch update failed: ${productBatchResponse.status} - ${errorText.substring(0, 200)}`)
+                batchResults.errors += productBatchRequests.length
+              } else {
+                const productBatchData = await productBatchResponse.json().catch(() => null)
+                const productResponses = productBatchData?.requests?.request || productBatchData?.response?.requests?.request || []
+                for (let j = 0; j < productBatchRequests.length; j++) {
+                  const batchItem = productResponses[j]
+                  const statusCode = parseInt(batchItem?.response?.header?.statusCode || '0', 10)
+                  const product = productBatchProducts[j]
+                  if (statusCode >= 200 && statusCode < 300 && product) {
+                    await supabase
+                      .from('shoprenter_products')
+                      .update({
+                        sync_status: 'synced',
+                        sync_error: null,
+                        last_synced_to_shoprenter_at: new Date().toISOString()
+                      })
+                      .eq('id', product.id)
+                    batchResults.synced++
+                  } else {
+                    const errorMessage = batchItem?.response?.body?.message || `Sync failed: ${statusCode}`
+                    if (product) {
+                      await supabase
+                        .from('shoprenter_products')
+                        .update({
+                          sync_status: 'error',
+                          sync_error: errorMessage
+                        })
+                        .eq('id', product.id)
+                    }
+                    batchResults.errors++
+                  }
+                }
+              }
+            }
+
+            if (isPriceOnly) {
+              incrementProgress(progressKey, {
+                synced: batchResults.synced,
+                errors: batchResults.errors
+              })
+              totalSynced += batchResults.synced
+              totalErrors += batchResults.errors
+              console.log(`[BULK SYNC TO SHOPRENTER] Price-only batch ${batchIndex + 1} completed: ${batchResults.synced} synced, ${batchResults.errors} errors`)
+              return batchResults
             }
 
             // Execute description updates batch

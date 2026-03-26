@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
       (vatResp.data || []).map((v: any) => [v.id, { name: v.name || '', rate: Number(v.kulcs || 0) }])
     )
 
-    const includeCalculated = body.includeCalculated !== false
+    const includeCalculated = body.includeCalculated === true
 
     const exportRows = products.map((row: any) => {
       const cost = toNum(row.cost)

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         cookie: request.headers.get('cookie') || ''
       },
-      body: JSON.stringify({ productIds })
+      body: JSON.stringify({ productIds, mode: 'price_only' })
     })
 
     const data = await response.json().catch(() => ({}))

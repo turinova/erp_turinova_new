@@ -3,15 +3,18 @@
 -- Run tenant migrations:
 --   supabase/migrations/20260330_add_data_operations_page_to_permissions.sql
 --   supabase/migrations/20260330_suppliers_short_name_required_unique_code.sql
+--   supabase/migrations/20260401_product_suppliers_single_preferred_per_product.sql
 --
 -- Admin DB migration-list patch:
---   supabase/migrations/20260330_tenant_migration_list_data_operations.sql
+--   supabase/migrations/20260401_tenant_migration_list_product_suppliers_preferred.sql
 --
 -- Feature scope v1:
 --   - /data-operations top-level page
 --   - Beszállítók XLSX export/import wizard
+--   - Termék-beszállító kapcsolatok XLSX export/import wizard (SKU + beszállító kód kulccsal)
 --   - Export szerkezete = Import szerkezete
 --   - Beszállító kód (short_name) kötelező egyedi azonosító
+--   - Egy termékhez egyszerre max. 1 preferált beszállító (DB index kényszer)
 --
 -- NOTE:
 --   This file is intentionally a checklist/reference only.
