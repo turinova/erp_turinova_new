@@ -1924,8 +1924,8 @@ export default function POSPage() {
 
       {/* Fixed Bottom Section */}
       <div className="bg-white border-t border-gray-200 shadow-lg flex-shrink-0">
-        {/* Row 1: Összesen, Fee, Discount */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        {/* Compact action row: Összesen + icons */}
+        <div className="flex items-center justify-between p-4">
           {/* Összesen */}
           <div className="flex-1">
             <p className="text-sm text-gray-600 mb-1">Összesen</p>
@@ -1934,7 +1934,7 @@ export default function POSPage() {
             </p>
           </div>
 
-          {/* Fee and Discount Icons */}
+          {/* Fee, Discount, Payment Icons */}
           <div className="flex gap-3">
             {/* Fee Button */}
             <button
@@ -1953,56 +1953,28 @@ export default function POSPage() {
             >
               <RemoveCircleIcon />
             </button>
-          </div>
-        </div>
 
-        {/* Row 2: Fizetés Button */}
-        <div className="p-4">
-          <button
-            disabled={cartItems.length === 0}
-            onClick={() => {
-              if (cartItems.length > 0) {
-                setPaymentModalOpen(true)
-              }
-            }}
-            className="w-full text-white py-4 rounded-lg font-bold text-lg disabled:bg-gray-400 disabled:cursor-not-allowed transition-all"
-            style={{
-              backgroundColor: cartItems.length === 0 ? undefined : workerColor,
-              opacity: cartItems.length === 0 ? 0.5 : 1
-            }}
-            onMouseEnter={(e) => {
-              if (cartItems.length > 0) {
-                // Darken color on hover
-                const rgb = hexToRgb(workerColor)
-                if (rgb) {
-                  e.currentTarget.style.backgroundColor = `rgb(${Math.max(0, rgb.r - 20)}, ${Math.max(0, rgb.g - 20)}, ${Math.max(0, rgb.b - 20)})`
+            {/* Payment Button */}
+            <button
+              disabled={cartItems.length === 0}
+              onClick={() => {
+                if (cartItems.length > 0) {
+                  setPaymentModalOpen(true)
                 }
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (cartItems.length > 0) {
-                e.currentTarget.style.backgroundColor = workerColor
-              }
-            }}
-            onMouseDown={(e) => {
-              if (cartItems.length > 0) {
-                // Even darker on active/press
-                const rgb = hexToRgb(workerColor)
-                if (rgb) {
-                  e.currentTarget.style.backgroundColor = `rgb(${Math.max(0, rgb.r - 40)}, ${Math.max(0, rgb.g - 40)}, ${Math.max(0, rgb.b - 40)})`
-                  e.currentTarget.style.transform = 'scale(0.98)'
-                }
-              }
-            }}
-            onMouseUp={(e) => {
-              if (cartItems.length > 0) {
-                e.currentTarget.style.backgroundColor = workerColor
-                e.currentTarget.style.transform = 'scale(1)'
-              }
-            }}
-          >
-            Fizetés
-          </button>
+              }}
+              className="w-12 h-12 rounded-full border-2 text-white flex items-center justify-center active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                borderColor: cartItems.length === 0 ? '#9ca3af' : '#16a34a',
+                backgroundColor: cartItems.length === 0 ? '#9ca3af' : '#16a34a'
+              }}
+              aria-label="Fizetés"
+              title="Fizetés"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 

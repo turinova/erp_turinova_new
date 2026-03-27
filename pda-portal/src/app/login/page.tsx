@@ -153,6 +153,19 @@ export default function PDALoginPage() {
             </button>
           ))}
           
+          {/* Empty spacer to keep 0 centered */}
+          <div className="aspect-square" aria-hidden="true" />
+
+          {/* 0 button */}
+          <button
+            onClick={() => handleNumberClick(0)}
+            disabled={isLoading || pin.length >= 6}
+            className="aspect-square rounded-lg bg-white text-2xl font-semibold text-gray-800 shadow-md transition-all duration-75 active:scale-95 active:shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation sm:text-3xl"
+            aria-label="0"
+          >
+            0
+          </button>
+
           {/* Backspace button */}
           <button
             onClick={handleBackspace}
