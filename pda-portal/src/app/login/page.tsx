@@ -86,13 +86,14 @@ export default function PDALoginPage() {
   const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
   
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+    <div className="h-[100dvh] overflow-hidden bg-gray-100 px-4 py-3">
+      <div className="mx-auto flex h-full w-full max-w-xs flex-col">
       {/* Logo */}
-      <div className="mb-8">
+      <div className="flex-shrink-0 py-1">
         <img 
           src="/images/turinova-logo.png" 
           alt="Turinova Logo" 
-          className="h-16 w-auto object-contain"
+          className="mx-auto h-10 w-auto object-contain sm:h-12"
           onError={(e) => {
             // Fallback if logo doesn't exist
             e.currentTarget.style.display = 'none'
@@ -101,19 +102,19 @@ export default function PDALoginPage() {
       </div>
 
       {/* Ellenörzés button */}
-      <div className="mb-6 w-full max-w-xs">
+      <div className="w-full flex-shrink-0 py-1">
         <button
           onClick={() => router.push('/check')}
           disabled={isLoading}
-          className="w-full px-6 py-3 bg-green-600 text-white rounded-lg font-semibold text-lg shadow-md active:bg-green-700 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+          className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-base font-semibold text-white shadow-md transition-all active:scale-95 active:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation"
         >
           Ellenőrzés
         </button>
       </div>
       
       {/* PIN Display */}
-      <div className="mb-8">
-        <div className="flex justify-center gap-3 mb-4">
+      <div className="flex-shrink-0 py-2">
+        <div className="mb-2 flex justify-center gap-3">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <div
               key={i}
@@ -139,14 +140,14 @@ export default function PDALoginPage() {
       </div>
       
       {/* PIN Pad */}
-      <div className="w-full max-w-xs">
-        <div className="grid grid-cols-3 gap-4">
+      <div className="flex min-h-0 flex-1 items-end py-1">
+        <div className="grid w-full grid-cols-3 gap-2 sm:gap-3">
           {numbers.map((num) => (
             <button
               key={num}
               onClick={() => handleNumberClick(num)}
               disabled={isLoading || pin.length >= 6}
-              className="aspect-square bg-white rounded-lg shadow-md active:shadow-sm active:scale-95 transition-all duration-75 text-3xl font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+              className="aspect-square rounded-lg bg-white text-2xl font-semibold text-gray-800 shadow-md transition-all duration-75 active:scale-95 active:shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation sm:text-3xl"
             >
               {num}
             </button>
@@ -156,10 +157,10 @@ export default function PDALoginPage() {
           <button
             onClick={handleBackspace}
             disabled={isLoading || pin.length === 0}
-            className="aspect-square bg-white rounded-lg shadow-md active:shadow-sm active:scale-95 transition-all duration-75 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
+            className="aspect-square flex items-center justify-center rounded-lg bg-white shadow-md transition-all duration-75 active:scale-95 active:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation"
           >
             <svg 
-              className="w-8 h-8 text-gray-700" 
+              className="h-7 w-7 text-gray-700 sm:h-8 sm:w-8" 
               fill="none" 
               stroke="currentColor" 
               viewBox="0 0 24 24"
@@ -177,10 +178,11 @@ export default function PDALoginPage() {
       
       {/* Loading indicator */}
       {isLoading && (
-        <div className="mt-8">
+        <div className="flex-shrink-0 py-1">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
         </div>
       )}
+      </div>
     </div>
   )
 }

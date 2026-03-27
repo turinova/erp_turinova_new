@@ -1215,6 +1215,16 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     return subtotalBeforeGlobalDiscount - globalDiscountAmount
   }, [subtotalBeforeGlobalDiscount, globalDiscountAmount])
 
+  const cashRoundedTotal = useMemo(() => hungarianRoundCash(total), [total])
+  const payableTotal = useMemo(
+    () => (pendingPaymentType === 'cash' ? cashRoundedTotal : Math.round(total)),
+    [pendingPaymentType, cashRoundedTotal, total]
+  )
+  const cashRoundingDelta = useMemo(
+    () => (pendingPaymentType === 'cash' ? cashRoundedTotal - Math.round(total) : 0),
+    [pendingPaymentType, cashRoundedTotal, total]
+  )
+
   // Add discount manually
   const handleAddDiscount = () => {
     if (discount) {
@@ -3227,6 +3237,18 @@ export default function PosClient({ customers, workers }: PosClientProps) {
               <Typography variant="h6" align="right" sx={{ fontWeight: 'bold' }}>
                 Összesen: {formatPriceInteger(Math.round(total))} HUF
               </Typography>
+              {pendingPaymentType === 'cash' && (
+                <>
+                  <Typography variant="body1" align="right" color="success.main" sx={{ fontWeight: 'bold' }}>
+                    Fizetendő (készpénz, kerekített): {formatPriceInteger(payableTotal)} HUF
+                  </Typography>
+                  {cashRoundingDelta !== 0 && (
+                    <Typography variant="caption" align="right" color="text.secondary" sx={{ display: 'block' }}>
+                      Kerekítési különbözet: {cashRoundingDelta > 0 ? '+' : ''}{formatPriceInteger(cashRoundingDelta)} HUF
+                    </Typography>
+                  )}
+                </>
+              )}
               <Typography variant="body2" align="right" color="text.secondary">
                 Fizetési mód: {pendingPaymentType === 'cash' ? 'Készpénz' : 'Bankkártya'}
               </Typography>

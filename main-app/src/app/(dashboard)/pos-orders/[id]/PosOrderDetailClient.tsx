@@ -218,6 +218,16 @@ interface PosOrderDetailClientProps {
   initialTenantCompany: TenantCompany | null
 }
 
+const hungarianRoundCash = (amount: number): number => {
+  if (amount <= 0) return 0
+  const floor = Math.floor(amount)
+  const lastDigit = floor % 10
+  if (lastDigit >= 0 && lastDigit <= 2) return Math.floor(floor / 10) * 10
+  if (lastDigit >= 3 && lastDigit <= 4) return Math.floor(floor / 10) * 10 + 5
+  if (lastDigit >= 5 && lastDigit <= 7) return Math.floor(floor / 10) * 10 + 5
+  return Math.ceil(floor / 10) * 10
+}
+
 export default function PosOrderDetailClient({
   id,
   initialOrder,
@@ -599,6 +609,15 @@ export default function PosOrderDetailClient({
       maximumFractionDigits: 0
     }).format(roundedAmount) + ' Ft'
   }
+
+  const cashPayableTotal = useMemo(
+    () => hungarianRoundCash(summary.totalGrossAfterDiscount),
+    [summary.totalGrossAfterDiscount]
+  )
+  const cashRoundingDelta = useMemo(
+    () => cashPayableTotal - Math.round(summary.totalGrossAfterDiscount),
+    [cashPayableTotal, summary.totalGrossAfterDiscount]
+  )
 
   // Format date and time
   const formatDateTime = (dateString: string) => {
@@ -2440,6 +2459,18 @@ export default function PosOrderDetailClient({
                   <Typography variant="h5" color="primary.main" fontWeight="bold">
                     {formatCurrency(summary.totalGrossAfterDiscount)}
                   </Typography>
+                  {order.payment_type === 'cash' && (
+                    <>
+                      <Typography variant="body2" color="success.main" sx={{ mt: 0.75, fontWeight: 'bold' }}>
+                        Fizetendő (készpénz, kerekített): {formatCurrency(cashPayableTotal)}
+                      </Typography>
+                      {cashRoundingDelta !== 0 && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          Kerekítési különbözet: {cashRoundingDelta > 0 ? '+' : ''}{formatCurrency(cashRoundingDelta)}
+                        </Typography>
+                      )}
+                    </>
+                  )}
                 </Box>
               </Grid>
             </Grid>

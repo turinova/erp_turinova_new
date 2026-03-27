@@ -153,6 +153,18 @@ function formatPriceInteger(price: number): string {
   })
 }
 
+// Hungarian cash rounding for final payable amount (0/5 endings)
+const hungarianRoundCash = (amount: number): number => {
+  if (amount <= 0) return 0
+  const floor = Math.floor(amount)
+  const lastDigit = floor % 10
+
+  if (lastDigit >= 0 && lastDigit <= 2) return Math.floor(floor / 10) * 10
+  if (lastDigit >= 3 && lastDigit <= 4) return Math.floor(floor / 10) * 10 + 5
+  if (lastDigit >= 5 && lastDigit <= 7) return Math.floor(floor / 10) * 10 + 5
+  return Math.ceil(floor / 10) * 10
+}
+
 interface FeeType {
   id: string
   name: string
@@ -1183,6 +1195,16 @@ export default function POSPage() {
     return Math.round(subtotal - discountAmount)
   }, [cartItems, fees, discountAmount])
 
+  const cashRoundedTotal = useMemo(() => hungarianRoundCash(total), [total])
+  const payableTotal = useMemo(
+    () => (pendingPaymentType === 'cash' ? cashRoundedTotal : total),
+    [pendingPaymentType, cashRoundedTotal, total]
+  )
+  const cashRoundingDelta = useMemo(
+    () => (pendingPaymentType === 'cash' ? cashRoundedTotal - total : 0),
+    [pendingPaymentType, cashRoundedTotal, total]
+  )
+
   // Handle payment type click - opens confirmation modal
   const handlePaymentTypeClick = (paymentType: 'cash' | 'card') => {
     setPendingPaymentType(paymentType)
@@ -1490,7 +1512,7 @@ export default function POSPage() {
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold text-gray-900 truncate">{product.name}</p>
+                            <p className="font-semibold text-gray-900 break-words whitespace-normal leading-tight">{product.name}</p>
                             <span className="px-2 py-0.5 text-xs font-semibold rounded bg-blue-100 text-blue-800 flex-shrink-0">
                               {getTypeLabel()}
                             </span>
@@ -1501,9 +1523,11 @@ export default function POSPage() {
                           {getDimensions() && (
                             <p className="text-xs text-gray-500 truncate">{getDimensions()}</p>
                           )}
-                          <p className="text-sm text-gray-600 mt-1">
-                            Készlet: {product.quantity_on_hand} db
-                          </p>
+                          {product.product_type === 'material' && (
+                            <p className="text-sm text-gray-600 mt-1">
+                              Készlet: {product.quantity_on_hand} m²
+                            </p>
+                          )}
                         </div>
                         <div className="text-right flex-shrink min-w-0 max-w-[120px]">
                           <p className="font-semibold text-gray-900 text-base truncate">
@@ -2276,6 +2300,18 @@ export default function POSPage() {
                 {formatPriceInteger(total)} Ft
               </p>
             </div>
+            {pendingPaymentType === 'cash' && (
+              <div className="text-right">
+                <p className="text-base font-bold text-emerald-700">
+                  Fizetendő (készpénz, kerekített): {formatPriceInteger(payableTotal)} Ft
+                </p>
+                {cashRoundingDelta !== 0 && (
+                  <p className="text-xs text-gray-500">
+                    Kerekítési különbözet: {cashRoundingDelta > 0 ? '+' : ''}{formatPriceInteger(cashRoundingDelta)} Ft
+                  </p>
+                )}
+              </div>
+            )}
             <div className="text-right">
               <p className="text-sm text-gray-600">
                 Fizetési mód: {pendingPaymentType === 'cash' ? 'Készpénz' : 'Bankkártya'}
