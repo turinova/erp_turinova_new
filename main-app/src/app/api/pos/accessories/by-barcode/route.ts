@@ -5,43 +5,56 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const barcode = searchParams.get('barcode')
+    const rawBarcode = searchParams.get('raw_barcode')
 
     if (!barcode || !barcode.trim()) {
       return NextResponse.json({ error: 'Barcode is required' }, { status: 400 })
     }
 
     const trimmedBarcode = barcode.trim()
+    const trimmedRawBarcode = rawBarcode?.trim()
+    const barcodesToTry = Array.from(
+      new Set([trimmedBarcode, trimmedRawBarcode].filter((value): value is string => Boolean(value)))
+    )
 
-    // OPTIMIZED: Query accessory first (fast indexed lookup), then stock
-    // Search in both barcode and barcode_u fields
-    const { data: accessoryData, error: accessoryError } = await supabaseServer
-      .from('accessories')
-      .select(`
+    const accessorySelect = `
+      id,
+      name,
+      sku,
+      net_price,
+      base_price,
+      image_url,
+      deleted_at,
+      partners_id,
+      units_id,
+      vat (
         id,
-        name,
-        sku,
-        net_price,
-        base_price,
-        image_url,
-        deleted_at,
-        partners_id,
-        units_id,
-        vat (
-          id,
-          kulcs
-        ),
-        currencies (
-          id,
-          name
-        )
-      `)
-      .or(`barcode.eq.${trimmedBarcode},barcode_u.eq.${trimmedBarcode}`)
-      .is('deleted_at', null)
-      .maybeSingle()
+        kulcs
+      ),
+      currencies (
+        id,
+        name
+      )
+    `
 
-    if (accessoryError) {
-      console.error('Error searching accessory by barcode:', accessoryError)
-      return NextResponse.json({ error: 'Failed to search by barcode' }, { status: 500 })
+    let accessoryData: any = null
+    for (const code of barcodesToTry) {
+      const { data, error } = await supabaseServer
+        .from('accessories')
+        .select(accessorySelect)
+        .or(`barcode.eq.${code},barcode_u.eq.${code}`)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (error) {
+        console.error('Error searching accessory by barcode:', error)
+        return NextResponse.json({ error: 'Failed to search by barcode' }, { status: 500 })
+      }
+
+      if (data) {
+        accessoryData = data
+        break
+      }
     }
 
     if (!accessoryData) {
@@ -55,21 +68,16 @@ export async function GET(request: NextRequest) {
           .eq('product_type', 'accessory')
           .eq('accessory_id', accessoryData.id)
 
+    let quantity_on_hand = 0
     if (stockError) {
-      console.error('Error fetching stock:', stockError)
-      // Only return items that have stock records - return 404 if stock check fails
-      return NextResponse.json({ error: 'Accessory not found in stock' }, { status: 404 })
+      // Keep scan flow functional even if stock view has issues.
+      console.error('Error fetching stock for scanned accessory:', stockError)
+    } else if (stockData && stockData.length > 0) {
+      // Sum quantity_on_hand across all warehouses (including negative quantities)
+      quantity_on_hand = stockData.reduce((sum: number, stock: any) => {
+        return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
+      }, 0)
     }
-
-    // Only return items that have at least one stock record (quantity doesn't matter, just that a record exists)
-    if (!stockData || stockData.length === 0) {
-      return NextResponse.json({ error: 'Accessory not found in stock' }, { status: 404 })
-    }
-
-    // Sum quantity_on_hand across all warehouses (including negative quantities)
-    const quantity_on_hand = stockData.reduce((sum: number, stock: any) => {
-      return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
-    }, 0)
 
     const vatPercent = accessoryData.vat?.kulcs || 0
     const gross_price = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)

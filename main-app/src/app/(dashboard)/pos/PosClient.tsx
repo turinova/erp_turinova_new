@@ -595,16 +595,25 @@ export default function PosClient({ customers, workers }: PosClientProps) {
 
   // Normalize barcode input (fix keyboard layout issues from scanner)
   // Some scanners send US key codes but the OS layout maps '-' -> 'ü', '0' -> 'ö', 'Z' -> 'Y'
+  const ENABLE_HUNGARIAN_SCANNER_LAYOUT_FIX = true
+
   const normalizeBarcode = (input: string): string => {
     const charMap: Record<string, string> = {
       'ü': '-',
       'ö': '0',
-      'Y': 'Z'  // Hungarian keyboard: scanner sends Z but OS shows Y
+      ...(ENABLE_HUNGARIAN_SCANNER_LAYOUT_FIX ? { 'Y': 'Z' } : {}) // Optional scanner profile fix
     }
     return input
       .split('')
       .map(char => charMap[char] || char)
       .join('')
+  }
+
+  const looksLikeBarcodeInput = (value: string): boolean => {
+    const trimmed = value.trim()
+    if (trimmed.length < 4) return false
+    // Allow typical barcode/token characters; avoid treating normal search phrases as barcode.
+    return /^[A-Za-z0-9\-._/]+$/.test(trimmed)
   }
 
   // Handle barcode input change (debounced for scanner - optimized to 100ms)
@@ -736,7 +745,8 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       return
     }
 
-    const normalizedBarcode = normalizeBarcode(barcode.trim())
+    const rawBarcode = barcode.trim()
+    const normalizedBarcode = normalizeBarcode(rawBarcode)
 
     // Check cache first
     const cached = barcodeCacheRef.current.get(normalizedBarcode)
@@ -799,9 +809,12 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     scanAbortControllerRef.current = abortController
 
     try {
-      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(normalizedBarcode)}`, {
+      const response = await fetch(
+        `/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(normalizedBarcode)}&raw_barcode=${encodeURIComponent(rawBarcode)}`,
+        {
         signal: abortController.signal
-      })
+        }
+      )
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -1613,7 +1626,27 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       handleAddToCart(selected)
                       setSearchTerm('')
                       setSearchResults([])
+                    } else {
+                      const maybeBarcode = searchTerm.trim()
+                      if (looksLikeBarcodeInput(maybeBarcode)) {
+                        handleBarcodeScan(maybeBarcode)
+                        setSearchTerm('')
+                        setSearchResults([])
+                      }
                     }
+                  }
+                }}
+                onPaste={(e) => {
+                  const pasted = e.clipboardData.getData('text')
+                  if (looksLikeBarcodeInput(pasted)) {
+                    e.preventDefault()
+                    const maybeBarcode = pasted.trim()
+                    setSearchTerm(maybeBarcode)
+                    setTimeout(() => {
+                      handleBarcodeScan(maybeBarcode)
+                      setSearchTerm('')
+                      setSearchResults([])
+                    }, 0)
                   }
                 }}
                 onBlur={(e) => {
