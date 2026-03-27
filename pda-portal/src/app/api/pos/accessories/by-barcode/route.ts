@@ -5,12 +5,14 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const barcode = searchParams.get('barcode')
+    const rawBarcode = searchParams.get('raw_barcode')
 
     if (!barcode || !barcode.trim()) {
       return NextResponse.json({ error: 'Barcode is required' }, { status: 400 })
     }
 
     const trimmedBarcode = barcode.trim()
+    const trimmedRawBarcode = rawBarcode?.trim()
 
     // Create Supabase admin client
     const supabaseAdmin = createClient(
@@ -25,32 +27,46 @@ export async function GET(request: NextRequest) {
     )
 
     // Query accessory by barcode - search in both barcode and barcode_u fields
-    const { data: accessoryData, error: accessoryError } = await supabaseAdmin
-      .from('accessories')
-      .select(`
-        id,
-        name,
-        sku,
-        net_price,
-        gross_price,
-        image_url,
-        deleted_at,
-        vat (
-          id,
-          kulcs
-        ),
-        currencies (
-          id,
-          name
-        )
-      `)
-      .or(`barcode.eq.${trimmedBarcode},barcode_u.eq.${trimmedBarcode}`)
-      .is('deleted_at', null)
-      .maybeSingle()
+    // Try both normalized and raw barcode candidates.
+    const candidates = [trimmedBarcode]
+    if (trimmedRawBarcode && trimmedRawBarcode !== trimmedBarcode) {
+      candidates.push(trimmedRawBarcode)
+    }
 
-    if (accessoryError) {
-      console.error('Error searching accessory by barcode:', accessoryError)
-      return NextResponse.json({ error: 'Failed to search by barcode' }, { status: 500 })
+    let accessoryData: any = null
+    for (const candidate of candidates) {
+      const { data, error } = await supabaseAdmin
+        .from('accessories')
+        .select(`
+          id,
+          name,
+          sku,
+          net_price,
+          gross_price,
+          image_url,
+          deleted_at,
+          vat (
+            id,
+            kulcs
+          ),
+          currencies (
+            id,
+            name
+          )
+        `)
+        .or(`barcode.eq.${candidate},barcode_u.eq.${candidate}`)
+        .is('deleted_at', null)
+        .maybeSingle()
+
+      if (error) {
+        console.error('Error searching accessory by barcode:', error)
+        return NextResponse.json({ error: 'Failed to search by barcode' }, { status: 500 })
+      }
+
+      if (data) {
+        accessoryData = data
+        break
+      }
     }
 
     if (!accessoryData) {
@@ -66,17 +82,10 @@ export async function GET(request: NextRequest) {
 
     if (stockError) {
       console.error('Error fetching stock:', stockError)
-      // Only return items that have stock records - return 404 if stock check fails
-      return NextResponse.json({ error: 'Accessory not found in stock' }, { status: 404 })
-    }
-
-    // Only return items that have at least one stock record (quantity doesn't matter, just that a record exists)
-    if (!stockData || stockData.length === 0) {
-      return NextResponse.json({ error: 'Accessory not found in stock' }, { status: 404 })
     }
 
     // Sum quantity_on_hand across all warehouses
-    const quantity_on_hand = stockData.reduce((sum: number, stock: any) => {
+    const quantity_on_hand = (stockData || []).reduce((sum: number, stock: any) => {
       return sum + parseFloat(stock.quantity_on_hand?.toString() || '0')
     }, 0)
 

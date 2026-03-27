@@ -107,6 +107,52 @@ interface CartItem {
   discount_amount?: number
 }
 
+const MEASURE_MIN_QTY = 0.01
+
+function normalizeQuantityForType(
+  productType: CartItem['product_type'],
+  numValue: number
+): number {
+  if (productType === 'accessory') {
+    return Math.max(1, Math.round(numValue))
+  }
+  const rounded = Math.round(numValue * 100) / 100
+  return Math.max(MEASURE_MIN_QTY, rounded)
+}
+
+function parseQuantityInput(value: string): number | null {
+  const raw = value.trim()
+  if (raw === '') return null
+
+  if (raw.includes(',') && raw.includes('.')) {
+    const withoutThousands = raw.replace(/\./g, '')
+    return parseFloat(withoutThousands.replace(',', '.'))
+  }
+
+  if (raw.includes(',') && !raw.includes('.')) {
+    return parseFloat(raw.replace(',', '.'))
+  }
+
+  return parseFloat(raw)
+}
+
+function formatQuantityDisplay(item: CartItem): string {
+  if (item.product_type === 'accessory') {
+    return String(Math.round(item.quantity))
+  }
+  return item.quantity.toLocaleString('hu-HU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  })
+}
+
+function formatPriceInteger(price: number): string {
+  return Math.round(price).toLocaleString('hu-HU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  })
+}
+
 interface FeeType {
   id: string
   name: string
@@ -127,23 +173,6 @@ interface FeeItem {
   vat_id: string
   currency_id: string
   vat_percent: number // VAT percentage for calculating net price
-}
-
-interface Customer {
-  id: string
-  name: string
-  email: string | null
-  mobile: string | null
-  discount_percent?: number | null
-  billing_name?: string | null
-  billing_country?: string | null
-  billing_city?: string | null
-  billing_postal_code?: string | null
-  billing_street?: string | null
-  billing_house_number?: string | null
-  billing_tax_number?: string | null
-  billing_company_reg_number?: string | null
-  sms_notification?: boolean
 }
 
 export default function POSPage() {
@@ -248,15 +277,34 @@ export default function POSPage() {
   const [editingFeeId, setEditingFeeId] = useState<string | null>(null)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
   const [discountPercent, setDiscountPercent] = useState<number>(0)
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [customerSearchTerm, setCustomerSearchTerm] = useState('')
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false)
+  const [expandedCartItems, setExpandedCartItems] = useState<Set<string>>(new Set())
   const [expandedDiscountItems, setExpandedDiscountItems] = useState<Set<string>>(new Set())
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({})
+
+  const ENABLE_HUNGARIAN_SCANNER_LAYOUT_FIX = true
+
+  const normalizeBarcode = (input: string): string => {
+    const charMap: Record<string, string> = {
+      'ü': '-',
+      'ö': '0',
+      ...(ENABLE_HUNGARIAN_SCANNER_LAYOUT_FIX ? { 'Y': 'Z' } : {})
+    }
+    return input
+      .split('')
+      .map(char => charMap[char] || char)
+      .join('')
+  }
+
+  const looksLikeBarcodeInput = (value: string): boolean => {
+    const trimmed = value.trim()
+    if (trimmed.length < 4) return false
+    return /^[A-Za-z0-9\-._/]+$/.test(trimmed)
+  }
 
   // Barcode scanning refs
   const barcodeInputRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isScanningRef = useRef<boolean>(false)
   const lastScannedBarcodeRef = useRef<{ barcode: string; timestamp: number } | null>(null)
@@ -361,41 +409,6 @@ export default function POSPage() {
     }
     fetchFeeTypes()
   }, [])
-
-  // Fetch customers when search term changes (debounced)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (customerSearchTerm.trim().length >= 2 || customerSearchTerm.trim().length === 0) {
-        setIsLoadingCustomers(true)
-        const searchParam = customerSearchTerm.trim().length >= 2 ? `?q=${encodeURIComponent(customerSearchTerm.trim())}` : ''
-        fetch(`/api/customers${searchParam}`)
-          .then(res => res.json())
-          .then(data => {
-            setCustomers(data || [])
-            setIsLoadingCustomers(false)
-          })
-          .catch(err => {
-            console.error('Error fetching customers:', err)
-            setCustomers([])
-            setIsLoadingCustomers(false)
-          })
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [customerSearchTerm])
-
-  // Auto-add discount when customer is selected
-  useEffect(() => {
-    if (selectedCustomer && selectedCustomer.discount_percent && selectedCustomer.discount_percent > 0) {
-      // Always add/update discount when customer with discount is selected
-      setDiscount({
-        percent: selectedCustomer.discount_percent,
-        amount: 0 // Will be calculated
-      })
-    }
-    // Note: Discount is deletable via the trash button - we don't auto-remove it when customer is removed
-  }, [selectedCustomer])
 
   // Auto-focus barcode input on mount and after page becomes visible
   useEffect(() => {
@@ -593,10 +606,9 @@ export default function POSPage() {
 
   // Handle barcode scan
   const handleBarcodeScan = async (barcode: string) => {
-    // Double check that barcode input is still focused before processing
+    // Allow scans from hidden scanner input and from explicit search Enter/paste fallback.
     const activeElement = document.activeElement
-    if (activeElement !== barcodeInputRef.current) {
-      // User switched to another field, don't process scan
+    if (activeElement !== barcodeInputRef.current && activeElement !== searchInputRef.current) {
       return
     }
     
@@ -605,7 +617,8 @@ export default function POSPage() {
       return
     }
 
-    const trimmedBarcode = barcode.trim()
+    const rawBarcode = barcode.trim()
+    const trimmedBarcode = normalizeBarcode(rawBarcode)
 
     // Check cache first
     const cached = barcodeCacheRef.current.get(trimmedBarcode)
@@ -667,13 +680,18 @@ export default function POSPage() {
     scanAbortControllerRef.current = abortController
 
     try {
-      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}`, {
+      const response = await fetch(`/api/pos/accessories/by-barcode?barcode=${encodeURIComponent(trimmedBarcode)}&raw_barcode=${encodeURIComponent(rawBarcode)}`, {
         signal: abortController.signal
       })
 
       if (!response.ok) {
         if (response.status === 404) {
           toast.error('Vonalkód nem található')
+          setSearchTerm(trimmedBarcode)
+          setTimeout(() => {
+            searchInputRef.current?.focus()
+            searchInputRef.current?.select()
+          }, 80)
         } else {
           toast.error('Hiba történt a keresés során')
         }
@@ -758,12 +776,19 @@ export default function POSPage() {
     // Round to nearest integer (not nearest 10) to match main app display
     const roundedPrice = Math.round(product.gross_price)
     
+    const quantityStep = product.product_type === 'accessory' ? 1 : MEASURE_MIN_QTY
+    const initialQuantity = product.product_type === 'accessory' ? 1 : MEASURE_MIN_QTY
+
     if (existingItem) {
-      // Increment quantity
+      // Increment quantity based on product type
       setCartItems(prev =>
         prev.map(item =>
           item.id === existingItem!.id
-            ? { ...item, quantity: item.quantity + 1, gross_price: roundedPrice }
+            ? {
+                ...item,
+                quantity: normalizeQuantityForType(item.product_type, item.quantity + quantityStep),
+                gross_price: roundedPrice
+              }
             : item
         )
       )
@@ -778,7 +803,7 @@ export default function POSPage() {
         linear_material_id: product.linear_material_id,
         name: product.name,
         sku: product.sku,
-        quantity: 1,
+        quantity: initialQuantity,
         gross_price: roundedPrice,
         net_price: product.net_price,
         currency_name: product.currency_name,
@@ -801,6 +826,12 @@ export default function POSPage() {
   // Remove item from cart
   const handleRemoveFromCart = (itemId: string) => {
     setCartItems(prev => prev.filter(item => item.id !== itemId))
+    setQuantityInputs(prev => {
+      if (!(itemId in prev)) return prev
+      const next = { ...prev }
+      delete next[itemId]
+      return next
+    })
     // Clear last scanned barcode to allow re-scanning the same item
     lastScannedBarcodeRef.current = null
     // Clear barcode input and refocus for next scan
@@ -815,9 +846,12 @@ export default function POSPage() {
       return
     }
     setCartItems(prev =>
-      prev.map(item =>
-        item.id === itemId ? { ...item, quantity: newQuantity } : item
-      )
+      prev.flatMap(item => {
+        if (item.id !== itemId) return [item]
+        const normalized = normalizeQuantityForType(item.product_type, newQuantity)
+        if (normalized <= 0) return []
+        return [{ ...item, quantity: normalized }]
+      })
     )
   }
 
@@ -827,7 +861,43 @@ export default function POSPage() {
       prev.map(item => {
         if (item.id !== itemId) return item
         const newQuantity = item.quantity * multiplier
-        return { ...item, quantity: newQuantity }
+        return { ...item, quantity: normalizeQuantityForType(item.product_type, newQuantity) }
+      })
+    )
+  }
+
+  const handleToggleCartItemExpansion = (itemId: string) => {
+    setExpandedCartItems(prev => {
+      const next = new Set(prev)
+      if (next.has(itemId)) {
+        next.delete(itemId)
+      } else {
+        next.add(itemId)
+      }
+      return next
+    })
+  }
+
+  const getItemVatRate = (item: CartItem): number => {
+    if (item.net_price <= 0) return 0
+    return ((item.gross_price - item.net_price) / item.net_price) * 100
+  }
+
+  const handleItemGrossPriceChange = (itemId: string, newGrossPrice: number) => {
+    setCartItems(prev =>
+      prev.map(item => {
+        if (item.id !== itemId) return item
+        const safeGross = Math.max(0, Math.round(newGrossPrice))
+        const vatRate = getItemVatRate(item)
+        const recalculatedNet = vatRate > 0
+          ? Math.round(safeGross / (1 + vatRate / 100))
+          : safeGross
+
+        return {
+          ...item,
+          gross_price: safeGross,
+          net_price: recalculatedNet
+        }
       })
     )
   }
@@ -873,7 +943,7 @@ export default function POSPage() {
     if (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0) {
       return Math.round(baseSubtotal - (item.discount_amount * item.quantity))
     }
-    return baseSubtotal
+    return Math.round(baseSubtotal)
   }
 
   // Search products (with debouncing and request cancellation)
@@ -1083,7 +1153,7 @@ export default function POSPage() {
     const itemsTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
     const subtotal = itemsTotal + feesTotal
-    return (subtotal * discountPercent) / 100
+    return Math.round((subtotal * discountPercent) / 100)
   }, [cartItems, fees, discountPercent])
 
   // Handle delete discount
@@ -1102,7 +1172,7 @@ export default function POSPage() {
     const itemsTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
     const subtotal = itemsTotal + feesTotal
-    return (subtotal * discount.percent) / 100
+    return Math.round((subtotal * discount.percent) / 100)
   }, [cartItems, fees, discount])
 
   // Calculate total in real-time
@@ -1110,7 +1180,7 @@ export default function POSPage() {
     const itemsTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
     const subtotal = itemsTotal + feesTotal
-    return subtotal - discountAmount
+    return Math.round(subtotal - discountAmount)
   }, [cartItems, fees, discountAmount])
 
   // Handle payment type click - opens confirmation modal
@@ -1155,7 +1225,7 @@ export default function POSPage() {
       const cartTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
       const feesTotal = fees.reduce((sum, fee) => sum + fee.amount, 0)
       const subtotalBeforeDiscount = cartTotal + feesTotal
-      const discountAmount = discount ? (subtotalBeforeDiscount * discount.percent) / 100 : 0
+      const discountAmount = discount ? Math.round((subtotalBeforeDiscount * discount.percent) / 100) : 0
 
       // Build items payload
       const itemsPayload = cartItems.map(item => ({
@@ -1197,26 +1267,10 @@ export default function POSPage() {
         }
       })
 
-      // Build customer payload
-      const customerPayload = selectedCustomer ? {
-        name: selectedCustomer.name || null,
-        email: selectedCustomer.email || null,
-        mobile: selectedCustomer.mobile || null,
-        billing_name: selectedCustomer.billing_name || null,
-        billing_country: selectedCustomer.billing_country || null,
-        billing_city: selectedCustomer.billing_city || null,
-        billing_postal_code: selectedCustomer.billing_postal_code || null,
-        billing_street: selectedCustomer.billing_street || null,
-        billing_house_number: selectedCustomer.billing_house_number || null,
-        billing_tax_number: selectedCustomer.billing_tax_number || null,
-        billing_company_reg_number: selectedCustomer.billing_company_reg_number || null
-      } : {}
-
       // Build request payload
       const payload = {
         worker_id: workerId,
         payment_type: pendingPaymentType,
-        customer: customerPayload,
         discount: {
           percentage: discount?.percent || 0,
           amount: discountAmount
@@ -1243,11 +1297,10 @@ export default function POSPage() {
       // Success - clear everything
       toast.success(`Rendelés sikeresen létrehozva: ${data.pos_order?.pos_order_number || ''}`)
       
-      // Clear cart, fees, discount, customer
+      // Clear cart, fees, discount
       setCartItems([])
       setFees([])
       setDiscount(null)
-      setSelectedCustomer(null)
       
       // Clear session storage
       sessionStorage.removeItem('pda_cart')
@@ -1324,101 +1377,54 @@ export default function POSPage() {
 
       {/* Fixed Top Section */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200">
-        {/* Customer Selection */}
+        {/* Scan-first controls */}
         <div className="p-3 space-y-2">
-          {/* Customer Dropdown - Only show if no customer selected */}
-          {!selectedCustomer && (
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Ügyfél keresése..."
-                value={customerSearchTerm}
-                onChange={(e) => {
-                  setCustomerSearchTerm(e.target.value)
-                  setIsEditingField(true)
-                }}
-                onFocus={() => setIsEditingField(true)}
-                onBlur={() => {
-                  setTimeout(() => {
-                    setIsEditingField(false)
-                    // Clear search if no customer selected
-                    if (!selectedCustomer) {
-                      setCustomerSearchTerm('')
-                    }
-                  }, 200)
-                }}
-                className="w-full px-3 py-2 text-base border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
-              />
-              {/* Customer Dropdown Results */}
-              {customerSearchTerm.trim().length >= 2 && (
-                <div className="absolute z-20 w-full mt-1 bg-white border-2 border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                  {isLoadingCustomers ? (
-                    <div className="p-4 text-center text-gray-500">Keresés...</div>
-                  ) : customers.length > 0 ? (
-                    customers.map((customer) => (
-                      <div
-                        key={customer.id}
-                        onClick={() => {
-                          setSelectedCustomer(customer)
-                          setCustomerSearchTerm(customer.name)
-                          setIsEditingField(false)
-                        }}
-                        className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0 active:bg-blue-100"
-                      >
-                        <p className="font-semibold text-gray-900">{customer.name}</p>
-                        {customer.email && (
-                          <p className="text-xs text-gray-500">{customer.email}</p>
-                        )}
-                        {customer.mobile && (
-                          <p className="text-xs text-gray-500">{customer.mobile}</p>
-                        )}
-                        {customer.discount_percent && customer.discount_percent > 0 && (
-                          <p className="text-xs text-orange-600 font-semibold mt-1">
-                            Kedvezmény: {customer.discount_percent}%
-                          </p>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-4 text-center text-gray-500">Nincs találat</div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Selected Customer Display */}
-            {selectedCustomer && (
-              <div className="p-2.5 bg-blue-50 border-2 border-blue-200 rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-gray-900">{selectedCustomer.name}</p>
-                  {selectedCustomer.email && (
-                    <p className="text-xs text-gray-500">{selectedCustomer.email}</p>
-                  )}
-                </div>
-                <button
-                  onClick={() => {
-                    setSelectedCustomer(null)
-                    setCustomerSearchTerm('')
-                  }}
-                  className="w-8 h-8 rounded-full border-2 border-red-300 text-red-600 flex items-center justify-center active:bg-red-50 active:scale-95 transition-all"
-                  aria-label="Ügyfél eltávolítása"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-
+          <div className="flex items-center justify-between px-1">
+            <p className="text-xs font-semibold text-emerald-700">Szkenner aktiv</p>
+            <p className="text-xs text-gray-500">Tipus: vonalkod / SKU / nev</p>
+          </div>
           {/* Product Search */}
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Keresés név vagy SKU alapján..."
+            placeholder="Vonalkód / SKU / Név"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return
+              e.preventDefault()
+
+              const firstResult = searchResults[0]
+              if (firstResult) {
+                const addedItemId = handleAddToCart(firstResult)
+                if (addedItemId) {
+                  setHighlightedCartItemId(addedItemId)
+                  if (highlightTimeoutRef.current) {
+                    clearTimeout(highlightTimeoutRef.current)
+                  }
+                  highlightTimeoutRef.current = setTimeout(() => {
+                    setHighlightedCartItemId(null)
+                  }, 1000)
+                }
+                setSearchTerm('')
+                return
+              }
+
+              const maybeBarcode = searchTerm.trim()
+              if (looksLikeBarcodeInput(maybeBarcode)) {
+                handleBarcodeScan(maybeBarcode)
+              }
+            }}
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData('text')
+              if (!looksLikeBarcodeInput(pasted)) return
+              e.preventDefault()
+              const maybeBarcode = pasted.trim()
+              setSearchTerm(maybeBarcode)
+              setTimeout(() => {
+                handleBarcodeScan(maybeBarcode)
+              }, 0)
+            }}
             onFocus={() => setIsEditingField(true)}
             onBlur={() => {
               setTimeout(() => setIsEditingField(false), 100)
@@ -1501,7 +1507,7 @@ export default function POSPage() {
                         </div>
                         <div className="text-right flex-shrink min-w-0 max-w-[120px]">
                           <p className="font-semibold text-gray-900 text-base truncate">
-                            {displayPrice.toLocaleString('hu-HU')} {product.currency_name}
+                            {formatPriceInteger(displayPrice)} {product.currency_name}
                           </p>
                         </div>
                       </div>
@@ -1527,6 +1533,7 @@ export default function POSPage() {
               {/* Cart Items */}
               {cartItems.map((item) => {
                 const hasDiscount = (item.discount_percentage !== undefined && item.discount_percentage !== null && item.discount_percentage > 0) || (item.discount_amount !== undefined && item.discount_amount !== null && item.discount_amount > 0)
+                const cartItemExpanded = expandedCartItems.has(item.id)
                 const isExpanded = expandedDiscountItems.has(item.id)
                 const originalSubtotal = item.quantity * item.gross_price
                 const discountedSubtotal = getItemSubtotal(item)
@@ -1548,7 +1555,24 @@ export default function POSPage() {
                         {item.sku && (
                           <p className="text-xs text-gray-500 mt-0.5 break-words">SKU: {item.sku}</p>
                         )}
+                        {(item.product_type === 'material' || item.product_type === 'linear_material') && (
+                          <p className="text-xs text-gray-500 mt-0.5 break-words">
+                            {item.product_type === 'material'
+                              ? `${item.length_mm}×${item.width_mm}×${item.thickness_mm} mm`
+                              : `${item.length}×${item.width}×${item.thickness} mm`}
+                          </p>
+                        )}
                       </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleToggleCartItemExpansion(item.id)
+                        }}
+                        className="px-2 py-1 text-xs font-semibold rounded border border-gray-300 text-gray-700 active:bg-gray-100 transition-all"
+                        aria-label="Tetel reszletek"
+                      >
+                        {cartItemExpanded ? 'Reszletek -' : 'Reszletek +'}
+                      </button>
                       {/* Discount Badge - Clickable to expand */}
                       {hasDiscount && (
                         <button
@@ -1568,7 +1592,7 @@ export default function POSPage() {
                       {/* Left: Unit Price - Allow shrinking */}
                       <div className="flex-shrink min-w-0 max-w-[90px]">
                         <p className="text-xs text-gray-600 truncate">
-                          {item.gross_price.toLocaleString('hu-HU')} Ft / db
+                          {formatPriceInteger(item.gross_price)} Ft / db
                         </p>
                       </div>
 
@@ -1578,22 +1602,48 @@ export default function POSPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleQuantityChange(item.id, item.quantity - 1)
+                              const step = item.product_type === 'accessory' ? 1 : MEASURE_MIN_QTY
+                              handleQuantityChange(item.id, item.quantity - step)
                             }}
                             className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség csökkentése"
                           >
                             <MinusIcon />
                           </button>
-                          <div className={`w-10 text-center font-semibold text-base ${
-                            highlightedCartItemId === item.id ? 'text-green-600' : 'text-gray-900'
-                          }`}>
-                            {item.quantity}
-                          </div>
+                          <input
+                            type="text"
+                            value={quantityInputs[item.id] ?? formatQuantityDisplay(item)}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              setQuantityInputs(prev => ({ ...prev, [item.id]: raw }))
+                            }}
+                            onFocus={() => setIsEditingField(true)}
+                            onBlur={() => {
+                              const raw = quantityInputs[item.id]
+                              if (raw !== undefined) {
+                                const parsed = parseQuantityInput(raw)
+                                if (parsed !== null && Number.isFinite(parsed)) {
+                                  handleQuantityChange(item.id, parsed)
+                                }
+                                setQuantityInputs(prev => {
+                                  const next = { ...prev }
+                                  delete next[item.id]
+                                  return next
+                                })
+                              }
+                              setTimeout(() => setIsEditingField(false), 80)
+                            }}
+                            className={`w-16 text-center font-semibold text-base border rounded px-1 py-1 ${
+                              highlightedCartItemId === item.id ? 'text-green-600 border-green-400' : 'text-gray-900 border-gray-300'
+                            }`}
+                            inputMode={item.product_type === 'accessory' ? 'numeric' : 'decimal'}
+                            aria-label="Mennyiseg szerkesztese"
+                          />
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleQuantityChange(item.id, item.quantity + 1)
+                              const step = item.product_type === 'accessory' ? 1 : MEASURE_MIN_QTY
+                              handleQuantityChange(item.id, item.quantity + step)
                             }}
                             className="w-9 h-9 rounded-lg border-2 border-gray-300 text-gray-700 flex items-center justify-center active:bg-gray-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség növelése"
@@ -1636,7 +1686,7 @@ export default function POSPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleQuantityChange(item.id, 1)
+                              handleQuantityChange(item.id, item.product_type === 'accessory' ? 1 : MEASURE_MIN_QTY)
                             }}
                             className="px-1.5 py-0.5 text-xs font-semibold rounded border-2 border-red-300 text-red-700 bg-red-50 active:bg-red-100 active:scale-95 transition-all touch-manipulation"
                             aria-label="Mennyiség visszaállítása 1-re"
@@ -1652,20 +1702,52 @@ export default function POSPage() {
                           {hasDiscount ? (
                             <div>
                               <p className="text-xs text-gray-400 line-through truncate">
-                                {originalSubtotal.toLocaleString('hu-HU')} Ft
+                                {formatPriceInteger(originalSubtotal)} Ft
                               </p>
                               <p className="font-semibold text-orange-600 text-sm truncate">
-                                {discountedSubtotal.toLocaleString('hu-HU')} Ft
+                                {formatPriceInteger(discountedSubtotal)} Ft
                               </p>
                             </div>
                           ) : (
                             <p className="font-semibold text-gray-900 text-sm truncate">
-                              {originalSubtotal.toLocaleString('hu-HU')} Ft
+                              {formatPriceInteger(originalSubtotal)} Ft
                             </p>
                           )}
                         </div>
                       </div>
                     </div>
+
+                    {cartItemExpanded && (
+                      <div className="mt-2 pt-2 border-t border-gray-200 grid grid-cols-1 gap-2">
+                        <div className="text-xs text-gray-600">
+                          Nettó egységár: <span className="font-semibold text-gray-900">{formatPriceInteger(item.net_price)} Ft</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label htmlFor={`item-gross-price-input-${item.id}`} className="text-xs text-gray-600 whitespace-nowrap">
+                            Bruttó egységár:
+                          </label>
+                          <input
+                            id={`item-gross-price-input-${item.id}`}
+                            data-accordion-field="true"
+                            type="number"
+                            step={1}
+                            min={0}
+                            value={Math.round(item.gross_price)}
+                            onChange={(e) => {
+                              const raw = e.target.value
+                              const parsed = raw === '' ? 0 : parseFloat(raw)
+                              handleItemGrossPriceChange(item.id, Number.isFinite(parsed) ? parsed : 0)
+                            }}
+                            onFocus={() => setIsEditingField(true)}
+                            onBlur={() => {
+                              setTimeout(() => setIsEditingField(false), 100)
+                            }}
+                            className="w-28 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                          />
+                          <span className="text-xs text-gray-500">Ft</span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Expandable Discount Section */}
                     {isExpanded && (
@@ -1700,9 +1782,9 @@ export default function POSPage() {
                         </div>
                         {hasDiscount && (
                           <div className="text-xs text-gray-600">
-                            <p>Eredeti: {originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                            <p>Eredeti: {formatPriceInteger(originalSubtotal)} Ft</p>
                             <p className="text-orange-600 font-semibold">
-                              Kedvezményes: {discountedSubtotal.toLocaleString('hu-HU')} Ft
+                              Kedvezményes: {formatPriceInteger(discountedSubtotal)} Ft
                             </p>
                           </div>
                         )}
@@ -1761,7 +1843,7 @@ export default function POSPage() {
                         {/* Right: Amount */}
                         <div className="flex-shrink min-w-0 max-w-[120px]">
                           <p className="font-semibold text-gray-900 text-sm truncate">
-                            {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                            {formatPriceInteger(fee.amount)} {fee.currency_name}
                           </p>
                         </div>
                       </div>
@@ -1804,7 +1886,7 @@ export default function POSPage() {
                       {/* Right: Amount */}
                       <div className="flex-shrink min-w-0 max-w-[120px]">
                         <p className="font-semibold text-gray-900 text-sm truncate">
-                          -{discountAmount.toLocaleString('hu-HU')} Ft
+                          -{formatPriceInteger(discountAmount)} Ft
                         </p>
                       </div>
                     </div>
@@ -1824,7 +1906,7 @@ export default function POSPage() {
           <div className="flex-1">
             <p className="text-sm text-gray-600 mb-1">Összesen</p>
             <p className="text-2xl font-bold text-gray-900">
-              {total.toLocaleString('hu-HU')} Ft
+              {formatPriceInteger(total)} Ft
             </p>
           </div>
 
@@ -1907,7 +1989,7 @@ export default function POSPage() {
           <div className="flex-shrink-0 bg-white border-b border-gray-200 p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold text-gray-900">
-                Megrendelő neve: {selectedCustomer ? selectedCustomer.name : 'Üzleti vásárló'}
+                Megrendelő neve: Üzleti vásárló
               </h2>
               <button
                 onClick={() => setPaymentModalOpen(false)}
@@ -1961,18 +2043,18 @@ export default function POSPage() {
                       <p className="text-xs text-orange-600 font-semibold break-words">Kedvezmény: {discountPercent}%</p>
                     )}
                   </div>
-                  <div className="text-center text-sm text-gray-900">{item.quantity}</div>
+                  <div className="text-center text-sm text-gray-900">{formatQuantityDisplay(item)}</div>
                   <div className="text-right text-sm text-gray-900">
-                    {item.gross_price.toLocaleString('hu-HU')} Ft
+                    {formatPriceInteger(item.gross_price)} Ft
                   </div>
                   <div className="text-right text-sm font-semibold">
                     {hasDiscount ? (
                       <div>
-                        <p className="text-xs text-gray-400 line-through">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
-                        <p className="text-orange-600">{discountedSubtotal.toLocaleString('hu-HU')} Ft</p>
+                        <p className="text-xs text-gray-400 line-through">{formatPriceInteger(originalSubtotal)} Ft</p>
+                        <p className="text-orange-600">{formatPriceInteger(discountedSubtotal)} Ft</p>
                       </div>
                     ) : (
-                      <p className="text-gray-900">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                      <p className="text-gray-900">{formatPriceInteger(originalSubtotal)} Ft</p>
                     )}
                   </div>
                 </div>
@@ -1988,10 +2070,10 @@ export default function POSPage() {
                   </div>
                   <div className="text-center text-sm text-gray-900">1</div>
                   <div className="text-right text-sm text-gray-900">
-                    {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                    {formatPriceInteger(fee.amount)} {fee.currency_name}
                   </div>
                   <div className="text-right text-sm font-semibold text-gray-900">
-                    {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                    {formatPriceInteger(fee.amount)} {fee.currency_name}
                   </div>
                 </div>
               ))}
@@ -2006,7 +2088,7 @@ export default function POSPage() {
                   <div className="text-center text-sm text-gray-900">{discount.percent}%</div>
                   <div className="text-right text-sm text-gray-900">-</div>
                   <div className="text-right text-sm font-semibold text-red-600">
-                    -{discountAmount.toLocaleString('hu-HU')} Ft
+                    -{formatPriceInteger(discountAmount)} Ft
                   </div>
                 </div>
               )}
@@ -2019,7 +2101,7 @@ export default function POSPage() {
             <div className="flex justify-between items-center">
               <p className="text-lg font-semibold text-gray-900">Összesen:</p>
               <p className="text-2xl font-bold text-gray-900">
-                {total.toLocaleString('hu-HU')} Ft
+                {formatPriceInteger(total)} Ft
               </p>
             </div>
 
@@ -2121,18 +2203,18 @@ export default function POSPage() {
                       <p className="text-xs text-orange-600 font-semibold break-words">Kedvezmény: {discountPercent}%</p>
                     )}
                   </div>
-                  <div className="text-center text-sm text-gray-900">{item.quantity}</div>
+                  <div className="text-center text-sm text-gray-900">{formatQuantityDisplay(item)}</div>
                   <div className="text-right text-sm text-gray-900">
-                    {item.gross_price.toLocaleString('hu-HU')} Ft
+                    {formatPriceInteger(item.gross_price)} Ft
                   </div>
                   <div className="text-right text-sm font-semibold">
                     {hasDiscount ? (
                       <div>
-                        <p className="text-xs text-gray-400 line-through">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
-                        <p className="text-orange-600">{discountedSubtotal.toLocaleString('hu-HU')} Ft</p>
+                        <p className="text-xs text-gray-400 line-through">{formatPriceInteger(originalSubtotal)} Ft</p>
+                        <p className="text-orange-600">{formatPriceInteger(discountedSubtotal)} Ft</p>
                       </div>
                     ) : (
-                      <p className="text-gray-900">{originalSubtotal.toLocaleString('hu-HU')} Ft</p>
+                      <p className="text-gray-900">{formatPriceInteger(originalSubtotal)} Ft</p>
                     )}
                   </div>
                 </div>
@@ -2153,10 +2235,10 @@ export default function POSPage() {
                       </div>
                       <div className="text-center text-sm text-gray-900">1</div>
                       <div className="text-right text-sm text-gray-900">
-                        {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                        {formatPriceInteger(fee.amount)} {fee.currency_name}
                       </div>
                       <div className="text-right text-sm font-semibold text-gray-900">
-                        {fee.amount.toLocaleString('hu-HU')} {fee.currency_name}
+                        {formatPriceInteger(fee.amount)} {fee.currency_name}
                       </div>
                     </div>
                   ))}
@@ -2177,7 +2259,7 @@ export default function POSPage() {
                     <div className="text-center text-sm text-gray-900">{discount.percent}%</div>
                     <div className="text-right text-sm text-gray-900">-</div>
                     <div className="text-right text-sm font-semibold text-red-600">
-                      -{discountAmount.toLocaleString('hu-HU')} Ft
+                      -{formatPriceInteger(discountAmount)} Ft
                     </div>
                   </div>
                 </>
@@ -2191,7 +2273,7 @@ export default function POSPage() {
             <div className="flex justify-between items-center">
               <p className="text-lg font-semibold text-gray-900">Összesen:</p>
               <p className="text-2xl font-bold text-gray-900">
-                {total.toLocaleString('hu-HU')} Ft
+                {formatPriceInteger(total)} Ft
               </p>
             </div>
             <div className="text-right">
@@ -2377,7 +2459,7 @@ export default function POSPage() {
               />
               {discountPercent > 0 && (
                 <p className="text-xs text-gray-500 mt-1">
-                  Kedvezmény összege: {discountAmountPreview.toLocaleString('hu-HU')} Ft
+                  Kedvezmény összege: {formatPriceInteger(discountAmountPreview)} Ft
                 </p>
               )}
             </div>

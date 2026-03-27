@@ -1199,14 +1199,21 @@ export default function PosClient({ customers, workers }: PosClientProps) {
     return fee.price * fee.quantity
   }
 
-  // Calculate total
-  const total = useMemo(() => {
+  const subtotalBeforeGlobalDiscount = useMemo(() => {
     const cartTotal = cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     const feesTotal = fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)
-    const subtotal = cartTotal + feesTotal
-    const discountAmount = discount ? (subtotal * discount.percentage) / 100 : 0
-    return subtotal - discountAmount
-  }, [cartItems, fees, discount])
+    return cartTotal + feesTotal
+  }, [cartItems, fees])
+
+  const globalDiscountAmount = useMemo(() => {
+    if (!discount) return 0
+    return Math.round((subtotalBeforeGlobalDiscount * discount.percentage) / 100)
+  }, [subtotalBeforeGlobalDiscount, discount])
+
+  // Calculate total
+  const total = useMemo(() => {
+    return subtotalBeforeGlobalDiscount - globalDiscountAmount
+  }, [subtotalBeforeGlobalDiscount, globalDiscountAmount])
 
   // Add discount manually
   const handleAddDiscount = () => {
@@ -1301,7 +1308,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
       const cartTotal = validCartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0)
       const feesTotal = fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)
       const subtotalBeforeDiscount = cartTotal + feesTotal
-      const discountAmount = discount ? (subtotalBeforeDiscount * discount.percentage) / 100 : 0
+      const discountAmount = discount ? Math.round((subtotalBeforeDiscount * discount.percentage) / 100) : 0
 
       // Build items payload (use validated cart items)
       const itemsPayload = validCartItems.map(item => ({
@@ -2591,7 +2598,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           {/* Column 4: Bruttó Részösszeg - Discount Amount */}
                           <TableCell align="right">
                             <Typography variant="body2" color="error" fontWeight="bold">
-                              -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
+                              -{formatPriceInteger(globalDiscountAmount)} HUF
                             </Typography>
                           </TableCell>
 
@@ -2888,7 +2895,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                           <TableCell>{discount.name}</TableCell>
                           <TableCell align="center">{discount.percentage}%</TableCell>
                           <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                            -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
+                            -{formatPriceInteger(globalDiscountAmount)} HUF
                           </TableCell>
                         </TableRow>
                       </TableBody>
@@ -3207,7 +3214,7 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                       <TableCell>{discount.name}</TableCell>
                       <TableCell align="center">{discount.percentage}%</TableCell>
                       <TableCell align="right" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                        -{formatPriceInteger((cartItems.reduce((sum, item) => sum + getItemSubtotal(item), 0) + fees.reduce((sum, fee) => sum + getFeeSubtotal(fee), 0)) * discount.percentage / 100)} HUF
+                        -{formatPriceInteger(globalDiscountAmount)} HUF
                       </TableCell>
                     </TableRow>
                   </TableBody>
