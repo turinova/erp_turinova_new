@@ -3,6 +3,7 @@
 import React from 'react'
 import { Container, Grid } from '@mui/material'
 import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
+import TodayAttendanceDashboard from '@/components/TodayAttendanceDashboard'
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
 import WeeklyWorktopProductionChart from '@/components/WeeklyWorktopProductionChart'
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
@@ -24,6 +25,19 @@ interface HomeClientProps {
   initialMonthlyWorktopQuotes: any
   initialWeeklyCutting: any
   initialWeeklyWorktopProduction: any
+  initialTodayAttendance: {
+    dateLabel: string
+    employees: Array<{
+      id: string
+      name: string
+      employee_code: string
+      shift_start_time: string | null
+      holiday_type: 'Szabadság' | 'Betegszabadság' | null
+      holiday_name: string | null
+      arrival: string | null
+      departure: string | null
+    }>
+  }
 }
 
 export default function HomeClient({ 
@@ -32,7 +46,8 @@ export default function HomeClient({
   initialMonthlySupplierOrders,
   initialMonthlyWorktopQuotes,
   initialWeeklyCutting,
-  initialWeeklyWorktopProduction
+  initialWeeklyWorktopProduction,
+  initialTodayAttendance
 }: HomeClientProps) {
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -42,7 +57,14 @@ export default function HomeClient({
           <CustomerPortalQuotesTable quotes={customerPortalQuotes} />
         </Grid>
 
-        {/* Second Row: Weekly Cutting Chart - full width */}
+        <Grid item xs={12}>
+          <TodayAttendanceDashboard
+            dateLabel={initialTodayAttendance.dateLabel}
+            employees={initialTodayAttendance.employees}
+          />
+        </Grid>
+
+        {/* Weekly Cutting Chart - full width */}
         <Grid item xs={12}>
           <WeeklyCuttingChart initialData={initialWeeklyCutting} />
         </Grid>

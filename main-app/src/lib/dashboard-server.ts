@@ -577,3 +577,117 @@ export async function getMonthlyWorktopQuotesData(range: string = 'month', offse
     monthOffset: range === 'month' ? offset : 0
   }
 }
+
+/** Budapest calendar date YYYY-MM-DD (matches business “today”). */
+function getTodayBudapestYmd(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Budapest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date())
+}
+
+function formatTimeUTC(isoString: string | null): string | null {
+  if (!isoString) return null
+  const date = new Date(isoString)
+  const hours = String(date.getUTCHours()).padStart(2, '0')
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
+export type HomeAttendanceEmployeeRow = {
+  id: string
+  name: string
+  employee_code: string
+  shift_start_time: string | null
+  holiday_type: 'Szabadság' | 'Betegszabadság' | null
+  holiday_name: string | null
+  arrival: string | null
+  departure: string | null
+}
+
+function formatBudapestDateLabel(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  if (!y || !m || !d) return ymd
+  return `${y}. ${monthNames[m - 1]} ${d}.`
+}
+
+/**
+ * Active employees merged with today’s attendance_daily_summary (Europe/Budapest).
+ */
+export async function getTodayAttendanceForHome(): Promise<{
+  dateYmd: string
+  dateLabel: string
+  employees: HomeAttendanceEmployeeRow[]
+}> {
+  const dateYmd = getTodayBudapestYmd()
+  const dateLabel = formatBudapestDateLabel(dateYmd)
+
+  const { data: employees, error: empErr } = await supabaseServer
+    .from('employees')
+    .select('id, name, employee_code, shift_start_time')
+    .eq('active', true)
+    .is('deleted_at', null)
+    .order('name', { ascending: true })
+
+  if (empErr) {
+    console.error('getTodayAttendanceForHome employees:', empErr)
+    return { dateYmd, dateLabel, employees: [] }
+  }
+
+  const { data: summary, error: sumErr } = await supabaseServer
+    .from('attendance_daily_summary')
+    .select('employee_id, latest_arrival_time, latest_departure_time')
+    .eq('scan_date', dateYmd)
+
+  if (sumErr) {
+    console.error('getTodayAttendanceForHome summary:', sumErr)
+    return { dateYmd, dateLabel, employees: [] }
+  }
+
+  const { data: holidayRows, error: holErr } = await supabaseServer
+    .from('employee_holidays')
+    .select('employee_id, type, name')
+    .eq('date', dateYmd)
+
+  if (holErr) {
+    console.error('getTodayAttendanceForHome holidays:', holErr)
+    return { dateYmd, dateLabel, employees: [] }
+  }
+
+  const byEmp = new Map<string, { arrival: string | null; departure: string | null }>()
+  for (const row of summary || []) {
+    byEmp.set(row.employee_id, {
+      arrival: formatTimeUTC(row.latest_arrival_time),
+      departure: formatTimeUTC(row.latest_departure_time)
+    })
+  }
+
+  const holidayByEmp = new Map<string, { type: 'Szabadság' | 'Betegszabadság'; name: string | null }>()
+  for (const row of holidayRows || []) {
+    if (row.type === 'Szabadság' || row.type === 'Betegszabadság') {
+      holidayByEmp.set(row.employee_id, {
+        type: row.type,
+        name: row.name ?? null
+      })
+    }
+  }
+
+  const merged: HomeAttendanceEmployeeRow[] = (employees || []).map(emp => {
+    const s = byEmp.get(emp.id)
+    const rawShift = emp.shift_start_time as string | null | undefined
+    return {
+      id: emp.id,
+      name: emp.name,
+      employee_code: emp.employee_code,
+      shift_start_time: rawShift && String(rawShift).trim() ? String(rawShift).trim() : null,
+      holiday_type: holidayByEmp.get(emp.id)?.type ?? null,
+      holiday_name: holidayByEmp.get(emp.id)?.name ?? null,
+      arrival: s?.arrival ?? null,
+      departure: s?.departure ?? null
+    }
+  })
+
+  return { dateYmd, dateLabel, employees: merged }
+}

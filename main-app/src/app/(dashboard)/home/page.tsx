@@ -6,7 +6,8 @@ import {
   getMonthlySupplierOrdersData, 
   getMonthlyWorktopQuotesData,
   getWeeklyCuttingData,
-  getWeeklyWorktopProductionData
+  getWeeklyWorktopProductionData,
+  getTodayAttendanceForHome
 } from '@/lib/dashboard-server'
 
 export const metadata: Metadata = {
@@ -15,13 +16,22 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   // Fetch all dashboard data in parallel with SSR for optimal performance
-  const [customerPortalQuotes, monthlyQuotes, monthlySupplierOrders, monthlyWorktopQuotes, weeklyCutting, weeklyWorktopProduction] = await Promise.all([
+  const [
+    customerPortalQuotes,
+    monthlyQuotes,
+    monthlySupplierOrders,
+    monthlyWorktopQuotes,
+    weeklyCutting,
+    weeklyWorktopProduction,
+    todayAttendance
+  ] = await Promise.all([
     getCustomerPortalDraftQuotes(),
     getMonthlyQuotesData('month', 0),
     getMonthlySupplierOrdersData('month', 0),
     getMonthlyWorktopQuotesData('month', 0),
     getWeeklyCuttingData(0),
-    getWeeklyWorktopProductionData(0)
+    getWeeklyWorktopProductionData(0),
+    getTodayAttendanceForHome()
   ])
   
   return (
@@ -32,6 +42,7 @@ export default async function Page() {
       initialMonthlyWorktopQuotes={monthlyWorktopQuotes}
       initialWeeklyCutting={weeklyCutting}
       initialWeeklyWorktopProduction={weeklyWorktopProduction}
+      initialTodayAttendance={todayAttendance}
     />
   )
 }
