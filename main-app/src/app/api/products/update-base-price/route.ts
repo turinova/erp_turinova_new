@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { fallbackAccessoryGrossFromNet } from '@/lib/accessory-selling-price'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -115,9 +116,7 @@ export async function POST(request: NextRequest) {
 
         const vatRate = vatData.kulcs || 0
         const new_net_price = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
-        const new_gross_price = Math.round(new_net_price + (new_net_price * vatRate / 100))
-        
-        updateData.gross_price = new_gross_price
+        updateData.gross_price = fallbackAccessoryGrossFromNet(new_net_price, vatRate)
       }
     }
 
@@ -214,19 +213,8 @@ export async function POST(request: NextRequest) {
           console.log('Linear material price history logged successfully')
         }
       } else if (product_type === 'accessory') {
-        // Calculate new net_price and gross_price (trigger will update net_price, but we need both for history)
         const new_net_price = Math.round(new_base_price * parseFloat(new_multiplier.toFixed(3)))
-        
-        // Fetch VAT rate to calculate gross_price for history
-        const { data: vatData } = await supabaseServer
-          .from('vat')
-          .select('kulcs')
-          .eq('id', currentData.vat_id)
-          .single()
-        
-        const vatRate = vatData?.kulcs || 0
-        const new_gross_price = Math.round(new_net_price + (new_net_price * vatRate / 100))
-        
+
         const historyData = {
           accessory_id: product_id,
           old_base_price: currentData.base_price,

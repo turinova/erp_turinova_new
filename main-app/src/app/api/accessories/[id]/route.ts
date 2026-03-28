@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -54,11 +55,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'Accessory not found' }, { status: 404 })
     }
 
-    // Transform the data to include calculated fields
-    // Use stored gross_price if available, otherwise calculate as fallback
-    const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
-    const finalGrossPrice = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
-    
+    const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(data)
+
     const transformedData = {
       ...data,
       vat_name: data.vat?.name || '',
@@ -67,8 +65,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       unit_name: data.units?.name || '',
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
-      vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: finalGrossPrice
+      vat_amount,
+      gross_price: resolvedGross
     }
 
     return NextResponse.json(transformedData)
@@ -278,11 +276,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Transform the data to include calculated fields
-    // Use stored gross_price if available, otherwise calculate as fallback
-    const calculatedGrossPriceResponse = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
-    const finalGrossPriceResponse = data.gross_price !== null ? data.gross_price : calculatedGrossPriceResponse
-    
+    const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(data)
+
     const transformedData = {
       ...data,
       vat_name: data.vat?.name || '',
@@ -291,8 +286,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       unit_name: data.units?.name || '',
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
-      vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: finalGrossPriceResponse
+      vat_amount,
+      gross_price: resolvedGross
     }
 
     console.log('Accessory updated successfully:', transformedData.name)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +26,7 @@ export async function GET(request: NextRequest) {
           name,
           sku,
           net_price,
+          gross_price,
           vat_id,
           currency_id,
           units_id,
@@ -54,6 +56,7 @@ export async function GET(request: NextRequest) {
           name,
           sku,
           net_price,
+          gross_price,
           vat_id,
           currency_id,
           units_id,
@@ -98,7 +101,7 @@ export async function GET(request: NextRequest) {
     const accessories = uniqueAccessories.map((acc) => {
       const vatPercent = acc.vat?.kulcs || 0
       const net_price = acc.net_price || 0
-      const gross_price = net_price + ((net_price * vatPercent) / 100)
+      const { gross_price } = resolveAccessorySellingGrossFromRow(acc)
 
       return {
         id: acc.id,

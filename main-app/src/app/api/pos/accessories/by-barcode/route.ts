@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { resolveAccessorySellingGross } from '@/lib/accessory-selling-price'
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,6 +23,7 @@ export async function GET(request: NextRequest) {
       name,
       sku,
       net_price,
+      gross_price,
       base_price,
       image_url,
       deleted_at,
@@ -80,7 +82,11 @@ export async function GET(request: NextRequest) {
     }
 
     const vatPercent = accessoryData.vat?.kulcs || 0
-    const gross_price = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
+    const gross_price = resolveAccessorySellingGross({
+      netPrice: accessoryData.net_price,
+      grossPriceFromDb: accessoryData.gross_price,
+      vatKulcs: vatPercent,
+    })
 
     return NextResponse.json({
       id: accessoryData.id,

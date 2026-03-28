@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 export async function GET(
   request: NextRequest,
@@ -70,12 +71,7 @@ export async function GET(
     const vat = Array.isArray(accessoryData.vat) ? accessoryData.vat[0] : accessoryData.vat
     const currency = Array.isArray(accessoryData.currencies) ? accessoryData.currencies[0] : accessoryData.currencies
 
-    // Use stored gross_price if available, otherwise calculate as fallback
-    const vatPercent = vat?.kulcs || 0
-    const calculatedGrossPrice = accessoryData.net_price + ((accessoryData.net_price * vatPercent) / 100)
-    const finalGrossPrice = accessoryData.gross_price !== null && accessoryData.gross_price !== undefined
-      ? accessoryData.gross_price
-      : calculatedGrossPrice
+    const { gross_price: finalGrossPrice } = resolveAccessorySellingGrossFromRow(accessoryData)
 
     return NextResponse.json({
       id: accessoryData.id,

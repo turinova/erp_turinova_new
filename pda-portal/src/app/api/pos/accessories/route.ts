@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 export async function GET(request: NextRequest) {
   try {
@@ -131,11 +132,8 @@ export async function GET(request: NextRequest) {
     })
 
     const accessories = (accessoriesResult.data || []).map((product: any) => {
-      const vatPercent = product.vat?.kulcs || 0
       const netPrice = Number(product.net_price || 0)
-      const grossPrice = product.gross_price !== null && product.gross_price !== undefined
-        ? Number(product.gross_price)
-        : netPrice + ((netPrice * vatPercent) / 100)
+      const { gross_price: grossPrice } = resolveAccessorySellingGrossFromRow(product)
 
       return {
         id: product.id,

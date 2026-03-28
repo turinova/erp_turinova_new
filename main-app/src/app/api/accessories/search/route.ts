@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,12 +73,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to search accessories' }, { status: 500 })
     }
 
-    // Transform data to match the expected format
-    // Use stored gross_price if available, otherwise calculate as fallback
     const accessories = data?.map(accessory => {
-      const calculatedGrossPrice = Math.round((accessory.net_price || 0) * (1 + (accessory.vat?.kulcs || 0) / 100))
-      const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
-      
+      const { gross_price: finalGrossPrice, vat_amount } = resolveAccessorySellingGrossFromRow(accessory)
+
       return {
       id: accessory.id,
       name: accessory.name,
@@ -99,7 +97,7 @@ export async function GET(request: NextRequest) {
       unit_name: accessory.units?.name || '',
       unit_shortform: accessory.units?.shortform || '',
       partner_name: accessory.partners?.name || '',
-      vat_amount: Math.round((accessory.net_price || 0) * (accessory.vat?.kulcs || 0) / 100),
+      vat_amount,
         gross_price: finalGrossPrice
       }
     }) || []

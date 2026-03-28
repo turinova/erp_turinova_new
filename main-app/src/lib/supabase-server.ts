@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 // Performance timing utilities
 const isDev = process.env.NODE_ENV !== 'production'
@@ -2461,12 +2462,9 @@ export async function getAllAccessories() {
     return []
   }
 
-  // Transform the data to include calculated fields
-  // Use stored gross_price if available, otherwise calculate as fallback
   const transformedData = data?.map(accessory => {
-    const calculatedGrossPrice = accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
-    const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
-    
+    const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(accessory)
+
     return {
     ...accessory,
     vat_name: accessory.vat?.name || '',
@@ -2475,8 +2473,8 @@ export async function getAllAccessories() {
     unit_name: accessory.units?.name || '',
     unit_shortform: accessory.units?.shortform || '',
     partner_name: accessory.partners?.name || '',
-    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
-      gross_price: finalGrossPrice
+    vat_amount,
+      gross_price: resolvedGross
     }
   }) || []
 
@@ -2544,12 +2542,9 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
     return { accessories: [], totalCount: 0, totalPages: 0, currentPage: page }
   }
 
-  // Transform the data to include calculated fields
-  // Use stored gross_price if available, otherwise calculate as fallback
   const transformedData = data?.map(accessory => {
-    const calculatedGrossPrice = accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
-    const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
-    
+    const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(accessory)
+
     return {
     ...accessory,
     vat_name: accessory.vat?.name || '',
@@ -2558,8 +2553,8 @@ export async function getAccessoriesWithPagination(page: number = 1, limit: numb
     unit_name: accessory.units?.name || '',
     unit_shortform: accessory.units?.shortform || '',
     partner_name: accessory.partners?.name || '',
-    vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
-      gross_price: finalGrossPrice
+    vat_amount,
+      gross_price: resolvedGross
     }
   }) || []
 
@@ -2717,11 +2712,8 @@ export async function getAccessoryById(id: string) {
     return null
   }
 
-  // Transform the data to include calculated fields
-  // Use stored gross_price if available, otherwise calculate as fallback
-  const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
-  const finalGrossPrice = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
-  
+  const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(data)
+
   const transformedData = {
     ...data,
     vat_name: data.vat?.name || '',
@@ -2730,8 +2722,8 @@ export async function getAccessoryById(id: string) {
     unit_name: data.units?.name || '',
     unit_shortform: data.units?.shortform || '',
     partner_name: data.partners?.name || '',
-    vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-    gross_price: finalGrossPrice
+    vat_amount,
+    gross_price: resolvedGross
   }
 
   return transformedData

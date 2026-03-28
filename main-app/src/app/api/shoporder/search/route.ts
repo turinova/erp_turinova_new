@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 import { supabaseServer } from '../../../../lib/supabase-server'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 // GET /api/shoporder/search - Search materials and linear materials for shop order
 export async function GET(request: NextRequest) {
@@ -113,6 +114,7 @@ export async function GET(request: NextRequest) {
           base_price,
           multiplier,
           net_price,
+          gross_price,
           partners_id,
           units_id,
           currency_id,
@@ -231,8 +233,9 @@ export async function GET(request: NextRequest) {
       }
     }) || []
 
-    // Transform accessories data
-    const accessories = accessoriesData?.map(accessory => ({
+    const accessories = accessoriesData?.map(accessory => {
+      const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(accessory)
+      return {
       id: accessory.id,
       name: accessory.name,
       sku: accessory.sku,
@@ -240,7 +243,7 @@ export async function GET(request: NextRequest) {
       base_price: accessory.base_price || 0,
       multiplier: accessory.multiplier || 1.38,
       net_price: accessory.net_price || 0,
-      gross_price: Math.round((accessory.net_price || 0) * (1 + (accessory.vat?.kulcs || 0) / 100)),
+      gross_price: resolvedGross,
       partners_id: accessory.partners_id,
       units_id: accessory.units_id,
       currency_id: accessory.currency_id,
@@ -250,11 +253,12 @@ export async function GET(request: NextRequest) {
       unit_shortform: accessory.units?.shortform || '',
       currency_name: accessory.currencies?.name || '',
       vat_percent: accessory.vat?.kulcs || 0,
-      vat_amount: Math.round((accessory.net_price || 0) * (accessory.vat?.kulcs || 0) / 100),
+      vat_amount,
       brand_name: '',
       dimensions: '',
       source: 'accessories'
-    })) || []
+    }
+    }) || []
 
     const totalTime = performance.now() - startTime
     console.log(`[SHOP ORDER] Search completed in ${totalTime.toFixed(2)}ms - Found ${materials.length} materials, ${linearMaterials.length} linear materials, ${accessories.length} accessories`)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase-server'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 export async function GET(request: NextRequest) {
   try {
@@ -59,9 +60,8 @@ export async function GET(request: NextRequest) {
     // Transform the data to include calculated fields
     // Use stored gross_price if available, otherwise calculate as fallback
     const transformedData = data?.map(accessory => {
-      const calculatedGrossPrice = accessory.net_price + ((accessory.net_price * (accessory.vat?.kulcs || 0)) / 100)
-      const finalGrossPrice = accessory.gross_price !== null ? accessory.gross_price : calculatedGrossPrice
-      
+      const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(accessory)
+
       return {
       ...accessory,
       vat_name: accessory.vat?.name || '',
@@ -70,8 +70,8 @@ export async function GET(request: NextRequest) {
       unit_name: accessory.units?.name || '',
       unit_shortform: accessory.units?.shortform || '',
       partner_name: accessory.partners?.name || '',
-      vat_amount: (accessory.net_price * (accessory.vat?.kulcs || 0)) / 100,
-        gross_price: finalGrossPrice
+      vat_amount,
+        gross_price: resolvedGross
       }
     }) || []
 
@@ -194,11 +194,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create accessory' }, { status: 500 })
     }
 
-    // Transform the data to include calculated fields
-    // Use stored gross_price if available, otherwise calculate as fallback
-    const calculatedGrossPrice = data.net_price + ((data.net_price * (data.vat?.kulcs || 0)) / 100)
-    const finalGrossPriceResponse = data.gross_price !== null ? data.gross_price : calculatedGrossPrice
-    
+    const { gross_price: resolvedGross, vat_amount } = resolveAccessorySellingGrossFromRow(data)
+
     const transformedData = {
       ...data,
       vat_name: data.vat?.name || '',
@@ -207,8 +204,8 @@ export async function POST(request: NextRequest) {
       unit_name: data.units?.name || '',
       unit_shortform: data.units?.shortform || '',
       partner_name: data.partners?.name || '',
-      vat_amount: (data.net_price * (data.vat?.kulcs || 0)) / 100,
-      gross_price: finalGrossPriceResponse
+      vat_amount,
+      gross_price: resolvedGross
     }
 
     console.log('Accessory created successfully:', transformedData.name)
