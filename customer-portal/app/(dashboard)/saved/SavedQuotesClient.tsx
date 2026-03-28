@@ -34,10 +34,12 @@ import {
   Delete as DeleteIcon 
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
+import { QuoteCommentSnippet } from '@/components/QuoteCommentSnippet'
 
 interface PortalQuote {
   id: string
   quote_number: string
+  comment?: string | null
   final_total_after_discount: number
   updated_at: string
 }
@@ -251,6 +253,7 @@ export default function SavedQuotesClient({
                     )}
                   </TableCell>
                   <TableCell>Árajánlat szám</TableCell>
+                  <TableCell sx={{ minWidth: 200, maxWidth: 300 }}>Megjegyzés</TableCell>
                   <TableCell align="right">Végösszeg</TableCell>
                   <TableCell>Utolsó módosítás</TableCell>
                 </TableRow>
@@ -275,6 +278,12 @@ export default function SavedQuotesClient({
                       <Typography variant="body2" fontWeight="medium">
                         {quote.quote_number}
                       </Typography>
+                    </TableCell>
+                    <TableCell
+                      sx={{ minWidth: 200, maxWidth: 300, verticalAlign: 'top' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <QuoteCommentSnippet comment={quote.comment} />
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" fontWeight="medium">

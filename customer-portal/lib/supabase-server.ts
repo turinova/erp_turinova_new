@@ -204,6 +204,7 @@ export async function getPortalOrdersWithPagination(page: number = 1, limit: num
       .select(`
         id,
         quote_number,
+        comment,
         submitted_to_company_quote_id,
         final_total_after_discount,
         updated_at,
@@ -338,6 +339,7 @@ export async function getPortalQuotesWithPagination(page: number = 1, limit: num
       .select(`
         id,
         quote_number,
+        comment,
         final_total_after_discount,
         updated_at
       `, { count: 'exact' })

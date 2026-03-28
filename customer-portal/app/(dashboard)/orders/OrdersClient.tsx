@@ -25,10 +25,12 @@ import {
   Search as SearchIcon, 
   Home as HomeIcon
 } from '@mui/icons-material'
+import { QuoteCommentSnippet } from '@/components/QuoteCommentSnippet'
 
 interface PortalOrder {
   id: string
   quote_number: string
+  comment?: string | null
   submitted_to_company_quote_id: string
   company_quote_number: string
   company_quote_status: string
@@ -196,6 +198,7 @@ export default function OrdersClient({
                 <TableRow>
                   <TableCell>Portál árajánlat</TableCell>
                   <TableCell>Céges árajánlat</TableCell>
+                  <TableCell sx={{ minWidth: 200, maxWidth: 300 }}>Megjegyzés</TableCell>
                   <TableCell align="right">Végösszeg</TableCell>
                   <TableCell>Fizetési mód</TableCell>
                   <TableCell>Fizetési állapot</TableCell>
@@ -223,6 +226,12 @@ export default function OrdersClient({
                         <Typography variant="body2" fontWeight="medium" color="primary">
                           {order.company_quote_number}
                         </Typography>
+                      </TableCell>
+                      <TableCell
+                        sx={{ minWidth: 200, maxWidth: 300, verticalAlign: 'top' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <QuoteCommentSnippet comment={order.comment} />
                       </TableCell>
                       <TableCell align="right">
                         <Typography variant="body2" fontWeight="medium">
