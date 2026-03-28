@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'react-toastify'
+import { resolveAccessorySellingGrossFromRow } from '@/lib/accessory-selling-price'
 
 interface AccessoryData {
   id: string
@@ -245,12 +246,6 @@ export default function CheckPage() {
       setIsSaving(false)
     }
   }
-
-  // Calculate current gross price for display
-  const currentGrossPrice = accessory ? (() => {
-    const vatPercent = accessory.vat?.kulcs || 0
-    return Math.round(accessory.net_price + ((accessory.net_price * vatPercent) / 100))
-  })() : 0
 
   return (
     <div className="h-full flex flex-col bg-gray-50 overflow-hidden">
