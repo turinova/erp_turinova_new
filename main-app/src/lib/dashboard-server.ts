@@ -691,3 +691,71 @@ export async function getTodayAttendanceForHome(): Promise<{
 
   return { dateYmd, dateLabel, employees: merged }
 }
+
+/** Per calendar day of current Budapest month (1 … daysInMonth). */
+export type PosOrdersGoalDay = {
+  day: number
+  count: number
+}
+
+/** Completed POS orders (not soft-deleted), Budapest calendar — for home goals widget. */
+export type PosOrdersGoalStats = {
+  todayCount: number
+  monthCount: number
+  monthDaily: PosOrdersGoalDay[]
+  budapestTodayDay: number
+  daysInMonth: number
+}
+
+function parsePosOrdersGoalStatsRpc(data: unknown): PosOrdersGoalStats {
+  const empty: PosOrdersGoalStats = {
+    todayCount: 0,
+    monthCount: 0,
+    monthDaily: [],
+    budapestTodayDay: 0,
+    daysInMonth: 0
+  }
+
+  const row = data as Record<string, unknown> | null
+  if (!row || typeof row !== 'object') {
+    return empty
+  }
+
+  const monthDailyRaw = row.month_daily
+  let monthDaily: PosOrdersGoalDay[] = []
+  if (Array.isArray(monthDailyRaw)) {
+    monthDaily = monthDailyRaw
+      .map((item: unknown) => {
+        const o = item as Record<string, unknown>
+        const day = Number(o?.day)
+        const count = Number(o?.count)
+        if (!Number.isFinite(day) || !Number.isFinite(count)) return null
+        return { day, count }
+      })
+      .filter((x): x is PosOrdersGoalDay => x !== null)
+  }
+
+  return {
+    todayCount: Number(row.today_count) || 0,
+    monthCount: Number(row.month_count) || 0,
+    monthDaily,
+    budapestTodayDay: Number(row.today_day) || 0,
+    daysInMonth: Number(row.days_in_month) || 0
+  }
+}
+
+export async function getPosOrdersGoalStats(): Promise<PosOrdersGoalStats> {
+  try {
+    const { data, error } = await supabaseServer.rpc('get_pos_orders_goal_stats')
+
+    if (error) {
+      console.error('[Dashboard] get_pos_orders_goal_stats:', error)
+      return parsePosOrdersGoalStatsRpc(null)
+    }
+
+    return parsePosOrdersGoalStatsRpc(data)
+  } catch (e) {
+    console.error('[Dashboard] getPosOrdersGoalStats:', e)
+    return parsePosOrdersGoalStatsRpc(null)
+  }
+}

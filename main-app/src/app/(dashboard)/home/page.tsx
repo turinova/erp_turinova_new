@@ -7,7 +7,8 @@ import {
   getMonthlyWorktopQuotesData,
   getWeeklyCuttingData,
   getWeeklyWorktopProductionData,
-  getTodayAttendanceForHome
+  getTodayAttendanceForHome,
+  getPosOrdersGoalStats
 } from '@/lib/dashboard-server'
 
 export const metadata: Metadata = {
@@ -23,7 +24,8 @@ export default async function Page() {
     monthlyWorktopQuotes,
     weeklyCutting,
     weeklyWorktopProduction,
-    todayAttendance
+    todayAttendance,
+    posOrdersGoalStats
   ] = await Promise.all([
     getCustomerPortalDraftQuotes(),
     getMonthlyQuotesData('month', 0),
@@ -31,7 +33,8 @@ export default async function Page() {
     getMonthlyWorktopQuotesData('month', 0),
     getWeeklyCuttingData(0),
     getWeeklyWorktopProductionData(0),
-    getTodayAttendanceForHome()
+    getTodayAttendanceForHome(),
+    getPosOrdersGoalStats()
   ])
   
   return (
@@ -43,6 +46,7 @@ export default async function Page() {
       initialWeeklyCutting={weeklyCutting}
       initialWeeklyWorktopProduction={weeklyWorktopProduction}
       initialTodayAttendance={todayAttendance}
+      posOrdersGoalStats={posOrdersGoalStats}
     />
   )
 }

@@ -9,6 +9,8 @@ import WeeklyWorktopProductionChart from '@/components/WeeklyWorktopProductionCh
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
 import MonthlyWorktopQuotesCard from '@/components/MonthlyWorktopQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
+import PosOrdersGoalsCard from '@/components/PosOrdersGoalsCard'
+import type { PosOrdersGoalStats } from '@/lib/dashboard-server'
 
 interface CustomerQuote {
   id: string
@@ -38,6 +40,7 @@ interface HomeClientProps {
       departure: string | null
     }>
   }
+  posOrdersGoalStats: PosOrdersGoalStats
 }
 
 export default function HomeClient({ 
@@ -47,7 +50,8 @@ export default function HomeClient({
   initialMonthlyWorktopQuotes,
   initialWeeklyCutting,
   initialWeeklyWorktopProduction,
-  initialTodayAttendance
+  initialTodayAttendance,
+  posOrdersGoalStats
 }: HomeClientProps) {
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -55,6 +59,10 @@ export default function HomeClient({
         {/* First Row: Customer Portal Quotes Table - full width */}
         <Grid item xs={12}>
           <CustomerPortalQuotesTable quotes={customerPortalQuotes} />
+        </Grid>
+
+        <Grid item xs={12}>
+          <PosOrdersGoalsCard posOrdersGoalStats={posOrdersGoalStats} />
         </Grid>
 
         <Grid item xs={12}>
