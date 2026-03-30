@@ -2290,8 +2290,8 @@ export default function OptiClient({
                             />
                           )}
                           <Chip
-                            label={`Penge vastagság: ${selectedMaterial.kerf_mm}mm`}
-                            color="info"
+                            label={selectedMaterial.on_stock ? 'Raktári' : 'Rendelős'}
+                            color={selectedMaterial.on_stock ? 'success' : 'error'}
                             variant="outlined"
                             size="small"
                           />
@@ -3335,8 +3335,11 @@ export default function OptiClient({
                         <strong>Szálirány:</strong> {material?.grain_direction ? 'Igen' : 'Nem'}
                       </Typography>
                       
-                      <Typography variant="body2" sx={{ mb: 1 }}>
-                        <strong>Penge vastagság:</strong> {material?.kerf_mm}mm
+                      <Typography
+                        variant="body2"
+                        sx={{ mb: 1, color: material?.on_stock ? 'success.main' : 'error.main' }}
+                      >
+                        <strong>Raktár:</strong> {material?.on_stock ? 'Raktári' : 'Rendelős'}
                       </Typography>
                       
                       <Typography variant="body2" sx={{ mb: 1 }}>
