@@ -38,6 +38,7 @@ interface Material {
   thickness_mm: number
   price_per_sqm: number
   vat_id: string
+  on_stock: boolean
   brands: { name: string } | null
   vat: { kulcs: number }
 }
@@ -52,6 +53,7 @@ interface LinearMaterial {
   price_per_m: number
   vat_id: string
   type: string
+  on_stock: boolean
   brands: { name: string } | null
   vat: { kulcs: number }
 }
@@ -62,9 +64,6 @@ interface SearchResults {
 }
 
 export default function SearchClient() {
-  // Temporarily bypass permission check for testing
-  const hasAccess = true
-  
   const [searchTerm, setSearchTerm] = useState('')
   const [results, setResults] = useState<SearchResults>({ materials: [], linearMaterials: [] })
   const [isLoading, setIsLoading] = useState(false)
@@ -236,11 +235,13 @@ export default function SearchClient() {
                   <strong>Nm ár</strong>
                 </TableCell>
                 <TableCell><strong>Egész ár</strong></TableCell>
+                <TableCell><strong>Beszerzés</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {allResults.map((item, index) => {
                 const prices = calculatePrices(item, item.isLinear)
+                const raktari = Boolean(item.on_stock)
                 return (
                   <TableRow key={`${item.isLinear ? 'linear' : 'material'}-${item.id}`}>
                     <TableCell>{item.brands?.name || '-'}</TableCell>
@@ -283,6 +284,15 @@ export default function SearchClient() {
                     </TableCell>
                     <TableCell>
                       {formatPrice(prices.egeszAr)}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={raktari ? 'Raktári' : 'Rendelős'}
+                        size="small"
+                        color={raktari ? 'success' : 'error'}
+                        variant="filled"
+                        sx={{ fontWeight: 700 }}
+                      />
                     </TableCell>
                   </TableRow>
                 )

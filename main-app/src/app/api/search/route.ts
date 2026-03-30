@@ -14,7 +14,6 @@ export async function GET(request: NextRequest) {
     console.log('Searching for:', searchTerm)
     
     // Search materials and linear_materials in parallel for better performance
-    // Removed accessories from main query - will be fetched on-demand when user clicks
     const [materialsResult, linearMaterialsResult] = await Promise.all([
       // Search materials table by name
       supabaseServer
@@ -28,6 +27,7 @@ export async function GET(request: NextRequest) {
           thickness_mm,
           price_per_sqm,
           vat_id,
+          on_stock,
           brands (name),
           vat (kulcs)
         `)
@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
           price_per_m,
           vat_id,
           type,
+          on_stock,
           brands (name),
           vat (kulcs)
         `)
@@ -126,9 +127,6 @@ export async function GET(request: NextRequest) {
       ...linearMaterial,
       quantity_on_hand: linearMaterialsStockMap.get(linearMaterial.id) || null
     }))
-    
-    // Accessories removed from main query - will be fetched on-demand via separate API endpoints
-    // This significantly improves search performance by avoiding deep nested joins
     
     // Add cache control headers for dynamic search results
     const response = NextResponse.json({

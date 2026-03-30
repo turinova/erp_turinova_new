@@ -72,6 +72,7 @@ export async function GET(request: NextRequest) {
           thickness_mm,
           price_per_sqm,
           vat_id,
+          on_stock,
           brands (name),
           vat (kulcs)
         `)
@@ -92,6 +93,7 @@ export async function GET(request: NextRequest) {
           price_per_m,
           vat_id,
           type,
+          on_stock,
           brands (name),
           vat (kulcs)
         `)
