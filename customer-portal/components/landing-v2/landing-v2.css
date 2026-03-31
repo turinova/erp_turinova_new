@@ -1,0 +1,65 @@
+/* Scoped reset for /v2 landing page — counteracts corePlugins: { preflight: false } */
+.lv2-root *,
+.lv2-root *::before,
+.lv2-root *::after {
+  box-sizing: border-box;
+  border-width: 0;
+  border-style: solid;
+}
+
+.lv2-root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.lv2-root h1,
+.lv2-root h2,
+.lv2-root h3,
+.lv2-root h4,
+.lv2-root h5,
+.lv2-root h6 {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
+}
+
+.lv2-root p {
+  margin: 0;
+}
+
+.lv2-root a {
+  color: inherit;
+  text-decoration: inherit;
+}
+
+.lv2-root button,
+.lv2-root input,
+.lv2-root textarea,
+.lv2-root select {
+  font-family: inherit;
+  font-size: 100%;
+  line-height: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.lv2-root ul,
+.lv2-root ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lv2-root img,
+.lv2-root svg {
+  display: block;
+  max-width: 100%;
+}

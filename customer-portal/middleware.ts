@@ -38,7 +38,7 @@ export async function middleware(req: NextRequest) {
   }
   
   // Define public routes that don't require authentication
-  const publicRoutes = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/terms-and-conditions', '/privacy-policy', '/cookie-policy']
+  const publicRoutes = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/terms-and-conditions', '/privacy-policy', '/cookie-policy', '/v2']
   const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname)
   
   // Customer portal specific Supabase credentials (no custom storageKey - use default)
