@@ -94,6 +94,71 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+/** Exported for tests / call sites that need the same delay helper */
+export { sleep }
+
+/**
+ * True for timeouts, dropped TLS/TCP, and undici "fetch failed" (Vercel ↔ Supabase / ShopRenter).
+ */
+export function isTransientNetworkError(error: unknown): boolean {
+  if (error == null) return false
+  const err = error as { name?: string; code?: number | string; message?: string; cause?: unknown }
+  const name = err.name || ''
+  const code = err.code
+  let message = String(err.message || error)
+  const cause = err.cause as { message?: string; code?: string } | undefined
+  if (cause?.message) message += ` ${cause.message}`
+  if (cause?.code) message += ` ${cause.code}`
+  if (name === 'TimeoutError' || code === 23 || code === 'ETIMEDOUT') return true
+  if (/fetch failed|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket|other side closed|UND_ERR|ENOTFOUND|network/i.test(message)) {
+    return true
+  }
+  return false
+}
+
+/**
+ * Supabase PostgREST client often returns { error: { message: 'TypeError: fetch failed', ... } } without throwing.
+ */
+export function isTransientSupabaseClientError(error: { message?: string; details?: string } | null | undefined): boolean {
+  if (!error) return false
+  const m = `${error.message || ''} ${error.details || ''}`
+  return /fetch failed|ECONNRESET|other side closed|timeout|ETIMEDOUT|socket|ECONNREFUSED|NetworkError/i.test(m)
+}
+
+export interface RetryTransientOptions {
+  maxRetries?: number
+  initialDelayMs?: number
+  maxDelayMs?: number
+}
+
+/**
+ * Retry an async operation when it throws a transient network error (timeouts, connection resets).
+ */
+export async function retryTransientAsync<T>(
+  fn: () => Promise<T>,
+  options: RetryTransientOptions = {}
+): Promise<T> {
+  const maxRetries = options.maxRetries ?? 4
+  let delay = options.initialDelayMs ?? 400
+  const maxDelay = options.maxDelayMs ?? 20000
+  let lastError: unknown
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (e) {
+      lastError = e
+      if (attempt === maxRetries || !isTransientNetworkError(e)) {
+        throw e
+      }
+      const wait = Math.min(delay, maxDelay)
+      console.warn(`[RETRY] Transient error (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${wait}ms:`, e instanceof Error ? e.message : e)
+      await sleep(wait)
+      delay = Math.min(delay * 2, maxDelay)
+    }
+  }
+  throw lastError
+}
+
 /**
  * Retry a fetch request with exponential backoff
  * Convenience wrapper for retryWithBackoff specifically for fetch calls

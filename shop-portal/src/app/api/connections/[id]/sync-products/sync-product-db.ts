@@ -1,6 +1,6 @@
 import { extractImagesFromProductExtend, fetchProductImages } from '@/lib/shoprenter-image-service'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
-import { retryWithBackoff } from '@/lib/retry-with-backoff'
+import { isTransientSupabaseClientError, retryTransientAsync, retryWithBackoff } from '@/lib/retry-with-backoff'
 import {
   extractShopNameFromUrl,
   constructProductUrl,
@@ -870,39 +870,37 @@ export async function syncProductToDatabase(
       // Note: Keep last_synced_at for backward compatibility (can be deprecated later)
     }
 
-    // Upsert product
+    // Resolve soft-delete restore before write (same row as upsert target)
     // IMPORTANT: Don't filter by deleted_at - we need to find soft-deleted products too
-    // Use .maybeSingle() instead of .single() to handle cases where product might not exist
     const { data: existingProduct } = await supabase
       .from('shoprenter_products')
       .select('id, deleted_at, status')
       .eq('connection_id', connection.id)
       .eq('shoprenter_id', product.id)
       .maybeSingle()
-    
-    // If product exists and is soft-deleted, but ShopRenter has it enabled, restore it
+
     const isEnabledInShopRenter = product.status === '1' || product.status === 1
     if (existingProduct && existingProduct.deleted_at && isEnabledInShopRenter) {
       console.log(`[SYNC] Product ${product.sku} is soft-deleted in ERP but enabled in ShopRenter (status = ${product.status}). Restoring...`)
-      productData.deleted_at = null // Clear deleted_at to restore the product
-      productData.status = 1 // Ensure status is 1
+      productData.deleted_at = null
+      productData.status = 1
     }
 
-    let productResult
-    if (existingProduct) {
-      productResult = await supabase
-        .from('shoprenter_products')
-        .update(productData)
-        .eq('id', existingProduct.id)
-        .select()
-        .single()
-    } else {
-      productResult = await supabase
-        .from('shoprenter_products')
-        .insert(productData)
-        .select()
-        .single()
-    }
+    // Single upsert avoids race: parallel sync batches can no longer double-insert the same (connection_id, shoprenter_id)
+    const productResult = await retryTransientAsync(
+      async () => {
+        const r = await supabase
+          .from('shoprenter_products')
+          .upsert(productData, { onConflict: 'connection_id,shoprenter_id' })
+          .select()
+          .single()
+        if (r.error && isTransientSupabaseClientError(r.error)) {
+          throw new Error(r.error.message || 'transient supabase')
+        }
+        return r
+      },
+      { maxRetries: 4, initialDelayMs: 300, maxDelayMs: 8000 }
+    )
 
     if (productResult.error) {
       console.error('Error syncing product to database:', productResult.error)

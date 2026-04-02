@@ -5,6 +5,35 @@ import { Buffer } from 'buffer'
 import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 import { getLanguageId, getShopRenterAuthHeader, extractShopNameFromUrl as extractShopNameFromUrlLib } from '@/lib/shoprenter-api'
+import { isTransientSupabaseClientError, retryTransientAsync } from '@/lib/retry-with-backoff'
+
+/** Vercel Pro: category batch + ShopRenter list can run long. Hobby plan caps lower. */
+export const maxDuration = 300
+
+/** ShopRenter list pagination — allow slow responses on large shops */
+const CATEGORY_LIST_FETCH_TIMEOUT_MS = 60_000
+/** Single categoryExtend in POST handler */
+const SINGLE_CATEGORY_FETCH_TIMEOUT_MS = 60_000
+/** Batch endpoint can run long for 200× categoryExtend */
+const CATEGORY_BATCH_FETCH_TIMEOUT_MS = 900_000
+
+/**
+ * Retry Supabase writes when PostgREST returns transient network errors (Vercel ↔ Supabase).
+ */
+async function supabaseOpWithRetry<T>(
+  fn: () => Promise<{ data: T | null; error: any }>
+): Promise<{ data: T | null; error: any }> {
+  return retryTransientAsync(
+    async () => {
+      const r = await fn()
+      if (r.error && isTransientSupabaseClientError(r.error)) {
+        throw new Error(r.error.message || 'transient supabase')
+      }
+      return r
+    },
+    { maxRetries: 4, initialDelayMs: 300, maxDelayMs: 8000 }
+  )
+}
 
 /**
  * Extract shop name from ShopRenter API URL
@@ -190,13 +219,15 @@ async function syncCategoryToDatabase(
     let categoryResult
     if (existingCategory) {
       // Update existing category
-      const { data, error } = await supabase
-        .from('shoprenter_categories')
-        .update(categoryData)
-        .eq('id', existingCategory.id)
-        .select()
-        .single()
-      
+      const { data, error } = await supabaseOpWithRetry(() =>
+        supabase
+          .from('shoprenter_categories')
+          .update(categoryData)
+          .eq('id', existingCategory.id)
+          .select()
+          .single()
+      )
+
       if (error) {
         // Detailed error logging
         console.error(`[CATEGORY SYNC] Failed to update category ${shoprenterId}:`, {
@@ -250,12 +281,10 @@ async function syncCategoryToDatabase(
       }
     } else {
       // Insert new category
-      const { data, error } = await supabase
-        .from('shoprenter_categories')
-        .insert(categoryData)
-        .select()
-        .single()
-      
+      const { data, error } = await supabaseOpWithRetry(() =>
+        supabase.from('shoprenter_categories').insert(categoryData).select().single()
+      )
+
       if (error) {
         // Detailed error logging
         console.error(`[CATEGORY SYNC] Failed to insert category ${shoprenterId}:`, {
@@ -353,13 +382,12 @@ async function syncCategoryDescriptions(
         continue
       }
       
-      // Upsert description
-      const { error } = await supabase
-        .from('shoprenter_category_descriptions')
-        .upsert(descriptionData, {
-          onConflict: 'category_id,language_id'
+      const { error } = await supabaseOpWithRetry(() =>
+        supabase.from('shoprenter_category_descriptions').upsert(descriptionData, {
+          onConflict: 'category_id,language_id',
         })
-      
+      )
+
       if (error) {
         // Detailed error logging
         console.error(`[CATEGORY SYNC] Error syncing description ${descriptionData.shoprenter_id}:`, {
@@ -508,15 +536,19 @@ export async function POST(
       let response: Response
       try {
         response = await rateLimiter.execute(async () => {
-          return fetch(categoryUrl, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': authHeader
-            },
-            signal: AbortSignal.timeout(30000)
-          })
+          return retryTransientAsync(
+            async () =>
+              fetch(categoryUrl, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                  Authorization: authHeader,
+                },
+                signal: AbortSignal.timeout(SINGLE_CATEGORY_FETCH_TIMEOUT_MS),
+              }),
+            { maxRetries: 4, initialDelayMs: 400, maxDelayMs: 8000 }
+          )
         })
       } catch (fetchError: any) {
         console.error('[CATEGORY SYNC] Fetch error:', fetchError)
@@ -781,15 +813,19 @@ async function processSyncInBackground(
       const categoriesUrl = `${apiUrl}/categories?page=${page}&limit=${limit}&full=0`
       
       const response = await rateLimiter.execute(async () => {
-        return fetch(categoriesUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authHeader
-          },
-          signal: AbortSignal.timeout(30000)
-        })
+        return retryTransientAsync(
+          async () =>
+            fetch(categoriesUrl, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: authHeader,
+              },
+              signal: AbortSignal.timeout(CATEGORY_LIST_FETCH_TIMEOUT_MS),
+            }),
+          { maxRetries: 4, initialDelayMs: 400, maxDelayMs: 8000 }
+        )
       })
       
       if (!response.ok) {
@@ -903,16 +939,20 @@ async function processSyncInBackground(
       
       // Send batch request
       const batchResponse = await rateLimiter.execute(async () => {
-        return fetch(`${apiUrl}/batch`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authHeader
-          },
-          body: JSON.stringify(batchPayload),
-          signal: AbortSignal.timeout(600000) // 10 minutes
-        })
+        return retryTransientAsync(
+          async () =>
+            fetch(`${apiUrl}/batch`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: authHeader,
+              },
+              body: JSON.stringify(batchPayload),
+              signal: AbortSignal.timeout(CATEGORY_BATCH_FETCH_TIMEOUT_MS),
+            }),
+          { maxRetries: 3, initialDelayMs: 600, maxDelayMs: 12000 }
+        )
       })
       
       if (!batchResponse.ok) {

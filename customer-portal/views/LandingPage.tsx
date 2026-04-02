@@ -44,35 +44,18 @@ const LandingPage = ({ mode }: { mode: Mode }) => {
           </Typography>
         </div>
 
-        {/* Login Button */}
-        <Button 
-          href='/login' 
-          component={Link} 
-          variant='contained' 
-          size='large'
-          sx={{ 
-            px: 6, 
-            py: 2,
-            fontSize: '1.1rem',
-            fontWeight: 600
-          }}
-        >
-          Bejelentkezés
-        </Button>
-
         {/* Register Button */}
         <Button 
           href='/register' 
           component={Link} 
-          variant='outlined' 
+          variant='contained' 
           color='success'
           size='large'
           sx={{ 
             px: 6, 
             py: 2,
             fontSize: '1.1rem',
-            fontWeight: 600,
-            mt: -6
+            fontWeight: 600
           }}
         >
           Regisztráció

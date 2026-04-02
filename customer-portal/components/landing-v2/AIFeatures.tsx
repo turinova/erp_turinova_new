@@ -1,6 +1,9 @@
+import ProductContentSeoTabMock from './ProductContentSeoTabMock'
+import ProductPricingTabMock from './ProductPricingTabMock'
+
 export default function AIFeatures() {
   return (
-    <section id="ai-seo" className="bg-white py-14 scroll-mt-20">
+    <section id="arazas" className="bg-white py-14 scroll-mt-20">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="relative overflow-hidden rounded-3xl border border-slate-200/60 bg-gradient-to-br from-white via-emerald-50/35 to-orange-50/35 px-6 py-12 sm:px-10">
           {/* Decorative blobs */}
@@ -94,21 +97,9 @@ export default function AIFeatures() {
                     Ami korábban órákat vett igénybe, most percek alatt kész van.
                   </p>
 
-                  {/* Real screenshot */}
-                  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shadow-sm">
-                    <div className="flex items-center gap-1.5 px-4 py-3 bg-white/70 border-b border-slate-200">
-                      <span className="w-3 h-3 rounded-full bg-red-300" />
-                      <span className="w-3 h-3 rounded-full bg-yellow-300" />
-                      <span className="w-3 h-3 rounded-full bg-green-300" />
-                      <div className="ml-3 flex-1 h-5 rounded-md bg-slate-200/70 max-w-[280px]" />
-                    </div>
-                    <img
-                      src="/banner/aigen.png"
-                      alt="Turinova ERP AI tartalom és SEO generátor – automatikus termékleírás, meta adatok, kulcsszavak, slug generálás webshopokhoz"
-                      className="w-full h-auto object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
+                  {/* Tartalom & SEO tab mock (shop-portal parity, compact) */}
+                  <div className="mt-6">
+                    <ProductContentSeoTabMock />
                   </div>
                 </div>
               </div>
@@ -301,23 +292,9 @@ export default function AIFeatures() {
                       </div>
                     </div>
 
-                    {/* Right: real screenshot */}
+                    {/* Right: Árazás tab + AI Árazási Ajánlások mock (shop-portal parity) */}
                     <div className="flex-1 min-w-0">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shadow-sm">
-                        <div className="flex items-center gap-1.5 px-4 py-3 bg-white/70 border-b border-slate-200">
-                          <span className="w-3 h-3 rounded-full bg-red-300" />
-                          <span className="w-3 h-3 rounded-full bg-yellow-300" />
-                          <span className="w-3 h-3 rounded-full bg-green-300" />
-                          <div className="ml-3 flex-1 h-5 rounded-md bg-slate-200/70 max-w-[240px]" />
-                        </div>
-                        <img
-                          src="/banner/comeptitor2.png"
-                          alt="Turinova ERP versenytárs termék árelemzés és árjavaslat funkció – webshop ár összehasonlítás automatikusan"
-                          className="w-full h-auto object-cover"
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      </div>
+                      <ProductPricingTabMock />
                     </div>
 
                   </div>

@@ -2875,7 +2875,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
       {!isNewProduct && (product as any)?.connection_id && (
         <Alert severity="info" sx={{ mb: 2 }} icon={<InfoIcon />}>
           <Typography variant="body2">
-            <strong>Frissítés a webshopból:</strong> a ShopRenter legújabb adatait tölti be az ERP-be (pl. attribútumok, árak).
+            <strong>Frissítés a webshopból:</strong> a ShopRenter legújabb adatait tölti be az ERP-be (pl. attribútumok, árak). Egy termékhez ez a megbízható mód; a kapcsolat oldali „gyors” szinkron nem minden terméket frissít minden futtatáskor.
           </Typography>
           <Typography variant="body2" sx={{ mt: 0.5 }}>
             <strong>Szinkronizálás a webshopba:</strong> az ERP-ben <em>mentett</em> változásokat küldi ki. Mentse a terméket a szinkron előtt; a webshop push-hoz szükség van legalább egy mentett termékleírásra is.
@@ -2901,7 +2901,7 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                       startIcon={pulling ? <CircularProgress size={20} /> : <RefreshIcon />}
                       onClick={handlePullFromShopRenter}
                       disabled={pulling || syncing}
-                      title={`Frissítés ${connectionName}-ből (lekéri a legfrissebb adatokat, pl. attribútum megjelenítési neveket)`}
+                      title={`Frissítés ${connectionName}-ből: a termék teljes adata a webshopból (ajánlott egy termék egyeztetéséhez; megbízhatóbb, mint a kapcsolat oldali gyors szinkron).`}
                     >
                       {pulling ? 'Frissítés...' : `Frissítés ${connectionName}-ből`}
                     </Button>

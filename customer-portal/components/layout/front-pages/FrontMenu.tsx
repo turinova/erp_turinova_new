@@ -68,16 +68,6 @@ const Wrapper = (props: WrapperProps) => {
           <div className='flex flex-col gap-3'>
             <Button
               component={Link}
-              href='/login'
-              variant='outlined'
-              color='primary'
-              fullWidth
-              onClick={() => setIsDrawerOpen(false)}
-            >
-              Bejelentkezés
-            </Button>
-            <Button
-              component={Link}
               href='/register'
               variant='contained'
               color='primary'

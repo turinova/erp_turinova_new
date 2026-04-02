@@ -67,26 +67,15 @@ const Header = ({ mode }: { mode: Mode }) => {
           )}
           <div className='flex items-center gap-2 sm:gap-4'>
             {!isBelowLgScreen && (
-              <>
-                <Button
-                  component={Link}
-                  href='/login'
-                  variant='outlined'
-                  color='primary'
-                  className='font-medium'
-                >
-                  Bejelentkezés
-                </Button>
-                <Button
-                  component={Link}
-                  href='/register'
-                  variant='contained'
-                  color='primary'
-                  className='font-medium'
-                >
-                  Regisztráció
-                </Button>
-              </>
+              <Button
+                component={Link}
+                href='/register'
+                variant='contained'
+                color='primary'
+                className='font-medium'
+              >
+                Regisztráció
+              </Button>
             )}
           </div>
         </div>

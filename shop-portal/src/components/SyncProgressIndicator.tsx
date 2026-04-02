@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { Box, Typography } from '@mui/material'
+import { Box, Typography, Tooltip } from '@mui/material'
 import { Sync as SyncIcon } from '@mui/icons-material'
 
 interface ActiveSync {
   connectionId: string
   connectionName: string
+  source?: 'memory' | 'database'
   progress: {
     total: number
     synced: number
@@ -85,29 +86,41 @@ export function SyncProgressIndicator() {
   const totalTotal = activeSyncs.reduce((sum, sync) => sum + sync.progress.total, 0)
   const totalPercentage = totalTotal > 0 ? Math.round((totalSynced / totalTotal) * 100) : 0
 
-  return (
-    <Box
-      sx={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 1
-      }}
-    >
-      <SyncIcon 
-        sx={{ 
-          fontSize: 18, 
-          color: 'primary.main', 
-          animation: 'spin 2s linear infinite' 
-        }} 
-      />
-      <Typography variant="body2" color="text.secondary">
-        Szinkronizálás:
-      </Typography>
-      <Typography variant="body2" fontWeight={500}>
-        {totalSynced} / {totalTotal} ({totalPercentage}%)
-      </Typography>
+  const tooltipLines = activeSyncs.map(
+    (s) =>
+      `${s.connectionName}: ${s.progress.synced}/${s.progress.total}${s.source === 'database' ? ' (állapot szerverről)' : ''}`
+  )
+  const progressLabel =
+    totalTotal > 0
+      ? `${totalSynced} / ${totalTotal} (${totalPercentage}%)`
+      : 'előkészítés / lista…'
 
-      <style jsx global>{`
+  return (
+    <Tooltip title={<Box sx={{ whiteSpace: 'pre-line' }}>{tooltipLines.join('\n')}</Box>} arrow placement="bottom">
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          maxWidth: 320,
+          cursor: 'default'
+        }}
+      >
+        <SyncIcon
+          sx={{
+            fontSize: 18,
+            color: 'primary.main',
+            animation: 'spin 2s linear infinite'
+          }}
+        />
+        <Typography variant="body2" color="text.secondary" noWrap>
+          Szinkronizálás:
+        </Typography>
+        <Typography variant="body2" fontWeight={500} noWrap>
+          {progressLabel}
+        </Typography>
+
+        <style jsx global>{`
         @keyframes spin {
           from {
             transform: rotate(0deg);
@@ -117,6 +130,7 @@ export function SyncProgressIndicator() {
           }
         }
       `}</style>
-    </Box>
+      </Box>
+    </Tooltip>
   )
 }

@@ -3,6 +3,10 @@
 
 import { extractShopNameFromUrl, getShopRenterAuthHeader } from './shoprenter-api'
 import { getShopRenterRateLimiter } from './shoprenter-rate-limiter'
+import { retryTransientAsync } from './retry-with-backoff'
+
+const PRODUCT_IMAGES_LIST_TIMEOUT_MS = 60_000
+const PRODUCT_IMAGE_ITEM_TIMEOUT_MS = 25_000
 
 export interface ShopRenterImage {
   id: string // ShopRenter productImage ID
@@ -43,17 +47,21 @@ export async function fetchProductImages(
   try {
     // Fetch product images using productId filter with rate limiting
     const response = await rateLimiter.execute(() =>
-      fetch(
-        `${apiBaseUrl}/productImages?productId=${encodeURIComponent(productShopRenterId)}&full=1&limit=200`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'Authorization': authHeader
-          },
-          signal: AbortSignal.timeout(30000)
-        }
+      retryTransientAsync(
+        () =>
+          fetch(
+            `${apiBaseUrl}/productImages?productId=${encodeURIComponent(productShopRenterId)}&full=1&limit=200`,
+            {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                Authorization: authHeader,
+              },
+              signal: AbortSignal.timeout(PRODUCT_IMAGES_LIST_TIMEOUT_MS),
+            }
+          ),
+        { maxRetries: 3, initialDelayMs: 400, maxDelayMs: 6000 }
       )
     )
 
@@ -80,17 +88,21 @@ export async function fetchProductImages(
           const itemId = item.href.split('/').pop()
           if (itemId) {
             const itemResponse = await rateLimiter.execute(() =>
-              fetch(
-                `${apiBaseUrl}/productImages/${encodeURIComponent(itemId)}?full=1`,
-                {
-                  method: 'GET',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'Authorization': authHeader
-                  },
-                  signal: AbortSignal.timeout(10000)
-                }
+              retryTransientAsync(
+                () =>
+                  fetch(
+                    `${apiBaseUrl}/productImages/${encodeURIComponent(itemId)}?full=1`,
+                    {
+                      method: 'GET',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        Accept: 'application/json',
+                        Authorization: authHeader,
+                      },
+                      signal: AbortSignal.timeout(PRODUCT_IMAGE_ITEM_TIMEOUT_MS),
+                    }
+                  ),
+                { maxRetries: 2, initialDelayMs: 300, maxDelayMs: 4000 }
               )
             )
             

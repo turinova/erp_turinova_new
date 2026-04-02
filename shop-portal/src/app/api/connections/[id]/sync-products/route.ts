@@ -15,6 +15,9 @@ import { extractShopNameFromUrl, extractParentProductId } from '@/lib/shoprenter
 import { syncProductToDatabase, ensureManufacturerExists } from './sync-product-db'
 import { syncSingleProductFromShopRenter } from '@/lib/sync-single-shoprenter-product'
 
+/** Vercel Pro: allow long product sync batches (ShopRenter batch + DB writes). Hobby plan caps lower. */
+export const maxDuration = 300
+
 /** Max UUIDs per Supabase `.in('id', …)` — avoids proxy 414 URI Too Long on large syncs. */
 const SUPABASE_ID_IN_CHUNK_SIZE = 150
 
@@ -848,7 +851,9 @@ async function processSyncInBackground(
     console.warn(`[SYNC] Error creating audit log (non-fatal):`, auditInitError)
   }
 
-  if (auditLogId && tenantId && userId) {
+  // Durable progress for UI polling across serverless instances — must not depend on audit log insert.
+  // (Audit log can fail when tenant context is missing; users still need sync_jobs for navbar / refresh.)
+  if (userId) {
     try {
       const { data: sj, error: sjErr } = await supabase
         .from('sync_jobs')

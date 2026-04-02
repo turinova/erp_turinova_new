@@ -1,3 +1,94 @@
+import PosTerminalMock from './PosTerminalMock'
+
+/** Aligns with shop-portal `/orders` — OrdersTable columns + getFulfillabilityDisplayStyle palette */
+const ordersPageMockRows = [
+  {
+    orderNumber: 'R-2025-1042',
+    customer: 'Kovács Péter',
+    source: 'webshop' as const,
+    gross: '14 900 Ft',
+    payment: 'Fizetve',
+    mode: 'fulfill' as const,
+    fulfill: 'Csomagolható' as const,
+  },
+  {
+    orderNumber: 'R-2025-1043',
+    customer: 'Nagy Eszter',
+    source: 'webshop' as const,
+    gross: '8 490 Ft',
+    payment: 'Függőben',
+    mode: 'fulfill' as const,
+    fulfill: 'Hiány' as const,
+  },
+  {
+    orderNumber: 'R-2025-1044',
+    customer: 'Tóth Gábor',
+    source: 'webshop' as const,
+    gross: '32 000 Ft',
+    payment: 'Fizetve',
+    mode: 'fulfill' as const,
+    fulfill: 'Beszerzés alatt' as const,
+  },
+  {
+    orderNumber: 'R-2025-1038',
+    customer: 'Horváth Béla',
+    source: 'local' as const,
+    gross: '21 500 Ft',
+    payment: 'Fizetve',
+    mode: 'status' as const,
+    statusLabel: 'Begyűjtés',
+  },
+]
+
+function ordersMockRowBg(
+  row: (typeof ordersPageMockRows)[number],
+): string {
+  if (row.mode !== 'fulfill') return ''
+  if (row.fulfill === 'Csomagolható') return 'bg-[rgba(232,245,233,0.45)]'
+  if (row.fulfill === 'Hiány') return 'bg-[rgba(255,235,238,0.45)]'
+  if (row.fulfill === 'Beszerzés alatt') return 'bg-[rgba(227,242,253,0.5)]'
+  return ''
+}
+
+function ordersMockFulfillPillClass(f: 'Csomagolható' | 'Hiány' | 'Beszerzés alatt') {
+  if (f === 'Csomagolható') return 'bg-[#e8f5e9] text-[#1b5e20] border-[#a5d6a7]'
+  if (f === 'Hiány') return 'bg-[#ffebee] text-[#b71c1c] border-[#ef9a9a]'
+  return 'bg-[#e3f2fd] text-[#1565c0] border-[#90caf9]'
+}
+
+/** Mirrors shop-portal `/pack/orders/[id]` — PackOrderPage table row tints */
+const packOrderMockLines = [
+  {
+    name: 'Játékmackó · plüss',
+    sku: 'JTK-MACKO-01',
+    qty: 2,
+    scanned: 1,
+    imageSrc: '/banner/teddy.jpg',
+    imageAlt: 'Játékmackó termékkép — Turinova csomagolás ellenőrzés',
+  },
+  {
+    name: 'Puzzle 1000 db',
+    sku: 'PZ-1000-GR',
+    qty: 1,
+    scanned: 0,
+    imageSrc: '/banner/puzlle.jpeg',
+    imageAlt: 'Puzzle termékkép — Turinova csomagolás ellenőrzés',
+  },
+  {
+    name: 'LEGO Creator 3in1',
+    sku: 'LG-31145',
+    qty: 2,
+    scanned: 2,
+    imageSrc: '/banner/lego.jpg',
+    imageAlt: 'LEGO Creator termékkép — Turinova csomagolás ellenőrzés',
+  },
+] as const
+
+const packOrderMockTotalQty = packOrderMockLines.reduce((s, l) => s + l.qty, 0)
+const packOrderMockScannedSum = packOrderMockLines.reduce((s, l) => s + l.scanned, 0)
+const packOrderMockProgressPct =
+  packOrderMockTotalQty > 0 ? Math.round((packOrderMockScannedSum / packOrderMockTotalQty) * 100) : 0
+
 export default function CoreFeatures() {
   return (
     <section id="funkciok" className="bg-slate-50 py-14 scroll-mt-20">
@@ -122,44 +213,144 @@ export default function CoreFeatures() {
                 ))}
               </div>
 
-              {/* Order puffer mock */}
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">Beérkezett rendelések</span>
-                  <div className="flex items-center gap-3">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400" /> Feldolgozható
+              {/* /orders page mock — shop-portal OrdersPageClient + OrdersTable */}
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm text-left">
+                <div className="px-3 sm:px-4 pt-3 pb-2 border-b border-slate-100">
+                  <p className="text-[10px] text-slate-500 mb-2">
+                    <span className="text-slate-400">Főoldal</span>
+                    <span className="mx-1 text-slate-300">/</span>
+                    <span className="text-slate-700 font-medium">Rendelések</span>
+                  </p>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Rendelések</p>
+                      <p className="text-[10px] text-slate-500 leading-snug max-w-md mt-0.5 hidden sm:block">
+                        Webshop és egyéb források — szűrés, tömeges műveletek. A pufferből feldolgozva kerülnek ide.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 shrink-0">
+                      <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-semibold bg-[#1976d2] text-white shadow-sm">
+                        Új rendelés
+                      </span>
+                      <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-semibold text-[#1976d2] border border-[rgba(25,118,210,0.5)] bg-white">
+                        Rendelés puffer →
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-3 sm:px-4 py-2 bg-slate-50 border-b border-slate-200">
+                  <p className="text-[9px] font-semibold text-slate-500 tracking-wider mb-1.5">SZŰRŐK</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded border border-slate-200 bg-white text-[10px] text-slate-600">
+                      Státusz: <strong className="text-slate-800">Összes</strong>
                     </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600">
-                      <span className="w-2 h-2 rounded-full bg-amber-400" /> Beszerzés kell
+                    <span className="inline-flex items-center px-2 py-1 rounded border border-slate-200 bg-white text-[10px] text-slate-400 min-w-[120px]">
+                      Keresés…
                     </span>
                   </div>
                 </div>
-                <div className="divide-y divide-slate-100">
-                  {[
-                    { id: '#1042', product: 'Játékmackó · 2 db', status: 'ready', label: 'Feldolgozható' },
-                    { id: '#1043', product: 'Puzzle 1000 · 1 db', status: 'ready', label: 'Feldolgozható' },
-                    { id: '#1044', product: 'LEGO Creator · 3 db', status: 'order', label: 'Beszerzés szükséges' },
-                    { id: '#1045', product: 'Társasjáték · 1 db', status: 'ready', label: 'Feldolgozható' },
-                  ].map(row => (
-                    <div key={row.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <span className="text-[11px] font-bold text-slate-400 w-10">{row.id}</span>
-                        <span className="text-[12px] text-slate-700">{row.product}</span>
-                      </div>
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        row.status === 'ready'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${row.status === 'ready' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
-                        {row.label}
-                      </span>
-                    </div>
-                  ))}
+
+                <div className="overflow-x-auto border-b border-slate-200">
+                  <table className="w-full min-w-[520px] text-left border-collapse text-[10px] sm:text-[11px]">
+                    <thead>
+                      <tr className="border-b border-slate-200">
+                        <th className="py-2 pl-3 pr-1 w-8 font-semibold text-slate-600">
+                          <span className="inline-block w-3 h-3 rounded border border-slate-300 bg-white" aria-hidden />
+                        </th>
+                        <th className="py-2 px-1 font-semibold text-slate-600 whitespace-nowrap">Rendelésszám</th>
+                        <th className="py-2 px-1 font-semibold text-slate-600">Vásárló</th>
+                        <th className="py-2 px-1 font-semibold text-slate-600">Forrás</th>
+                        <th className="py-2 px-1 font-semibold text-slate-600 whitespace-nowrap">Bruttó</th>
+                        <th className="py-2 px-1 font-semibold text-slate-600">Státusz</th>
+                        <th className="py-2 pr-3 pl-1 font-semibold text-slate-600 whitespace-nowrap">Fizetés</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordersPageMockRows.map(row => (
+                        <tr
+                          key={row.orderNumber}
+                          className={`border-b border-slate-100 ${ordersMockRowBg(row)} hover:opacity-[0.97]`}
+                        >
+                          <td className="py-1.5 pl-3 pr-1 align-middle">
+                            <span className="inline-block w-3 h-3 rounded border border-slate-300 bg-white" aria-hidden />
+                          </td>
+                          <td className="py-1.5 px-1 align-middle whitespace-nowrap">
+                            <span className="font-medium text-[#1976d2]">{row.orderNumber}</span>
+                          </td>
+                          <td className="py-1.5 px-1 align-middle text-slate-800 font-medium truncate max-w-[100px] sm:max-w-[120px]">
+                            {row.customer}
+                          </td>
+                          <td className="py-1.5 px-1 align-middle whitespace-nowrap">
+                            {row.source === 'webshop' ? (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border bg-[rgba(25,118,210,0.12)] text-[#1565c0] border-[rgba(25,118,210,0.35)]">
+                                Webshop
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border bg-black/[0.04] text-slate-600 border-black/[0.12]">
+                                Helyi
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-1 align-middle text-slate-800 whitespace-nowrap">{row.gross}</td>
+                          <td className="py-1.5 px-1 align-middle whitespace-nowrap">
+                            {row.mode === 'fulfill' ? (
+                              <span
+                                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold border ${ordersMockFulfillPillClass(row.fulfill)}`}
+                              >
+                                {row.fulfill === 'Csomagolható' && (
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                  </svg>
+                                )}
+                                {row.fulfill === 'Hiány' && (
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                                  </svg>
+                                )}
+                                {row.fulfill === 'Beszerzés alatt' && (
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                    <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM5 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm14.65-11.73l1.41 1.41-4.24 4.25c-.2.2-.51.2-.71 0l-2.12-2.12 1.41-1.41 1.41 1.42 3.54-3.55zM17 18c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1z" />
+                                  </svg>
+                                )}
+                                {row.fulfill}
+                              </span>
+                            ) : (
+                              <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium border border-[rgba(25,118,210,0.55)] text-[#1976d2] bg-white">
+                                {row.statusLabel}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-3 pl-1 align-middle whitespace-nowrap">
+                            {row.payment === 'Fizetve' ? (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold border bg-[#E8F5E9] text-[#1B5E20] border-[#A5D6A7]">
+                                <svg className="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path d="M18 7l-1.41-1.41-6.34 6.34-1.59-1.59L7 12l4 4 8-8z" />
+                                </svg>
+                                Fizetve
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold border bg-[#FFF8E1] text-[#7A5D00] border-[#FFE082]">
+                                <svg className="w-3 h-3 shrink-0" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                  <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
+                                </svg>
+                                Függőben
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-                <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-200">
-                  <p className="text-[10px] text-slate-400">1 pillantás — és tudod a nap teendőit.</p>
+
+                <div className="px-3 sm:px-4 py-2 bg-slate-50 border-t border-slate-100">
+                  <p className="text-[10px] text-slate-500">
+                    Mint a <span className="font-medium text-slate-600">rendelések listanézetén</span> (illusztráció): új rendelésnél{' '}
+                    <span className="text-emerald-700 font-medium">Csomagolható</span> /{' '}
+                    <span className="text-red-800 font-medium">Hiány</span> /{' '}
+                    <span className="text-blue-800 font-medium">Beszerzés alatt</span>.
+                  </p>
                 </div>
               </div>
             </div>
@@ -418,17 +609,9 @@ export default function CoreFeatures() {
               </div>
             </div>
 
-            {/* Screenshot — swap src for a real POS screenshot */}
-            <div className="flex-1 mx-4 mb-4 sm:mx-6 sm:mb-6 min-h-[200px] rounded-2xl overflow-hidden border border-orange-200/60 shadow-md bg-orange-50/40 flex items-center justify-center">
-              <div className="flex flex-col items-center gap-3 py-10 px-6 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-orange-100 flex items-center justify-center">
-                  <svg className="w-6 h-6 text-orange-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
-                  </svg>
-                </div>
-                <p className="text-xs text-slate-400 font-medium">POS kassza képernyőkép</p>
-                <p className="text-[10px] text-slate-300">Cseréld le: <code className="font-mono">/banner/pos.png</code></p>
-              </div>
+            {/* POS terminal mock — main-app PosClient layout (marketing: +Kép oszlop) */}
+            <div className="flex-1 mx-4 mb-4 sm:mx-6 sm:mb-6 min-h-[min(480px,72vh)]">
+              <PosTerminalMock />
             </div>
           </div>
 
@@ -547,25 +730,132 @@ export default function CoreFeatures() {
                   </div>
                 </div>
 
-                {/* Right: PDA screenshot placeholder */}
+                {/* Right: /pack/orders/[id] csomagolás-ellenőrzés mock (PackOrderPage) */}
                 <div className="flex-1 min-w-0">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 overflow-hidden shadow-sm">
-                    <div className="flex items-center gap-1.5 px-4 py-3 bg-white/70 border-b border-slate-200">
-                      <span className="w-3 h-3 rounded-full bg-red-300" />
-                      <span className="w-3 h-3 rounded-full bg-yellow-300" />
-                      <span className="w-3 h-3 rounded-full bg-green-300" />
-                      <div className="ml-3 flex-1 h-5 rounded-md bg-slate-200/70 max-w-[200px]" />
-                    </div>
-                    {/* Screenshot placeholder — replace with /banner/picking.png */}
-                    <div className="flex flex-col items-center justify-center gap-3 py-14 px-6 text-center">
-                      <div className="w-12 h-12 rounded-2xl bg-cyan-100 flex items-center justify-center">
-                        <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 13.5 9.375v-4.5Z" />
-                        </svg>
+                  <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-md">
+                    <div className="flex items-center gap-1.5 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-300" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-yellow-300" />
+                      <span className="w-2.5 h-2.5 rounded-full bg-green-300" />
+                      <div className="ml-2 flex-1 min-w-0 h-5 flex items-center px-2 rounded bg-white border border-slate-200 text-[9px] text-slate-500 truncate">
+                        mintawebshop.hu/pack/orders/pelda-rendeles
                       </div>
-                      <p className="text-xs text-slate-400 font-medium">PDA picking képernyőkép</p>
-                      <p className="text-[10px] text-slate-300">Cseréld le: <code className="font-mono">/banner/picking.png</code></p>
                     </div>
+
+                    <div className="p-3 sm:p-4 bg-slate-50/80">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="flex items-center justify-center w-8 h-8 rounded-full border border-slate-200 bg-white text-slate-500"
+                          aria-hidden
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                          </svg>
+                        </span>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-[#1976d2] text-white">
+                          R-2025-1042
+                        </span>
+                        <span className="text-[13px] font-semibold text-slate-900">Kovács Péter</span>
+                        <span className="text-[11px] text-slate-500">GLS házhoz</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 mt-1 ml-10 truncate">Budapest, 1024 · Fő utca 12.</p>
+
+                      <div className="flex items-center gap-2 mt-3">
+                        <div className="flex-1 h-2.5 rounded-full bg-slate-200 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-[#1976d2] transition-all"
+                            style={{ width: `${packOrderMockProgressPct}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-bold text-slate-800 tabular-nums shrink-0">
+                          {packOrderMockScannedSum} / {packOrderMockTotalQty} db
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto border-t border-slate-200">
+                      <table className="w-full min-w-[480px] text-left text-[10px] sm:text-[11px] border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100 border-b border-slate-200">
+                            <th className="py-2 pl-3 pr-1 font-bold text-slate-700 w-14">Kép</th>
+                            <th className="py-2 px-1 font-bold text-slate-700">Termék</th>
+                            <th className="py-2 px-1 font-bold text-slate-700 whitespace-nowrap">Cikkszám</th>
+                            <th className="py-2 px-1 font-bold text-slate-700 text-center w-12">Várt</th>
+                            <th className="py-2 px-1 font-bold text-slate-700 text-center whitespace-nowrap">Beolvasva</th>
+                            <th className="py-2 px-1 font-bold text-slate-700 text-center">±1</th>
+                            <th className="py-2 pr-3 w-8" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {packOrderMockLines.map(line => {
+                            const done = line.scanned >= line.qty
+                            return (
+                              <tr
+                                key={line.sku}
+                                className={`border-b border-slate-100 ${done ? 'bg-[rgba(46,125,50,0.22)]' : 'bg-[rgba(211,47,47,0.12)]'}`}
+                              >
+                                <td className="py-1.5 pl-3 align-middle">
+                                  <img
+                                    src={line.imageSrc}
+                                    alt={line.imageAlt}
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="w-10 h-10 sm:w-12 sm:h-12 rounded object-contain bg-slate-100 border border-slate-300"
+                                  />
+                                </td>
+                                <td className="py-1.5 px-1 align-middle font-medium text-slate-800 max-w-[120px] sm:max-w-none truncate sm:whitespace-normal">
+                                  {line.name}
+                                </td>
+                                <td className="py-1.5 px-1 align-middle text-slate-600 whitespace-nowrap">{line.sku}</td>
+                                <td className="py-1.5 px-1 align-middle text-center font-semibold text-slate-900">{line.qty}</td>
+                                <td className="py-1.5 px-1 align-middle text-center">
+                                  <span className={`font-bold text-[11px] ${done ? 'text-emerald-700' : 'text-slate-900'}`}>
+                                    {line.scanned} / {line.qty}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-1 align-middle">
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    <span className="inline-flex items-center justify-center w-7 h-7 rounded border border-slate-300 bg-white text-slate-500">
+                                      −
+                                    </span>
+                                    <span className="inline-flex items-center justify-center gap-0.5 px-1.5 h-7 rounded border border-slate-300 bg-white text-slate-600 font-medium">
+                                      +1
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-1.5 pr-3 align-middle text-center">
+                                  {done && (
+                                    <svg className="w-5 h-5 text-emerald-600 mx-auto" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                    </svg>
+                                  )}
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 px-3 py-2.5 bg-white border-t border-slate-200">
+                      <p className="text-[10px] text-slate-500 leading-snug max-w-md">
+                        Vonalkódolvasó vagy <strong className="text-slate-600">−1</strong> / <strong className="text-slate-600">+1</strong>
+                        — piros sor = még nincs kész, zöld = kész.
+                      </p>
+                      <button
+                        type="button"
+                        disabled
+                        className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-[11px] sm:text-xs font-bold bg-slate-300 text-slate-500 cursor-not-allowed"
+                      >
+                        <svg className="w-4 h-4 opacity-60" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                        </svg>
+                        Csomag kész
+                      </button>
+                    </div>
+                    <p className="px-3 pb-2 text-[9px] text-slate-400">
+                      Mint a <span className="font-medium text-slate-500">Csomagolás</span> képernyőn: minden tétel beolvasva után aktiválódik a gomb.
+                    </p>
                   </div>
                 </div>
 

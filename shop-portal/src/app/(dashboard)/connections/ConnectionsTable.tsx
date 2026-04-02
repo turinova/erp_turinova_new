@@ -121,6 +121,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [loadingSyncStatuses, setLoadingSyncStatuses] = useState(false)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentSyncingConnectionRef = useRef<WebshopConnection | null>(null)
+  const syncProgressPanelRef = useRef<HTMLDivElement | null>(null)
   const [migrationDialogOpen, setMigrationDialogOpen] = useState(false)
   const [migrationConnection, setMigrationConnection] = useState<WebshopConnection | null>(null)
   const [orphanedConnections, setOrphanedConnections] = useState<Array<{
@@ -209,6 +210,15 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     const interval = setInterval(loadSyncStatuses, 30000)
     return () => clearInterval(interval)
   }, [connections])
+
+  // Scroll the sync progress panel into view when a sync starts (Phase A is easy to miss)
+  useEffect(() => {
+    if (!syncingConnectionId) return
+    const frame = requestAnimationFrame(() => {
+      syncProgressPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [syncingConnectionId])
 
   // Cleanup polling on unmount
   useEffect(() => {
@@ -2224,8 +2234,11 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                   })()}
 
                   {/* Actions Section - Modern Clean Design */}
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
                     Termékszinkron
+                  </Typography>
+                  <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 1, lineHeight: 1.4 }}>
+                    Gyors: csak változott / új termékek (két szakasz: lista, majd részletek). Teljes: törzsadatok + minden termék szinkron.
                   </Typography>
                   <Box sx={{ 
                     display: 'flex', 
@@ -2237,53 +2250,69 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                   }}>
                     {/* Primary Action: Product sync (most common) */}
                     {connection.connection_type === 'shoprenter' && (
-                      <Button
-                        variant="contained"
-                        size="medium"
-                        startIcon={isSyncing ? <CircularProgress size={18} color="inherit" /> : <CloudDownloadIcon />}
-                        onClick={() => handleSyncProductsClick(connection)}
-                        disabled={isSyncing}
-                        sx={{
-                          bgcolor: typeConfig.color,
-                          color: 'white',
-                          fontWeight: 600,
-                          px: 3,
-                          '&:hover': {
-                            bgcolor: typeConfig.borderColor,
-                          },
-                          '&.Mui-disabled': {
-                            bgcolor: 'rgba(0, 0, 0, 0.12)',
-                            color: 'rgba(0, 0, 0, 0.26)'
-                          }
-                        }}
+                      <Tooltip
+                        title="A gyors mód nem minden terméket frissít minden futtatáskor — csak azokat, amelyeket a rendszer változottnak vagy újnak ítél. Először a webshop terméklistája töltődik, utána jön a részletes szinkron és a számláló."
+                        arrow
+                        enterDelay={400}
                       >
-                        {isSyncing ? 'Szinkronizálás...' : 'Gyors frissítés (ajánlott)'}
-                      </Button>
+                        <span style={{ display: 'inline-flex' }}>
+                          <Button
+                            variant="contained"
+                            size="medium"
+                            startIcon={isSyncing ? <CircularProgress size={18} color="inherit" /> : <CloudDownloadIcon />}
+                            onClick={() => handleSyncProductsClick(connection)}
+                            disabled={isSyncing}
+                            sx={{
+                              bgcolor: typeConfig.color,
+                              color: 'white',
+                              fontWeight: 600,
+                              px: 3,
+                              '&:hover': {
+                                bgcolor: typeConfig.borderColor,
+                              },
+                              '&.Mui-disabled': {
+                                bgcolor: 'rgba(0, 0, 0, 0.12)',
+                                color: 'rgba(0, 0, 0, 0.26)'
+                              }
+                            }}
+                          >
+                            {isSyncing ? 'Szinkronizálás...' : 'Gyors frissítés (ajánlott)'}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     )}
                     {connection.connection_type === 'shoprenter' && (
-                      <Button
-                        variant="outlined"
-                        size="medium"
-                        startIcon={fullSyncConnectionId === connection.id ? <CircularProgress size={18} /> : <SyncIcon />}
-                        onClick={() => handleGuidedFullSync(connection)}
-                        disabled={isSyncing || fullSyncConnectionId === connection.id}
-                        sx={{
-                          fontWeight: 600,
-                          px: 2.5,
-                        }}
+                      <Tooltip
+                        title="Kategóriák és terméktípusok szinkronja, majd teljes termék szinkron a webshopból minden termékre — lassabb, ha mindent egyeztetni kell."
+                        arrow
+                        enterDelay={400}
                       >
-                        {fullSyncConnectionId === connection.id
-                          ? (fullSyncStep === 'categories'
-                              ? 'Teljes frissítés: kategóriák...'
-                              : fullSyncStep === 'product_classes'
-                                ? 'Teljes frissítés: termék típusok...'
-                                : fullSyncStep === 'products'
-                                  ? 'Teljes frissítés: termékek...'
-                                  : fullSyncStep === 'manufacturers'
-                                    ? 'Teljes frissítés: gyártók...'
-                                  : 'Teljes frissítés...')
-                          : 'Teljes frissítés'}
-                      </Button>
+                        <span style={{ display: 'inline-flex' }}>
+                          <Button
+                            variant="outlined"
+                            size="medium"
+                            startIcon={fullSyncConnectionId === connection.id ? <CircularProgress size={18} /> : <SyncIcon />}
+                            onClick={() => handleGuidedFullSync(connection)}
+                            disabled={isSyncing || fullSyncConnectionId === connection.id}
+                            sx={{
+                              fontWeight: 600,
+                              px: 2.5,
+                            }}
+                          >
+                            {fullSyncConnectionId === connection.id
+                              ? (fullSyncStep === 'categories'
+                                  ? 'Teljes frissítés: kategóriák...'
+                                  : fullSyncStep === 'product_classes'
+                                    ? 'Teljes frissítés: termék típusok...'
+                                    : fullSyncStep === 'products'
+                                      ? 'Teljes frissítés: termékek...'
+                                      : fullSyncStep === 'manufacturers'
+                                        ? 'Teljes frissítés: gyártók...'
+                                      : 'Teljes frissítés...')
+                              : 'Teljes frissítés'}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     )}
                     
                     {/* Secondary Action: Test Connection */}
@@ -2629,6 +2658,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       {/* Sync Progress Panel - Sticky at top when syncing */}
       {syncingConnectionId && syncProgress && (
         <Paper 
+          ref={syncProgressPanelRef}
           elevation={0}
           sx={{ 
             mt: 3, 
@@ -2892,12 +2922,13 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
                     <CircularProgress size={24} />
                     <Typography variant="body1">
-                      Termékek listájának betöltése...
+                      Webshop terméklista letöltése és változások kiszűrése…
                     </Typography>
                   </Box>
                   <Box sx={{ p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
                     <Typography variant="body2" color="text.secondary">
-                      <strong>Kérjük, várjon.</strong> A szinkronizálás eltarthat néhány percig, ha sok termék van a webshopban.
+                      <strong>1. szakasz.</strong> A szerver a webshop összes termékét végigolvassa (lapozva). Ez nagy katalógusnál több perc is lehet.
+                      Ebben a szakaszban még nem látszik „hány / hány termék kész” százalék — az csak a 2. szakaszban jelenik meg, amikor a kiválasztott termékek részletes adatai érkeznek.
                     </Typography>
                   </Box>
                 </>
@@ -3978,7 +4009,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               Gyors frissítés (ajánlott)
             </Typography>
             <Typography variant="body2">
-              Ez a művelet csak az új vagy módosult termékeket frissíti a webshopból az ERP-be.
+              Csak azokat a termékeket dolgozza fel részletesen, amelyeket a rendszer <strong>újnak vagy változottnak</strong> ítél (webshop időbélyegek és ERP állapot alapján).
+              Nem minden termék frissül minden futtatáskor — ha valami nem látszik naprakésznek, használjon <strong>teljes szinkront</strong>, vagy egy terméknél a termék oldali <strong>„Frissítés a webshopból”</strong> gombot.
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
               A webshopból eltűnt termékeket az ERP töröltként jelöli. Ez a leggyorsabb és napi használatra ajánlott mód.
             </Typography>
           </Alert>
@@ -3988,15 +4022,31 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
               Teljes egyeztetéshez használja a kártyán a <strong>Teljes frissítés</strong> gombot (Kategóriák - Termék típusok - Termékek).
             </Typography>
           </Alert>
+          <Box sx={{ mb: 2, p: 2, bgcolor: 'rgba(25, 118, 210, 0.06)', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+              Két szakasz — mit fog látni a folyamat közben?
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              <strong>1. szakasz (lista):</strong> A szerver letölti a webshop teljes terméklistáját és eldönti, melyik azonosító kerüljön részletes frissítésre. Nagy katalógusnál ez több percig is eltarthat; ekkor még nem jelenik meg „X / Y termék kész” százalék.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              <strong>2. szakasz (részletes szinkron):</strong> A kiválasztott termékekhez lekérjük a részletes adatokat és frissítjük az ERP-t. Itt látható az előrehaladás (számláló, sáv) a kapcsolatok oldalon.
+            </Typography>
+          </Box>
+          <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              Ha a webshop API egyes termékeknél nem ad vissza módosítás idejét (<code>dateUpdated</code>), a gyors szinkron biztonsági okból kihagyhat termékeket.
+              Ilyenkor egy <strong>teljes</strong> termék szinkron vagy a <strong>termék oldali frissítés</strong> hozza egyeztethetővé az adatokat.
+            </Typography>
+          </Alert>
           <Box sx={{ mb: 2, p: 2, bgcolor: 'rgba(25, 118, 210, 0.04)', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
               Mi fog most történni?
             </Typography>
             <Box component="ol" sx={{ pl: 2, m: 0 }}>
-              <li><Typography variant="body2" color="text.secondary">Lekérdezzük a webshop terméklistát.</Typography></li>
-              <li><Typography variant="body2" color="text.secondary">Kiválasztjuk csak a változott / új termékeket.</Typography></li>
-              <li><Typography variant="body2" color="text.secondary">Frissítjük az ERP termékadatokat (képek, attribútumok, kapcsolatok).</Typography></li>
-              <li><Typography variant="body2" color="text.secondary">A hiányzó webshop termékeket töröltként jelöljük.</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">Lekérdezzük a webshop teljes terméklistáját (lapozva), és kiszűrjük a gyors módban szinkronizálandókat.</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">A kiválasztott termékeknél részletes adatot töltünk (ár, leírás, képek, kategóriák, attribútumok).</Typography></li>
+              <li><Typography variant="body2" color="text.secondary">A webshopból eltűnt termékeket az ERP-ben töröltként jelöljük.</Typography></li>
             </Box>
           </Box>
           <Typography variant="body1" sx={{ mb: 2 }}>
