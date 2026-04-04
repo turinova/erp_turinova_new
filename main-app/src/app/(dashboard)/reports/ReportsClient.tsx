@@ -41,7 +41,9 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon,
   KeyboardArrowDown as ExpandIcon,
-  KeyboardArrowUp as CollapseIcon
+  KeyboardArrowUp as CollapseIcon,
+  Add as AddIcon,
+  Close as CloseIcon
 } from '@mui/icons-material'
 
 import { usePagePermission } from '@/hooks/usePagePermission'
@@ -225,11 +227,15 @@ const C = {
   red: '#E03E3E'
 }
 
-const COST_DEFAULTS = {
-  cutting_labor_per_day: 200_000,
-  edge_labor_per_day: 156_500,
-  edge_material_per_m: 250
-}
+interface OverheadItem { id: number; name: string; perDay: number }
+
+const DEFAULT_OVERHEADS: OverheadItem[] = [
+  { id: 1, name: 'Munkaerő', perDay: 356_500 },
+  { id: 2, name: 'Bérleti díj', perDay: 0 },
+  { id: 3, name: 'Villany / rezsi', perDay: 0 }
+]
+
+const DEFAULT_EDGE_MATERIAL_PER_M = 250
 
 const toggleBtnSx = {
   textTransform: 'none' as const,
@@ -272,9 +278,24 @@ export default function ReportsClient() {
   const [showVolumeTable, setShowVolumeTable] = useState(false)
   const [showProfitTable, setShowProfitTable] = useState(true)
 
-  const [cuttingLaborPerDay, setCuttingLaborPerDay] = useState(COST_DEFAULTS.cutting_labor_per_day)
-  const [edgeLaborPerDay, setEdgeLaborPerDay] = useState(COST_DEFAULTS.edge_labor_per_day)
-  const [edgeMaterialPerM, setEdgeMaterialPerM] = useState(COST_DEFAULTS.edge_material_per_m)
+  const [overheads, setOverheads] = useState<OverheadItem[]>(DEFAULT_OVERHEADS)
+  const [edgeMaterialPerM, setEdgeMaterialPerM] = useState(DEFAULT_EDGE_MATERIAL_PER_M)
+  const [nextOverheadId, setNextOverheadId] = useState(DEFAULT_OVERHEADS.length + 1)
+
+  const overheadPerDay = useMemo(() => overheads.reduce((s, o) => s + o.perDay, 0), [overheads])
+
+  const addOverhead = useCallback(() => {
+    setOverheads(prev => [...prev, { id: nextOverheadId, name: '', perDay: 0 }])
+    setNextOverheadId(v => v + 1)
+  }, [nextOverheadId])
+
+  const removeOverhead = useCallback((id: number) => {
+    setOverheads(prev => prev.filter(o => o.id !== id))
+  }, [])
+
+  const updateOverhead = useCallback((id: number, field: 'name' | 'perDay', value: string | number) => {
+    setOverheads(prev => prev.map(o => o.id === id ? { ...o, [field]: value } : o))
+  }, [])
 
   const monthOptions = useMemo(() => generateMonthOptions(), [])
 
@@ -361,22 +382,22 @@ export default function ReportsClient() {
     const avgCurrent = c.quote_count > 0 ? c.lines_gross_total / c.quote_count : 0
     const avgPrev = (p?.quote_count ?? 0) > 0 ? (p?.lines_gross_total ?? 0) / (p?.quote_count ?? 1) : 0
 
-    const cCuttingCost = c.production_days * cuttingLaborPerDay
-    const cEdgeCost = c.production_days * edgeLaborPerDay + c.edge_length_m * edgeMaterialPerM
-    const cTotalProfit = c.lines_gross_total - c.estimated_material_cost - cCuttingCost - cEdgeCost
+    const cDirectCost = c.estimated_material_cost + c.edge_length_m * edgeMaterialPerM
+    const cOverhead = c.production_days * overheadPerDay
+    const cNetProfit = c.lines_gross_total - cDirectCost - cOverhead
 
-    const pCuttingCost = (p?.production_days ?? 0) * cuttingLaborPerDay
-    const pEdgeCost = (p?.production_days ?? 0) * edgeLaborPerDay + (p?.edge_length_m ?? 0) * edgeMaterialPerM
-    const pTotalProfit = (p?.lines_gross_total ?? 0) - (p?.estimated_material_cost ?? 0) - pCuttingCost - pEdgeCost
+    const pDirectCost = (p?.estimated_material_cost ?? 0) + (p?.edge_length_m ?? 0) * edgeMaterialPerM
+    const pOverhead = (p?.production_days ?? 0) * overheadPerDay
+    const pNetProfit = (p?.lines_gross_total ?? 0) - pDirectCost - pOverhead
 
     return [
       { label: 'Bevétel összesen', value: fmtCurrency(c.lines_gross_total), delta: deltaPercent(c.lines_gross_total, p?.lines_gross_total ?? 0), highlight: false },
-      { label: 'Becsült össz. árrés', value: fmtCurrency(cTotalProfit), delta: deltaPercent(cTotalProfit, pTotalProfit), highlight: true },
+      { label: 'Becsült nettó profit', value: fmtCurrency(cNetProfit), delta: deltaPercent(cNetProfit, pNetProfit), highlight: true },
       { label: 'Ajánlatok', value: fmtNum(c.quote_count), delta: deltaPercent(c.quote_count, p?.quote_count ?? 0), highlight: false },
       { label: 'Feldolgozott m²', value: fmtSqm(c.tabla_m2), delta: deltaPercent(c.tabla_m2, p?.tabla_m2 ?? 0), highlight: false },
       { label: 'Átlag ajánlat érték', value: fmtCurrency(avgCurrent), delta: deltaPercent(avgCurrent, avgPrev), highlight: false }
     ]
-  }, [data?.kpi, data?.prevKpi, cuttingLaborPerDay, edgeLaborPerDay, edgeMaterialPerM])
+  }, [data?.kpi, data?.prevKpi, edgeMaterialPerM, overheadPerDay])
 
   // ---------------------------------------------------------------------------
   // TIER 2A: Revenue trend (single area chart)
@@ -419,12 +440,11 @@ export default function ReportsClient() {
   const profitRows = useMemo(() => {
     if (!data?.series?.length) return null
     return data.series.map(row => {
-      const cuttingCost = row.production_days * cuttingLaborPerDay
-      const edgeLaborCost = row.production_days * edgeLaborPerDay
-      const edgeMaterialCost = row.edge_length_m * edgeMaterialPerM
-      const edgeCost = edgeLaborCost + edgeMaterialCost
-      const totalCost = row.estimated_material_cost + cuttingCost + edgeCost
-      const totalProfit = row.lines_gross_total - totalCost
+      const edgeDirectCost = row.edge_length_m * edgeMaterialPerM
+      const directCost = row.estimated_material_cost + edgeDirectCost
+      const grossMargin = row.lines_gross_total - directCost
+      const overhead = row.production_days * overheadPerDay
+      const netProfit = grossMargin - overhead
       return {
         period: row.period,
         production_days: row.production_days,
@@ -432,18 +452,18 @@ export default function ReportsClient() {
         material_cost: row.estimated_material_cost,
         material_profit: row.estimated_material_profit,
         cutting_gross: row.cutting_gross,
-        cutting_cost: cuttingCost,
-        cutting_profit: row.cutting_gross - cuttingCost,
         edge_gross: row.edge_materials_gross,
-        edge_cost: edgeCost,
-        edge_profit: row.edge_materials_gross - edgeCost,
+        edge_direct_cost: edgeDirectCost,
+        edge_margin: row.edge_materials_gross - edgeDirectCost,
         services_gross: row.services_gross,
         total_gross: row.lines_gross_total,
-        total_cost: totalCost,
-        total_profit: totalProfit
+        direct_cost: directCost,
+        gross_margin: grossMargin,
+        overhead,
+        net_profit: netProfit
       }
     })
-  }, [data?.series, cuttingLaborPerDay, edgeLaborPerDay, edgeMaterialPerM])
+  }, [data?.series, edgeMaterialPerM, overheadPerDay])
 
   const profitTotals = useMemo(() => {
     if (!profitRows?.length) return null
@@ -453,20 +473,20 @@ export default function ReportsClient() {
       material_cost: acc.material_cost + r.material_cost,
       material_profit: acc.material_profit + r.material_profit,
       cutting_gross: acc.cutting_gross + r.cutting_gross,
-      cutting_cost: acc.cutting_cost + r.cutting_cost,
-      cutting_profit: acc.cutting_profit + r.cutting_profit,
       edge_gross: acc.edge_gross + r.edge_gross,
-      edge_cost: acc.edge_cost + r.edge_cost,
-      edge_profit: acc.edge_profit + r.edge_profit,
+      edge_direct_cost: acc.edge_direct_cost + r.edge_direct_cost,
+      edge_margin: acc.edge_margin + r.edge_margin,
       services_gross: acc.services_gross + r.services_gross,
       total_gross: acc.total_gross + r.total_gross,
-      total_cost: acc.total_cost + r.total_cost,
-      total_profit: acc.total_profit + r.total_profit
+      direct_cost: acc.direct_cost + r.direct_cost,
+      gross_margin: acc.gross_margin + r.gross_margin,
+      overhead: acc.overhead + r.overhead,
+      net_profit: acc.net_profit + r.net_profit
     }), {
       production_days: 0, material_gross: 0, material_cost: 0, material_profit: 0,
-      cutting_gross: 0, cutting_cost: 0, cutting_profit: 0,
-      edge_gross: 0, edge_cost: 0, edge_profit: 0,
-      services_gross: 0, total_gross: 0, total_cost: 0, total_profit: 0
+      cutting_gross: 0, edge_gross: 0, edge_direct_cost: 0, edge_margin: 0,
+      services_gross: 0, total_gross: 0, direct_cost: 0, gross_margin: 0,
+      overhead: 0, net_profit: 0
     })
   }, [profitRows])
 
@@ -735,154 +755,178 @@ export default function ReportsClient() {
 
           {profitTotals && (
             <Paper variant='outlined' sx={{ p: 3, mb: 3 }}>
-              <Stack direction='row' justifyContent='space-between' alignItems='center' sx={{ mb: 2 }}>
-                <Box>
-                  <Typography variant='subtitle1' sx={{ fontWeight: 700, mb: 1 }}>Becsült árrés kalkuláció</Typography>
-                  <Stack direction='row' spacing={1.5} alignItems='center' flexWrap='wrap' useFlexGap>
-                    <TextField
-                      size='small' type='number' label='Szabás Ft/nap'
-                      value={cuttingLaborPerDay} onChange={e => setCuttingLaborPerDay(Number(e.target.value) || 0)}
-                      InputProps={{ sx: { fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' } }}
-                      sx={{ width: 145 }}
-                    />
-                    <TextField
-                      size='small' type='number' label='Élzárás Ft/nap'
-                      value={edgeLaborPerDay} onChange={e => setEdgeLaborPerDay(Number(e.target.value) || 0)}
-                      InputProps={{ sx: { fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' } }}
-                      sx={{ width: 145 }}
-                    />
+              <Typography variant='subtitle1' sx={{ fontWeight: 700, mb: 2 }}>Becsült árrés kalkuláció</Typography>
+
+              <Grid container spacing={3}>
+                {/* Left: mini P&L */}
+                <Grid item xs={12} md={7}>
+                  <TableContainer component={Box} sx={{ borderRadius: 1, border: theme => `1px solid ${theme.palette.divider}` }}>
+                    <Table size='small'>
+                      <TableBody>
+                        {/* Revenue */}
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 700 }}>Bevétel összesen</TableCell>
+                          <TableCell align='right' sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtCurrency(profitTotals.total_gross)}</TableCell>
+                        </TableRow>
+
+                        {/* Direct costs */}
+                        <TableRow sx={{ bgcolor: '#FAFAFA' }}>
+                          <TableCell sx={{ fontWeight: 600, pl: 3 }}>Anyag beszerzési költség</TableCell>
+                          <TableCell align='right' sx={{ fontVariantNumeric: 'tabular-nums', color: 'error.main' }}>−{fmtCurrency(profitTotals.material_cost)}</TableCell>
+                        </TableRow>
+                        <TableRow sx={{ bgcolor: '#FAFAFA' }}>
+                          <TableCell sx={{ fontWeight: 600, pl: 3 }}>Élzárás anyagköltség ({fmtNum(edgeMaterialPerM)} Ft/m)</TableCell>
+                          <TableCell align='right' sx={{ fontVariantNumeric: 'tabular-nums', color: 'error.main' }}>−{fmtCurrency(profitTotals.edge_direct_cost)}</TableCell>
+                        </TableRow>
+
+                        {/* Gross margin */}
+                        <TableRow sx={{ borderTop: '2px solid', borderColor: 'divider' }}>
+                          <TableCell sx={{ fontWeight: 700 }}>Bruttó árrés (közvetlen költségek után)</TableCell>
+                          <TableCell align='right' sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: profitTotals.gross_margin >= 0 ? 'success.main' : 'error.main' }}>
+                            {fmtCurrency(profitTotals.gross_margin)}
+                            {profitTotals.total_gross > 0 && (
+                              <Typography component='span' variant='caption' color='text.secondary' sx={{ ml: 0.5 }}>
+                                ({fmtPct((profitTotals.gross_margin / profitTotals.total_gross) * 100)})
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+
+                        {/* Overhead */}
+                        {overheads.filter(o => o.perDay > 0).map(o => (
+                          <TableRow key={o.id} sx={{ bgcolor: '#FAFAFA' }}>
+                            <TableCell sx={{ fontWeight: 600, pl: 3 }}>{o.name || 'Névtelen'} ({fmtCurrency(o.perDay)}/nap × {profitTotals.production_days} nap)</TableCell>
+                            <TableCell align='right' sx={{ fontVariantNumeric: 'tabular-nums', color: 'error.main' }}>−{fmtCurrency(o.perDay * profitTotals.production_days)}</TableCell>
+                          </TableRow>
+                        ))}
+                        {profitTotals.overhead > 0 && (
+                          <TableRow>
+                            <TableCell sx={{ fontWeight: 600 }}>Üzemi költségek összesen</TableCell>
+                            <TableCell align='right' sx={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'error.main' }}>−{fmtCurrency(profitTotals.overhead)}</TableCell>
+                          </TableRow>
+                        )}
+
+                        {/* Net profit */}
+                        <TableRow sx={{ bgcolor: profitTotals.net_profit >= 0 ? alpha(C.teal, 0.06) : alpha(C.red, 0.06) }}>
+                          <TableCell sx={{ fontWeight: 800, fontSize: '1rem' }}>Becsült nettó profit</TableCell>
+                          <TableCell align='right' sx={{ fontWeight: 800, fontSize: '1rem', fontVariantNumeric: 'tabular-nums', color: profitTotals.net_profit >= 0 ? 'success.main' : 'error.main' }}>
+                            {fmtCurrency(profitTotals.net_profit)}
+                            {profitTotals.total_gross > 0 && (
+                              <Typography component='span' variant='caption' color='text.secondary' sx={{ ml: 0.5 }}>
+                                ({fmtPct((profitTotals.net_profit / profitTotals.total_gross) * 100)})
+                              </Typography>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+
+                  <Typography variant='caption' color='text.secondary' sx={{ mt: 1, display: 'block' }}>
+                    {profitTotals.production_days} munkanap &bull; Anyag: aktuális beszerzési ár alapján &bull; Szabás/szolg. költség nem kalkulált
+                  </Typography>
+                </Grid>
+
+                {/* Right: editable cost inputs */}
+                <Grid item xs={12} md={5}>
+                  <Box sx={{ p: 2, borderRadius: 1, border: theme => `1px solid ${theme.palette.divider}`, bgcolor: '#FAFAFA' }}>
+                    <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem', display: 'block', mb: 1.5 }}>
+                      Közvetlen költség
+                    </Typography>
                     <TextField
                       size='small' type='number' label='Élzárás anyag Ft/m'
                       value={edgeMaterialPerM} onChange={e => setEdgeMaterialPerM(Number(e.target.value) || 0)}
                       InputProps={{ sx: { fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' } }}
-                      sx={{ width: 155 }}
+                      fullWidth sx={{ mb: 2.5 }}
                     />
-                    <Typography variant='caption' color='text.secondary'>Anyag: aktuális beszerzési ár</Typography>
-                  </Stack>
-                </Box>
-                {profitTotals.total_gross > 0 && (
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>Összes becsült árrés</Typography>
-                    <Typography sx={{ fontWeight: 800, fontSize: '1.25rem', fontVariantNumeric: 'tabular-nums', color: profitTotals.total_profit >= 0 ? 'success.main' : 'error.main' }}>
-                      {fmtCurrency(profitTotals.total_profit)}
-                      <Typography component='span' sx={{ ml: 0.75, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>
-                        ({fmtPct((profitTotals.total_profit / profitTotals.total_gross) * 100)})
-                      </Typography>
-                    </Typography>
-                  </Box>
-                )}
-              </Stack>
 
-              {/* Summary cards */}
-              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(4, 1fr)' }, gap: 2, mb: 2 }}>
-                {([
-                  { label: 'Bútórlap', gross: profitTotals.material_gross, cost: profitTotals.material_cost, profit: profitTotals.material_profit, color: C.black },
-                  { label: 'Szabás', gross: profitTotals.cutting_gross, cost: profitTotals.cutting_cost, profit: profitTotals.cutting_profit, color: C.orange },
-                  { label: 'Élzárás', gross: profitTotals.edge_gross, cost: profitTotals.edge_cost, profit: profitTotals.edge_profit, color: C.teal },
-                  { label: 'Szolgáltatások', gross: profitTotals.services_gross, cost: 0, profit: profitTotals.services_gross, color: C.gray }
-                ] as const).map(cat => (
-                  <Box key={cat.label} sx={{ p: 2, borderRadius: 1, border: theme => `1px solid ${theme.palette.divider}`, borderLeft: `3px solid ${cat.color}` }}>
-                    <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, fontSize: '0.65rem', textTransform: 'uppercase' }}>{cat.label}</Typography>
-                    <Stack direction='row' justifyContent='space-between' alignItems='baseline' sx={{ mt: 0.5 }}>
-                      <Box>
-                        <Typography variant='caption' color='text.secondary' sx={{ fontSize: '0.6rem' }}>Bevétel</Typography>
-                        <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', fontVariantNumeric: 'tabular-nums' }}>{fmtCurrency(cat.gross)}</Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant='caption' color='text.secondary' sx={{ fontSize: '0.6rem' }}>Költség</Typography>
-                        <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', fontVariantNumeric: 'tabular-nums' }}>{cat.cost > 0 ? fmtCurrency(cat.cost) : '—'}</Typography>
-                      </Box>
-                      <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant='caption' color='text.secondary' sx={{ fontSize: '0.6rem' }}>Árrés</Typography>
-                        <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', fontVariantNumeric: 'tabular-nums', color: cat.profit >= 0 ? 'success.main' : 'error.main' }}>
-                          {fmtCurrency(cat.profit)}
+                    <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem', display: 'block', mb: 1.5 }}>
+                      Üzemi költségek (Ft/nap)
+                    </Typography>
+                    <Stack spacing={1}>
+                      {overheads.map(o => (
+                        <Stack key={o.id} direction='row' spacing={1} alignItems='center'>
+                          <TextField
+                            size='small' label='Megnevezés' value={o.name}
+                            onChange={e => updateOverhead(o.id, 'name', e.target.value)}
+                            InputProps={{ sx: { fontSize: '0.8rem' } }}
+                            sx={{ flex: 1 }}
+                          />
+                          <TextField
+                            size='small' type='number' label='Ft/nap' value={o.perDay}
+                            onChange={e => updateOverhead(o.id, 'perDay', Number(e.target.value) || 0)}
+                            InputProps={{ sx: { fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' } }}
+                            sx={{ width: 130 }}
+                          />
+                          <IconButton size='small' onClick={() => removeOverhead(o.id)} sx={{ color: 'text.secondary' }}>
+                            <CloseIcon fontSize='small' />
+                          </IconButton>
+                        </Stack>
+                      ))}
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', pt: 0.5 }}>
+                        <IconButton size='small' onClick={addOverhead} sx={{ border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+                          <AddIcon fontSize='small' />
+                        </IconButton>
+                        <Typography variant='caption' sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                          Összesen: {fmtCurrency(overheadPerDay)}/nap
                         </Typography>
                       </Box>
                     </Stack>
-                    {cat.gross > 0 && (
-                      <Box sx={{ mt: 1 }}>
-                        <LinearProgress
-                          variant='determinate'
-                          value={Math.min(Math.max(cat.cost > 0 ? (cat.profit / cat.gross) * 100 : 100, 0), 100)}
-                          sx={{
-                            height: 4, borderRadius: 2,
-                            bgcolor: theme => alpha(cat.color, 0.08),
-                            '& .MuiLinearProgress-bar': { borderRadius: 2, bgcolor: cat.profit >= 0 ? C.teal : C.red }
-                          }}
-                        />
-                        <Typography variant='caption' color='text.secondary' sx={{ fontSize: '0.6rem', mt: 0.25, display: 'block' }}>
-                          {cat.cost > 0 ? `${fmtPct((cat.profit / cat.gross) * 100)} margin` : 'Költség nem kalkulált'}
-                        </Typography>
-                      </Box>
-                    )}
                   </Box>
-                ))}
-              </Box>
+                </Grid>
+              </Grid>
 
               {/* Collapsible detailed profit table */}
-              <Stack direction='row' alignItems='center' spacing={0.5} sx={{ cursor: 'pointer' }} onClick={() => setShowProfitTable(v => !v)}>
-                <IconButton size='small'>{showProfitTable ? <CollapseIcon fontSize='small' /> : <ExpandIcon fontSize='small' />}</IconButton>
-                <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600 }}>
-                  {showProfitTable ? 'Részletes tábla elrejtése' : 'Részletes tábla megjelenítése'}
-                </Typography>
-              </Stack>
-              <Collapse in={showProfitTable}>
-                <TableContainer component={Box} sx={{ mt: 1, borderRadius: 1, border: theme => `1px solid ${theme.palette.divider}`, overflowX: 'auto' }}>
-                  <Table size='small'>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Időszak</TableCell>
-                        <TableCell align='right'>Munkanapok</TableCell>
-                        <TableCell align='right'>Anyag bevétel</TableCell>
-                        <TableCell align='right'>Anyag költség</TableCell>
-                        <TableCell align='right'>Anyag árrés</TableCell>
-                        <TableCell align='right'>Szabás bevétel</TableCell>
-                        <TableCell align='right'>Szabás költség</TableCell>
-                        <TableCell align='right'>Szabás árrés</TableCell>
-                        <TableCell align='right'>Élzárás bevétel</TableCell>
-                        <TableCell align='right'>Élzárás költség</TableCell>
-                        <TableCell align='right'>Élzárás árrés</TableCell>
-                        <TableCell align='right'>Szolg.</TableCell>
-                        <TableCell align='right' sx={{ fontWeight: 700 }}>Össz. árrés</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {profitRows?.map(row => (
-                        <TableRow key={row.period}>
-                          <TableCell>{fmtPeriodLabel(row.period, granularity)}</TableCell>
-                          <TableCell align='right'>{row.production_days}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.material_gross)}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.material_cost)}</TableCell>
-                          <TableCell align='right' sx={{ color: row.material_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(row.material_profit)}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.cutting_gross)}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.cutting_cost)}</TableCell>
-                          <TableCell align='right' sx={{ color: row.cutting_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(row.cutting_profit)}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.edge_gross)}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.edge_cost)}</TableCell>
-                          <TableCell align='right' sx={{ color: row.edge_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(row.edge_profit)}</TableCell>
-                          <TableCell align='right'>{fmtCurrency(row.services_gross)}</TableCell>
-                          <TableCell align='right' sx={{ fontWeight: 700, color: row.total_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(row.total_profit)}</TableCell>
+              <Box sx={{ mt: 2 }}>
+                <Stack direction='row' alignItems='center' spacing={0.5} sx={{ cursor: 'pointer' }} onClick={() => setShowProfitTable(v => !v)}>
+                  <IconButton size='small'>{showProfitTable ? <CollapseIcon fontSize='small' /> : <ExpandIcon fontSize='small' />}</IconButton>
+                  <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600 }}>
+                    {showProfitTable ? 'Időszakos bontás elrejtése' : 'Időszakos bontás megjelenítése'}
+                  </Typography>
+                </Stack>
+                <Collapse in={showProfitTable}>
+                  <TableContainer component={Box} sx={{ mt: 1, borderRadius: 1, border: theme => `1px solid ${theme.palette.divider}`, overflowX: 'auto' }}>
+                    <Table size='small'>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Időszak</TableCell>
+                          <TableCell align='right'>Napok</TableCell>
+                          <TableCell align='right'>Bevétel</TableCell>
+                          <TableCell align='right'>Anyag ktg.</TableCell>
+                          <TableCell align='right'>Élzárás anyag</TableCell>
+                          <TableCell align='right'>Bruttó árrés</TableCell>
+                          <TableCell align='right'>Üzemi ktg.</TableCell>
+                          <TableCell align='right' sx={{ fontWeight: 700 }}>Nettó profit</TableCell>
                         </TableRow>
-                      ))}
-                      <TableRow sx={totalsRowSx}>
-                        <TableCell>Összesen</TableCell>
-                        <TableCell align='right'>{profitTotals.production_days}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.material_gross)}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.material_cost)}</TableCell>
-                        <TableCell align='right' sx={{ color: profitTotals.material_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(profitTotals.material_profit)}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.cutting_gross)}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.cutting_cost)}</TableCell>
-                        <TableCell align='right' sx={{ color: profitTotals.cutting_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(profitTotals.cutting_profit)}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.edge_gross)}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.edge_cost)}</TableCell>
-                        <TableCell align='right' sx={{ color: profitTotals.edge_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(profitTotals.edge_profit)}</TableCell>
-                        <TableCell align='right'>{fmtCurrency(profitTotals.services_gross)}</TableCell>
-                        <TableCell align='right' sx={{ fontWeight: 700, color: profitTotals.total_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(profitTotals.total_profit)}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Collapse>
+                      </TableHead>
+                      <TableBody>
+                        {profitRows?.map(row => (
+                          <TableRow key={row.period}>
+                            <TableCell>{fmtPeriodLabel(row.period, granularity)}</TableCell>
+                            <TableCell align='right'>{row.production_days}</TableCell>
+                            <TableCell align='right'>{fmtCurrency(row.total_gross)}</TableCell>
+                            <TableCell align='right'>{fmtCurrency(row.material_cost)}</TableCell>
+                            <TableCell align='right'>{fmtCurrency(row.edge_direct_cost)}</TableCell>
+                            <TableCell align='right' sx={{ color: row.gross_margin >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(row.gross_margin)}</TableCell>
+                            <TableCell align='right'>{fmtCurrency(row.overhead)}</TableCell>
+                            <TableCell align='right' sx={{ fontWeight: 700, color: row.net_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(row.net_profit)}</TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow sx={totalsRowSx}>
+                          <TableCell>Összesen</TableCell>
+                          <TableCell align='right'>{profitTotals.production_days}</TableCell>
+                          <TableCell align='right'>{fmtCurrency(profitTotals.total_gross)}</TableCell>
+                          <TableCell align='right'>{fmtCurrency(profitTotals.material_cost)}</TableCell>
+                          <TableCell align='right'>{fmtCurrency(profitTotals.edge_direct_cost)}</TableCell>
+                          <TableCell align='right' sx={{ color: profitTotals.gross_margin >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(profitTotals.gross_margin)}</TableCell>
+                          <TableCell align='right'>{fmtCurrency(profitTotals.overhead)}</TableCell>
+                          <TableCell align='right' sx={{ fontWeight: 700, color: profitTotals.net_profit >= 0 ? 'success.main' : 'error.main' }}>{fmtCurrency(profitTotals.net_profit)}</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Collapse>
+              </Box>
             </Paper>
           )}
 
