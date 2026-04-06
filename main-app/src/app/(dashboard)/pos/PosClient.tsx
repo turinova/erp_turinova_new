@@ -45,7 +45,8 @@ import {
   AttachMoney as CashIcon,
   CreditCard as CardIcon,
   KeyboardArrowDown as ExpandMoreIcon,
-  KeyboardArrowUp as ExpandLessIcon
+  KeyboardArrowUp as ExpandLessIcon,
+  Star as StarIcon
 } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { usePagePermission } from '@/hooks/usePagePermission'
@@ -57,6 +58,7 @@ interface Customer {
   email: string | null
   mobile: string | null
   discount_percent?: number | null
+  is_favorite: boolean
   billing_name?: string | null
   billing_country?: string | null
   billing_city?: string | null
@@ -1895,6 +1897,27 @@ export default function PosClient({ customers, workers }: PosClientProps) {
                 }}
                 onChange={(event, newValue) => {
                   setSelectedCustomer(newValue)
+                }}
+                renderOption={(props, option) => {
+                  if (typeof option === 'string') return <li {...props}>{option}</li>
+                  const { key, ...otherProps } = props
+                  return (
+                    <Box component="li" key={key} {...otherProps} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {option.is_favorite && (
+                        <StarIcon sx={{ fontSize: 16, color: '#F59E0B', flexShrink: 0 }} />
+                      )}
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {option.name}
+                        </Typography>
+                        {(option.email || option.mobile) && (
+                          <Typography variant="caption" color="text.secondary">
+                            {[option.email, option.mobile].filter(Boolean).join(' • ')}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  )
                 }}
                 renderInput={(params) => (
                   <TextField

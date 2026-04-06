@@ -36,7 +36,7 @@ import {
   Radio,
   RadioGroup
 } from '@mui/material'
-import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material'
+import { ExpandMore as ExpandMoreIcon, Star as StarIcon } from '@mui/icons-material'
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
 import Filter2Icon from '@mui/icons-material/Filter2'
 import { styled } from '@mui/material/styles'
@@ -136,6 +136,7 @@ interface Customer {
   email: string
   mobile: string
   discount_percent: number
+  is_favorite: boolean
   billing_name: string
   billing_country: string
   billing_city: string
@@ -1996,13 +1997,18 @@ export default function OptiClient({
                      const { key, ...otherProps } = props;
                      return (
                        <Box component="li" key={key} {...otherProps}>
-                         <Box>
-                           <Typography variant="body2" fontWeight="medium">
-                             {option.name}
-                           </Typography>
-                           <Typography variant="caption" color="text.secondary">
-                             {option.email} • {option.mobile}
-                           </Typography>
+                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                           {option.is_favorite && (
+                             <StarIcon sx={{ fontSize: 16, color: '#F59E0B', flexShrink: 0 }} />
+                           )}
+                           <Box>
+                             <Typography variant="body2" fontWeight="medium">
+                               {option.name}
+                             </Typography>
+                             <Typography variant="caption" color="text.secondary">
+                               {option.email} • {option.mobile}
+                             </Typography>
+                           </Box>
                          </Box>
                        </Box>
                      );

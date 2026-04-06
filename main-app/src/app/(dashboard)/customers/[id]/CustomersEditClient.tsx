@@ -4,8 +4,8 @@ import React, { useState } from 'react'
 
 import { useRouter } from 'next/navigation'
 
-import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, FormControlLabel, Switch } from '@mui/material'
-import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon } from '@mui/icons-material'
+import { Box, Typography, Breadcrumbs, Link, Paper, Grid, Divider, Button, TextField, FormControlLabel, Switch, IconButton, Tooltip } from '@mui/material'
+import { Home as HomeIcon, ArrowBack as ArrowBackIcon, Save as SaveIcon, Star as StarIcon, StarBorder as StarBorderIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -26,6 +26,7 @@ interface Customer {
   billing_company_reg_number: string
   discount_percent: number
   sms_notification: boolean
+  is_favorite: boolean
   created_at: string
   updated_at: string
 }
@@ -44,6 +45,24 @@ export default function CustomersEditClient({ initialCustomer }: CustomersEditCl
   const [customerData, setCustomerData] = useState<Customer>(initialCustomer)
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
   const [isSaving, setIsSaving] = useState(false)
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState(false)
+
+  const handleToggleFavorite = async () => {
+    setIsTogglingFavorite(true)
+    try {
+      const res = await fetch(`/api/customers/${customerData.id}/favorite`, { method: 'POST' })
+      if (res.ok) {
+        const { is_favorite } = await res.json()
+        setCustomerData(prev => ({ ...prev, is_favorite }))
+        invalidateApiCache('/api/customers')
+        toast.success(is_favorite ? 'Hozzáadva a kedvencekhez' : 'Eltávolítva a kedvencekből', { position: 'top-right', autoClose: 2000 })
+      }
+    } catch {
+      toast.error('Hiba történt', { position: 'top-right' })
+    } finally {
+      setIsTogglingFavorite(false)
+    }
+  }
 
   const handleBack = () => {
     router.push('/customers')
@@ -268,9 +287,16 @@ export default function CustomersEditClient({ initialCustomer }: CustomersEditCl
       </Breadcrumbs>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Ügyfél adatok szerkesztése
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title={customerData.is_favorite ? 'Eltávolítás a kedvencekből' : 'Hozzáadás a kedvencekhez'}>
+            <IconButton onClick={handleToggleFavorite} disabled={isTogglingFavorite} sx={{ color: customerData.is_favorite ? '#F5A623' : 'text.secondary' }}>
+              {customerData.is_favorite ? <StarIcon fontSize="large" /> : <StarBorderIcon fontSize="large" />}
+            </IconButton>
+          </Tooltip>
+          <Typography variant="h4" component="h1">
+            Ügyfél adatok szerkesztése
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
             variant="contained"

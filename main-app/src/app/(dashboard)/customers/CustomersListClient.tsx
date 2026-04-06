@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 
 import { Box, Typography, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper, Checkbox, TextField, InputAdornment, Breadcrumbs, Link, Button, CircularProgress, Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Chip, Pagination, FormControl, InputLabel, Select, MenuItem } from '@mui/material'
-import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon } from '@mui/icons-material'
+import { Search as SearchIcon, Home as HomeIcon, Add as AddIcon, Delete as DeleteIcon, FileDownload as ExportIcon, FileUpload as ImportIcon, Star as StarIcon, StarBorder as StarBorderIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 
@@ -18,6 +18,7 @@ interface Customer {
   mobile: string
   discount_percent: number
   sms_notification: boolean
+  is_favorite: boolean
   billing_name: string
   billing_country: string
   billing_city: string
@@ -92,14 +93,19 @@ export default function CustomersListClient({
   // Filter customers based on search term (client-side fallback)
   const filteredCustomers = useMemo(() => {
     if (!customers || !Array.isArray(customers)) return []
-    if (!searchTerm) return customers
-    
-    const term = searchTerm.toLowerCase()
-    return customers.filter(customer => 
-      customer.name?.toLowerCase().includes(term) ||
-      customer.email?.toLowerCase().includes(term) ||
-      customer.mobile?.toLowerCase().includes(term)
-    )
+    let result = customers
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      result = result.filter(customer =>
+        customer.name?.toLowerCase().includes(term) ||
+        customer.email?.toLowerCase().includes(term) ||
+        customer.mobile?.toLowerCase().includes(term)
+      )
+    }
+    return [...result].sort((a, b) => {
+      if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
+      return (a.name || '').localeCompare(b.name || '', 'hu')
+    })
   }, [customers, searchTerm])
 
   // Pagination functions - client-side pagination of filtered results
@@ -149,6 +155,20 @@ export default function CustomersListClient({
 
   const isAllSelected = selectedCustomers.length === filteredCustomers.length && filteredCustomers.length > 0
   const isIndeterminate = selectedCustomers.length > 0 && selectedCustomers.length < filteredCustomers.length
+
+  const handleToggleFavorite = async (e: React.MouseEvent, customerId: string) => {
+    e.stopPropagation()
+    try {
+      const res = await fetch(`/api/customers/${customerId}/favorite`, { method: 'POST' })
+      if (res.ok) {
+        const { is_favorite } = await res.json()
+        setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, is_favorite } : c))
+        invalidateApiCache('/api/customers')
+      }
+    } catch {
+      toast.error('Hiba történt')
+    }
+  }
 
   const handleRowClick = (customerId: string) => {
     router.push(`/customers/${customerId}`)
@@ -474,6 +494,7 @@ export default function CustomersListClient({
                   onChange={handleSelectAll}
                 />
               </TableCell>
+              <TableCell padding="checkbox" sx={{ width: 40 }} />
               <TableCell>Név</TableCell>
               <TableCell>E-mail</TableCell>
               <TableCell>Telefonszám</TableCell>
@@ -494,6 +515,12 @@ export default function CustomersListClient({
                     checked={selectedCustomers.includes(customer.id)}
                     onChange={() => handleSelectCustomer(customer.id)}
                   />
+                </TableCell>
+                <TableCell padding="checkbox" onClick={(e) => handleToggleFavorite(e, customer.id)} sx={{ cursor: 'pointer' }}>
+                  {customer.is_favorite
+                    ? <StarIcon sx={{ fontSize: 18, color: '#F5A623' }} />
+                    : <StarBorderIcon sx={{ fontSize: 18, color: 'text.disabled' }} />
+                  }
                 </TableCell>
                 <TableCell>{customer.name}</TableCell>
                 <TableCell>{customer.email}</TableCell>

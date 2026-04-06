@@ -47,7 +47,7 @@ import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
 import NextLink from 'next/link'
-import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon, PictureAsPdf as PictureAsPdfIcon, Undo as UndoIcon, KeyboardArrowDown as ExpandMoreIcon, KeyboardArrowUp as ExpandLessIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Save as SaveIcon, Delete as DeleteIcon, Add as AddIcon, Receipt as ReceiptIcon, PictureAsPdf as PictureAsPdfIcon, Undo as UndoIcon, KeyboardArrowDown as ExpandMoreIcon, KeyboardArrowUp as ExpandLessIcon, Star as StarIcon } from '@mui/icons-material'
 import { toast } from 'react-toastify'
 import InvoiceModal from './InvoiceModal'
 
@@ -57,6 +57,7 @@ interface Customer {
   email: string | null
   mobile: string | null
   discount_percent: number
+  is_favorite: boolean
   billing_name: string | null
   billing_country: string | null
   billing_city: string | null
@@ -1491,6 +1492,27 @@ export default function PosOrderDetailClient({
                         }}
                         onChange={handleCustomerChange}
                         freeSolo
+                        renderOption={(props, option) => {
+                          if (typeof option === 'string') return <li {...props}>{option}</li>
+                          const { key, ...otherProps } = props
+                          return (
+                            <Box component="li" key={key} {...otherProps} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              {option.is_favorite && (
+                                <StarIcon sx={{ fontSize: 16, color: '#F59E0B', flexShrink: 0 }} />
+                              )}
+                              <Box>
+                                <Typography variant="body2" fontWeight="medium">
+                                  {option.name}
+                                </Typography>
+                                {(option.email || option.mobile) && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {[option.email, option.mobile].filter(Boolean).join(' • ')}
+                                  </Typography>
+                                )}
+                              </Box>
+                            </Box>
+                          )
+                        }}
                         renderInput={(params) => (
                           <TextField
                             {...params}

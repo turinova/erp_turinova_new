@@ -19,6 +19,7 @@ interface Customer {
   billing_company_reg_number: string
   discount_percent: number
   sms_notification: boolean
+  is_favorite: boolean
   created_at: string
   updated_at: string
 }

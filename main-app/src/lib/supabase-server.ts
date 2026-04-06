@@ -996,6 +996,7 @@ export async function getCustomerById(id: string) {
       mobile,
       discount_percent,
       sms_notification,
+      is_favorite,
       billing_name,
       billing_country,
       billing_city,
@@ -1033,6 +1034,7 @@ export async function getAllCustomers() {
       mobile,
       discount_percent,
       sms_notification,
+      is_favorite,
       billing_name,
       billing_country,
       billing_city,
@@ -1045,6 +1047,7 @@ export async function getAllCustomers() {
       updated_at
     `)
     .is('deleted_at', null)
+    .order('is_favorite', { ascending: false })
     .order('name', { ascending: true })
     .limit(10000) // High limit to ensure we get all customers (adjust if you have more)
 
@@ -1058,6 +1061,34 @@ export async function getAllCustomers() {
 
   logTiming('Customers Total', startTime, `returned ${data?.length || 0} records`)
   return data || []
+}
+
+export type FavouriteCustomerRow = {
+  id: string
+  name: string
+  email: string | null
+  mobile: string | null
+  discount_percent: number
+  total_revenue: number
+  avg_monthly_revenue: number
+}
+
+export async function getFavouriteCustomersWithRevenue(): Promise<FavouriteCustomerRow[]> {
+  const { data, error } = await supabaseServer.rpc('get_favourite_customers_with_revenue')
+  if (error) {
+    console.error('get_favourite_customers_with_revenue:', error)
+    return []
+  }
+  const rows = (data as Record<string, unknown>[]) || []
+  return rows.map(r => ({
+    id: String(r.id),
+    name: String(r.name ?? ''),
+    email: r.email != null && String(r.email) !== '' ? String(r.email) : null,
+    mobile: r.mobile != null && String(r.mobile) !== '' ? String(r.mobile) : null,
+    discount_percent: Number(r.discount_percent) || 0,
+    total_revenue: Number(r.total_revenue) || 0,
+    avg_monthly_revenue: Number(r.avg_monthly_revenue) || 0
+  }))
 }
 
 // Edge Materials SSR functions

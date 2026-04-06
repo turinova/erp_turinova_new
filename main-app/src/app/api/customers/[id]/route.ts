@@ -26,10 +26,11 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         billing_company_reg_number: body.billing_company_reg_number || null,
         discount_percent: parseFloat(body.discount_percent) || 0,
         sms_notification: body.sms_notification || false,
+        is_favorite: body.is_favorite ?? false,
         updated_at: new Date().toISOString()
       })
       .eq('id', id)
-      .select('id, name, email, mobile, discount_percent, sms_notification, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
+      .select('id, name, email, mobile, discount_percent, sms_notification, is_favorite, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
       .single()
 
     if (error) {
@@ -116,7 +117,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const { data: customer, error } = await supabase
       .from('customers')
-      .select('id, name, email, mobile, discount_percent, sms_notification, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
+      .select('id, name, email, mobile, discount_percent, sms_notification, is_favorite, billing_name, billing_country, billing_city, billing_postal_code, billing_street, billing_house_number, billing_tax_number, billing_company_reg_number, created_at, updated_at')
       .eq('id', id)
       .single()
 
