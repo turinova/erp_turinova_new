@@ -18,6 +18,8 @@ import FormControlLabel from '@mui/material/FormControlLabel'
 // Third-party Imports
 import classnames from 'classnames'
 import { supabase } from '@/lib/supabase'
+import { getFirstPermittedPageClient } from '@/lib/auth-landing'
+import type { UserPermission } from '@/lib/permissions'
 import { toast } from 'react-toastify'
 
 // Type Imports
@@ -129,11 +131,10 @@ const LoginV2 = ({ mode }: { mode: Mode }) => {
               // Fetch user permissions to find first accessible page
               const permissionsResponse = await fetch(`/api/permissions/user/${data.user.id}`)
               if (permissionsResponse.ok) {
-                const permissions = await permissionsResponse.json()
-                const firstAllowed = permissions.find((p: any) => p.can_access === true)
-                const redirectPath = firstAllowed?.page_path || '/login'
-                
-                console.log('Redirecting to first permitted page:', redirectPath)
+                const permissions = (await permissionsResponse.json()) as UserPermission[]
+                const redirectPath = getFirstPermittedPageClient(permissions)
+
+                console.log('Redirecting after login:', redirectPath)
                 router.push(redirectPath)
               } else {
                 // Fallback: force page reload to let middleware handle redirect
