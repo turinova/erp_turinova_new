@@ -4,6 +4,17 @@
 import { getUserPermissionsFromDB } from './permissions-server'
 import { UserPermission } from './permissions'
 
+const LANDING_HOME = '/home'
+
+/** Prefer Kezdőlap when permitted; else first row with can_access (DB order). */
+function resolveLandingPath(permissions: UserPermission[]): string {
+  if (!permissions?.length) return '/login'
+  const hasHome = permissions.some(p => p.page_path === LANDING_HOME && p.can_access === true)
+  if (hasHome) return LANDING_HOME
+  const firstAllowed = permissions.find(p => p.can_access === true)
+  return firstAllowed?.page_path ?? '/login'
+}
+
 /**
  * Get the first page the user has permission to access
  * Returns the first permitted page path, or /login if no permissions
@@ -24,21 +35,14 @@ export async function getFirstPermittedPage(userId: string): Promise<string> {
       console.log('[AUTH REDIRECT] User has', permissions.length, 'permissions loaded')
     }
     
-    // Find first page with can_access = true
-    const firstAllowed = permissions.find(p => p.can_access === true)
-    
-    if (firstAllowed) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[AUTH REDIRECT] Redirecting to first permitted page:', firstAllowed.page_path)
-      }
-      return firstAllowed.page_path
+    const path = resolveLandingPath(permissions)
+    if (path !== '/login' && process.env.NODE_ENV === 'development') {
+      console.log('[AUTH REDIRECT] Redirecting to:', path)
     }
-    
-    // No permissions found - redirect to login
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[AUTH REDIRECT] No permissions found, redirecting to login')
+    if (path === '/login' && process.env.NODE_ENV === 'development') {
+      console.log('[AUTH REDIRECT] No permitted page, redirecting to login')
     }
-    return '/login'
+    return path
     
   } catch (error) {
     console.error('[AUTH REDIRECT] Error getting first permitted page:', error)
@@ -54,11 +58,6 @@ export async function getFirstPermittedPage(userId: string): Promise<string> {
  * @returns The path to redirect to
  */
 export function getFirstPermittedPageClient(permissions: UserPermission[]): string {
-  if (!permissions || permissions.length === 0) {
-    return '/login'
-  }
-  
-  const firstAllowed = permissions.find(p => p.can_access === true)
-  return firstAllowed?.page_path || '/login'
+  return resolveLandingPath(permissions)
 }
 

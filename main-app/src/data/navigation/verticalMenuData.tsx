@@ -13,16 +13,16 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#0B6E99' // Blue for home/dashboard
   },
   {
-    label: 'Asztalosok',
-    href: '/favourite',
-    icon: 'ri-star-smile-line',
-    iconColor: '#F59E0B'
-  },
-  {
     label: 'Kereső',
     href: '/search',
     icon: 'ri-search-line',
     iconColor: '#E74C3C' // Red for search
+  },
+  {
+    label: 'Asztalosok',
+    href: '/favourite',
+    icon: 'ri-star-smile-line',
+    iconColor: '#F59E0B'
   },
   {
     label: 'Opti',

@@ -93,12 +93,26 @@ interface TopMaterialRow {
   on_stock: boolean
 }
 
+interface QuoteFunnelRow {
+  total_quotes: number
+  draft_count: number
+  draft_value_gross: number
+  won_count: number
+  won_value_gross: number
+  cancelled_count: number
+  cancelled_value_gross: number
+  conversion_pct: number
+  draft_share_pct: number
+}
+
 interface DashboardData {
   series: SeriesRow[]
   kpi: SeriesRow | null
   prevKpi: SeriesRow | null
   topCustomers: TopCustomerRow[]
   topMaterials: TopMaterialRow[]
+  quoteFunnel: QuoteFunnelRow | null
+  filters: { start: string; end: string; granularity: Granularity }
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +121,12 @@ interface DashboardData {
 
 function fmtDate(dt: Date): string {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+}
+
+function fmtIsoDateHu(iso: string): string {
+  const p = iso.split('-').map(Number)
+  if (p.length !== 3 || p.some(Number.isNaN)) return iso
+  return new Date(p[0], p[1] - 1, p[2]).toLocaleDateString('hu-HU')
 }
 
 function periodToRange(
@@ -224,7 +244,35 @@ const C = {
   orange: '#D9730D',
   blue: '#0B6E99',
   gray: '#9B9A97',
-  red: '#E03E3E'
+  red: '#E03E3E',
+  green: '#16A085'
+}
+
+/** Per-bar colors: alsó harmad piros, közép narancs, felső harmad zöld (időszakon belüli relatív). */
+function computeRevenueBarColors(linesGrossTotals: number[]): string[] {
+  const n = linesGrossTotals.length
+  if (n === 0) return []
+  const values = linesGrossTotals.map(v => Math.round(v))
+  const barColors = values.map(() => C.orange)
+  const indexed = values.map((v, i) => ({ i, v }))
+  indexed.sort((a, b) => a.v - b.v)
+  if (indexed[0].v === indexed[n - 1].v) return values.map(() => C.orange)
+  if (n === 1) return barColors
+  if (n === 2) {
+    barColors[indexed[0].i] = C.red
+    barColors[indexed[1].i] = C.green
+    return barColors
+  }
+  const lowCount = Math.floor(n / 3)
+  const highCount = Math.floor(n / 3)
+  const highMin = n - highCount
+  for (let k = 0; k < n; k++) {
+    const origIdx = indexed[k].i
+    if (k < lowCount) barColors[origIdx] = C.red
+    else if (k >= highMin) barColors[origIdx] = C.green
+    else barColors[origIdx] = C.orange
+  }
+  return barColors
 }
 
 interface OverheadItem { id: number; name: string; perDay: number }
@@ -262,7 +310,7 @@ export default function ReportsClient() {
   const { hasAccess, loading } = usePagePermission('/reports')
 
   const [period, setPeriod] = useState<PeriodKey>('this_month')
-  const [granularity, setGranularity] = useState<Granularity>('month')
+  const [granularity, setGranularity] = useState<Granularity>('day')
   const [materialSort, setMaterialSort] = useState<MaterialSort>('gross')
   const [selectedMonthIso, setSelectedMonthIso] = useState<string>(() => {
     const n = new Date()
@@ -325,7 +373,9 @@ export default function ReportsClient() {
         kpi: body.kpi || null,
         prevKpi: body.prevKpi || null,
         topCustomers: body.topCustomers || [],
-        topMaterials: body.topMaterials || []
+        topMaterials: body.topMaterials || [],
+        quoteFunnel: body.quoteFunnel ?? null,
+        filters: body.filters || { start, end, granularity }
       })
     } catch (e) {
       console.error('dashboard fetch:', e)
@@ -400,7 +450,7 @@ export default function ReportsClient() {
   }, [data?.kpi, data?.prevKpi, edgeMaterialPerM, overheadPerDay])
 
   // ---------------------------------------------------------------------------
-  // TIER 2A: Revenue trend (single area chart)
+  // TIER 2A: Revenue trend (bar chart)
   // ---------------------------------------------------------------------------
 
   const revenueTrendSeries = useMemo(() => {
@@ -409,17 +459,29 @@ export default function ReportsClient() {
     return [{ name: 'Bevétel összesen', data: data.series.map((r, i) => ({ x: cats[i], y: Math.round(r.lines_gross_total) })) }]
   }, [data?.series, granularity])
 
+  const revenueBarColors = useMemo(
+    () => computeRevenueBarColors(data?.series?.map(r => r.lines_gross_total) ?? []),
+    [data?.series]
+  )
+
   const revenueTrendOptions: ApexOptions = useMemo(() => ({
-    chart: { type: 'area', height: 280, toolbar: { show: false }, zoom: { enabled: false }, sparkline: { enabled: false } },
+    chart: { type: 'bar', height: 280, toolbar: { show: false }, zoom: { enabled: false } },
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '55%', distributed: true } },
     dataLabels: { enabled: false },
-    stroke: { curve: 'smooth', width: 2.5 },
-    fill: { type: 'gradient', gradient: { opacityFrom: 0.25, opacityTo: 0.02, shadeIntensity: 1 } },
-    colors: [C.black],
-    xaxis: { type: 'category', labels: { style: { fontSize: '11px' } } },
+    colors: revenueBarColors.length ? revenueBarColors : [C.black],
+    legend: { show: false },
+    xaxis: {
+      type: 'category',
+      labels: {
+        style: { fontSize: '11px' },
+        rotate: granularity === 'day' ? -45 : 0,
+        rotateAlways: granularity === 'day'
+      }
+    },
     yaxis: { labels: { formatter: fmtCurrencyK, style: { fontSize: '11px' } } },
     tooltip: { y: { formatter: (v: number) => fmtCurrency(v) } },
     grid: { strokeDashArray: 3, borderColor: '#E3E2DD' }
-  }), [])
+  }), [granularity, revenueBarColors])
 
   // Revenue composition (horizontal bar for total period)
   const revenueComposition = useMemo(() => {
@@ -647,6 +709,104 @@ export default function ReportsClient() {
       {!dataLoading && !dataError && data && (
         <>
           {/* ============================================================ */}
+          {/* Quote funnel (created_at, same filter as charts)              */}
+          {/* ============================================================ */}
+
+          {data.quoteFunnel && (
+            <Paper variant='outlined' sx={{ p: 3, mb: 3 }}>
+              <Typography variant='subtitle1' sx={{ fontWeight: 700, mb: 0.5 }}>
+                Ajánlat konverzió
+              </Typography>
+              <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mb: 2 }}>
+                Létrehozás dátuma (Budapest idő) — {fmtIsoDateHu(data.filters.start)} – {fmtIsoDateHu(data.filters.end)} · konverzió = éles ajánlat / összes létrehozott (lemondás csökkenti az arányt)
+              </Typography>
+
+              {data.quoteFunnel.total_quotes === 0 ? (
+                <Typography color='text.secondary'>Ebben az időszakban nem jött létre ajánlat.</Typography>
+              ) : (
+                <>
+                  <Grid container spacing={2} sx={{ mb: 2 }}>
+                    <Grid item xs={6} md={3}>
+                      <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                        Konverzió
+                      </Typography>
+                      <Typography sx={{ fontWeight: 800, fontSize: { xs: '1.35rem', md: '1.6rem' }, lineHeight: 1.2, fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtPct(data.quoteFunnel.conversion_pct)}
+                      </Typography>
+                      <Typography variant='caption' color='text.secondary' sx={{ display: 'block', mt: 0.25 }}>
+                        Piszkozat arány: {fmtPct(data.quoteFunnel.draft_share_pct)}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6} md={3}>
+                      <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                        Piszkozatban
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtNum(data.quoteFunnel.draft_count)} db
+                      </Typography>
+                      <Typography variant='caption' color='text.secondary'>{fmtCurrency(data.quoteFunnel.draft_value_gross)}</Typography>
+                    </Grid>
+                    <Grid item xs={6} md={3}>
+                      <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                        Éles ajánlat
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtNum(data.quoteFunnel.won_count)} db
+                      </Typography>
+                      <Typography variant='caption' color='text.secondary'>{fmtCurrency(data.quoteFunnel.won_value_gross)}</Typography>
+                    </Grid>
+                    <Grid item xs={6} md={3}>
+                      <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, textTransform: 'uppercase', fontSize: '0.7rem' }}>
+                        Lemondva
+                      </Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', fontVariantNumeric: 'tabular-nums' }}>
+                        {fmtNum(data.quoteFunnel.cancelled_count)} db
+                      </Typography>
+                      <Typography variant='caption' color='text.secondary'>{fmtCurrency(data.quoteFunnel.cancelled_value_gross)}</Typography>
+                    </Grid>
+                  </Grid>
+
+                  <Typography variant='caption' color='text.secondary' sx={{ fontWeight: 600, display: 'block', mb: 1 }}>
+                    Megoszlás (db) — összesen {fmtNum(data.quoteFunnel.total_quotes)} ajánlat
+                  </Typography>
+                  <Box sx={{ display: 'flex', height: 28, borderRadius: 1, overflow: 'hidden', mb: 1.5 }}>
+                    {(() => {
+                      const t = data.quoteFunnel.total_quotes
+                      const draftPct = t > 0 ? (data.quoteFunnel.draft_count / t) * 100 : 0
+                      const wonPct = t > 0 ? (data.quoteFunnel.won_count / t) * 100 : 0
+                      const cancelPct = t > 0 ? (data.quoteFunnel.cancelled_count / t) * 100 : 0
+                      const segs = [
+                        { label: 'Piszkozat', pct: draftPct, color: C.orange },
+                        { label: 'Éles', pct: wonPct, color: C.teal },
+                        { label: 'Lemondva', pct: cancelPct, color: C.red }
+                      ]
+                      return segs.map(seg => (
+                        <Tooltip key={seg.label} title={`${seg.label}: ${fmtPct(seg.pct)}`} arrow>
+                          <Box sx={{ width: `${seg.pct}%`, bgcolor: seg.color, minWidth: seg.pct > 0 ? 2 : 0, transition: 'width 0.3s' }} />
+                        </Tooltip>
+                      ))
+                    })()}
+                  </Box>
+                  <Stack direction='row' spacing={2.5} flexWrap='wrap' useFlexGap>
+                    <Stack direction='row' alignItems='center' spacing={0.75}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: C.orange, flexShrink: 0 }} />
+                      <Typography variant='caption' color='text.secondary'>Piszkozat <strong>{fmtNum(data.quoteFunnel.draft_count)}</strong></Typography>
+                    </Stack>
+                    <Stack direction='row' alignItems='center' spacing={0.75}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: C.teal, flexShrink: 0 }} />
+                      <Typography variant='caption' color='text.secondary'>Éles <strong>{fmtNum(data.quoteFunnel.won_count)}</strong></Typography>
+                    </Stack>
+                    <Stack direction='row' alignItems='center' spacing={0.75}>
+                      <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: C.red, flexShrink: 0 }} />
+                      <Typography variant='caption' color='text.secondary'>Lemondva <strong>{fmtNum(data.quoteFunnel.cancelled_count)}</strong></Typography>
+                    </Stack>
+                  </Stack>
+                </>
+              )}
+            </Paper>
+          )}
+
+          {/* ============================================================ */}
           {/* TIER 2A: Bevétel trend + composition                         */}
           {/* ============================================================ */}
 
@@ -654,7 +814,9 @@ export default function ReportsClient() {
             <Stack direction='row' justifyContent='space-between' alignItems='center' sx={{ mb: 1 }}>
               <Box>
                 <Typography variant='subtitle1' sx={{ fontWeight: 700 }}>Bevétel trend</Typography>
-                <Typography variant='caption' color='text.secondary'>Sorok bruttó összesen — időszak szerint</Typography>
+                <Typography variant='caption' color='text.secondary'>
+                  Oszlopdiagram — szín az időszakon belüli relatív szint (alacsony → piros, közepes → narancs, erős → zöld)
+                </Typography>
               </Box>
               {seriesTotals && (
                 <Typography sx={{ fontWeight: 800, fontSize: '1.25rem', fontVariantNumeric: 'tabular-nums' }}>
@@ -664,7 +826,23 @@ export default function ReportsClient() {
             </Stack>
 
             {hasRevenue ? (
-              <ReactApexChart options={revenueTrendOptions} series={revenueTrendSeries} type='area' height={280} />
+              <>
+                <ReactApexChart options={revenueTrendOptions} series={revenueTrendSeries} type='bar' height={280} />
+                <Stack direction='row' spacing={2} flexWrap='wrap' useFlexGap sx={{ mt: 1, justifyContent: 'center' }}>
+                  <Stack direction='row' alignItems='center' spacing={0.75}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: C.red, flexShrink: 0 }} />
+                    <Typography variant='caption' color='text.secondary'>Alacsony (alsó ~harmad)</Typography>
+                  </Stack>
+                  <Stack direction='row' alignItems='center' spacing={0.75}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: C.orange, flexShrink: 0 }} />
+                    <Typography variant='caption' color='text.secondary'>Közepes</Typography>
+                  </Stack>
+                  <Stack direction='row' alignItems='center' spacing={0.75}>
+                    <Box sx={{ width: 10, height: 10, borderRadius: 0.5, bgcolor: C.green, flexShrink: 0 }} />
+                    <Typography variant='caption' color='text.secondary'>Erős (felső ~harmad)</Typography>
+                  </Stack>
+                </Stack>
+              </>
             ) : (
               <Typography color='text.secondary' sx={{ py: 6, textAlign: 'center' }}>Nincs bevételi adat a választott időszakra.</Typography>
             )}

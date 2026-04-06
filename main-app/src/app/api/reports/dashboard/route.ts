@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
   const curMonth = currentMonthRange()
   const prevMonth = previousMonthRange()
 
-  const [seriesResult, kpiResult, prevKpiResult, customersResult, materialsResult] = await Promise.all([
+  const [seriesResult, kpiResult, prevKpiResult, customersResult, materialsResult, funnelResult] = await Promise.all([
     supabaseServer.rpc('get_reports_dashboard_series', {
       p_start: startRaw,
       p_end: endRaw,
@@ -125,16 +125,23 @@ export async function GET(request: NextRequest) {
       p_start: startRaw,
       p_end: endRaw,
       p_limit: 20
+    }),
+    supabaseServer.rpc('get_reports_quote_funnel', {
+      p_start: startRaw,
+      p_end: endRaw
     })
   ])
 
-  for (const r of [seriesResult, kpiResult, prevKpiResult, customersResult, materialsResult]) {
+  for (const r of [seriesResult, kpiResult, prevKpiResult, customersResult, materialsResult, funnelResult]) {
     if (r.error) {
       console.error('Dashboard RPC error:', r.error)
       const msg = r.error.message || 'RPC failed'
       if (isMissingRpcError(msg)) {
         return NextResponse.json(
-          { error: 'A riport adatbázis-függvények még nincsenek telepítve. Futtassa: supabase/migrations/20260404_reports_dashboard_v2.sql' },
+          {
+            error:
+              'A riport adatbázis-függvények még nincsenek telepítve. Futtassa: supabase/migrations/20260404_reports_dashboard_v2.sql és 20260407_reports_quote_funnel.sql'
+          },
           { status: 503 }
         )
       }
@@ -188,12 +195,32 @@ export async function GET(request: NextRequest) {
     on_stock: r.on_stock === true
   }))
 
+  const funnelRows = (funnelResult.data || []) as Record<string, unknown>[]
+  const funnelRaw = funnelRows[0]
+  const quoteFunnel = funnelRaw
+    ? (() => {
+        const n = normalizeNumericRow(funnelRaw)
+        return {
+          total_quotes: Number(n.total_quotes ?? 0),
+          draft_count: Number(n.draft_count ?? 0),
+          draft_value_gross: Number(n.draft_value_gross ?? 0),
+          won_count: Number(n.won_count ?? 0),
+          won_value_gross: Number(n.won_value_gross ?? 0),
+          cancelled_count: Number(n.cancelled_count ?? 0),
+          cancelled_value_gross: Number(n.cancelled_value_gross ?? 0),
+          conversion_pct: Number(n.conversion_pct ?? 0),
+          draft_share_pct: Number(n.draft_share_pct ?? 0)
+        }
+      })()
+    : null
+
   return NextResponse.json({
     series,
     kpi,
     prevKpi,
     topCustomers,
     topMaterials,
+    quoteFunnel,
     filters: { start: startRaw, end: endRaw, granularity }
   })
 }
