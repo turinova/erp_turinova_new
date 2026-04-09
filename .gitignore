@@ -45,3 +45,10 @@ yarn-error.log*
 
 # Raspberry Pi Attendance System (separate project)
 raspberry-pi-attendance/
+
+# Raspberry Pi foot counter (separate project; not pushed with ERP)
+raspberry-pi-footcounter/
+
+# Python (Pi sync scripts local runs)
+__pycache__/
+*.py[cod]

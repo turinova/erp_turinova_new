@@ -49,6 +49,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#3498DB' // Blue for scanner
   },
   {
+    label: 'Bejárat élő',
+    href: '/footcounter-live',
+    icon: 'ri-camera-lens-line',
+    iconColor: '#16A085' // Teal — matches reports / live context
+  },
+  {
     label: 'Riportok',
     href: '/reports',
     icon: 'ri-bar-chart-line',

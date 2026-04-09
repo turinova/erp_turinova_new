@@ -1,0 +1,16 @@
+[Unit]
+Description=Foot counter Hailo MJPEG preview
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=turinova
+WorkingDirectory=/opt/footcounter
+EnvironmentFile=-/opt/footcounter/config.env
+ExecStart=/usr/bin/python3 /opt/footcounter/preview_hailo_mjpeg.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
