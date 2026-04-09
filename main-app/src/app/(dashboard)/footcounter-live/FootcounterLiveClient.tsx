@@ -3,6 +3,9 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
@@ -12,16 +15,13 @@ import {
   Stack,
   Typography
 } from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 
 import type { FootcounterDashboardStats } from '@/types/footcounter'
 
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
-
-const vercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV ?? ''
-/** Vercel production/preview: build sets this via next.config `env` (VERCEL_ENV). */
-const isVercelCloudDeploy = vercelEnv === 'production' || vercelEnv === 'preview'
 
 /**
  * Bejárat élő: Supabase stats + optional LAN MJPEG.
@@ -36,7 +36,7 @@ export default function FootcounterLiveClient() {
   const [stats, setStats] = useState<FootcounterDashboardStats | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
-  const [streamError, setStreamError] = useState<string | null>(null)
+  const [livePreviewOpen, setLivePreviewOpen] = useState(false)
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
@@ -111,32 +111,6 @@ export default function FootcounterLiveClient() {
           Adatok frissítése
         </Button>
       </Stack>
-
-      {isVercelCloudDeploy && !process.env.NEXT_PUBLIC_FOOTCOUNTER_STREAM_URL?.trim() && (
-        <Alert severity='warning' sx={{ mb: 2 }}>
-          <Typography variant='body2' component='span' display='block' sx={{ mb: 1 }}>
-            <strong>Vercel (production / preview):</strong> a felhőben futó szerver nem éri el a boltban lévő Pi
-            LAN-címét (pl. <code>192.168.…</code>). Ezért a szerveres MJPEG-proxy (
-            <code>/api/footcounter/stream</code> + <code>FOOTCOUNTER_MJPEG_URL</code>) itt általában{' '}
-            <strong>nem működik</strong>.
-          </Typography>
-          <Typography variant='body2' component='span' display='block' sx={{ mb: 1 }}>
-            <strong>Helyi fejlesztés:</strong> <code>http://localhost:3000/footcounter-live</code> — ha a géped
-            eléri a Pi MJPEG URL-jét, a kép működhet.
-          </Typography>
-          <Typography variant='body2' component='span' display='block'>
-            <strong>Éles kép a felhőből:</strong> állíts be <code>NEXT_PUBLIC_FOOTCOUNTER_STREAM_URL</code>-t
-            (HTTPS, pl. tunnel a Pi felé), vagy használd csak a szinkron számokat és a grafikont — ezek Supabase-ből
-            jönnek, Pi szinkronnal töltődnek.
-          </Typography>
-        </Alert>
-      )}
-      {isVercelCloudDeploy && !!process.env.NEXT_PUBLIC_FOOTCOUNTER_STREAM_URL?.trim() && (
-        <Alert severity='info' sx={{ mb: 2 }}>
-          Vercel: az élő kép a <code>NEXT_PUBLIC_FOOTCOUNTER_STREAM_URL</code> miatt közvetlenül a böngészőből tölt.
-          A Be/Ki statisztikák továbbra is a Supabase szinkronból származnak.
-        </Alert>
-      )}
 
       {statsLoading && !stats && (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
@@ -220,52 +194,54 @@ export default function FootcounterLiveClient() {
         </>
       )}
 
-      <Typography variant='subtitle1' sx={{ mb: 1, mt: 2 }}>
-        Élő kép (opcionális)
-      </Typography>
-      {process.env.NEXT_PUBLIC_FOOTCOUNTER_STREAM_URL ? (
-        <Alert severity='info' sx={{ mb: 2 }}>
-          Közvetlen stream URL van beállítva.
-        </Alert>
-      ) : (
-        <Alert severity='info' sx={{ mb: 2 }}>
-          Szerveres proxy: <code>FOOTCOUNTER_MJPEG_URL</code>. Ha nincs beállítva, a kép hibás lehet; az adatok
-          ettől függetlenül működnek.
-        </Alert>
-      )}
-      {streamError && (
-        <Alert severity='warning' sx={{ mb: 2 }}>
-          {streamError}
-        </Alert>
-      )}
-      <Paper
+      <Accordion
+        expanded={livePreviewOpen}
+        onChange={(_, expanded) => setLivePreviewOpen(expanded)}
+        disableGutters
         elevation={0}
         sx={{
-          border: theme => `1px solid ${theme.palette.divider}`,
-          borderRadius: 2,
-          overflow: 'hidden',
-          bgcolor: 'action.hover',
-          minHeight: 200
+          mt: 2,
+          border: t => `1px solid ${t.palette.divider}`,
+          borderRadius: 1,
+          '&:before': { display: 'none' },
+          overflow: 'hidden'
         }}
       >
-        <Box
-          component='img'
-          src={streamUrl}
-          alt='Bejárat élő közvetítés'
-          sx={{
-            display: 'block',
-            width: '100%',
-            height: 'auto',
-            verticalAlign: 'bottom'
-          }}
-          onError={() =>
-            setStreamError(
-              'A kép nem töltődik be. LAN / FOOTCOUNTER_MJPEG_URL ellenőrzése (Vercel-en nem működik a 192.168… cím).'
-            )
-          }
-          onLoad={() => setStreamError(null)}
-        />
-      </Paper>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, '& .MuiAccordionSummary-content': { my: 1 } }}>
+          <Typography variant='subtitle2'>Élő kép (opcionális)</Typography>
+        </AccordionSummary>
+        <AccordionDetails sx={{ pt: 0, px: 1, pb: 1 }}>
+          {livePreviewOpen ? (
+            <Paper
+              elevation={0}
+              sx={{
+                border: theme => `1px solid ${theme.palette.divider}`,
+                borderRadius: 1,
+                overflow: 'hidden',
+                bgcolor: 'action.hover',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                maxHeight: { xs: 'min(32vh, 280px)', sm: 'min(36vh, 320px)' }
+              }}
+            >
+              <Box
+                component='img'
+                src={streamUrl}
+                alt='Bejárat élő közvetítés'
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  maxHeight: { xs: 'min(32vh, 280px)', sm: 'min(36vh, 320px)' },
+                  height: 'auto',
+                  objectFit: 'contain',
+                  verticalAlign: 'bottom'
+                }}
+              />
+            </Paper>
+          ) : null}
+        </AccordionDetails>
+      </Accordion>
     </Box>
   )
 }

@@ -3,11 +3,6 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   // basePath: process.env.BASEPATH, // Temporarily disabled for custom domain testing
 
-  /** Exposed for client UI (e.g. footcounter-live stream hints). Set by Vercel at build time. */
-  env: {
-    NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? ''
-  },
-
   // Disable ESLint during build for deployment
   eslint: {
     ignoreDuringBuilds: true,
