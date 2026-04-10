@@ -9,6 +9,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Grid,
   Paper,
@@ -22,6 +23,20 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import type { FootcounterDashboardStats } from '@/types/footcounter'
 
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
+
+const HEATMAP_WEEKDAY_LABELS = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V']
+
+function formatAvg(n: number): string {
+  if (!Number.isFinite(n)) return '—'
+  return n >= 10 ? Math.round(n).toLocaleString('hu-HU') : n.toFixed(1)
+}
+
+function pctVsAvg(today: number, avg: number): string | null {
+  if (avg <= 0 || !Number.isFinite(avg)) return null
+  const p = Math.round((today / avg - 1) * 100)
+  if (p === 0) return '≈ átlag'
+  return p > 0 ? `+${p}% az átlaghoz` : `${p}% az átlaghoz`
+}
 
 /**
  * Bejárat élő: Supabase stats + optional LAN MJPEG.
@@ -95,6 +110,73 @@ export default function FootcounterLiveClient() {
     ]
   }, [stats?.series_7d])
 
+  const hourlyOptions = useMemo(() => {
+    const hourly = stats?.series_today_hourly ?? []
+    return {
+      chart: { type: 'bar' as const, toolbar: { show: false }, fontFamily: 'inherit' },
+      plotOptions: { bar: { horizontal: false, columnWidth: '70%', borderRadius: 2 } },
+      dataLabels: { enabled: false },
+      stroke: { show: true, width: 2, colors: ['transparent'] },
+      xaxis: { categories: hourly.map(h => `${h.hour}`), title: { text: 'Óra (Budapest)' } },
+      yaxis: { title: { text: 'Események' } },
+      fill: { opacity: 1 },
+      colors: ['#16A085', '#E67E22'],
+      legend: { position: 'top' as const },
+      tooltip: { y: { formatter: (val: number) => `${val}` } }
+    }
+  }, [stats?.series_today_hourly])
+
+  const hourlySeries = useMemo(() => {
+    const hourly = stats?.series_today_hourly ?? []
+    return [
+      { name: 'Be', data: hourly.map(h => h.in_count) },
+      { name: 'Ki', data: hourly.map(h => h.out_count) }
+    ]
+  }, [stats?.series_today_hourly])
+
+  const heatmapOptions = useMemo(() => {
+    const flat = stats?.heatmap_in.matrix.flat() ?? []
+    const maxVal = Math.max(1, ...flat)
+    return {
+      chart: { type: 'heatmap' as const, toolbar: { show: false }, fontFamily: 'inherit' },
+      dataLabels: { enabled: false },
+      colors: ['#00897B'],
+      plotOptions: {
+        heatmap: {
+          shadeIntensity: 0.55,
+          radius: 2,
+          colorScale: {
+            ranges: [
+              { from: 0, to: 0, color: '#ECEFF1', name: '0' },
+              { from: 1, to: maxVal, color: '#00897B', name: 'be' }
+            ]
+          }
+        }
+      },
+      xaxis: {
+        type: 'category' as const,
+        categories: Array.from({ length: 24 }, (_, i) => `${i}`),
+        title: { text: 'Óra' }
+      },
+      yaxis: { show: true },
+      tooltip: { y: { formatter: (val: number) => `${val} be` } }
+    }
+  }, [stats?.heatmap_in.matrix])
+
+  const heatmapSeries = useMemo(() => {
+    const m = stats?.heatmap_in.matrix ?? []
+    return HEATMAP_WEEKDAY_LABELS.map((name, wd) => ({
+      name,
+      data: m[wd] ?? Array.from({ length: 24 }, () => 0)
+    }))
+  }, [stats?.heatmap_in.matrix])
+
+  const sameWeekdayBeVsAvg = useMemo(() => {
+    const sw = stats?.same_weekday_avg
+    if (!sw) return null
+    return pctVsAvg(stats.today_in, sw.avg_in)
+  }, [stats?.same_weekday_avg, stats?.today_in])
+
   return (
     <Box sx={{ p: { xs: 2, md: 4 } }}>
       <Stack direction='row' justifyContent='space-between' alignItems='flex-start' sx={{ mb: 2 }} flexWrap='wrap' gap={2}>
@@ -157,6 +239,26 @@ export default function FootcounterLiveClient() {
                 <Typography variant='h4' sx={{ mt: 0.5 }}>
                   {stats.today_in} / {stats.today_out}
                 </Typography>
+                {stats.same_weekday_avg && (
+                  <Stack direction='row' spacing={0.5} flexWrap='wrap' useFlexGap sx={{ mt: 1 }}>
+                    <Typography variant='caption' color='text.secondary' display='block' sx={{ width: '100%' }}>
+                      Átlag ugyanezen a hétköznapon ({stats.same_weekday_avg.sample_days} nap,{' '}
+                      {stats.same_weekday_avg.lookback_days} napos ablak):
+                    </Typography>
+                    <Typography variant='body2'>
+                      Be {formatAvg(stats.same_weekday_avg.avg_in)} · Ki{' '}
+                      {formatAvg(stats.same_weekday_avg.avg_out)}
+                    </Typography>
+                    {sameWeekdayBeVsAvg && (
+                      <Chip
+                        size='small'
+                        label={`Be: ${sameWeekdayBeVsAvg}`}
+                        variant='outlined'
+                        sx={{ height: 22 }}
+                      />
+                    )}
+                  </Stack>
+                )}
               </Paper>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
@@ -178,6 +280,30 @@ export default function FootcounterLiveClient() {
               </Paper>
             </Grid>
           </Grid>
+
+          <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
+            <Typography variant='subtitle1' sx={{ mb: 0.5 }}>
+              Ma óránként (Europe/Budapest)
+            </Typography>
+            <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 2 }}>
+              Be és Ki események óránként a mai naptól.
+            </Typography>
+            <Box sx={{ minHeight: 300 }}>
+              <ReactApexChart options={hourlyOptions} series={hourlySeries} type='bar' height={300} />
+            </Box>
+          </Paper>
+
+          <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
+            <Typography variant='subtitle1' sx={{ mb: 0.5 }}>
+              Be forgalom: hét napja × óra
+            </Typography>
+            <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 2 }}>
+              Csak bejárat (Be), utolsó {stats.heatmap_in.days} nap összesen — hol zsúfolt a bolt tipikusan.
+            </Typography>
+            <Box sx={{ minHeight: 380, overflowX: 'auto' }}>
+              <ReactApexChart options={heatmapOptions} series={heatmapSeries} type='heatmap' height={380} />
+            </Box>
+          </Paper>
 
           <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
             <Typography variant='subtitle1' sx={{ mb: 2 }}>

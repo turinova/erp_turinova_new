@@ -3,6 +3,11 @@ import { supabaseServer } from '@/lib/supabase-server'
 
 const TZ = 'Europe/Budapest'
 
+/** Fetch window: 7d chart + heatmap + same-weekday baseline. */
+const CROSSINGS_LOOKBACK_DAYS = 40
+const HEATMAP_LOOKBACK_DAYS = 28
+const SAME_WEEKDAY_LOOKBACK_DAYS = 35
+
 function budapestDayKey(isoUtc: string): string {
   const d = new Date(isoUtc)
   return new Intl.DateTimeFormat('en-CA', {
@@ -20,6 +25,45 @@ function budapestTodayKey(): string {
     month: '2-digit',
     day: '2-digit'
   }).format(new Date())
+}
+
+/** Local hour 0–23 in Europe/Budapest for an instant. */
+function budapestHour(isoUtc: string): number {
+  const hourPart = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ,
+    hour: '2-digit',
+    hour12: false
+  }).formatToParts(new Date(isoUtc))
+  const h = hourPart.find(p => p.type === 'hour')?.value
+  return h != null ? parseInt(h, 10) : 0
+}
+
+/** Monday = 0 … Sunday = 6 in Europe/Budapest. */
+function budapestWeekdayMon0(isoUtc: string): number {
+  const short = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    weekday: 'short'
+  }).format(new Date(isoUtc))
+  const map: Record<string, number> = {
+    Mon: 0,
+    Tue: 1,
+    Wed: 2,
+    Thu: 3,
+    Fri: 4,
+    Sat: 5,
+    Sun: 6
+  }
+  return map[short] ?? 0
+}
+
+function budapestDayKeyDaysAgo(daysAgo: number): string {
+  const t = Date.now() - daysAgo * 24 * 60 * 60 * 1000
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date(t))
 }
 
 /** Last 7 calendar days in Budapest (approximate stepping from "now"). */
@@ -69,6 +113,13 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     throw new Error(devErr.message)
   }
 
+  const emptyHourly = () =>
+    Array.from({ length: 24 }, (_, hour) => ({ hour, in_count: 0, out_count: 0 }))
+  const emptyHeatmap = () => ({
+    days: HEATMAP_LOOKBACK_DAYS,
+    matrix: Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
+  })
+
   if (!device?.id) {
     return {
       device_slug: deviceSlug,
@@ -78,7 +129,10 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
       total_out: 0,
       last_event_at: null,
       device_last_seen: null,
-      series_7d: last7DayKeys().map(day => ({ day, in_count: 0, out_count: 0 }))
+      series_7d: last7DayKeys().map(day => ({ day, in_count: 0, out_count: 0 })),
+      series_today_hourly: emptyHourly(),
+      same_weekday_avg: null,
+      heatmap_in: emptyHeatmap()
     }
   }
 
@@ -88,7 +142,7 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     countCrossings(deviceId, 'in'),
     countCrossings(deviceId, 'out')
   ])
-  const since = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  const since = new Date(Date.now() - CROSSINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   const { data: rows, error: rowErr } = await supabaseServer
     .from('footcounter_crossings')
@@ -103,11 +157,21 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
   }
 
   const todayKey = budapestTodayKey()
+  const heatmapCutoffKey = budapestDayKeyDaysAgo(HEATMAP_LOOKBACK_DAYS)
+  const todayWeekday = budapestWeekdayMon0(new Date().toISOString())
+
   let todayIn = 0
   let todayOut = 0
   let lastEventAt: string | null = null
 
-  const byDay = new Map<string, { in_count: number; out_count: number }>()
+  const hourlyToday = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    in_count: 0,
+    out_count: 0
+  }))
+  const heatmapMatrix = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
+
+  const byDay = new Map<string, { in_count: number; out_count: number; weekday_mon0: number }>()
 
   for (const r of rows ?? []) {
     const at = r.occurred_at as string
@@ -116,12 +180,24 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     if (lastEventAt == null || at > lastEventAt) lastEventAt = at
 
     const dayKey = budapestDayKey(at)
+    const wd = budapestWeekdayMon0(at)
+    const h = budapestHour(at)
+
     if (dayKey === todayKey) {
-      if (dir === 'in') todayIn += 1
-      else if (dir === 'out') todayOut += 1
+      if (dir === 'in') {
+        todayIn += 1
+        hourlyToday[h].in_count += 1
+      } else if (dir === 'out') {
+        todayOut += 1
+        hourlyToday[h].out_count += 1
+      }
     }
 
-    if (!byDay.has(dayKey)) byDay.set(dayKey, { in_count: 0, out_count: 0 })
+    if (dir === 'in' && dayKey >= heatmapCutoffKey) {
+      heatmapMatrix[wd][h] += 1
+    }
+
+    if (!byDay.has(dayKey)) byDay.set(dayKey, { in_count: 0, out_count: 0, weekday_mon0: wd })
     const b = byDay.get(dayKey)!
     if (dir === 'in') b.in_count += 1
     else if (dir === 'out') b.out_count += 1
@@ -132,6 +208,29 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     return { day, in_count: v?.in_count ?? 0, out_count: v?.out_count ?? 0 }
   })
 
+  const avgCutoffKey = budapestDayKeyDaysAgo(SAME_WEEKDAY_LOOKBACK_DAYS)
+  let sumPastIn = 0
+  let sumPastOut = 0
+  let sampleDays = 0
+  for (const [day, v] of byDay) {
+    if (day === todayKey) continue
+    if (day < avgCutoffKey) continue
+    if (v.weekday_mon0 !== todayWeekday) continue
+    sumPastIn += v.in_count
+    sumPastOut += v.out_count
+    sampleDays += 1
+  }
+
+  const same_weekday_avg =
+    sampleDays > 0
+      ? {
+          sample_days: sampleDays,
+          avg_in: sumPastIn / sampleDays,
+          avg_out: sumPastOut / sampleDays,
+          lookback_days: SAME_WEEKDAY_LOOKBACK_DAYS
+        }
+      : null
+
   return {
     device_slug: deviceSlug,
     today_in: todayIn,
@@ -140,6 +239,9 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     total_out: totalOut,
     last_event_at: lastEventAt,
     device_last_seen: (device.last_seen_at as string | null) ?? null,
-    series_7d
+    series_7d,
+    series_today_hourly: hourlyToday,
+    same_weekday_avg,
+    heatmap_in: { days: HEATMAP_LOOKBACK_DAYS, matrix: heatmapMatrix }
   }
 }
