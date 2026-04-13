@@ -52,6 +52,19 @@ import { toast } from 'react-toastify'
 import BeszerzésSmsModal from './BeszerzésSmsModal'
 import CreatePurchaseOrderModal from './CreatePurchaseOrderModal'
 
+/** Compact hu-HU calendar date only (no time); single formatter for all rows */
+const shopOrderItemDateOnlyFormatter = new Intl.DateTimeFormat('hu-HU', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+function formatShopOrderItemDateOnly(dateString: string): string {
+  const d = new Date(dateString)
+  if (Number.isNaN(d.getTime())) return '—'
+  return shopOrderItemDateOnlyFormatter.format(d)
+}
+
 interface ShopOrderItem {
   id: string
   product_name: string
@@ -268,16 +281,6 @@ export default function SupplierOrdersClient({
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount) + ' Ft'
-  }
-
-  // Format date
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleString('hu-HU', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    })
   }
 
   // Helper function to get display name from database or fallback
@@ -772,12 +775,13 @@ export default function SupplierOrdersClient({
               <TableCell><strong>Megjegyzés</strong></TableCell>
               <TableCell align="right"><strong>Bruttó egységár</strong></TableCell>
               <TableCell><strong>Státusz</strong></TableCell>
+              <TableCell><strong>Létrehozva</strong></TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredItems.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center">
+                <TableCell colSpan={10} align="center">
                   <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
                     {searchTerm || statusFilter || partnerFilter ? 'Nincs találat' : 'Még nincs termék'}
                   </Typography>
@@ -930,6 +934,16 @@ export default function SupplierOrdersClient({
                         color={statusInfo.color}
                         size="small"
                       />
+                    </TableCell>
+                    <TableCell
+                      onClick={() => handleRowClick(item.order_id)}
+                      sx={{
+                        whiteSpace: 'nowrap',
+                        fontVariantNumeric: 'tabular-nums',
+                        typography: 'body2',
+                      }}
+                    >
+                      {formatShopOrderItemDateOnly(item.created_at)}
                     </TableCell>
                   </TableRow>
                 )
