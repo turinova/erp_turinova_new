@@ -14,7 +14,6 @@ import {
   getPosOrdersGoalStats
 } from '@/lib/dashboard-server'
 import { getFootcounterDashboardStats, slimFootcounterForHome } from '@/lib/footcounter-stats'
-import { hasPagePermission } from '@/lib/permissions-server'
 import type { FootcounterHomeSlim } from '@/types/footcounter'
 
 export const metadata: Metadata = {
@@ -46,8 +45,6 @@ export default async function Page() {
 
   const loadFootcounterHome = async (): Promise<FootcounterHomeSlim | null> => {
     if (!user) return null
-    const allowed = await hasPagePermission(user.id, '/footcounter-live')
-    if (!allowed) return null
     try {
       const slug = process.env.FOOTCOUNTER_STATS_DEVICE_SLUG?.trim() || 'default'
       const stats = await getFootcounterDashboardStats(slug)
