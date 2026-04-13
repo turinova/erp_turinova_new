@@ -36,7 +36,10 @@ import TabPanel from '@mui/lab/TabPanel'
 import TabContext from '@mui/lab/TabContext'
 import CustomTabList from '@core/components/mui/TabList'
 import Tab from '@mui/material/Tab'
-import { Home as HomeIcon, Add as AddIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Add as AddIcon, Print as PrintIcon } from '@mui/icons-material'
+import AccessoryLabelPrintDialog, {
+  type AccessoryLabelPrintPayload
+} from '@/components/accessories/AccessoryLabelPrintDialog'
 import NextLink from 'next/link'
 import { toast } from 'react-toastify'
 import ImageUpload from '@/components/ImageUpload'
@@ -155,6 +158,9 @@ export default function AccessoryFormClient({
   const [loading, setLoading] = useState(false)
   const [mediaLibraryOpen, setMediaLibraryOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [labelPrintOpen, setLabelPrintOpen] = useState(false)
+  const [labelPrintAccessory, setLabelPrintAccessory] = useState<AccessoryLabelPrintPayload | null>(null)
+  const [labelPrintLoading, setLabelPrintLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('1')
   const [priceHistory, setPriceHistory] = useState<PriceHistory[]>(initialPriceHistory)
   const [stockMovements, setStockMovements] = useState<StockMovementRow[]>(initialStockMovements)
@@ -614,7 +620,7 @@ export default function AccessoryFormClient({
       })
 
       if (response.ok) {
-        const data = await response.json()
+        await response.json()
         toast.success(initialData?.id ? 'Termék sikeresen frissítve' : 'Termék sikeresen létrehozva', {
           position: "top-right",
           autoClose: 3000,
@@ -623,7 +629,11 @@ export default function AccessoryFormClient({
           pauseOnHover: true,
           draggable: true,
         })
-        router.push('/accessories')
+        if (initialData?.id) {
+          router.refresh()
+        } else {
+          router.push('/accessories')
+        }
       } else {
         const error = await response.json()
         // Handle duplicate SKU error (409) specifically
@@ -672,6 +682,25 @@ export default function AccessoryFormClient({
     }).format(amount)
   }
 
+  const handleOpenAccessoryLabelPrint = async () => {
+    if (!initialData?.id) return
+    setLabelPrintLoading(true)
+    try {
+      const res = await fetch(`/api/accessories/${initialData.id}`)
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error((j as { error?: string }).error || 'Hiba a termék adatainak betöltésekor')
+      }
+      const data = (await res.json()) as AccessoryLabelPrintPayload
+      setLabelPrintAccessory(data)
+      setLabelPrintOpen(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hiba a termék adatainak betöltésekor')
+    } finally {
+      setLabelPrintLoading(false)
+    }
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 3 }}>
@@ -698,9 +727,32 @@ export default function AccessoryFormClient({
         </Typography>
       </Breadcrumbs>
 
-      <Typography variant="h4" component="h1" gutterBottom>
-        {initialData?.id ? 'Termék szerkesztése' : 'Új termék'}
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" sx={{ mb: 2 }} flexWrap="wrap" gap={1}>
+        <Typography variant="h4" component="h1" sx={{ flex: '1 1 auto', mb: 0 }}>
+          {initialData?.id ? 'Termék szerkesztése' : 'Új termék'}
+        </Typography>
+        {initialData?.id ? (
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={labelPrintLoading ? <CircularProgress size={18} color="inherit" /> : <PrintIcon />}
+            onClick={() => void handleOpenAccessoryLabelPrint()}
+            disabled={labelPrintLoading || loading}
+            sx={{ flexShrink: 0 }}
+          >
+            Címke nyomtatás
+          </Button>
+        ) : null}
+      </Stack>
+
+      <AccessoryLabelPrintDialog
+        open={labelPrintOpen}
+        accessory={labelPrintAccessory}
+        onClose={() => {
+          setLabelPrintOpen(false)
+          setLabelPrintAccessory(null)
+        }}
+      />
 
       {/* Tabs */}
       <TabContext value={activeTab}>
