@@ -20,6 +20,24 @@ scp scripts/footcounter-pi/preview_hailo_mjpeg.py turinova@footcounter.local:/op
 
 Ensure **`main-app`** is running (local **`npm run dev`** or Vercel) so **`/api/footcounter/sync`** answers from the Pi.
 
+### Preview only (e.g. MJPEG clock overlay)
+
+**Mac:**
+
+```bash
+cd /Volumes/T7/erp_turinova_new
+scp scripts/footcounter-pi/preview_hailo_mjpeg.py turinova@footcounter.local:/opt/footcounter/
+```
+
+**Pi (SSH):**
+
+```bash
+ssh turinova@footcounter.local
+sudo systemctl restart footcounter-preview.service
+```
+
+Optional in **`config.env`**: `FOOTCOUNTER_OVERLAY_TZ=Europe/Budapest` (default). If the on-screen clock stops moving, the stream is frozen.
+
 ---
 
 ## On the Pi (SSH)

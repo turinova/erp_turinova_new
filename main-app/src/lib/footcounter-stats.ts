@@ -1,4 +1,4 @@
-import type { FootcounterDashboardStats } from '@/types/footcounter'
+import type { FootcounterDashboardStats, FootcounterHomeSlim } from '@/types/footcounter'
 import { supabaseServer } from '@/lib/supabase-server'
 
 const TZ = 'Europe/Budapest'
@@ -243,5 +243,17 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     series_today_hourly: hourlyToday,
     same_weekday_avg,
     heatmap_in: { days: HEATMAP_LOOKBACK_DAYS, matrix: heatmapMatrix }
+  }
+}
+
+/** Strip heavy fields for home SSR card. */
+export function slimFootcounterForHome(s: FootcounterDashboardStats): FootcounterHomeSlim {
+  return {
+    today_in: s.today_in,
+    today_out: s.today_out,
+    same_weekday_avg: s.same_weekday_avg,
+    last_event_at: s.last_event_at,
+    device_last_seen: s.device_last_seen,
+    hourly_in: s.series_today_hourly.map(h => h.in_count)
   }
 }

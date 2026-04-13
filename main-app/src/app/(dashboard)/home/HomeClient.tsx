@@ -10,7 +10,9 @@ import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
 import MonthlyWorktopQuotesCard from '@/components/MonthlyWorktopQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
 import PosOrdersGoalsCard from '@/components/PosOrdersGoalsCard'
+import FootcounterHomeCard from '@/components/FootcounterHomeCard'
 import type { PosOrdersGoalStats } from '@/lib/dashboard-server'
+import type { FootcounterHomeSlim } from '@/types/footcounter'
 
 interface CustomerQuote {
   id: string
@@ -41,6 +43,7 @@ interface HomeClientProps {
     }>
   }
   posOrdersGoalStats: PosOrdersGoalStats
+  footcounterHome: FootcounterHomeSlim | null
 }
 
 export default function HomeClient({ 
@@ -51,7 +54,8 @@ export default function HomeClient({
   initialWeeklyCutting,
   initialWeeklyWorktopProduction,
   initialTodayAttendance,
-  posOrdersGoalStats
+  posOrdersGoalStats,
+  footcounterHome
 }: HomeClientProps) {
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -64,6 +68,12 @@ export default function HomeClient({
         <Grid item xs={12}>
           <PosOrdersGoalsCard posOrdersGoalStats={posOrdersGoalStats} />
         </Grid>
+
+        {footcounterHome && (
+          <Grid item xs={12}>
+            <FootcounterHomeCard data={footcounterHome} />
+          </Grid>
+        )}
 
         <Grid item xs={12}>
           <TodayAttendanceDashboard

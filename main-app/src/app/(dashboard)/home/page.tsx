@@ -1,22 +1,62 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
+
 import HomeClient from './HomeClient'
 import { getCustomerPortalDraftQuotes } from '@/lib/supabase-server'
-import { 
-  getMonthlyQuotesData, 
-  getMonthlySupplierOrdersData, 
+import {
+  getMonthlyQuotesData,
+  getMonthlySupplierOrdersData,
   getMonthlyWorktopQuotesData,
   getWeeklyCuttingData,
   getWeeklyWorktopProductionData,
   getTodayAttendanceForHome,
   getPosOrdersGoalStats
 } from '@/lib/dashboard-server'
+import { getFootcounterDashboardStats, slimFootcounterForHome } from '@/lib/footcounter-stats'
+import { hasPagePermission } from '@/lib/permissions-server'
+import type { FootcounterHomeSlim } from '@/types/footcounter'
 
 export const metadata: Metadata = {
   title: 'Kezdőlap'
 }
 
 export default async function Page() {
-  // Fetch all dashboard data in parallel with SSR for optimal performance
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
+        }
+      }
+    }
+  )
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser()
+
+  const loadFootcounterHome = async (): Promise<FootcounterHomeSlim | null> => {
+    if (!user) return null
+    const allowed = await hasPagePermission(user.id, '/footcounter-live')
+    if (!allowed) return null
+    try {
+      const slug = process.env.FOOTCOUNTER_STATS_DEVICE_SLUG?.trim() || 'default'
+      const stats = await getFootcounterDashboardStats(slug)
+      return slimFootcounterForHome(stats)
+    } catch {
+      return null
+    }
+  }
+
   const [
     customerPortalQuotes,
     monthlyQuotes,
@@ -25,7 +65,8 @@ export default async function Page() {
     weeklyCutting,
     weeklyWorktopProduction,
     todayAttendance,
-    posOrdersGoalStats
+    posOrdersGoalStats,
+    footcounterHome
   ] = await Promise.all([
     getCustomerPortalDraftQuotes(),
     getMonthlyQuotesData('month', 0),
@@ -34,11 +75,12 @@ export default async function Page() {
     getWeeklyCuttingData(0),
     getWeeklyWorktopProductionData(0),
     getTodayAttendanceForHome(),
-    getPosOrdersGoalStats()
+    getPosOrdersGoalStats(),
+    loadFootcounterHome()
   ])
-  
+
   return (
-    <HomeClient 
+    <HomeClient
       customerPortalQuotes={customerPortalQuotes}
       initialMonthlyQuotes={monthlyQuotes}
       initialMonthlySupplierOrders={monthlySupplierOrders}
@@ -47,6 +89,7 @@ export default async function Page() {
       initialWeeklyWorktopProduction={weeklyWorktopProduction}
       initialTodayAttendance={todayAttendance}
       posOrdersGoalStats={posOrdersGoalStats}
+      footcounterHome={footcounterHome}
     />
   )
 }

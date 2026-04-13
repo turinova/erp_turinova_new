@@ -11,6 +11,8 @@ Run (SSH on Pi):
 
 Browser (Mac): http://<pi-ip>:8000/index.html
 
+Overlay includes a wall-clock (Europe/Budapest by default; FOOTCOUNTER_OVERLAY_TZ in config.env).
+
 Stop other camera apps first (plain preview_mjpeg.py, rpicam-hello, etc.).
 """
 from __future__ import annotations
@@ -28,6 +30,11 @@ from datetime import datetime, timezone
 from http import server
 from pathlib import Path
 from threading import Condition
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None  # type: ignore[misc, assignment]
 
 import cv2
 
@@ -237,6 +244,17 @@ def log_crossing_to_sqlite(db_path: Path, direction: str, score: float | None) -
         logging.warning("sqlite log failed: %s", e)
 
 
+def overlay_clock_str() -> str:
+    """Wall clock on each frame — if it stops advancing, the stream is frozen."""
+    tz_name = os.environ.get("FOOTCOUNTER_OVERLAY_TZ", "Europe/Budapest").strip() or "Europe/Budapest"
+    if ZoneInfo is not None:
+        try:
+            return datetime.now(ZoneInfo(tz_name)).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
 def make_pre_callback(line_x: int, line_y: int, vertical: bool) -> object:
     def draw_overlay(request: object) -> None:
         global _count_in, _count_out
@@ -247,6 +265,35 @@ def make_pre_callback(line_x: int, line_y: int, vertical: bool) -> object:
         with MappedArray(request, "main") as m:
             arr = m.array
             h, w = arr.shape[0], arr.shape[1]
+
+            now_s = overlay_clock_str()
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            t_scale = 0.55
+            t_thick = 2
+            (tw, _th), _ = cv2.getTextSize(now_s, font, t_scale, t_thick)
+            tx = max(8, w - tw - 12)
+            ty = 26
+            for ox, oy in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+                cv2.putText(
+                    arr,
+                    now_s,
+                    (tx + ox, ty + oy),
+                    font,
+                    t_scale,
+                    (0, 0, 0, 255),
+                    t_thick + 1,
+                    cv2.LINE_AA,
+                )
+            cv2.putText(
+                arr,
+                now_s,
+                (tx, ty),
+                font,
+                t_scale,
+                (255, 255, 255, 255),
+                t_thick,
+                cv2.LINE_AA,
+            )
 
             # Counting line
             if vertical:

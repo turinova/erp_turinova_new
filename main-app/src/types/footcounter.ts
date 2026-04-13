@@ -26,3 +26,14 @@ export type FootcounterDashboardStats = {
    */
   heatmap_in: { days: number; matrix: number[][] }
 }
+
+/** SSR payload for home compact card (no heatmap / 7d series). */
+export type FootcounterHomeSlim = {
+  today_in: number
+  today_out: number
+  same_weekday_avg: FootcounterDashboardStats['same_weekday_avg']
+  last_event_at: string | null
+  device_last_seen: string | null
+  /** Hour 0–23 → today's "Be" count per hour for mini area chart */
+  hourly_in: number[]
+}
