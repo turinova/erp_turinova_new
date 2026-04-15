@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import {
@@ -12,11 +12,16 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   FormControlLabel,
   Grid,
+  InputLabel,
+  MenuItem,
   Paper,
   Radio,
   RadioGroup,
+  Select,
+  type SelectChangeEvent,
   Table,
   TableBody,
   TableCell,
@@ -30,12 +35,9 @@ import {
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
 import { toast } from 'react-toastify'
 
-import FronttervezoTablasAnyagField from './FronttervezoTablasAnyagField'
 import FronttervezoMegjegyzesTableCell from './FronttervezoMegjegyzesTableCell'
-import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_BUTORLAP } from './fronttervezoSession'
-import type { FronttervezoBoardMaterial, PanthelyConfig } from './fronttervezoTypes'
-
-const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_BUTORLAP
+import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_FESTETT } from './fronttervezoSession'
+import type { PanthelyConfig } from './fronttervezoTypes'
 
 const inputSx = {
   '& .MuiOutlinedInput-root': {
@@ -45,22 +47,22 @@ const inputSx = {
   }
 } as const
 
-export type ButorlapLineItem = {
-  id: string
+const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_FESTETT
 
-  /** Pillanatkép a kiválasztott táblás anyagról (számításokhoz — ugyanaz a mezőkészlet, mint Opti SSR anyag) */
-  material: FronttervezoBoardMaterial
+const MARAS_MINTA_OPTIONS = ['A1/P', 'A10/Sz'] as const
+const SZIN_OPTIONS = ['Nett 67', 'Nett 68', 'Nett 69'] as const
+const FENYSEG_OPTIONS = ['Nincs', 'Matt'] as const
+
+export type FestettLineItem = {
+  id: string
+  marasMinta: (typeof MARAS_MINTA_OPTIONS)[number]
+  szin: (typeof SZIN_OPTIONS)[number]
+  fenyseg: (typeof FENYSEG_OPTIONS)[number]
   magassagMm: number
   szelessegMm: number
   mennyiseg: number
   panthely: PanthelyConfig | null
-
-  /** Opcionális; nem változtat árat */
   megjegyzes?: string
-}
-
-function cloneMaterial(m: FronttervezoBoardMaterial): FronttervezoBoardMaterial {
-  return JSON.parse(JSON.stringify(m)) as FronttervezoBoardMaterial
 }
 
 function onlyDigits(value: string): string {
@@ -74,8 +76,8 @@ function parsePositiveInt(raw: string): number | null {
   const n = parseInt(s, 10)
 
   if (!Number.isFinite(n) || n <= 0) return null
-  
-return n
+
+  return n
 }
 
 function oldalLabel(oldal: 'hosszu' | 'rovid'): string {
@@ -85,59 +87,20 @@ function oldalLabel(oldal: 'hosszu' | 'rovid'): string {
 function pantTooltipText(p: PanthelyConfig): string {
   const tav = p.tavolsagokAlulMm.map((mm, i) => `${i + 1}. pánthely: ${mm} mm`).join('; ')
 
-  
-return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
+  return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
 }
 
-type FronttervezoButorlapSectionProps = {
-  initialMaterials: FronttervezoBoardMaterial[]
-}
-
-export default function FronttervezoButorlapSection({ initialMaterials }: FronttervezoButorlapSectionProps) {
-  /** Opti `activeMaterials`: csak aktív, márka majd név szerint */
-  const activeMaterials = useMemo(() => {
-    const materials = initialMaterials ?? []
-
-    
-return materials
-      .filter(m => m.active !== false)
-      .sort((a, b) => {
-        const brandA = a.brand_name?.trim() || 'Ismeretlen'
-        const brandB = b.brand_name?.trim() || 'Ismeretlen'
-
-        if (brandA !== brandB) return brandA.localeCompare(brandB, 'hu')
-        
-return a.name.localeCompare(b.name, 'hu')
-      })
-  }, [initialMaterials])
-
-  const [lines, setLines] = useState<ButorlapLineItem[]>([])
+export default function FronttervezoFestettSection() {
+  const [lines, setLines] = useState<FestettLineItem[]>([])
   const [hasLoadedFromSession, setHasLoadedFromSession] = useState(false)
 
-  const [selectedMaterialId, setSelectedMaterialId] = useState('')
-
-  /** Szerkesztés: ha a sor anyaga már nincs az aktív listában, mégis megjelenítjük az Autocomplete-ben */
-  const [orphanMaterialOption, setOrphanMaterialOption] = useState<FronttervezoBoardMaterial | null>(null)
-
-  const táblásOptions = useMemo(() => {
-    if (orphanMaterialOption && !activeMaterials.some(m => m.id === orphanMaterialOption.id)) {
-      return [orphanMaterialOption, ...activeMaterials]
-    }
-
-    return activeMaterials
-  }, [activeMaterials, orphanMaterialOption])
-
+  const [marasMinta, setMarasMinta] = useState<string>(MARAS_MINTA_OPTIONS[0])
+  const [szin, setSzin] = useState<string>(SZIN_OPTIONS[0])
+  const [fenyseg, setFenyseg] = useState<string>(FENYSEG_OPTIONS[0])
   const [magassag, setMagassag] = useState('')
   const [szelesseg, setSzelesseg] = useState('')
   const [mennyiseg, setMennyiseg] = useState('')
   const [megjegyzes, setMegjegyzes] = useState('')
-
-  /** Opti-szerű submit-hibák (kötelező mezők) */
-  const [validationErrors, setValidationErrors] = useState({
-    magassag: false,
-    szelesseg: false,
-    mennyiseg: false
-  })
 
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -147,80 +110,18 @@ return a.name.localeCompare(b.name, 'hu')
   const [pantHoleCount, setPantHoleCount] = useState('2')
   const [pantDistances, setPantDistances] = useState<string[]>(['', ''])
 
-  const selectedMaterial = useMemo(
-    () => táblásOptions.find(m => m.id === selectedMaterialId) ?? null,
-    [táblásOptions, selectedMaterialId]
-  )
-
-  /** Opti: `length_mm - trim_left - trim_right` / `width_mm - trim_top - trim_bottom` */
-  const maxSzalirany = selectedMaterial
-    ? selectedMaterial.length_mm - selectedMaterial.trim_left_mm - selectedMaterial.trim_right_mm
-    : 0
-
-  const maxKeresztirany = selectedMaterial
-    ? selectedMaterial.width_mm - selectedMaterial.trim_top_mm - selectedMaterial.trim_bottom_mm
-    : 0
-
-  const validateSzalirany = useCallback(
-    (value: string) => {
-      const numValue = parseFloat(value)
-
-      if (isNaN(numValue) || numValue <= 0) return value
-      if (maxSzalirany > 0 && numValue > maxSzalirany) return maxSzalirany.toString()
-      
-return value
-    },
-    [maxSzalirany]
-  )
-
-  const validateKeresztirany = useCallback(
-    (value: string) => {
-      const numValue = parseFloat(value)
-
-      if (isNaN(numValue) || numValue <= 0) return value
-      if (maxKeresztirany > 0 && numValue > maxKeresztirany) return maxKeresztirany.toString()
-      
-return value
-    },
-    [maxKeresztirany]
-  )
-
-  /** Anyagcsere: ha a már bent lévő méret túllépi az új maxot, vágjuk Opti szerint */
-  useEffect(() => {
-    if (!selectedMaterial) return
-    const maxS = maxSzalirany
-    const maxK = maxKeresztirany
-
-    setMagassag(prev => {
-      const n = parseFloat(prev)
-
-      if (isNaN(n) || n <= 0) return prev
-      if (maxS > 0 && n > maxS) return maxS.toString()
-      
-return prev
-    })
-    setSzelesseg(prev => {
-      const n = parseFloat(prev)
-
-      if (isNaN(n) || n <= 0) return prev
-      if (maxK > 0 && n > maxK) return maxK.toString()
-      
-return prev
-    })
-  }, [selectedMaterialId, selectedMaterial, maxSzalirany, maxKeresztirany])
-
   useEffect(() => {
     const raw = sessionStorage.getItem(SESSION_KEY)
 
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as ButorlapLineItem[]
+        const parsed = JSON.parse(raw) as FestettLineItem[]
 
         if (Array.isArray(parsed)) {
           setLines(parsed)
         }
       } catch {
-        console.error('[fronttervezo] butorlap session parse error')
+        console.error('[fronttervezo] festett session parse error')
       }
     }
 
@@ -239,39 +140,34 @@ return prev
     dispatchFronttervezoLinesUpdated()
   }, [lines, hasLoadedFromSession])
 
-  const clearValidationError = useCallback((field: keyof typeof validationErrors) => {
-    setValidationErrors(prev => (prev[field] ? { ...prev, [field]: false } : prev))
+  const resetForm = useCallback(() => {
+    setMarasMinta(MARAS_MINTA_OPTIONS[0])
+    setSzin(SZIN_OPTIONS[0])
+    setFenyseg(FENYSEG_OPTIONS[0])
+    setMagassag('')
+    setSzelesseg('')
+    setMennyiseg('')
+    setMegjegyzes('')
+    setEditingId(null)
+    setPantSaved(false)
+    setPantOldal('hosszu')
+    setPantHoleCount('2')
+    setPantDistances(['', ''])
   }, [])
 
-  const resetForm = useCallback(
-    (options?: { keepSelectedMaterial?: boolean }) => {
-      const keepMat = options?.keepSelectedMaterial === true
+  const validateMainForm = (): boolean => {
+    const m = parsePositiveInt(magassag)
+    const sz = parsePositiveInt(szelesseg)
+    const d = parsePositiveInt(mennyiseg)
 
-      if (!keepMat) {
-        setSelectedMaterialId('')
-        setOrphanMaterialOption(null)
-      } else {
-        /** Aktív katalógusban lévő anyagnál nincs szükség az „árva” pillanatképre — egyébként marad (inaktív anyag). */
-        setOrphanMaterialOption(prev => {
-          if (!selectedMaterialId) return null
+    if (m === null || sz === null || d === null) {
+      toast.error('A magasság, szélesség és mennyiség kötelező pozitív egész szám (mm / db).')
 
-          return activeMaterials.some(m => m.id === selectedMaterialId) ? null : prev
-        })
-      }
+      return false
+    }
 
-      setMagassag('')
-      setSzelesseg('')
-      setMennyiseg('')
-      setMegjegyzes('')
-      setValidationErrors({ magassag: false, szelesseg: false, mennyiseg: false })
-      setEditingId(null)
-      setPantSaved(false)
-      setPantOldal('hosszu')
-      setPantHoleCount('2')
-      setPantDistances(['', ''])
-    },
-    [activeMaterials, selectedMaterialId]
-  )
+    return true
+  }
 
   const buildPanthelyFromModal = (): PanthelyConfig | null => {
     if (!pantSaved) return null
@@ -287,65 +183,14 @@ return prev
       tav.push(mm)
     }
 
-    
-return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
-  }
-
-  const validateMainForm = (): boolean => {
-    if (!selectedMaterialId || !selectedMaterial) {
-      toast.error('Válasszon táblás anyagot.')
-      
-return false
-    }
-
-    const mat = táblásOptions.find(x => x.id === selectedMaterialId)
-
-    if (!mat) {
-      toast.error('Érvénytelen táblás anyag.')
-      
-return false
-    }
-
-    const errors = {
-      magassag: !magassag.trim() || parseFloat(magassag) <= 0,
-      szelesseg: !szelesseg.trim() || parseFloat(szelesseg) <= 0,
-      mennyiseg: !mennyiseg.trim() || parseInt(mennyiseg, 10) <= 0
-    }
-
-    setValidationErrors(errors)
-
-    if (Object.values(errors).some(Boolean)) {
-      toast.error('Töltse ki a kötelező mezőket helyesen.')
-      
-return false
-    }
-
-    const m = parseFloat(magassag)
-    const sz = parseFloat(szelesseg)
-
-    if (maxSzalirany > 0 && m > maxSzalirany) {
-      toast.error(`Szálirány maximum ${maxSzalirany} mm (tábla mérete mínusz szélezés).`)
-      
-return false
-    }
-
-    if (maxKeresztirany > 0 && sz > maxKeresztirany) {
-      toast.error(`Keresztirány maximum ${maxKeresztirany} mm (tábla mérete mínusz szélezés).`)
-      
-return false
-    }
-
-    return true
+    return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
   }
 
   const addLine = () => {
     if (!validateMainForm()) return
-    const mat = táblásOptions.find(x => x.id === selectedMaterialId)
-
-    if (!mat) return
-    const m = parseFloat(magassag)
-    const sz = parseFloat(szelesseg)
-    const d = parseInt(mennyiseg, 10)
+    const m = parsePositiveInt(magassag)!
+    const sz = parsePositiveInt(szelesseg)!
+    const d = parsePositiveInt(mennyiseg)!
     let pant: PanthelyConfig | null = null
 
     if (pantSaved) {
@@ -353,14 +198,16 @@ return false
 
       if (!pant) {
         toast.error('Ellenőrizze a pánthelyfúrás adatait (pánthelyek száma és távolságok mm-ben).')
-        
-return
+
+        return
       }
     }
 
-    const item: ButorlapLineItem = {
+    const item: FestettLineItem = {
       id: Date.now().toString(),
-      material: cloneMaterial(mat),
+      marasMinta: marasMinta as FestettLineItem['marasMinta'],
+      szin: szin as FestettLineItem['szin'],
+      fenyseg: fenyseg as FestettLineItem['fenyseg'],
       magassagMm: m,
       szelessegMm: sz,
       mennyiseg: d,
@@ -370,18 +217,15 @@ return
 
     setLines(prev => [...prev, item])
     toast.success('Tétel hozzáadva.')
-    resetForm({ keepSelectedMaterial: true })
+    resetForm()
   }
 
   const saveEditedLine = () => {
     if (!editingId) return
     if (!validateMainForm()) return
-    const mat = táblásOptions.find(x => x.id === selectedMaterialId)
-
-    if (!mat) return
-    const m = parseFloat(magassag)
-    const sz = parseFloat(szelesseg)
-    const d = parseInt(mennyiseg, 10)
+    const m = parsePositiveInt(magassag)!
+    const sz = parsePositiveInt(szelesseg)!
+    const d = parsePositiveInt(mennyiseg)!
     let pant: PanthelyConfig | null = null
 
     if (pantSaved) {
@@ -389,8 +233,8 @@ return
 
       if (!pant) {
         toast.error('Ellenőrizze a pánthelyfúrás adatait (pánthelyek száma és távolságok mm-ben).')
-        
-return
+
+        return
       }
     }
 
@@ -399,7 +243,9 @@ return
         row.id === editingId
           ? {
               ...row,
-              material: cloneMaterial(mat),
+              marasMinta: marasMinta as FestettLineItem['marasMinta'],
+              szin: szin as FestettLineItem['szin'],
+              fenyseg: fenyseg as FestettLineItem['fenyseg'],
               magassagMm: m,
               szelessegMm: sz,
               mennyiseg: d,
@@ -423,16 +269,11 @@ return
     toast.error('Tétel törölve.')
   }
 
-  const editLine = (row: ButorlapLineItem) => {
+  const editLine = (row: FestettLineItem) => {
     setEditingId(row.id)
-
-    if (!activeMaterials.some(m => m.id === row.material.id)) {
-      setOrphanMaterialOption(row.material)
-    } else {
-      setOrphanMaterialOption(null)
-    }
-
-    setSelectedMaterialId(row.material.id)
+    setMarasMinta(row.marasMinta)
+    setSzin(row.szin)
+    setFenyseg(row.fenyseg)
     setMagassag(String(row.magassagMm))
     setSzelesseg(String(row.szelessegMm))
     setMennyiseg(String(row.mennyiseg))
@@ -459,19 +300,6 @@ return
     resetForm()
   }
 
-  /** Opti: Enter → Hozzáadás / Mentés */
-  const handleDimensionKeyPress = (event: KeyboardEvent) => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-
-      if (editingId) {
-        saveEditedLine()
-      } else {
-        addLine()
-      }
-    }
-  }
-
   const handlePantModalOpen = () => {
     const n = parseInt(pantHoleCount || '0', 10)
 
@@ -480,8 +308,8 @@ return
         const next = [...prev]
 
         while (next.length < n) next.push('')
-        
-return next.slice(0, n)
+
+        return next.slice(0, n)
       })
     }
 
@@ -500,16 +328,16 @@ return next.slice(0, n)
 
     if (!Number.isFinite(n) || n <= 0) {
       setPantDistances([])
-      
-return
+
+      return
     }
 
     setPantDistances(prev => {
       const next = [...prev]
 
       while (next.length < n) next.push('')
-      
-return next.slice(0, n)
+
+      return next.slice(0, n)
     })
   }
 
@@ -518,15 +346,15 @@ return next.slice(0, n)
 
     if (n === null) {
       toast.error('Adja meg a pánthelyfúrások számát (pozitív egész).')
-      
-return
+
+      return
     }
 
     for (let i = 0; i < n; i++) {
       if (parsePositiveInt(pantDistances[i] ?? '') === null) {
         toast.error(`Minden pánthelyhez adja meg az alulról mért távolságot (mm), ${i + 1}. pánthely.`)
-        
-return
+
+        return
       }
     }
 
@@ -542,106 +370,112 @@ return
     setPantModalOpen(false)
   }
 
+  const handleDimensionKeyPress = (event: KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+
+      if (editingId) {
+        saveEditedLine()
+      } else {
+        addLine()
+      }
+    }
+  }
+
   return (
     <>
       <Card sx={{ mt: 2 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Bútorlap – részletek
+            FESTETT FRONT – részletek
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Táblás anyag ugyanúgy töltődik, mint az Opti oldalon. Szálirány és keresztirány mm-ben (max a tábla mérete mínusz
-            szélezés). A pánthelyfúrás opcionális.
+            Magasság és szélesség mm-ben, egész szám. Árazás: 75&nbsp;000 Ft/m² bruttó (ideiglenesen). A pánthelyfúrás opcionális.
           </Typography>
 
           <Grid container spacing={2} alignItems="flex-start">
-            {/** md: 5+2+2+3 = 12 — táblás keskenyebb, a többi mező kitölti a sort üres rés nélkül */}
-            <Grid item xs={12} sm={12} md={5}>
-              <FronttervezoTablasAnyagField
-                options={táblásOptions}
-                valueId={selectedMaterialId}
-                onChange={id => {
-                  setSelectedMaterialId(id)
-                  setOrphanMaterialOption(null)
-                }}
-              />
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth size="small" sx={inputSx}>
+                <InputLabel id="fronttervezo-festett-minta">Marás minta</InputLabel>
+                <Select
+                  labelId="fronttervezo-festett-minta"
+                  label="Marás minta"
+                  value={marasMinta}
+                  onChange={(e: SelectChangeEvent) => setMarasMinta(e.target.value)}
+                >
+                  {MARAS_MINTA_OPTIONS.map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Grid>
-            <Grid item xs={12} sm={4} md={2}>
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth size="small" sx={inputSx}>
+                <InputLabel id="fronttervezo-festett-szin">Szín</InputLabel>
+                <Select
+                  labelId="fronttervezo-festett-szin"
+                  label="Szín"
+                  value={szin}
+                  onChange={(e: SelectChangeEvent) => setSzin(e.target.value)}
+                >
+                  {SZIN_OPTIONS.map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={12} md={4}>
+              <FormControl fullWidth size="small" sx={inputSx}>
+                <InputLabel id="fronttervezo-festett-feny">Fényesség</InputLabel>
+                <Select
+                  labelId="fronttervezo-festett-feny"
+                  label="Fényesség"
+                  value={fenyseg}
+                  onChange={(e: SelectChangeEvent) => setFenyseg(e.target.value)}
+                >
+                  {FENYSEG_OPTIONS.map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
                 size="small"
-                label="Szálirány (mm)"
-                type="number"
-                name="fronttervezo-butorlap-szalirany"
+                label="Magasság (mm)"
                 value={magassag}
-                onChange={e => {
-                  setMagassag(validateSzalirany(e.target.value))
-                  clearValidationError('magassag')
-                }}
-                onKeyPress={handleDimensionKeyPress}
-                inputProps={{
-                  min: 0,
-                  max: maxSzalirany > 0 ? maxSzalirany : undefined,
-                  step: 0.1
-                }}
-                error={validationErrors.magassag}
-                helperText={
-                  validationErrors.magassag
-                    ? 'Hosszúság megadása kötelező és nagyobb kell legyen 0-nál'
-                    : selectedMaterial
-                      ? `Max: ${maxSzalirany}mm (${selectedMaterial.length_mm} - ${selectedMaterial.trim_left_mm} - ${selectedMaterial.trim_right_mm})`
-                      : ''
-                }
+                onChange={e => setMagassag(onlyDigits(e.target.value))}
+                onKeyDown={handleDimensionKeyPress}
                 sx={inputSx}
               />
             </Grid>
-            <Grid item xs={12} sm={4} md={2}>
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
                 size="small"
-                label="Keresztirány (mm)"
-                type="number"
+                label="Szélesség (mm)"
                 value={szelesseg}
-                onChange={e => {
-                  setSzelesseg(validateKeresztirany(e.target.value))
-                  clearValidationError('szelesseg')
-                }}
-                onKeyPress={handleDimensionKeyPress}
-                inputProps={{
-                  min: 0,
-                  max: maxKeresztirany > 0 ? maxKeresztirany : undefined,
-                  step: 0.1
-                }}
-                error={validationErrors.szelesseg}
-                helperText={
-                  validationErrors.szelesseg
-                    ? 'Szélesség megadása kötelező és nagyobb kell legyen 0-nál'
-                    : selectedMaterial
-                      ? `Max: ${maxKeresztirany}mm (${selectedMaterial.width_mm} - ${selectedMaterial.trim_top_mm} - ${selectedMaterial.trim_bottom_mm})`
-                      : ''
-                }
+                onChange={e => setSzelesseg(onlyDigits(e.target.value))}
+                onKeyDown={handleDimensionKeyPress}
                 sx={inputSx}
               />
             </Grid>
-            <Grid item xs={12} sm={4} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
                 size="small"
                 label="Mennyiség"
-                type="number"
                 value={mennyiseg}
-                onChange={e => {
-                  setMennyiseg(onlyDigits(e.target.value))
-                  clearValidationError('mennyiseg')
-                }}
-                onKeyPress={handleDimensionKeyPress}
-                inputProps={{ min: 1, step: 1 }}
-                error={validationErrors.mennyiseg}
-                helperText={
-                  validationErrors.mennyiseg
-                    ? 'Darab megadása kötelező és nagyobb kell legyen 0-nál'
-                    : ''
-                }
+                onChange={e => setMennyiseg(onlyDigits(e.target.value))}
+                onKeyDown={handleDimensionKeyPress}
                 sx={inputSx}
               />
             </Grid>
@@ -680,12 +514,7 @@ return
                     Mégse
                   </Button>
                 )}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={editingId ? saveEditedLine : addLine}
-                >
+                <Button variant="contained" color="primary" size="large" onClick={editingId ? saveEditedLine : addLine}>
                   {editingId ? 'Mentés' : 'Hozzáadás'}
                 </Button>
               </Box>
@@ -707,7 +536,13 @@ return
                     <strong>Front típus</strong>
                   </TableCell>
                   <TableCell>
-                    <strong>Táblás anyag</strong>
+                    <strong>Marás minta</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Szín</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Fényesség</strong>
                   </TableCell>
                   <TableCell>
                     <strong>Magasság</strong>
@@ -737,8 +572,10 @@ return
                     onClick={() => editLine(row)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell>Bútorlap</TableCell>
-                    <TableCell sx={{ maxWidth: 280 }}>{row.material.name}</TableCell>
+                    <TableCell>FESTETT FRONT</TableCell>
+                    <TableCell>{row.marasMinta}</TableCell>
+                    <TableCell>{row.szin}</TableCell>
+                    <TableCell>{row.fenyseg}</TableCell>
                     <TableCell>{row.magassagMm} mm</TableCell>
                     <TableCell>{row.szelessegMm} mm</TableCell>
                     <TableCell>{row.mennyiseg}</TableCell>
@@ -790,6 +627,7 @@ return
               sx={{ mb: 2 }}
               helperText="Minden pánthelyhez külön adja meg az alulról mért távolságot (mm)."
             />
+
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
               Oldal
             </Typography>
@@ -797,6 +635,7 @@ return
               <FormControlLabel value="hosszu" control={<Radio />} label="Hosszú oldal" />
               <FormControlLabel value="rovid" control={<Radio />} label="Rövid oldal" />
             </RadioGroup>
+
             {(() => {
               const holeN = parseInt(pantHoleCount || '0', 10)
 
@@ -808,8 +647,7 @@ return
                 )
               }
 
-              
-return Array.from({ length: holeN }).map((_, i) => (
+              return Array.from({ length: holeN }).map((_, i) => (
                 <TextField
                   key={i}
                   fullWidth
@@ -824,8 +662,8 @@ return Array.from({ length: holeN }).map((_, i) => (
                       const next = [...prev]
 
                       next[i] = v
-                      
-return next
+
+                      return next
                     })
                   }}
                 />

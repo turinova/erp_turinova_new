@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 
 import {
   Box,
@@ -13,7 +14,6 @@ import {
   DialogTitle,
   FormControl,
   FormControlLabel,
-  Grid,
   InputLabel,
   MenuItem,
   Paper,
@@ -35,10 +35,9 @@ import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSha
 import { toast } from 'react-toastify'
 
 import FronttervezoMegjegyzesTableCell from './FronttervezoMegjegyzesTableCell'
-import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_INOMAT } from './fronttervezoSession'
+import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_FOLIAS } from './fronttervezoSession'
 import type { PanthelyConfig } from './fronttervezoTypes'
 
-/** Match FronttervezoClient field styling */
 const inputSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -47,13 +46,22 @@ const inputSx = {
   }
 } as const
 
-const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_INOMAT
+/** Egy sor: keskeny képernyőn vízszintes görgetés */
+const foliasInputRowFieldSx = {
+  ...inputSx,
+  flex: '1 1 0',
+  minWidth: { xs: 112, sm: 128 }
+} as const
 
-const SZIN_OPTIONS = ['Bronz', 'Pearl', 'Gold'] as const
+const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_FOLIAS
 
-export type InomatLineItem = {
+const MARAS_MINTA_OPTIONS = ['A1/P', 'A10/Sz', 'A11/P'] as const
+const SZIN_OPTIONS = ['Pearl', 'Purewhite'] as const
+
+export type FoliasLineItem = {
   id: string
-  szin: string
+  marasMinta: (typeof MARAS_MINTA_OPTIONS)[number]
+  szin: (typeof SZIN_OPTIONS)[number]
   magassagMm: number
   szelessegMm: number
   mennyiseg: number
@@ -72,8 +80,8 @@ function parsePositiveInt(raw: string): number | null {
   const n = parseInt(s, 10)
 
   if (!Number.isFinite(n) || n <= 0) return null
-  
-return n
+
+  return n
 }
 
 function oldalLabel(oldal: 'hosszu' | 'rovid'): string {
@@ -83,14 +91,14 @@ function oldalLabel(oldal: 'hosszu' | 'rovid'): string {
 function pantTooltipText(p: PanthelyConfig): string {
   const tav = p.tavolsagokAlulMm.map((mm, i) => `${i + 1}. pánthely: ${mm} mm`).join('; ')
 
-  
-return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
+  return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
 }
 
-export default function FronttervezoInomatSection() {
-  const [lines, setLines] = useState<InomatLineItem[]>([])
+export default function FronttervezoFoliasSection() {
+  const [lines, setLines] = useState<FoliasLineItem[]>([])
   const [hasLoadedFromSession, setHasLoadedFromSession] = useState(false)
 
+  const [marasMinta, setMarasMinta] = useState<string>(MARAS_MINTA_OPTIONS[0])
   const [szin, setSzin] = useState<string>(SZIN_OPTIONS[0])
   const [magassag, setMagassag] = useState('')
   const [szelesseg, setSzelesseg] = useState('')
@@ -110,13 +118,13 @@ export default function FronttervezoInomatSection() {
 
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as InomatLineItem[]
+        const parsed = JSON.parse(raw) as FoliasLineItem[]
 
         if (Array.isArray(parsed)) {
           setLines(parsed)
         }
       } catch {
-        console.error('[fronttervezo] session parse error')
+        console.error('[fronttervezo] folias session parse error')
       }
     }
 
@@ -136,6 +144,7 @@ export default function FronttervezoInomatSection() {
   }, [lines, hasLoadedFromSession])
 
   const resetForm = useCallback(() => {
+    setMarasMinta(MARAS_MINTA_OPTIONS[0])
     setSzin(SZIN_OPTIONS[0])
     setMagassag('')
     setSzelesseg('')
@@ -153,20 +162,13 @@ export default function FronttervezoInomatSection() {
     const sz = parsePositiveInt(szelesseg)
     const d = parsePositiveInt(mennyiseg)
 
-    if (!szin) {
-      toast.error('Válasszon színt.')
-      
-return false
-    }
-
     if (m === null || sz === null || d === null) {
       toast.error('A magasság, szélesség és mennyiség kötelező pozitív egész szám (mm / db).')
-      
-return false
+
+      return false
     }
 
-    
-return true
+    return true
   }
 
   const buildPanthelyFromModal = (): PanthelyConfig | null => {
@@ -183,8 +185,7 @@ return true
       tav.push(mm)
     }
 
-    
-return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
+    return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
   }
 
   const addLine = () => {
@@ -199,14 +200,15 @@ return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
 
       if (!pant) {
         toast.error('Ellenőrizze a pánthelyfúrás adatait (pánthelyek száma és távolságok mm-ben).')
-        
-return
+
+        return
       }
     }
 
-    const item: InomatLineItem = {
+    const item: FoliasLineItem = {
       id: Date.now().toString(),
-      szin,
+      marasMinta: marasMinta as FoliasLineItem['marasMinta'],
+      szin: szin as FoliasLineItem['szin'],
       magassagMm: m,
       szelessegMm: sz,
       mennyiseg: d,
@@ -232,8 +234,8 @@ return
 
       if (!pant) {
         toast.error('Ellenőrizze a pánthelyfúrás adatait (pánthelyek száma és távolságok mm-ben).')
-        
-return
+
+        return
       }
     }
 
@@ -242,7 +244,8 @@ return
         row.id === editingId
           ? {
               ...row,
-              szin,
+              marasMinta: marasMinta as FoliasLineItem['marasMinta'],
+              szin: szin as FoliasLineItem['szin'],
               magassagMm: m,
               szelessegMm: sz,
               mennyiseg: d,
@@ -266,8 +269,9 @@ return
     toast.error('Tétel törölve.')
   }
 
-  const editLine = (row: InomatLineItem) => {
+  const editLine = (row: FoliasLineItem) => {
     setEditingId(row.id)
+    setMarasMinta(row.marasMinta)
     setSzin(row.szin)
     setMagassag(String(row.magassagMm))
     setSzelesseg(String(row.szelessegMm))
@@ -303,8 +307,8 @@ return
         const next = [...prev]
 
         while (next.length < n) next.push('')
-        
-return next.slice(0, n)
+
+        return next.slice(0, n)
       })
     }
 
@@ -323,16 +327,16 @@ return next.slice(0, n)
 
     if (!Number.isFinite(n) || n <= 0) {
       setPantDistances([])
-      
-return
+
+      return
     }
 
     setPantDistances(prev => {
       const next = [...prev]
 
       while (next.length < n) next.push('')
-      
-return next.slice(0, n)
+
+      return next.slice(0, n)
     })
   }
 
@@ -341,15 +345,15 @@ return next.slice(0, n)
 
     if (n === null) {
       toast.error('Adja meg a pánthelyfúrások számát (pozitív egész).')
-      
-return
+
+      return
     }
 
     for (let i = 0; i < n; i++) {
       if (parsePositiveInt(pantDistances[i] ?? '') === null) {
         toast.error(`Minden pánthelyhez adja meg az alulról mért távolságot (mm), ${i + 1}. pánthely.`)
-        
-return
+
+        return
       }
     }
 
@@ -365,23 +369,62 @@ return
     setPantModalOpen(false)
   }
 
+  const handleDimensionKeyPress = (event: KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+
+      if (editingId) {
+        saveEditedLine()
+      } else {
+        addLine()
+      }
+    }
+  }
+
   return (
     <>
       <Card sx={{ mt: 2 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            INOMAT FRONT – részletek
+            FÓLIÁS FRONT – részletek
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Magasság és szélesség mm-ben, egész szám. A pánthelyfúrás opcionális.
+            Magasság és szélesség mm-ben, egész szám. Árazás: 65&nbsp;000 Ft/m² bruttó (ideiglenesen). A pánthelyfúrás opcionális.
           </Typography>
 
-          <Grid container spacing={2} alignItems="flex-start">
-            <Grid item xs={12} sm={6} md={3}>
-              <FormControl fullWidth size="small" sx={inputSx}>
-                <InputLabel id="fronttervezo-inomat-szin">Szín</InputLabel>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'row',
+                flexWrap: 'nowrap',
+                gap: 2,
+                alignItems: 'flex-start',
+                width: '100%',
+                overflowX: 'auto',
+                WebkitOverflowScrolling: 'touch',
+                pb: 0.5
+              }}
+            >
+              <FormControl fullWidth size="small" sx={foliasInputRowFieldSx}>
+                <InputLabel id="fronttervezo-folias-minta">Marási minta</InputLabel>
                 <Select
-                  labelId="fronttervezo-inomat-szin"
+                  labelId="fronttervezo-folias-minta"
+                  label="Marási minta"
+                  value={marasMinta}
+                  onChange={(e: SelectChangeEvent) => setMarasMinta(e.target.value)}
+                >
+                  {MARAS_MINTA_OPTIONS.map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small" sx={foliasInputRowFieldSx}>
+                <InputLabel id="fronttervezo-folias-szin">Szín</InputLabel>
+                <Select
+                  labelId="fronttervezo-folias-szin"
                   label="Szín"
                   value={szin}
                   onChange={(e: SelectChangeEvent) => setSzin(e.target.value)}
@@ -393,83 +436,70 @@ return
                   ))}
                 </Select>
               </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 fullWidth
                 size="small"
                 label="Magasság (mm)"
                 value={magassag}
                 onChange={e => setMagassag(onlyDigits(e.target.value))}
-                sx={inputSx}
+                onKeyDown={handleDimensionKeyPress}
+                sx={foliasInputRowFieldSx}
               />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 fullWidth
                 size="small"
                 label="Szélesség (mm)"
                 value={szelesseg}
                 onChange={e => setSzelesseg(onlyDigits(e.target.value))}
-                sx={inputSx}
+                onKeyDown={handleDimensionKeyPress}
+                sx={foliasInputRowFieldSx}
               />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
               <TextField
                 fullWidth
                 size="small"
                 label="Mennyiség"
                 value={mennyiseg}
                 onChange={e => setMennyiseg(onlyDigits(e.target.value))}
-                sx={inputSx}
+                onKeyDown={handleDimensionKeyPress}
+                sx={foliasInputRowFieldSx}
               />
-            </Grid>
+            </Box>
 
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Megjegyzés"
-                placeholder="Opcionális"
-                value={megjegyzes}
-                onChange={e => setMegjegyzes(e.target.value)}
-                multiline
-                minRows={2}
-                maxRows={6}
-                inputProps={{ maxLength: 2000 }}
-                sx={inputSx}
-              />
-            </Grid>
+            <TextField
+              fullWidth
+              size="small"
+              label="Megjegyzés"
+              placeholder="Opcionális"
+              value={megjegyzes}
+              onChange={e => setMegjegyzes(e.target.value)}
+              multiline
+              minRows={2}
+              maxRows={6}
+              inputProps={{ maxLength: 2000 }}
+              sx={inputSx}
+            />
 
-            <Grid item xs={12}>
-              <Button
-                variant="contained"
-                size="small"
-                color={pantSaved ? 'success' : 'primary'}
-                onClick={handlePantModalOpen}
-              >
-                Pánthelyfúrás
-              </Button>
-            </Grid>
+            <Button
+              variant="contained"
+              size="small"
+              color={pantSaved ? 'success' : 'primary'}
+              onClick={handlePantModalOpen}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              Pánthelyfúrás
+            </Button>
 
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, flexWrap: 'wrap' }}>
-                {editingId && (
-                  <Button variant="outlined" color="secondary" size="large" onClick={cancelEdit}>
-                    Mégse
-                  </Button>
-                )}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={editingId ? saveEditedLine : addLine}
-                >
-                  {editingId ? 'Mentés' : 'Hozzáadás'}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, flexWrap: 'wrap' }}>
+              {editingId && (
+                <Button variant="outlined" color="secondary" size="large" onClick={cancelEdit}>
+                  Mégse
                 </Button>
-              </Box>
-            </Grid>
-          </Grid>
+              )}
+              <Button variant="contained" color="primary" size="large" onClick={editingId ? saveEditedLine : addLine}>
+                {editingId ? 'Mentés' : 'Hozzáadás'}
+              </Button>
+            </Box>
+          </Box>
         </CardContent>
       </Card>
 
@@ -484,6 +514,9 @@ return
                 <TableRow>
                   <TableCell>
                     <strong>Front típus</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Marási minta</strong>
                   </TableCell>
                   <TableCell>
                     <strong>Szín</strong>
@@ -516,7 +549,8 @@ return
                     onClick={() => editLine(row)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell>INOMAT FRONT</TableCell>
+                    <TableCell>FÓLIÁS FRONT</TableCell>
+                    <TableCell>{row.marasMinta}</TableCell>
                     <TableCell>{row.szin}</TableCell>
                     <TableCell>{row.magassagMm} mm</TableCell>
                     <TableCell>{row.szelessegMm} mm</TableCell>
@@ -589,8 +623,7 @@ return
                 )
               }
 
-              
-return Array.from({ length: holeN }).map((_, i) => (
+              return Array.from({ length: holeN }).map((_, i) => (
                 <TextField
                   key={i}
                   fullWidth
@@ -605,8 +638,8 @@ return Array.from({ length: holeN }).map((_, i) => (
                       const next = [...prev]
 
                       next[i] = v
-                      
-return next
+
+                      return next
                     })
                   }}
                 />

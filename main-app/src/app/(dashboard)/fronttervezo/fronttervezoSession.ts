@@ -1,6 +1,9 @@
 /** sessionStorage keys — keep in sync with sections that persist lines */
 export const FRONTTERVEZO_SESSION_KEY_BUTORLAP = 'fronttervezo-butorlap-lines'
 export const FRONTTERVEZO_SESSION_KEY_INOMAT = 'fronttervezo-inomat-lines'
+export const FRONTTERVEZO_SESSION_KEY_ALU = 'fronttervezo-alu-lines'
+export const FRONTTERVEZO_SESSION_KEY_FESTETT = 'fronttervezo-festett-lines'
+export const FRONTTERVEZO_SESSION_KEY_FOLIAS = 'fronttervezo-folias-lines'
 
 /** Fired when any front-type line list is written to session (same tab + cross-tab via storage) */
 export const FRONTTERVEZO_LINES_UPDATED = 'fronttervezo-lines-updated'
@@ -38,9 +41,9 @@ export function parseFronttervezoLineCounts(): FronttervezoLineCounts {
   return {
     butorlap: parseArrayLength(FRONTTERVEZO_SESSION_KEY_BUTORLAP),
     inomat: parseArrayLength(FRONTTERVEZO_SESSION_KEY_INOMAT),
-    festett: 0,
-    folias: 0,
-    alu: 0
+    festett: parseArrayLength(FRONTTERVEZO_SESSION_KEY_FESTETT),
+    folias: parseArrayLength(FRONTTERVEZO_SESSION_KEY_FOLIAS),
+    alu: parseArrayLength(FRONTTERVEZO_SESSION_KEY_ALU)
   }
 }
 

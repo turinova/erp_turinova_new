@@ -29,6 +29,9 @@ export type FronttervezoButorlapQuoteLine = {
   szelessegMm: number
   mennyiseg: number
   panthely: PanthelyConfig | null
+
+  /** Opcionális; számításban nem vesz részt */
+  megjegyzes?: string
 }
 
 export type EdgeMaterialRow = {

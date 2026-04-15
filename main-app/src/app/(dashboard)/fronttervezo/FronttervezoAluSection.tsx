@@ -1,24 +1,18 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 
 import {
   Box,
   Button,
   Card,
   CardContent,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   FormControl,
-  FormControlLabel,
   Grid,
   InputLabel,
   MenuItem,
   Paper,
-  Radio,
-  RadioGroup,
   Select,
   type SelectChangeEvent,
   Table,
@@ -28,17 +22,13 @@ import {
   TableHead,
   TableRow,
   TextField,
-  Tooltip,
   Typography
 } from '@mui/material'
-import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
 import { toast } from 'react-toastify'
 
 import FronttervezoMegjegyzesTableCell from './FronttervezoMegjegyzesTableCell'
-import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_INOMAT } from './fronttervezoSession'
-import type { PanthelyConfig } from './fronttervezoTypes'
+import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_ALU } from './fronttervezoSession'
 
-/** Match FronttervezoClient field styling */
 const inputSx = {
   '& .MuiOutlinedInput-root': {
     bgcolor: 'rgba(0, 0, 0, 0.02)',
@@ -47,17 +37,20 @@ const inputSx = {
   }
 } as const
 
-const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_INOMAT
+const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_ALU
 
-const SZIN_OPTIONS = ['Bronz', 'Pearl', 'Gold'] as const
+const PROFIL_OPTIONS = ['Z1', 'Z10', 'Z12'] as const
+const SZIN_OPTIONS = ['Ezüst', 'Fekete', 'Inox'] as const
+const PANTOLAS_OPTIONS = ['Magassági oldalon', 'Szélességi oldalon', 'Nincs'] as const
 
-export type InomatLineItem = {
+export type AluLineItem = {
   id: string
-  szin: string
+  profil: (typeof PROFIL_OPTIONS)[number]
+  szin: (typeof SZIN_OPTIONS)[number]
+  pantolas: (typeof PANTOLAS_OPTIONS)[number]
   magassagMm: number
   szelessegMm: number
   mennyiseg: number
-  panthely: PanthelyConfig | null
   megjegyzes?: string
 }
 
@@ -72,26 +65,17 @@ function parsePositiveInt(raw: string): number | null {
   const n = parseInt(s, 10)
 
   if (!Number.isFinite(n) || n <= 0) return null
-  
-return n
+
+  return n
 }
 
-function oldalLabel(oldal: 'hosszu' | 'rovid'): string {
-  return oldal === 'hosszu' ? 'Hosszú oldal' : 'Rövid oldal'
-}
-
-function pantTooltipText(p: PanthelyConfig): string {
-  const tav = p.tavolsagokAlulMm.map((mm, i) => `${i + 1}. pánthely: ${mm} mm`).join('; ')
-
-  
-return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
-}
-
-export default function FronttervezoInomatSection() {
-  const [lines, setLines] = useState<InomatLineItem[]>([])
+export default function FronttervezoAluSection() {
+  const [lines, setLines] = useState<AluLineItem[]>([])
   const [hasLoadedFromSession, setHasLoadedFromSession] = useState(false)
 
+  const [profil, setProfil] = useState<string>(PROFIL_OPTIONS[0])
   const [szin, setSzin] = useState<string>(SZIN_OPTIONS[0])
+  const [pantolas, setPantolas] = useState<string>(PANTOLAS_OPTIONS[0])
   const [magassag, setMagassag] = useState('')
   const [szelesseg, setSzelesseg] = useState('')
   const [mennyiseg, setMennyiseg] = useState('')
@@ -99,24 +83,18 @@ export default function FronttervezoInomatSection() {
 
   const [editingId, setEditingId] = useState<string | null>(null)
 
-  const [pantModalOpen, setPantModalOpen] = useState(false)
-  const [pantSaved, setPantSaved] = useState(false)
-  const [pantOldal, setPantOldal] = useState<'hosszu' | 'rovid'>('hosszu')
-  const [pantHoleCount, setPantHoleCount] = useState('2')
-  const [pantDistances, setPantDistances] = useState<string[]>(['', ''])
-
   useEffect(() => {
     const raw = sessionStorage.getItem(SESSION_KEY)
 
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as InomatLineItem[]
+        const parsed = JSON.parse(raw) as AluLineItem[]
 
         if (Array.isArray(parsed)) {
           setLines(parsed)
         }
       } catch {
-        console.error('[fronttervezo] session parse error')
+        console.error('[fronttervezo] alu session parse error')
       }
     }
 
@@ -136,16 +114,14 @@ export default function FronttervezoInomatSection() {
   }, [lines, hasLoadedFromSession])
 
   const resetForm = useCallback(() => {
+    setProfil(PROFIL_OPTIONS[0])
     setSzin(SZIN_OPTIONS[0])
+    setPantolas(PANTOLAS_OPTIONS[0])
     setMagassag('')
     setSzelesseg('')
     setMennyiseg('')
     setMegjegyzes('')
     setEditingId(null)
-    setPantSaved(false)
-    setPantOldal('hosszu')
-    setPantHoleCount('2')
-    setPantDistances(['', ''])
   }, [])
 
   const validateMainForm = (): boolean => {
@@ -153,38 +129,13 @@ export default function FronttervezoInomatSection() {
     const sz = parsePositiveInt(szelesseg)
     const d = parsePositiveInt(mennyiseg)
 
-    if (!szin) {
-      toast.error('Válasszon színt.')
-      
-return false
-    }
-
     if (m === null || sz === null || d === null) {
       toast.error('A magasság, szélesség és mennyiség kötelező pozitív egész szám (mm / db).')
-      
-return false
+
+      return false
     }
 
-    
-return true
-  }
-
-  const buildPanthelyFromModal = (): PanthelyConfig | null => {
-    if (!pantSaved) return null
-    const n = parsePositiveInt(pantHoleCount)
-
-    if (n === null) return null
-    const tav: number[] = []
-
-    for (let i = 0; i < n; i++) {
-      const mm = parsePositiveInt(pantDistances[i] ?? '')
-
-      if (mm === null) return null
-      tav.push(mm)
-    }
-
-    
-return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
+    return true
   }
 
   const addLine = () => {
@@ -192,25 +143,15 @@ return { oldal: pantOldal, mennyiseg: n, tavolsagokAlulMm: tav }
     const m = parsePositiveInt(magassag)!
     const sz = parsePositiveInt(szelesseg)!
     const d = parsePositiveInt(mennyiseg)!
-    let pant: PanthelyConfig | null = null
 
-    if (pantSaved) {
-      pant = buildPanthelyFromModal()
-
-      if (!pant) {
-        toast.error('Ellenőrizze a pánthelyfúrás adatait (pánthelyek száma és távolságok mm-ben).')
-        
-return
-      }
-    }
-
-    const item: InomatLineItem = {
+    const item: AluLineItem = {
       id: Date.now().toString(),
-      szin,
+      profil: profil as AluLineItem['profil'],
+      szin: szin as AluLineItem['szin'],
+      pantolas: pantolas as AluLineItem['pantolas'],
       magassagMm: m,
       szelessegMm: sz,
       mennyiseg: d,
-      panthely: pant,
       megjegyzes: megjegyzes.trim() ? megjegyzes : undefined
     }
 
@@ -225,28 +166,18 @@ return
     const m = parsePositiveInt(magassag)!
     const sz = parsePositiveInt(szelesseg)!
     const d = parsePositiveInt(mennyiseg)!
-    let pant: PanthelyConfig | null = null
-
-    if (pantSaved) {
-      pant = buildPanthelyFromModal()
-
-      if (!pant) {
-        toast.error('Ellenőrizze a pánthelyfúrás adatait (pánthelyek száma és távolságok mm-ben).')
-        
-return
-      }
-    }
 
     setLines(prev =>
       prev.map(row =>
         row.id === editingId
           ? {
               ...row,
-              szin,
+              profil: profil as AluLineItem['profil'],
+              szin: szin as AluLineItem['szin'],
+              pantolas: pantolas as AluLineItem['pantolas'],
               magassagMm: m,
               szelessegMm: sz,
               mennyiseg: d,
-              panthely: pant,
               megjegyzes: megjegyzes.trim() ? megjegyzes : undefined
             }
           : row
@@ -266,25 +197,15 @@ return
     toast.error('Tétel törölve.')
   }
 
-  const editLine = (row: InomatLineItem) => {
+  const editLine = (row: AluLineItem) => {
     setEditingId(row.id)
+    setProfil(row.profil)
     setSzin(row.szin)
+    setPantolas(row.pantolas)
     setMagassag(String(row.magassagMm))
     setSzelesseg(String(row.szelessegMm))
     setMennyiseg(String(row.mennyiseg))
     setMegjegyzes(row.megjegyzes ?? '')
-
-    if (row.panthely) {
-      setPantSaved(true)
-      setPantOldal(row.panthely.oldal)
-      setPantHoleCount(String(row.panthely.mennyiseg))
-      setPantDistances(row.panthely.tavolsagokAlulMm.map(String))
-    } else {
-      setPantSaved(false)
-      setPantOldal('hosszu')
-      setPantHoleCount('2')
-      setPantDistances(['', ''])
-    }
 
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -295,74 +216,16 @@ return
     resetForm()
   }
 
-  const handlePantModalOpen = () => {
-    const n = parseInt(pantHoleCount || '0', 10)
+  const handleDimensionKeyPress = (event: KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
 
-    if (Number.isFinite(n) && n > 0) {
-      setPantDistances(prev => {
-        const next = [...prev]
-
-        while (next.length < n) next.push('')
-        
-return next.slice(0, n)
-      })
-    }
-
-    setPantModalOpen(true)
-  }
-
-  const handlePantModalClose = () => {
-    setPantModalOpen(false)
-  }
-
-  const handlePantHoleCountChange = (v: string) => {
-    const digits = onlyDigits(v)
-
-    setPantHoleCount(digits === '' ? '' : digits)
-    const n = parseInt(digits || '0', 10)
-
-    if (!Number.isFinite(n) || n <= 0) {
-      setPantDistances([])
-      
-return
-    }
-
-    setPantDistances(prev => {
-      const next = [...prev]
-
-      while (next.length < n) next.push('')
-      
-return next.slice(0, n)
-    })
-  }
-
-  const handlePantSave = () => {
-    const n = parsePositiveInt(pantHoleCount)
-
-    if (n === null) {
-      toast.error('Adja meg a pánthelyfúrások számát (pozitív egész).')
-      
-return
-    }
-
-    for (let i = 0; i < n; i++) {
-      if (parsePositiveInt(pantDistances[i] ?? '') === null) {
-        toast.error(`Minden pánthelyhez adja meg az alulról mért távolságot (mm), ${i + 1}. pánthely.`)
-        
-return
+      if (editingId) {
+        saveEditedLine()
+      } else {
+        addLine()
       }
     }
-
-    setPantSaved(true)
-    setPantModalOpen(false)
-  }
-
-  const handlePantDelete = () => {
-    setPantSaved(false)
-    setPantHoleCount('2')
-    setPantDistances(['', ''])
-    setPantOldal('hosszu')
-    setPantModalOpen(false)
   }
 
   return (
@@ -370,18 +233,36 @@ return
       <Card sx={{ mt: 2 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            INOMAT FRONT – részletek
+            ALU FRONT – részletek
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Magasság és szélesség mm-ben, egész szám. A pánthelyfúrás opcionális.
+            Magasság és szélesség mm-ben, egész szám. Árazás: 70&nbsp;000 Ft/m² bruttó (ideiglenesen).
           </Typography>
 
           <Grid container spacing={2} alignItems="flex-start">
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <FormControl fullWidth size="small" sx={inputSx}>
-                <InputLabel id="fronttervezo-inomat-szin">Szín</InputLabel>
+                <InputLabel id="fronttervezo-alu-profil">Aluprofil</InputLabel>
                 <Select
-                  labelId="fronttervezo-inomat-szin"
+                  labelId="fronttervezo-alu-profil"
+                  label="Aluprofil"
+                  value={profil}
+                  onChange={(e: SelectChangeEvent) => setProfil(e.target.value)}
+                >
+                  {PROFIL_OPTIONS.map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={4}>
+              <FormControl fullWidth size="small" sx={inputSx}>
+                <InputLabel id="fronttervezo-alu-szin">Szín</InputLabel>
+                <Select
+                  labelId="fronttervezo-alu-szin"
                   label="Szín"
                   value={szin}
                   onChange={(e: SelectChangeEvent) => setSzin(e.target.value)}
@@ -394,33 +275,55 @@ return
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+
+            <Grid item xs={12} sm={12} md={4}>
+              <FormControl fullWidth size="small" sx={inputSx}>
+                <InputLabel id="fronttervezo-alu-pant">Pántolás iránya</InputLabel>
+                <Select
+                  labelId="fronttervezo-alu-pant"
+                  label="Pántolás iránya"
+                  value={pantolas}
+                  onChange={(e: SelectChangeEvent) => setPantolas(e.target.value)}
+                >
+                  {PANTOLAS_OPTIONS.map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
                 size="small"
                 label="Magasság (mm)"
                 value={magassag}
                 onChange={e => setMagassag(onlyDigits(e.target.value))}
+                onKeyDown={handleDimensionKeyPress}
                 sx={inputSx}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
                 size="small"
                 label="Szélesség (mm)"
                 value={szelesseg}
                 onChange={e => setSzelesseg(onlyDigits(e.target.value))}
+                onKeyDown={handleDimensionKeyPress}
                 sx={inputSx}
               />
             </Grid>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
                 size="small"
                 label="Mennyiség"
                 value={mennyiseg}
                 onChange={e => setMennyiseg(onlyDigits(e.target.value))}
+                onKeyDown={handleDimensionKeyPress}
                 sx={inputSx}
               />
             </Grid>
@@ -442,29 +345,13 @@ return
             </Grid>
 
             <Grid item xs={12}>
-              <Button
-                variant="contained"
-                size="small"
-                color={pantSaved ? 'success' : 'primary'}
-                onClick={handlePantModalOpen}
-              >
-                Pánthelyfúrás
-              </Button>
-            </Grid>
-
-            <Grid item xs={12}>
               <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, flexWrap: 'wrap' }}>
                 {editingId && (
                   <Button variant="outlined" color="secondary" size="large" onClick={cancelEdit}>
                     Mégse
                   </Button>
                 )}
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  onClick={editingId ? saveEditedLine : addLine}
-                >
+                <Button variant="contained" color="primary" size="large" onClick={editingId ? saveEditedLine : addLine}>
                   {editingId ? 'Mentés' : 'Hozzáadás'}
                 </Button>
               </Box>
@@ -486,7 +373,13 @@ return
                     <strong>Front típus</strong>
                   </TableCell>
                   <TableCell>
+                    <strong>Aluprofil</strong>
+                  </TableCell>
+                  <TableCell>
                     <strong>Szín</strong>
+                  </TableCell>
+                  <TableCell>
+                    <strong>Pántolás</strong>
                   </TableCell>
                   <TableCell>
                     <strong>Magasság</strong>
@@ -496,9 +389,6 @@ return
                   </TableCell>
                   <TableCell>
                     <strong>Mennyiség</strong>
-                  </TableCell>
-                  <TableCell align="center">
-                    <strong>Pánt</strong>
                   </TableCell>
                   <TableCell align="center">
                     <strong>Megj.</strong>
@@ -516,27 +406,13 @@ return
                     onClick={() => editLine(row)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell>INOMAT FRONT</TableCell>
+                    <TableCell>ALU FRONT</TableCell>
+                    <TableCell>{row.profil}</TableCell>
                     <TableCell>{row.szin}</TableCell>
+                    <TableCell sx={{ maxWidth: 200 }}>{row.pantolas}</TableCell>
                     <TableCell>{row.magassagMm} mm</TableCell>
                     <TableCell>{row.szelessegMm} mm</TableCell>
                     <TableCell>{row.mennyiseg}</TableCell>
-                    <TableCell align="center" onClick={e => e.stopPropagation()}>
-                      {row.panthely ? (
-                        <Tooltip title={pantTooltipText(row.panthely)}>
-                          <Box
-                            component="span"
-                            sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                          >
-                            <LocationSearchingSharpIcon color="primary" fontSize="small" />
-                          </Box>
-                        </Tooltip>
-                      ) : (
-                        <Typography variant="body2" color="text.secondary">
-                          —
-                        </Typography>
-                      )}
-                    </TableCell>
                     <FronttervezoMegjegyzesTableCell megjegyzes={row.megjegyzes} />
                     <TableCell onClick={e => e.stopPropagation()}>
                       <Button
@@ -556,76 +432,6 @@ return
           </TableContainer>
         </Box>
       )}
-
-      <Dialog open={pantModalOpen} onClose={handlePantModalClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Pánthelyfúrás beállítások</DialogTitle>
-        <DialogContent>
-          <Box sx={{ pt: 2 }}>
-            <TextField
-              fullWidth
-              label="Pánthelyfúrások száma (db)"
-              value={pantHoleCount}
-              onChange={e => handlePantHoleCountChange(e.target.value)}
-              sx={{ mb: 2 }}
-              helperText="Minden pánthelyhez külön adja meg az alulról mért távolságot (mm)."
-            />
-
-            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-              Oldal
-            </Typography>
-            <RadioGroup value={pantOldal} onChange={e => setPantOldal(e.target.value as 'hosszu' | 'rovid')}>
-              <FormControlLabel value="hosszu" control={<Radio />} label="Hosszú oldal" />
-              <FormControlLabel value="rovid" control={<Radio />} label="Rövid oldal" />
-            </RadioGroup>
-
-            {(() => {
-              const holeN = parseInt(pantHoleCount || '0', 10)
-
-              if (!Number.isFinite(holeN) || holeN <= 0) {
-                return (
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                    Adja meg a pánthelyek számát (legalább 1), majd töltse ki a távolságokat.
-                  </Typography>
-                )
-              }
-
-              
-return Array.from({ length: holeN }).map((_, i) => (
-                <TextField
-                  key={i}
-                  fullWidth
-                  size="small"
-                  sx={{ mt: 2 }}
-                  label={`${i + 1}. pánthely – távolság alulról (mm)`}
-                  value={pantDistances[i] ?? ''}
-                  onChange={e => {
-                    const v = onlyDigits(e.target.value)
-
-                    setPantDistances(prev => {
-                      const next = [...prev]
-
-                      next[i] = v
-                      
-return next
-                    })
-                  }}
-                />
-              ))
-            })()}
-          </Box>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handlePantModalClose} color="primary">
-            Mégse
-          </Button>
-          <Button onClick={handlePantDelete} color="error">
-            Törlés
-          </Button>
-          <Button onClick={handlePantSave} variant="contained" color="primary">
-            Mentés
-          </Button>
-        </DialogActions>
-      </Dialog>
     </>
   )
 }

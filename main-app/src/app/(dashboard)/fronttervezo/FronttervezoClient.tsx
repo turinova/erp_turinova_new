@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 
 import {
@@ -20,19 +20,53 @@ import { Star as StarIcon, ExpandMore as ExpandMoreIcon } from '@mui/icons-mater
 import { alpha, useTheme } from '@mui/material/styles'
 import Grid2 from '@mui/material/Grid2'
 
+import { toast } from 'react-toastify'
+
 import CustomInputHorizontal from '@core/components/custom-inputs/Horizontal'
 import type { CustomInputHorizontalData } from '@core/components/custom-inputs/types'
 
 import ButorlapRadioTileTitle from './ButorlapRadioTileTitle'
+import FronttervezoAluSection from './FronttervezoAluSection'
+import type { ButorlapLineItem } from './FronttervezoButorlapSection'
 import FronttervezoButorlapSection from './FronttervezoButorlapSection'
+import FronttervezoFestettSection from './FronttervezoFestettSection'
+import FronttervezoFoliasSection from './FronttervezoFoliasSection'
+import FronttervezoGlobalQuotes from './FronttervezoGlobalQuotes'
 import FronttervezoInomatSection from './FronttervezoInomatSection'
 import NettfrontRadioTileTitle from './NettfrontRadioTileTitle'
 import {
   FRONTTERVEZO_LINES_UPDATED,
+  FRONTTERVEZO_SESSION_KEY_ALU,
+  FRONTTERVEZO_SESSION_KEY_BUTORLAP,
+  FRONTTERVEZO_SESSION_KEY_FESTETT,
+  FRONTTERVEZO_SESSION_KEY_FOLIAS,
+  FRONTTERVEZO_SESSION_KEY_INOMAT,
   type FronttervezoLineCounts,
   parseFronttervezoLineCounts
 } from './fronttervezoSession'
 import type { FronttervezoBoardMaterial } from './fronttervezoTypes'
+import { computeFronttervezoButorlapQuote, type EdgeMaterialRow } from '@/lib/pricing/fronttervezoButorlapQuote'
+import {
+  computeFronttervezoAluQuote,
+  type FronttervezoAluQuoteResult,
+  type AluQuoteLineInput
+} from '@/lib/pricing/fronttervezoAluQuote'
+import {
+  computeFronttervezoFestettQuote,
+  type FronttervezoFestettQuoteResult,
+  type FestettQuoteLineInput
+} from '@/lib/pricing/fronttervezoFestettQuote'
+import {
+  computeFronttervezoFoliasQuote,
+  type FoliasQuoteLineInput,
+  type FronttervezoFoliasQuoteResult
+} from '@/lib/pricing/fronttervezoFoliasQuote'
+import {
+  computeFronttervezoInomatQuote,
+  type FronttervezoInomatQuoteResult,
+  type InomatQuoteLineInput
+} from '@/lib/pricing/fronttervezoInomatQuote'
+import type { QuoteResult } from '@/lib/pricing/quoteCalculations'
 import type { getCuttingFee, getEdgeMaterialById } from '@/lib/supabase-server'
 
 type FronttervezoCuttingFeeSSR = Awaited<ReturnType<typeof getCuttingFee>>
@@ -216,6 +250,162 @@ export default function FronttervezoClient({
 
     return Number.isFinite(n) && n > 0 ? n : 0
   }, [customerData.discount])
+
+  const quoteAnchorRef = useRef<HTMLDivElement | null>(null)
+  const [globalQuoteLoading, setGlobalQuoteLoading] = useState(false)
+  const [butorlapQuote, setButorlapQuote] = useState<QuoteResult | null>(null)
+  const [butorlapLinesSnapshot, setButorlapLinesSnapshot] = useState<ButorlapLineItem[]>([])
+  const [inomatQuote, setInomatQuote] = useState<FronttervezoInomatQuoteResult | null>(null)
+  const [aluQuote, setAluQuote] = useState<FronttervezoAluQuoteResult | null>(null)
+  const [festettQuote, setFestettQuote] = useState<FronttervezoFestettQuoteResult | null>(null)
+  const [foliasQuote, setFoliasQuote] = useState<FronttervezoFoliasQuoteResult | null>(null)
+  const [butorlapQuoteExpanded, setButorlapQuoteExpanded] = useState(false)
+  const [inomatQuoteExpanded, setInomatQuoteExpanded] = useState(false)
+  const [aluQuoteExpanded, setAluQuoteExpanded] = useState(false)
+  const [festettQuoteExpanded, setFestettQuoteExpanded] = useState(false)
+  const [foliasQuoteExpanded, setFoliasQuoteExpanded] = useState(false)
+
+  const clearAllQuotes = useCallback(() => {
+    setButorlapQuote(null)
+    setButorlapLinesSnapshot([])
+    setInomatQuote(null)
+    setAluQuote(null)
+    setFestettQuote(null)
+    setFoliasQuote(null)
+    setButorlapQuoteExpanded(false)
+    setInomatQuoteExpanded(false)
+    setAluQuoteExpanded(false)
+    setFestettQuoteExpanded(false)
+    setFoliasQuoteExpanded(false)
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener(FRONTTERVEZO_LINES_UPDATED, clearAllQuotes)
+
+    return () => window.removeEventListener(FRONTTERVEZO_LINES_UPDATED, clearAllQuotes)
+  }, [clearAllQuotes])
+
+  const hasAnyQuoteLines =
+    lineCounts.butorlap > 0 || lineCounts.inomat > 0 || lineCounts.festett > 0 || lineCounts.folias > 0 || lineCounts.alu > 0
+
+  const handleGenerateAllQuotes = useCallback(async () => {
+    if (typeof window === 'undefined') return
+
+    let butorlapLines: ButorlapLineItem[] = []
+    let inomatLines: InomatQuoteLineInput[] = []
+    let aluLines: AluQuoteLineInput[] = []
+    let festettLines: FestettQuoteLineInput[] = []
+    let foliasLines: FoliasQuoteLineInput[] = []
+
+    try {
+      const rawB = sessionStorage.getItem(FRONTTERVEZO_SESSION_KEY_BUTORLAP)
+      const rawI = sessionStorage.getItem(FRONTTERVEZO_SESSION_KEY_INOMAT)
+      const rawA = sessionStorage.getItem(FRONTTERVEZO_SESSION_KEY_ALU)
+      const rawF = sessionStorage.getItem(FRONTTERVEZO_SESSION_KEY_FESTETT)
+      const rawFo = sessionStorage.getItem(FRONTTERVEZO_SESSION_KEY_FOLIAS)
+
+      if (rawB) {
+        const parsed = JSON.parse(rawB) as unknown
+
+        if (Array.isArray(parsed)) butorlapLines = parsed as ButorlapLineItem[]
+      }
+
+      if (rawI) {
+        const parsed = JSON.parse(rawI) as unknown
+
+        if (Array.isArray(parsed)) inomatLines = parsed as InomatQuoteLineInput[]
+      }
+
+      if (rawA) {
+        const parsed = JSON.parse(rawA) as unknown
+
+        if (Array.isArray(parsed)) aluLines = parsed as AluQuoteLineInput[]
+      }
+
+      if (rawF) {
+        const parsed = JSON.parse(rawF) as unknown
+
+        if (Array.isArray(parsed)) festettLines = parsed as FestettQuoteLineInput[]
+      }
+
+      if (rawFo) {
+        const parsed = JSON.parse(rawFo) as unknown
+
+        if (Array.isArray(parsed)) foliasLines = parsed as FoliasQuoteLineInput[]
+      }
+    } catch {
+      toast.error('A mentett tételek olvasása sikertelen.')
+      
+return
+    }
+
+    if (
+      butorlapLines.length === 0 &&
+      inomatLines.length === 0 &&
+      aluLines.length === 0 &&
+      festettLines.length === 0 &&
+      foliasLines.length === 0
+    ) {
+      toast.error('Legalább egy tétel szükséges az ajánlathoz.')
+
+      return
+    }
+
+    setGlobalQuoteLoading(true)
+    setButorlapQuote(null)
+    setButorlapLinesSnapshot([])
+    setInomatQuote(null)
+    setAluQuote(null)
+    setFestettQuote(null)
+    setFoliasQuote(null)
+    setButorlapQuoteExpanded(false)
+    setInomatQuoteExpanded(false)
+    setAluQuoteExpanded(false)
+    setFestettQuoteExpanded(false)
+    setFoliasQuoteExpanded(false)
+
+    try {
+      const edgeMaterial = initialDefaultEdgeMaterial as unknown as EdgeMaterialRow
+
+      if (butorlapLines.length > 0) {
+        const outcome = await computeFronttervezoButorlapQuote(butorlapLines, initialCuttingFee, edgeMaterial)
+
+        if (!outcome.ok) {
+          toast.error(outcome.error)
+        } else {
+          setButorlapQuote(outcome.quote)
+          setButorlapLinesSnapshot(butorlapLines)
+        }
+      }
+
+      if (inomatLines.length > 0) {
+        const q = computeFronttervezoInomatQuote(inomatLines, initialCuttingFee, customerDiscountPercent)
+
+        if (q) setInomatQuote(q)
+      }
+
+      if (aluLines.length > 0) {
+        const q = computeFronttervezoAluQuote(aluLines, customerDiscountPercent)
+
+        if (q) setAluQuote(q)
+      }
+
+      if (festettLines.length > 0) {
+        const q = computeFronttervezoFestettQuote(festettLines, initialCuttingFee, customerDiscountPercent)
+
+        if (q) setFestettQuote(q)
+      }
+
+      if (foliasLines.length > 0) {
+        const q = computeFronttervezoFoliasQuote(foliasLines, initialCuttingFee, customerDiscountPercent)
+
+        if (q) setFoliasQuote(q)
+      }
+    } finally {
+      setGlobalQuoteLoading(false)
+      setTimeout(() => quoteAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    }
+  }, [customerDiscountPercent, initialCuttingFee, initialDefaultEdgeMaterial])
 
   const nettfrontTiles = useMemo(
     () =>
@@ -652,20 +842,61 @@ return (
 
         {selectedFrontType === 'butorlap' && (
           <Grid item xs={12}>
-            <FronttervezoButorlapSection
-              initialMaterials={initialMaterials}
-              initialCuttingFee={initialCuttingFee}
-              customerDiscountPercent={customerDiscountPercent}
-              defaultEdgeMaterial={initialDefaultEdgeMaterial}
-            />
+            <FronttervezoButorlapSection initialMaterials={initialMaterials} />
           </Grid>
         )}
 
         {selectedFrontType === 'inomat' && (
           <Grid item xs={12}>
-            <FronttervezoInomatSection initialCuttingFee={initialCuttingFee} customerDiscountPercent={customerDiscountPercent} />
+            <FronttervezoInomatSection />
           </Grid>
         )}
+
+        {selectedFrontType === 'festett' && (
+          <Grid item xs={12}>
+            <FronttervezoFestettSection />
+          </Grid>
+        )}
+
+        {selectedFrontType === 'folias' && (
+          <Grid item xs={12}>
+            <FronttervezoFoliasSection />
+          </Grid>
+        )}
+
+        {selectedFrontType === 'alu' && (
+          <Grid item xs={12}>
+            <FronttervezoAluSection />
+          </Grid>
+        )}
+
+        {hasAnyQuoteLines ? (
+          <Grid item xs={12}>
+            <FronttervezoGlobalQuotes
+              quoteAnchorRef={quoteAnchorRef}
+              hasAnyLines={hasAnyQuoteLines}
+              loading={globalQuoteLoading}
+              onGenerate={handleGenerateAllQuotes}
+              customerDiscountPercent={customerDiscountPercent}
+              butorlapQuote={butorlapQuote}
+              butorlapLines={butorlapLinesSnapshot}
+              butorlapExpanded={butorlapQuoteExpanded}
+              onButorlapExpanded={setButorlapQuoteExpanded}
+              inomatQuote={inomatQuote}
+              inomatExpanded={inomatQuoteExpanded}
+              onInomatExpanded={setInomatQuoteExpanded}
+              aluQuote={aluQuote}
+              aluExpanded={aluQuoteExpanded}
+              onAluExpanded={setAluQuoteExpanded}
+              festettQuote={festettQuote}
+              festettExpanded={festettQuoteExpanded}
+              onFestettExpanded={setFestettQuoteExpanded}
+              foliasQuote={foliasQuote}
+              foliasExpanded={foliasQuoteExpanded}
+              onFoliasExpanded={setFoliasQuoteExpanded}
+            />
+          </Grid>
+        ) : null}
       </Grid>
     </Box>
   )
