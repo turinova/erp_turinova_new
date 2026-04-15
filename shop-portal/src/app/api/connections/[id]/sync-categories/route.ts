@@ -2,10 +2,22 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
-import { updateProgress, clearProgress, shouldStopSync, getProgress, incrementProgress } from '@/lib/sync-progress-store'
+import {
+  updateProgress,
+  clearProgress,
+  shouldStopSync,
+  getProgress,
+  incrementProgress,
+} from '@/lib/sync-progress-store'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 import { getLanguageId, getShopRenterAuthHeader, extractShopNameFromUrl as extractShopNameFromUrlLib } from '@/lib/shoprenter-api'
 import { isTransientSupabaseClientError, retryTransientAsync } from '@/lib/retry-with-backoff'
+import {
+  maybeFlushSyncJobProgress,
+  finalizeSyncJob,
+  reconcileStaleRunningCategorySyncJob,
+  isSyncJobStopped,
+} from '@/lib/sync-job-db'
 
 /** Vercel Pro: category batch + ShopRenter list can run long. Hobby plan caps lower. */
 export const maxDuration = 300
@@ -486,10 +498,28 @@ export async function POST(
       }, { status: 401 })
     }
 
+    const activeCategoryJob = await reconcileStaleRunningCategorySyncJob(supabase, connectionId)
+    if (activeCategoryJob) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Kategória szinkronizálás már folyamatban van erre a kapcsolatra.',
+          details:
+            'Egy másik kategória szinkron fut. Kérjük, várja meg a befejezését vagy állítsa le a szinkronizálást.',
+        },
+        { status: 409 }
+      )
+    }
+
     // Check if category sync is already running for this connection (prevent concurrent syncs)
     const categoryProgressKey = `categories-${connectionId}`
     const existingCategoryProgress = getProgress(categoryProgressKey)
-    if (existingCategoryProgress && (existingCategoryProgress.status === 'syncing' || existingCategoryProgress.status === 'starting')) {
+    if (
+      existingCategoryProgress &&
+      (existingCategoryProgress.status === 'syncing' ||
+        existingCategoryProgress.status === 'starting' ||
+        existingCategoryProgress.status === 'fetching')
+    ) {
       console.log(`[CATEGORY SYNC] Category sync already running for connection ${connectionId}. Status: ${existingCategoryProgress.status}, Progress: ${existingCategoryProgress.synced}/${existingCategoryProgress.total}`)
       return NextResponse.json({ 
         success: false, 
@@ -656,15 +686,17 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        message: 'Category synced successfully'
+        message: 'Category synced successfully',
+        syncCompleted: true,
+        synced: 1,
+        errors: 0,
       })
     }
 
     // Clear any previous progress
-    clearProgress(`categories-${connectionId}`)
+    clearProgress(categoryProgressKey)
 
-    // Start background sync process for all categories
-    processSyncInBackground(
+    const result = await processSyncInBackground(
       supabase,
       connection,
       connectionId,
@@ -674,15 +706,29 @@ export async function POST(
       tenantId,
       user.id,
       user.email || null
-    ).catch(error => {
-      console.error('[CATEGORY SYNC] Background process error:', error)
-    })
+    )
 
-    // Return immediately
+    if (result.failed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: result.errorMessage || 'Kategória szinkronizálás sikertelen',
+          syncCompleted: false,
+        },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Category sync started',
-      connectionId: connectionId
+      message: result.stopped
+        ? 'Kategória szinkronizálás leállítva'
+        : 'Kategória szinkronizálás befejeződött',
+      connectionId,
+      syncCompleted: true,
+      synced: result.synced,
+      errors: result.errors,
+      stopped: result.stopped === true,
     })
   } catch (error: any) {
     console.error('[CATEGORY SYNC] Error:', error)
@@ -693,26 +739,88 @@ export async function POST(
   }
 }
 
+function mapCategoryJobStatusToUi(dbStatus: string): string {
+  if (dbStatus === 'running') return 'syncing'
+  return dbStatus
+}
+
 /**
  * GET /api/connections/[id]/sync-categories
- * Get sync progress
+ * In-memory progress first, then durable sync_jobs (category) for Vercel multi-instance polling.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: connectionId } = await params
-  
-  const { updateProgress, getProgress } = await import('@/lib/sync-progress-store')
-  const progress = getProgress(`categories-${connectionId}`)
-  
-  return NextResponse.json({
-    progress: progress || null
-  })
+  const categoryProgressKey = `categories-${connectionId}`
+
+  const memory = getProgress(categoryProgressKey)
+  if (memory) {
+    return NextResponse.json({
+      success: true,
+      source: 'memory',
+      progress: memory,
+    })
+  }
+
+  try {
+    const supabase = await getTenantSupabase()
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ progress: null, success: false })
+    }
+
+    await reconcileStaleRunningCategorySyncJob(supabase, connectionId)
+
+    const { data: job, error: jobError } = await supabase
+      .from('sync_jobs')
+      .select('*')
+      .eq('connection_id', connectionId)
+      .eq('status', 'running')
+      .contains('metadata', { syncType: 'category' })
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (jobError || !job) {
+      return NextResponse.json({ progress: null, success: true, source: 'none' })
+    }
+
+    const uiStatus = mapCategoryJobStatusToUi(job.status)
+    return NextResponse.json({
+      success: true,
+      source: 'database',
+      progress: {
+        total: job.total_units,
+        synced: job.synced_units,
+        current: job.synced_units + job.error_units,
+        status: uiStatus,
+        errors: job.error_units,
+        currentBatch: job.current_batch ?? undefined,
+        totalBatches: job.total_batches ?? undefined,
+        batchProgress: job.batch_progress ?? undefined,
+      },
+    })
+  } catch (e) {
+    console.error('[CATEGORY SYNC] GET progress error:', e)
+    return NextResponse.json({ progress: null, success: false })
+  }
+}
+
+type CategorySyncResult = {
+  synced: number
+  errors: number
+  stopped?: boolean
+  failed?: boolean
+  errorMessage?: string
 }
 
 /**
- * Process sync in background
+ * Full category sync — awaited by POST so it runs to completion on Vercel (same invocation).
  */
 async function processSyncInBackground(
   supabase: any,
@@ -724,7 +832,43 @@ async function processSyncInBackground(
   tenantId?: string,
   userId?: string,
   userEmail?: string | null
-) {
+): Promise<CategorySyncResult> {
+  const categoryProgressKey = `categories-${connectionId}`
+  let syncJobId: string | null = null
+
+  const flushProgress = async (force = false) => {
+    if (!syncJobId) return
+    await maybeFlushSyncJobProgress(
+      supabase,
+      syncJobId,
+      () => {
+        const p = getProgress(categoryProgressKey)
+        return {
+          synced: p?.synced ?? 0,
+          total: p?.total ?? 0,
+          errors: p?.errors ?? 0,
+          status: p?.status ?? 'syncing',
+          currentBatch: p?.currentBatch,
+          totalBatches: p?.totalBatches,
+          batchProgress: p?.batchProgress,
+        }
+      },
+      force
+    )
+  }
+
+  const checkShouldStopAsync = async (): Promise<boolean> => {
+    if (shouldStopSync(categoryProgressKey)) return true
+    if (syncJobId) {
+      const stopped = await isSyncJobStopped(supabase, syncJobId)
+      if (stopped) {
+        updateProgress(categoryProgressKey, { shouldStop: true, status: 'stopped' })
+      }
+      return stopped
+    }
+    return false
+  }
+
   const rateLimiter = getShopRenterRateLimiter()
   let syncedCount = 0
   let errorCount = 0
@@ -792,7 +936,7 @@ async function processSyncInBackground(
   try {
     // Step 1: Fetch all category IDs
     console.log('[CATEGORY SYNC] Fetching category IDs...')
-    updateProgress(`categories-${connectionId}`, {
+    updateProgress(categoryProgressKey, {
       total: 0,
       synced: 0,
       current: 0,
@@ -805,9 +949,16 @@ async function processSyncInBackground(
     const limit = 200
     
     while (true) {
-      if (shouldStopSync(`categories-${connectionId}`)) {
+      if (await checkShouldStopAsync()) {
         console.log('[CATEGORY SYNC] Sync stopped by user')
-        return
+        if (syncJobId) {
+          await finalizeSyncJob(supabase, syncJobId, 'stopped', {
+            synced: syncedCount,
+            errors: errorCount,
+            total: allCategoryIds.length,
+          })
+        }
+        return { synced: syncedCount, errors: errorCount, stopped: true }
       }
       
       const categoriesUrl = `${apiUrl}/categories?page=${page}&limit=${limit}&full=0`
@@ -883,15 +1034,7 @@ async function processSyncInBackground(
         .update({ total_products: allCategoryIds.length })
         .eq('id', auditLogId)
     }
-    
-    updateProgress(`categories-${connectionId}`, {
-      total: allCategoryIds.length,
-      synced: 0,
-      current: 0,
-      status: 'syncing',
-      errors: 0
-    })
-    
+
     // Step 2: Process categories in batches
     const batchSize = 200
     const batches: string[][] = []
@@ -902,20 +1045,78 @@ async function processSyncInBackground(
     
     const totalBatches = batches.length
     console.log(`[CATEGORY SYNC] Processing ${totalBatches} batches`)
-    
+
+    if (userId) {
+      try {
+        const { data: sj, error: sjErr } = await supabase
+          .from('sync_jobs')
+          .insert({
+            connection_id: connectionId,
+            audit_log_id: auditLogId,
+            user_id: userId,
+            sync_mode: 'full',
+            sync_direction: 'from_shoprenter',
+            status: 'running',
+            total_units: allCategoryIds.length,
+            synced_units: 0,
+            error_units: 0,
+            total_batches: totalBatches,
+            current_batch: 0,
+            metadata: { syncType: 'category', shopName },
+          })
+          .select('id')
+          .single()
+        if (!sjErr && sj?.id) {
+          syncJobId = sj.id
+          updateProgress(categoryProgressKey, { syncJobId })
+        } else {
+          console.warn('[CATEGORY SYNC] sync_jobs insert failed (non-fatal):', sjErr)
+        }
+      } catch (syncJobErr) {
+        console.warn('[CATEGORY SYNC] sync_jobs insert error (non-fatal):', syncJobErr)
+      }
+    }
+
+    updateProgress(categoryProgressKey, {
+      total: allCategoryIds.length,
+      synced: 0,
+      current: 0,
+      status: 'syncing',
+      errors: 0,
+      totalBatches,
+      currentBatch: 0,
+      ...(syncJobId ? { syncJobId } : {}),
+    })
+    await flushProgress(true)
+
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-      if (shouldStopSync(`categories-${connectionId}`)) {
+      if (await checkShouldStopAsync()) {
         console.log(`[CATEGORY SYNC] Sync stopped at batch ${batchIndex + 1}/${totalBatches}`)
-        updateProgress(`categories-${connectionId}`, {
+        updateProgress(categoryProgressKey, {
           status: 'stopped',
           synced: syncedCount,
           current: syncedCount + errorCount,
-          errors: errorCount
+          errors: errorCount,
         })
-        return
+        await flushProgress(true)
+        if (syncJobId) {
+          await finalizeSyncJob(supabase, syncJobId, 'stopped', {
+            synced: syncedCount,
+            errors: errorCount,
+            total: allCategoryIds.length,
+          })
+        }
+        return { synced: syncedCount, errors: errorCount, stopped: true }
       }
       
       const batch = batches[batchIndex]
+
+      updateProgress(categoryProgressKey, {
+        currentBatch: batchIndex + 1,
+        totalBatches,
+        status: 'syncing',
+      })
+      void flushProgress()
       
       // Build batch request - URI must be full URL
       const batchRequests = batch.map(categoryId => {
@@ -1042,10 +1243,11 @@ async function processSyncInBackground(
           console.log(`[CATEGORY SYNC] Successfully synced category ${category.id}`)
           
           // Update progress immediately after each category (for real-time UI updates)
-          incrementProgress(`categories-${connectionId}`, {
+          incrementProgress(categoryProgressKey, {
             synced: 1
           })
-          
+          void flushProgress()
+
         } catch (error: any) {
           errorCount++
           const errorMessage = `Category ${categoryId}: ${error.message || 'Unknown error'}`
@@ -1053,19 +1255,23 @@ async function processSyncInBackground(
           console.error(`[CATEGORY SYNC] ${errorMessage}`, error)
           
           // Update progress for errors too
-          incrementProgress(`categories-${connectionId}`, {
+          incrementProgress(categoryProgressKey, {
             errors: 1
           })
+          void flushProgress()
         }
       }
       
       // Also update progress after batch (to ensure consistency)
-      updateProgress(`categories-${connectionId}`, {
+      updateProgress(categoryProgressKey, {
         synced: syncedCount,
         current: syncedCount + errorCount,
         status: 'syncing',
-        errors: errorCount
+        errors: errorCount,
+        currentBatch: batchIndex + 1,
+        totalBatches,
       })
+      void flushProgress()
       
       // Rate limiting delay between batches
       if (batchIndex < batches.length - 1) {
@@ -1082,12 +1288,11 @@ async function processSyncInBackground(
     // It can be done in a separate endpoint if needed
     
     // Final update
-    updateProgress(`categories-${connectionId}`, {
+    updateProgress(categoryProgressKey, {
       synced: syncedCount,
       current: syncedCount + errorCount,
       status: 'completed',
       errors: errorCount,
-      errorMessages: errors.slice(0, 50) // Store first 50 errors for debugging
     })
     
     console.log(`[CATEGORY SYNC] Completed: ${syncedCount} synced, ${errorCount} errors`)
@@ -1113,21 +1318,41 @@ async function processSyncInBackground(
         })
         .eq('id', auditLogId)
     }
-    
+
+    if (syncJobId) {
+      await finalizeSyncJob(supabase, syncJobId, 'completed', {
+        synced: syncedCount,
+        errors: errorCount,
+        total: allCategoryIds.length,
+      })
+    }
+    await flushProgress(true)
+
+    return { synced: syncedCount, errors: errorCount }
   } catch (error: any) {
     console.error('[CATEGORY SYNC] Background process error:', error)
-    updateProgress(`categories-${connectionId}`, {
+    updateProgress(categoryProgressKey, {
       status: 'error',
       errors: errorCount,
       synced: syncedCount,
-      current: syncedCount + errorCount
+      current: syncedCount + errorCount,
     })
-    
+    await flushProgress(true)
+
+    if (syncJobId) {
+      await finalizeSyncJob(supabase, syncJobId, 'failed', {
+        synced: syncedCount,
+        errors: errorCount,
+        total: allCategoryIds.length,
+        errorMessage: error.message || 'Unknown error',
+      })
+    }
+
     // Update audit log on error
     if (auditLogId) {
       const syncEndTime = new Date()
       const durationSeconds = Math.floor((syncEndTime.getTime() - syncStartTime.getTime()) / 1000)
-      
+
       await supabase
         .from('sync_audit_logs')
         .update({
@@ -1137,9 +1362,16 @@ async function processSyncInBackground(
           status: 'error',
           completed_at: syncEndTime.toISOString(),
           duration_seconds: durationSeconds,
-          error_message: error.message || 'Unknown error'
+          error_message: error.message || 'Unknown error',
         })
         .eq('id', auditLogId)
+    }
+
+    return {
+      failed: true,
+      errorMessage: error.message || 'Unknown error',
+      synced: syncedCount,
+      errors: errorCount,
     }
   }
 }

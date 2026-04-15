@@ -1286,7 +1286,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         const err = await catStart.json().catch(() => null)
         throw new Error(err?.error || 'Kategória szinkronizálás indítása sikertelen')
       }
-      await waitForCategorySyncCompletion(connection.id)
+      const catJson = await catStart.json().catch(() => ({}))
+      if (!catJson.syncCompleted) {
+        await waitForCategorySyncCompletion(connection.id)
+      }
       toast.success('1/4 Kategóriák szinkronizálva')
 
       setFullSyncStep('product_classes')
@@ -1347,7 +1350,22 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         throw new Error(errorResult.error || 'Kategória szinkronizálás sikertelen')
       }
 
-      // Wait a moment for sync to initialize
+      const result = await response.json().catch(() => ({}))
+      if (result.syncCompleted) {
+        if (result.stopped) {
+          toast.info('Kategória szinkronizálás leállítva')
+        } else {
+          toast.success(
+            `Kategóriák szinkronizálása befejeződött: ${result.synced ?? 0} kategória`
+          )
+        }
+        setSyncingCategoriesConnectionId(null)
+        setCategorySyncProgress(null)
+        router.refresh()
+        return
+      }
+
+      // Legacy / fallback: poll while server returns async-started (should be rare)
       await new Promise(resolve => setTimeout(resolve, 1000))
 
       // Start polling for category sync progress

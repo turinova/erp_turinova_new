@@ -92,6 +92,61 @@ export async function reconcileStaleRunningSyncJob(
   return null
 }
 
+/**
+ * Same as reconcileStaleRunningSyncJob but only for category pull jobs (metadata.syncType === 'category').
+ */
+export async function reconcileStaleRunningCategorySyncJob(
+  supabase: SupabaseClient,
+  connectionId: string
+): Promise<SyncJobRow | null> {
+  const { data: jobs, error } = await supabase
+    .from('sync_jobs')
+    .select('*')
+    .eq('connection_id', connectionId)
+    .eq('status', 'running')
+    .contains('metadata', { syncType: 'category' })
+    .order('started_at', { ascending: false })
+    .limit(1)
+
+  if (error || !jobs?.length) {
+    return null
+  }
+
+  const job = jobs[0] as SyncJobRow
+
+  if (!isSyncJobStale(job.updated_at)) {
+    return job
+  }
+
+  const completedAt = new Date().toISOString()
+  const msg =
+    'A szinkron megszakadt (kiszolgáló újraindítás vagy időtúllépés). Indítsa újra a szinkronizálást.'
+
+  await supabase
+    .from('sync_jobs')
+    .update({
+      status: 'failed',
+      completed_at: completedAt,
+      error_message: msg,
+    })
+    .eq('id', job.id)
+
+  clearSyncJobFlushThrottle(job.id)
+
+  if (job.audit_log_id) {
+    await supabase
+      .from('sync_audit_logs')
+      .update({
+        status: 'failed',
+        completed_at: completedAt,
+        error_message: msg,
+      })
+      .eq('id', job.audit_log_id)
+  }
+
+  return null
+}
+
 export async function maybeFlushSyncJobProgress(
   supabase: SupabaseClient,
   jobId: string,
@@ -192,4 +247,26 @@ export async function stopRunningSyncJobForConnection(
     errorMessage: null,
   })
   return id
+}
+
+/** Stops every running sync_jobs row for this connection (e.g. product + category). */
+export async function stopAllRunningSyncJobsForConnection(
+  supabase: SupabaseClient,
+  connectionId: string
+): Promise<number> {
+  const { data: jobs } = await supabase
+    .from('sync_jobs')
+    .select('id')
+    .eq('connection_id', connectionId)
+    .eq('status', 'running')
+
+  let n = 0
+  for (const j of jobs || []) {
+    const id = j.id as string
+    await finalizeSyncJob(supabase, id, 'stopped', {
+      errorMessage: null,
+    })
+    n++
+  }
+  return n
 }

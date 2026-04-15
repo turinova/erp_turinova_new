@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
 import { stopSync } from '@/lib/sync-progress-store'
-import { stopRunningSyncJobForConnection } from '@/lib/sync-job-db'
+import { stopAllRunningSyncJobsForConnection } from '@/lib/sync-job-db'
 
 /**
  * POST /api/connections/[id]/sync-progress/stop
@@ -14,10 +14,11 @@ export async function POST(
   try {
     const { id } = await params
     stopSync(id)
+    stopSync(`categories-${id}`)
 
     try {
       const supabase = await getTenantSupabase()
-      await stopRunningSyncJobForConnection(supabase, id)
+      await stopAllRunningSyncJobsForConnection(supabase, id)
     } catch (dbErr) {
       console.warn('[sync-progress/stop] DB sync_jobs update (non-fatal):', dbErr)
     }
