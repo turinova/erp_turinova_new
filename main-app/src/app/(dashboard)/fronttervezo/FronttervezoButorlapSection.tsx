@@ -4,14 +4,20 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControlLabel,
   Grid,
   Paper,
@@ -28,11 +34,19 @@ import {
   Typography
 } from '@mui/material'
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import { toast } from 'react-toastify'
+
+import { computeFronttervezoButorlapQuote } from '@/lib/pricing/fronttervezoButorlapQuote'
+import { formatPrice, type QuoteResult } from '@/lib/pricing/quoteCalculations'
+import type { getCuttingFee, getEdgeMaterialById } from '@/lib/supabase-server'
 
 import FronttervezoTablasAnyagField from './FronttervezoTablasAnyagField'
 import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_BUTORLAP } from './fronttervezoSession'
 import type { FronttervezoBoardMaterial, PanthelyConfig } from './fronttervezoTypes'
+
+type CuttingFeeSSR = Awaited<ReturnType<typeof getCuttingFee>>
+type EdgeMaterialSSR = Awaited<ReturnType<typeof getEdgeMaterialById>>
 
 const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_BUTORLAP
 
@@ -87,9 +101,23 @@ return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
 
 type FronttervezoButorlapSectionProps = {
   initialMaterials: FronttervezoBoardMaterial[]
+
+  /** Opti / ajánlat: vágási díj, pánthely díjak, ÁFA (`getCuttingFee()` lehet null) */
+  initialCuttingFee: CuttingFeeSSR | null
+
+  /** Megrendelő kedvezmény százalékban (mint Opti) */
+  customerDiscountPercent: number
+
+  /** Fix élzáró anyag (hardcode) — Opti edge_materials rekord */
+  defaultEdgeMaterial: EdgeMaterialSSR
 }
 
-export default function FronttervezoButorlapSection({ initialMaterials }: FronttervezoButorlapSectionProps) {
+export default function FronttervezoButorlapSection({
+  initialMaterials,
+  initialCuttingFee,
+  customerDiscountPercent,
+  defaultEdgeMaterial
+}: FronttervezoButorlapSectionProps) {
   /** Opti `activeMaterials`: csak aktív, márka majd név szerint */
   const activeMaterials = useMemo(() => {
     const materials = initialMaterials ?? []
@@ -137,6 +165,10 @@ return a.name.localeCompare(b.name, 'hu')
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const [pantModalOpen, setPantModalOpen] = useState(false)
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [quoteResult, setQuoteResult] = useState<QuoteResult | null>(null)
+  const quoteAnchorRef = React.useRef<HTMLDivElement | null>(null)
+  const [quoteAccordionExpanded, setQuoteAccordionExpanded] = useState(false)
   const [pantSaved, setPantSaved] = useState(false)
   const [pantOldal, setPantOldal] = useState<'hosszu' | 'rovid'>('hosszu')
   const [pantHoleCount, setPantHoleCount] = useState('2')
@@ -233,6 +265,15 @@ return prev
 
     dispatchFronttervezoLinesUpdated()
   }, [lines, hasLoadedFromSession])
+
+  // Opti-szerű viselkedés: ha a tételek változnak, a korábbi ajánlat érvénytelen.
+  useEffect(() => {
+    if (!quoteResult) return
+
+    setQuoteResult(null)
+    setQuoteAccordionExpanded(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines])
 
   const clearValidationError = useCallback((field: keyof typeof validationErrors) => {
     setValidationErrors(prev => (prev[field] ? { ...prev, [field]: false } : prev))
@@ -533,6 +574,34 @@ return
     setPantModalOpen(false)
   }
 
+  const handleGenerateQuote = useCallback(async () => {
+    if (lines.length === 0) {
+      toast.error('Legalább egy tétel szükséges az ajánlathoz.')
+
+      return
+    }
+
+    setQuoteLoading(true)
+    setQuoteResult(null)
+    const outcome = await computeFronttervezoButorlapQuote(lines, initialCuttingFee, defaultEdgeMaterial)
+
+    setQuoteLoading(false)
+
+    if (!outcome.ok) {
+      toast.error(outcome.error)
+
+      return
+    }
+
+    setQuoteResult(outcome.quote)
+
+    // Create accordion (collapsed), then scroll to it
+    setQuoteAccordionExpanded(false)
+    setTimeout(() => {
+      quoteAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }, [lines, initialCuttingFee, defaultEdgeMaterial])
+
   return (
     <>
       <Card sx={{ mt: 2 }}>
@@ -747,12 +816,263 @@ return
             </Table>
           </TableContainer>
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-            <Button type="button" variant="contained" color="warning" size="large">
-              Ajánlat generálás
+            <Button
+              type="button"
+              variant="contained"
+              color="warning"
+              size="large"
+              disabled={quoteLoading || lines.length === 0}
+              onClick={handleGenerateQuote}
+              startIcon={quoteLoading ? <CircularProgress size={18} color="inherit" /> : undefined}
+            >
+              {quoteLoading ? 'Számítás…' : 'Ajánlat generálás'}
             </Button>
           </Box>
         </Box>
       )}
+
+      {quoteResult ? (
+        <Box ref={quoteAnchorRef} sx={{ mt: 3 }}>
+          <Accordion expanded={quoteAccordionExpanded} onChange={(_e, exp) => setQuoteAccordionExpanded(exp)}>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                bgcolor: 'grey.50',
+                borderBottom: '2px solid',
+                borderColor: 'success.main',
+                '&:hover': { bgcolor: 'grey.100' }
+              }}
+            >
+              {(() => {
+                const discountPercent = customerDiscountPercent || 0
+                const discountAmount = (quoteResult.grand_total_gross * discountPercent) / 100
+                const finalTotal = quoteResult.grand_total_gross - discountAmount
+
+                return (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                      Árajánlat
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <Typography variant="body1" sx={{ fontWeight: 'bold', mr: 1.5 }}>
+                        VÉGÖSSZEG
+                      </Typography>
+                      <Chip
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                              Nettó
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                              {formatPrice(quoteResult.grand_total_net, quoteResult.currency)}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ height: 'auto', bgcolor: 'info.100', color: 'info.dark', px: 2 }}
+                      />
+                      <Typography variant="h6" sx={{ mx: 0.25 }}>
+                        +
+                      </Typography>
+                      <Chip
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                              ÁFA
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                              {formatPrice(quoteResult.grand_total_vat, quoteResult.currency)}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ height: 'auto', bgcolor: 'warning.100', color: 'warning.dark', px: 2 }}
+                      />
+                      <Typography variant="h6" sx={{ mx: 0.25 }}>
+                        =
+                      </Typography>
+                      <Chip
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                              Bruttó
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                              {formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ height: 'auto', bgcolor: 'grey.300', color: 'text.primary', px: 2 }}
+                      />
+                      {discountPercent > 0 ? (
+                        <>
+                          <Typography variant="h6" sx={{ mx: 0.25 }}>
+                            -
+                          </Typography>
+                          <Chip
+                            label={
+                              <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                                <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                                  Kedvezmény ({discountPercent}%)
+                                </Typography>
+                                <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                                  {formatPrice(discountAmount, quoteResult.currency)}
+                                </Typography>
+                              </Box>
+                            }
+                            sx={{ height: 'auto', bgcolor: 'error.100', color: 'error.dark', px: 2 }}
+                          />
+                          <Typography variant="h6" sx={{ mx: 0.25 }}>
+                            =
+                          </Typography>
+                          <Chip
+                            label={
+                              <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                                <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                                  Végösszeg
+                                </Typography>
+                                <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                                  {formatPrice(finalTotal, quoteResult.currency)}
+                                </Typography>
+                              </Box>
+                            }
+                            sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2 }}
+                          />
+                        </>
+                      ) : (
+                        <Chip
+                          label={
+                            <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                              <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                                Végösszeg
+                              </Typography>
+                              <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                                {formatPrice(quoteResult.grand_total_gross, quoteResult.currency)}
+                              </Typography>
+                            </Box>
+                          }
+                          sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2, ml: 1 }}
+                        />
+                      )}
+                    </Box>
+                  </Box>
+                )
+              })()}
+            </AccordionSummary>
+            <AccordionDetails>
+              {(() => {
+                // Aggregate panthely across materials (keep separate row)
+                const panthely = quoteResult.materials.reduce(
+                  (acc, m) => {
+                    const p = m.additional_services?.panthelyfuras
+
+                    if (!p) {
+                      return acc
+                    }
+
+                    acc.net += p.net_price
+                    acc.vat += p.vat_amount
+                    acc.gross += p.gross_price
+
+                    return acc
+                  },
+                  { net: 0, vat: 0, gross: 0 }
+                )
+
+                const totalPanels = lines.reduce((sum, r) => sum + r.mennyiseg, 0)
+                const totalPantHoles = lines.reduce((sum, r) => sum + (r.panthely ? r.panthely.mennyiseg * r.mennyiseg : 0), 0)
+
+                return (
+                  <TableContainer component={Paper} variant="outlined">
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow sx={{ bgcolor: 'grey.100' }}>
+                          <TableCell sx={{ fontWeight: 'bold' }}>Anyag</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            Mennyiség
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            m²
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            Nettó
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            ÁFA
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                            Bruttó
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {quoteResult.materials.map(m => {
+                          const chargedSqm = m.boards.reduce((sum, b) => sum + b.charged_area_m2, 0)
+                          const pant = m.additional_services?.panthelyfuras
+                          const pantNet = pant?.net_price ?? 0
+                          const pantVat = pant?.vat_amount ?? 0
+                          const pantGross = pant?.gross_price ?? 0
+
+                          // Product totals = material total (includes cutting + edge) but exclude panthely (shown separately)
+                          const productNet = m.total_net - pantNet
+                          const productVat = m.total_vat - pantVat
+                          const productGross = m.total_gross - pantGross
+
+                          const panelsForMaterial = lines
+                            .filter(r => r.material.id === m.material_id)
+                            .reduce((sum, r) => sum + r.mennyiseg, 0)
+
+                          return (
+                            <TableRow key={m.material_id}>
+                              <TableCell sx={{ fontWeight: 700 }}>{m.material_name}</TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                  {panelsForMaterial} db
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">{chargedSqm.toFixed(2)}</TableCell>
+                              <TableCell align="right">{formatPrice(productNet, m.currency)}</TableCell>
+                              <TableCell align="right">{formatPrice(productVat, m.currency)}</TableCell>
+                              <TableCell align="right" sx={{ fontWeight: 700 }}>
+                                {formatPrice(productGross, m.currency)}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+
+                        {panthely.gross > 0 ? (
+                          <TableRow sx={{ bgcolor: 'grey.50' }}>
+                            <TableCell sx={{ fontWeight: 700 }}>Pánthelyfúrás</TableCell>
+                            <TableCell align="right">
+                              <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                                {totalPanels} db
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Pánt: {totalPantHoles} db
+                              </Typography>
+                            </TableCell>
+                            <TableCell align="right">—</TableCell>
+                            <TableCell align="right">{formatPrice(panthely.net, quoteResult.currency)}</TableCell>
+                            <TableCell align="right">{formatPrice(panthely.vat, quoteResult.currency)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700 }}>
+                              {formatPrice(panthely.gross, quoteResult.currency)}
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )
+              })()}
+
+              <Divider sx={{ my: 2 }} />
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Typography variant="caption" color="text.secondary">
+                  A bontás egyszerűsített (Fronttervező). Részletes táblaszintű bontás az <strong>/opti</strong> oldalon.
+                </Typography>
+              </Box>
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+      ) : null}
 
       <Dialog open={pantModalOpen} onClose={handlePantModalClose} maxWidth="sm" fullWidth>
         <DialogTitle>Pánthelyfúrás beállítások</DialogTitle>

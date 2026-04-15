@@ -13,6 +13,8 @@ import {
   CircularProgress,
   Grid,
   Paper,
+  ToggleButton,
+  ToggleButtonGroup,
   Stack,
   Typography
 } from '@mui/material'
@@ -52,12 +54,13 @@ export default function FootcounterLiveClient() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
   const [livePreviewOpen, setLivePreviewOpen] = useState(false)
+  const [hoursMode, setHoursMode] = useState<'open' | 'all'>('open')
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
     setStatsError(null)
     try {
-      const res = await fetch('/api/footcounter/stats', { credentials: 'include' })
+      const res = await fetch(`/api/footcounter/stats?hours=${hoursMode}`, { credentials: 'include' })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error((j as { error?: string }).error || res.statusText)
@@ -70,7 +73,7 @@ export default function FootcounterLiveClient() {
     } finally {
       setStatsLoading(false)
     }
-  }, [])
+  }, [hoursMode])
 
   useEffect(() => {
     loadStats()
@@ -84,6 +87,21 @@ export default function FootcounterLiveClient() {
     }, 30_000)
     return () => window.clearInterval(id)
   }, [loadStats])
+
+  const openHourRangeToday = useMemo(() => {
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Budapest', weekday: 'short' }).format(new Date())
+    // Mon–Fri: 08–17 inclusive; Sat: 08–12 inclusive; Sun: empty
+    if (['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(wd)) return { start: 8, end: 17 }
+    if (wd === 'Sat') return { start: 8, end: 12 }
+    return { start: 0, end: -1 }
+  }, [])
+
+  const hourlyFiltered = useMemo(() => {
+    const hourly = stats?.series_today_hourly ?? []
+    if (hoursMode === 'all') return hourly
+    if (openHourRangeToday.end < openHourRangeToday.start) return []
+    return hourly.filter(h => h.hour >= openHourRangeToday.start && h.hour <= openHourRangeToday.end)
+  }, [stats?.series_today_hourly, hoursMode, openHourRangeToday])
 
   const chartOptions = useMemo(() => {
     const series = stats?.series_7d ?? []
@@ -111,7 +129,7 @@ export default function FootcounterLiveClient() {
   }, [stats?.series_7d])
 
   const hourlyOptions = useMemo(() => {
-    const hourly = stats?.series_today_hourly ?? []
+    const hourly = hourlyFiltered
     return {
       chart: { type: 'bar' as const, toolbar: { show: false }, fontFamily: 'inherit' },
       plotOptions: { bar: { horizontal: false, columnWidth: '70%', borderRadius: 2 } },
@@ -124,18 +142,22 @@ export default function FootcounterLiveClient() {
       legend: { position: 'top' as const },
       tooltip: { y: { formatter: (val: number) => `${val}` } }
     }
-  }, [stats?.series_today_hourly])
+  }, [hourlyFiltered])
 
   const hourlySeries = useMemo(() => {
-    const hourly = stats?.series_today_hourly ?? []
+    const hourly = hourlyFiltered
     return [
       { name: 'Be', data: hourly.map(h => h.in_count) },
       { name: 'Ki', data: hourly.map(h => h.out_count) }
     ]
-  }, [stats?.series_today_hourly])
+  }, [hourlyFiltered])
 
   const heatmapOptions = useMemo(() => {
-    const flat = stats?.heatmap_in.matrix.flat() ?? []
+    const heatmapHoursStart = 8
+    const heatmapHoursEnd = hoursMode === 'all' ? 23 : 17
+    const flat =
+      stats?.heatmap_in.matrix
+        .flatMap(row => row.slice(heatmapHoursStart, heatmapHoursEnd + 1)) ?? []
     const maxVal = Math.max(1, ...flat)
     return {
       chart: { type: 'heatmap' as const, toolbar: { show: false }, fontFamily: 'inherit' },
@@ -155,21 +177,28 @@ export default function FootcounterLiveClient() {
       },
       xaxis: {
         type: 'category' as const,
-        categories: Array.from({ length: 24 }, (_, i) => `${i}`),
+        categories: Array.from(
+          { length: heatmapHoursEnd - heatmapHoursStart + 1 },
+          (_, i) => `${heatmapHoursStart + i}`
+        ),
         title: { text: 'Óra' }
       },
       yaxis: { show: true },
       tooltip: { y: { formatter: (val: number) => `${val} be` } }
     }
-  }, [stats?.heatmap_in.matrix])
+  }, [stats?.heatmap_in.matrix, hoursMode])
 
   const heatmapSeries = useMemo(() => {
     const m = stats?.heatmap_in.matrix ?? []
+    const heatmapHoursStart = 8
+    const heatmapHoursEnd = hoursMode === 'all' ? 23 : 17
     return HEATMAP_WEEKDAY_LABELS.map((name, wd) => ({
       name,
-      data: m[wd] ?? Array.from({ length: 24 }, () => 0)
+      data:
+        (m[wd] ?? Array.from({ length: 24 }, () => 0)).slice(heatmapHoursStart, heatmapHoursEnd + 1) ??
+        Array.from({ length: heatmapHoursEnd - heatmapHoursStart + 1 }, () => 0)
     }))
-  }, [stats?.heatmap_in.matrix])
+  }, [stats?.heatmap_in.matrix, hoursMode])
 
   const sameWeekdayBeVsAvg = useMemo(() => {
     const sw = stats?.same_weekday_avg
@@ -186,12 +215,25 @@ export default function FootcounterLiveClient() {
           </Typography>
           <Typography variant='body2' color='text.secondary'>
             A számok a Supabase-ben tárolt szinkron eseményekből jönnek — nem nullázódnak, ha a Pi újraindul. Az élő
-            képen látható számláló a Pi aktuális munkamenetét mutatja. Frissítés 30 másodpercenként.
+            képen látható számláló a Pi aktuális munkamenetét mutatja. Alap nézet: nyitvatartási idők. Frissítés 30 másodpercenként.
           </Typography>
         </Box>
-        <Button variant='outlined' size='small' onClick={() => loadStats()} disabled={statsLoading}>
-          Adatok frissítése
-        </Button>
+        <Stack direction='row' spacing={1} alignItems='center' flexWrap='wrap' useFlexGap>
+          <ToggleButtonGroup
+            size='small'
+            exclusive
+            value={hoursMode}
+            onChange={(_, v) => {
+              if (v === 'open' || v === 'all') setHoursMode(v)
+            }}
+          >
+            <ToggleButton value='open'>Nyitvatartás</ToggleButton>
+            <ToggleButton value='all'>Teljes nap (debug)</ToggleButton>
+          </ToggleButtonGroup>
+          <Button variant='outlined' size='small' onClick={() => loadStats()} disabled={statsLoading}>
+            Adatok frissítése
+          </Button>
+        </Stack>
       </Stack>
 
       {statsLoading && !stats && (

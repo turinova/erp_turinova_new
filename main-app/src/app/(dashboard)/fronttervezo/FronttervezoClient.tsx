@@ -33,6 +33,10 @@ import {
   parseFronttervezoLineCounts
 } from './fronttervezoSession'
 import type { FronttervezoBoardMaterial } from './fronttervezoTypes'
+import type { getCuttingFee, getEdgeMaterialById } from '@/lib/supabase-server'
+
+type FronttervezoCuttingFeeSSR = Awaited<ReturnType<typeof getCuttingFee>>
+type FronttervezoEdgeMaterialSSR = Awaited<ReturnType<typeof getEdgeMaterialById>>
 
 /** Rows from `getAllCustomers()` — same fields as Opti `Customer` */
 export type FronttervezoCustomer = {
@@ -148,9 +152,20 @@ type FronttervezoClientProps = {
 
   /** Opti oldallal azonos SSR: `getAllMaterials()` */
   initialMaterials: FronttervezoBoardMaterial[]
+
+  /** Vágási díj + pánthely — ugyanaz mint az /opti ajánlat számításnál */
+  initialCuttingFee: FronttervezoCuttingFeeSSR
+
+  /** Fix élzáró anyag (hardcode) — Opti edge_materials rekord */
+  initialDefaultEdgeMaterial: FronttervezoEdgeMaterialSSR
 }
 
-export default function FronttervezoClient({ initialCustomers, initialMaterials }: FronttervezoClientProps) {
+export default function FronttervezoClient({
+  initialCustomers,
+  initialMaterials,
+  initialCuttingFee,
+  initialDefaultEdgeMaterial
+}: FronttervezoClientProps) {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
   const customers = initialCustomers ?? []
@@ -195,6 +210,12 @@ export default function FronttervezoClient({ initialCustomers, initialMaterials 
     else if (field === 'billing_company_reg_number') formatted = formatCompanyRegNumber(value)
     setCustomerData(prev => ({ ...prev, [field]: formatted }))
   }, [])
+
+  const customerDiscountPercent = useMemo(() => {
+    const n = parseFloat(customerData.discount)
+
+    return Number.isFinite(n) && n > 0 ? n : 0
+  }, [customerData.discount])
 
   const nettfrontTiles = useMemo(
     () =>
@@ -534,16 +555,6 @@ return (
               </Typography>
 
               <Grid2 container spacing={2} alignItems="stretch">
-                <CustomInputHorizontal
-                  type="radio"
-                  name="fronttervezo-front-type"
-                  selected={selectedFrontType}
-                  handleChange={handleFrontTypeChange}
-                  color="primary"
-                  data={butorlapFrontData}
-                  gridProps={{ size: { xs: 12, lg: 2 } }}
-                />
-
                 <Grid2 size={{ xs: 12, lg: 10 }}>
                   <Box
                     sx={{
@@ -624,6 +635,16 @@ return (
                     </Grid2>
                   </Box>
                 </Grid2>
+
+                <CustomInputHorizontal
+                  type="radio"
+                  name="fronttervezo-front-type"
+                  selected={selectedFrontType}
+                  handleChange={handleFrontTypeChange}
+                  color="primary"
+                  data={butorlapFrontData}
+                  gridProps={{ size: { xs: 12, lg: 2 } }}
+                />
               </Grid2>
             </CardContent>
           </Card>
@@ -631,13 +652,18 @@ return (
 
         {selectedFrontType === 'butorlap' && (
           <Grid item xs={12}>
-            <FronttervezoButorlapSection initialMaterials={initialMaterials} />
+            <FronttervezoButorlapSection
+              initialMaterials={initialMaterials}
+              initialCuttingFee={initialCuttingFee}
+              customerDiscountPercent={customerDiscountPercent}
+              defaultEdgeMaterial={initialDefaultEdgeMaterial}
+            />
           </Grid>
         )}
 
         {selectedFrontType === 'inomat' && (
           <Grid item xs={12}>
-            <FronttervezoInomatSection />
+            <FronttervezoInomatSection initialCuttingFee={initialCuttingFee} customerDiscountPercent={customerDiscountPercent} />
           </Grid>
         )}
       </Grid>

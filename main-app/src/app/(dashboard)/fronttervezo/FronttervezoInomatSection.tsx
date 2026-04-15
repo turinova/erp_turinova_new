@@ -3,10 +3,15 @@
 import React, { useCallback, useEffect, useState } from 'react'
 
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -31,8 +36,12 @@ import {
   Tooltip,
   Typography
 } from '@mui/material'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import LocationSearchingSharpIcon from '@mui/icons-material/LocationSearchingSharp'
 import { toast } from 'react-toastify'
+
+import { formatPrice } from '@/lib/pricing/quoteCalculations'
+import type { getCuttingFee } from '@/lib/supabase-server'
 
 import { dispatchFronttervezoLinesUpdated, FRONTTERVEZO_SESSION_KEY_INOMAT } from './fronttervezoSession'
 import type { PanthelyConfig } from './fronttervezoTypes'
@@ -49,6 +58,27 @@ const inputSx = {
 const SESSION_KEY = FRONTTERVEZO_SESSION_KEY_INOMAT
 
 const SZIN_OPTIONS = ['Bronz', 'Pearl', 'Gold'] as const
+
+type CuttingFeeSSR = Awaited<ReturnType<typeof getCuttingFee>>
+
+type FronttervezoInomatSectionProps = {
+  initialCuttingFee: CuttingFeeSSR | null
+  customerDiscountPercent: number
+}
+
+/**
+ * INOMAT: egyszerű árazás — bruttó Ft/m² színenként.
+ * TODO: később DB-ből tölteni.
+ *
+ * NOTE: értékek most ideiglenesen azonosak; cseréld le a végleges táblázatra.
+ */
+const INOMAT_GROSS_PRICE_PER_SQM_BY_COLOR: Record<(typeof SZIN_OPTIONS)[number], number> = {
+  Bronz: 35403,
+  Pearl: 35403,
+  Gold: 35403
+}
+
+const INOMAT_VAT_RATE = 0.27
 
 export type InomatLineItem = {
   id: string
@@ -85,9 +115,31 @@ function pantTooltipText(p: PanthelyConfig): string {
 return `${oldalLabel(p.oldal)}, ${p.mennyiseg} db. Alulról: ${tav}`
 }
 
-export default function FronttervezoInomatSection() {
+export default function FronttervezoInomatSection({
+  initialCuttingFee,
+  customerDiscountPercent
+}: FronttervezoInomatSectionProps) {
   const [lines, setLines] = useState<InomatLineItem[]>([])
   const [hasLoadedFromSession, setHasLoadedFromSession] = useState(false)
+
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [quoteOpen, setQuoteOpen] = useState(false)
+
+  const [quoteData, setQuoteData] = useState<null | {
+    rows: Array<{
+      szin: (typeof SZIN_OPTIONS)[number]
+      panelsDb: number
+      sqm: number
+      grossPerSqm: number
+      net: number
+      vat: number
+      gross: number
+    }>
+    panthely: { panelsDb: number; holesDb: number; net: number; vat: number; gross: number }
+    totals: { net: number; vat: number; gross: number; discountPercent: number; discountGross: number; finalGross: number }
+  }>(null)
+
+  const quoteAnchorRef = React.useRef<HTMLDivElement | null>(null)
 
   const [szin, setSzin] = useState<string>(SZIN_OPTIONS[0])
   const [magassag, setMagassag] = useState('')
@@ -131,6 +183,15 @@ export default function FronttervezoInomatSection() {
 
     dispatchFronttervezoLinesUpdated()
   }, [lines, hasLoadedFromSession])
+
+  // Opti-szerű: tételek változásakor az ajánlat érvénytelen.
+  useEffect(() => {
+    if (!quoteData) return
+
+    setQuoteData(null)
+    setQuoteOpen(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines])
 
   const resetForm = useCallback(() => {
     setSzin(SZIN_OPTIONS[0])
@@ -358,6 +419,69 @@ return
     setPantModalOpen(false)
   }
 
+  const handleGenerateQuote = useCallback(async () => {
+    if (lines.length === 0) {
+      toast.error('Legalább egy tétel szükséges az ajánlathoz.')
+      
+return
+    }
+
+    setQuoteLoading(true)
+
+    const byColor = new Map<(typeof SZIN_OPTIONS)[number], InomatLineItem[]>()
+
+    for (const l of lines) {
+      const c = l.szin as (typeof SZIN_OPTIONS)[number]
+
+      if (!byColor.has(c)) byColor.set(c, [])
+      byColor.get(c)!.push(l)
+    }
+
+    const rows = Array.from(byColor.entries()).map(([c, items]) => {
+      const panelsDb = items.reduce((sum, r) => sum + r.mennyiseg, 0)
+      const areaMm2 = items.reduce((sum, r) => sum + r.magassagMm * r.szelessegMm * r.mennyiseg, 0)
+      const sqm = areaMm2 / 1_000_000
+      const grossPerSqm = INOMAT_GROSS_PRICE_PER_SQM_BY_COLOR[c]
+      const gross = sqm * grossPerSqm
+      const net = gross / (1 + INOMAT_VAT_RATE)
+      const vat = gross - net
+
+      return { szin: c, panelsDb, sqm, grossPerSqm, net, vat, gross }
+    })
+
+    const totalPanelsDb = lines.reduce((sum, r) => sum + r.mennyiseg, 0)
+    const totalHolesDb = lines.reduce((sum, r) => sum + (r.panthely ? r.panthely.mennyiseg * r.mennyiseg : 0), 0)
+    const pantUnitNet = initialCuttingFee?.panthelyfuras_fee_per_hole ?? 50
+    const pantNet = totalHolesDb * pantUnitNet
+    const pantVat = pantNet * INOMAT_VAT_RATE
+    const pantGross = pantNet + pantVat
+
+    const totalsNet = rows.reduce((sum, r) => sum + r.net, 0) + pantNet
+    const totalsVat = rows.reduce((sum, r) => sum + r.vat, 0) + pantVat
+    const totalsGross = rows.reduce((sum, r) => sum + r.gross, 0) + pantGross
+
+    const discountPercent = customerDiscountPercent || 0
+    const discountGross = (totalsGross * discountPercent) / 100
+    const finalGross = totalsGross - discountGross
+
+    setQuoteData({
+      rows,
+      panthely: { panelsDb: totalPanelsDb, holesDb: totalHolesDb, net: pantNet, vat: pantVat, gross: pantGross },
+      totals: {
+        net: totalsNet,
+        vat: totalsVat,
+        gross: totalsGross,
+        discountPercent,
+        discountGross,
+        finalGross
+      }
+    })
+
+    setQuoteLoading(false)
+    setQuoteOpen(false)
+    setTimeout(() => quoteAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }, [lines, initialCuttingFee, customerDiscountPercent])
+
   return (
     <>
       <Card sx={{ mt: 2 }}>
@@ -528,12 +652,194 @@ return
             </Table>
           </TableContainer>
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 2 }}>
-            <Button type="button" variant="contained" color="warning" size="large">
-              Ajánlat generálás
+            <Button
+              type="button"
+              variant="contained"
+              color="warning"
+              size="large"
+              disabled={quoteLoading || lines.length === 0}
+              onClick={handleGenerateQuote}
+              startIcon={quoteLoading ? <CircularProgress size={18} color="inherit" /> : undefined}
+            >
+              {quoteLoading ? 'Számítás…' : 'Ajánlat generálás'}
             </Button>
           </Box>
         </Box>
       )}
+
+      {quoteData ? (
+        <Box ref={quoteAnchorRef} sx={{ mt: 3 }}>
+          <Accordion expanded={quoteOpen} onChange={(_e, exp) => setQuoteOpen(exp)}>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                bgcolor: 'grey.50',
+                borderBottom: '2px solid',
+                borderColor: 'success.main',
+                '&:hover': { bgcolor: 'grey.100' }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', pr: 2 }}>
+                <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+                  Árajánlat
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 'bold', mr: 1.5 }}>
+                    VÉGÖSSZEG
+                  </Typography>
+                  <Chip
+                    label={
+                      <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                          Nettó
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                          {formatPrice(quoteData.totals.net, 'HUF')}
+                        </Typography>
+                      </Box>
+                    }
+                    sx={{ height: 'auto', bgcolor: 'info.100', color: 'info.dark', px: 2 }}
+                  />
+                  <Typography variant="h6" sx={{ mx: 0.25 }}>
+                    +
+                  </Typography>
+                  <Chip
+                    label={
+                      <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                          ÁFA
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                          {formatPrice(quoteData.totals.vat, 'HUF')}
+                        </Typography>
+                      </Box>
+                    }
+                    sx={{ height: 'auto', bgcolor: 'warning.100', color: 'warning.dark', px: 2 }}
+                  />
+                  <Typography variant="h6" sx={{ mx: 0.25 }}>
+                    =
+                  </Typography>
+                  <Chip
+                    label={
+                      <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                        <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                          Bruttó
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                          {formatPrice(quoteData.totals.gross, 'HUF')}
+                        </Typography>
+                      </Box>
+                    }
+                    sx={{ height: 'auto', bgcolor: 'grey.300', color: 'text.primary', px: 2 }}
+                  />
+                  {quoteData.totals.discountPercent > 0 ? (
+                    <>
+                      <Typography variant="h6" sx={{ mx: 0.25 }}>
+                        -
+                      </Typography>
+                      <Chip
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                              Kedvezmény ({quoteData.totals.discountPercent}%)
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 'bold' }}>
+                              {formatPrice(quoteData.totals.discountGross, 'HUF')}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ height: 'auto', bgcolor: 'error.100', color: 'error.dark', px: 2 }}
+                      />
+                      <Typography variant="h6" sx={{ mx: 0.25 }}>
+                        =
+                      </Typography>
+                      <Chip
+                        label={
+                          <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                            <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                              Végösszeg
+                            </Typography>
+                            <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                              {formatPrice(quoteData.totals.finalGross, 'HUF')}
+                            </Typography>
+                          </Box>
+                        }
+                        sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2 }}
+                      />
+                    </>
+                  ) : (
+                    <Chip
+                      label={
+                        <Box sx={{ display: 'flex', flexDirection: 'column', py: 0.5 }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.7rem', opacity: 0.9 }}>
+                            Végösszeg
+                          </Typography>
+                          <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
+                            {formatPrice(quoteData.totals.gross, 'HUF')}
+                          </Typography>
+                        </Box>
+                      }
+                      sx={{ height: 'auto', bgcolor: 'success.main', color: 'white', px: 2, ml: 1 }}
+                    />
+                  )}
+                </Box>
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: 'grey.100' }}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>Szín</TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        Mennyiség
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        m²
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        Nettó
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        ÁFA
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 'bold' }}>
+                        Bruttó
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {quoteData.rows.map(r => (
+                      <TableRow key={r.szin}>
+                        <TableCell sx={{ fontWeight: 700 }}>{r.szin}</TableCell>
+                        <TableCell align="right">{r.panelsDb} db</TableCell>
+                        <TableCell align="right">{r.sqm.toFixed(2)}</TableCell>
+                        <TableCell align="right">{formatPrice(r.net, 'HUF')}</TableCell>
+                        <TableCell align="right">{formatPrice(r.vat, 'HUF')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>
+                          {formatPrice(r.gross, 'HUF')}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {quoteData.panthely.holesDb > 0 ? (
+                      <TableRow sx={{ bgcolor: 'grey.50' }}>
+                        <TableCell sx={{ fontWeight: 700 }}>Pánthelyfúrás</TableCell>
+                        <TableCell align="right">{quoteData.panthely.panelsDb} db</TableCell>
+                        <TableCell align="right">—</TableCell>
+                        <TableCell align="right">{formatPrice(quoteData.panthely.net, 'HUF')}</TableCell>
+                        <TableCell align="right">{formatPrice(quoteData.panthely.vat, 'HUF')}</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700 }}>
+                          {formatPrice(quoteData.panthely.gross, 'HUF')}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+      ) : null}
 
       <Dialog open={pantModalOpen} onClose={handlePantModalClose} maxWidth="sm" fullWidth>
         <DialogTitle>Pánthelyfúrás beállítások</DialogTitle>

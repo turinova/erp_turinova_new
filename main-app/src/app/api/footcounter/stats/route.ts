@@ -12,6 +12,7 @@ export const runtime = 'nodejs'
 /**
  * Authenticated dashboard stats for Bejárat élő (charts + KPIs).
  * Query: ?device_slug=default
+ * Query: ?hours=open|all (default: open)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -52,7 +53,10 @@ export async function GET(request: NextRequest) {
       process.env.FOOTCOUNTER_STATS_DEVICE_SLUG?.trim() ||
       'default'
 
-    const data = await getFootcounterDashboardStats(slug)
+    const hoursRaw = request.nextUrl.searchParams.get('hours')?.trim().toLowerCase()
+    const hoursMode = hoursRaw === 'all' ? 'all' : 'open'
+
+    const data = await getFootcounterDashboardStats(slug, { hoursMode })
     return NextResponse.json(data)
   } catch (e) {
     console.error('footcounter stats:', e)

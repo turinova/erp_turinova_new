@@ -8,6 +8,8 @@ const CROSSINGS_LOOKBACK_DAYS = 40
 const HEATMAP_LOOKBACK_DAYS = 28
 const SAME_WEEKDAY_LOOKBACK_DAYS = 35
 
+type HoursMode = 'open' | 'all'
+
 function budapestDayKey(isoUtc: string): string {
   const d = new Date(isoUtc)
   return new Intl.DateTimeFormat('en-CA', {
@@ -56,6 +58,13 @@ function budapestWeekdayMon0(isoUtc: string): number {
   return map[short] ?? 0
 }
 
+function isOpenHourBudapest(weekdayMon0: number, hour: number): boolean {
+  // Mon–Fri: 08–17 (inclusive); Sat: 08–12 (inclusive); Sun: closed.
+  if (weekdayMon0 >= 0 && weekdayMon0 <= 4) return hour >= 8 && hour <= 17
+  if (weekdayMon0 === 5) return hour >= 8 && hour <= 12
+  return false
+}
+
 function budapestDayKeyDaysAgo(daysAgo: number): string {
   const t = Date.now() - daysAgo * 24 * 60 * 60 * 1000
   return new Intl.DateTimeFormat('en-CA', {
@@ -101,7 +110,11 @@ async function countCrossings(deviceId: string, direction: 'in' | 'out'): Promis
 /**
  * Dashboard stats without DB RPC (works when footcounter_dashboard_stats is missing).
  */
-export async function getFootcounterDashboardStats(deviceSlug: string): Promise<FootcounterDashboardStats> {
+export async function getFootcounterDashboardStats(
+  deviceSlug: string,
+  opts?: { hoursMode?: HoursMode }
+): Promise<FootcounterDashboardStats> {
+  const hoursMode: HoursMode = opts?.hoursMode ?? 'open'
   const { data: device, error: devErr } = await supabaseServer
     .from('footcounter_devices')
     .select('id, last_seen_at')
@@ -177,30 +190,38 @@ export async function getFootcounterDashboardStats(deviceSlug: string): Promise<
     const at = r.occurred_at as string
     const dir = (r.direction as string)?.toLowerCase()
     if (!at) continue
-    if (lastEventAt == null || at > lastEventAt) lastEventAt = at
 
     const dayKey = budapestDayKey(at)
     const wd = budapestWeekdayMon0(at)
     const h = budapestHour(at)
 
+    const allowedByHours = hoursMode === 'all' ? true : isOpenHourBudapest(wd, h)
+    if (allowedByHours) {
+      if (lastEventAt == null || at > lastEventAt) lastEventAt = at
+    }
+
     if (dayKey === todayKey) {
-      if (dir === 'in') {
-        todayIn += 1
-        hourlyToday[h].in_count += 1
-      } else if (dir === 'out') {
-        todayOut += 1
-        hourlyToday[h].out_count += 1
+      if (allowedByHours) {
+        if (dir === 'in') {
+          todayIn += 1
+          hourlyToday[h].in_count += 1
+        } else if (dir === 'out') {
+          todayOut += 1
+          hourlyToday[h].out_count += 1
+        }
       }
     }
 
-    if (dir === 'in' && dayKey >= heatmapCutoffKey) {
+    if (allowedByHours && dir === 'in' && dayKey >= heatmapCutoffKey) {
       heatmapMatrix[wd][h] += 1
     }
 
-    if (!byDay.has(dayKey)) byDay.set(dayKey, { in_count: 0, out_count: 0, weekday_mon0: wd })
-    const b = byDay.get(dayKey)!
-    if (dir === 'in') b.in_count += 1
-    else if (dir === 'out') b.out_count += 1
+    if (allowedByHours) {
+      if (!byDay.has(dayKey)) byDay.set(dayKey, { in_count: 0, out_count: 0, weekday_mon0: wd })
+      const b = byDay.get(dayKey)!
+      if (dir === 'in') b.in_count += 1
+      else if (dir === 'out') b.out_count += 1
+    }
   }
 
   const series_7d = last7DayKeys().map(day => {
