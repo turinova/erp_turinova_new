@@ -6,6 +6,10 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { generateEmbedding } from './chunking-service'
 import { scrapeMultipleCompetitorContents, aggregateCompetitorContent } from './competitor-content-scraper'
+import {
+  mergeSearchQueriesByImpressions,
+  variantDifferentiatorFromAttributes
+} from './product-variant-helpers'
 
 /**
  * Get Anthropic client - must be created at runtime, not module level
@@ -268,7 +272,13 @@ async function buildContext(
     commonBenefits: string[]
     contentStructureInsights: string[]
   } | null,
-  parentProduct?: any | null
+  parentProduct?: any | null,
+  variantSeoHints?: {
+    /** Other variants under same parent (indexed URLs) — avoid duplicate intros vs these SKUs */
+    siblingProducts?: Array<{ sku: string; name: string | null; differentiator: string }>
+    /** Parent row but zero children synced */
+    parentHasNoChildren?: boolean
+  }
 ): Promise<{ context: string; categories: any[]; relatedProducts: any[] }> {
   let context = `\n\nPRODUCT INFORMATION:\n`
   context += `- SKU: ${product.sku}\n`
@@ -525,6 +535,20 @@ async function buildContext(
     context += `To enable internal linking, ensure product-category relations are synced from ShopRenter.\n\n`
   }
 
+  if (variantSeoHints?.parentHasNoChildren) {
+    context += `\n\n=== PARENT PRODUCT — NO SYNCED CHILD VARIANTS ===\n`
+    context += `The database shows no child variants for this parent SKU. **DO NOT** claim "több méretben/színben", "választék", or multiple purchasable variants unless product attributes or source materials explicitly describe multiple options.\n`
+  }
+
+  if (variantSeoHints?.siblingProducts && variantSeoHints.siblingProducts.length > 0) {
+    context += `\n\n=== OTHER INDEXED VARIANTS (SAME PRODUCT FAMILY) ===\n`
+    context += `Each URL is indexed separately. Differentiate THIS page (SKU: ${product.sku}) from siblings — do not reuse the same opening paragraph or FAQ as another variant.\n\n`
+    variantSeoHints.siblingProducts.forEach((s, i) => {
+      context += `\nSibling ${i + 1}: ${s.sku} (${s.name || 'N/A'}) — ${s.differentiator || 'n/a'}\n`
+    })
+    context += `\n**MANDATORY FOR THIS PAGE**: Lead with what makes **${product.sku}** unique (size, color, load, etc.). The intro and at least two FAQ questions must be specific to this variant.\n`
+  }
+
   if (sourceMaterials.length > 0) {
     context += `\n\nSOURCE MATERIALS PROVIDED:\n`
     sourceMaterials.forEach((source, index) => {
@@ -732,11 +756,14 @@ export async function generateProductDescription(
     // 4.5. Check parent-child relationships
     let parentProduct: any = null
     let childProducts: any[] = childrenResult.data || []
+    let siblingProducts: any[] = []
     let isParent = false
     let isChild = false
+    const isParentHub =
+      !product.parent_product_id || product.parent_product_id === product.id
     
-    // Check if this is a child product (has parent) - fetch parent in parallel if needed
-    if (product.parent_product_id) {
+    // Check if this is a child product (has real parent, not self-reference)
+    if (product.parent_product_id && product.parent_product_id !== product.id) {
       isChild = true
       const { data: parent } = await supabase
         .from('shoprenter_products')
@@ -766,6 +793,15 @@ export async function generateProductDescription(
         if (parent.product_attributes && Array.isArray(parent.product_attributes) && parent.product_attributes.length > 0) {
           console.log(`[AI GENERATION] Parent product has ${parent.product_attributes.length} attributes`)
         }
+
+        const { data: sibs } = await supabase
+          .from('shoprenter_products')
+          .select('id, sku, name, product_attributes')
+          .eq('parent_product_id', product.parent_product_id)
+          .neq('id', product.id)
+          .eq('status', 1)
+        siblingProducts = sibs || []
+        console.log(`[AI GENERATION] Found ${siblingProducts.length} sibling variants for uniqueness context`)
       }
     }
     
@@ -878,6 +914,30 @@ export async function generateProductDescription(
       }
     }
 
+    // Merge parent URL queries for child SKUs (same family, different indexable URLs)
+    if (useSearchConsoleQueries && !searchQueries && isChild && parentProduct) {
+      const { data: parentQueries } = await supabase
+        .from('product_search_queries')
+        .select('query, impressions, clicks, ctr, position')
+        .eq('product_id', parentProduct.id)
+        .gte('date', ninetyDaysAgo.toISOString().split('T')[0])
+        .order('impressions', { ascending: false })
+        .limit(20)
+
+      const mappedParent = (parentQueries || []).map((p: any) => ({
+        query: p.query || '',
+        impressions: p.impressions || 0,
+        clicks: p.clicks || 0,
+        ctr: p.ctr,
+        position: p.position
+      }))
+      const merged = mergeSearchQueriesByImpressions(queriesToUse || [], mappedParent)
+      queriesToUse = merged.length > 0 ? merged : queriesToUse
+      console.log(
+        `[AI GENERATION] Merged child + parent Search Console queries → ${(queriesToUse || []).length} rows`
+      )
+    }
+
     // 5.5. Get competitor links and scrape their content for keyword insights (OPTIONAL - can be disabled for speed)
     let competitorContentInsights: {
       allKeywords: string[]
@@ -964,8 +1024,43 @@ export async function generateProductDescription(
       console.log(`[AI GENERATION] Competitor content scraping disabled (useCompetitorContent=false) - skipping for speed`)
     }
 
+    const parseAttrsLocal = (raw: unknown): any[] | null => {
+      if (raw == null) return null
+      if (Array.isArray(raw)) return raw
+      if (typeof raw === 'string') {
+        try {
+          const p = JSON.parse(raw)
+          return Array.isArray(p) ? p : null
+        } catch {
+          return null
+        }
+      }
+      return null
+    }
+
+    const siblingHints =
+      isChild && siblingProducts.length > 0
+        ? siblingProducts.map(s => ({
+            sku: s.sku,
+            name: s.name,
+            differentiator: variantDifferentiatorFromAttributes(parseAttrsLocal(s.product_attributes))
+          }))
+        : undefined
+
     // 6. Build context (now async to fetch categories)
-    const { context, categories, relatedProducts } = await buildContext(supabase, product, sourceMaterials, relevantChunks, queriesToUse, competitorContentInsights, parentProduct)
+    const { context, categories, relatedProducts } = await buildContext(
+      supabase,
+      product,
+      sourceMaterials,
+      relevantChunks,
+      queriesToUse,
+      competitorContentInsights,
+      parentProduct,
+      {
+        siblingProducts: siblingHints,
+        parentHasNoChildren: isParentHub && childProducts.length === 0
+      }
+    )
 
     // 7. Build prompts with product type awareness
     const systemPrompt = `You are an expert product copywriter specializing in creating authentic, 

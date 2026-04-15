@@ -31,6 +31,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#8E44AD' // Purple for optimization tools
   },
   {
+    label: 'Fronttervező',
+    href: '/fronttervezo',
+    icon: 'ri-pencil-ruler-2-line',
+    iconColor: '#6C5CE7'
+  },
+  {
     label: 'Munki',
     href: '/worktop-config',
     icon: 'ri-window-line',

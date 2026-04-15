@@ -3,6 +3,65 @@ import { getTenantSupabase } from '@/lib/tenant-supabase'
 import Anthropic from '@anthropic-ai/sdk'
 import { trackAIUsage } from '@/lib/ai-usage-tracker'
 import { checkCreditsForAIFeature } from '@/lib/credit-checker'
+import {
+  isChildVariant,
+  slugTokensFromAttributes,
+  variantDifferentiatorFromAttributes
+} from '@/lib/product-variant-helpers'
+
+function parseProductAttributes(raw: unknown): any[] | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw)
+      return Array.isArray(p) ? p : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+/** Ensure slug is unique among other products (same tenant). */
+async function resolveUniqueSlug(
+  supabase: { from: (t: string) => any },
+  productId: string,
+  baseSlug: string
+): Promise<string> {
+  const clean = baseSlug
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 60)
+
+  let candidate = clean
+  for (let n = 0; n < 40; n++) {
+    const { data: rows, error } = await supabase
+      .from('shoprenter_products')
+      .select('id')
+      .eq('url_slug', candidate)
+      .neq('id', productId)
+      .limit(1)
+
+    if (error) {
+      console.warn('[URL SLUG] uniqueness check failed:', error)
+      return candidate
+    }
+    if (!rows || rows.length === 0) {
+      return candidate
+    }
+    const suffix = n === 0 ? '-2' : `-${n + 2}`
+    const maxStem = 60 - suffix.length
+    candidate = (clean.slice(0, Math.max(1, maxStem)) + suffix)
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 60)
+  }
+  return `${clean.slice(0, 40)}-${productId.slice(0, 8)}`.substring(0, 60)
+}
 
 /**
  * POST /api/products/[id]/url-alias/generate
@@ -46,6 +105,8 @@ export async function POST(
         model_number,
         name,
         url_slug,
+        parent_product_id,
+        product_attributes,
         erp_manufacturer_id,
         manufacturers (
           name
@@ -109,7 +170,11 @@ export async function POST(
     const currentSlug = product.url_slug || ''
 
     const brand = (product.manufacturers as any)?.name || ''
-    
+    const attrs = parseProductAttributes(product.product_attributes)
+    const variantToken = slugTokensFromAttributes(attrs, 28)
+    const variantHint = variantDifferentiatorFromAttributes(attrs, 4)
+    const childVariant = isChildVariant(product.parent_product_id, product.id)
+
     const prompt = `Generate an SEO-optimized URL slug for this Hungarian e-commerce product:
 
 Product Name: ${productName}
@@ -118,6 +183,10 @@ Manufacturer Part Number: ${modelNumber || '(nincs)'}
 Category: ${categoryName || '(nincs)'}
 Top Search Keywords: ${topKeywords || '(nincs)'}
 Current URL Slug: ${currentSlug || '(nincs)'}
+${childVariant ? `This is a VARIANT / child product (separate indexed URL). Variant attributes: ${variantHint || '(nincs)'}
+**CRITICAL**: The slug MUST include a discriminating token (size, color, or short model) so it is NOT identical to sibling product URLs. Suggested token to weave in: ${variantToken || '(derive from name/SKU)'}
+` : `This is a parent or standalone product. Slug should be family-focused; do not invent variant-specific tokens unless the name contains them.
+`}
 
 Requirements:
 - Hungarian language, convert accents to ASCII (á→a, é→e, í→i, ó→o, ö→o, ő→o, ú→u, ü→u, ű→u)
@@ -197,13 +266,15 @@ Return ONLY the slug, nothing else. Example: "blum-clip-top-blumotion-pant-110-f
     }
 
     // Sanitize the generated slug
-    const sanitizedSlug = generatedSlug
+    let sanitizedSlug = generatedSlug
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9-]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '')
       .substring(0, 60) // Enforce max length
+
+    sanitizedSlug = await resolveUniqueSlug(supabase, id, sanitizedSlug)
 
     // Track AI usage
     const estimatedTokens = message.usage?.input_tokens && message.usage?.output_tokens

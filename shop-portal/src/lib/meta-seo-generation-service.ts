@@ -2,6 +2,10 @@
 // Generates high-ranking meta titles, keywords, and descriptions for products
 
 import Anthropic from '@anthropic-ai/sdk'
+import {
+  ctaVariantIndex,
+  variantDifferentiatorFromAttributes
+} from '@/lib/product-variant-helpers'
 
 /**
  * Get Anthropic client
@@ -35,6 +39,16 @@ export interface MetaGenerationContext {
   description?: string | null
   isParent: boolean
   isChild: boolean
+  /** True when this is a parent row but there are zero child variants synced. */
+  isParentWithoutChildren?: boolean
+  /** Current product one-line differentiator for child/variant uniqueness. */
+  currentDifferentiator?: string
+  /** Other indexed variants under the same parent (for uniqueness vs siblings). */
+  siblingVariants?: Array<{
+    sku: string
+    name: string | null
+    differentiator: string
+  }>
   parentProduct?: {
     name: string | null
     sku: string
@@ -96,6 +110,26 @@ export async function generateMetaTitle(context: MetaGenerationContext): Promise
   let childInfo = ''
   if (context.isChild && context.parentProduct) {
     childInfo = ` Ez a ${context.parentProduct.name || context.parentProduct.sku} termék variánsa.`
+  }
+
+  const currentDiff =
+    context.currentDifferentiator ||
+    variantDifferentiatorFromAttributes(context.product.product_attributes)
+
+  let siblingBlock = ''
+  if (context.isChild && context.siblingVariants && context.siblingVariants.length > 0) {
+    const lines = context.siblingVariants
+      .map(
+        s =>
+          `- ${s.sku}${s.name ? ` (${s.name})` : ''}: ${s.differentiator || '(nincs attribútum kivonat)'}`
+      )
+      .join('\n')
+    siblingBlock = `\n\n**MÁS INDEXELT VÁLTOZATOK (uganabból a családból):**\n${lines}\n\n**KRITIKUS:** A meta címnek egyértelműen meg kell különböztetnie EZT a terméket a fenti változatoktól. A [PRODUCT] helyettesítés után se legyen két változat azonos látható címe — használj [SERIAL]-t vagy konkrét méret/szín/teherbírás szöveget a címben, ha az adatokban szerepel.`
+  }
+
+  let parentNoChildrenBlock = ''
+  if (context.isParent && context.isParentWithoutChildren) {
+    parentNoChildrenBlock = `\n\n**FONTOS:** A termékhez jelenleg nincs szinkronizált al-változat (child) az adatbázisban. NE állítsd, hogy "több méretben/színben" vagy "választék" elérhető, kivéve, ha a leírásban ez szerepel. Viselkedj úgy, mintha önálló termék lenne.`
   }
   
   // Get top search queries for optimization
@@ -175,8 +209,9 @@ SEO BEST PRACTICES:
    - "Minőségi" (only if quality is confirmed in attributes)
 
 PARENT-CHILD RELATIONSHIPS:
-- For PARENT products: Mention that variants are available (e.g., "több méretben", "több színben") but DON'T specify a single variant. Use [PRODUCT] for the parent product name.
-- For CHILD products: Can mention specific variant (e.g., "400mm", "fekete") but also reference it's part of a product line. Use [PRODUCT] for the child product name.
+- For PARENT products WITH child variants in data: Mention that variants are available (e.g., "több méretben", "több színben") but DON'T specify a single variant. Use [PRODUCT] for the parent product name.
+- For PARENT products WITHOUT synced children: Do NOT claim multiple sizes/colors/variants unless the description explicitly says so.
+- For CHILD products: You MUST include a concrete differentiator (dimensions, color, load rating, or [SERIAL]) so the title is unique vs sibling URLs. Use [PRODUCT] for the child product name. If siblings are listed in the user prompt, the title must differ from those variants after tag expansion.
 
 DYNAMIC TAG USAGE:
 - Always include [PRODUCT] for the product name
@@ -199,6 +234,9 @@ ${childInfo}
 ${context.description ? `Product Description (for context): ${context.description.substring(0, 500)}` : ''}
 ${searchQueryInfo}
 ${context.competitorPrice && context.product.price ? `Competitor Price: ${context.competitorPrice} Ft, Our Price: ${context.product.price} Ft` : ''}
+${currentDiff ? `\nEnnek a változatnak jellemző attribútumai (használd a címben, ha releváns): ${currentDiff}` : ''}
+${siblingBlock}
+${parentNoChildrenBlock}
 
 Generate a meta title that:
 - Is 50-60 characters (optimal) - COUNT THE CHARACTERS INCLUDING THE DYNAMIC TAGS
@@ -208,7 +246,7 @@ Generate a meta title that:
 - Is compelling and click-worthy
 - Is in Hungarian
 - Follows SEO best practices
-- ${context.isParent ? 'Mentions variants are available but not specific variant' : context.isChild ? 'Can mention specific variant' : 'Is specific to this product'}
+- ${context.isParent ? (context.isParentWithoutChildren ? 'Standalone-style parent (no synced variants) — no false range claims' : 'Mentions variants are available but not specific variant') : context.isChild ? 'MUST include a unique differentiator vs sibling variants (size/color/load/[SERIAL])' : 'Is specific to this product'}
 
 Example format: "[PRODUCT] - [CATEGORY] | Versenyképes áron" or "[PRODUCT] [SERIAL] - Minőségi szekrény kellék"`
 
@@ -363,14 +401,27 @@ PARENT-CHILD RELATIONSHIPS:
 
 Return ONLY the comma-separated keywords, nothing else.`
 
+  const siblingKwHint =
+    context.isChild && context.siblingVariants?.length
+      ? `\nMás változatok (ne ismételd ugyanazt a hosszú farok kombót): ${context.siblingVariants.map(s => s.sku).join(', ')}`
+      : ''
+
+  const parentNoVarHint =
+    context.isParent && context.isParentWithoutChildren
+      ? '\nSzülő termék, de nincs szinkronizált al-változat: ne használj "több méretben" típusú kulcsszavakat kitalálva.'
+      : ''
+
   const userPrompt = `Generate meta keywords for this product:
 
 Product Name: ${context.product.name || 'N/A'}
 SKU: ${context.product.sku}
 Model Number: ${context.product.model_number || 'N/A'}
 Brand: ${context.product.brand || 'N/A'}
-${context.isParent ? 'Type: Parent product (has variants)' : context.isChild ? 'Type: Child product (variant)' : 'Type: Standalone product'}
+${context.isParent ? `Type: Parent product${context.isParentWithoutChildren ? ' (no synced child variants)' : ' (has variants)'}` : context.isChild ? 'Type: Child product (variant)' : 'Type: Standalone product'}
 ${variantKeywords.length > 0 ? `Variant attributes: ${variantKeywords.join(', ')}` : ''}
+${context.currentDifferentiator || variantDifferentiatorFromAttributes(context.product.product_attributes) ? `Differentiator: ${context.currentDifferentiator || variantDifferentiatorFromAttributes(context.product.product_attributes)}` : ''}
+${siblingKwHint}
+${parentNoVarHint}
 ${context.description ? `Product Description (for context): ${context.description.substring(0, 500)}` : ''}
 
 Generate 5-10 highly relevant keywords in Hungarian, comma-separated.`
@@ -430,6 +481,8 @@ export async function generateMetaDescription(context: MetaGenerationContext): P
   if (context.isParent && context.childProducts && context.childProducts.length > 0) {
     const variantCount = context.childProducts.length
     variantInfo = ` A termék ${variantCount} változatban elérhető.`
+  } else if (context.isParent && context.isParentWithoutChildren) {
+    variantInfo = ' (Nincs szinkronizált al-változat — ne írj több méretet/színt kitalálva.)'
   }
   
   // Build child product info
@@ -437,6 +490,26 @@ export async function generateMetaDescription(context: MetaGenerationContext): P
   if (context.isChild && context.parentProduct) {
     childInfo = ` A ${context.parentProduct.name || context.parentProduct.sku} termék variánsa.`
   }
+
+  const currentDiff =
+    context.currentDifferentiator ||
+    variantDifferentiatorFromAttributes(context.product.product_attributes)
+
+  let siblingDescBlock = ''
+  if (context.isChild && context.siblingVariants && context.siblingVariants.length > 0) {
+    const lines = context.siblingVariants
+      .map(s => `- ${s.sku}: ${s.differentiator || 'n/a'}`)
+      .join('\n')
+    siblingDescBlock = `\n\nMás indexelt változatok (a meta leírásnak meg kell különböztetnie EZT a SKU-t):\n${lines}`
+  }
+
+  const ctaPick = ctaVariantIndex(context.product.sku, 4)
+  const ctaInstructions = [
+    'Záró CTA: "További részletek és rendelés a webshopban."',
+    'Záró CTA: "Nézd meg a részleteket és válaszd a megfelelő változatot."',
+    'Záró CTA: "Információ és vásárlás — kattints a termékhez."',
+    'Záró CTA: "Fedezd fel a specifikációt és rendelj egy kattintással."'
+  ]
   
   // Get top search queries for optimization
   let searchQueryInfo = ''
@@ -530,8 +603,9 @@ SEO BEST PRACTICES:
    - **CRITICAL**: Benefits must be based on actual product features
 
 PARENT-CHILD RELATIONSHIPS:
-- For PARENT products: Mention variants are available but focus on general product benefits. Use [PRODUCT] for the parent product name.
-- For CHILD products: Can mention specific variant but also general benefits. Use [PRODUCT] for the child product name.
+- For PARENT products WITH variants: Mention variants briefly; focus on general benefits. Use [PRODUCT] for the parent product name.
+- For PARENT products WITHOUT synced children: Do not claim multiple variants or sizes unless the description states it.
+- For CHILD products: Lead with this variant's specific benefit (size/color/load) so the snippet is unique vs sibling URLs. Use [PRODUCT] for the child product name.
 - Keep variant info brief
 
 DYNAMIC TAG USAGE:
@@ -556,6 +630,9 @@ ${childInfo}
 ${context.description ? `Product Description (for context): ${context.description.substring(0, 500)}` : ''}
 ${searchQueryInfo}
 ${context.competitorPrice && context.product.price ? `Competitor Price: ${context.competitorPrice} Ft, Our Price: ${context.product.price} Ft` : ''}
+${currentDiff ? `Változat jellemzői (építsd be természetesen): ${currentDiff}` : ''}
+${siblingDescBlock}
+${ctaInstructions[ctaPick]}
 
 Generate a meta description that:
 - Is 150-160 characters (optimal) - COUNT THE CHARACTERS INCLUDING THE DYNAMIC TAGS

@@ -1,8 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getTenantSupabase } from '@/lib/tenant-supabase'
-import { generateAllMetaFields, generateMetaTitle, generateMetaKeywords, generateMetaDescription, MetaGenerationContext } from '@/lib/meta-seo-generation-service'
+import { generateMetaTitle, generateMetaKeywords, generateMetaDescription, MetaGenerationContext } from '@/lib/meta-seo-generation-service'
 import { trackAIUsage } from '@/lib/ai-usage-tracker'
 import { checkAvailableCredits } from '@/lib/credit-checker'
+import {
+  mergeSearchQueriesByImpressions,
+  variantDifferentiatorFromAttributes,
+  isChildVariant
+} from '@/lib/product-variant-helpers'
+
+function parseProductAttributes(raw: unknown): any[] | null {
+  if (raw == null) return null
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      const p = JSON.parse(raw)
+      return Array.isArray(p) ? p : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
 
 // Helper to get current month credit usage (for response)
 async function getCurrentMonthCreditUsage(userId: string): Promise<number> {
@@ -82,11 +101,12 @@ export async function POST(
       .eq('language_code', 'hu')
       .single()
 
-    // Check parent-child relationships
+    // Check parent-child relationships (self-reference = parent hub)
     let parentProduct = null
     let childProducts: any[] = []
+    let siblingProducts: any[] = []
     const isParent = !product.parent_product_id || product.parent_product_id === product.id
-    const isChild = !isParent && !!product.parent_product_id
+    const isChild = isChildVariant(product.parent_product_id, product.id)
 
     if (isChild && product.parent_product_id) {
       // Fetch parent product
@@ -96,6 +116,14 @@ export async function POST(
         .eq('id', product.parent_product_id)
         .single()
       parentProduct = parent
+
+      const { data: siblings } = await supabase
+        .from('shoprenter_products')
+        .select('id, name, sku, product_attributes')
+        .eq('parent_product_id', product.parent_product_id)
+        .neq('id', product.id)
+        .is('deleted_at', null)
+      siblingProducts = siblings || []
     }
 
     if (isParent) {
@@ -105,23 +133,70 @@ export async function POST(
         .select('id, name, sku, product_attributes')
         .eq('parent_product_id', product.id)
         .neq('id', product.id)
+        .is('deleted_at', null)
       childProducts = children || []
     }
 
-    // Fetch Search Console queries for optimization
-    const { data: searchPerformance } = await supabase
-      .from('product_search_performance')
-      .select('query, impressions, clicks, position')
-      .eq('product_id', isChild && product.parent_product_id ? product.parent_product_id : productId)
-      .order('impressions', { ascending: false })
-      .limit(10)
+    const ninetyDaysAgo = new Date()
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+    const dateStr = ninetyDaysAgo.toISOString().split('T')[0]
 
-    const searchQueries = searchPerformance?.map(p => ({
+    const performanceProductId =
+      isChild && product.parent_product_id ? product.parent_product_id : productId
+
+    const [searchPerformanceResult, queriesThisResult, queriesParentResult] = await Promise.all([
+      supabase
+        .from('product_search_performance')
+        .select('query, impressions, clicks, position')
+        .eq('product_id', performanceProductId)
+        .order('impressions', { ascending: false })
+        .limit(12),
+      supabase
+        .from('product_search_queries')
+        .select('query, impressions, clicks, ctr, position')
+        .eq('product_id', productId)
+        .gte('date', dateStr)
+        .order('impressions', { ascending: false })
+        .limit(15),
+      isChild && product.parent_product_id
+        ? supabase
+            .from('product_search_queries')
+            .select('query, impressions, clicks, ctr, position')
+            .eq('product_id', product.parent_product_id)
+            .gte('date', dateStr)
+            .order('impressions', { ascending: false })
+            .limit(10)
+        : Promise.resolve({ data: [] as any[] })
+    ])
+
+    const perfRows =
+      searchPerformanceResult.data?.map(p => ({
+        query: p.query || '',
+        impressions: p.impressions || 0,
+        clicks: p.clicks || 0,
+        position: p.position ?? 0
+      })) || []
+
+    const qThis = (queriesThisResult.data || []).map((p: any) => ({
       query: p.query || '',
       impressions: p.impressions || 0,
       clicks: p.clicks || 0,
-      position: p.position || 0
-    })) || []
+      position: p.position ?? 0
+    }))
+    const qParent = (queriesParentResult.data || []).map((p: any) => ({
+      query: p.query || '',
+      impressions: p.impressions || 0,
+      clicks: p.clicks || 0,
+      position: p.position ?? 0
+    }))
+
+    const merged = mergeSearchQueriesByImpressions(perfRows, qThis, isChild ? qParent : [])
+    const searchQueries = merged.slice(0, 12).map(p => ({
+      query: p.query,
+      impressions: p.impressions,
+      clicks: p.clicks,
+      position: p.position ?? 0
+    }))
 
     // Get competitor price if available
     let competitorPrice: number | null = null
@@ -143,6 +218,17 @@ export async function POST(
       // Ignore errors - competitor price is optional
     }
 
+    const productAttrs = parseProductAttributes(product.product_attributes)
+    const currentDifferentiator = variantDifferentiatorFromAttributes(productAttrs)
+    const siblingVariants =
+      isChild && siblingProducts.length > 0
+        ? siblingProducts.map(s => ({
+            sku: s.sku,
+            name: s.name,
+            differentiator: variantDifferentiatorFromAttributes(parseProductAttributes(s.product_attributes))
+          }))
+        : undefined
+
     // Build context
     const context: MetaGenerationContext = {
       product: {
@@ -152,11 +238,14 @@ export async function POST(
         model_number: product.model_number,
         price: product.price,
         brand: (product.manufacturers as any)?.name || null,
-        product_attributes: product.product_attributes
+        product_attributes: productAttrs
       },
       description: description?.description || null,
       isParent,
       isChild,
+      isParentWithoutChildren: isParent && childProducts.length === 0,
+      currentDifferentiator: currentDifferentiator || undefined,
+      siblingVariants,
       parentProduct: parentProduct ? {
         name: parentProduct.name,
         sku: parentProduct.sku
@@ -164,7 +253,7 @@ export async function POST(
       childProducts: childProducts.map(c => ({
         name: c.name,
         sku: c.sku,
-        product_attributes: c.product_attributes
+        product_attributes: parseProductAttributes(c.product_attributes)
       })),
       searchQueries: searchQueries.length > 0 ? searchQueries : undefined,
       competitorPrice: competitorPrice

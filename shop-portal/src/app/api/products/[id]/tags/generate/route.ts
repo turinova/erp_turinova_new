@@ -22,6 +22,20 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const creditCheck = await checkCreditsForAIFeature(user.id, 'product_tags')
+    if (!creditCheck.hasEnough) {
+      return NextResponse.json({
+        success: false,
+        error: 'Insufficient credits',
+        credits: {
+          available: creditCheck.available,
+          required: creditCheck.required,
+          limit: creditCheck.limit,
+          used: creditCheck.used
+        }
+      }, { status: 402 })
+    }
+
     // Get product with all relevant data and manufacturer
     const { data: product, error: productError } = await supabase
       .from('shoprenter_products')
@@ -125,6 +139,22 @@ export async function POST(
       })
     }
 
+    let siblingSkuLine = ''
+    if (
+      product.parent_product_id &&
+      product.parent_product_id !== product.id
+    ) {
+      const { data: sibs } = await supabase
+        .from('shoprenter_products')
+        .select('sku')
+        .eq('parent_product_id', product.parent_product_id)
+        .neq('id', id)
+        .limit(25)
+      if (sibs?.length) {
+        siblingSkuLine = `\nMás indexelt változatok (SKU — a címkék legyenek erre a változatra jellemzőek, ne másolatok): ${sibs.map((s: { sku: string }) => s.sku).join(', ')}`
+      }
+    }
+
     // Prepare AI prompt
     const systemPrompt = `You are an expert e-commerce SEO specialist creating product tags for Hungarian e-commerce products.
 
@@ -208,6 +238,7 @@ Categories: ${categories.length > 0 ? categories.join(', ') : 'N/A'}
 Attributes: ${attributeTags.length > 0 ? attributeTags.slice(0, 10).join(', ') : 'N/A'}
 Top Search Queries: ${topSearchQueries || 'N/A'}
 ${relatedTags.length > 0 ? `Related Products Tags (for context): ${relatedTags.slice(0, 5).join(', ')}` : ''}
+${siblingSkuLine}
 
 Generate 5-10 highly relevant tags in Hungarian, comma-separated.`
 
