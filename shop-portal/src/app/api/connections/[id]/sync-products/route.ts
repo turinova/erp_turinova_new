@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { getTenantSupabase, getTenantFromSession } from '@/lib/tenant-supabase'
 import { getConnectionById } from '@/lib/connections-server'
 import { Buffer } from 'buffer'
@@ -714,45 +714,130 @@ export async function POST(
       batches.push(allProductIds.slice(i, i + BATCH_SIZE))
     }
 
+    const incrementalStats = useIncrementalSync
+      ? {
+          newProducts: newProductsCount,
+          changedProducts: changedProductsCount,
+          skippedProducts: skippedProductsCount,
+          deletedProducts: deletedCount,
+        }
+      : undefined
+
+    const totalProductsEvaluated = incrementalStats
+      ? allProductIds.length + (incrementalStats.skippedProducts || 0)
+      : allProductIds.length
+
     // Initialize progress tracking BEFORE starting background process
-    // This ensures the frontend can immediately see the total count
-    // Clear any previous stop flag when starting a new sync
     updateProgress(connectionId, {
       total: allProductIds.length,
       synced: 0,
       current: 0,
       status: 'syncing',
       errors: 0,
-      shouldStop: false // Clear any previous stop flag
+      shouldStop: false,
     })
 
-    // Return immediately and run sync in background
-    // The frontend will poll for progress
-    // Don't await - let it run in background
-    // Pass incremental sync stats to background process
-    const incrementalStats = useIncrementalSync ? {
-      newProducts: newProductsCount,
-      changedProducts: changedProductsCount,
-      skippedProducts: skippedProductsCount,
-      deletedProducts: deletedCount
-    } : undefined
-    
-    processSyncInBackground(supabase, connection, allProductIds, batches, connectionId, forceSync, apiUrl, authHeader, request, tenantId, user.id, user.email || null, incrementalStats).catch(error => {
-      console.error('Background sync error:', error)
-      updateProgress(connectionId, {
-        status: 'error',
-        errors: allProductIds.length
-      })
+    /**
+     * Create sync_jobs BEFORE returning the HTTP response so GET /sync-progress on any
+     * Vercel instance sees a running job immediately (fixes frozen 0/total on prod).
+     */
+    let preSyncedJobId: string | null = null
+    if (user.id) {
+      try {
+        const { data: sj, error: sjErr } = await supabase
+          .from('sync_jobs')
+          .insert({
+            connection_id: connectionId,
+            audit_log_id: null,
+            user_id: user.id,
+            sync_mode: forceSync ? 'full' : 'incremental',
+            sync_direction: 'from_shoprenter',
+            status: 'running',
+            total_units: allProductIds.length,
+            synced_units: 0,
+            error_units: 0,
+            total_batches: batches.length,
+            metadata: {
+              syncType: 'product',
+              totalProductsEvaluated,
+              incrementalStats: incrementalStats || null,
+            },
+          })
+          .select('id')
+          .single()
+        if (!sjErr && sj?.id) {
+          preSyncedJobId = sj.id
+          updateProgress(connectionId, { syncJobId: preSyncedJobId })
+          await maybeFlushSyncJobProgress(
+            supabase,
+            preSyncedJobId,
+            () => {
+              const p = getProgress(connectionId)
+              return {
+                synced: p?.synced ?? 0,
+                total: p?.total ?? allProductIds.length,
+                errors: p?.errors ?? 0,
+                status: p?.status ?? 'syncing',
+                currentBatch: p?.currentBatch,
+                totalBatches: p?.totalBatches,
+                batchProgress: p?.batchProgress,
+              }
+            },
+            true
+          )
+          console.log(`[SYNC] Early sync_jobs row for polling (Vercel): ${preSyncedJobId}`)
+        } else {
+          console.warn('[SYNC] Early sync_jobs insert failed (non-fatal):', sjErr)
+        }
+      } catch (earlyErr) {
+        console.warn('[SYNC] Early sync_jobs insert error (non-fatal):', earlyErr)
+      }
+    }
+
+    // Run heavy work after response; Next/Vercel waitUntil keeps invocation alive until done (maxDuration)
+    after(async () => {
+      try {
+        await processSyncInBackground(
+          supabase,
+          connection,
+          allProductIds,
+          batches,
+          connectionId,
+          forceSync,
+          apiUrl,
+          authHeader,
+          request,
+          tenantId,
+          user.id,
+          user.email || null,
+          incrementalStats,
+          preSyncedJobId
+        )
+      } catch (error) {
+        console.error('[SYNC] after() sync error:', error)
+        updateProgress(connectionId, {
+          status: 'error',
+          errors: allProductIds.length,
+        })
+        if (preSyncedJobId) {
+          try {
+            await finalizeSyncJob(supabase, preSyncedJobId, 'failed', {
+              synced: getProgress(connectionId)?.synced ?? 0,
+              errors: getProgress(connectionId)?.errors ?? allProductIds.length,
+              total: allProductIds.length,
+              errorMessage: error instanceof Error ? error.message : 'Ismeretlen hiba',
+            })
+          } catch (e) {
+            console.warn('[SYNC] finalizeSyncJob after error:', e)
+          }
+        }
+      }
     })
 
-    // Small delay to ensure progress is set in memory before returning response
-    // This gives the progress store time to be initialized
-    await new Promise(resolve => setTimeout(resolve, 200))
-
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       message: 'Szinkronizálás elindítva',
-      total: allProductIds.length
+      total: allProductIds.length,
     })
   } catch (error) {
     console.error('Error syncing products:', error)
@@ -777,7 +862,8 @@ export async function POST(
 }
 
 /**
- * Process sync in background (non-blocking)
+ * Heavy product sync — scheduled via `after()` so the HTTP response returns immediately while
+ * Vercel keeps the invocation alive; `preSyncedJobId` is created in POST for cross-instance polling.
  */
 async function processSyncInBackground(
   supabase: any,
@@ -792,7 +878,8 @@ async function processSyncInBackground(
   tenantId?: string,
   userId?: string,
   userEmail?: string | null,
-  incrementalStats?: { newProducts: number; changedProducts: number; skippedProducts: number; deletedProducts: number }
+  incrementalStats?: { newProducts: number; changedProducts: number; skippedProducts: number; deletedProducts: number },
+  preSyncedJobId?: string | null
 ) {
   // Initialize variables at function scope so they're accessible in catch block
   let syncedCount = 0
@@ -812,7 +899,7 @@ async function processSyncInBackground(
 
   // Create sync audit log entry
   let auditLogId: string | null = null
-  let syncJobId: string | null = null
+  let syncJobId: string | null = preSyncedJobId ?? null
   try {
       if (tenantId && userId) {
         const syncType = forceSync ? 'full' : 'incremental'
@@ -851,9 +938,16 @@ async function processSyncInBackground(
     console.warn(`[SYNC] Error creating audit log (non-fatal):`, auditInitError)
   }
 
-  // Durable progress for UI polling across serverless instances — must not depend on audit log insert.
-  // (Audit log can fail when tenant context is missing; users still need sync_jobs for navbar / refresh.)
-  if (userId) {
+  if (syncJobId && auditLogId) {
+    try {
+      await supabase.from('sync_jobs').update({ audit_log_id: auditLogId }).eq('id', syncJobId)
+    } catch (e) {
+      console.warn('[SYNC] Failed to link audit_log to sync_jobs:', e)
+    }
+  }
+
+  // Durable progress: row may already exist from POST (preSyncedJobId). Otherwise insert here.
+  if (userId && !syncJobId) {
     try {
       const { data: sj, error: sjErr } = await supabase
         .from('sync_jobs')
@@ -869,6 +963,7 @@ async function processSyncInBackground(
           error_units: 0,
           total_batches: totalBatches,
           metadata: {
+            syncType: 'product',
             totalProductsEvaluated,
             incrementalStats: incrementalStats || null,
           },
@@ -877,6 +972,7 @@ async function processSyncInBackground(
         .single()
       if (!sjErr && sj?.id) {
         syncJobId = sj.id
+        updateProgress(connectionId, { syncJobId })
         console.log(`[SYNC] Created sync_jobs row: ${syncJobId}`)
       } else {
         console.warn('[SYNC] sync_jobs insert failed (non-fatal):', sjErr)
@@ -884,6 +980,9 @@ async function processSyncInBackground(
     } catch (syncJobErr) {
       console.warn('[SYNC] sync_jobs insert error (non-fatal):', syncJobErr)
     }
+  } else if (syncJobId) {
+    updateProgress(connectionId, { syncJobId })
+    console.log(`[SYNC] Using pre-created sync_jobs row: ${syncJobId}`)
   }
 
   /** Cross-batch cache + serial queue so parallel batches don't duplicate attributeDescription API work */
