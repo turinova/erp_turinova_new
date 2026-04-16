@@ -14,9 +14,10 @@ import { batchFetchAttributeDescriptions, batchFetchAttributeWidgetDescriptions 
 import { extractShopNameFromUrl, extractParentProductId } from '@/lib/shoprenter-product-sync-helpers'
 import { syncProductToDatabase, ensureManufacturerExists } from './sync-product-db'
 import { syncSingleProductFromShopRenter } from '@/lib/sync-single-shoprenter-product'
+import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 
 /** Vercel Pro: allow long product sync batches (ShopRenter batch + DB writes). Hobby plan caps lower. */
-export const maxDuration = 300
+export const maxDuration = 800
 
 /** Max UUIDs per Supabase `.in('id', …)` — avoids proxy 414 URI Too Long on large syncs. */
 const SUPABASE_ID_IN_CHUNK_SIZE = 150
@@ -243,498 +244,104 @@ export async function POST(
     // If forceSync is not explicitly set to true, use incremental sync
     const useIncrementalSync = !forceSync
 
-    // Get existing products with sync timestamps from ERP for incremental sync
-    // We need:
-    // - last_synced_from_shoprenter_at: When we last pulled FROM ShopRenter
-    // - last_synced_to_shoprenter_at: When we last pushed TO ShopRenter
-    // - updated_at: When product was last modified in ERP
-    // This prevents overwriting ERP changes that were just synced to ShopRenter
-    let lastSyncedMap = new Map<string, { 
-      last_synced_from: string | null; 
-      last_synced_to: string | null;
-      updated_at: string | null 
-    }>()
+    // Page-based product sync: use ProductExtend collection (supports updatedAfter/updatedBefore with datetime)
+    // This avoids needing a separate product list scan + per-id GETs, and maps cleanly to "page X / pageCount" progress.
+    const PAGE_SIZE = 200
+    const rateLimiter = getShopRenterRateLimiter(tenantId)
+
+    let updatedAfter: string | null = null
     if (useIncrementalSync) {
-      console.log(`[SYNC] Using incremental sync - will only sync changed products`)
-      
-      // Fetch all existing products in batches to avoid Supabase's 1000 row limit
-      const batchSize = 1000
-      let allExistingProducts: any[] = []
-      let hasMore = true
-      let offset = 0
-      
-      while (hasMore) {
-        const { data: existingProducts, error } = await supabase
-          .from('shoprenter_products')
-          .select('shoprenter_id, last_synced_from_shoprenter_at, last_synced_to_shoprenter_at, updated_at')
-          .eq('connection_id', connectionId)
-          .is('deleted_at', null)
-          .range(offset, offset + batchSize - 1)
-        
-        if (error) {
-          console.error(`[SYNC] Error fetching existing products (offset ${offset}):`, error)
-          break
-        }
-        
-        if (existingProducts && existingProducts.length > 0) {
-          allExistingProducts = allExistingProducts.concat(existingProducts)
-          hasMore = existingProducts.length === batchSize
-          offset += batchSize
-        } else {
-          hasMore = false
-        }
-      }
-      
-      if (allExistingProducts.length > 0) {
-        lastSyncedMap = new Map(
-          allExistingProducts.map(p => [
-            p.shoprenter_id, 
-            { 
-              last_synced_from: p.last_synced_from_shoprenter_at, 
-              last_synced_to: p.last_synced_to_shoprenter_at,
-              updated_at: p.updated_at 
-            }
-          ])
-        )
-        console.log(`[SYNC] Found ${lastSyncedMap.size} existing products in ERP (fetched in ${Math.ceil(allExistingProducts.length / batchSize)} batches)`)
-      } else {
-        console.log(`[SYNC] No existing products found in ERP`)
-      }
+      const { data: lastCompleted } = await supabase
+        .from('sync_jobs')
+        .select('completed_at')
+        .eq('connection_id', connectionId)
+        .eq('sync_direction', 'from_shoprenter')
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      updatedAfter = lastCompleted?.completed_at ?? null
+      console.log(`[SYNC] Incremental sync via productExtend.updatedAfter: ${updatedAfter ?? '(none)'}`)
     } else {
-      console.log(`[SYNC] Using force sync - will sync all products`)
+      console.log(`[SYNC] Full sync via productExtend pages`)
     }
 
-    // For bulk sync, use Batch API for efficiency
-    // First, get all product IDs with timestamps (paginated)
-    const allProductIds: string[] = []
-    const shoprenterProductIds = new Set<string>() // Track all products in ShopRenter for deletion detection
-    let page = 0
-    const pageSize = 200
-    let hasMorePages = true
-    let firstPageData: any = null
-    let newProductsCount = 0
-    let changedProductsCount = 0
-    let skippedProductsCount = 0
-    /** Skips solely because list API omitted dateUpdated (heuristic may hide real webshop changes). */
-    let skippedMissingDateUpdated = 0
+    const buildProductExtendListUrl = (page: number) => {
+      const params = new URLSearchParams()
+      params.set('full', '1')
+      params.set('limit', String(PAGE_SIZE))
+      params.set('page', String(page))
+      if (updatedAfter) params.set('updatedAfter', updatedAfter)
+      return `${apiUrl}/productExtend?${params.toString()}`
+    }
 
-    while (hasMorePages) {
-      // Use full=1 to get product IDs and timestamps in the response
-      const productsListUrl = `${apiUrl}/products?full=1&limit=${pageSize}&page=${page}`
-      const listResponse = await fetch(productsListUrl, {
+    // Fetch first page to get pageCount and initial items count (fast fail if API misconfigured)
+    const firstListUrl = buildProductExtendListUrl(0)
+    const firstPageResponse = await rateLimiter.execute(() =>
+      fetch(firstListUrl, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': authHeader
+          Accept: 'application/json',
+          Authorization: authHeader,
         },
-        signal: AbortSignal.timeout(30000)
+        signal: AbortSignal.timeout(30000),
       })
+    )
 
-      if (!listResponse.ok) {
-        const errorText = await listResponse.text().catch(() => 'Unknown error')
-        console.error(`[SYNC] Error fetching product list page ${page}:`, {
-          status: listResponse.status,
-          error: errorText.substring(0, 200),
-          url: productsListUrl
-        })
-        return NextResponse.json({ 
-          success: false, 
-          error: `API error fetching product list: ${listResponse.status} - ${errorText.substring(0, 200)}` 
-        }, { status: listResponse.status })
-      }
+    if (!firstPageResponse.ok) {
+      const errorText = await firstPageResponse.text().catch(() => 'Unknown error')
+      return NextResponse.json(
+        { success: false, error: `API error fetching productExtend page 0: ${firstPageResponse.status} - ${errorText.substring(0, 200)}` },
+        { status: firstPageResponse.status }
+      )
+    }
 
-      // Check content type
-      const contentType = listResponse.headers.get('content-type')
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await listResponse.text().catch(() => '')
-        console.error(`[SYNC] Non-JSON response for page ${page}:`, contentType, text.substring(0, 100))
-        return NextResponse.json({ 
-          success: false, 
-          error: `Nem JSON válasz érkezett. Content-Type: ${contentType}` 
-        }, { status: 500 })
-      }
+    const firstContentType = firstPageResponse.headers.get('content-type') || ''
+    if (!firstContentType.includes('application/json')) {
+      const t = await firstPageResponse.text().catch(() => '')
+      return NextResponse.json(
+        { success: false, error: `Nem JSON válasz érkezett a productExtend listából. Content-Type: ${firstContentType}. ${t.substring(0, 80)}` },
+        { status: 500 }
+      )
+    }
 
-      let listData
-      try {
-        const text = await listResponse.text()
-        if (!text || text.trim().length === 0) {
-          console.error(`[SYNC] Empty response for page ${page}`)
-          return NextResponse.json({ 
-            success: false, 
-            error: 'Üres válasz érkezett az API-tól' 
-          }, { status: 500 })
-        }
-        listData = JSON.parse(text)
-      } catch (parseError) {
-        console.error(`[SYNC] JSON parse error for page ${page}:`, parseError)
-        return NextResponse.json({ 
-          success: false, 
-          error: `JSON parse hiba: ${parseError instanceof Error ? parseError.message : 'Ismeretlen hiba'}` 
-        }, { status: 500 })
-      }
+    const firstText = await firstPageResponse.text()
+    if (!firstText || firstText.trim().length === 0) {
+      return NextResponse.json({ success: false, error: 'Üres válasz érkezett a productExtend listából.' }, { status: 500 })
+    }
+    const firstData = JSON.parse(firstText)
+    const firstItems: any[] = firstData?.items || firstData?.response?.items || []
+    const pageCountRaw = firstData?.pageCount ?? firstData?.response?.pageCount ?? 0
+    const pageCount = typeof pageCountRaw === 'string' ? parseInt(pageCountRaw, 10) : pageCountRaw
+    const totalEstimated = pageCount && pageCount > 0 ? pageCount * PAGE_SIZE : firstItems.length
 
-      if (!listData) {
-        console.error(`[SYNC] listData is null for page ${page}`)
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Nem sikerült feldolgozni a terméklistát' 
-        }, { status: 500 })
-      }
-
-      // Store first page data for debugging
-      if (page === 0) {
-        firstPageData = listData
-        console.log(`[SYNC] First page response structure:`, {
-          hasItems: !!listData.items,
-          hasResponse: !!listData.response,
-          itemsCount: listData.items?.length || listData.response?.items?.length || 0,
-          pageCount: listData.pageCount || listData.response?.pageCount,
-          keys: Object.keys(listData)
-        })
-      }
-
-      // Extract product IDs from response - handle multiple response formats
-      let items: any[] = []
-      if (listData.items) {
-        items = listData.items
-      } else if (listData.response?.items) {
-        items = listData.response.items
-      } else if (Array.isArray(listData)) {
-        items = listData
-      }
-
-      console.log(`[SYNC] Page ${page}: Found ${items.length} items`)
-
-      // Diagnostic logging for dateUpdated availability (first page only)
-      if (page === 0 && items.length > 0 && useIncrementalSync) {
-        const sampleItems = items.slice(0, 3)
-        const dateUpdatedStats = {
-          total: sampleItems.length,
-          hasDateUpdated: sampleItems.filter(i => i.dateUpdated || i.date_updated).length,
-          missingDateUpdated: sampleItems.filter(i => !i.dateUpdated && !i.date_updated).length
-        }
-        
-        console.log(`[SYNC] First page diagnostic - dateUpdated availability:`, {
-          ...dateUpdatedStats,
-          sample: sampleItems.map(i => ({
-            id: i.id?.substring(0, 20) + '...',
-            sku: i.sku,
-            hasDateUpdated: !!(i.dateUpdated || i.date_updated),
-            dateUpdated: i.dateUpdated || i.date_updated || 'MISSING'
-          }))
-        })
-        
-        if (dateUpdatedStats.missingDateUpdated > 0) {
-          console.warn(`[SYNC] WARNING: ${dateUpdatedStats.missingDateUpdated}/${dateUpdatedStats.total} sample products missing dateUpdated. This may indicate an API issue.`)
-        }
-      }
-
-      for (const item of items) {
-        let productId: string | null = null
-        
-        if (item.id) {
-          productId = item.id
-        } else if (item.href) {
-          // Extract ID from href (format: /products/cHJvZHVjdC1wcm9kdWN0X2lkPTI0NTE=)
-          const hrefParts = item.href.split('/')
-          const lastPart = hrefParts[hrefParts.length - 1]
-          if (lastPart && lastPart !== 'products') {
-            productId = lastPart
-          }
-        }
-
-        if (!productId) {
-          console.warn(`[SYNC] Item without ID or href on page ${page}:`, Object.keys(item))
-          continue
-        }
-
-        // Track all products in ShopRenter for deletion detection
-        shoprenterProductIds.add(productId)
-
-        // Incremental sync: Only include if changed or new
-        // CRITICAL: Prevent syncing products that were modified in ERP more recently than ShopRenter
-        // This prevents overwriting ERP changes that were just synced to ShopRenter
-        if (useIncrementalSync) {
-          const productSyncInfo = lastSyncedMap.get(productId)
-          // Try multiple possible field names for dateUpdated (fixed: removed duplicate check)
-          const dateUpdated = item.dateUpdated || item.date_updated || null
-          
-          // Determine if we should sync:
-          // 1. New product (not in ERP) -> always sync
-          // 2. ShopRenter updated AND:
-          //    - Never synced before, OR
-          //    - ShopRenter updated after last sync, AND
-          //    - Product wasn't modified in ERP more recently than ShopRenter's update
-          let shouldSync = false
-          let skipReason = ''
-          
-          if (!productSyncInfo) {
-            // New product - always sync
-            shouldSync = true
-            newProductsCount++
-          } else if (!dateUpdated) {
-            // FIXED: Industry-standard fallback for missing dateUpdated
-            // Strategy: Use time-based heuristic to avoid unnecessary syncs
-            const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
-            
-            if (!lastSyncedFrom) {
-              // Never synced before but product exists in ERP - sync to establish baseline
-              shouldSync = true
-              changedProductsCount++
-              skipReason = 'dateUpdated missing, but never synced - syncing to establish baseline'
-            } else {
-              // We have sync history - use time-based heuristic
-              const hoursSinceLastSync = (Date.now() - lastSyncedFrom.getTime()) / (1000 * 60 * 60)
-              const RECENT_SYNC_THRESHOLD_HOURS = 24 // Configurable threshold
-              
-              if (hoursSinceLastSync < RECENT_SYNC_THRESHOLD_HOURS) {
-                // Synced recently - assume API issue, not a change
-                shouldSync = false
-                skipReason = `dateUpdated missing, but synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago (assuming API issue, not change)`
-                skippedProductsCount++
-                skippedMissingDateUpdated++
-                
-                // Log first few for monitoring
-                if (skippedProductsCount <= 5) {
-                  console.warn(`[SYNC] Product ${productId}: dateUpdated missing from API. Last synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago. Skipping.`)
-                }
-              } else {
-                // Last sync was old - could be a real change, but we can't tell
-                // Industry standard: Skip to avoid unnecessary syncs, but log for admin review
-                shouldSync = false
-                skipReason = `dateUpdated missing, last synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago (skipping to avoid unnecessary sync)`
-                skippedProductsCount++
-                skippedMissingDateUpdated++
-                
-                // Log for admin review (but don't spam)
-                if (skippedProductsCount <= 10) {
-                  console.warn(`[SYNC] Product ${productId}: dateUpdated missing, last synced ${Math.round(hoursSinceLastSync * 10) / 10}h ago. Consider force sync if needed.`)
-                }
-              }
-            }
-          } else {
-            // dateUpdated is available - use precise comparison
-            let shoprenterUpdated: Date | null = null
-            
-            try {
-              // Parse dateUpdated - handle ISO format (e.g., "2013-08-08T12:30:00")
-              shoprenterUpdated = new Date(dateUpdated)
-              
-              // Validate date
-              if (isNaN(shoprenterUpdated.getTime())) {
-                // Try alternative format (e.g., "2013-08-08 12:30:00")
-                shoprenterUpdated = new Date(dateUpdated.replace(' ', 'T'))
-              }
-              
-              if (isNaN(shoprenterUpdated.getTime())) {
-                // Invalid date - fall back to time-based heuristic
-                console.warn(`[SYNC] Invalid dateUpdated format for product ${productId}: ${dateUpdated}. Using fallback logic.`)
-                const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
-                if (lastSyncedFrom) {
-                  const hoursSinceLastSync = (Date.now() - lastSyncedFrom.getTime()) / (1000 * 60 * 60)
-                  if (hoursSinceLastSync < 24) {
-                    shouldSync = false
-                    skipReason = 'invalid dateUpdated format, but synced recently'
-                    skippedProductsCount++
-                  } else {
-                    shouldSync = true
-                    changedProductsCount++
-                    skipReason = 'invalid dateUpdated format, last sync was old'
-                  }
-                } else {
-                  shouldSync = true
-                  changedProductsCount++
-                }
-              }
-            } catch (error) {
-              console.warn(`[SYNC] Error parsing dateUpdated for product ${productId}:`, error)
-              // Fall back to time-based heuristic
-              const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
-              if (lastSyncedFrom) {
-                const hoursSinceLastSync = (Date.now() - lastSyncedFrom.getTime()) / (1000 * 60 * 60)
-                shouldSync = hoursSinceLastSync >= 24
-                skipReason = `dateUpdated parse error, using time heuristic (${Math.round(hoursSinceLastSync * 10) / 10}h since last sync)`
-                if (shouldSync) {
-                  changedProductsCount++
-                } else {
-                  skippedProductsCount++
-                }
-              } else {
-                shouldSync = true
-                changedProductsCount++
-              }
-            }
-            
-            if (shoprenterUpdated && !isNaN(shoprenterUpdated.getTime())) {
-              // Valid date - proceed with precise comparison
-              const lastSyncedFrom = productSyncInfo.last_synced_from ? new Date(productSyncInfo.last_synced_from) : null
-              const lastSyncedTo = productSyncInfo.last_synced_to ? new Date(productSyncInfo.last_synced_to) : null
-              const erpUpdated = productSyncInfo.updated_at ? new Date(productSyncInfo.updated_at) : null
-              
-              // Check if ShopRenter was updated after last FROM sync
-              const shoprenterUpdatedAfterFromSync = !lastSyncedFrom || shoprenterUpdated > lastSyncedFrom
-              
-              if (!shoprenterUpdatedAfterFromSync) {
-                shouldSync = false
-                skipReason = 'not updated in ShopRenter since last FROM sync'
-              } else if (lastSyncedTo && shoprenterUpdated <= lastSyncedTo) {
-                shouldSync = false
-                skipReason = 'synced TO ShopRenter more recently than ShopRenter update (likely our push)'
-              } else if (erpUpdated && erpUpdated >= shoprenterUpdated) {
-                shouldSync = false
-                skipReason = 'modified in ERP at same time or more recently'
-              } else {
-                shouldSync = true
-                changedProductsCount++
-              }
-            }
-          }
-          
-          if (shouldSync) {
-            allProductIds.push(productId)
-          } else {
-            skippedProductsCount++
-            if (skipReason && skippedProductsCount <= 10) {
-              // Log first 10 skip reasons for debugging
-              console.log(`[SYNC] Skipping product ${productId}: ${skipReason}`)
-            }
-          }
-        } else {
-          // Force sync: Include all products
-          allProductIds.push(productId)
-        }
-      }
-
-      // Check if there are more pages
-      let pageCount = 0
-      if (listData.pageCount !== undefined) {
-        pageCount = typeof listData.pageCount === 'string' ? parseInt(listData.pageCount, 10) : listData.pageCount
-      } else if (listData.response?.pageCount !== undefined) {
-        pageCount = typeof listData.response.pageCount === 'string' ? parseInt(listData.response.pageCount, 10) : listData.response.pageCount
-      }
-
-      if (pageCount > 0) {
-        hasMorePages = page < pageCount - 1
-      } else {
-        hasMorePages = items.length === pageSize
-      }
-
+    // If no items on first page, incremental is "up to date"; full sync is "no products"
+    if (!firstItems || firstItems.length === 0) {
+      clearProgress(connectionId)
       if (useIncrementalSync) {
-        console.log(`[SYNC] Page ${page}: ${items.length} items, ${allProductIds.length - (allProductIds.length - (newProductsCount + changedProductsCount))} to sync (${newProductsCount} new, ${changedProductsCount} changed, ${skippedProductsCount} skipped)`)
-      } else {
-        console.log(`[SYNC] Page ${page}: pageCount=${pageCount}, items=${items.length}, hasMorePages=${hasMorePages}, totalIds=${allProductIds.length}`)
-      }
-
-      page++
-
-      // Minimal delay between page requests
-      if (hasMorePages) {
-        await new Promise(resolve => setTimeout(resolve, 50))
-      }
-    }
-
-    // Deletion detection: Find products in ERP that no longer exist in ShopRenter
-    let deletedCount = 0
-    if (shoprenterProductIds.size > 0) {
-      const { data: erpProducts } = await supabase
-        .from('shoprenter_products')
-        .select('id, shoprenter_id, sku')
-        .eq('connection_id', connectionId)
-        .is('deleted_at', null)
-      
-      if (erpProducts) {
-        const deletedProducts = erpProducts.filter(
-          p => !shoprenterProductIds.has(p.shoprenter_id)
-        )
-        
-        if (deletedProducts.length > 0) {
-          const { error: deleteError } = await supabase
-            .from('shoprenter_products')
-            .update({ 
-              deleted_at: new Date().toISOString(),
-              status: 0,
-              sync_status: 'deleted',
-              last_synced_from_shoprenter_at: new Date().toISOString() // Track deletion detection sync
-            })
-            .in('id', deletedProducts.map(p => p.id))
-          
-          if (!deleteError) {
-            deletedCount = deletedProducts.length
-            console.log(`[SYNC] Marked ${deletedCount} products as deleted`)
-          } else {
-            console.error(`[SYNC] Error marking products as deleted:`, deleteError)
-          }
-        }
-      }
-    }
-
-    if (useIncrementalSync) {
-      console.log(`[SYNC] Incremental sync summary: ${allProductIds.length} to sync (${newProductsCount} new, ${changedProductsCount} changed), ${skippedProductsCount} skipped, ${deletedCount} deleted`)
-      if (skippedMissingDateUpdated > 0) {
-        console.warn(
-          `[SYNC] Incremental: ${skippedMissingDateUpdated} termék kimaradt, mert a ShopRenter terméklistában nem volt dateUpdated (heurisztika). Ha a webshop és az ERP eltér, futtasson teljes szinkront.`
+        return NextResponse.json(
+          { success: true, message: 'Nincs szinkronizálandó termék. Minden termék naprakész.', total: 0, synced: 0 },
+          { status: 200 }
         )
       }
-    } else {
-      console.log(`[SYNC] Total product IDs collected: ${allProductIds.length}, ${deletedCount} deleted`)
+      return NextResponse.json(
+        { success: false, error: 'Nem található termék a webshopban (productExtend üres).' },
+        { status: 404 }
+      )
     }
 
-    if (allProductIds.length === 0) {
-      // For incremental sync, 0 products is a success (everything is up to date)
-      // For force sync, 0 products might indicate an issue
-      if (useIncrementalSync) {
-        console.log(`[SYNC] Incremental sync: No products to sync - everything is up to date`)
-        clearProgress(connectionId)
-        return NextResponse.json({ 
-          success: true, 
-          message: 'Nincs szinkronizálandó termék. Minden termék naprakész.',
-          total: 0,
-          synced: 0,
-          skipped: skippedProductsCount,
-          newProducts: 0,
-          changedProducts: 0,
-          deletedProducts: deletedCount
-        }, { status: 200 })
-      } else {
-        // Force sync with 0 products - this might be an issue
-        console.error(`[SYNC] No products found. First page data:`, JSON.stringify(firstPageData, null, 2).substring(0, 500))
-        clearProgress(connectionId)
-        return NextResponse.json({ 
-          success: false, 
-          error: 'Nem található termék a webshopban. Ellenőrizze, hogy a kapcsolat helyes-e és hogy vannak-e termékek a webshopban.' 
-        }, { status: 404 })
-      }
-    }
-
-    // Now use Batch API to fetch products in batches of 200
-    const BATCH_SIZE = 200 // Recommended by ShopRenter
-    const batches: string[][] = []
-    for (let i = 0; i < allProductIds.length; i += BATCH_SIZE) {
-      batches.push(allProductIds.slice(i, i + BATCH_SIZE))
-    }
-
-    const incrementalStats = useIncrementalSync
-      ? {
-          newProducts: newProductsCount,
-          changedProducts: changedProductsCount,
-          skippedProducts: skippedProductsCount,
-          deletedProducts: deletedCount,
-        }
-      : undefined
-
-    const totalProductsEvaluated = incrementalStats
-      ? allProductIds.length + (incrementalStats.skippedProducts || 0)
-      : allProductIds.length
-
-    // Initialize progress tracking BEFORE starting background process
+    // Initialize progress tracking BEFORE starting background process (page-based)
     updateProgress(connectionId, {
-      total: allProductIds.length,
+      total: totalEstimated,
       synced: 0,
       current: 0,
       status: 'syncing',
       errors: 0,
       shouldStop: false,
+      currentBatch: 1,
+      totalBatches: pageCount || 1,
+      batchProgress: firstItems.length,
     })
 
     /**
@@ -753,14 +360,21 @@ export async function POST(
             sync_mode: forceSync ? 'full' : 'incremental',
             sync_direction: 'from_shoprenter',
             status: 'running',
-            total_units: allProductIds.length,
+            total_units: totalEstimated,
             synced_units: 0,
             error_units: 0,
-            total_batches: batches.length,
+            total_batches: pageCount || 1,
             metadata: {
               syncType: 'product',
-              totalProductsEvaluated,
-              incrementalStats: incrementalStats || null,
+              pageSize: PAGE_SIZE,
+              pageCount: pageCount || 0,
+              updatedAfter,
+              mode: forceSync ? 'full' : 'incremental',
+              // Checkpoint (page-based)
+              checkpoint: {
+                page: 0,
+                updatedAfter,
+              },
             },
           })
           .select('id')
@@ -775,7 +389,7 @@ export async function POST(
               const p = getProgress(connectionId)
               return {
                 synced: p?.synced ?? 0,
-                total: p?.total ?? allProductIds.length,
+                total: p?.total ?? totalEstimated,
                 errors: p?.errors ?? 0,
                 status: p?.status ?? 'syncing',
                 currentBatch: p?.currentBatch,
@@ -797,34 +411,33 @@ export async function POST(
     // Run heavy work after response; Next/Vercel waitUntil keeps invocation alive until done (maxDuration)
     after(async () => {
       try {
-        await processSyncInBackground(
+        await processProductExtendPagesInBackground(
           supabase,
           connection,
-          allProductIds,
-          batches,
           connectionId,
           forceSync,
           apiUrl,
           authHeader,
-          request,
+          updatedAfter,
+          PAGE_SIZE,
+          firstData,
           tenantId,
           user.id,
           user.email || null,
-          incrementalStats,
           preSyncedJobId
         )
       } catch (error) {
         console.error('[SYNC] after() sync error:', error)
         updateProgress(connectionId, {
           status: 'error',
-          errors: allProductIds.length,
+          errors: getProgress(connectionId)?.errors ?? 0,
         })
         if (preSyncedJobId) {
           try {
             await finalizeSyncJob(supabase, preSyncedJobId, 'failed', {
               synced: getProgress(connectionId)?.synced ?? 0,
-              errors: getProgress(connectionId)?.errors ?? allProductIds.length,
-              total: allProductIds.length,
+              errors: getProgress(connectionId)?.errors ?? 0,
+              total: getProgress(connectionId)?.total ?? totalEstimated,
               errorMessage: error instanceof Error ? error.message : 'Ismeretlen hiba',
             })
           } catch (e) {
@@ -837,7 +450,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Szinkronizálás elindítva',
-      total: allProductIds.length,
+      total: totalEstimated,
     })
   } catch (error) {
     console.error('Error syncing products:', error)
@@ -858,6 +471,297 @@ export async function POST(
       success: false, 
       error: errorMessage 
     }, { status: 500 })
+  }
+}
+
+/**
+ * Page-based product sync using `GET /productExtend?full=1&limit=200&page=N` (and optional `updatedAfter`).
+ *
+ * Why: ShopRenter docs enforce 3 req/sec and recommend not sending batch requests asynchronously.
+ * This implementation:
+ * - processes pages sequentially (no concurrent `/batch`)
+ * - uses the tenant limiter (3 req/sec) for ALL ShopRenter calls in this worker
+ * - reports progress as "page X / pageCount" (currentBatch / totalBatches)
+ */
+async function processProductExtendPagesInBackground(
+  supabase: any,
+  connection: any,
+  connectionId: string,
+  forceSync: boolean,
+  apiUrl: string,
+  authHeader: string,
+  updatedAfter: string | null,
+  pageSize: number,
+  firstListData: any,
+  tenantId?: string,
+  userId?: string,
+  userEmail?: string | null,
+  preSyncedJobId?: string | null
+) {
+  const rateLimiter = getShopRenterRateLimiter(tenantId)
+
+  const extractItems = (data: any): any[] => {
+    if (!data) return []
+    if (Array.isArray(data.items)) return data.items
+    if (Array.isArray(data.response?.items)) return data.response.items
+    return []
+  }
+
+  const extractPageCount = (data: any): number => {
+    const raw = data?.pageCount ?? data?.response?.pageCount ?? 0
+    return typeof raw === 'string' ? parseInt(raw, 10) : raw
+  }
+
+  const buildListUrl = (page: number) => {
+    const params = new URLSearchParams()
+    params.set('full', '1')
+    params.set('limit', String(pageSize))
+    params.set('page', String(page))
+    if (updatedAfter) params.set('updatedAfter', updatedAfter)
+    return `${apiUrl}/productExtend?${params.toString()}`
+  }
+
+  const syncStartTime = new Date()
+  const pageCount = extractPageCount(firstListData) || 1
+  const totalEstimated = pageCount * pageSize
+
+  let syncedCount = 0
+  let errorCount = 0
+
+  // Create audit log (best-effort; non-fatal)
+  let auditLogId: string | null = null
+  try {
+    if (tenantId && userId) {
+      const syncType = forceSync ? 'full' : 'incremental'
+      const { data: auditLog, error: auditError } = await supabase
+        .from('sync_audit_logs')
+        .insert({
+          connection_id: connectionId,
+          sync_type: syncType,
+          sync_direction: 'from_shoprenter',
+          user_id: userId,
+          user_email: userEmail,
+          total_products: totalEstimated,
+          synced_count: 0,
+          error_count: 0,
+          skipped_count: 0,
+          started_at: syncStartTime.toISOString(),
+          status: 'running',
+          metadata: {
+            pageSize: pageSize,
+            pageCount,
+            updatedAfter,
+          },
+        })
+        .select('id')
+        .single()
+      if (!auditError && auditLog?.id) auditLogId = auditLog.id
+    }
+  } catch (e) {
+    console.warn('[SYNC] audit log init error (non-fatal):', e)
+  }
+
+  if (preSyncedJobId && auditLogId) {
+    try {
+      await supabase.from('sync_jobs').update({ audit_log_id: auditLogId }).eq('id', preSyncedJobId)
+    } catch (e) {
+      console.warn('[SYNC] Failed to link audit_log to sync_jobs:', e)
+    }
+  }
+
+  const flush = async (force = false) => {
+    if (!preSyncedJobId) return
+    await maybeFlushSyncJobProgress(
+      supabase,
+      preSyncedJobId,
+      () => {
+        const p = getProgress(connectionId)
+        return {
+          synced: p?.synced ?? 0,
+          total: p?.total ?? totalEstimated,
+          errors: p?.errors ?? 0,
+          status: p?.status ?? 'syncing',
+          currentBatch: p?.currentBatch,
+          totalBatches: p?.totalBatches,
+          batchProgress: p?.batchProgress,
+        }
+      },
+      force
+    )
+  }
+
+  const checkStop = async (): Promise<boolean> => {
+    if (shouldStopSync(connectionId)) return true
+    if (preSyncedJobId) {
+      const stopped = await isSyncJobStopped(supabase, preSyncedJobId)
+      if (stopped) updateProgress(connectionId, { shouldStop: true, status: 'stopped' })
+      return stopped
+    }
+    return false
+  }
+
+  const updateCheckpoint = async (page: number) => {
+    if (!preSyncedJobId) return
+    try {
+      const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
+      const metadata = (row?.metadata && typeof row.metadata === 'object') ? row.metadata : {}
+      metadata.checkpoint = { page, updatedAfter }
+      await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
+    } catch (e) {
+      // Non-fatal: progress row is more important than metadata.
+      console.warn('[SYNC] Failed to update sync_jobs checkpoint metadata (non-fatal):', e)
+    }
+  }
+
+  try {
+    // Page loop (page 0 is already fetched in POST)
+    for (let page = 0; page < pageCount; page++) {
+      if (await checkStop()) break
+
+      const listData =
+        page === 0
+          ? firstListData
+          : await (async () => {
+              const url = buildListUrl(page)
+              const res = await rateLimiter.execute(() =>
+                fetch(url, {
+                  method: 'GET',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    Authorization: authHeader,
+                  },
+                  signal: AbortSignal.timeout(30000),
+                })
+              )
+              if (!res.ok) {
+                const t = await res.text().catch(() => 'Unknown error')
+                throw new Error(`productExtend page ${page} failed: ${res.status} ${t.substring(0, 200)}`)
+              }
+              const ct = res.headers.get('content-type') || ''
+              if (!ct.includes('application/json')) {
+                const t = await res.text().catch(() => '')
+                throw new Error(`productExtend page ${page} non-JSON response: ${ct} ${t.substring(0, 80)}`)
+              }
+              const text = await res.text()
+              return JSON.parse(text)
+            })()
+
+      const items = extractItems(listData)
+
+      updateProgress(connectionId, {
+        currentBatch: page + 1,
+        totalBatches: pageCount,
+        batchProgress: items.length,
+      })
+      await flush(false)
+      await updateCheckpoint(page)
+
+      // Prefetch attribute description/widget metadata for this page (best-effort)
+      let attributeDescriptionsMap: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }> | undefined
+      try {
+        const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> = []
+        for (const product of items) {
+          if (product?.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
+            for (const attr of product.productAttributeExtend) {
+              let attributeId = attr?.id || null
+              if (!attributeId && attr?.href) {
+                const hrefParts = String(attr.href).split('/')
+                attributeId = hrefParts[hrefParts.length - 1] || null
+              }
+              if (attributeId) {
+                attributeRequests.push({
+                  attributeId,
+                  attributeType: inferAttributeTypeFromHref(attr?.href, attr),
+                })
+              }
+            }
+          }
+        }
+        const deduped = dedupeAttributeRequests(attributeRequests)
+        if (deduped.length > 0) {
+          attributeDescriptionsMap = await batchFetchAttributeDescriptions(apiUrl, authHeader, deduped, { tenantId })
+        }
+      } catch (e) {
+        console.warn('[SYNC] attribute prefetch error (non-fatal):', e)
+      }
+
+      // Process products in this page sequentially
+      for (const product of items) {
+        if (await checkStop()) break
+        try {
+          await syncProductToDatabase(
+            supabase,
+            connection,
+            product,
+            forceSync,
+            apiUrl,
+            authHeader,
+            attributeDescriptionsMap,
+            tenantId,
+            undefined
+          )
+          syncedCount += 1
+          incrementProgress(connectionId, { synced: 1 })
+        } catch (e: any) {
+          errorCount += 1
+          incrementProgress(connectionId, { errors: 1 })
+          console.warn('[SYNC] product sync error (non-fatal):', e?.message || e)
+        } finally {
+          // Keep heartbeat fresh even if per-product work is slow
+          await flush(false)
+        }
+      }
+    }
+
+    // Finalize
+    updateProgress(connectionId, {
+      status: getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed',
+    })
+    await flush(true)
+
+    if (preSyncedJobId) {
+      await finalizeSyncJob(supabase, preSyncedJobId, getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed', {
+        synced: getProgress(connectionId)?.synced ?? syncedCount,
+        errors: getProgress(connectionId)?.errors ?? errorCount,
+        total: getProgress(connectionId)?.total ?? totalEstimated,
+      })
+    }
+
+    if (auditLogId) {
+      try {
+        await supabase
+          .from('sync_audit_logs')
+          .update({
+            synced_count: getProgress(connectionId)?.synced ?? syncedCount,
+            error_count: getProgress(connectionId)?.errors ?? errorCount,
+            completed_at: new Date().toISOString(),
+            status: getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed',
+          })
+          .eq('id', auditLogId)
+      } catch (e) {
+        console.warn('[SYNC] audit log finalize error (non-fatal):', e)
+      }
+    }
+
+    clearProgress(connectionId)
+  } catch (e) {
+    console.error('[SYNC] page-based sync fatal error:', e)
+    updateProgress(connectionId, { status: 'error' })
+    await flush(true)
+    if (preSyncedJobId) {
+      try {
+        await finalizeSyncJob(supabase, preSyncedJobId, 'failed', {
+          synced: getProgress(connectionId)?.synced ?? syncedCount,
+          errors: getProgress(connectionId)?.errors ?? errorCount,
+          total: getProgress(connectionId)?.total ?? totalEstimated,
+          errorMessage: e instanceof Error ? e.message : 'Ismeretlen hiba',
+        })
+      } catch (finalizeError) {
+        console.warn('[SYNC] finalizeSyncJob after fatal error:', finalizeError)
+      }
+    }
+    clearProgress(connectionId)
   }
 }
 
