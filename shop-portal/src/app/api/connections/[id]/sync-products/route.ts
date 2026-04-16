@@ -114,11 +114,28 @@ export type ProductExtendChunkContext = {
   startPage: number
   pageCount: number
   totalEstimated: number
+  /** Sum of `items.length` for productExtend pages strictly before `startPage` (chunk resume). */
+  listedItemsBeforeStartPage?: number
   firstListData: any | null
   preSyncedJobId: string | null
   existingAuditLogId: string | null
   chunkBudgetMs: number
   scheduleContinuation?: () => Promise<void>
+}
+
+/**
+ * Tight upper bound on how many list rows exist across all pages, using real page sizes seen so far.
+ * Once the last page has been fetched, this equals the exact row count for the run.
+ */
+function upperBoundProductExtendListTotal(
+  pageIndex: number,
+  pageCount: number,
+  pageSize: number,
+  listedItemsBeforeThisPage: number,
+  thisPageItemCount: number
+): number {
+  const pagesAfterThis = Math.max(0, pageCount - pageIndex - 1)
+  return listedItemsBeforeThisPage + thisPageItemCount + pagesAfterThis * pageSize
 }
 
 /**
@@ -156,9 +173,16 @@ async function handleTrustedProductSyncChunkResume(
     return NextResponse.json({ success: false, error: 'Érvénytelen feladat típus' }, { status: 400 })
   }
 
-  const startPage = Math.max(0, Number((meta.checkpoint as { page?: number } | undefined)?.page ?? 0))
   const pageCount = Math.max(1, Number(meta.pageCount ?? 1))
   const pageSize = Math.max(1, Number(meta.pageSize ?? 200))
+  const checkpointMeta = meta.checkpoint as { page?: number; listedItemsSoFar?: number } | undefined
+  const startPage = Math.max(0, Number(checkpointMeta?.page ?? 0))
+  const storedListed = checkpointMeta?.listedItemsSoFar
+  /** Older jobs had no `listedItemsSoFar`; assume prior pages were full so totals stay a safe upper bound. */
+  const listedItemsBeforeStartPage =
+    typeof storedListed === 'number' && Number.isFinite(storedListed)
+      ? Math.max(0, storedListed)
+      : Math.max(0, startPage * pageSize)
   const updatedAfter =
     meta.updatedAfter === null || meta.updatedAfter === undefined
       ? null
@@ -246,8 +270,25 @@ async function handleTrustedProductSyncChunkResume(
   const cookieHeader = request.headers.get('cookie') ?? ''
   const chunkBudgetMs = getProductSyncChunkBudgetMs()
 
+  const resumeBatchProgress = (() => {
+    try {
+      const items = firstListData?.items || firstListData?.response?.items || []
+      return Array.isArray(items) ? items.length : 0
+    } catch {
+      return 0
+    }
+  })()
+
+  const resumeTotalUpper = upperBoundProductExtendListTotal(
+    startPage,
+    pageCount,
+    pageSize,
+    listedItemsBeforeStartPage,
+    resumeBatchProgress
+  )
+
   updateProgress(connectionId, {
-    total: job.total_units ?? 0,
+    total: resumeTotalUpper,
     synced: job.synced_units ?? 0,
     errors: job.error_units ?? 0,
     current: (job.synced_units ?? 0) + (job.error_units ?? 0),
@@ -255,9 +296,31 @@ async function handleTrustedProductSyncChunkResume(
     shouldStop: false,
     currentBatch: startPage + 1,
     totalBatches: pageCount,
-    batchProgress: 0,
+    batchProgress: resumeBatchProgress,
     syncJobId: jobId,
   })
+
+  try {
+    await maybeFlushSyncJobProgress(
+      supabase,
+      jobId,
+      () => {
+        const p = getProgress(connectionId)
+        return {
+          synced: p?.synced ?? job.synced_units ?? 0,
+          total: p?.total ?? resumeTotalUpper,
+          errors: p?.errors ?? job.error_units ?? 0,
+          status: p?.status ?? 'syncing',
+          currentBatch: p?.currentBatch,
+          totalBatches: p?.totalBatches,
+          batchProgress: p?.batchProgress,
+        }
+      },
+      true
+    )
+  } catch (e) {
+    console.warn('[SYNC] resume initial sync_jobs flush:', e)
+  }
 
   const scheduleContinuation = async () => {
     const sec = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
@@ -296,7 +359,8 @@ async function handleTrustedProductSyncChunkResume(
         {
           startPage,
           pageCount,
-          totalEstimated: job.total_units ?? pageCount * pageSize,
+          totalEstimated: resumeTotalUpper,
+          listedItemsBeforeStartPage,
           firstListData,
           preSyncedJobId: jobId,
           existingAuditLogId: job.audit_log_id ?? null,
@@ -589,7 +653,12 @@ export async function POST(
     const firstItems: any[] = firstData?.items || firstData?.response?.items || []
     const pageCountRaw = firstData?.pageCount ?? firstData?.response?.pageCount ?? 0
     const pageCount = typeof pageCountRaw === 'string' ? parseInt(pageCountRaw, 10) : pageCountRaw
-    const totalEstimated = pageCount && pageCount > 0 ? pageCount * PAGE_SIZE : firstItems.length
+    const effectivePageCount = Math.max(1, pageCount || 1)
+    /** Best initial upper bound without fetching later pages (exact when there is only one page). */
+    const totalEstimated =
+      pageCount && pageCount > 0
+        ? firstItems.length + Math.max(0, effectivePageCount - 1) * PAGE_SIZE
+        : firstItems.length
 
     // If no items on first page, incremental is "up to date"; full sync is "no products"
     if (!firstItems || firstItems.length === 0) {
@@ -615,7 +684,7 @@ export async function POST(
       errors: 0,
       shouldStop: false,
       currentBatch: 1,
-      totalBatches: pageCount || 1,
+      totalBatches: effectivePageCount,
       batchProgress: firstItems.length,
     })
 
@@ -638,17 +707,18 @@ export async function POST(
             total_units: totalEstimated,
             synced_units: 0,
             error_units: 0,
-            total_batches: pageCount || 1,
+            total_batches: effectivePageCount,
             metadata: {
               syncType: 'product',
               pageSize: PAGE_SIZE,
-              pageCount: pageCount || 0,
+              pageCount: effectivePageCount,
               updatedAfter,
               mode: forceSync ? 'full' : 'incremental',
               // Checkpoint (page-based)
               checkpoint: {
                 page: 0,
                 updatedAfter,
+                listedItemsSoFar: 0,
               },
             },
           })
@@ -728,8 +798,9 @@ export async function POST(
           PAGE_SIZE,
           {
             startPage: 0,
-            pageCount: Math.max(1, pageCount || 1),
+            pageCount: effectivePageCount,
             totalEstimated,
+            listedItemsBeforeStartPage: 0,
             firstListData: firstData,
             preSyncedJobId,
             existingAuditLogId: null,
@@ -816,6 +887,7 @@ async function processProductExtendPagesInBackground(
     chunkBudgetMs,
     scheduleContinuation,
   } = chunk
+  let listedItemsBeforeCurrentPage = chunk.listedItemsBeforeStartPage ?? 0
 
   const rateLimiter = getShopRenterRateLimiter(tenantId)
   const PRODUCT_CONCURRENCY = Math.max(
@@ -928,13 +1000,13 @@ async function processProductExtendPagesInBackground(
     return false
   }
 
-  /** `page` = next page index to process (0-based). */
-  const updateCheckpoint = async (nextPageIndex: number) => {
+  /** `nextPageIndex` = next productExtend page to fetch; `listedItemsSoFar` = sum of list row counts for pages 0..previous inclusive. */
+  const updateCheckpoint = async (nextPageIndex: number, listedItemsSoFar: number) => {
     if (!preSyncedJobId) return
     try {
       const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
       const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
-      metadata.checkpoint = { page: nextPageIndex, updatedAfter }
+      metadata.checkpoint = { page: nextPageIndex, updatedAfter, listedItemsSoFar }
       await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
     } catch (e) {
       console.warn('[SYNC] Failed to update sync_jobs checkpoint metadata (non-fatal):', e)
@@ -986,12 +1058,30 @@ async function processProductExtendPagesInBackground(
 
       const items = extractItems(listData)
 
+      const listTotalUpper = upperBoundProductExtendListTotal(
+        page,
+        pageCount,
+        pageSize,
+        listedItemsBeforeCurrentPage,
+        items.length
+      )
       updateProgress(connectionId, {
+        total: listTotalUpper,
         currentBatch: page + 1,
         totalBatches: pageCount,
         batchProgress: items.length,
       })
-      await flush(false)
+      // Force flush so GET /sync-progress (DB) shows refined totals within seconds, not only on heartbeat.
+      await flushThrottled(true)
+
+      if (auditLogId && page === pageCount - 1) {
+        const exactListRows = listedItemsBeforeCurrentPage + items.length
+        try {
+          await supabase.from('sync_audit_logs').update({ total_products: exactListRows }).eq('id', auditLogId)
+        } catch (e) {
+          console.warn('[SYNC] audit log total_products exact update (non-fatal):', e)
+        }
+      }
 
       let attributeDescriptionsMap:
         | Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>
@@ -1059,7 +1149,8 @@ async function processProductExtendPagesInBackground(
       await Promise.all(workers)
 
       const nextPage = page + 1
-      await updateCheckpoint(nextPage)
+      listedItemsBeforeCurrentPage += items.length
+      await updateCheckpoint(nextPage, listedItemsBeforeCurrentPage)
       await flushThrottled(false)
 
       if (await checkStop()) {
