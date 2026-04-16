@@ -389,7 +389,7 @@ export async function syncProductToDatabase(
                   const descId = listValue.id || (listValue.href ? listValue.href.split('/').pop()?.split('?')[0] : null)
                   if (descId) {
                     const descUrl = `${apiBaseUrl}/listAttributeValueDescriptions/${encodeURIComponent(descId)}?full=1`
-                    const descResponse = await fetch(descUrl, {
+                    const descResponse = await shopFetch(descUrl, {
                       method: 'GET',
                       headers: {
                         'Content-Type': 'application/json',
@@ -448,7 +448,7 @@ export async function syncProductToDatabase(
           try {
             // Fetch all relations for this product
             const relationsUrl = `${apiBaseUrl}/productListAttributeValueRelations?productId=${encodeURIComponent(product.id)}&full=1`
-            const relationsResponse = await fetch(relationsUrl, {
+            const relationsResponse = await shopFetch(relationsUrl, {
               method: 'GET',
               headers: {
                 'Content-Type': 'application/json',
@@ -489,7 +489,7 @@ export async function syncProductToDatabase(
                     if (!listAttributeId && relation.listAttributeValue.id) {
                       try {
                         const valueUrl = `${apiBaseUrl}/listAttributeValues/${encodeURIComponent(relation.listAttributeValue.id)}?full=1`
-                        const valueResponse = await fetch(valueUrl, {
+                        const valueResponse = await shopFetch(valueUrl, {
                           method: 'GET',
                           headers: {
                             'Content-Type': 'application/json',
@@ -781,7 +781,7 @@ export async function syncProductToDatabase(
           try {
             // Try to fetch weightClassDescription for Hungarian language first, then any language
             const weightClassDescUrl = `${apiBaseUrl}/weightClassDescriptions?weightClassId=${encodeURIComponent(weightClassId)}&full=1`
-            const weightClassDescResponse = await fetch(weightClassDescUrl, {
+            const weightClassDescResponse = await shopFetch(weightClassDescUrl, {
               method: 'GET',
               headers: {
                 'Content-Type': 'application/json',
@@ -926,6 +926,10 @@ export async function syncProductToDatabase(
       apiUrl = `http://${apiUrl}`
     }
 
+    // Ensure all ShopRenter API calls go through the same tenant limiter.
+    const rateLimiter = getShopRenterRateLimiter(tenantId)
+    const shopFetch = (url: string, init: RequestInit) => rateLimiter.execute(() => fetch(url, init))
+
     // Fetch product descriptions if available
     // Note: No delay - descriptions are fetched per product but batches are already rate-limited
     if (product.productDescriptions?.href) {
@@ -942,7 +946,7 @@ export async function syncProductToDatabase(
 
         // Use retry logic for 429 rate limit errors
         const descResponse = await retryWithBackoff(
-          () => fetch(descUrl, {
+          () => shopFetch(descUrl, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -1744,18 +1748,15 @@ export async function syncProductToDatabase(
     try {
       if (product.id && !product.id.startsWith('pending-')) {
         // Fetch customer group prices from ShopRenter
-        const pricesResponse = await fetch(
-          `${apiUrl}/customerGroupProductPrices?productId=${encodeURIComponent(product.id)}&full=1`,
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'Authorization': authHeader
-            },
-            signal: AbortSignal.timeout(10000)
-          }
-        )
+        const pricesResponse = await shopFetch(`${apiUrl}/customerGroupProductPrices?productId=${encodeURIComponent(product.id)}&full=1`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': authHeader
+          },
+          signal: AbortSignal.timeout(10000)
+        })
 
         if (pricesResponse.ok) {
           const pricesData = await pricesResponse.json().catch(() => null)
@@ -1785,18 +1786,15 @@ export async function syncProductToDatabase(
               // If not found, try to fetch customer group name from ShopRenter
               if (!customerGroup) {
                 try {
-                  const groupResponse = await fetch(
-                    `${apiUrl}/customerGroups/${customerGroupId}`,
-                    {
-                      method: 'GET',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'Authorization': authHeader
-                      },
-                      signal: AbortSignal.timeout(5000)
-                    }
-                  )
+                  const groupResponse = await shopFetch(`${apiUrl}/customerGroups/${customerGroupId}`, {
+                    method: 'GET',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json',
+                      'Authorization': authHeader
+                    },
+                    signal: AbortSignal.timeout(5000)
+                  })
 
                   if (groupResponse.ok) {
                     const groupData = await groupResponse.json().catch(() => null)

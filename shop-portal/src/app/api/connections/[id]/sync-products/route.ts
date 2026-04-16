@@ -499,6 +499,13 @@ async function processProductExtendPagesInBackground(
   preSyncedJobId?: string | null
 ) {
   const rateLimiter = getShopRenterRateLimiter(tenantId)
+  const PRODUCT_CONCURRENCY = Math.max(
+    1,
+    Math.min(
+      12,
+      Number.parseInt(process.env.SHOPRENTER_SYNC_PRODUCT_CONCURRENCY || '6', 10) || 6
+    )
+  )
 
   const extractItems = (data: any): any[] => {
     if (!data) return []
@@ -588,6 +595,16 @@ async function processProductExtendPagesInBackground(
       },
       force
     )
+  }
+
+  // Serialize progress flush calls across concurrent workers to avoid thundering herds.
+  const flushExclusive = createSerializedQueue()
+  let lastFlushMs = 0
+  const flushThrottled = async (force = false) => {
+    const now = Date.now()
+    if (!force && now - lastFlushMs < 1500) return
+    lastFlushMs = now
+    await flushExclusive(() => flush(force))
   }
 
   const checkStop = async (): Promise<boolean> => {
@@ -686,39 +703,48 @@ async function processProductExtendPagesInBackground(
         console.warn('[SYNC] attribute prefetch error (non-fatal):', e)
       }
 
-      // Process products in this page sequentially
-      for (const product of items) {
-        if (await checkStop()) break
-        try {
-          await syncProductToDatabase(
-            supabase,
-            connection,
-            product,
-            forceSync,
-            apiUrl,
-            authHeader,
-            attributeDescriptionsMap,
-            tenantId,
-            undefined
-          )
-          syncedCount += 1
-          incrementProgress(connectionId, { synced: 1 })
-        } catch (e: any) {
-          errorCount += 1
-          incrementProgress(connectionId, { errors: 1 })
-          console.warn('[SYNC] product sync error (non-fatal):', e?.message || e)
-        } finally {
-          // Keep heartbeat fresh even if per-product work is slow
-          await flush(false)
+      // Process products in this page with bounded concurrency.
+      // All ShopRenter API calls inside syncProductToDatabase must be rate-limited; otherwise concurrency would trigger 429s.
+      let nextIdx = 0
+      const worker = async () => {
+        while (true) {
+          if (await checkStop()) return
+          const idx = nextIdx++
+          if (idx >= items.length) return
+          const product = items[idx]
+          try {
+            await syncProductToDatabase(
+              supabase,
+              connection,
+              product,
+              forceSync,
+              apiUrl,
+              authHeader,
+              attributeDescriptionsMap,
+              tenantId,
+              undefined
+            )
+            syncedCount += 1
+            incrementProgress(connectionId, { synced: 1 })
+          } catch (e: any) {
+            errorCount += 1
+            incrementProgress(connectionId, { errors: 1 })
+            console.warn('[SYNC] product sync error (non-fatal):', e?.message || e)
+          } finally {
+            await flushThrottled(false)
+          }
         }
       }
+
+      const workers = Array.from({ length: Math.min(PRODUCT_CONCURRENCY, items.length) }, () => worker())
+      await Promise.all(workers)
     }
 
     // Finalize
     updateProgress(connectionId, {
       status: getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed',
     })
-    await flush(true)
+    await flushThrottled(true)
 
     if (preSyncedJobId) {
       await finalizeSyncJob(supabase, preSyncedJobId, getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed', {
