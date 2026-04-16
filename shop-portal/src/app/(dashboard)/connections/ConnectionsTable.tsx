@@ -70,6 +70,122 @@ import { toast } from 'react-toastify'
 import { createConnectionAction, updateConnectionAction, deleteConnectionsAction } from './actions'
 import type { WebshopConnection } from '@/lib/connections-server'
 
+/** Progress shape used by the connections UI and `/sync-progress` API. */
+type ProductSyncPanelProgress = {
+  current: number
+  total: number
+  synced: number
+  batchesProcessed: number
+  totalBatches: number
+  currentBatch?: number
+  batchProgress?: number
+  status?: string
+  elapsed?: number
+  errors?: number
+}
+
+const SAME_ORIGIN_FETCH: RequestInit = { credentials: 'same-origin' }
+
+async function postClientLog(payload: {
+  level: 'debug' | 'info' | 'warn' | 'error'
+  message: string
+  context?: unknown
+}) {
+  try {
+    await fetch('/api/client-logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      ...SAME_ORIGIN_FETCH,
+    })
+  } catch {
+    // telemetry must never throw
+  }
+}
+
+/**
+ * Load product pull progress: prefers `/sync-progress`, falls back to `/sync-status` durable row
+ * when the progress route fails (network / Safari) or returns 404 while a job may still exist.
+ */
+async function fetchProductSyncProgressOnce(connectionId: string): Promise<
+  | { ok: true; source: 'sync-progress' | 'sync-status'; progress: ProductSyncPanelProgress }
+  | { ok: false; message: string }
+> {
+  const mapFromSyncProgressApi = (p: Record<string, unknown>): ProductSyncPanelProgress => ({
+    current: Number(p.current) || 0,
+    total: Number(p.total) || 0,
+    synced: Number(p.synced) || 0,
+    batchesProcessed: 0,
+    totalBatches: Number(p.totalBatches) || 0,
+    currentBatch: p.currentBatch !== undefined ? Number(p.currentBatch) : undefined,
+    batchProgress: p.batchProgress !== undefined ? Number(p.batchProgress) : undefined,
+    status: typeof p.status === 'string' ? p.status : 'syncing',
+    elapsed: Number(p.elapsed) || 0,
+    errors: Number(p.errors) || 0,
+  })
+
+  let progressHttpError: string | null = null
+  try {
+    const progressResponse = await fetch(
+      `/api/connections/${connectionId}/sync-progress`,
+      SAME_ORIGIN_FETCH
+    )
+    if (progressResponse.ok) {
+      const progressData = await progressResponse.json()
+      if (progressData.success && progressData.progress) {
+        return {
+          ok: true,
+          source: 'sync-progress',
+          progress: mapFromSyncProgressApi(progressData.progress as Record<string, unknown>),
+        }
+      }
+      progressHttpError = progressData?.error || `HTTP ${progressResponse.status}`
+    } else {
+      progressHttpError = `HTTP ${progressResponse.status}`
+    }
+  } catch (e) {
+    progressHttpError = e instanceof Error ? e.message : 'Load failed'
+  }
+
+  try {
+    const statusResponse = await fetch(`/api/connections/${connectionId}/sync-status`, SAME_ORIGIN_FETCH)
+    if (statusResponse.ok) {
+      const data = await statusResponse.json()
+      const p = data?.currentSync?.products
+      if (data.success && p?.isRunning) {
+        const synced = Number(p.synced) || 0
+        const total = Number(p.total) || 0
+        const errors = Number(p.errors) || 0
+        return {
+          ok: true,
+          source: 'sync-status',
+          progress: {
+            current: synced + errors,
+            total,
+            synced,
+            batchesProcessed: 0,
+            totalBatches: 0,
+            status: 'syncing',
+            elapsed: 0,
+            errors,
+          },
+        }
+      }
+    }
+  } catch (e2) {
+    const m = e2 instanceof Error ? e2.message : 'Load failed'
+    return {
+      ok: false,
+      message: progressHttpError ? `${progressHttpError}; szinkron állapot: ${m}` : m,
+    }
+  }
+
+  return {
+    ok: false,
+    message: progressHttpError || 'Nem sikerült lekérni a szinkron előrehaladását.',
+  }
+}
+
 interface ConnectionsTableProps {
   initialConnections: WebshopConnection[]
 }
@@ -92,6 +208,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [savingMapping, setSavingMapping] = useState(false)
   const [testingConnectionId, setTestingConnectionId] = useState<string | null>(null)
   const [syncingConnectionId, setSyncingConnectionId] = useState<string | null>(null)
+  /** Last product-sync poll transport error (Safari / network); cleared on success. */
+  const [syncPollError, setSyncPollError] = useState<string | null>(null)
+  /** Shown when counts stay flat while work may still run (chunk / browser). */
+  const [syncPollWarning, setSyncPollWarning] = useState<string | null>(null)
   const [syncPanelExpanded, setSyncPanelExpanded] = useState(true)
   const [fullSyncConnectionId, setFullSyncConnectionId] = useState<string | null>(null)
   const [fullSyncStep, setFullSyncStep] = useState<'idle' | 'categories' | 'product_classes' | 'products' | 'manufacturers'>('idle')
@@ -119,9 +239,22 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   const [syncLogsTotal, setSyncLogsTotal] = useState(0)
   const [syncStatuses, setSyncStatuses] = useState<Map<string, any>>(new Map())
   const [loadingSyncStatuses, setLoadingSyncStatuses] = useState(false)
+  /** Product sync poll timer (`setTimeout` chain with backoff). */
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const currentSyncingConnectionRef = useRef<WebshopConnection | null>(null)
+  const syncProgressRef = useRef<{
+    current: number
+    total: number
+    synced: number
+    batchesProcessed: number
+    totalBatches: number
+    currentBatch?: number
+    batchProgress?: number
+    status?: string
+    elapsed?: number
+  } | null>(null)
   const syncProgressPanelRef = useRef<HTMLDivElement | null>(null)
+  const lastClientLogAtRef = useRef<number>(0)
   const [migrationDialogOpen, setMigrationDialogOpen] = useState(false)
   const [migrationConnection, setMigrationConnection] = useState<WebshopConnection | null>(null)
   const [orphanedConnections, setOrphanedConnections] = useState<Array<{
@@ -183,7 +316,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       for (const connection of connections) {
         if (connection.connection_type === 'shoprenter') {
           try {
-            const response = await fetch(`/api/connections/${connection.id}/sync-status`)
+            const response = await fetch(`/api/connections/${connection.id}/sync-status`, SAME_ORIGIN_FETCH)
             if (response.ok) {
               const data = await response.json()
               if (data.success) {
@@ -224,7 +357,7 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
+        clearTimeout(pollIntervalRef.current)
         pollIntervalRef.current = null
       }
       if (categoryPollIntervalRef.current) {
@@ -234,136 +367,208 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     }
   }, [])
 
-  // Helper function to start polling for a connection
+  // Helper function to start polling for a connection (backoff + sync-status fallback)
   const startPollingForConnection = (connection: WebshopConnection) => {
-    // Clear any existing polling interval
     if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
+      clearTimeout(pollIntervalRef.current)
       pollIntervalRef.current = null
     }
 
-    // Helper function to stop polling and cleanup
-    const stopPolling = () => {
+    setSyncPollError(null)
+    setSyncPollWarning(null)
+
+    const stopPollingTimer = () => {
       if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
+        clearTimeout(pollIntervalRef.current)
         pollIntervalRef.current = null
       }
-      // Don't clear syncingConnectionId or syncProgress - let panel stay visible
     }
 
-    // Track if we've already shown success/error message
     const completionShownRef = { current: false }
+    const consecutiveFailuresRef = { current: 0 }
+    const unchangedSyncedStreakRef = { current: 0 }
+    let lastSyncedSnapshot = -1
 
-    // Start polling for progress
-    pollIntervalRef.current = setInterval(async () => {
-      // Check if interval was cleared (shouldn't happen, but safety check)
-      if (!pollIntervalRef.current) {
+    const POLL_BASE_MS = 1500
+    const MAX_BACKOFF_MS = 16000
+    const STUCK_UNCHANGED_TICKS = 28
+    const CLIENT_POLL_MAX_MS = 3 * 60 * 60 * 1000
+    const pollStartedAt = Date.now()
+
+    const scheduleNext = (delayMs: number) => {
+      stopPollingTimer()
+      pollIntervalRef.current = setTimeout(() => {
+        void runPollTick()
+      }, delayMs) as unknown as NodeJS.Timeout
+    }
+
+    const finishPolling = () => {
+      stopPollingTimer()
+      completionShownRef.current = true
+    }
+
+    const runPollTick = async () => {
+      if (completionShownRef.current) {
+        return
+      }
+      if (Date.now() - pollStartedAt > CLIENT_POLL_MAX_MS) {
+        stopPollingTimer()
+        setSyncPollWarning(
+          'A kliens lekérdezése 3 óra után leállt (a szerveren a szinkron még futhat). Frissítse az oldalt az aktuális állapotért.'
+        )
+        toast.warning('Termék szinkron: kliens figyelés időkorlát (3 óra).')
+        return
+      }
+      if (!currentSyncingConnectionRef.current || currentSyncingConnectionRef.current.id !== connection.id) {
+        stopPollingTimer()
         return
       }
 
-      try {
-        const progressResponse = await fetch(`/api/connections/${connection.id}/sync-progress`)
-        if (progressResponse.ok) {
-          const progressData = await progressResponse.json()
-          if (progressData.success && progressData.progress) {
-            // Update progress with exact counts from server
-            setSyncProgress(prev => ({
-              current: progressData.progress.current || prev?.current || 0,
-              total: progressData.progress.total || prev?.total || 0,
-              synced: progressData.progress.synced || prev?.synced || 0,
-              batchesProcessed: 0, // Not tracked in progress API
-              totalBatches: progressData.progress.totalBatches || prev?.totalBatches || 0,
-              currentBatch: progressData.progress.currentBatch || prev?.currentBatch,
-              batchProgress: progressData.progress.batchProgress || prev?.batchProgress,
-              status: progressData.progress.status || prev?.status || 'syncing',
-              elapsed: progressData.progress.elapsed || prev?.elapsed || 0
-            }))
+      const result = await fetchProductSyncProgressOnce(connection.id)
 
-            // If stopped, stop polling (only once)
-            if (progressData.progress.status === 'stopped' && !completionShownRef.current) {
-              completionShownRef.current = true
-              // Clear interval FIRST before doing anything else
-              if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current)
-                pollIntervalRef.current = null
-              }
-              // Update progress with stopped status
-              setSyncProgress(prev => prev ? { ...prev, status: 'stopped' } : null)
-              return // Exit immediately to prevent further execution
-            } else if (progressData.progress.status === 'completed' && !completionShownRef.current) {
-              completionShownRef.current = true
-              // Clear interval FIRST before doing anything else
-              if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current)
-                pollIntervalRef.current = null
-              }
-              // Update progress with completed status
-              setSyncProgress(prev => prev ? { ...prev, status: 'completed' } : null)
-              toast.success(`${progressData.progress.synced} termék sikeresen szinkronizálva!${progressData.progress.errors > 0 ? ` (${progressData.progress.errors} hiba)` : ''}`, {
-                autoClose: 10000, // Show for 10 seconds
-              })
-              startTransition(() => {
-                router.refresh()
-              })
-              return // Exit immediately to prevent further execution
-            } else if (progressData.progress.status === 'error' && !completionShownRef.current) {
-              // Sync encountered an error
-              completionShownRef.current = true
-              // Clear interval FIRST before doing anything else
-              if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current)
-                pollIntervalRef.current = null
-              }
-              // Update progress with error status
-              setSyncProgress(prev => prev ? { ...prev, status: 'error' } : null)
-              toast.error(`Szinkronizálás hibával leállt: ${progressData.progress.synced}/${progressData.progress.total} termék szinkronizálva. ${progressData.progress.errors} hiba.`)
-              startTransition(() => {
-                router.refresh()
-              })
-              return // Exit immediately to prevent further execution
-            }
+      if (result.ok) {
+        consecutiveFailuresRef.current = 0
+        setSyncPollError(null)
+
+        const p = result.progress
+        const errCount = p.errors ?? 0
+
+        let stallWarning: string | null = null
+        if (p.status === 'syncing' && p.total > p.synced) {
+          if (p.synced === lastSyncedSnapshot) {
+            unchangedSyncedStreakRef.current += 1
+          } else {
+            unchangedSyncedStreakRef.current = 0
+            lastSyncedSnapshot = p.synced
           }
-        } else if (progressResponse.status === 404) {
-          // Progress not found - could mean:
-          // 1. Sync hasn't started yet (initial state)
-          // 2. Sync completed and progress was cleared (after 30 seconds)
-          // Only treat as completed if we had progress before and synced count matches total
-          if (syncProgress && syncProgress.synced > 0 && syncProgress.synced >= syncProgress.total) {
-            // Sync was completed and progress was cleared
-            if (!completionShownRef.current) {
-              completionShownRef.current = true
-              // Clear interval FIRST before doing anything else
-              if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current)
-                pollIntervalRef.current = null
-              }
-              // Update progress with completed status
-              setSyncProgress(prev => prev ? { ...prev, status: 'completed' } : null)
-              toast.success('Szinkronizálás befejezve!')
-              startTransition(() => {
-                router.refresh()
-              })
-            }
-            return // Exit immediately
+          if (unchangedSyncedStreakRef.current >= STUCK_UNCHANGED_TICKS) {
+            stallWarning =
+              'Az előrehaladás hosszabb ideje nem változik. A szinkron a szerveren folyhat (pl. következő chunk), vagy a böngésző megszakította a lekérdezéseket. Frissítse az oldalt; nagy katalógusnál a Vercelen állítsa be a SHOPRENTER_SYNC_CHUNK_SECRET környezeti változót.'
           }
-          // Otherwise, just wait - sync might be initializing
-          // Don't update status, keep polling
+        } else {
+          unchangedSyncedStreakRef.current = 0
+          lastSyncedSnapshot = p.synced
+        }
+
+        if (result.source === 'sync-status') {
+          setSyncPollWarning(
+            stallWarning
+              ? `A részletes előrehaladás API átmenetileg nem elérhető — a számok a szerver háttérállapotából jönnek (sync-status). ${stallWarning}`
+              : 'A részletes előrehaladás API átmenetileg nem elérhető; a számok a szerver háttérállapotából jönnek (sync-status). Érdemes frissíteni az oldalt vagy másik böngészőt próbálni.'
+          )
+        } else if (stallWarning) {
+          setSyncPollWarning(stallWarning)
+        } else {
+          setSyncPollWarning(null)
+        }
+
+        setSyncProgress(prev => ({
+          current: p.current || prev?.current || 0,
+          total: p.total || prev?.total || 0,
+          synced: p.synced || prev?.synced || 0,
+          batchesProcessed: 0,
+          totalBatches: p.totalBatches || prev?.totalBatches || 0,
+          currentBatch: p.currentBatch ?? prev?.currentBatch,
+          batchProgress: p.batchProgress ?? prev?.batchProgress,
+          status: p.status || prev?.status || 'syncing',
+          elapsed: p.elapsed ?? prev?.elapsed ?? 0,
+          errors: errCount,
+        }))
+
+        if (p.status === 'stopped' && !completionShownRef.current) {
+          finishPolling()
+          setSyncProgress(prev => (prev ? { ...prev, status: 'stopped' } : null))
+          setSyncPollWarning(null)
           return
         }
-      } catch (pollError) {
-        console.error('Error polling progress:', pollError)
-        // On repeated errors, stop polling after 5 consecutive failures
-        // (This is handled by the timeout below)
-      }
-    }, 1000) // Poll every second
+        if (p.status === 'completed' && !completionShownRef.current) {
+          finishPolling()
+          setSyncProgress(prev => (prev ? { ...prev, status: 'completed' } : null))
+          setSyncPollWarning(null)
+          toast.success(
+            `${p.synced} termék sikeresen szinkronizálva!${errCount > 0 ? ` (${errCount} hiba)` : ''}`,
+            { autoClose: 10000 }
+          )
+          startTransition(() => {
+            router.refresh()
+          })
+          return
+        }
+        if (p.status === 'error' && !completionShownRef.current) {
+          finishPolling()
+          setSyncProgress(prev => (prev ? { ...prev, status: 'error' } : null))
+          setSyncPollWarning(null)
+          toast.error(
+            `Szinkronizálás hibával leállt: ${p.synced}/${p.total} termék szinkronizálva. ${errCount} hiba.`
+          )
+          startTransition(() => {
+            router.refresh()
+          })
+          return
+        }
 
-    // Cleanup polling after 10 minutes (safety timeout)
-    setTimeout(() => {
-      if (pollIntervalRef.current) {
-        stopPolling()
-        toast.warning('Szinkronizálás timeout - a folyamat leállt')
+        scheduleNext(POLL_BASE_MS)
+        return
       }
-    }, 10 * 60 * 1000)
+
+      if (result.ok === false) {
+        consecutiveFailuresRef.current += 1
+        const backoff = Math.min(MAX_BACKOFF_MS, POLL_BASE_MS * 2 ** (consecutiveFailuresRef.current - 1))
+        setSyncPollWarning(null)
+        setSyncPollError(
+          `${result.message} Újrapróbálkozás kb. ${Math.round(backoff / 1000)} mp múlva (${consecutiveFailuresRef.current}. próba).`
+        )
+
+        const prev = syncProgressRef.current
+        const logCtx = {
+          connectionId: connection.id,
+          attempt: consecutiveFailuresRef.current,
+          backoffMs: backoff,
+          message: result.message,
+          lastKnownProgress: prev,
+          page: {
+            href: typeof window !== 'undefined' ? window.location.href : null,
+            visibility: typeof document !== 'undefined' ? document.visibilityState : null,
+          },
+          browser: {
+            ua: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+          },
+        }
+        console.error('[ProductSyncPoll] progress poll failed', logCtx)
+
+        const now = Date.now()
+        const shouldSend =
+          consecutiveFailuresRef.current === 1 ||
+          consecutiveFailuresRef.current === 2 ||
+          consecutiveFailuresRef.current % 5 === 0
+        if (shouldSend && now - lastClientLogAtRef.current > 8000) {
+          lastClientLogAtRef.current = now
+          void postClientLog({
+            level: 'error',
+            message: 'Product sync polling failed (browser-side)',
+            context: logCtx,
+          })
+        }
+
+        if (prev && prev.synced > 0 && prev.total > 0 && prev.synced >= prev.total) {
+          if (!completionShownRef.current) {
+            finishPolling()
+            setSyncProgress(p => (p ? { ...p, status: 'completed' } : null))
+            setSyncPollError(null)
+            setSyncPollWarning(null)
+            toast.success('Szinkronizálás befejezve!')
+            startTransition(() => {
+              router.refresh()
+            })
+          }
+          return
+        }
+
+        scheduleNext(backoff)
+      }
+    }
+
+    void runPollTick()
   }
 
   // Check for active syncs on mount and restore state (only for actively running syncs)
@@ -371,35 +576,30 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     const checkActiveSyncs = async () => {
       for (const connection of connections) {
         try {
-          const response = await fetch(`/api/connections/${connection.id}/sync-progress`)
-          if (response.ok) {
-            const data = await response.json()
-            // Only restore state for actively running syncs, not stopped/completed/error
-            if (data.success && data.progress && data.progress.status === 'syncing') {
-              // Found an active sync, restore state
-              setSyncingConnectionId(connection.id)
-              currentSyncingConnectionRef.current = connection
-              setSyncProgress({
-                current: data.progress.current || 0,
-                total: data.progress.total || 0,
-                synced: data.progress.synced || 0,
-                batchesProcessed: 0,
-                totalBatches: 0,
-                status: data.progress.status,
-                elapsed: data.progress.elapsed || 0
-              })
-              setSyncPanelExpanded(true)
-              // Restart polling
-                startPollingForConnection(connection)
-              break
-            }
+          const result = await fetchProductSyncProgressOnce(connection.id)
+          if (result.ok && result.progress.status === 'syncing') {
+            setSyncingConnectionId(connection.id)
+            currentSyncingConnectionRef.current = connection
+            setSyncProgress({
+              current: result.progress.current || 0,
+              total: result.progress.total || 0,
+              synced: result.progress.synced || 0,
+              batchesProcessed: 0,
+              totalBatches: result.progress.totalBatches || 0,
+              status: result.progress.status,
+              elapsed: result.progress.elapsed || 0,
+              errors: result.progress.errors,
+            })
+            setSyncPanelExpanded(true)
+            startPollingForConnection(connection)
+            break
           }
-        } catch (error) {
-          // Ignore errors
+        } catch {
+          // Ignore
         }
       }
     }
-    
+
     checkActiveSyncs()
   }, []) // Only on mount
 
@@ -411,7 +611,10 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
     try {
       // First, fetch the latest progress to get the most accurate count
-      const progressResponse = await fetch(`/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress`)
+      const progressResponse = await fetch(
+        `/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress`,
+        SAME_ORIGIN_FETCH
+      )
       if (progressResponse.ok) {
         const progressData = await progressResponse.json()
         if (progressData.success && progressData.progress) {
@@ -426,15 +629,18 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
       // Then stop the sync
       const stopResponse = await fetch(`/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress/stop`, {
-        method: 'POST'
+        method: 'POST',
+        ...SAME_ORIGIN_FETCH,
       })
       
       if (stopResponse.ok) {
         // Stop polling immediately
         if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current)
+          clearTimeout(pollIntervalRef.current)
           pollIntervalRef.current = null
         }
+        setSyncPollError(null)
+        setSyncPollWarning(null)
         
         // Ensure status is set to stopped
         setSyncProgress(prev => prev ? { ...prev, status: 'stopped' } : null)
@@ -458,7 +664,12 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     batchProgress?: number
     status?: string
     elapsed?: number
+    errors?: number
   } | null>(null)
+
+  useEffect(() => {
+    syncProgressRef.current = syncProgress
+  }, [syncProgress])
   
   const [syncingCategoriesConnectionId, setSyncingCategoriesConnectionId] = useState<string | null>(null)
   const [categorySyncProgress, setCategorySyncProgress] = useState<{
@@ -1176,20 +1387,18 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       
       // Fetch latest progress to ensure we have current data
       try {
-        const progressResponse = await fetch(`/api/connections/${connection.id}/sync-progress`)
-        if (progressResponse.ok) {
-          const progressData = await progressResponse.json()
-          if (progressData.success && progressData.progress) {
-            setSyncProgress({
-              current: progressData.progress.current || 0,
-              total: progressData.progress.total || 0,
-              synced: progressData.progress.synced || 0,
-              batchesProcessed: 0,
-              totalBatches: 0,
-              status: progressData.progress.status,
-              elapsed: progressData.progress.elapsed || 0
-            })
-          }
+        const reopened = await fetchProductSyncProgressOnce(connection.id)
+        if (reopened.ok) {
+          setSyncProgress({
+            current: reopened.progress.current || 0,
+            total: reopened.progress.total || 0,
+            synced: reopened.progress.synced || 0,
+            batchesProcessed: 0,
+            totalBatches: reopened.progress.totalBatches || 0,
+            status: reopened.progress.status,
+            elapsed: reopened.progress.elapsed || 0,
+            errors: reopened.progress.errors,
+          })
         }
       } catch (error) {
         console.error('Error fetching progress:', error)
@@ -1228,10 +1437,9 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     const startedAt = Date.now()
     const timeoutMs = 30 * 60 * 1000
     while (Date.now() - startedAt < timeoutMs) {
-      const res = await fetch(`/api/connections/${connectionId}/sync-progress`)
-      if (res.ok) {
-        const data = await res.json()
-        const status = data?.progress?.status
+      const polled = await fetchProductSyncProgressOnce(connectionId)
+      if (polled.ok) {
+        const status = polled.progress.status
         if (status === 'completed') return
         if (status === 'error' || status === 'stopped') {
           throw new Error('Termék szinkronizálás nem fejeződött be sikeresen.')
@@ -1738,6 +1946,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
     try {
       setSyncingConnectionId(connection.id)
       currentSyncingConnectionRef.current = connection
+      setSyncPollError(null)
+      setSyncPollWarning(null)
       setSyncProgress({ current: 0, total: 0, synced: 0, batchesProcessed: 0, totalBatches: 0 })
       
       // Start sync (non-blocking)
@@ -1746,7 +1956,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ force: forceSync })
+        body: JSON.stringify({ force: forceSync }),
+        ...SAME_ORIGIN_FETCH,
       })
 
       if (!response.ok) {
@@ -1849,12 +2060,14 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
       toast.error(`Hiba a termékek szinkronizálásakor: ${error instanceof Error ? error.message : 'Ismeretlen hiba'}`)
       // Clear polling if it exists
       if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
+        clearTimeout(pollIntervalRef.current)
         pollIntervalRef.current = null
       }
       setSyncingConnectionId(null)
       currentSyncingConnectionRef.current = null
       setSyncProgress(null)
+      setSyncPollError(null)
+      setSyncPollWarning(null)
     }
   }
 
@@ -2764,7 +2977,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                     if (currentSyncingConnectionRef.current) {
                       try {
                         await fetch(`/api/connections/${currentSyncingConnectionRef.current.id}/sync-progress`, {
-                          method: 'DELETE'
+                          method: 'DELETE',
+                          ...SAME_ORIGIN_FETCH,
                         })
                       } catch (error) {
                         console.error('Error clearing progress:', error)
@@ -2774,6 +2988,8 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
                     setSyncingConnectionId(null)
                     currentSyncingConnectionRef.current = null
                     setSyncProgress(null)
+                    setSyncPollError(null)
+                    setSyncPollWarning(null)
                   }}
                 >
                   Bezárás
@@ -2790,6 +3006,18 @@ export default function ConnectionsTable({ initialConnections }: ConnectionsTabl
 
           {syncPanelExpanded && (
             <Box>
+              {syncPollError && (
+                <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSyncPollError(null)}>
+                  <AlertTitle>Lekérdezési hiba</AlertTitle>
+                  {syncPollError}
+                </Alert>
+              )}
+              {syncPollWarning && !syncPollError && (
+                <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setSyncPollWarning(null)}>
+                  <AlertTitle>Figyelem</AlertTitle>
+                  {syncPollWarning}
+                </Alert>
+              )}
               {syncProgress && syncProgress.total > 0 ? (
                 <>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
