@@ -10,6 +10,8 @@ const SAME_WEEKDAY_LOOKBACK_DAYS = 35
 
 type HoursMode = 'open' | 'all'
 
+type FootcounterDashboardStatsRpcV2 = FootcounterDashboardStats
+
 function budapestDayKey(isoUtc: string): string {
   const d = new Date(isoUtc)
   return new Intl.DateTimeFormat('en-CA', {
@@ -107,6 +109,76 @@ async function countCrossings(deviceId: string, direction: 'in' | 'out'): Promis
   return count ?? 0
 }
 
+function isHoursMode(v: unknown): v is HoursMode {
+  return v === 'open' || v === 'all'
+}
+
+function looksLikeDashboardStats(v: any): v is FootcounterDashboardStats {
+  return (
+    v &&
+    typeof v === 'object' &&
+    typeof v.device_slug === 'string' &&
+    typeof v.today_in === 'number' &&
+    typeof v.today_out === 'number' &&
+    typeof v.total_in === 'number' &&
+    typeof v.total_out === 'number' &&
+    Array.isArray(v.series_7d) &&
+    Array.isArray(v.series_today_hourly) &&
+    v.heatmap_in &&
+    typeof v.heatmap_in === 'object' &&
+    Array.isArray(v.heatmap_in.matrix)
+  )
+}
+
+async function tryRpcDashboardStatsV2(
+  deviceSlug: string,
+  hoursMode: HoursMode
+): Promise<FootcounterDashboardStats | null> {
+  const { data, error } = await supabaseServer.rpc('footcounter_dashboard_stats_v2', {
+    p_device_slug: deviceSlug,
+    p_hours_mode: hoursMode
+  })
+
+  if (error) {
+    return null
+  }
+
+  // Supabase returns json/jsonb RPC as object in JS.
+  const parsed = data as unknown as FootcounterDashboardStatsRpcV2
+  if (!looksLikeDashboardStats(parsed)) return null
+  return parsed
+}
+
+async function fetchCrossingsPaged(deviceId: string, sinceIso: string) {
+  const pageSize = 1000
+  let offset = 0
+  const out: Array<{ occurred_at: string; direction: string }> = []
+
+  while (true) {
+    const { data, error } = await supabaseServer
+      .from('footcounter_crossings')
+      .select('occurred_at, direction')
+      .eq('device_id', deviceId)
+      .gte('occurred_at', sinceIso)
+      .order('occurred_at', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+
+    if (error) {
+      console.error('footcounter_crossings paged select:', error)
+      throw new Error(error.message)
+    }
+
+    const rows = (data ?? []) as Array<{ occurred_at: string; direction: string }>
+    out.push(...rows)
+    if (rows.length < pageSize) break
+    offset += pageSize
+    // Safety net to avoid infinite loops if server misbehaves.
+    if (offset > 100_000) break
+  }
+
+  return out
+}
+
 /**
  * Dashboard stats without DB RPC (works when footcounter_dashboard_stats is missing).
  */
@@ -114,7 +186,12 @@ export async function getFootcounterDashboardStats(
   deviceSlug: string,
   opts?: { hoursMode?: HoursMode }
 ): Promise<FootcounterDashboardStats> {
-  const hoursMode: HoursMode = opts?.hoursMode ?? 'open'
+  const hoursMode: HoursMode = isHoursMode(opts?.hoursMode) ? opts!.hoursMode! : 'open'
+
+  // Preferred: DB-side aggregation (avoids PostgREST 1000-row limit, avoids Intl TZ quirks).
+  const viaRpc = await tryRpcDashboardStatsV2(deviceSlug, hoursMode)
+  if (viaRpc) return viaRpc
+
   const { data: device, error: devErr } = await supabaseServer
     .from('footcounter_devices')
     .select('id, last_seen_at')
@@ -157,17 +234,8 @@ export async function getFootcounterDashboardStats(
   ])
   const since = new Date(Date.now() - CROSSINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: rows, error: rowErr } = await supabaseServer
-    .from('footcounter_crossings')
-    .select('occurred_at, direction')
-    .eq('device_id', deviceId)
-    .gte('occurred_at', since)
-    .order('occurred_at', { ascending: true })
-
-  if (rowErr) {
-    console.error('footcounter_crossings select:', rowErr)
-    throw new Error(rowErr.message)
-  }
+  // Fallback: client-side aggregation. MUST page because PostgREST default limit is 1000 rows.
+  const rows = await fetchCrossingsPaged(deviceId, since)
 
   const todayKey = budapestTodayKey()
   const heatmapCutoffKey = budapestDayKeyDaysAgo(HEATMAP_LOOKBACK_DAYS)
