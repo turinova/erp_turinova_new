@@ -15,6 +15,7 @@ import { extractShopNameFromUrl, extractParentProductId } from '@/lib/shoprenter
 import { syncProductToDatabase, ensureManufacturerExists } from './sync-product-db'
 import { syncSingleProductFromShopRenter } from '@/lib/sync-single-shoprenter-product'
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
+import { toShopRenterUpdatedAfterParam } from '@/lib/shoprenter-datetime'
 
 /** Vercel Pro: allow long product sync batches (ShopRenter batch + DB writes). Hobby plan caps lower. */
 export const maxDuration = 800
@@ -100,6 +101,240 @@ function createSerializedQueue() {
   }
 }
 
+/** Wall-clock budget per serverless invocation chunk (then new POST continues). */
+function getProductSyncChunkBudgetMs(): number {
+  const raw = Number.parseInt(process.env.SYNC_PRODUCTS_CHUNK_BUDGET_MS || '', 10)
+  if (Number.isFinite(raw) && raw >= 45_000 && raw <= 14 * 60_000) {
+    return raw
+  }
+  return 180_000
+}
+
+export type ProductExtendChunkContext = {
+  startPage: number
+  pageCount: number
+  totalEstimated: number
+  firstListData: any | null
+  preSyncedJobId: string | null
+  existingAuditLogId: string | null
+  chunkBudgetMs: number
+  scheduleContinuation?: () => Promise<void>
+}
+
+/**
+ * Trusted internal continuation: new HTTP invocation (fresh maxDuration) with forwarded cookies.
+ * Set SHOPRENTER_SYNC_CHUNK_SECRET in Vercel env for automatic chaining; otherwise only manual re-POST works.
+ */
+async function handleTrustedProductSyncChunkResume(
+  request: NextRequest,
+  supabase: any,
+  connectionId: string,
+  jobId: string
+): Promise<NextResponse> {
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) {
+    return NextResponse.json({ success: false, error: 'Nincs bejelentkezve' }, { status: 401 })
+  }
+
+  const { data: job, error: jobErr } = await supabase
+    .from('sync_jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('connection_id', connectionId)
+    .maybeSingle()
+
+  if (jobErr || !job || job.status !== 'running') {
+    return NextResponse.json(
+      { success: false, error: 'Nincs folytatható futó szinkron ehhez a feladathoz.' },
+      { status: 404 }
+    )
+  }
+
+  const meta =
+    job.metadata && typeof job.metadata === 'object' ? (job.metadata as Record<string, unknown>) : {}
+  if (meta.syncType !== 'product') {
+    return NextResponse.json({ success: false, error: 'Érvénytelen feladat típus' }, { status: 400 })
+  }
+
+  const startPage = Math.max(0, Number((meta.checkpoint as { page?: number } | undefined)?.page ?? 0))
+  const pageCount = Math.max(1, Number(meta.pageCount ?? 1))
+  const pageSize = Math.max(1, Number(meta.pageSize ?? 200))
+  const updatedAfter =
+    meta.updatedAfter === null || meta.updatedAfter === undefined
+      ? null
+      : typeof meta.updatedAfter === 'string'
+        ? meta.updatedAfter
+        : null
+  const forceSync = meta.mode === 'full'
+
+  if (startPage >= pageCount) {
+    try {
+      await finalizeSyncJob(supabase, jobId, 'completed', {
+        synced: job.synced_units ?? 0,
+        errors: job.error_units ?? 0,
+        total: job.total_units ?? 0,
+        errorMessage: null,
+      })
+      if (job.audit_log_id) {
+        await supabase
+          .from('sync_audit_logs')
+          .update({
+            synced_count: job.synced_units ?? 0,
+            error_count: job.error_units ?? 0,
+            completed_at: new Date().toISOString(),
+            status: 'completed',
+          })
+          .eq('id', job.audit_log_id)
+      }
+    } catch (e) {
+      console.warn('[SYNC] resume noop finalize:', e)
+    }
+    clearProgress(connectionId)
+    return NextResponse.json({ success: true, message: 'Szinkron már befejezve.', noop: true })
+  }
+
+  const tenant = await getTenantFromSession()
+  const tenantId = tenant?.id
+
+  const connection = await getConnectionById(connectionId)
+  if (!connection || connection.connection_type !== 'shoprenter') {
+    return NextResponse.json({ success: false, error: 'Kapcsolat nem található' }, { status: 404 })
+  }
+  if (!connection.is_active || !connection.username || !connection.password) {
+    return NextResponse.json({ success: false, error: 'Kapcsolat nem használható' }, { status: 400 })
+  }
+
+  const credentials = `${connection.username}:${connection.password}`
+  const authHeader = `Basic ${Buffer.from(credentials).toString('base64')}`
+  let apiUrl = connection.api_url.replace(/\/$/, '')
+  if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+    apiUrl = `http://${apiUrl}`
+  }
+
+  const rateLimiter = getShopRenterRateLimiter(tenantId)
+  const buildListUrl = (page: number) => {
+    const params = new URLSearchParams()
+    params.set('full', '1')
+    params.set('limit', String(pageSize))
+    params.set('page', String(page))
+    if (updatedAfter) params.set('updatedAfter', updatedAfter)
+    return `${apiUrl}/productExtend?${params.toString()}`
+  }
+
+  const listRes = await rateLimiter.execute(() =>
+    fetch(buildListUrl(startPage), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: authHeader,
+      },
+      signal: AbortSignal.timeout(30000),
+    })
+  )
+  if (!listRes.ok) {
+    const t = await listRes.text().catch(() => '')
+    return NextResponse.json(
+      { success: false, error: `API hiba (oldal ${startPage}): ${listRes.status} ${t.slice(0, 200)}` },
+      { status: listRes.status }
+    )
+  }
+  const listText = await listRes.text()
+  const firstListData = JSON.parse(listText)
+
+  const origin = request.nextUrl.origin
+  const cookieHeader = request.headers.get('cookie') ?? ''
+  const chunkBudgetMs = getProductSyncChunkBudgetMs()
+
+  updateProgress(connectionId, {
+    total: job.total_units ?? 0,
+    synced: job.synced_units ?? 0,
+    errors: job.error_units ?? 0,
+    current: (job.synced_units ?? 0) + (job.error_units ?? 0),
+    status: 'syncing',
+    shouldStop: false,
+    currentBatch: startPage + 1,
+    totalBatches: pageCount,
+    batchProgress: 0,
+    syncJobId: jobId,
+  })
+
+  const scheduleContinuation = async () => {
+    const sec = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
+    if (!sec) {
+      console.warn('[SYNC] SHOPRENTER_SYNC_CHUNK_SECRET nincs beállítva — automatikus chunk-lánc nem indul.')
+      return
+    }
+    const res = await fetch(`${origin}/api/connections/${connectionId}/sync-products`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: cookieHeader,
+        'x-sync-chunk-resume': sec,
+      },
+      body: JSON.stringify({ resumeChunkForJobId: jobId }),
+    }).catch((e) => {
+      console.error('[SYNC] chunk continuation fetch failed:', e)
+      return null
+    })
+    if (res && !res.ok) {
+      console.error('[SYNC] chunk continuation HTTP', res.status, await res.text().catch(() => ''))
+    }
+  }
+
+  after(async () => {
+    try {
+      await processProductExtendPagesInBackground(
+        supabase,
+        connection,
+        connectionId,
+        forceSync,
+        apiUrl,
+        authHeader,
+        updatedAfter,
+        pageSize,
+        {
+          startPage,
+          pageCount,
+          totalEstimated: job.total_units ?? pageCount * pageSize,
+          firstListData,
+          preSyncedJobId: jobId,
+          existingAuditLogId: job.audit_log_id ?? null,
+          chunkBudgetMs,
+          scheduleContinuation,
+        },
+        tenantId,
+        user.id,
+        user.email || null
+      )
+    } catch (error) {
+      console.error('[SYNC] after() chunk resume error:', error)
+      updateProgress(connectionId, {
+        status: 'error',
+        errors: getProgress(connectionId)?.errors ?? 0,
+      })
+      try {
+        await finalizeSyncJob(supabase, jobId, 'failed', {
+          synced: getProgress(connectionId)?.synced ?? job.synced_units ?? 0,
+          errors: getProgress(connectionId)?.errors ?? job.error_units ?? 0,
+          total: getProgress(connectionId)?.total ?? job.total_units ?? 0,
+          errorMessage: error instanceof Error ? error.message : 'Ismeretlen hiba',
+        })
+      } catch (e) {
+        console.warn('[SYNC] finalize after chunk resume error:', e)
+      }
+      clearProgress(connectionId)
+    }
+  })
+
+  return NextResponse.json({
+    success: true,
+    message: 'Szinkronizálás chunk folytatva',
+    resumed: true,
+    startPage,
+    pageCount,
+  })
+}
 
 /**
  * POST /api/connections/[id]/sync-products
@@ -113,10 +348,13 @@ export async function POST(
   try {
     let product_id: string | undefined
     let forceSync = false
+    let resumeChunkForJobId: string | undefined
     try {
       const body = await request.json().catch(() => ({}))
       product_id = body?.product_id
       forceSync = body?.force === true
+      resumeChunkForJobId =
+        typeof body?.resumeChunkForJobId === 'string' ? body.resumeChunkForJobId : undefined
     } catch {
       // Body might be empty, that's OK
       product_id = undefined
@@ -138,6 +376,14 @@ export async function POST(
         error: 'Authentication failed. Please log out and log back in, then try again.',
         details: userError?.message || 'Session expired or invalid'
       }, { status: 401 })
+    }
+
+    const chunkSecret = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
+    const isTrustedChunkResume =
+      Boolean(resumeChunkForJobId && chunkSecret && request.headers.get('x-sync-chunk-resume') === chunkSecret)
+
+    if (isTrustedChunkResume) {
+      return await handleTrustedProductSyncChunkResume(request, supabase, connectionId, resumeChunkForJobId!)
     }
 
     // Reconcile stale DB jobs (server restart / timeout), then block concurrent syncs
@@ -251,7 +497,8 @@ export async function POST(
 
     let updatedAfter: string | null = null
     if (useIncrementalSync) {
-      const { data: lastCompleted } = await supabase
+      let updatedAfterRaw: string | null = null
+      const { data: lastCompletedJob } = await supabase
         .from('sync_jobs')
         .select('completed_at')
         .eq('connection_id', connectionId)
@@ -260,8 +507,36 @@ export async function POST(
         .order('completed_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      updatedAfter = lastCompleted?.completed_at ?? null
-      console.log(`[SYNC] Incremental sync via productExtend.updatedAfter: ${updatedAfter ?? '(none)'}`)
+      updatedAfterRaw = lastCompletedJob?.completed_at ?? null
+
+      if (!updatedAfterRaw) {
+        const { data: lastAudit } = await supabase
+          .from('sync_audit_logs')
+          .select('completed_at')
+          .eq('connection_id', connectionId)
+          .eq('sync_direction', 'from_shoprenter')
+          .eq('status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        updatedAfterRaw = lastAudit?.completed_at ?? null
+      }
+
+      updatedAfter = updatedAfterRaw ? toShopRenterUpdatedAfterParam(updatedAfterRaw) : null
+      if (updatedAfterRaw && !updatedAfter) {
+        console.warn('[SYNC] Unparseable completed_at for incremental sync:', updatedAfterRaw)
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Az utolsó sikeres szinkron időpontja érvénytelen formátumú. Próbáljon teljes termék szinkront, vagy ellenőrizze az előzményeket.',
+          },
+          { status: 400 }
+        )
+      }
+      console.log(
+        `[SYNC] Incremental sync via productExtend.updatedAfter: ${updatedAfter ?? '(none)'} (raw: ${updatedAfterRaw ?? 'n/a'})`
+      )
     } else {
       console.log(`[SYNC] Full sync via productExtend pages`)
     }
@@ -408,6 +683,37 @@ export async function POST(
       }
     }
 
+    const origin = request.nextUrl.origin
+    const cookieHeader = request.headers.get('cookie') ?? ''
+    const chunkBudgetMs = getProductSyncChunkBudgetMs()
+
+    const scheduleContinuation = async () => {
+      const sec = process.env.SHOPRENTER_SYNC_CHUNK_SECRET
+      if (!sec || !preSyncedJobId) {
+        if (!sec) {
+          console.warn(
+            '[SYNC] SHOPRENTER_SYNC_CHUNK_SECRET nincs beállítva — a következő chunk nem indul automatikusan. Állítsa be a Vercel env-ben, vagy indítsa újra a szinkront.'
+          )
+        }
+        return
+      }
+      const res = await fetch(`${origin}/api/connections/${connectionId}/sync-products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: cookieHeader,
+          'x-sync-chunk-resume': sec,
+        },
+        body: JSON.stringify({ resumeChunkForJobId: preSyncedJobId }),
+      }).catch((e) => {
+        console.error('[SYNC] chunk continuation fetch failed:', e)
+        return null
+      })
+      if (res && !res.ok) {
+        console.error('[SYNC] chunk continuation HTTP', res.status, await res.text().catch(() => ''))
+      }
+    }
+
     // Run heavy work after response; Next/Vercel waitUntil keeps invocation alive until done (maxDuration)
     after(async () => {
       try {
@@ -420,11 +726,19 @@ export async function POST(
           authHeader,
           updatedAfter,
           PAGE_SIZE,
-          firstData,
+          {
+            startPage: 0,
+            pageCount: Math.max(1, pageCount || 1),
+            totalEstimated,
+            firstListData: firstData,
+            preSyncedJobId,
+            existingAuditLogId: null,
+            chunkBudgetMs,
+            scheduleContinuation,
+          },
           tenantId,
           user.id,
-          user.email || null,
-          preSyncedJobId
+          user.email || null
         )
       } catch (error) {
         console.error('[SYNC] after() sync error:', error)
@@ -476,12 +790,7 @@ export async function POST(
 
 /**
  * Page-based product sync using `GET /productExtend?full=1&limit=200&page=N` (and optional `updatedAfter`).
- *
- * Why: ShopRenter docs enforce 3 req/sec and recommend not sending batch requests asynchronously.
- * This implementation:
- * - processes pages sequentially (no concurrent `/batch`)
- * - uses the tenant limiter (3 req/sec) for ALL ShopRenter calls in this worker
- * - reports progress as "page X / pageCount" (currentBatch / totalBatches)
+ * Chunks by wall-clock budget (`SYNC_PRODUCTS_CHUNK_BUDGET_MS`) and continues via trusted POST + fresh invocation.
  */
 async function processProductExtendPagesInBackground(
   supabase: any,
@@ -492,12 +801,22 @@ async function processProductExtendPagesInBackground(
   authHeader: string,
   updatedAfter: string | null,
   pageSize: number,
-  firstListData: any,
+  chunk: ProductExtendChunkContext,
   tenantId?: string,
   userId?: string,
-  userEmail?: string | null,
-  preSyncedJobId?: string | null
+  userEmail?: string | null
 ) {
+  const {
+    startPage,
+    pageCount,
+    totalEstimated,
+    firstListData,
+    preSyncedJobId,
+    existingAuditLogId,
+    chunkBudgetMs,
+    scheduleContinuation,
+  } = chunk
+
   const rateLimiter = getShopRenterRateLimiter(tenantId)
   const PRODUCT_CONCURRENCY = Math.max(
     1,
@@ -514,11 +833,6 @@ async function processProductExtendPagesInBackground(
     return []
   }
 
-  const extractPageCount = (data: any): number => {
-    const raw = data?.pageCount ?? data?.response?.pageCount ?? 0
-    return typeof raw === 'string' ? parseInt(raw, 10) : raw
-  }
-
   const buildListUrl = (page: number) => {
     const params = new URLSearchParams()
     params.set('full', '1')
@@ -528,44 +842,42 @@ async function processProductExtendPagesInBackground(
     return `${apiUrl}/productExtend?${params.toString()}`
   }
 
-  const syncStartTime = new Date()
-  const pageCount = extractPageCount(firstListData) || 1
-  const totalEstimated = pageCount * pageSize
-
   let syncedCount = 0
   let errorCount = 0
 
-  // Create audit log (best-effort; non-fatal)
-  let auditLogId: string | null = null
-  try {
-    if (tenantId && userId) {
-      const syncType = forceSync ? 'full' : 'incremental'
-      const { data: auditLog, error: auditError } = await supabase
-        .from('sync_audit_logs')
-        .insert({
-          connection_id: connectionId,
-          sync_type: syncType,
-          sync_direction: 'from_shoprenter',
-          user_id: userId,
-          user_email: userEmail,
-          total_products: totalEstimated,
-          synced_count: 0,
-          error_count: 0,
-          skipped_count: 0,
-          started_at: syncStartTime.toISOString(),
-          status: 'running',
-          metadata: {
-            pageSize: pageSize,
-            pageCount,
-            updatedAfter,
-          },
-        })
-        .select('id')
-        .single()
-      if (!auditError && auditLog?.id) auditLogId = auditLog.id
+  let auditLogId: string | null = existingAuditLogId || null
+  if (!auditLogId) {
+    const syncStartTime = new Date()
+    try {
+      if (tenantId && userId) {
+        const syncType = forceSync ? 'full' : 'incremental'
+        const { data: auditLog, error: auditError } = await supabase
+          .from('sync_audit_logs')
+          .insert({
+            connection_id: connectionId,
+            sync_type: syncType,
+            sync_direction: 'from_shoprenter',
+            user_id: userId,
+            user_email: userEmail,
+            total_products: totalEstimated,
+            synced_count: 0,
+            error_count: 0,
+            skipped_count: 0,
+            started_at: syncStartTime.toISOString(),
+            status: 'running',
+            metadata: {
+              pageSize: pageSize,
+              pageCount,
+              updatedAfter,
+            },
+          })
+          .select('id')
+          .single()
+        if (!auditError && auditLog?.id) auditLogId = auditLog.id
+      }
+    } catch (e) {
+      console.warn('[SYNC] audit log init error (non-fatal):', e)
     }
-  } catch (e) {
-    console.warn('[SYNC] audit log init error (non-fatal):', e)
   }
 
   if (preSyncedJobId && auditLogId) {
@@ -597,7 +909,6 @@ async function processProductExtendPagesInBackground(
     )
   }
 
-  // Serialize progress flush calls across concurrent workers to avoid thundering herds.
   const flushExclusive = createSerializedQueue()
   let lastFlushMs = 0
   const flushThrottled = async (force = false) => {
@@ -617,26 +928,35 @@ async function processProductExtendPagesInBackground(
     return false
   }
 
-  const updateCheckpoint = async (page: number) => {
+  /** `page` = next page index to process (0-based). */
+  const updateCheckpoint = async (nextPageIndex: number) => {
     if (!preSyncedJobId) return
     try {
       const { data: row } = await supabase.from('sync_jobs').select('metadata').eq('id', preSyncedJobId).maybeSingle()
-      const metadata = (row?.metadata && typeof row.metadata === 'object') ? row.metadata : {}
-      metadata.checkpoint = { page, updatedAfter }
+      const metadata = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {}
+      metadata.checkpoint = { page: nextPageIndex, updatedAfter }
       await supabase.from('sync_jobs').update({ metadata }).eq('id', preSyncedJobId)
     } catch (e) {
-      // Non-fatal: progress row is more important than metadata.
       console.warn('[SYNC] Failed to update sync_jobs checkpoint metadata (non-fatal):', e)
     }
   }
 
+  const SYNC_HEARTBEAT_MS = 60_000
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  if (preSyncedJobId) {
+    heartbeatTimer = setInterval(() => {
+      void flushExclusive(() => flush(true))
+    }, SYNC_HEARTBEAT_MS)
+  }
+
+  const chunkStartedAt = Date.now()
+
   try {
-    // Page loop (page 0 is already fetched in POST)
-    for (let page = 0; page < pageCount; page++) {
+    for (let page = startPage; page < pageCount; page++) {
       if (await checkStop()) break
 
       const listData =
-        page === 0
+        page === startPage && firstListData != null
           ? firstListData
           : await (async () => {
               const url = buildListUrl(page)
@@ -672,12 +992,13 @@ async function processProductExtendPagesInBackground(
         batchProgress: items.length,
       })
       await flush(false)
-      await updateCheckpoint(page)
 
-      // Prefetch attribute description/widget metadata for this page (best-effort)
-      let attributeDescriptionsMap: Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }> | undefined
+      let attributeDescriptionsMap:
+        | Map<string, { display_name: string | null; prefix: string | null; postfix: string | null }>
+        | undefined
       try {
-        const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> = []
+        const attributeRequests: Array<{ attributeId: string; attributeType: 'LIST' | 'INTEGER' | 'FLOAT' | 'TEXT' }> =
+          []
         for (const product of items) {
           if (product?.productAttributeExtend && Array.isArray(product.productAttributeExtend)) {
             for (const attr of product.productAttributeExtend) {
@@ -703,8 +1024,6 @@ async function processProductExtendPagesInBackground(
         console.warn('[SYNC] attribute prefetch error (non-fatal):', e)
       }
 
-      // Process products in this page with bounded concurrency.
-      // All ShopRenter API calls inside syncProductToDatabase must be rate-limited; otherwise concurrency would trigger 429s.
       let nextIdx = 0
       const worker = async () => {
         while (true) {
@@ -738,9 +1057,26 @@ async function processProductExtendPagesInBackground(
 
       const workers = Array.from({ length: Math.min(PRODUCT_CONCURRENCY, items.length) }, () => worker())
       await Promise.all(workers)
+
+      const nextPage = page + 1
+      await updateCheckpoint(nextPage)
+      await flushThrottled(false)
+
+      if (await checkStop()) {
+        break
+      }
+
+      const elapsed = Date.now() - chunkStartedAt
+      if (elapsed >= chunkBudgetMs && nextPage < pageCount) {
+        console.log(
+          `[SYNC] Chunk budget (${chunkBudgetMs}ms) elérve oldal ${page} után — következő chunk (oldal ${nextPage}/${pageCount})`
+        )
+        await flushThrottled(true)
+        await scheduleContinuation?.()
+        return
+      }
     }
 
-    // Finalize
     updateProgress(connectionId, {
       status: getProgress(connectionId)?.shouldStop ? 'stopped' : 'completed',
     })
@@ -788,6 +1124,11 @@ async function processProductExtendPagesInBackground(
       }
     }
     clearProgress(connectionId)
+  } finally {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer)
+      heartbeatTimer = null
+    }
   }
 }
 

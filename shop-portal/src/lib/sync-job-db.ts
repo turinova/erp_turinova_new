@@ -5,11 +5,28 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+/** Default: short jobs (e.g. category pull) should not look “stuck” for long. */
 export const SYNC_JOB_STALE_MS = 20 * 60 * 1000
 
-export function isSyncJobStale(updatedAt: string | null | undefined): boolean {
+/** Product catalog sync can run for hours; avoid false “failed” while workers are busy. */
+export const SYNC_JOB_STALE_MS_PRODUCT = 4 * 60 * 60 * 1000
+
+function staleThresholdMsForJob(job: SyncJobRow): number {
+  const meta = job.metadata
+  const syncType =
+    meta && typeof meta === 'object' && 'syncType' in meta
+      ? String((meta as { syncType?: string }).syncType || '')
+      : ''
+  if (syncType === 'category') return SYNC_JOB_STALE_MS
+  return SYNC_JOB_STALE_MS_PRODUCT
+}
+
+export function isSyncJobStale(
+  updatedAt: string | null | undefined,
+  maxAgeMs: number = SYNC_JOB_STALE_MS
+): boolean {
   if (!updatedAt) return true
-  return Date.now() - new Date(updatedAt).getTime() > SYNC_JOB_STALE_MS
+  return Date.now() - new Date(updatedAt).getTime() > maxAgeMs
 }
 
 export interface SyncJobRow {
@@ -59,7 +76,7 @@ export async function reconcileStaleRunningSyncJob(
 
   const job = jobs[0] as SyncJobRow
 
-  if (!isSyncJobStale(job.updated_at)) {
+  if (!isSyncJobStale(job.updated_at, staleThresholdMsForJob(job))) {
     return job
   }
 
@@ -114,7 +131,7 @@ export async function reconcileStaleRunningCategorySyncJob(
 
   const job = jobs[0] as SyncJobRow
 
-  if (!isSyncJobStale(job.updated_at)) {
+  if (!isSyncJobStale(job.updated_at, staleThresholdMsForJob(job))) {
     return job
   }
 
