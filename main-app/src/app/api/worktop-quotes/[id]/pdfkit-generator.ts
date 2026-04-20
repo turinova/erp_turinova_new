@@ -60,6 +60,7 @@ interface WorktopConfig {
   edge_position4: boolean
   edge_position5: boolean | null
   edge_position6: boolean | null
+  pdf_material_name?: string | null
 }
 
 interface WorktopQuote {
@@ -607,8 +608,8 @@ function generateVisualizationPage(
   doc.font('Helvetica-Bold')
   doc.text('Munkalap típusa:', MARGIN_LEFT + 5, headerRowY)
   doc.font('Helvetica')
-  const materialForConfig = quote.materials.find(m => m.assembly_type === config.assembly_type)
-  const materialName = materialForConfig ? materialForConfig.material_name : config.linear_material_name || '-'
+  const materialName =
+    (config.pdf_material_name ?? config.linear_material_name)?.trim() || '—'
   doc.text(materialName, MARGIN_LEFT + 80, headerRowY, { width: 100 })
 
   doc.font('Helvetica-Bold')

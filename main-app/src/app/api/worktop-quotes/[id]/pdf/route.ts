@@ -480,6 +480,10 @@ export async function GET(
           config_order: c.config_order,
           assembly_type: c.assembly_type,
           linear_material_name: c.linear_material_name,
+          pdf_material_name:
+            quoteData.pricing.find(p => p.config_order === c.config_order)?.material_name ??
+            c.linear_material_name ??
+            null,
           dimension_a: c.dimension_a,
           dimension_b: c.dimension_b,
           dimension_c: c.dimension_c,
@@ -670,12 +674,17 @@ export async function GET(
       
       // Generate each visualization page
       for (const config of quoteData.configs || []) {
+        const pricingForConfig = quoteData.pricing.find(p => p.config_order === config.config_order)
+        const pdfMaterialName =
+          pricingForConfig?.material_name ?? config.linear_material_name ?? null
+
         // Step 2a: Generate HTML for table (no SVG)
         const configForHtml: any = {
           id: config.id,
           config_order: config.config_order,
           assembly_type: config.assembly_type,
           linear_material_name: config.linear_material_name,
+          pdf_material_name: pdfMaterialName,
           edge_banding: config.edge_banding || 'Nincs élzáró',
           edge_color_choice: config.edge_color_choice || 'Színazonos',
           edge_color_text: config.edge_color_text || null,

@@ -54,6 +54,8 @@ interface WorktopConfig {
   edge_color_choice?: string | null
   edge_color_text?: string | null
   no_postforming_edge?: boolean
+  /** Resolved per config_order from pricing; avoids wrong match when multiple configs share assembly_type */
+  pdf_material_name?: string | null
 }
 
 interface WorktopQuoteFee {
@@ -172,6 +174,14 @@ const escapeHtml = (text: string | null | undefined) => {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
+}
+
+function visualizationMaterialDisplayName(
+  config: Pick<WorktopConfig, 'pdf_material_name' | 'linear_material_name'>
+): string {
+  const raw = config.pdf_material_name ?? config.linear_material_name
+  const s = raw != null && String(raw).trim() !== '' ? String(raw).trim() : ''
+  return s || '—'
 }
 
 // Get service name in Hungarian
@@ -999,9 +1009,7 @@ export default function generateWorktopQuotePdfHtml({
       if (config.dimension_c !== null) munkalapMeret += `, C: ${formatDimension(config.dimension_c)}`
       if (config.dimension_d !== null) munkalapMeret += `, D: ${formatDimension(config.dimension_d)}`
       
-      // Get material name for this config
-      const materialForConfig = quote.materials.find(m => m.assembly_type === config.assembly_type)
-      const materialName = materialForConfig ? materialForConfig.material_name : config.linear_material_name || '-'
+      const materialName = visualizationMaterialDisplayName(config)
       
       // Get full customer name (will wrap if needed)
       const customerName = quote.customer.billing_name || quote.customer.name || '—'
@@ -1166,9 +1174,7 @@ export function generateVisualizationPageHtml(
     cutoutsData = []
   }
   
-  // Get material name for this config (same as first page - lookup from materials array)
-  const materialForConfig = quote.materials.find(m => m.assembly_type === config.assembly_type)
-  const materialName = materialForConfig ? materialForConfig.material_name : config.linear_material_name || '-'
+  const materialName = visualizationMaterialDisplayName(config)
   
   // Get customer name - use customer.name (not billing_name)
   const customerName = quote.customer.name || '—'
