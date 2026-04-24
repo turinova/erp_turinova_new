@@ -13,6 +13,7 @@ export const runtime = 'nodejs'
  * Authenticated dashboard stats for Bejárat élő (charts + KPIs).
  * Query: ?device_slug=default
  * Query: ?hours=open|all (default: open)
+ * Query: ?month=YYYY-MM (default: current month, Europe/Budapest)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -56,7 +57,10 @@ export async function GET(request: NextRequest) {
     const hoursRaw = request.nextUrl.searchParams.get('hours')?.trim().toLowerCase()
     const hoursMode = hoursRaw === 'all' ? 'all' : 'open'
 
-    const data = await getFootcounterDashboardStats(slug, { hoursMode })
+    const monthKeyRaw = request.nextUrl.searchParams.get('month')?.trim()
+    const monthKey = monthKeyRaw && /^[0-9]{4}-[0-9]{2}$/.test(monthKeyRaw) ? monthKeyRaw : null
+
+    const data = await getFootcounterDashboardStats(slug, { hoursMode, monthKey })
     return NextResponse.json(data)
   } catch (e) {
     console.error('footcounter stats:', e)

@@ -11,8 +11,12 @@ import {
   Button,
   Chip,
   CircularProgress,
+  FormControl,
   Grid,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   ToggleButton,
   ToggleButtonGroup,
   Stack,
@@ -55,12 +59,44 @@ export default function FootcounterLiveClient() {
   const [statsError, setStatsError] = useState<string | null>(null)
   const [livePreviewOpen, setLivePreviewOpen] = useState(false)
   const [hoursMode, setHoursMode] = useState<'open' | 'all'>('open')
+  const [monthKey, setMonthKey] = useState(() => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Budapest',
+      year: 'numeric',
+      month: '2-digit'
+    }).format(new Date())
+  })
+
+  const monthOptions = useMemo(() => {
+    const base = new Date()
+    const fmtKey = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Budapest',
+      year: 'numeric',
+      month: '2-digit'
+    })
+    const fmtLabel = new Intl.DateTimeFormat('hu-HU', {
+      timeZone: 'Europe/Budapest',
+      year: 'numeric',
+      month: 'long'
+    })
+    const out: Array<{ key: string; label: string }> = []
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(base)
+      d.setMonth(base.getMonth() - i)
+      const key = fmtKey.format(d)
+      const label = fmtLabel.format(d)
+      if (!out.some(x => x.key === key)) out.push({ key, label })
+    }
+    return out
+  }, [])
 
   const loadStats = useCallback(async () => {
     setStatsLoading(true)
     setStatsError(null)
     try {
-      const res = await fetch(`/api/footcounter/stats?hours=${hoursMode}`, { credentials: 'include' })
+      const res = await fetch(`/api/footcounter/stats?hours=${hoursMode}&month=${encodeURIComponent(monthKey)}`, {
+        credentials: 'include'
+      })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error((j as { error?: string }).error || res.statusText)
@@ -73,7 +109,7 @@ export default function FootcounterLiveClient() {
     } finally {
       setStatsLoading(false)
     }
-  }, [hoursMode])
+  }, [hoursMode, monthKey])
 
   useEffect(() => {
     loadStats()
@@ -103,30 +139,53 @@ export default function FootcounterLiveClient() {
     return hourly.filter(h => h.hour >= openHourRangeToday.start && h.hour <= openHourRangeToday.end)
   }, [stats?.series_today_hourly, hoursMode, openHourRangeToday])
 
-  const chartOptions = useMemo(() => {
-    const series = stats?.series_7d ?? []
-    const categories = series.map(s => s.day)
+  const monthChartOptions = useMemo(() => {
+    const series = stats?.series_month ?? []
+    const categories = series.map(s => s.day.slice(8)) // DD
+    const totals = series.map(s => s.in_count + s.out_count)
     return {
-      chart: { type: 'bar' as const, toolbar: { show: false }, fontFamily: 'inherit' },
-      plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 } },
+      chart: {
+        type: 'bar' as const,
+        toolbar: { show: false },
+        fontFamily: 'inherit'
+      },
       dataLabels: { enabled: false },
-      stroke: { show: true, width: 2, colors: ['transparent'] },
-      xaxis: { categories },
+      plotOptions: { bar: { horizontal: false, columnWidth: '65%', borderRadius: 3 } },
+      stroke: { curve: 'straight' as const, width: [0, 0, 2] },
+      xaxis: { categories, title: { text: 'Nap (Budapest)' } },
       yaxis: { title: { text: 'Események' } },
-      fill: { opacity: 1 },
-      colors: ['#16A085', '#E67E22'],
+      colors: ['#16A085', '#E67E22', '#2C3E50'],
       legend: { position: 'top' as const },
-      tooltip: { y: { formatter: (val: number) => `${val}` } }
+      tooltip: { y: { formatter: (val: number) => `${val}` } },
+      markers: { size: 0 },
+      fill: { opacity: 1 },
+      annotations: {
+        points: []
+      },
+      // keep `totals` referenced so TS doesn't tree-shake as unused in some builds
+      _totals: totals
     }
-  }, [stats?.series_7d])
+  }, [stats?.series_month])
 
-  const chartSeries = useMemo(() => {
-    const series = stats?.series_7d ?? []
+  const monthChartSeries = useMemo(() => {
+    const series = stats?.series_month ?? []
     return [
-      { name: 'Be', data: series.map(s => s.in_count) },
-      { name: 'Ki', data: series.map(s => s.out_count) }
+      { name: 'Be', type: 'column' as const, data: series.map(s => s.in_count) },
+      { name: 'Ki', type: 'column' as const, data: series.map(s => s.out_count) },
+      { name: 'Összesen', type: 'line' as const, data: series.map(s => s.in_count + s.out_count) }
     ]
-  }, [stats?.series_7d])
+  }, [stats?.series_month])
+
+  const monthTotals = useMemo(() => {
+    const series = stats?.series_month ?? []
+    let inSum = 0
+    let outSum = 0
+    for (const d of series) {
+      inSum += d.in_count
+      outSum += d.out_count
+    }
+    return { inSum, outSum, total: inSum + outSum }
+  }, [stats?.series_month])
 
   const hourlyOptions = useMemo(() => {
     const hourly = hourlyFiltered
@@ -230,6 +289,24 @@ export default function FootcounterLiveClient() {
             <ToggleButton value='open'>Nyitvatartás</ToggleButton>
             <ToggleButton value='all'>Teljes nap (debug)</ToggleButton>
           </ToggleButtonGroup>
+          <FormControl size='small' sx={{ minWidth: 220 }}>
+            <InputLabel id='footcounter-month-label'>Hónap</InputLabel>
+            <Select
+              labelId='footcounter-month-label'
+              value={monthKey}
+              label='Hónap'
+              onChange={e => {
+                const v = String(e.target.value || '')
+                if (/^[0-9]{4}-[0-9]{2}$/.test(v)) setMonthKey(v)
+              }}
+            >
+              {monthOptions.map(m => (
+                <MenuItem key={m.key} value={m.key}>
+                  {m.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Button variant='outlined' size='small' onClick={() => loadStats()} disabled={statsLoading}>
             Adatok frissítése
           </Button>
@@ -348,14 +425,22 @@ export default function FootcounterLiveClient() {
           </Paper>
 
           <Paper sx={{ p: 2, mb: 3, border: t => `1px solid ${t.palette.divider}` }}>
-            <Typography variant='subtitle1' sx={{ mb: 2 }}>
-              Utolsó 7 nap (Europe/Budapest)
+            <Typography variant='subtitle1' sx={{ mb: 0.5 }}>
+              Havi forgalom ({monthKey}, Europe/Budapest)
             </Typography>
-            {stats.series_7d.length === 0 ? (
-              <Typography color='text.secondary'>Még nincs szinkronizált esemény.</Typography>
+            <Typography variant='caption' color='text.secondary' display='block' sx={{ mb: 2 }}>
+              Be és Ki események naponta a kiválasztott hónapban.
+            </Typography>
+            <Stack direction='row' spacing={1.5} flexWrap='wrap' useFlexGap sx={{ mb: 2 }}>
+              <Chip label={`Havi összesen: ${monthTotals.total.toLocaleString('hu-HU')}`} variant='outlined' />
+              <Chip label={`Be: ${monthTotals.inSum.toLocaleString('hu-HU')}`} variant='outlined' />
+              <Chip label={`Ki: ${monthTotals.outSum.toLocaleString('hu-HU')}`} variant='outlined' />
+            </Stack>
+            {stats.series_month.length === 0 ? (
+              <Typography color='text.secondary'>Még nincs szinkronizált esemény ebben a hónapban.</Typography>
             ) : (
               <Box sx={{ minHeight: 320 }}>
-                <ReactApexChart options={chartOptions} series={chartSeries} type='bar' height={320} />
+                <ReactApexChart options={monthChartOptions} series={monthChartSeries} type='line' height={320} />
               </Box>
             )}
           </Paper>

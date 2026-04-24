@@ -132,11 +132,13 @@ function looksLikeDashboardStats(v: any): v is FootcounterDashboardStats {
 
 async function tryRpcDashboardStatsV2(
   deviceSlug: string,
-  hoursMode: HoursMode
+  hoursMode: HoursMode,
+  monthKey: string | null
 ): Promise<FootcounterDashboardStats | null> {
   const { data, error } = await supabaseServer.rpc('footcounter_dashboard_stats_v2', {
     p_device_slug: deviceSlug,
-    p_hours_mode: hoursMode
+    p_hours_mode: hoursMode,
+    p_month_key: monthKey
   })
 
   if (error) {
@@ -149,19 +151,23 @@ async function tryRpcDashboardStatsV2(
   return parsed
 }
 
-async function fetchCrossingsPaged(deviceId: string, sinceIso: string) {
+async function fetchCrossingsPaged(deviceId: string, sinceIso: string, untilIso?: string) {
   const pageSize = 1000
   let offset = 0
   const out: Array<{ occurred_at: string; direction: string }> = []
 
   while (true) {
-    const { data, error } = await supabaseServer
+    let q = supabaseServer
       .from('footcounter_crossings')
       .select('occurred_at, direction')
       .eq('device_id', deviceId)
       .gte('occurred_at', sinceIso)
       .order('occurred_at', { ascending: true })
       .range(offset, offset + pageSize - 1)
+
+    if (untilIso) q = q.lt('occurred_at', untilIso)
+
+    const { data, error } = await q
 
     if (error) {
       console.error('footcounter_crossings paged select:', error)
@@ -184,12 +190,13 @@ async function fetchCrossingsPaged(deviceId: string, sinceIso: string) {
  */
 export async function getFootcounterDashboardStats(
   deviceSlug: string,
-  opts?: { hoursMode?: HoursMode }
+  opts?: { hoursMode?: HoursMode; monthKey?: string | null }
 ): Promise<FootcounterDashboardStats> {
   const hoursMode: HoursMode = isHoursMode(opts?.hoursMode) ? opts!.hoursMode! : 'open'
+  const monthKey = typeof opts?.monthKey === 'string' ? opts!.monthKey!.trim() || null : null
 
   // Preferred: DB-side aggregation (avoids PostgREST 1000-row limit, avoids Intl TZ quirks).
-  const viaRpc = await tryRpcDashboardStatsV2(deviceSlug, hoursMode)
+  const viaRpc = await tryRpcDashboardStatsV2(deviceSlug, hoursMode, monthKey)
   if (viaRpc) return viaRpc
 
   const { data: device, error: devErr } = await supabaseServer
@@ -220,6 +227,7 @@ export async function getFootcounterDashboardStats(
       last_event_at: null,
       device_last_seen: null,
       series_7d: last7DayKeys().map(day => ({ day, in_count: 0, out_count: 0 })),
+      series_month: [],
       series_today_hourly: emptyHourly(),
       same_weekday_avg: null,
       heatmap_in: emptyHeatmap()
@@ -235,7 +243,14 @@ export async function getFootcounterDashboardStats(
   const since = new Date(Date.now() - CROSSINGS_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
   // Fallback: client-side aggregation. MUST page because PostgREST default limit is 1000 rows.
-  const rows = await fetchCrossingsPaged(deviceId, since)
+  // If a month is selected, keep paging bounded to that month to avoid huge scans.
+  const monthStart =
+    monthKey && /^[0-9]{4}-[0-9]{2}$/.test(monthKey) ? `${monthKey}-01T00:00:00.000Z` : null
+  const untilIso = monthStart
+    ? new Date(new Date(monthStart).getTime() + 32 * 24 * 60 * 60 * 1000).toISOString() // rough upper bound; we'll clamp by month below
+    : undefined
+
+  const rows = await fetchCrossingsPaged(deviceId, monthStart ?? since, untilIso)
 
   const todayKey = budapestTodayKey()
   const heatmapCutoffKey = budapestDayKeyDaysAgo(HEATMAP_LOOKBACK_DAYS)
@@ -297,6 +312,25 @@ export async function getFootcounterDashboardStats(
     return { day, in_count: v?.in_count ?? 0, out_count: v?.out_count ?? 0 }
   })
 
+  const series_month = (() => {
+    const key =
+      monthKey && /^[0-9]{4}-[0-9]{2}$/.test(monthKey)
+        ? monthKey
+        : new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit' }).format(new Date())
+
+    // Build Budapest-local dates for each day of selected month.
+    const year = parseInt(key.slice(0, 4), 10)
+    const month = parseInt(key.slice(5, 7), 10)
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate()
+    const out = []
+    for (let d = 1; d <= daysInMonth; d++) {
+      const day = `${key}-${String(d).padStart(2, '0')}`
+      const v = byDay.get(day)
+      out.push({ day, in_count: v?.in_count ?? 0, out_count: v?.out_count ?? 0 })
+    }
+    return out
+  })()
+
   const avgCutoffKey = budapestDayKeyDaysAgo(SAME_WEEKDAY_LOOKBACK_DAYS)
   let sumPastIn = 0
   let sumPastOut = 0
@@ -329,6 +363,7 @@ export async function getFootcounterDashboardStats(
     last_event_at: lastEventAt,
     device_last_seen: (device.last_seen_at as string | null) ?? null,
     series_7d,
+    series_month,
     series_today_hourly: hourlyToday,
     same_weekday_avg,
     heatmap_in: { days: HEATMAP_LOOKBACK_DAYS, matrix: heatmapMatrix }
