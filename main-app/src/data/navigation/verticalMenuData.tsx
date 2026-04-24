@@ -55,6 +55,12 @@ const verticalMenuData = (): VerticalMenuDataType[] => {
     iconColor: '#3498DB' // Blue for scanner
   },
   {
+    label: 'Műhely',
+    href: '/muhely',
+    icon: 'ri-tools-line',
+    iconColor: '#2D3436' // Neutral dark for workshop/tools
+  },
+  {
     label: 'Bejárat élő',
     href: '/footcounter-live',
     icon: 'ri-camera-lens-line',
