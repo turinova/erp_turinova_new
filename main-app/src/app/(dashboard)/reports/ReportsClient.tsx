@@ -47,6 +47,7 @@ import {
 } from '@mui/icons-material'
 
 import { usePagePermission } from '@/hooks/usePagePermission'
+import WorkshopMetersReportSection from './WorkshopMetersReportSection'
 
 const ReactApexChart = dynamic(() => import('react-apexcharts'), { ssr: false })
 
@@ -669,6 +670,8 @@ export default function ReportsClient() {
       ) : (
         <Typography color='text.secondary' sx={{ mb: 3 }}>Nincs adat az aktuális hónapra.</Typography>
       )}
+
+      <WorkshopMetersReportSection />
 
       {/* ================================================================ */}
       {/* Filter bar                                                       */}
