@@ -58,7 +58,9 @@ export async function POST(
     const options = {
       useSourceMaterials: body.useSourceMaterials !== false,
       temperature: body.temperature || 0.7,
-      maxTokens: body.maxTokens || 8000, // Increased default to 8000 to prevent description cutoff
+      // Keep output concise to support the 5000-character cap enforced in the prompt layer.
+      // Can be overridden by explicitly passing body.maxTokens from the client.
+      maxTokens: body.maxTokens || 2600,
       language: body.language || 'hu',
       generationInstructions: generationInstructions || undefined,
       useSearchConsoleQueries: body.useSearchConsoleQueries !== false, // Default to true

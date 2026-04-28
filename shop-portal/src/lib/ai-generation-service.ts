@@ -281,8 +281,12 @@ async function buildContext(
   }
 ): Promise<{ context: string; categories: any[]; relatedProducts: any[] }> {
   let context = `\n\nPRODUCT INFORMATION:\n`
-  context += `- SKU: ${product.sku}\n`
+  // Prefer manufacturer part number (model_number) for customer-facing identification.
+  if (product.model_number) {
+    context += `- Gyártói cikkszám (model_number): ${product.model_number}\n`
+  }
   context += `- Name: ${product.name || 'N/A'}\n`
+  context += `- SKU (belső azonosító, lehetőleg ne ismételd a szövegben): ${product.sku}\n`
   // Get manufacturer name from erp_manufacturer_id (joined manufacturers table) or fallback to brand for backward compatibility
   const manufacturerName = (product.manufacturers as any)?.name || product.brand || null
   if (manufacturerName) {
@@ -659,7 +663,7 @@ export async function generateProductDescription(
     const {
       useSourceMaterials = true,
       temperature = 0.7,
-      maxTokens = 8000, // Increased to 8000 to allow comprehensive descriptions without cutoff (500-1000 words)
+      maxTokens = 2600, // Keep concise by default (aim for <= 5000 characters; can be overridden by caller)
       language = 'hu',
       generationInstructions,
       useSearchConsoleQueries = false, // Set to true to enable Search Console query optimization
@@ -1144,7 +1148,8 @@ STRUCTURE REQUIREMENTS:
 - **CRITICAL**: All headings MUST be keyword-rich and descriptive (40-60 characters)
 - **CRITICAL**: Include primary keywords naturally in headings
 - Each section should be 2-4 paragraphs or equivalent content
-- Total length: 500-1000 words
+- **CRITICAL LENGTH CAP**: The final HTML output MUST be <= 5000 characters (including HTML tags). Target 3800-4800 characters.
+- To stay within the limit: keep each main section to 1 short paragraph (max 2 for the introduction), keep bullet lists short, and include EXACTLY 3 FAQ questions.
 - Maintain natural flow between sections
 - Use paragraphs, bullet points, and lists appropriately
 - Ensure ShopRenter's automatic parameter table complements (not duplicates) your specifications section
@@ -1261,6 +1266,10 @@ OTHER CRITICAL INSTRUCTIONS:
 11. **MANDATORY: Write ONLY in Hungarian - no English, no mixed languages**
 12. Use rhetorical questions naturally: "Mire figyeljünk?" "Miért válasszuk ezt?"
 13. Include personal voice elements: "én", "mi", "tapasztalat" occasionally
+
+IDENTIFIER PRIORITY (CRITICAL):
+- Prefer **Gyártói cikkszám (model_number)** when referencing an identifier in the description.
+- Avoid repeating SKU; treat SKU as an internal identifier. Mention SKU at most once, and only if it adds value for identification.
 
 **CONVERSION PSYCHOLOGY & COPYWRITING (USE ONLY WHEN DATA SUPPORTS):**
 1. **Pain Point Addressing**: Address real problems this product solves (based on product attributes and source materials)
@@ -1484,7 +1493,7 @@ FINAL QUALITY CHECK - BEFORE SUBMITTING:
 Write ONLY the product description in Hungarian. Do not include meta tags, titles, or other fields.`
 
     const userPrompt = `Generate a product description for:
-${product.name || product.sku} (SKU: ${product.sku})
+${product.name || product.sku}${product.model_number ? ` (Gyártói cikkszám: ${product.model_number})` : ` (SKU: ${product.sku})`}
 
 DETECTED PRODUCT TYPE: ${productType.type} (${productType.description})
 - Based on the name "${product.name || product.sku}", this appears to be a: ${productType.description}
@@ -1492,6 +1501,11 @@ DETECTED PRODUCT TYPE: ${productType.type} (${productType.description})
 - Expected features for this product type: ${productType.features.join(', ')}
 - **CRITICAL**: Ensure your description matches this product type exactly
 - **DO NOT** confuse it with other product types (e.g., don't describe a trash bin as a drawer system)
+
+IDENTIFIER REQUIREMENTS (CRITICAL):
+- If you need to reference an identifier, prefer the **gyártói cikkszám** (model_number) when provided.
+- Do NOT spam the SKU. Mention SKU at most once (or not at all), and only if useful.
+- Keep the entire output <= 5000 characters (including HTML tags). Target 3800-4800 characters.
 
 ${isParent ? `
 **PARENT PRODUCT WITH VARIANTS:**
@@ -1860,18 +1874,76 @@ Generate ONLY the description text in HTML format (use <h2>, <h3>, <p>, <ul>, <l
       throw new Error(`All Claude models failed. Last error: ${lastErrorMsg} (Status: ${lastStatus})`)
     }
 
-    const description = message.content[0].type === 'text' 
-      ? message.content[0].text 
+    let description = message.content[0].type === 'text'
+      ? message.content[0].text
       : ''
 
     // Check if response was cut off due to token limit
     const stopReason = (message as any).stop_reason || (message as any).stopReason
     const wasCutOff = stopReason === 'max_tokens' || stopReason === 'length'
-    
+
+    // Enforce hard output constraints: <= 5000 characters and avoid SKU spam.
+    // If violated, run a second-pass compression that preserves the required 8-section HTML structure.
+    const maxChars = 5000
+    const skuRaw = String(product.sku || '').trim()
+    const skuEscaped = skuRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const skuOccurrences = skuRaw
+      ? (description.match(new RegExp(skuEscaped, 'g')) || []).length
+      : 0
+
+    if (wasCutOff || description.length > maxChars || skuOccurrences > 1) {
+      try {
+        const shortenSystem = `You are an expert Hungarian e-commerce copy editor.
+
+TASK:
+- Rewrite the provided HTML product description to satisfy the constraints below while preserving meaning and factual accuracy.
+- If the input is incomplete or cut off, you MUST complete missing parts while staying within the character limit and without adding new claims.
+
+HARD CONSTRAINTS (MUST ALL BE MET):
+1. Output MUST be valid HTML using only: <h2>, <h3>, <p>, <ul>, <li>, <a>.
+2. Output MUST follow the same 8-section structure as the input (keep all section headings, but you may shorten text).
+3. Output MUST be <= ${maxChars} characters total, INCLUDING HTML tags.
+4. Language: Hungarian only.
+5. Do NOT add any new claims, numbers, specs, or features not already present in the input.
+6. Do NOT hardcode prices.
+7. Identifier rule: Prefer "gyártói cikkszám" (model_number) when present in the input; avoid repeating SKU. Mention SKU at most once.
+8. FAQ: keep EXACTLY 3 questions.
+
+Return ONLY the rewritten HTML, nothing else.`
+
+        const shortenUser = `Rewrite to comply with constraints.
+
+Model number (gyártói cikkszám): ${product.model_number || '(nincs)'}
+SKU (belső azonosító): ${product.sku || '(nincs)'}
+
+INPUT HTML:
+${description}`
+
+        const shortened = await anthropic.messages.create({
+          model: modelUsed || 'claude-sonnet-4-6',
+          max_tokens: Math.min(1200, Math.max(400, Math.floor(maxTokens / 2))),
+          temperature: 0.2,
+          system: shortenSystem,
+          messages: [{ role: 'user', content: shortenUser }]
+        })
+
+        const newText =
+          shortened.content && shortened.content[0] && 'text' in shortened.content[0]
+            ? shortened.content[0].text.trim()
+            : ''
+
+        if (newText) {
+          description = newText
+        }
+      } catch (e) {
+        // If the shorten pass fails, proceed with the original description + warnings (handled below).
+      }
+    }
+
     if (wasCutOff) {
       console.warn(`[AI GENERATION] WARNING: Response was cut off due to token limit (stop_reason: ${stopReason})`)
       console.warn(`[AI GENERATION] Description length: ${description.length} chars, Word count: ${description.split(/\s+/).length}`)
-      console.warn(`[AI GENERATION] Consider increasing maxTokens (current: ${maxTokens})`)
+      console.warn(`[AI GENERATION] A rewrite pass will attempt to complete within the 5000-character cap.`)
     }
 
     // 9. Validate description for logical consistency and completeness
