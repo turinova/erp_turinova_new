@@ -19,6 +19,7 @@ interface ChartData {
   categories: string[]
   series: BarSeries[]
   dailyTotals?: number[]
+  remainingTotals?: number[]
   capacityPerDay?: number[]
   weekStart?: string
   weekEnd?: string
@@ -88,10 +89,12 @@ export default function WeeklyEdgeBandingChart({ initialData }: WeeklyEdgeBandin
 
   const mixedSeries = useMemo(() => {
     const bars = chartData?.series || []
-    const cap = chartData?.capacityPerDay || [500, 500, 500, 500, 500, 500]
+    const cap = chartData?.capacityPerDay || [700, 700, 700, 700, 700, 700]
+    const remaining = chartData?.remainingTotals || [0, 0, 0, 0, 0, 0]
 
     return [
       ...bars.map(s => ({ ...s, type: 'bar' as const })),
+      { name: 'Hátralévő', data: remaining, type: 'line' as const },
       { name: 'Kapacitás', data: cap, type: 'line' as const }
     ]
   }, [chartData])
@@ -153,7 +156,13 @@ export default function WeeklyEdgeBandingChart({ initialData }: WeeklyEdgeBandin
     stroke: {
       width: [
         ...(chartData.series || []).map(() => 0),
+        3,
         3
+      ],
+      dashArray: [
+        ...(chartData.series || []).map(() => 0),
+        0,
+        6
       ],
       curve: 'straight'
     },

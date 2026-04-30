@@ -521,6 +521,8 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
         `
         id,
         production_date,
+        ready_at,
+        finished_at,
         quote_materials_pricing (
           id,
           quote_edge_materials_breakdown (
@@ -545,6 +547,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
 
     const byMaterial = new Map<string, { name: string; data: number[] }>()
     const dailyTotals = [0, 0, 0, 0, 0, 0]
+    const remainingTotals = [0, 0, 0, 0, 0, 0]
 
     for (const q of weeklyQuotes || []) {
       const dateStr = (q as any).production_date as string | null
@@ -556,6 +559,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
       if (dayIndex < 0 || dayIndex > 5) continue
 
       const pricingRows = ((q as any).quote_materials_pricing || []) as any[]
+      const isRemaining = !(q as any).ready_at && !(q as any).finished_at
       for (const pr of pricingRows) {
         const edges = (pr?.quote_edge_materials_breakdown || []) as any[]
         for (const e of edges) {
@@ -571,6 +575,9 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
           const row = byMaterial.get(edgeId)!
           row.data[dayIndex] += len
           dailyTotals[dayIndex] += len
+          if (isRemaining) {
+            remainingTotals[dayIndex] += len
+          }
         }
       }
     }
@@ -589,8 +596,8 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
       })
       .map(({ name, data }) => ({ name, data }))
 
-    const CAPACITY_PER_DAY_M = 500
-    const capacityPerDay = [500, 500, 500, 500, 500, 500]
+    const CAPACITY_PER_DAY_M = 700
+    const capacityPerDay = [700, 700, 700, 700, 700, 700]
 
     console.log(`[PERF] Weekly Edge Banding Query: ${(performance.now() - startTime).toFixed(2)}ms`)
 
@@ -598,6 +605,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
       categories: ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat'],
       series,
       dailyTotals: dailyTotals.map(x => Math.round(x * 100) / 100),
+      remainingTotals: remainingTotals.map(x => Math.round(x * 100) / 100),
       capacityPerDay,
       weekStart: startYmd,
       weekEnd: endYmd
@@ -608,7 +616,8 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
       categories: ['Hétfő', 'Kedd', 'Szerda', 'Csütörtök', 'Péntek', 'Szombat'],
       series: [],
       dailyTotals: [0, 0, 0, 0, 0, 0],
-      capacityPerDay: [500, 500, 500, 500, 500, 500],
+      remainingTotals: [0, 0, 0, 0, 0, 0],
+      capacityPerDay: [700, 700, 700, 700, 700, 700],
       weekStart: startYmd,
       weekEnd: endYmd
     }
