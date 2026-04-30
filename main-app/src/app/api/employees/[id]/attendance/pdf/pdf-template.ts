@@ -3,6 +3,7 @@
 interface Employee {
   name: string
   employee_code: string
+  employee_type?: string | null
 }
 
 interface DayData {
@@ -36,10 +37,11 @@ interface AttendancePdfTemplateProps {
     daysWorked: number
     absentDays: number
     conflictDays: number
+    saturdayDays?: number
     totalOvertimeMinutes: number
   }
   turinovaLogoBase64?: string
-  mode?: 'paper' | 'actual'
+  mode?: 'paper' | 'actual' | 'official'
 }
 
 // Format date as "MM.DD DayName"
@@ -76,6 +78,24 @@ const escapeHtml = (text: string | null | undefined) => {
     .replace(/'/g, '&#039;')
 }
 
+function employeeTypeLabel(type: string | null | undefined): string {
+  switch (type) {
+    case 'BOLTI_DOLGOZO':
+      return 'Bolti Dolgozó'
+    case 'LAPSZABASZ':
+      return 'Lapszabász'
+    case 'ELZARO':
+      return 'Élzáró'
+    case 'ASZTALOS':
+      return 'Asztalos'
+    case 'IRODA':
+      return 'Iroda'
+    case 'MUHELY':
+    default:
+      return 'Műhely'
+  }
+}
+
 export default function generateAttendancePdfHtml({
   employee,
   year,
@@ -88,7 +108,7 @@ export default function generateAttendancePdfHtml({
   const monthNames = ['Január', 'Február', 'Március', 'Április', 'Május', 'Június', 'Július', 'Augusztus', 'Szeptember', 'Október', 'November', 'December']
   const monthName = monthNames[month - 1]
 
-  const viewLabel = mode === 'paper' ? 'Papír nézet' : 'Tényleges nézet'
+  const viewLabel = mode === 'paper' ? 'Papír nézet' : mode === 'official' ? 'Hivatalos jelenléti ív' : 'Tényleges nézet'
 
   // Build table rows
   const tableRows = daysData.map(day => {
@@ -96,15 +116,44 @@ export default function generateAttendancePdfHtml({
     const isHoliday = day.isEmployeeHoliday
     const isSickLeave = day.holidayType === 'Betegszabadság'
     const isConflict = day.isConflictHolidayWork
+    const isSaturday = day.dayOfWeek === 6
     
     let statusDisplay = '-'
-    if (mode === 'paper') {
-      if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
+    if (mode === 'official') {
+      // Official/legal sheet:
+      // - Holidays/leave always shown as leave (0h), even if there was real attendance.
+      // - Uses generated "official" times (arrival/departure) directly.
+      if (isSaturday) statusDisplay = day.hoursWorked > 0 ? 'SZOMBATI MUNKA' : '-'
+      else if (day.isGlobalHoliday) statusDisplay = 'MUNKASZÜNET'
+      else if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
+      else if (day.hasAttendance && !day.hasCompleteAttendance) statusDisplay = 'HIÁNYOS'
+      else if (day.hasCompleteAttendance) statusDisplay = 'MUNKA'
+    } else if (mode === 'paper') {
+      // Saturday: keep holiday labels ONLY when there is no work logged.
+      // - If worked (complete): SZOMBATI MUNKA
+      // - If partial log: SZOMBAT
+      // - If no log: preserve MUNKASZÜNET / SZABADSÁG / BETEGSZABADSÁG, otherwise "-"
+      if (isSaturday) {
+        if (day.hasCompleteAttendance) statusDisplay = 'SZOMBATI MUNKA'
+        else if (!hasNoData) statusDisplay = 'SZOMBAT'
+        else if (day.isGlobalHoliday) statusDisplay = 'MUNKASZÜNET'
+        else if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
+        else statusDisplay = '-'
+      }
+      else if (isConflict) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG + MUNKA' : 'SZABADSÁG + MUNKA'
+      else if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
       else if (day.isGlobalHoliday) statusDisplay = 'MUNKASZÜNET'
       else if (day.hasAttendance && !day.hasCompleteAttendance) statusDisplay = 'HIÁNYOS'
       else if (day.hasCompleteAttendance) statusDisplay = 'MUNKA'
     } else {
-      if (isConflict) statusDisplay = 'SZABADSÁG + MUNKA'
+      if (isSaturday) {
+        if (day.hasCompleteAttendance) statusDisplay = 'SZOMBATI MUNKA'
+        else if (!hasNoData) statusDisplay = 'SZOMBAT'
+        else if (day.isGlobalHoliday) statusDisplay = 'MUNKASZÜNET'
+        else if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
+        else statusDisplay = '-'
+      }
+      else if (isConflict) statusDisplay = 'SZABADSÁG + MUNKA'
       else if (isHoliday) statusDisplay = isSickLeave ? 'BETEGSZABADSÁG' : 'SZABADSÁG'
       else if (day.isGlobalHoliday && day.hasAttendance) statusDisplay = 'MUNKASZÜNET + MUNKA'
       else if (day.isGlobalHoliday) statusDisplay = 'MUNKASZÜNET'
@@ -119,9 +168,41 @@ export default function generateAttendancePdfHtml({
     let hoursDisplay: string
     let overtimeDisplay: string
     
-    if (mode === 'paper') {
-      // Paper mode: hide attendance details for employee holiday days
-      if (isHoliday) {
+    if (mode === 'official') {
+      if (day.isGlobalHoliday || isHoliday) {
+        arrivalDisplay = '-'
+        departureDisplay = '-'
+        lunchDisplay = '-'
+        if (day.isGlobalHoliday) hoursDisplay = '<strong>MUNKASZÜNET</strong>'
+        else hoursDisplay = isSickLeave ? '<strong>BETEG SZABADSÁG</strong>' : '<strong>SZABADSÁG</strong>'
+        overtimeDisplay = '-'
+      } else {
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
+        lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+        hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
+        overtimeDisplay = '-'
+      }
+    } else if (mode === 'paper') {
+      if (isSaturday) {
+        // Saturday: show times (if any), but hide hours (not counted in monthly paper totals).
+        // Paper view must show raw recorded times (not policy-clipped display times).
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
+        lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+        hoursDisplay = '-'
+        overtimeDisplay = '-'
+      } else if (isHoliday && day.hoursWorked > 0) {
+        // Paper mode: employee holiday with work (conflict) should show the work, but keep the holiday context.
+        // Paper view must show raw recorded times (not policy-clipped display times).
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
+        lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
+        const holidayLabel = isSickLeave ? 'BETEG SZABADSÁG' : 'SZABADSÁG'
+        hoursDisplay = `${day.hoursWorked.toFixed(2)} óra <span style="font-size: 0.75em; color: #666; font-style: italic;">(${holidayLabel})</span>`
+        overtimeDisplay = '-'
+      } else if (isHoliday) {
+        // Paper mode: hide attendance details for employee holiday days
         arrivalDisplay = '-'
         departureDisplay = '-'
         lunchDisplay = '-'
@@ -129,8 +210,9 @@ export default function generateAttendancePdfHtml({
         overtimeDisplay = '-'
       } else {
         // Not a holiday: show normal data
-        arrivalDisplay = formatTime(day.displayArrival)
-        departureDisplay = formatTime(day.displayDeparture)
+        // Paper view must show raw recorded times (not policy-clipped display times).
+        arrivalDisplay = formatTime(day.arrival)
+        departureDisplay = formatTime(day.departure)
         lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
         hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
         overtimeDisplay = '-'
@@ -205,6 +287,39 @@ export default function generateAttendancePdfHtml({
         flex-direction: column;
         min-height: 100vh;
         box-sizing: border-box;
+      }
+      .paper-badge {
+        position: fixed;
+        top: 6mm;
+        right: 4mm;
+        z-index: 9999;
+        border: 2px solid #000000;
+        border-radius: 6px;
+        padding: 3px 6px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .paper-badge__monogram {
+        width: 18px;
+        height: 18px;
+        border: 2px solid #000000;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 12px;
+        line-height: 1;
+        color: #000000;
+      }
+      .paper-badge__text {
+        font-size: 8px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: #000000;
+        white-space: nowrap;
       }
       .content-wrapper {
         flex: 1;
@@ -331,6 +446,12 @@ export default function generateAttendancePdfHtml({
     </style>
   </head>
   <body>
+    ${mode === 'paper' ? `
+    <div class="paper-badge" aria-hidden="true">
+      <div class="paper-badge__monogram">P</div>
+      <div class="paper-badge__text">PAPÍR NÉZET</div>
+    </div>
+    ` : ''}
     <div class="content-wrapper">
       <div class="header">
         <div class="title">Jelenléti ív</div>
@@ -342,10 +463,17 @@ export default function generateAttendancePdfHtml({
           <span class="employee-label">Munkavállaló neve:</span>
           <span style="font-size: 13px;">${escapeHtml(employee.name)}</span>
         </div>
+        ${mode === 'official' ? `
+        <div class="employee-info-row">
+          <span class="employee-label">Munkakör:</span>
+          <span style="font-size: 13px;">${escapeHtml(employeeTypeLabel(employee.employee_type))}</span>
+        </div>
+        ` : `
         <div class="employee-info-row">
           <span class="employee-label">Nézet:</span>
           <span style="font-size: 13px;">${viewLabel}</span>
         </div>
+        `}
       </div>
 
       <table>
@@ -370,6 +498,12 @@ export default function generateAttendancePdfHtml({
           <span class="summary-label">Összes dolgozott óra:</span>
           <span style="font-size: 11px;">${summary.totalHours.toFixed(2)} óra</span>
         </div>
+        ${mode === 'paper' ? `
+        <div class="summary-row">
+          <span class="summary-label">Szombati napok:</span>
+          <span style="font-size: 11px;">${Number(summary.saturdayDays || 0)} nap</span>
+        </div>
+        ` : ''}
         <div class="summary-row">
           <span class="summary-label">Dolgozott napok:</span>
           <span style="font-size: 11px;">${summary.daysWorked} nap</span>
@@ -378,7 +512,7 @@ export default function generateAttendancePdfHtml({
           <span class="summary-label">Távollét:</span>
           <span style="font-size: 11px;">${summary.absentDays} nap</span>
         </div>
-        ${mode === 'actual' ? `
+        ${(mode === 'actual' || mode === 'paper') ? `
         <div class="summary-row">
           <span class="summary-label">Szabadság + munka:</span>
           <span style="font-size: 11px;">${summary.conflictDays} nap</span>

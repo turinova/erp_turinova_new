@@ -64,6 +64,7 @@ interface Employee {
   id: string
   name: string
   employee_code: string
+  employee_type: string
   rfid_card_id: string | null
   pin_code: string | null
   active: boolean
@@ -119,6 +120,7 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
   // Ensure works_on_saturday has a default value if undefined (for existing employees before migration)
   const [employee, setEmployee] = useState<Employee>({
     ...initialEmployee,
+    employee_type: initialEmployee.employee_type || 'MUHELY',
     works_on_saturday: initialEmployee.works_on_saturday !== undefined ? initialEmployee.works_on_saturday : false,
     shift_start_time: initialEmployee.shift_start_time ?? null,
     shift_end_time: initialEmployee.shift_end_time ?? null,
@@ -203,6 +205,7 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
         body: JSON.stringify({
           name: employee.name.trim(),
           employee_code: employee.employee_code.trim(),
+          employee_type: employee.employee_type || 'MUHELY',
           rfid_card_id: employee.rfid_card_id?.trim() || null,
           pin_code: employee.pin_code?.trim() || null,
           active: employee.active,
@@ -377,6 +380,23 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
                         helperText={errors.employee_code}
                         required
                       />
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <FormControl fullWidth required error={!!errors.employee_type}>
+                        <InputLabel>Munkakör</InputLabel>
+                        <Select
+                          label="Munkakör"
+                          value={employee.employee_type || 'MUHELY'}
+                          onChange={e => handleInputChange('employee_type', e.target.value)}
+                        >
+                          <MenuItem value="BOLTI_DOLGOZO">Bolti Dolgozó</MenuItem>
+                          <MenuItem value="LAPSZABASZ">Lapszabász</MenuItem>
+                          <MenuItem value="ELZARO">Élzáró</MenuItem>
+                          <MenuItem value="ASZTALOS">Asztalos</MenuItem>
+                          <MenuItem value="MUHELY">Műhely</MenuItem>
+                          <MenuItem value="IRODA">Iroda</MenuItem>
+                        </Select>
+                      </FormControl>
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <TextField

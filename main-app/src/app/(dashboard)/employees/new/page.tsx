@@ -33,6 +33,7 @@ interface Employee {
   id: string
   name: string
   employee_code: string
+  employee_type: string
   rfid_card_id: string | null
   pin_code: string | null
   active: boolean
@@ -81,6 +82,7 @@ export default function NewEmployeePage() {
   const [employee, setEmployee] = useState<Partial<Employee>>({
     name: '',
     employee_code: '',
+    employee_type: 'MUHELY',
     rfid_card_id: null,
     pin_code: null,
     active: true,
@@ -160,6 +162,7 @@ return
         body: JSON.stringify({
           name: employee.name?.trim(),
           employee_code: employee.employee_code?.trim(),
+          employee_type: employee.employee_type || 'MUHELY',
           rfid_card_id: employee.rfid_card_id?.trim() || null,
           pin_code: employee.pin_code?.trim() || null,
           active: employee.active !== undefined ? employee.active : true,
@@ -307,6 +310,23 @@ return
                 helperText={errors.employee_code}
                 required
               />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth required error={!!errors.employee_type}>
+                <InputLabel>Munkakör</InputLabel>
+                <Select
+                  label="Munkakör"
+                  value={employee.employee_type || 'MUHELY'}
+                  onChange={e => handleInputChange('employee_type', e.target.value)}
+                >
+                  <MenuItem value="BOLTI_DOLGOZO">Bolti Dolgozó</MenuItem>
+                  <MenuItem value="LAPSZABASZ">Lapszabász</MenuItem>
+                  <MenuItem value="ELZARO">Élzáró</MenuItem>
+                  <MenuItem value="ASZTALOS">Asztalos</MenuItem>
+                  <MenuItem value="MUHELY">Műhely</MenuItem>
+                  <MenuItem value="IRODA">Iroda</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
           </Grid>
         </Paper>

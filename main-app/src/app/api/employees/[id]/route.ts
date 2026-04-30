@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+const ALLOWED_EMPLOYEE_TYPES = [
+  'BOLTI_DOLGOZO',
+  'LAPSZABASZ',
+  'ELZARO',
+  'ASZTALOS',
+  'MUHELY',
+  'IRODA'
+] as const
+
+type EmployeeType = (typeof ALLOWED_EMPLOYEE_TYPES)[number]
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,7 +35,7 @@ export async function GET(
     const { data, error } = await supabase
       .from('employees')
       .select(
-        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
+        'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
       )
       .eq('id', resolvedParams.id)
       .single()
@@ -65,6 +76,7 @@ export async function PUT(
     const {
       name,
       employee_code,
+      employee_type,
       rfid_card_id,
       pin_code,
       active,
@@ -91,6 +103,8 @@ export async function PUT(
       return NextResponse.json({ error: 'Dolgozói kód megadása kötelező' }, { status: 400 })
     }
 
+    const typeValue: EmployeeType = ALLOWED_EMPLOYEE_TYPES.includes(employee_type) ? employee_type : 'MUHELY'
+
     // Validate PIN code format if provided
     if (pin_code && pin_code.trim() !== '') {
       const pinRegex = /^[0-9]{4}$/
@@ -113,6 +127,7 @@ export async function PUT(
       .update({
         name: name.trim(),
         employee_code: employee_code.trim(),
+        employee_type: typeValue,
         rfid_card_id: rfid_card_id?.trim() || null,
         pin_code: pin_code?.trim() || null,
         active: active !== undefined ? active : true,
@@ -132,7 +147,7 @@ export async function PUT(
       })
       .eq('id', resolvedParams.id)
       .select(
-        'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
+        'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
       )
       .single()
 

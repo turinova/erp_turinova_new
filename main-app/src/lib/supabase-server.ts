@@ -2808,7 +2808,7 @@ export async function getAllEmployees() {
   // Fetch all employees with explicit limit to ensure we get all records
   const { data, error } = await supabaseServer
     .from('employees')
-    .select('id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
+    .select('id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, created_at, updated_at')
     .eq('active', true)
     .is('deleted_at', null)
     .order('name', { ascending: true })
@@ -2830,7 +2830,7 @@ export async function getEmployeeById(id: string) {
   const { data, error } = await supabaseServer
     .from('employees')
     .select(
-      'id, name, employee_code, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
+      'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
     )
     .eq('id', id)
     .is('deleted_at', null)

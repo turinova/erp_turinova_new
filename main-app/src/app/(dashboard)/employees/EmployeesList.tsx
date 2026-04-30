@@ -16,6 +16,9 @@ import {
   Checkbox,
   TextField,
   InputAdornment,
+  MenuItem,
+  Tooltip,
+  IconButton,
   Button,
   Dialog,
   DialogTitle,
@@ -24,7 +27,7 @@ import {
   DialogActions,
   CircularProgress
 } from '@mui/material'
-import { Home as HomeIcon, Search as SearchIcon, Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material'
+import { Home as HomeIcon, Search as SearchIcon, Add as AddIcon, Delete as DeleteIcon, PictureAsPdf as PictureAsPdfIcon } from '@mui/icons-material'
 import Link from 'next/link'
 import { toast } from 'react-toastify'
 import { invalidateApiCache } from '@/hooks/useApiCache'
@@ -33,6 +36,7 @@ interface Employee {
   id: string
   name: string
   employee_code: string
+  employee_type?: string
   rfid_card_id: string | null
   pin_code: string | null
   active: boolean
@@ -55,6 +59,13 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
   const [searchTerm, setSearchTerm] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [exportOfficialDialogOpen, setExportOfficialDialogOpen] = useState(false)
+  const now = new Date()
+  const [exportYear, setExportYear] = useState<number>(now.getFullYear())
+  const [exportMonth, setExportMonth] = useState<number>(now.getMonth() + 1)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isExportingOfficial, setIsExportingOfficial] = useState(false)
 
   // Filter employees based on search term
   const filteredEmployees = useMemo(() => {
@@ -64,9 +75,28 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
     const term = searchTerm.toLowerCase()
     return employees.filter(employee => 
       employee.name.toLowerCase().includes(term) ||
-      employee.employee_code.toLowerCase().includes(term)
+      employee.employee_code.toLowerCase().includes(term) ||
+      (employee.employee_type ? getEmployeeTypeLabel(employee.employee_type).toLowerCase().includes(term) : false)
     )
   }, [employees, searchTerm])
+
+  const getEmployeeTypeLabel = (type: string) => {
+    switch (type) {
+      case 'BOLTI_DOLGOZO':
+        return 'Bolti Dolgozó'
+      case 'LAPSZABASZ':
+        return 'Lapszabász'
+      case 'ELZARO':
+        return 'Élzáró'
+      case 'ASZTALOS':
+        return 'Asztalos'
+      case 'IRODA':
+        return 'Iroda'
+      case 'MUHELY':
+      default:
+        return 'Műhely'
+    }
+  }
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -96,8 +126,28 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
     setDeleteDialogOpen(true)
   }
 
+  const handleExportClick = () => {
+    if (selectedEmployees.length === 0) return
+    setExportDialogOpen(true)
+  }
+
+  const handleExportOfficialClick = () => {
+    if (selectedEmployees.length === 0) return
+    setExportOfficialDialogOpen(true)
+  }
+
   const handleDeleteCancel = () => {
     setDeleteDialogOpen(false)
+  }
+
+  const handleExportCancel = () => {
+    if (isExporting) return
+    setExportDialogOpen(false)
+  }
+
+  const handleExportOfficialCancel = () => {
+    if (isExportingOfficial) return
+    setExportOfficialDialogOpen(false)
   }
 
   const handleDeleteConfirm = async () => {
@@ -157,6 +207,109 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
     }
   }
 
+  const parseFilenameFromContentDisposition = (value: string | null): string | null => {
+    if (!value) return null
+    const filenameStar = value.match(/filename\*\=UTF-8''([^;]+)/i)
+    if (filenameStar?.[1]) return decodeURIComponent(filenameStar[1].replace(/"/g, ''))
+    const filename = value.match(/filename=\"([^\"]+)\"/i)
+    if (filename?.[1]) return filename[1]
+    return null
+  }
+
+  const handleExportConfirm = async () => {
+    if (selectedEmployees.length === 0) return
+    setIsExporting(true)
+    try {
+      const res = await fetch('/api/employees/attendance/pdf/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeIds: selectedEmployees,
+          year: exportYear,
+          month: exportMonth
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Hiba történt az export során')
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const filename =
+        parseFilenameFromContentDisposition(res.headers.get('Content-Disposition')) ||
+        `Jelenleti-ivek-${exportYear}-${String(exportMonth).padStart(2, '0')}.zip`
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      toast.success(`PDF export elkészült (${selectedEmployees.length} kolléga)`, {
+        position: 'top-right',
+        autoClose: 4000
+      })
+      setExportDialogOpen(false)
+    } catch (e: any) {
+      toast.error(e?.message || 'Hiba történt az export során!', {
+        position: 'top-right',
+        autoClose: 6000
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportOfficialConfirm = async () => {
+    if (selectedEmployees.length === 0) return
+    setIsExportingOfficial(true)
+    try {
+      const res = await fetch('/api/employees/attendance/pdf/bulk-official', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employeeIds: selectedEmployees,
+          year: exportYear,
+          month: exportMonth
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error(data?.error || 'Hiba történt az export során')
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const filename =
+        parseFilenameFromContentDisposition(res.headers.get('Content-Disposition')) ||
+        `Jelenleti-ivek-${exportYear}-${String(exportMonth).padStart(2, '0')}.zip`
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+
+      toast.success(`Hivatalos jelenléti ívek elkészültek (${selectedEmployees.length} kolléga)`, {
+        position: 'top-right',
+        autoClose: 4500
+      })
+      setExportOfficialDialogOpen(false)
+    } catch (e: any) {
+      toast.error(e?.message || 'Hiba történt az export során!', {
+        position: 'top-right',
+        autoClose: 6000
+      })
+    } finally {
+      setIsExportingOfficial(false)
+    }
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Breadcrumbs */}
@@ -185,6 +338,25 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
           Kollégák
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
+          {selectedEmployees.length > 0 && (
+            <Tooltip title={`PDF export (papír) (${selectedEmployees.length})`}>
+              <span>
+                <IconButton onClick={handleExportClick} disabled={isExporting || isDeleting} aria-label="PDF export (papír)">
+                  <PictureAsPdfIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+          {selectedEmployees.length > 0 && (
+            <Button
+              variant="outlined"
+              startIcon={<PictureAsPdfIcon />}
+              onClick={handleExportOfficialClick}
+              disabled={isExportingOfficial || isDeleting}
+            >
+              PDF export ({selectedEmployees.length})
+            </Button>
+          )}
           {selectedEmployees.length > 0 && (
             <Button
               variant="outlined"
@@ -243,6 +415,7 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
                 />
               </TableCell>
               <TableCell>Név</TableCell>
+              <TableCell>Munkakör</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -265,6 +438,7 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
                   />
                 </TableCell>
                 <TableCell>{employee.name}</TableCell>
+                <TableCell>{getEmployeeTypeLabel(employee.employee_type || 'MUHELY')}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -306,6 +480,144 @@ export default function EmployeesList({ initialEmployees }: EmployeesListProps) 
           </Button>
           <Button onClick={handleDeleteConfirm} color="error" variant="contained" disabled={isDeleting}>
             {isDeleting ? 'Törlés...' : 'Törlés'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bulk PDF Export Dialog */}
+      <Dialog
+        open={exportDialogOpen}
+        onClose={handleExportCancel}
+        aria-labelledby="export-dialog-title"
+        aria-describedby="export-dialog-description"
+      >
+        <DialogTitle id="export-dialog-title">PDF export</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="export-dialog-description" sx={{ mb: 2 }}>
+            A kiválasztott {selectedEmployees.length} kollégához elkészítjük a jelenléti íveket, és egy ZIP-ben letöltjük.
+          </DialogContentText>
+
+          <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+            <TextField
+              label="Év"
+              type="number"
+              value={exportYear}
+              onChange={e => setExportYear(Number(e.target.value))}
+              inputProps={{ min: 2000, max: 2100 }}
+              fullWidth
+              disabled={isExporting}
+            />
+            <TextField
+              label="Hónap"
+              select
+              value={exportMonth}
+              onChange={e => setExportMonth(Number(e.target.value))}
+              fullWidth
+              disabled={isExporting}
+            >
+              {[
+                { value: 1, label: 'Január' },
+                { value: 2, label: 'Február' },
+                { value: 3, label: 'Március' },
+                { value: 4, label: 'Április' },
+                { value: 5, label: 'Május' },
+                { value: 6, label: 'Június' },
+                { value: 7, label: 'Július' },
+                { value: 8, label: 'Augusztus' },
+                { value: 9, label: 'Szeptember' },
+                { value: 10, label: 'Október' },
+                { value: 11, label: 'November' },
+                { value: 12, label: 'December' }
+              ].map(m => (
+                <MenuItem key={m.value} value={m.value}>
+                  {m.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleExportCancel} disabled={isExporting}>
+            Mégse
+          </Button>
+          <Button onClick={handleExportConfirm} variant="contained" disabled={isExporting}>
+            {isExporting ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={18} />
+                Generálás...
+              </Box>
+            ) : (
+              'Letöltés'
+            )}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bulk Official PDF Export Dialog */}
+      <Dialog
+        open={exportOfficialDialogOpen}
+        onClose={handleExportOfficialCancel}
+        aria-labelledby="export-official-dialog-title"
+        aria-describedby="export-official-dialog-description"
+      >
+        <DialogTitle id="export-official-dialog-title">PDF export</DialogTitle>
+        <DialogContent>
+          <DialogContentText id="export-official-dialog-description" sx={{ mb: 2 }}>
+            A kiválasztott {selectedEmployees.length} kollégához elkészítjük a hivatalos jelenléti íveket, és egy ZIP-ben letöltjük.
+          </DialogContentText>
+
+          <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+            <TextField
+              label="Év"
+              type="number"
+              value={exportYear}
+              onChange={e => setExportYear(Number(e.target.value))}
+              inputProps={{ min: 2000, max: 2100 }}
+              fullWidth
+              disabled={isExportingOfficial}
+            />
+            <TextField
+              label="Hónap"
+              select
+              value={exportMonth}
+              onChange={e => setExportMonth(Number(e.target.value))}
+              fullWidth
+              disabled={isExportingOfficial}
+            >
+              {[
+                { value: 1, label: 'Január' },
+                { value: 2, label: 'Február' },
+                { value: 3, label: 'Március' },
+                { value: 4, label: 'Április' },
+                { value: 5, label: 'Május' },
+                { value: 6, label: 'Június' },
+                { value: 7, label: 'Július' },
+                { value: 8, label: 'Augusztus' },
+                { value: 9, label: 'Szeptember' },
+                { value: 10, label: 'Október' },
+                { value: 11, label: 'November' },
+                { value: 12, label: 'December' }
+              ].map(m => (
+                <MenuItem key={m.value} value={m.value}>
+                  {m.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleExportOfficialCancel} disabled={isExportingOfficial}>
+            Mégse
+          </Button>
+          <Button onClick={handleExportOfficialConfirm} variant="contained" disabled={isExportingOfficial}>
+            {isExportingOfficial ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={18} />
+                Generálás...
+              </Box>
+            ) : (
+              'Letöltés'
+            )}
           </Button>
         </DialogActions>
       </Dialog>

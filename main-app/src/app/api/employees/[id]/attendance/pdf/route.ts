@@ -152,15 +152,26 @@ return checkDate >= start && checkDate <= end
     let absentDays: number
     let totalOvertimeMinutes: number
     const conflictDays = daysData.filter(day => day.isConflictHolidayWork).length
+    const saturdayDays = daysData.filter(day => day.dayOfWeek === 6 && day.hasCompleteAttendance).length
     
     if (mode === 'paper') {
-      // Paper mode: holiday days are treated as leave even if attendance exists
+      // Paper mode:
+      // - Saturday hours are never counted in paper totals (always excluded).
+      // - Employee holiday days are treated as leave ONLY when there is no attendance.
+      //   If employee used leave but still worked (conflict), treat it like work (align with actual-mode conflict intent).
       totalHours = daysData.reduce((sum, day) => {
-        return sum + (day.isEmployeeHoliday ? 0 : day.hoursWorked)
+        if (day.dayOfWeek === 6) return sum
+        if (day.isEmployeeHoliday && !day.hasAttendance) return sum
+        return sum + day.hoursWorked
       }, 0)
       totalOvertimeMinutes = 0
-      daysWorked = daysData.filter(day => day.hasCompleteAttendance && !day.isEmployeeHoliday && !day.isGlobalHoliday).length
-      absentDays = daysData.filter(day => day.isEmployeeHoliday).length
+      daysWorked = daysData.filter(day => {
+        if (!day.hasCompleteAttendance) return false
+        if (day.isGlobalHoliday) return false
+        if (day.isEmployeeHoliday && !day.isConflictHolidayWork) return false
+        return true
+      }).length
+      absentDays = daysData.filter(day => day.isEmployeeHoliday && !day.hasAttendance).length
     } else {
       // Actual mode: count all real worked hours/days, including attendance on holidays
       totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
@@ -194,6 +205,7 @@ return ''
         daysWorked,
         absentDays,
         conflictDays,
+        saturdayDays,
         totalOvertimeMinutes
       },
       turinovaLogoBase64,
