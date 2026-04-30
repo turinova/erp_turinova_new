@@ -7,6 +7,7 @@ import TodayAttendanceDashboard from '@/components/TodayAttendanceDashboard'
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
 import WeeklyWorktopProductionChart from '@/components/WeeklyWorktopProductionChart'
 import WeeklyEdgeBandingChart from '@/components/WeeklyEdgeBandingChart'
+import BacklogTotalsCard from '@/components/BacklogTotalsCard'
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
 import MonthlyWorktopQuotesCard from '@/components/MonthlyWorktopQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
@@ -83,6 +84,10 @@ export default function HomeClient({
             dateLabel={initialTodayAttendance.dateLabel}
             employees={initialTodayAttendance.employees}
           />
+        </Grid>
+
+        <Grid item xs={12}>
+          <BacklogTotalsCard />
         </Grid>
 
         {/* Weekly Cutting Chart - full width */}
