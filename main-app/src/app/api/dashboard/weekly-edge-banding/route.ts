@@ -25,14 +25,15 @@ export async function GET(request: NextRequest) {
     const startYmd = monday.toISOString().split('T')[0]
     const endYmd = saturday.toISOString().split('T')[0]
 
-    // Fetch quotes for the week (in_production) + nested pricing + edge breakdown.
+    // Fetch quotes for the week + nested pricing + edge breakdown.
+    // IMPORTANT: we do NOT filter by status here, to match the weekly cutting chart's historical behavior
+    // (assigned-by-production_date should remain visible even after status changes).
     const { data: weeklyQuotes, error } = await supabaseServer
       .from('quotes')
       .select(
         `
         id,
         production_date,
-        status,
         quote_materials_pricing (
           id,
           quote_edge_materials_breakdown (
@@ -43,7 +44,6 @@ export async function GET(request: NextRequest) {
         )
       `
       )
-      .eq('status', 'in_production')
       .gte('production_date', startYmd)
       .lte('production_date', endYmd)
       .not('production_date', 'is', null)

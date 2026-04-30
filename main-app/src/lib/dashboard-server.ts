@@ -531,7 +531,6 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
         )
       `
       )
-      .eq('status', 'in_production')
       .gte('production_date', startYmd)
       .lte('production_date', endYmd)
       .not('production_date', 'is', null)
