@@ -54,8 +54,9 @@ function getSelectedMonthRange(selected?: { year: number; month: number }) {
 async function fetchAvailableMonths() {
   const { data, error } = await supabaseServer
     .from('quotes')
-    .select('ready_at')
-    .not('ready_at', 'is', null)
+    .select('ready_at, finished_at')
+    .or('ready_at.not.is.null,finished_at.not.is.null')
+    .order('finished_at', { ascending: false })
     .order('ready_at', { ascending: false })
     .limit(1000)
 
@@ -66,8 +67,9 @@ async function fetchAvailableMonths() {
 
   const monthSet = new Set<string>()
   data?.forEach(row => {
-    if (!row.ready_at) return
-    const date = new Date(row.ready_at)
+    const completionAt = (row as any).ready_at || (row as any).finished_at
+    if (!completionAt) return
+    const date = new Date(completionAt)
     if (Number.isNaN(date.getTime())) return
     const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
     monthSet.add(key)
@@ -155,18 +157,20 @@ export async function GET(request: NextRequest) {
           edge_materials_net,
           cutting_net,
           quotes:quote_id (
-            ready_at
+            ready_at,
+            finished_at
           )
         `)
-        .not('quotes.ready_at', 'is', null)
-        .gte('quotes.ready_at', monthStart.toISOString())
-        .lte('quotes.ready_at', monthEnd.toISOString()),
+        .or(
+          `and(quotes.ready_at.gte.${monthStart.toISOString()},quotes.ready_at.lte.${monthEnd.toISOString()}),and(quotes.finished_at.gte.${monthStart.toISOString()},quotes.finished_at.lte.${monthEnd.toISOString()})`
+        ),
       supabaseServer
         .from('quotes')
-        .select('ready_at, final_total_after_discount, customer_id, customers ( name )')
-        .not('ready_at', 'is', null)
-        .gte('ready_at', monthStart.toISOString())
-        .lte('ready_at', monthEnd.toISOString())
+        .select('ready_at, finished_at, final_total_after_discount, customer_id, customers ( name )')
+        .or(
+          `and(ready_at.gte.${monthStart.toISOString()},ready_at.lte.${monthEnd.toISOString()}),and(finished_at.gte.${monthStart.toISOString()},finished_at.lte.${monthEnd.toISOString()})`
+        )
+        .order('finished_at', { ascending: true })
         .order('ready_at', { ascending: true })
     ])
 
@@ -181,10 +185,10 @@ export async function GET(request: NextRequest) {
     }
 
     pricingData?.forEach(row => {
-      const readyAt = row.quotes?.ready_at
-      if (!readyAt) return
+      const completionAt = (row.quotes as any)?.ready_at || (row.quotes as any)?.finished_at
+      if (!completionAt) return
 
-      const readyDate = new Date(readyAt)
+      const readyDate = new Date(completionAt)
       if (readyDate < monthStart || readyDate > monthEnd) return
 
       const bucketKey = resolveBucketKey(range, readyDate)
@@ -203,7 +207,8 @@ export async function GET(request: NextRequest) {
 
     const customerTotals = new Map<string, { customerId: string; customerName: string; total: number }>()
     quotesData?.forEach(row => {
-      if (!row.ready_at) return
+      const completionAt = (row as any).ready_at || (row as any).finished_at
+      if (!completionAt) return
       const total = Number(row.final_total_after_discount) || 0
       const customerId = row.customer_id as string
       const customerName = (row.customers as { name?: string } | null)?.name || 'Ismeretlen ügyfél'

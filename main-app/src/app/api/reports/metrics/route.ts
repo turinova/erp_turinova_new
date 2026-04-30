@@ -14,6 +14,7 @@ interface MonthRange {
 interface QuoteRecord {
   id: string
   ready_at: string | null
+  finished_at: string | null
   created_at: string | null
   final_total_after_discount: number | null
   production_machine_id: string | null
@@ -99,6 +100,7 @@ async function fetchQuotes(range: MonthRange) {
       `
         id,
         ready_at,
+        finished_at,
         created_at,
         final_total_after_discount,
         production_machine_id,
@@ -107,9 +109,9 @@ async function fetchQuotes(range: MonthRange) {
         )
       `
     )
-    .not('ready_at', 'is', null)
-    .gte('ready_at', range.start.toISOString())
-    .lte('ready_at', range.end.toISOString())
+    .or(
+      `and(ready_at.gte.${range.start.toISOString()},ready_at.lte.${range.end.toISOString()}),and(finished_at.gte.${range.start.toISOString()},finished_at.lte.${range.end.toISOString()})`
+    )
 
   if (error) {
     console.error('Error fetching reports metrics quotes:', error)
@@ -423,10 +425,11 @@ export async function GET(request: NextRequest) {
     // Lead time
     const leadTimes = currentQuotes
       .map(quote => {
-        if (!quote.ready_at || !quote.created_at) {
+        const completionAt = quote.ready_at || quote.finished_at
+        if (!completionAt || !quote.created_at) {
           return null
         }
-        const readyDate = new Date(quote.ready_at)
+        const readyDate = new Date(completionAt)
         const createdDate = new Date(quote.created_at)
         const diffMs = readyDate.getTime() - createdDate.getTime()
         if (Number.isNaN(diffMs) || diffMs < 0) {
