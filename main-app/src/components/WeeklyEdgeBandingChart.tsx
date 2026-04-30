@@ -206,6 +206,7 @@ export default function WeeklyEdgeBandingChart({ initialData }: WeeklyEdgeBandin
         const rows: string[] = []
         for (let i = 0; i < w.globals.seriesNames.length; i++) {
           const name = String(w.globals.seriesNames[i] || '')
+          if (name === 'Hátralévő' || name === 'Kapacitás') continue
           const value = Number(series?.[i]?.[dataPointIndex] ?? 0)
           if (!value || value <= 0) continue
           rows.push(`<div style="display:flex;justify-content:space-between;gap:12px;"><span>${name}</span><strong>${value.toFixed(2)} m</strong></div>`)
