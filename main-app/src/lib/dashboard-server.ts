@@ -548,6 +548,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
     const byMaterial = new Map<string, { name: string; data: number[] }>()
     const dailyTotals = [0, 0, 0, 0, 0, 0]
     const remainingTotals = [0, 0, 0, 0, 0, 0]
+    const doneTotals = [0, 0, 0, 0, 0, 0]
 
     for (const q of weeklyQuotes || []) {
       const dateStr = (q as any).production_date as string | null
@@ -560,6 +561,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
 
       const pricingRows = ((q as any).quote_materials_pricing || []) as any[]
       const isRemaining = !(q as any).ready_at && !(q as any).finished_at
+      const isDone = Boolean((q as any).ready_at || (q as any).finished_at)
       for (const pr of pricingRows) {
         const edges = (pr?.quote_edge_materials_breakdown || []) as any[]
         for (const e of edges) {
@@ -577,6 +579,9 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
           dailyTotals[dayIndex] += len
           if (isRemaining) {
             remainingTotals[dayIndex] += len
+          }
+          if (isDone) {
+            doneTotals[dayIndex] += len
           }
         }
       }
@@ -606,6 +611,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
       series,
       dailyTotals: dailyTotals.map(x => Math.round(x * 100) / 100),
       remainingTotals: remainingTotals.map(x => Math.round(x * 100) / 100),
+      doneTotals: doneTotals.map(x => Math.round(x * 100) / 100),
       capacityPerDay,
       weekStart: startYmd,
       weekEnd: endYmd
@@ -617,6 +623,7 @@ export async function getWeeklyEdgeBandingData(weekOffset: number = 0) {
       series: [],
       dailyTotals: [0, 0, 0, 0, 0, 0],
       remainingTotals: [0, 0, 0, 0, 0, 0],
+      doneTotals: [0, 0, 0, 0, 0, 0],
       capacityPerDay: [700, 700, 700, 700, 700, 700],
       weekStart: startYmd,
       weekEnd: endYmd

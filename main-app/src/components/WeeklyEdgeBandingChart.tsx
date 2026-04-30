@@ -20,6 +20,7 @@ interface ChartData {
   series: BarSeries[]
   dailyTotals?: number[]
   remainingTotals?: number[]
+  doneTotals?: number[]
   capacityPerDay?: number[]
   weekStart?: string
   weekEnd?: string
@@ -196,6 +197,30 @@ export default function WeeklyEdgeBandingChart({ initialData }: WeeklyEdgeBandin
       theme: theme.palette.mode,
       shared: true,
       intersect: false,
+      custom: ({ series, dataPointIndex, w }: { series: number[][]; dataPointIndex: number; w: any }) => {
+        const dayLabel = baseCategories?.[dataPointIndex] || ''
+        const total = chartData?.dailyTotals?.[dataPointIndex] || 0
+        const done = chartData?.doneTotals?.[dataPointIndex] || 0
+        const remaining = chartData?.remainingTotals?.[dataPointIndex] || 0
+
+        const rows: string[] = []
+        for (let i = 0; i < w.globals.seriesNames.length; i++) {
+          const name = String(w.globals.seriesNames[i] || '')
+          const value = Number(series?.[i]?.[dataPointIndex] ?? 0)
+          if (!value || value <= 0) continue
+          rows.push(`<div style="display:flex;justify-content:space-between;gap:12px;"><span>${name}</span><strong>${value.toFixed(2)} m</strong></div>`)
+        }
+
+        const header = `<div style="font-weight:600;margin-bottom:6px;">${dayLabel}</div>`
+        const summary = `
+          <div style="display:flex;justify-content:space-between;gap:12px;"><span>Össz</span><strong>${total.toFixed(0)} m</strong></div>
+          <div style="display:flex;justify-content:space-between;gap:12px;"><span>Kész</span><strong>${done.toFixed(0)} m</strong></div>
+          <div style="display:flex;justify-content:space-between;gap:12px;"><span>Hátra</span><strong>${remaining.toFixed(0)} m</strong></div>
+        `
+
+        const divider = rows.length ? `<div style="margin:8px 0;border-top:1px solid rgba(127,127,127,0.35);"></div>` : ''
+        return `<div style="padding:10px 12px;min-width:220px;">${header}${summary}${divider}${rows.join('')}</div>`
+      },
       y: {
         formatter: (val: number) => `${val.toFixed(2)} m`
       }
