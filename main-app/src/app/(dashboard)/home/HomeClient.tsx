@@ -6,6 +6,7 @@ import CustomerPortalQuotesTable from '@/components/CustomerPortalQuotesTable'
 import TodayAttendanceDashboard from '@/components/TodayAttendanceDashboard'
 import WeeklyCuttingChart from '@/components/WeeklyCuttingChart'
 import WeeklyWorktopProductionChart from '@/components/WeeklyWorktopProductionChart'
+import WeeklyEdgeBandingChart from '@/components/WeeklyEdgeBandingChart'
 import MonthlyQuotesCard from '@/components/MonthlyQuotesCard'
 import MonthlyWorktopQuotesCard from '@/components/MonthlyWorktopQuotesCard'
 import MonthlySupplierOrdersCard from '@/components/MonthlySupplierOrdersCard'
@@ -28,6 +29,7 @@ interface HomeClientProps {
   initialMonthlySupplierOrders: any
   initialMonthlyWorktopQuotes: any
   initialWeeklyCutting: any
+  initialWeeklyEdgeBanding: any
   initialWeeklyWorktopProduction: any
   initialTodayAttendance: {
     dateLabel: string
@@ -52,6 +54,7 @@ export default function HomeClient({
   initialMonthlySupplierOrders,
   initialMonthlyWorktopQuotes,
   initialWeeklyCutting,
+  initialWeeklyEdgeBanding,
   initialWeeklyWorktopProduction,
   initialTodayAttendance,
   posOrdersGoalStats,
@@ -85,6 +88,11 @@ export default function HomeClient({
         {/* Weekly Cutting Chart - full width */}
         <Grid item xs={12}>
           <WeeklyCuttingChart initialData={initialWeeklyCutting} />
+        </Grid>
+
+        {/* Weekly Edge Banding Chart - full width */}
+        <Grid item xs={12}>
+          <WeeklyEdgeBandingChart initialData={initialWeeklyEdgeBanding} />
         </Grid>
 
         {/* Third Row: Weekly Worktop Production Chart - full width */}

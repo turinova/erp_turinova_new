@@ -9,6 +9,7 @@ import {
   getMonthlySupplierOrdersData,
   getMonthlyWorktopQuotesData,
   getWeeklyCuttingData,
+  getWeeklyEdgeBandingData,
   getWeeklyWorktopProductionData,
   getTodayAttendanceForHome,
   getPosOrdersGoalStats
@@ -60,6 +61,7 @@ export default async function Page() {
     monthlySupplierOrders,
     monthlyWorktopQuotes,
     weeklyCutting,
+    weeklyEdgeBanding,
     weeklyWorktopProduction,
     todayAttendance,
     posOrdersGoalStats,
@@ -70,6 +72,7 @@ export default async function Page() {
     getMonthlySupplierOrdersData('month', 0),
     getMonthlyWorktopQuotesData('month', 0),
     getWeeklyCuttingData(0),
+    getWeeklyEdgeBandingData(0),
     getWeeklyWorktopProductionData(0),
     getTodayAttendanceForHome(),
     getPosOrdersGoalStats(),
@@ -83,6 +86,7 @@ export default async function Page() {
       initialMonthlySupplierOrders={monthlySupplierOrders}
       initialMonthlyWorktopQuotes={monthlyWorktopQuotes}
       initialWeeklyCutting={weeklyCutting}
+      initialWeeklyEdgeBanding={weeklyEdgeBanding}
       initialWeeklyWorktopProduction={weeklyWorktopProduction}
       initialTodayAttendance={todayAttendance}
       posOrdersGoalStats={posOrdersGoalStats}
