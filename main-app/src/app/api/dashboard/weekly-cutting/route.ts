@@ -34,6 +34,9 @@ export async function GET(request: NextRequest) {
         id,
         production_date,
         production_machine_id,
+        ready_at,
+        finished_at,
+        cancelled_at,
         quote_materials_pricing (
           cutting_length_m
         )
@@ -41,6 +44,8 @@ export async function GET(request: NextRequest) {
       .gte('production_date', monday.toISOString().split('T')[0])
       .lte('production_date', saturday.toISOString().split('T')[0])
       .not('production_machine_id', 'is', null)
+      .is('deleted_at', null)
+      .is('cancelled_at', null)
       .order('production_date', { ascending: true })
 
     if (error) {
@@ -59,6 +64,8 @@ export async function GET(request: NextRequest) {
 
     // Process data: group by date and machine, sum cutting_length_m
     const dataByDateAndMachine = new Map<string, Map<string, number>>()
+    const doneByDate = new Map<string, number>()
+    const remainingByDate = new Map<string, number>()
 
     weeklyData.forEach(quote => {
       const date = quote.production_date
@@ -71,6 +78,15 @@ export async function GET(request: NextRequest) {
         (sum: number, pricing: any) => sum + (pricing.cutting_length_m || 0), 
         0
       ) || 0
+
+      const isDone = Boolean((quote as any).ready_at || (quote as any).finished_at)
+      const isRemaining = !((quote as any).ready_at) && !((quote as any).finished_at)
+      if (isDone) {
+        doneByDate.set(date, (doneByDate.get(date) || 0) + totalCuttingLength)
+      }
+      if (isRemaining) {
+        remainingByDate.set(date, (remainingByDate.get(date) || 0) + totalCuttingLength)
+      }
 
       if (!dataByDateAndMachine.has(date)) {
         dataByDateAndMachine.set(date, new Map())
@@ -128,6 +144,25 @@ export async function GET(request: NextRequest) {
       })
     })
 
+    const doneTotals = [0, 0, 0, 0, 0, 0]
+    const remainingTotals = [0, 0, 0, 0, 0, 0]
+    for (const [dateStr, val] of doneByDate.entries()) {
+      const date = new Date(dateStr)
+      const dow = date.getDay()
+      if (dow === 0) continue
+      const idx = dow - 1
+      if (idx < 0 || idx > 5) continue
+      doneTotals[idx] += val
+    }
+    for (const [dateStr, val] of remainingByDate.entries()) {
+      const date = new Date(dateStr)
+      const dow = date.getDay()
+      if (dow === 0) continue
+      const idx = dow - 1
+      if (idx < 0 || idx > 5) continue
+      remainingTotals[idx] += val
+    }
+
     // Create machine limits for annotations
     const machineLimits = Array.from(machineIds).map(machineId => {
       const machineInfo = machineMap.get(machineId)
@@ -143,6 +178,8 @@ export async function GET(request: NextRequest) {
       series,
       machineLimits,
       dailyTotals,
+      doneTotals: doneTotals.map(x => Math.round(x * 100) / 100),
+      remainingTotals: remainingTotals.map(x => Math.round(x * 100) / 100),
       weekStart: monday.toISOString().split('T')[0],
       weekEnd: saturday.toISOString().split('T')[0]
     })
