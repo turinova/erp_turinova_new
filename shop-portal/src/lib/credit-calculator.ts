@@ -10,6 +10,7 @@ export type AIFeatureType =
   | 'url_slug' 
   | 'product_tags'
   | 'product_description'
+  | 'product_short_description'
   | 'category_description'
   | 'category_meta'
   | 'image_alt_text'
@@ -30,6 +31,7 @@ export function calculateCreditsForAI(
     'url_slug': 1,
     'product_tags': 1,
     'product_description': 5, // More expensive - large token usage
+    'product_short_description': 2, // Merchant-oriented short plain text
     'category_description': 3,
     'category_meta': 1,
     'image_alt_text': 1, // Image alt text generation

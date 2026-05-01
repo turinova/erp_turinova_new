@@ -10,12 +10,13 @@ import {
   mergeSearchQueriesByImpressions,
   variantDifferentiatorFromAttributes
 } from './product-variant-helpers'
+import { sanitizeAiTypography } from './copy-sanitize'
 
 /**
  * Get Anthropic client - must be created at runtime, not module level
  * This ensures environment variables are properly loaded in Next.js
  */
-function getAnthropicClient() {
+export function getAnthropicClient() {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in environment variables')
@@ -71,7 +72,7 @@ export interface ProductTypeInfo {
 /**
  * Detect product type from product name and SKU
  */
-function detectProductType(productName: string, sku: string): ProductTypeInfo {
+export function detectProductType(productName: string, sku: string): ProductTypeInfo {
   const nameLower = (productName || '').toLowerCase()
   const skuLower = sku.toLowerCase()
   const combined = `${nameLower} ${skuLower}`
@@ -158,7 +159,7 @@ function detectProductType(productName: string, sku: string): ProductTypeInfo {
 /**
  * Validate description for logical consistency
  */
-function validateDescription(
+export function validateDescription(
   description: string,
   productName: string,
   productType: ProductTypeInfo
@@ -225,7 +226,7 @@ function validateDescription(
 /**
  * Find relevant content chunks using semantic search
  */
-async function findRelevantChunks(
+export async function findRelevantChunks(
   supabase: any,
   productId: string,
   query: string,
@@ -1252,8 +1253,20 @@ LOGICAL CONSISTENCY REQUIREMENTS:
    - Are dimensions interpreted correctly?
    - Is the installation method appropriate?
 
+**CRITICAL: HUMAN VOICE: AVOID GENERIC "AI" COPY (quality & search helpfulness):**
+- Do **NOT** stack the same connector openers in every paragraph: e.g. overusing "Fontos, hogy", "Érdemes megjegyezni", "Összességében", "Kiemelendő", "Nem elhanyagolható", "Ráadásul", "Ezen felül", "Továbbá" back-to-back reads as machine text.
+- Do **NOT** use empty catch-all claims: "tökéletes minden helyzetre", "ideális választás bárkinek", "minden igényt kielégít" unless clearly backed by product data.
+- Vary how sentences and sections **start**; avoid a rhythm like "A termék ..., A termék ..., A fő előnye ..." repeated.
+- Prefer **concrete** facts (dimensions, load, material, model) over abstract marketing filler.
+- Mix **short** punchy sentences (5-12 words) with longer ones; do not keep the same length pattern for many sentences in a row.
+- In Hungarian: do not chain every thought with "amely / amelynek" subclauses; use direct phrasing part of the time.
+- **No meta-disclaimers** that sound like an article: avoid "Ebben a leírásban", "Az alábbiakban bemutatjuk", "Lássuk a részleteket", "Összefoglalva a fentieket".
+- **FAQ / GYIK**: questions should sound like real shoppers (natural wording), not uniform encyclopedia headers; vary question length and form.
+- **Punctuation (OUTPUT)**: Do NOT use em dash (U+2014) or en dash (U+2013) between clauses; use comma, semicolon, or a new sentence. For numeric ranges use ASCII hyphen (300-550 mm). Do NOT use the Unicode ellipsis character; use three dots "..." only if needed.
+- You may use light colloquial trade terms where normal in Hungarian B2B/B2C hardware copy; still professional.
+
 OTHER CRITICAL INSTRUCTIONS:
-1. Write in a natural, conversational Hungarian tone - avoid AI patterns
+1. Write in a natural, conversational Hungarian tone; the page must not read like a default chatbot template
 2. Use varied sentence structures and lengths (30% short 5-10 words, 50% medium 15-25 words, 20% long 30+ words)
 3. Include specific details from the source materials provided (translate to Hungarian)
 4. Write as if you personally know and use this product
@@ -1264,8 +1277,8 @@ OTHER CRITICAL INSTRUCTIONS:
 9. Answer questions a real customer would ask
 10. Make it comprehensive but scannable (500-1000 words)
 11. **MANDATORY: Write ONLY in Hungarian - no English, no mixed languages**
-12. Use rhetorical questions naturally: "Mire figyeljünk?" "Miért válasszuk ezt?"
-13. Include personal voice elements: "én", "mi", "tapasztalat" occasionally
+12. Use rhetorical questions **sparingly** (0-2 in the whole piece unless FAQ); do not open every section with a question
+13. Include light personal or trade voice only where it fits (e.g. "gyakorlatban", "szereléskor"); avoid fake first-person "én" stories
 
 IDENTIFIER PRIORITY (CRITICAL):
 - Prefer **Gyártói cikkszám (model_number)** when referencing an identifier in the description.
@@ -1483,6 +1496,8 @@ FINAL QUALITY CHECK - BEFORE SUBMITTING:
 10. ✅ **HUNGARIAN SEMANTICS CHECK**: Is all language natural Hungarian? (No literal English translations, proper compound words, correct case endings)
 11. ✅ **EMOTIONAL CLAIMS CHECK**: Do all emotional words match actual product characteristics? (No "prémium" if product isn't premium, no "több ezer vásárló" unless data confirms)
 12. ✅ **PAIN POINT CHECK**: Are all pain points actually solved by this product? (No made-up problems or solutions)
+13. ✅ **ANTI-AI SLOP CHECK**: Does the text avoid formulaic connectors, repeated openers, and empty superlatives? Does it read like a skilled human editor, not a template?
+14. ✅ **PUNCTUATION CHECK**: No em/en dash (Unicode) between clauses; no "…" character; number ranges use ASCII hyphen.
 
 **CRITICAL: Your response MUST be complete. Do not stop mid-sentence or mid-section. Always include:**
 - A FULL conclusion/summary section ("Összefoglalás" or "Összegzés")
@@ -1908,6 +1923,7 @@ HARD CONSTRAINTS (MUST ALL BE MET):
 6. Do NOT hardcode prices.
 7. Identifier rule: Prefer "gyártói cikkszám" (model_number) when present in the input; avoid repeating SKU. Mention SKU at most once.
 8. FAQ: keep EXACTLY 3 questions.
+9. Do NOT use Unicode em dash or en dash (U+2014 / U+2013) between clauses; use comma or new sentence. Use ASCII hyphen only for number ranges (300-550).
 
 Return ONLY the rewritten HTML, nothing else.`
 
@@ -1939,6 +1955,8 @@ ${description}`
         // If the shorten pass fails, proceed with the original description + warnings (handled below).
       }
     }
+
+    description = sanitizeAiTypography(description, { isHtml: true })
 
     if (wasCutOff) {
       console.warn(`[AI GENERATION] WARNING: Response was cut off due to token limit (stop_reason: ${stopReason})`)

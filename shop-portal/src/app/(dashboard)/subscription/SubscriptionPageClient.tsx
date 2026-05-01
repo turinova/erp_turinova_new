@@ -183,6 +183,7 @@ export default function SubscriptionPageClient() {
       'meta_description': 'Meta leírás',
       'url_slug': 'URL slug',
       'product_description': 'Részletes leírás',
+      'product_short_description': 'Rövid leírás (AI)',
       'category_description': 'Kategória leírás',
       'product_tags': 'Termék címkék',
       'image_alt_text': 'Kép alt szöveg',
@@ -218,6 +219,7 @@ export default function SubscriptionPageClient() {
   const getFeatureColor = (featureType: string): "default" | "primary" | "secondary" | "error" | "info" | "success" | "warning" => {
     switch (featureType) {
       case 'product_description':
+      case 'product_short_description':
       case 'category_description':
         return 'primary'
       case 'meta_title':

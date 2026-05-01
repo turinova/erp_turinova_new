@@ -136,6 +136,10 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
   const [generatedProductType, setGeneratedProductType] = useState<string | null>(null)
   const [generationWarnings, setGenerationWarnings] = useState<string[]>([])
   const [searchQueriesUsed, setSearchQueriesUsed] = useState<Array<{ query: string; impressions: number; clicks: number }> | null>(null)
+  const [generatingShort, setGeneratingShort] = useState(false)
+  const [shortGenerationDialogOpen, setShortGenerationDialogOpen] = useState(false)
+  const [shortGenerationWarnings, setShortGenerationWarnings] = useState<string[]>([])
+  const [shortGeneratedProductType, setShortGeneratedProductType] = useState<string | null>(null)
   
   // URL alias state
   const [urlSlug, setUrlSlug] = useState<string>('')
@@ -2812,6 +2816,63 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
     }
   }
 
+  const handleGenerateShortDescription = async () => {
+    try {
+      setGeneratingShort(true)
+      setShortGenerationDialogOpen(false)
+
+      if (!product?.id) return
+      const response = await fetch(`/api/products/${product.id}/generate-short-description`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          useSourceMaterials: true,
+          language: 'hu',
+          generationInstructions: formData.generation_instructions.trim() || undefined,
+          useSearchConsoleQueries: false
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.status === 402) {
+        const credits = result.credits || {}
+        toast.error(
+          `Nincs elég credit! Szükséges: ${credits.required || '?'}, Elérhető: ${credits.available || 0} / ${credits.limit || '?'}`,
+          { autoClose: 6000 }
+        )
+        return
+      }
+
+      if (result.success) {
+        setFormData(prev => ({
+          ...prev,
+          short_description: result.shortDescription
+        }))
+        setShortGeneratedProductType(result.productType || null)
+        setShortGenerationWarnings(result.validationWarnings || [])
+        window.dispatchEvent(new Event('creditUsageUpdated'))
+        toast.success(
+          `Rövid leírás generálva (${result.metrics?.charCount ?? '?'} karakter, ${result.metrics?.tokensUsed ?? '?'} token)`
+        )
+        if (result.validationWarnings?.length > 0) {
+          result.validationWarnings.forEach((warning: string) => {
+            toast.warning(`Figyelem: ${warning}`, { autoClose: 5000 })
+          })
+        }
+      } else {
+        toast.error(`Generálási hiba: ${result.error || 'Ismeretlen hiba'}`)
+      }
+    } catch (error) {
+      console.error('Error generating short description:', error)
+      toast.error('Hiba a rövid leírás generálásakor')
+    } finally {
+      setGeneratingShort(false)
+    }
+  }
+
   return (
     <Box>
       {/* Connection Selection for New Products */}
@@ -4832,7 +4893,38 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
                   <Typography variant="h6" sx={{ fontWeight: 700, color: '#2e7d32' }}>
                     Rövid leírás
                   </Typography>
+                  <FeatureGate feature="ai_generation" showUpgrade={false} compact={true}>
+                    <Tooltip title="AI rövid leírás (2 credits) — Merchant / Shopping stílus">
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={generatingShort ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                        onClick={() => setShortGenerationDialogOpen(true)}
+                        disabled={generatingShort}
+                        sx={{ ml: 'auto' }}
+                      >
+                        {generatingShort ? 'Generálás...' : 'AI'}
+                      </Button>
+                    </Tooltip>
+                  </FeatureGate>
                 </Box>
+                {shortGenerationWarnings.length > 0 && (
+                  <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setShortGenerationWarnings([])}>
+                    {shortGenerationWarnings.map((w, i) => (
+                      <Typography key={i} variant="body2" display="block">
+                        {w}
+                      </Typography>
+                    ))}
+                  </Alert>
+                )}
+                {shortGeneratedProductType && (
+                  <Chip
+                    label={`AI típus: ${shortGeneratedProductType}`}
+                    size="small"
+                    sx={{ mb: 2 }}
+                    onDelete={() => setShortGeneratedProductType(null)}
+                  />
+                )}
                 <Box sx={{ position: 'relative', zIndex: 1 }}>
                   <HtmlEditor
                     value={formData.short_description}
@@ -5743,6 +5835,59 @@ export default function ProductEditForm({ product }: ProductEditFormProps) {
               startIcon={generating ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
             >
               {generating ? 'Generálás...' : 'Generálás'}
+            </Button>
+          </Tooltip>
+        </DialogActions>
+      </Dialog>
+
+      {/* Generate short description (Merchant / Shopping style) */}
+      <Dialog
+        open={shortGenerationDialogOpen}
+        onClose={() => setShortGenerationDialogOpen(false)}
+        aria-labelledby="generate-short-dialog-title"
+        aria-describedby="generate-short-dialog-description"
+      >
+        <DialogTitle id="generate-short-dialog-title">
+          AI — Rövid leírás (Merchant / Shopping)
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="generate-short-dialog-description" component="div">
+            <Typography variant="body1" paragraph component="div">
+              Egyszerű szövegű, tényközpontú rövid leírást generálunk (Google Merchant / Shopping kompatibilis stílus): első mondatban termékazonosság, gyártói cikkszám, változat;{' '}
+              <strong>belül 500–1000 karakter</strong>, <strong>HTML és linkek nélkül</strong>.
+            </Typography>
+            <Typography variant="body2" component="div" sx={{ mt: 2 }}>
+              <strong>Felhasznált adatok:</strong>
+              <Box component="ul" sx={{ mt: 1, pl: 3 }}>
+                <li>Forrásanyagok és releváns szövegrészletek (ha vannak)</li>
+                <li>Termékattribútumok, szülő attribútumok (variánsnál)</li>
+                <li>Kategória nevek (csak kontextus — nem teszünk linket a szövegbe)</li>
+                <li>AI generálási utasítások (opcionális mező alább a lapon)</li>
+              </Box>
+            </Typography>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                A Search Console optimalizáció ehhez a mezőhez <strong>alapból ki van kapcsolva</strong> (kerüljük a túlzott kulcsszó tömítést). A generált szöveg felülírja a „Rövid leírás” mezőt; mentés az oldalon külön.
+              </Typography>
+            </Alert>
+            <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 2 }}>
+              A HtmlEditor megjelenítheti formázásként — a modell sima szöveget ad; szükség esetén szerkeszd egységesen.
+            </Typography>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShortGenerationDialogOpen(false)} disabled={generatingShort}>
+            Mégse
+          </Button>
+          <Tooltip title="AI rövid leírás (2 credits)">
+            <Button
+              onClick={handleGenerateShortDescription}
+              variant="contained"
+              color="success"
+              disabled={generatingShort}
+              startIcon={generatingShort ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+            >
+              {generatingShort ? 'Generálás...' : 'Generálás'}
             </Button>
           </Tooltip>
         </DialogActions>
