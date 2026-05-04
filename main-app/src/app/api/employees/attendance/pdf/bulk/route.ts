@@ -12,7 +12,13 @@ import {
   getEmployeeHolidays,
   getHolidaysForDateRange
 } from '@/lib/supabase-server'
-import { computeAttendanceMetrics, computeOvertimeMinutes, getPolicyDisplayRange } from '@/components/attendance/attendanceUtils'
+import {
+  computeAttendanceMetrics,
+  computeEarlyOvertimeMinutes,
+  computeOvertimeMinutes,
+  earlyOvertimePolicyFromEmployeeRow,
+  getPolicyDisplayRange
+} from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from '../../../[id]/attendance/pdf/pdf-template'
 
 export const runtime = 'nodejs'
@@ -216,6 +222,8 @@ export async function POST(request: NextRequest) {
           d.setDate(d.getDate() + 1)
         }
 
+        const earlyOtPolicy = earlyOvertimePolicyFromEmployeeRow(employee as Record<string, unknown>)
+
         const daysData = daysInMonth.map(day => {
           const yearLocal = day.getFullYear()
           const monthLocal = String(day.getMonth() + 1).padStart(2, '0')
@@ -256,6 +264,8 @@ export async function POST(request: NextRequest) {
             requiresCompleteDay: employee.overtime_requires_complete_day !== false
           })
 
+          const earlyOvertimeMinutes = computeEarlyOvertimeMinutes(arrival, departure, shiftS, earlyOtPolicy)
+
           let hoursWorked = 0
           if (arrival && departure) {
             hoursWorked = computeAttendanceMetrics(arrival, departure, lunchStart, lunchEnd, shiftS, shiftE).paidHours
@@ -273,6 +283,7 @@ export async function POST(request: NextRequest) {
             lunchEnd,
             hoursWorked,
             overtimeMinutes,
+            earlyOvertimeMinutes,
             hasAttendance,
             hasCompleteAttendance,
             isEmployeeHoliday: isEmpHoliday,
@@ -286,12 +297,23 @@ export async function POST(request: NextRequest) {
         const conflictDays = daysData.filter(day => day.isConflictHolidayWork).length
         const saturdayDays = daysData.filter(day => day.dayOfWeek === 6 && day.hasCompleteAttendance).length
 
-        // Bulk export is always papír nézet.
+        // Bulk export is always papír nézet — 8 órás normál keret + túlóra összesítő (paperBulkEightHourDisplay).
         const totalHours = daysData.reduce((sum, day) => {
           if (day.dayOfWeek === 6) return sum
-          return sum + (day.isEmployeeHoliday ? 0 : day.hoursWorked)
+          if (day.isEmployeeHoliday) return sum
+          return sum + Math.min(day.hoursWorked, 8)
         }, 0)
-        const totalOvertimeMinutes = 0
+        const policyOtMinutes = daysData.reduce(
+          (s, d) => s + d.overtimeMinutes + (d.earlyOvertimeMinutes ?? 0),
+          0
+        )
+        const excessOver8Minutes = daysData.reduce((sum, day) => {
+          if (day.dayOfWeek === 6) return sum
+          if (day.isEmployeeHoliday) return sum
+          const excessH = Math.max(0, day.hoursWorked - 8)
+          return sum + Math.round(excessH * 60)
+        }, 0)
+        const totalOvertimeMinutes = policyOtMinutes + excessOver8Minutes
         const daysWorked = daysData.filter(day => day.hasCompleteAttendance && !day.isEmployeeHoliday && !day.isGlobalHoliday).length
         const absentDays = daysData.filter(day => day.isEmployeeHoliday).length
 
@@ -309,7 +331,8 @@ export async function POST(request: NextRequest) {
             totalOvertimeMinutes
           },
           turinovaLogoBase64,
-          mode: 'paper'
+          mode: 'paper',
+          paperBulkEightHourDisplay: true
         })
 
         const pdfBuffer = await renderHtmlToPdfBuffer(browser, html)

@@ -35,7 +35,7 @@ export async function GET(
     const { data, error } = await supabase
       .from('employees')
       .select(
-        'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
+        'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, early_overtime_enabled, early_overtime_trigger_time, early_overtime_pay_until_time, early_overtime_mode, early_overtime_fixed_minutes, early_overtime_max_minutes, early_overtime_grace_minutes, early_overtime_rounding_minutes, early_overtime_rounding_mode, early_overtime_daily_cap_minutes, early_overtime_requires_complete_day, created_at, updated_at'
       )
       .eq('id', resolvedParams.id)
       .single()
@@ -91,7 +91,18 @@ export async function PUT(
       overtime_rounding_minutes,
       overtime_rounding_mode,
       overtime_daily_cap_minutes,
-      overtime_requires_complete_day
+      overtime_requires_complete_day,
+      early_overtime_enabled,
+      early_overtime_trigger_time,
+      early_overtime_pay_until_time,
+      early_overtime_mode,
+      early_overtime_fixed_minutes,
+      early_overtime_max_minutes,
+      early_overtime_grace_minutes,
+      early_overtime_rounding_minutes,
+      early_overtime_rounding_mode,
+      early_overtime_daily_cap_minutes,
+      early_overtime_requires_complete_day
     } = body
 
     // Validation
@@ -122,6 +133,21 @@ export async function PUT(
       )
     }
 
+    const earlyEnabled = early_overtime_enabled === true
+    const earlyTrig = early_overtime_trigger_time?.trim() || null
+    const earlyPayUntil = early_overtime_pay_until_time?.trim() || null
+    const earlyMode = early_overtime_mode === 'fixed_grant' ? 'fixed_grant' : 'capped_actual'
+    const earlyRm = ['floor', 'nearest', 'ceil'].includes(early_overtime_rounding_mode)
+      ? early_overtime_rounding_mode
+      : 'floor'
+
+    if (earlyEnabled && !earlyTrig) {
+      return NextResponse.json(
+        { error: 'Az előtti túlórához kötelező a küszöb idő (HH:mm).' },
+        { status: 400 }
+      )
+    }
+
     const { data, error } = await supabase
       .from('employees')
       .update({
@@ -143,11 +169,32 @@ export async function PUT(
         overtime_rounding_mode: ['floor', 'nearest', 'ceil'].includes(overtime_rounding_mode) ? overtime_rounding_mode : 'floor',
         overtime_daily_cap_minutes: Number.isFinite(Number(overtime_daily_cap_minutes)) ? Math.max(0, Math.min(1440, Number(overtime_daily_cap_minutes))) : 120,
         overtime_requires_complete_day: overtime_requires_complete_day !== false,
+        early_overtime_enabled: earlyEnabled,
+        early_overtime_trigger_time: earlyTrig,
+        early_overtime_pay_until_time: earlyPayUntil,
+        early_overtime_mode: earlyMode,
+        early_overtime_fixed_minutes: Number.isFinite(Number(early_overtime_fixed_minutes))
+          ? Math.max(0, Math.min(720, Number(early_overtime_fixed_minutes)))
+          : 30,
+        early_overtime_max_minutes: Number.isFinite(Number(early_overtime_max_minutes))
+          ? Math.max(0, Math.min(720, Number(early_overtime_max_minutes)))
+          : 30,
+        early_overtime_grace_minutes: Number.isFinite(Number(early_overtime_grace_minutes))
+          ? Math.max(0, Math.min(180, Number(early_overtime_grace_minutes)))
+          : 0,
+        early_overtime_rounding_minutes: Number.isFinite(Number(early_overtime_rounding_minutes))
+          ? Math.max(1, Math.min(60, Number(early_overtime_rounding_minutes)))
+          : 15,
+        early_overtime_rounding_mode: earlyRm,
+        early_overtime_daily_cap_minutes: Number.isFinite(Number(early_overtime_daily_cap_minutes))
+          ? Math.max(0, Math.min(1440, Number(early_overtime_daily_cap_minutes)))
+          : 120,
+        early_overtime_requires_complete_day: early_overtime_requires_complete_day !== false,
         updated_at: new Date().toISOString()
       })
       .eq('id', resolvedParams.id)
       .select(
-        'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
+        'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, early_overtime_enabled, early_overtime_trigger_time, early_overtime_pay_until_time, early_overtime_mode, early_overtime_fixed_minutes, early_overtime_max_minutes, early_overtime_grace_minutes, early_overtime_rounding_minutes, early_overtime_rounding_mode, early_overtime_daily_cap_minutes, early_overtime_requires_complete_day, created_at, updated_at'
       )
       .single()
 

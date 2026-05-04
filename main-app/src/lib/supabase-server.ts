@@ -2830,7 +2830,7 @@ export async function getEmployeeById(id: string) {
   const { data, error } = await supabaseServer
     .from('employees')
     .select(
-      'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, created_at, updated_at'
+      'id, name, employee_code, employee_type, rfid_card_id, pin_code, active, lunch_break_start, lunch_break_end, works_on_saturday, shift_start_time, shift_end_time, timezone, overtime_enabled, overtime_grace_minutes, overtime_rounding_minutes, overtime_rounding_mode, overtime_daily_cap_minutes, overtime_requires_complete_day, early_overtime_enabled, early_overtime_trigger_time, early_overtime_pay_until_time, early_overtime_mode, early_overtime_fixed_minutes, early_overtime_max_minutes, early_overtime_grace_minutes, early_overtime_rounding_minutes, early_overtime_rounding_mode, early_overtime_daily_cap_minutes, early_overtime_requires_complete_day, created_at, updated_at'
     )
     .eq('id', id)
     .is('deleted_at', null)

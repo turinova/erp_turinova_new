@@ -56,6 +56,7 @@ import TabPanel from '@mui/lab/TabPanel'
 import CustomTabList from '@core/components/mui/TabList'
 import { invalidateApiCache } from '@/hooks/useApiCache'
 import AttendanceMonthView from '@/components/attendance/AttendanceMonthView'
+import { earlyOvertimePolicyFromEmployeeRow } from '@/components/attendance/attendanceUtils'
 import { LocalizationProvider, TimePicker } from '@mui/x-date-pickers'
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns'
 import { hu } from 'date-fns/locale'
@@ -82,6 +83,17 @@ interface Employee {
   overtime_rounding_mode: 'floor' | 'nearest' | 'ceil'
   overtime_daily_cap_minutes: number
   overtime_requires_complete_day: boolean
+  early_overtime_enabled: boolean
+  early_overtime_trigger_time: string | null
+  early_overtime_pay_until_time: string | null
+  early_overtime_mode: 'capped_actual' | 'fixed_grant'
+  early_overtime_fixed_minutes: number
+  early_overtime_max_minutes: number
+  early_overtime_grace_minutes: number
+  early_overtime_rounding_minutes: number
+  early_overtime_rounding_mode: 'floor' | 'nearest' | 'ceil'
+  early_overtime_daily_cap_minutes: number
+  early_overtime_requires_complete_day: boolean
   created_at: string
   updated_at: string
 }
@@ -130,7 +142,30 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
     overtime_rounding_minutes: Number.isFinite(initialEmployee.overtime_rounding_minutes) ? initialEmployee.overtime_rounding_minutes : 15,
     overtime_rounding_mode: ['floor', 'nearest', 'ceil'].includes(initialEmployee.overtime_rounding_mode) ? initialEmployee.overtime_rounding_mode : 'floor',
     overtime_daily_cap_minutes: Number.isFinite(initialEmployee.overtime_daily_cap_minutes) ? initialEmployee.overtime_daily_cap_minutes : 120,
-    overtime_requires_complete_day: initialEmployee.overtime_requires_complete_day !== false
+    overtime_requires_complete_day: initialEmployee.overtime_requires_complete_day !== false,
+    early_overtime_enabled: initialEmployee.early_overtime_enabled === true,
+    early_overtime_trigger_time: initialEmployee.early_overtime_trigger_time ?? null,
+    early_overtime_pay_until_time: initialEmployee.early_overtime_pay_until_time ?? null,
+    early_overtime_mode: initialEmployee.early_overtime_mode === 'fixed_grant' ? 'fixed_grant' : 'capped_actual',
+    early_overtime_fixed_minutes: Number.isFinite(initialEmployee.early_overtime_fixed_minutes)
+      ? initialEmployee.early_overtime_fixed_minutes
+      : 30,
+    early_overtime_max_minutes: Number.isFinite(initialEmployee.early_overtime_max_minutes)
+      ? initialEmployee.early_overtime_max_minutes
+      : 30,
+    early_overtime_grace_minutes: Number.isFinite(initialEmployee.early_overtime_grace_minutes)
+      ? initialEmployee.early_overtime_grace_minutes
+      : 0,
+    early_overtime_rounding_minutes: Number.isFinite(initialEmployee.early_overtime_rounding_minutes)
+      ? initialEmployee.early_overtime_rounding_minutes
+      : 15,
+    early_overtime_rounding_mode: ['floor', 'nearest', 'ceil'].includes(initialEmployee.early_overtime_rounding_mode)
+      ? initialEmployee.early_overtime_rounding_mode
+      : 'floor',
+    early_overtime_daily_cap_minutes: Number.isFinite(initialEmployee.early_overtime_daily_cap_minutes)
+      ? initialEmployee.early_overtime_daily_cap_minutes
+      : 120,
+    early_overtime_requires_complete_day: initialEmployee.early_overtime_requires_complete_day !== false
   })
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -155,6 +190,12 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
 
     if (field === 'shift_start_time' || field === 'shift_end_time') {
       setErrors(prev => (prev.shift ? { ...prev, shift: '' } : prev))
+    }
+
+    if (field === 'early_overtime_trigger_time') {
+      setErrors(prev =>
+        prev.early_overtime_trigger_time ? { ...prev, early_overtime_trigger_time: '' } : prev
+      )
     }
   }
 
@@ -186,6 +227,10 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
 
     if ((ss && !se) || (!ss && se)) {
       newErrors.shift = 'A műszak kezdetét és végét együtt adja meg, vagy mindkettőt hagyja üresen.'
+    }
+
+    if (employee.early_overtime_enabled && !employee.early_overtime_trigger_time?.trim()) {
+      newErrors.early_overtime_trigger_time = 'Az előtti túlórához kötelező a küszöb idő.'
     }
     
     if (Object.keys(newErrors).length > 0) {
@@ -220,7 +265,18 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
           overtime_rounding_minutes: Number(employee.overtime_rounding_minutes) || 15,
           overtime_rounding_mode: employee.overtime_rounding_mode || 'floor',
           overtime_daily_cap_minutes: Number(employee.overtime_daily_cap_minutes) || 0,
-          overtime_requires_complete_day: employee.overtime_requires_complete_day !== false
+          overtime_requires_complete_day: employee.overtime_requires_complete_day !== false,
+          early_overtime_enabled: employee.early_overtime_enabled === true,
+          early_overtime_trigger_time: employee.early_overtime_trigger_time?.trim() || null,
+          early_overtime_pay_until_time: employee.early_overtime_pay_until_time?.trim() || null,
+          early_overtime_mode: employee.early_overtime_mode === 'fixed_grant' ? 'fixed_grant' : 'capped_actual',
+          early_overtime_fixed_minutes: Number(employee.early_overtime_fixed_minutes) || 0,
+          early_overtime_max_minutes: Number(employee.early_overtime_max_minutes) || 0,
+          early_overtime_grace_minutes: Number(employee.early_overtime_grace_minutes) || 0,
+          early_overtime_rounding_minutes: Number(employee.early_overtime_rounding_minutes) || 15,
+          early_overtime_rounding_mode: employee.early_overtime_rounding_mode || 'floor',
+          early_overtime_daily_cap_minutes: Number(employee.early_overtime_daily_cap_minutes) || 0,
+          early_overtime_requires_complete_day: employee.early_overtime_requires_complete_day !== false
         }),
       })
       
@@ -337,6 +393,7 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
               dailyCapMinutes: employee.overtime_daily_cap_minutes,
               requiresCompleteDay: employee.overtime_requires_complete_day
             }}
+            earlyOvertimePolicy={earlyOvertimePolicyFromEmployeeRow(employee as unknown as Record<string, unknown>)}
           />
         </TabPanel>
 
@@ -500,6 +557,184 @@ export default function EmployeeEditClient({ initialEmployee }: EmployeeEditClie
                           />
                         }
                         label="Csak teljes napnál számoljon túlórát (érkezés + távozás kötelező)"
+                      />
+                    </Grid>
+                  </Grid>
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                    Előtti túlóra (műszak előtt)
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Ha a dolgozó a küszöb idő előtt érkezik, a műszak kezdetéig (vagy a megadott időpontig) számolható
+                    jóváírt perc. A műszak kezdete kötelező ehhez a számításhoz.
+                  </Typography>
+                  <Grid container spacing={3}>
+                    <Grid item xs={12} md={4}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={employee.early_overtime_enabled}
+                            onChange={e => handleInputChange('early_overtime_enabled', e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label="Előtti túlóra engedélyezve"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={8}>
+                      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={hu}>
+                        <Grid container spacing={3}>
+                          <Grid item xs={12} sm={6}>
+                            <TimePicker
+                              label="Küszöb (érkezés előtt)"
+                              value={timeStringToDate(employee.early_overtime_trigger_time)}
+                              onChange={newValue =>
+                                handleInputChange('early_overtime_trigger_time', dateToTimeString(newValue))
+                              }
+                              ampm={false}
+                              disabled={isSaving || !employee.early_overtime_enabled}
+                              minutesStep={5}
+                              slotProps={{
+                                textField: {
+                                  fullWidth: true,
+                                  size: 'small',
+                                  error: !!errors.early_overtime_trigger_time,
+                                  helperText: errors.early_overtime_trigger_time || ' '
+                                }
+                              }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TimePicker
+                              label="Jóváírás vége (opcionális)"
+                              value={timeStringToDate(employee.early_overtime_pay_until_time)}
+                              onChange={newValue =>
+                                handleInputChange('early_overtime_pay_until_time', dateToTimeString(newValue))
+                              }
+                              ampm={false}
+                              disabled={isSaving || !employee.early_overtime_enabled}
+                              minutesStep={5}
+                              slotProps={{
+                                textField: {
+                                  fullWidth: true,
+                                  size: 'small',
+                                  helperText: 'Üresen: műszak kezdetéig'
+                                }
+                              }}
+                            />
+                          </Grid>
+                        </Grid>
+                      </LocalizationProvider>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Mód</InputLabel>
+                        <Select
+                          label="Mód"
+                          value={employee.early_overtime_mode}
+                          disabled={!employee.early_overtime_enabled}
+                          onChange={e =>
+                            handleInputChange('early_overtime_mode', e.target.value as Employee['early_overtime_mode'])
+                          }
+                        >
+                          <MenuItem value="capped_actual">Tényleges idő (plafonnal)</MenuItem>
+                          <MenuItem value="fixed_grant">Fix jóváírás</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Fix perc"
+                        value={employee.early_overtime_fixed_minutes}
+                        disabled={!employee.early_overtime_enabled || employee.early_overtime_mode !== 'fixed_grant'}
+                        onChange={e => handleInputChange('early_overtime_fixed_minutes', Number(e.target.value))}
+                        inputProps={{ min: 0, max: 720 }}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Max perc"
+                        value={employee.early_overtime_max_minutes}
+                        disabled={!employee.early_overtime_enabled}
+                        onChange={e => handleInputChange('early_overtime_max_minutes', Number(e.target.value))}
+                        inputProps={{ min: 0, max: 720 }}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Grace (perc)"
+                        value={employee.early_overtime_grace_minutes}
+                        disabled={!employee.early_overtime_enabled || employee.early_overtime_mode === 'fixed_grant'}
+                        onChange={e => handleInputChange('early_overtime_grace_minutes', Number(e.target.value))}
+                        inputProps={{ min: 0, max: 180 }}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Kerekítés (perc)"
+                        value={employee.early_overtime_rounding_minutes}
+                        disabled={!employee.early_overtime_enabled}
+                        onChange={e => handleInputChange('early_overtime_rounding_minutes', Number(e.target.value))}
+                        inputProps={{ min: 1, max: 60 }}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Kerekítés mód</InputLabel>
+                        <Select
+                          label="Kerekítés mód"
+                          value={employee.early_overtime_rounding_mode}
+                          disabled={!employee.early_overtime_enabled}
+                          onChange={e =>
+                            handleInputChange(
+                              'early_overtime_rounding_mode',
+                              e.target.value as Employee['early_overtime_rounding_mode']
+                            )
+                          }
+                        >
+                          <MenuItem value="floor">Lefelé</MenuItem>
+                          <MenuItem value="nearest">Legközelebbi</MenuItem>
+                          <MenuItem value="ceil">Felfelé</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={2}>
+                      <TextField
+                        fullWidth
+                        type="number"
+                        label="Napi limit (perc)"
+                        value={employee.early_overtime_daily_cap_minutes}
+                        disabled={!employee.early_overtime_enabled}
+                        onChange={e => handleInputChange('early_overtime_daily_cap_minutes', Number(e.target.value))}
+                        inputProps={{ min: 0, max: 1440 }}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={employee.early_overtime_requires_complete_day}
+                            disabled={!employee.early_overtime_enabled}
+                            onChange={e => handleInputChange('early_overtime_requires_complete_day', e.target.checked)}
+                            color="primary"
+                          />
+                        }
+                        label="Csak teljes napnál számoljon előtti túlórát (érkezés + távozás)"
                       />
                     </Grid>
                   </Grid>

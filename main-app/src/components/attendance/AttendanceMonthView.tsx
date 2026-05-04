@@ -41,7 +41,9 @@ import {
   findPublicHolidayForDate,
   type PublicHolidayRow,
   computeAttendanceMetrics,
+  computeEarlyOvertimeMinutes,
   computeOvertimeMinutes,
+  type EarlyOvertimePolicy,
   type OvertimePolicy,
   getPolicyDisplayRange,
   timeStringToDate,
@@ -67,6 +69,8 @@ export interface DayData {
   /** Full span minus lunch (audit) */
   actualHours: number
   overtimeMinutes: number
+  /** Műszak előtti, szabály szerinti túlóra (perc) */
+  earlyOvertimeMinutes: number
   earlyMinutes: number
   lateMinutes: number
   isDisabled: boolean
@@ -84,6 +88,7 @@ interface AttendanceMonthViewProps {
   shiftStart?: string | null
   shiftEnd?: string | null
   overtimePolicy?: Partial<OvertimePolicy>
+  earlyOvertimePolicy?: Partial<EarlyOvertimePolicy>
 }
 
 type DraftDayTimes = {
@@ -141,6 +146,7 @@ function buildEmptyMonth(
     hoursWorked: 0,
     actualHours: 0,
     overtimeMinutes: 0,
+    earlyOvertimeMinutes: 0,
     earlyMinutes: 0,
     lateMinutes: 0,
     isDisabled: isSunday(date) || (!worksOnSaturday && isSaturday(date)),
@@ -155,7 +161,8 @@ function getDayCellVisual(
   worksOnSaturday: boolean,
   shiftStart: string | null,
   shiftEnd: string | null,
-  overtimePolicy?: Partial<OvertimePolicy>
+  overtimePolicy?: Partial<OvertimePolicy>,
+  earlyOvertimePolicy?: Partial<EarlyOvertimePolicy>
 ): {
   line1: string
   line2: string
@@ -248,13 +255,19 @@ function getDayCellVisual(
   if (day.arrival && day.departure) {
     const policyRange = getPolicyDisplayRange(day.arrival, day.departure, shiftStart, shiftEnd)
     const tipParts = [`Fizetett: ${day.hoursWorked.toFixed(2)} ó`]
-    const overtimeHours = day.overtimeMinutes > 0 ? day.overtimeMinutes / 60 : 0
+    const lateOtMin = day.overtimeMinutes
+    const earlyOtMin = day.earlyOvertimeMinutes ?? 0
+    const totalOtMin = lateOtMin + earlyOtMin
+    const overtimeHours = totalOtMin > 0 ? totalOtMin / 60 : 0
 
     if (Math.abs(day.actualHours - day.hoursWorked) > 0.01) {
       tipParts.push(`Teljes jelenlét (ebéd nélkül): ${day.actualHours.toFixed(2)} ó`)
     }
-    if (day.overtimeMinutes > 0 && overtimePolicy?.enabled) {
-      tipParts.push(`Túlóra: ${overtimeHours.toFixed(2)} ó`)
+    if (earlyOtMin > 0 && earlyOvertimePolicy?.enabled) {
+      tipParts.push(`Előtti túlóra: ${(earlyOtMin / 60).toFixed(2)} ó`)
+    }
+    if (lateOtMin > 0 && overtimePolicy?.enabled) {
+      tipParts.push(`Utótti túlóra: ${(lateOtMin / 60).toFixed(2)} ó`)
     }
     if (policyRange?.usesPolicy) {
       tipParts.push(`Nyers: ${day.arrival} – ${day.departure}`)
@@ -263,11 +276,15 @@ function getDayCellVisual(
     if (day.earlyMinutes > 0) tipParts.push(`Korán: ${day.earlyMinutes} p (ellenőrzés)`)
     if (day.lateMinutes > 0) tipParts.push(`Későn: ${day.lateMinutes} p (ellenőrzés)`)
 
+    const otEnabled = overtimePolicy?.enabled || earlyOvertimePolicy?.enabled
+    const line2Ot =
+      totalOtMin > 0 && otEnabled
+        ? `${day.hoursWorked.toFixed(1)} ó · +${overtimeHours.toFixed(1)} ó túlóra`
+        : `${day.hoursWorked.toFixed(1)} ó`
+
     return {
       line1: policyRange ? `${policyRange.start} – ${policyRange.end}` : `${day.arrival} – ${day.departure}`,
-      line2: day.overtimeMinutes > 0 && overtimePolicy?.enabled
-        ? `${day.hoursWorked.toFixed(1)} ó · +${overtimeHours.toFixed(1)} ó túlóra`
-        : `${day.hoursWorked.toFixed(1)} ó`,
+      line2: line2Ot,
       tooltip: tipParts.join(' · '),
       bgcolor: 'background.paper',
       borderColor: 'divider',
@@ -320,12 +337,12 @@ function getDayStatus(day: DayData, publicHolidays: PublicHolidayRow[], worksOnS
 
   if (day.arrival || day.departure) {
     if (!(day.arrival && day.departure)) return { label: 'Hiányos', color: 'warning' }
-    if (day.overtimeMinutes > 0) return { label: 'OK', color: 'success' }
+    if (day.overtimeMinutes + (day.earlyOvertimeMinutes ?? 0) > 0) return { label: 'OK', color: 'success' }
     if (day.earlyMinutes > 0 && day.lateMinutes > 0) return { label: 'Korai + Késői', color: 'warning' }
     if (day.earlyMinutes > 0) return { label: 'Korai', color: 'info' }
     if (day.lateMinutes > 0) return { label: 'Késői', color: 'info' }
-    
-return { label: 'OK', color: 'success' }
+
+    return { label: 'OK', color: 'success' }
   }
 
   return null
@@ -338,7 +355,8 @@ export default function AttendanceMonthView({
   worksOnSaturday,
   shiftStart = null,
   shiftEnd = null,
-  overtimePolicy
+  overtimePolicy,
+  earlyOvertimePolicy
 }: AttendanceMonthViewProps) {
   const now = new Date()
   const [viewYear, setViewYear] = useState(now.getFullYear())
@@ -431,6 +449,7 @@ export default function AttendanceMonthView({
             shiftEnd
           )
           const overtimeMinutes = computeOvertimeMinutes(arrival, departure, shiftStart, shiftEnd, overtimePolicy)
+          const earlyOvertimeMinutes = computeEarlyOvertimeMinutes(arrival, departure, shiftStart, earlyOvertimePolicy)
 
           return {
             ...updatedDay,
@@ -443,6 +462,7 @@ export default function AttendanceMonthView({
             hoursWorked: m.paidHours,
             actualHours: m.actualHours,
             overtimeMinutes,
+            earlyOvertimeMinutes,
             earlyMinutes: m.earlyMinutes,
             lateMinutes: m.lateMinutes
           }
@@ -453,12 +473,13 @@ export default function AttendanceMonthView({
           hoursWorked: 0,
           actualHours: 0,
           overtimeMinutes: 0,
+          earlyOvertimeMinutes: 0,
           earlyMinutes: 0,
           lateMinutes: 0
         }
       })
     },
-    [worksOnSaturday, shiftStart, shiftEnd, overtimePolicy]
+    [worksOnSaturday, shiftStart, shiftEnd, overtimePolicy, earlyOvertimePolicy]
   )
 
   useEffect(() => {
@@ -529,7 +550,18 @@ export default function AttendanceMonthView({
     window.addEventListener(`employee-holiday-changed-${employeeId}`, handleHolidayChange)
 
     return () => window.removeEventListener(`employee-holiday-changed-${employeeId}`, handleHolidayChange)
-  }, [employeeId, viewYear, viewMonth, lunchBreakStart, lunchBreakEnd, worksOnSaturday, shiftStart, shiftEnd, mergeFetchedData])
+  }, [
+    employeeId,
+    viewYear,
+    viewMonth,
+    lunchBreakStart,
+    lunchBreakEnd,
+    worksOnSaturday,
+    shiftStart,
+    shiftEnd,
+    mergeFetchedData,
+    earlyOvertimePolicy
+  ])
 
   useEffect(() => {
     setDaysData(prev =>
@@ -540,6 +572,7 @@ export default function AttendanceMonthView({
         const isEmpHoliday = !!empHoliday
         let metrics = { paid: 0, actual: 0, early: 0, late: 0 }
         let overtimeMinutes = 0
+        let earlyOvertimeMinutes = 0
 
         if (day.arrival && day.departure) {
           const m = computeAttendanceMetrics(
@@ -553,6 +586,7 @@ export default function AttendanceMonthView({
 
           metrics = { paid: m.paidHours, actual: m.actualHours, early: m.earlyMinutes, late: m.lateMinutes }
           overtimeMinutes = computeOvertimeMinutes(day.arrival, day.departure, shiftStart, shiftEnd, overtimePolicy)
+          earlyOvertimeMinutes = computeEarlyOvertimeMinutes(day.arrival, day.departure, shiftStart, earlyOvertimePolicy)
         }
 
         return {
@@ -563,12 +597,13 @@ export default function AttendanceMonthView({
           hoursWorked: metrics.paid,
           actualHours: metrics.actual,
           overtimeMinutes,
+          earlyOvertimeMinutes,
           earlyMinutes: metrics.early,
           lateMinutes: metrics.late
         }
       })
     )
-  }, [holidays, worksOnSaturday, employeeHolidays, shiftStart, shiftEnd, overtimePolicy])
+  }, [holidays, worksOnSaturday, employeeHolidays, shiftStart, shiftEnd, overtimePolicy, earlyOvertimePolicy])
 
   const updateDraftTime = (field: 'arrival' | 'lunchStart' | 'lunchEnd' | 'departure', value: string) => {
     setDraftTimes(prev => ({ ...prev, [field]: normalizeTimeValue(value) }))
@@ -623,7 +658,10 @@ export default function AttendanceMonthView({
 
   const totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
   const totalActualHours = daysData.reduce((sum, day) => sum + day.actualHours, 0)
-  const totalOvertimeMinutes = daysData.reduce((sum, day) => sum + day.overtimeMinutes, 0)
+  const totalOvertimeMinutes = daysData.reduce(
+    (sum, day) => sum + day.overtimeMinutes + (day.earlyOvertimeMinutes ?? 0),
+    0
+  )
   const totalEarlyMinutes = daysData.reduce((sum, day) => sum + day.earlyMinutes, 0)
   const totalLateMinutes = daysData.reduce((sum, day) => sum + day.lateMinutes, 0)
   const daysWorked = daysData.filter(day => day.arrival && day.departure && !day.isDisabled).length
@@ -742,10 +780,17 @@ export default function AttendanceMonthView({
           shiftEnd,
           overtimePolicy
         )
+        const earlyOvertimeMinutes = computeEarlyOvertimeMinutes(
+          u[dayIndex].arrival,
+          u[dayIndex].departure,
+          shiftStart,
+          earlyOvertimePolicy
+        )
 
         u[dayIndex].hoursWorked = m.paidHours
         u[dayIndex].actualHours = m.actualHours
         u[dayIndex].overtimeMinutes = overtimeMinutes
+        u[dayIndex].earlyOvertimeMinutes = earlyOvertimeMinutes
         u[dayIndex].earlyMinutes = m.earlyMinutes
         u[dayIndex].lateMinutes = m.lateMinutes
 
@@ -1022,7 +1067,7 @@ export default function AttendanceMonthView({
                     variant='outlined'
                     color={Math.abs(hoursDelta) > 0.01 ? 'info' : 'default'}
                   />
-                  {overtimePolicy?.enabled && (
+                  {(overtimePolicy?.enabled || earlyOvertimePolicy?.enabled) && (
                     <Chip
                       label={`Túlóra összesen: ${(totalOvertimeMinutes / 60).toFixed(2)} ó`}
                       size='small'
@@ -1033,7 +1078,10 @@ export default function AttendanceMonthView({
                 </Stack>
                 <Typography variant='caption' color='text.secondary' sx={{ mt: 0.75, display: 'block' }}>
                   Fizetett = műszak + türelmi szabály szerint, tényleges = nyers rögzített idő.
-                  {overtimePolicy?.enabled ? ' Túlóra külön, műszakon túli időből számolódik.' : ''}
+                  {overtimePolicy?.enabled ? ' Utótti túlóra: műszak vége utáni idő.' : ''}
+                  {earlyOvertimePolicy?.enabled
+                    ? ' Előtti túlóra: a küszöb előtti érkezésből, a műszak kezdetéig (vagy max./fix perc).'
+                    : ''}
                 </Typography>
               </Box>
 
@@ -1121,7 +1169,15 @@ export default function AttendanceMonthView({
                     }
 
                     const day = daysData[dayIdx]
-                    const visual = getDayCellVisual(day, holidays, worksOnSaturday, shiftStart, shiftEnd, overtimePolicy)
+                    const visual = getDayCellVisual(
+                      day,
+                      holidays,
+                      worksOnSaturday,
+                      shiftStart,
+                      shiftEnd,
+                      overtimePolicy,
+                      earlyOvertimePolicy
+                    )
                     const status = getDayStatus(day, holidays, worksOnSaturday)
                     const today = isToday(day.date)
 

@@ -252,13 +252,92 @@ export function computeAttendanceMetrics(
   return { actualHours, paidHours, earlyMinutes, lateMinutes }
 }
 
-function roundOvertimeMinutes(value: number, step: number, mode: OvertimePolicy['roundingMode']): number {
+export function roundMinutesToStep(value: number, step: number, mode: OvertimePolicy['roundingMode']): number {
   if (value <= 0) return 0
   const safeStep = Math.max(1, Math.floor(step))
   const ratio = value / safeStep
   if (mode === 'ceil') return Math.ceil(ratio) * safeStep
   if (mode === 'nearest') return Math.round(ratio) * safeStep
   return Math.floor(ratio) * safeStep
+}
+
+export type EarlyOvertimeMode = 'capped_actual' | 'fixed_grant'
+
+export interface EarlyOvertimePolicy {
+  enabled: boolean
+  /** HH:mm — early OT applies only if arrival is strictly before this time; null = feature off */
+  triggerTime: string | null
+  /** HH:mm — end of credited early span; null = use shift_start */
+  payUntilTime: string | null
+  mode: EarlyOvertimeMode
+  fixedMinutes: number
+  maxMinutes: number
+  graceMinutes: number
+  roundingMinutes: number
+  roundingMode: 'floor' | 'nearest' | 'ceil'
+  dailyCapMinutes: number
+  requiresCompleteDay: boolean
+}
+
+export const DEFAULT_EARLY_OVERTIME_POLICY: EarlyOvertimePolicy = {
+  enabled: false,
+  triggerTime: null,
+  payUntilTime: null,
+  mode: 'capped_actual',
+  fixedMinutes: 30,
+  maxMinutes: 30,
+  graceMinutes: 0,
+  roundingMinutes: 15,
+  roundingMode: 'floor',
+  dailyCapMinutes: 120,
+  requiresCompleteDay: true
+}
+
+/**
+ * Pre-shift overtime: credited time when the employee arrives before `triggerTime`
+ * (same calendar day), from `arrival` up to min(shift_start, pay_until), then grace / rounding / caps.
+ * `fixed_grant`: if arrival < trigger, credit `fixedMinutes` (after rounding/caps).
+ */
+export function computeEarlyOvertimeMinutes(
+  arrival: string | null,
+  departure: string | null,
+  shiftStart: string | null,
+  policy?: Partial<EarlyOvertimePolicy>
+): number {
+  const p: EarlyOvertimePolicy = {
+    ...DEFAULT_EARLY_OVERTIME_POLICY,
+    ...policy
+  }
+  if (!p.enabled) return 0
+  if (p.requiresCompleteDay && (!arrival || !departure)) return 0
+  if (!arrival) return 0
+
+  const a = parseTimeToMinutes(arrival)
+  const s0 = parseTimeToMinutes(shiftStart)
+  const t = parseTimeToMinutes(p.triggerTime)
+  if (a === null || s0 === null || t === null) return 0
+
+  if (a >= s0) return 0
+  if (a >= t) return 0
+
+  const payUntilParsed = parseTimeToMinutes(p.payUntilTime)
+  const payEnd = payUntilParsed === null ? s0 : Math.min(s0, payUntilParsed)
+  if (payEnd <= a) return 0
+
+  const rawSpan = payEnd - a
+  if (rawSpan <= 0) return 0
+
+  if (p.mode === 'fixed_grant') {
+    const base = Math.max(0, Math.floor(p.fixedMinutes))
+    const rounded = roundMinutesToStep(base, p.roundingMinutes, p.roundingMode)
+    const maxCapped = Math.min(Math.max(0, Math.floor(p.maxMinutes)), rounded)
+    return Math.min(Math.max(0, Math.floor(p.dailyCapMinutes)), maxCapped)
+  }
+
+  const minusGrace = Math.max(0, rawSpan - Math.max(0, Math.floor(p.graceMinutes)))
+  const rounded = roundMinutesToStep(minusGrace, p.roundingMinutes, p.roundingMode)
+  const maxCapped = Math.min(Math.max(0, Math.floor(p.maxMinutes)), rounded)
+  return Math.min(Math.max(0, Math.floor(p.dailyCapMinutes)), maxCapped)
 }
 
 export function computeOvertimeMinutes(
@@ -282,7 +361,7 @@ export function computeOvertimeMinutes(
 
   const rawAfterShift = Math.max(0, d - s1)
   const minusGrace = Math.max(0, rawAfterShift - Math.max(0, Math.floor(p.graceMinutes)))
-  const rounded = roundOvertimeMinutes(minusGrace, p.roundingMinutes, p.roundingMode)
+  const rounded = roundMinutesToStep(minusGrace, p.roundingMinutes, p.roundingMode)
   const capped = Math.min(Math.max(0, Math.floor(p.dailyCapMinutes)), rounded)
   return capped
 }
@@ -321,3 +400,28 @@ export function getCalendarCells(dayCount: number, year: number, month: number):
 }
 
 export const WEEKDAY_LABELS_HU = ['H', 'K', 'Sze', 'Cs', 'P', 'Szo', 'V']
+
+/** Map Supabase `employees` row to `Partial<EarlyOvertimePolicy>` for `computeEarlyOvertimeMinutes`. */
+export function earlyOvertimePolicyFromEmployeeRow(row: Record<string, unknown>): Partial<EarlyOvertimePolicy> {
+  const rm = row.early_overtime_rounding_mode
+  const roundingMode =
+    rm === 'nearest' || rm === 'ceil' ? (rm as EarlyOvertimePolicy['roundingMode']) : 'floor'
+
+  return {
+    enabled: row.early_overtime_enabled === true,
+    triggerTime: row.early_overtime_trigger_time ? String(row.early_overtime_trigger_time).slice(0, 5) : null,
+    payUntilTime: row.early_overtime_pay_until_time ? String(row.early_overtime_pay_until_time).slice(0, 5) : null,
+    mode: row.early_overtime_mode === 'fixed_grant' ? 'fixed_grant' : 'capped_actual',
+    fixedMinutes: Number.isFinite(Number(row.early_overtime_fixed_minutes)) ? Number(row.early_overtime_fixed_minutes) : 30,
+    maxMinutes: Number.isFinite(Number(row.early_overtime_max_minutes)) ? Number(row.early_overtime_max_minutes) : 30,
+    graceMinutes: Number.isFinite(Number(row.early_overtime_grace_minutes)) ? Number(row.early_overtime_grace_minutes) : 0,
+    roundingMinutes: Number.isFinite(Number(row.early_overtime_rounding_minutes))
+      ? Number(row.early_overtime_rounding_minutes)
+      : 15,
+    roundingMode,
+    dailyCapMinutes: Number.isFinite(Number(row.early_overtime_daily_cap_minutes))
+      ? Number(row.early_overtime_daily_cap_minutes)
+      : 120,
+    requiresCompleteDay: row.early_overtime_requires_complete_day !== false
+  }
+}

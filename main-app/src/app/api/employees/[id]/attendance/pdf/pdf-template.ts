@@ -18,6 +18,8 @@ interface DayData {
   lunchEnd: string | null
   hoursWorked: number
   overtimeMinutes: number
+  /** Pre-shift (műszak előtti) túlóra, perc */
+  earlyOvertimeMinutes?: number
   hasAttendance: boolean
   hasCompleteAttendance: boolean
   isEmployeeHoliday: boolean
@@ -42,6 +44,11 @@ interface AttendancePdfTemplateProps {
   }
   turinovaLogoBase64?: string
   mode?: 'paper' | 'actual' | 'official'
+  /**
+   * Tömeges papír PDF: napi max. 8 óra „ledolgozott”, a feletti + szabály szerinti túlóra a „+” részben;
+   * havi összesítő a `summary` mezőkből (bulk route számolja).
+   */
+  paperBulkEightHourDisplay?: boolean
 }
 
 // Format date as "MM.DD DayName"
@@ -78,6 +85,26 @@ const escapeHtml = (text: string | null | undefined) => {
     .replace(/'/g, '&#039;')
 }
 
+/** Papír nézet: a ledolgozott óra cellában feltünteti a napi túlórát (késő + előtti), ha > 0. */
+function appendPaperOvertimeToHoursDisplay(hoursDisplay: string, totalOvertimeMinutes: number): string {
+  if (totalOvertimeMinutes <= 0) return hoursDisplay
+  const otHours = (totalOvertimeMinutes / 60).toFixed(2)
+  return `${hoursDisplay} + ${otHours} óra`
+}
+
+/** Tömeges papír: max. 8 óra normál; a feletti ledolgozott + műszak előtti/utáni perc órában a „+” részben. */
+function formatBulkPaperEightHourHoursCell(day: DayData): string {
+  const hw = Number(day.hoursWorked) || 0
+  const polMin = (Number(day.overtimeMinutes) || 0) + (Number(day.earlyOvertimeMinutes) || 0)
+  const excessH = Math.max(0, hw - 8)
+  const plusH = excessH + polMin / 60
+  const capH = Math.min(hw, 8)
+
+  if (hw <= 0 && polMin <= 0) return '-'
+  if (plusH <= 0) return hw > 0 ? `${hw.toFixed(2)} óra` : '-'
+  return `${capH.toFixed(2)} óra + ${plusH.toFixed(2)} óra`
+}
+
 function employeeTypeLabel(type: string | null | undefined): string {
   switch (type) {
     case 'BOLTI_DOLGOZO':
@@ -103,7 +130,8 @@ export default function generateAttendancePdfHtml({
   daysData,
   summary,
   turinovaLogoBase64,
-  mode = 'paper'
+  mode = 'paper',
+  paperBulkEightHourDisplay = false
 }: AttendancePdfTemplateProps): string {
   const monthNames = ['Január', 'Február', 'Március', 'Április', 'Május', 'Június', 'Július', 'Augusztus', 'Szeptember', 'Október', 'November', 'December']
   const monthName = monthNames[month - 1]
@@ -112,6 +140,7 @@ export default function generateAttendancePdfHtml({
 
   // Build table rows
   const tableRows = daysData.map(day => {
+    const totalOvertimeMinutes = day.overtimeMinutes + (day.earlyOvertimeMinutes ?? 0)
     const hasNoData = !day.arrival && !day.departure
     const isHoliday = day.isEmployeeHoliday
     const isSickLeave = day.holidayType === 'Betegszabadság'
@@ -185,12 +214,12 @@ export default function generateAttendancePdfHtml({
       }
     } else if (mode === 'paper') {
       if (isSaturday) {
-        // Saturday: show times (if any), but hide hours (not counted in monthly paper totals).
+        // Saturday: show times (if any). Ledolgozott óra a cellában (havi összesítő továbbra is kizárja a szombatot).
         // Paper view must show raw recorded times (not policy-clipped display times).
         arrivalDisplay = formatTime(day.arrival)
         departureDisplay = formatTime(day.departure)
         lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
-        hoursDisplay = '-'
+        hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
         overtimeDisplay = '-'
       } else if (isHoliday && day.hoursWorked > 0) {
         // Paper mode: employee holiday with work (conflict) should show the work, but keep the holiday context.
@@ -217,6 +246,22 @@ export default function generateAttendancePdfHtml({
         hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
         overtimeDisplay = '-'
       }
+
+      if (paperBulkEightHourDisplay) {
+        const strongLeave = hoursDisplay.includes('<strong>')
+        if (!strongLeave) {
+          // Csak hétközi „szabadság + munka” ág illeszkedik a (SZABADSÁG) címkéhez; szombat külön ág.
+          if (isHoliday && day.hoursWorked > 0 && !isSaturday) {
+            const holidayLabel = isSickLeave ? 'BETEG SZABADSÁG' : 'SZABADSÁG'
+            const core = formatBulkPaperEightHourHoursCell(day)
+            hoursDisplay = `${core} <span style="font-size: 0.75em; color: #666; font-style: italic;">(${holidayLabel})</span>`
+          } else {
+            hoursDisplay = formatBulkPaperEightHourHoursCell(day)
+          }
+        }
+      } else {
+        hoursDisplay = appendPaperOvertimeToHoursDisplay(hoursDisplay, totalOvertimeMinutes)
+      }
     } else {
       // Actual mode: show all real data, including holiday-work conflicts
       if (isHoliday && day.hoursWorked > 0) {
@@ -226,7 +271,7 @@ export default function generateAttendancePdfHtml({
         lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
         const holidayLabel = isSickLeave ? 'BETEG SZABADSÁG' : 'SZABADSÁG'
         hoursDisplay = `${day.hoursWorked.toFixed(2)} óra <span style="font-size: 0.75em; color: #666; font-style: italic;">(${holidayLabel})</span>`
-        overtimeDisplay = day.overtimeMinutes > 0 ? `${(day.overtimeMinutes / 60).toFixed(2)} óra` : '-'
+        overtimeDisplay = totalOvertimeMinutes > 0 ? `${(totalOvertimeMinutes / 60).toFixed(2)} óra` : '-'
       } else if (isHoliday && !day.arrival && !day.departure) {
         // Holiday with no work: show "-" for times, "SZABADSÁG" for hours
         arrivalDisplay = '-'
@@ -240,7 +285,7 @@ export default function generateAttendancePdfHtml({
         departureDisplay = formatTime(day.displayDeparture)
         lunchDisplay = hasNoData ? '-' : formatLunchBreak(day.lunchStart, day.lunchEnd)
         hoursDisplay = day.hoursWorked > 0 ? `${day.hoursWorked.toFixed(2)} óra` : '-'
-        overtimeDisplay = day.overtimeMinutes > 0 ? `${(day.overtimeMinutes / 60).toFixed(2)} óra` : '-'
+        overtimeDisplay = totalOvertimeMinutes > 0 ? `${(totalOvertimeMinutes / 60).toFixed(2)} óra` : '-'
       }
     }
     
@@ -518,7 +563,7 @@ export default function generateAttendancePdfHtml({
           <span style="font-size: 11px;">${summary.conflictDays} nap</span>
         </div>
         ` : ''}
-        ${mode === 'actual' ? `
+        ${mode === 'actual' || mode === 'paper' ? `
         <div class="summary-row">
           <span class="summary-label">Összes túlóra:</span>
           <span style="font-size: 11px;">${(summary.totalOvertimeMinutes / 60).toFixed(2)} óra</span>

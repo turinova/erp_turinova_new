@@ -7,7 +7,13 @@ import { NextResponse } from 'next/server'
 
 
 import { getEmployeeById, getAttendanceLogsForMonth, getHolidaysForDateRange, getEmployeeHolidays } from '@/lib/supabase-server'
-import { computeAttendanceMetrics, computeOvertimeMinutes, getPolicyDisplayRange } from '@/components/attendance/attendanceUtils'
+import {
+  computeAttendanceMetrics,
+  computeEarlyOvertimeMinutes,
+  computeOvertimeMinutes,
+  earlyOvertimePolicyFromEmployeeRow,
+  getPolicyDisplayRange
+} from '@/components/attendance/attendanceUtils'
 import generateAttendancePdfHtml from './pdf-template'
 
 // Dynamic imports based on environment
@@ -75,6 +81,8 @@ export async function GET(
       date.setDate(date.getDate() + 1)
     }
 
+    const earlyOtPolicy = earlyOvertimePolicyFromEmployeeRow(employee as Record<string, unknown>)
+
     // Process days data
     const daysData = daysInMonth.map(day => {
       // Use local date string instead of ISO to avoid timezone issues
@@ -117,6 +125,8 @@ return checkDate >= start && checkDate <= end
         requiresCompleteDay: employee.overtime_requires_complete_day !== false
       })
 
+      const earlyOvertimeMinutes = computeEarlyOvertimeMinutes(arrival, departure, shiftS, earlyOtPolicy)
+
       // Fizetett óra: műszakhoz képest (ugyanaz a logika, mint a jelenlét nézetben)
       let hoursWorked = 0
 
@@ -136,6 +146,7 @@ return checkDate >= start && checkDate <= end
         lunchEnd,
         hoursWorked,
         overtimeMinutes,
+        earlyOvertimeMinutes,
         hasAttendance,
         hasCompleteAttendance,
         isEmployeeHoliday: isEmpHoliday,
@@ -164,7 +175,10 @@ return checkDate >= start && checkDate <= end
         if (day.isEmployeeHoliday && !day.hasAttendance) return sum
         return sum + day.hoursWorked
       }, 0)
-      totalOvertimeMinutes = 0
+      totalOvertimeMinutes = daysData.reduce(
+        (sum, day) => sum + day.overtimeMinutes + (day.earlyOvertimeMinutes ?? 0),
+        0
+      )
       daysWorked = daysData.filter(day => {
         if (!day.hasCompleteAttendance) return false
         if (day.isGlobalHoliday) return false
@@ -175,7 +189,10 @@ return checkDate >= start && checkDate <= end
     } else {
       // Actual mode: count all real worked hours/days, including attendance on holidays
       totalHours = daysData.reduce((sum, day) => sum + day.hoursWorked, 0)
-      totalOvertimeMinutes = daysData.reduce((sum, day) => sum + day.overtimeMinutes, 0)
+      totalOvertimeMinutes = daysData.reduce(
+        (sum, day) => sum + day.overtimeMinutes + (day.earlyOvertimeMinutes ?? 0),
+        0
+      )
       daysWorked = daysData.filter(day => day.hasCompleteAttendance).length
 
       // Count holidays that don't have attendance as absent
