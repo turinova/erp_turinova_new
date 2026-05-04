@@ -57,6 +57,7 @@ import { Avatar, IconButton } from '@mui/material'
 import { toast } from 'react-toastify'
 import type { ShopRenterProduct, ProductStructureFilter } from '@/lib/products-server'
 import ProductQualityScore from '@/components/ProductQualityScore'
+import { FeatureGate } from '@/components/FeatureGate'
 
 interface ParentOption {
   id: string
@@ -154,6 +155,12 @@ export default function ProductsTable({
   const [imageAltTextProgress, setImageAltTextProgress] = useState({ current: 0, total: 0 })
   const [imageAltTextDialogOpen, setImageAltTextDialogOpen] = useState(false)
   const [imageAltTextDialogType, setImageAltTextDialogType] = useState<'generate' | 'sync'>('generate')
+
+  const [shortBulkDialogOpen, setShortBulkDialogOpen] = useState(false)
+  const [isBulkGeneratingShortDesc, setIsBulkGeneratingShortDesc] = useState(false)
+  const [shortBulkProgress, setShortBulkProgress] = useState({ current: 0, total: 0 })
+  const [bulkShortOnlyMissing, setBulkShortOnlyMissing] = useState(true)
+  const [bulkShortUseSourceMaterials, setBulkShortUseSourceMaterials] = useState(true)
 
   // Bulk sync from ShopRenter state
   const [isSyncingFromShopRenter, setIsSyncingFromShopRenter] = useState(false)
@@ -696,9 +703,91 @@ export default function ProductsTable({
       } catch (error) {
         console.error('Error syncing image alt text:', error)
         setSyncError('Hiba az alt szövegek szinkronizálásakor')
-      } finally {
-        setIsSyncingImageAltText(false)
+    } finally {
+      setIsSyncingImageAltText(false)
       }
+    }
+  }
+
+  const SHORT_DESC_BULK_BATCH = 20
+
+  const handleConfirmBulkShortDescription = async () => {
+    setShortBulkDialogOpen(false)
+    if (selectedIds.size === 0) return
+
+    const productIdsArray = Array.from(selectedIds)
+    setIsBulkGeneratingShortDesc(true)
+    setShortBulkProgress({ current: 0, total: productIdsArray.length })
+    setSyncError(null)
+    setSyncSuccess(null)
+
+    let totalGenerated = 0
+    let totalSkipped = 0
+    let totalFailed = 0
+    const errorSamples: string[] = []
+
+    try {
+      for (let offset = 0; offset < productIdsArray.length; offset += SHORT_DESC_BULK_BATCH) {
+        const chunk = productIdsArray.slice(offset, offset + SHORT_DESC_BULK_BATCH)
+
+        const response = await fetch('/api/products/bulk-generate-short-description', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            productIds: chunk,
+            onlyMissing: bulkShortOnlyMissing,
+            useSourceMaterials: false
+          })
+        })
+
+        const result = await response.json()
+
+        if (response.status === 402) {
+          const c = result.credits || {}
+          toast.error(
+            `Nincs elég credit a köteghez. Szükséges: ${c.required ?? chunk.length * 2}, elérhető: ${c.available ?? 0}`,
+            { autoClose: 8000 }
+          )
+          break
+        }
+
+        if (!result.success) {
+          setSyncError(result.error || 'Hiba a tömeges rövid leírás generálásakor')
+          break
+        }
+
+        const r = result.results
+        totalGenerated += r.generated ?? 0
+        totalSkipped += r.skipped ?? 0
+        totalFailed += r.failed ?? 0
+        if (Array.isArray(r.errors)) {
+          for (const e of r.errors.slice(0, 3)) {
+            errorSamples.push(`${e.productId}: ${e.error}`)
+          }
+        }
+
+        setShortBulkProgress({
+          current: Math.min(offset + chunk.length, productIdsArray.length),
+          total: productIdsArray.length
+        })
+      }
+
+      const anyOutcome = totalGenerated + totalSkipped + totalFailed > 0
+      if (anyOutcome) {
+        setSyncSuccess(
+          `Rövid leírás kész: ${totalGenerated} generálva, ${totalSkipped} kihagyva, ${totalFailed} hiba (${productIdsArray.length} kijelölve)`
+        )
+      }
+      if (errorSamples.length > 0) {
+        console.warn('[bulk short desc] sample errors:', errorSamples)
+      }
+      window.dispatchEvent(new Event('creditUsageUpdated'))
+      router.refresh()
+    } catch (error) {
+      console.error('Error bulk short description:', error)
+      setSyncError('Hiba a tömeges rövid leírás generálásakor')
+    } finally {
+      setIsBulkGeneratingShortDesc(false)
     }
   }
 
@@ -1634,7 +1723,56 @@ export default function ProductsTable({
               ? `ShopRenter-be: ${shopRenterSyncToProgress.current}/${shopRenterSyncToProgress.total}` 
               : `ShopRenter-be szinkronizálás (${selectedIds.size})`}
           </Button>
+          <FeatureGate feature="ai_generation" showUpgrade={false} compact>
+            <Button
+              variant="contained"
+              size="medium"
+              color="secondary"
+              startIcon={
+                isBulkGeneratingShortDesc ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <AutoAwesomeIcon />
+                )
+              }
+              onClick={() => setShortBulkDialogOpen(true)}
+              disabled={
+                isBulkGeneratingShortDesc ||
+                isSyncingFromShopRenter ||
+                isSyncingToShopRenter ||
+                isGeneratingImageAltText ||
+                isSyncingImageAltText ||
+                isOptimizingUrls ||
+                isCalculatingQualityScores ||
+                isDeleting
+              }
+              sx={{
+                fontWeight: 600,
+                px: 3,
+                boxShadow: 2,
+                '&:hover': {
+                  boxShadow: 4
+                }
+              }}
+            >
+              {isBulkGeneratingShortDesc
+                ? `AI rövid leírás: ${shortBulkProgress.current}/${shortBulkProgress.total}`
+                : `AI rövid leírás (${selectedIds.size})`}
+            </Button>
+          </FeatureGate>
         </Box>
+      )}
+
+      {isBulkGeneratingShortDesc && (
+        <LinearProgress
+          variant="determinate"
+          value={
+            shortBulkProgress.total > 0
+              ? (shortBulkProgress.current / shortBulkProgress.total) * 100
+              : 0
+          }
+          sx={{ mb: 2 }}
+        />
       )}
 
       {/* Image alt text progress bar */}
@@ -2042,6 +2180,43 @@ export default function ProductsTable({
           </Button>
         </DialogActions>
       </Dialog>
+
+      <Dialog open={shortBulkDialogOpen} onClose={() => setShortBulkDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>AI rövid leírás (tömeges)</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            {selectedIds.size} kijelölt termékhez generáljuk a rövid leírást (magyar). A folyamat kötegekben fut
+            (max. 20 termék / kérés), a credit levonás és mentés termékenként történik.
+          </DialogContentText>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={bulkShortOnlyMissing}
+                onChange={(e) => setBulkShortOnlyMissing(e.target.checked)}
+                size="small"
+              />
+            }
+            label="Csak ha hiányzik / rövid a leírás (≥ 30 karaktertől nem írjuk felül)"
+          />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={bulkShortUseSourceMaterials}
+                onChange={(e) => setBulkShortUseSourceMaterials(e.target.checked)}
+                size="small"
+              />
+            }
+            label="Forrás anyagok figyelembevétele (jobb minőség, lassabb)"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShortBulkDialogOpen(false)}>Mégse</Button>
+          <Button onClick={handleConfirmBulkShortDescription} variant="contained" autoFocus>
+            Indítás
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Image Modal */}
       <Dialog
         open={imageModalOpen}

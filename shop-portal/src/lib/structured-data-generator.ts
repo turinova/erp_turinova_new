@@ -119,6 +119,26 @@ function decodeHtmlEntities(text: string): string {
 }
 
 /**
+ * Plain text from the first N opening `<p>…</p>` blocks (identity lead for JSON-LD / validation).
+ */
+export function plainTextFromOpeningParagraphs(html: string, maxParagraphs = 2): string {
+  if (!html) return ''
+  const strippedComments = html.replace(/<!--[\s\S]*?-->/gi, '')
+  const s = decodeHtmlEntities(strippedComments)
+  const parts: string[] = []
+  let pos = 0
+  for (let n = 0; n < maxParagraphs; n++) {
+    const slice = s.slice(pos)
+    const m = slice.match(/<p\b[^>]*>([\s\S]*?)<\/p>/i)
+    if (!m || m.index === undefined) break
+    const inner = m[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (inner) parts.push(inner)
+    pos += m.index + m[0].length
+  }
+  return parts.join(' ').trim()
+}
+
+/**
  * Extract FAQ questions and answers from description HTML
  */
 function extractFAQFromDescription(description: string): Array<{ question: string; answer: string }> {
@@ -645,11 +665,10 @@ function getGroupLevelProperties(
 }
 
 /**
- * Create a concise schema description (200-250 chars) from HTML description
- * Aggressively removes all HTML, CSS, and JavaScript to create clean plain text
- * GLOBAL FIX - works for all product types
+ * Plain-text preview used for Product JSON-LD `description` (first ~1–2 sentences, max ~250 chars).
+ * Same logic as on-page schema — use for validation / QA of AI-generated HTML leads.
  */
-function createSchemaDescription(htmlDescription: string): string {
+export function previewSchemaDescriptionFromHtml(htmlDescription: string): string {
   if (!htmlDescription) return ''
   
   // First, decode HTML entities (handles &lt; &gt; etc.)
@@ -676,12 +695,13 @@ function createSchemaDescription(htmlDescription: string): string {
   // Clean whitespace: multiple spaces/newlines/tabs to single space
   plain = plain.replace(/\s+/g, ' ').trim()
   
-  // Extract first meaningful sentences (skip very short ones)
-  const sentences = plain.split(/[.!?]+/)
+  // First 1–2 sentence-like segments (Hungarian often uses one long clause before «.»)
+  const sentences = plain
+    .split(/[.!?]+/)
     .map(s => s.trim())
-    .filter(s => s.length > 15 && s.length < 200) // Minimum 15 chars for meaningful sentence
-  
-  // Take first 1-2 sentences, limit to 250 chars (safety margin)
+    .filter(s => s.length > 15)
+
+  // Take first 1-2 segments, limit to 250 chars (safety margin)
   let result = sentences.slice(0, 2).join('. ')
   
   // If still too long, truncate at word boundary
@@ -697,6 +717,10 @@ function createSchemaDescription(htmlDescription: string): string {
   }
   
   return result || plain.substring(0, 250).trim()
+}
+
+function createSchemaDescription(htmlDescription: string): string {
+  return previewSchemaDescriptionFromHtml(htmlDescription)
 }
 
 /**

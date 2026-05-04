@@ -97,7 +97,12 @@ export function incrementProgress(
 export function getProgress(connectionId: string): SyncProgress | undefined {
   const store = getProgressStore()
   const progress = store.get(connectionId)
-  console.log(`[PROGRESS] Getting progress for ${connectionId}: ${progress ? `found (synced=${progress.synced}/${progress.total})` : 'not found'}, storeSize=${store.size}`)
+  // Hot path: clients poll often; avoid logging every "not found" (see incrementProgress for periodic logs).
+  if (process.env.DEBUG_SYNC_PROGRESS === '1') {
+    console.log(
+      `[PROGRESS] get ${connectionId}: ${progress ? `found synced=${progress.synced}/${progress.total}` : 'not found'}, storeSize=${store.size}`
+    )
+  }
   return progress
 }
 

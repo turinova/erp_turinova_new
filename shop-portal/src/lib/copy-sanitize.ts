@@ -36,3 +36,14 @@ export function sanitizeAiTypography(
 
   return s.trim()
 }
+
+/** Encode HTML for DB storage (same rules as product form save / ShopRenter). */
+export function encodeHtmlEntitiesForStorage(html: string): string {
+  if (!html) return ''
+  return html
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}

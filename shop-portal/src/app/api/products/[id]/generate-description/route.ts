@@ -60,7 +60,7 @@ export async function POST(
       temperature: body.temperature || 0.7,
       // Keep output concise to support the 5000-character cap enforced in the prompt layer.
       // Can be overridden by explicitly passing body.maxTokens from the client.
-      maxTokens: body.maxTokens || 2600,
+      maxTokens: body.maxTokens || 3800,
       language: body.language || 'hu',
       generationInstructions: generationInstructions || undefined,
       useSearchConsoleQueries: body.useSearchConsoleQueries !== false, // Default to true

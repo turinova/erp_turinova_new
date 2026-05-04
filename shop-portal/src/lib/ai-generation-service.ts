@@ -11,33 +11,43 @@ import {
   variantDifferentiatorFromAttributes
 } from './product-variant-helpers'
 import { sanitizeAiTypography } from './copy-sanitize'
+import { plainTextFromOpeningParagraphs, previewSchemaDescriptionFromHtml } from './structured-data-generator'
+
+let anthropicClientSingleton: Anthropic | null = null
+let anthropicInitLogged = false
 
 /**
- * Get Anthropic client - must be created at runtime, not module level
- * This ensures environment variables are properly loaded in Next.js
+ * Lazy singleton Anthropic client (created at first use so env is loaded in Next.js).
+ * Reuses one SDK instance per server process to avoid log spam and extra allocations during bulk AI.
  */
 export function getAnthropicClient() {
+  if (anthropicClientSingleton) {
+    return anthropicClientSingleton
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY is not set in environment variables')
   }
-  
-  // Explicitly set baseURL to ensure we're hitting the correct Anthropic endpoint
-  // NOT Bedrock, NOT Vertex, NOT a proxy - the direct Anthropic API
-  const client = new Anthropic({
-    apiKey: apiKey,
-    baseURL: 'https://api.anthropic.com', // Explicit endpoint - ChatGPT's suggestion #1
+
+  anthropicClientSingleton = new Anthropic({
+    apiKey,
+    baseURL: 'https://api.anthropic.com',
     defaultHeaders: {
-      'anthropic-version': '2023-06-01', // Required header - ChatGPT's suggestion #2
-      'content-type': 'application/json' // Explicit content type
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json'
     }
   })
-  
-  console.log(`[ANTHROPIC CLIENT] Created with baseURL: https://api.anthropic.com`)
-  console.log(`[ANTHROPIC CLIENT] API Key format: ${apiKey.startsWith('sk-ant-') ? 'Valid' : 'INVALID'}`)
-  console.log(`[ANTHROPIC CLIENT] API Key length: ${apiKey.length}`)
-  
-  return client
+
+  if (process.env.NODE_ENV === 'development' && !anthropicInitLogged) {
+    anthropicInitLogged = true
+    console.log('[ANTHROPIC CLIENT] Initialized (singleton) baseURL: https://api.anthropic.com')
+    console.log(
+      `[ANTHROPIC CLIENT] API key: ${apiKey.startsWith('sk-ant-') ? 'valid prefix' : 'unexpected format'}, length: ${apiKey.length}`
+    )
+  }
+
+  return anthropicClientSingleton
 }
 
 export interface GenerationOptions {
@@ -156,17 +166,131 @@ export function detectProductType(productName: string, sku: string): ProductType
   }
 }
 
+/** First opening HTML tag name (ignores leading comments/whitespace). */
+function firstMeaningfulOpenTagName(html: string): string | 'leading_text' | null {
+  let t = html.trim()
+  let i = 0
+  while (i < t.length) {
+    if (/\s/.test(t[i])) {
+      i++
+      continue
+    }
+    if (t[i] !== '<') {
+      return 'leading_text'
+    }
+    if (t.slice(i, i + 4) === '<!--') {
+      const end = t.indexOf('-->', i + 4)
+      if (end === -1) return null
+      i = end + 3
+      continue
+    }
+    if (t[i + 1] === '/') {
+      const close = t.slice(i).match(/^<\/\s*([a-zA-Z][a-zA-Z0-9]*)\s*>/)
+      if (close) {
+        i += close[0].length
+        continue
+      }
+      return null
+    }
+    const open = t.slice(i).match(/^<\s*([a-zA-Z][a-zA-Z0-9]*)\b/)
+    return open ? open[1].toLowerCase() : null
+  }
+  return null
+}
+
+function leadPlainContainsProductIdentity(
+  leadPlain: string,
+  productName: string,
+  modelNumber?: string | null,
+  sku?: string | null
+): boolean {
+  const lead = leadPlain.toLowerCase()
+  const mn = (modelNumber || '').trim().toLowerCase()
+  if (mn.length >= 3 && lead.includes(mn)) return true
+  const sk = (sku || '').trim().toLowerCase()
+  if (sk.length >= 4 && lead.includes(sk)) return true
+  const name = (productName || '').trim()
+  if (name.length > 0 && name.toLowerCase().length <= 40 && lead.includes(name.toLowerCase())) return true
+  const words = name.split(/[^\p{L}\p{N}]+/u).filter(w => w.length >= 4)
+  for (const w of words) {
+    if (lead.includes(w.toLowerCase())) return true
+  }
+  return false
+}
+
+export interface ValidateDescriptionOptions {
+  /** Részletes HTML: enforce JSON-LD–aligned lead (<p> first, schema preview quality). */
+  htmlProductDescription?: boolean
+  modelNumber?: string | null
+  sku?: string | null
+}
+
 /**
  * Validate description for logical consistency
  */
 export function validateDescription(
   description: string,
   productName: string,
-  productType: ProductTypeInfo
+  productType: ProductTypeInfo,
+  options?: ValidateDescriptionOptions
 ): { valid: boolean; warnings: string[] } {
   const warnings: string[] = []
   const descLower = description.toLowerCase()
   const nameLower = (productName || '').toLowerCase()
+
+  if (options?.htmlProductDescription) {
+    const firstTag = firstMeaningfulOpenTagName(description)
+    if (firstTag === 'leading_text') {
+      warnings.push(
+        'A leírás szöveggel kezdődik HTML tag előtt — a JSON-LD leadhez minden elé kerülő tartalom <p> blokkban legyen.'
+      )
+    } else if (firstTag && firstTag !== 'p') {
+      warnings.push(
+        `A leírás első megnyitott tagja <${firstTag}> — a strukturált adat / AI számára a kimenetnek <p>…</p> identitás-blokkal kell kezdődnie, <h2> előtt.`
+      )
+    }
+
+    const schemaPreview = previewSchemaDescriptionFromHtml(description)
+    const openingLeadPlain = plainTextFromOpeningParagraphs(description, 2)
+    const leadMetric = Math.max(schemaPreview.length, openingLeadPlain.length)
+
+    if (leadMetric < 50) {
+      warnings.push(
+        'A nyitó <p> szöveg / JSON-LD előnézet túl rövid (< 50 karakter) — bővítsd az első 1–2 bekezdést konkrét termékazonossággal a fő <h2> szekciók előtt.'
+      )
+    } else if (leadMetric < 90) {
+      warnings.push(
+        'A nyitó <p> szöveg / JSON-LD előnézet rövid (< 90 karakter) — érdemes tömör, tényalapú identitás-blokkot írni (típus, név, egy konkrét attribútum).'
+      )
+    }
+
+    const combinedLeadForMetaScan = `${schemaPreview}\n${openingLeadPlain}`.toLowerCase()
+    const genericOpeners = [
+      'ebben a leírásban',
+      'az alábbiakban',
+      'a lenti',
+      'összefoglalva a fent',
+      'lássuk a részleteket',
+      'az alábbi szöveg'
+    ]
+    if (genericOpeners.some(g => combinedLeadForMetaScan.includes(g))) {
+      warnings.push(
+        'A JSON-LD előnézetben meta-bevezető („ebben a leírásban” stb.) szerepel — cseréld termékazonosító mondatokra (típus, név, fő használat, egy konkrét attribútum).'
+      )
+    }
+
+    const identityOk =
+      (schemaPreview.length >= 25 &&
+        leadPlainContainsProductIdentity(schemaPreview, productName, options.modelNumber, options.sku)) ||
+      (openingLeadPlain.length >= 25 &&
+        leadPlainContainsProductIdentity(openingLeadPlain, productName, options.modelNumber, options.sku))
+
+    if (leadMetric >= 25 && !identityOk) {
+      warnings.push(
+        'A nyitó <p> / JSON-LD előnézet nem tartalmazza egyértelműen a termék nevét, gyártói cikkszámot vagy SKU-t — add hozzá az első bekezdésekhez.'
+      )
+    }
+  }
   
   // Check for product type mismatches
   if (productType.type === 'trash_bin') {
@@ -664,7 +788,7 @@ export async function generateProductDescription(
     const {
       useSourceMaterials = true,
       temperature = 0.7,
-      maxTokens = 2600, // Keep concise by default (aim for <= 5000 characters; can be overridden by caller)
+      maxTokens = 3800, // Default output budget; route uses same (fewer max_tokens cutoffs before 5k char cap)
       language = 'hu',
       generationInstructions,
       useSearchConsoleQueries = false, // Set to true to enable Search Console query optimization
@@ -1074,6 +1198,19 @@ human-written product descriptions for cabinet hardware and related products tha
 CRITICAL: PRODUCT DESCRIPTION STRUCTURE (MUST FOLLOW THIS EXACT STRUCTURE):
 You MUST follow this exact structure for optimal SEO and AI search ranking. This structure is proven to work best for e-commerce:
 
+**CRITICAL — JSON-LD / AI LEAD BLOCK (MUST BE THE VERY FIRST CONTENT IN YOUR HTML OUTPUT):**
+- The output MUST start with **one or two** \`<p>…</p>\` blocks only (the "identity + fact" lead). Optional whitespace before the first \`<p>\` is allowed. **Nothing else** may come before these paragraphs: **no** \`<h2>\`, **no** \`<div>\`, **no** \`<ul>\`, **no** plain text outside tags.
+- These opening paragraphs feed **Product.description** in JSON-LD (roughly the **first ~250 characters** of plain text after HTML is stripped) and are what AI/search summaries lean on. They are **not** optional filler before the "real" SEO sections.
+- **Content (Hungarian, factual, zero fluff):**
+  - State **what** the item is in plain language (product family/type from context — e.g. fiókoldal, szemetes/kuka, csukló, fiókcsúszka).
+  - Include the **commercial product name and/or series** from the context.
+  - Include **one concrete differentiator** taken **only** from provided attributes or source materials (e.g. one key dimension, capacity, material, load rating, or defining variant attribute). **Do not invent** claims.
+  - You may add **one short clause** on primary use or placement **only** if it is supported by the context.
+  - **Forbidden** in this lead: meta phrases such as "Ebben a leírásban", "Az alábbiakban bemutatjuk", "Összefoglalva a fentieket", "Lássuk a részleteket", "Az alábbi szöveg".
+  - If **gyártói cikkszám (model_number)** is in the context, **prefer** it over SKU for identification in this lead; repeat **SKU** at most once in the **entire** document (existing rule).
+- **Length target:** together the opening \`<p>\` block(s) should produce roughly **120–280 characters** of plain text (before the first \`<h2>\`) so the schema excerpt is informative, not generic.
+- **After** this lead, output your first main \`<h2>\` section (Bevezetés / Áttekintés / …) per the numbered structure below. That first \`<h2>\` section may be **shorter** (e.g. one paragraph) because the lead already established identity.
+
 **SEO-OPTIMIZED HEADING REQUIREMENTS:**
 - Use descriptive, keyword-rich headings that match search intent
 - Headings should be 40-60 characters for optimal SEO
@@ -1083,13 +1220,13 @@ You MUST follow this exact structure for optimal SEO and AI search ranking. This
 - Example good heading: <h2>SLIM Duplafalú Fiókoldal DF-A+ - Prémium Minőség</h2>
 - Example bad heading: <h2>Termékleírás</h2> (too generic, no keywords)
 
-1. **Introduction/Overview Section** (<h2>Bevezetés</h2> or <h2>Áttekintés</h2>)
+1. **Introduction/Overview Section** (<h2>Bevezetés</h2> or <h2>Áttekintés</h2>) — **follows the opening JSON-LD lead \`<p>\` block(s)**
    - **CRITICAL**: Heading MUST include the product name and primary keyword
    - Example: <h2>${product.name || product.sku} - Prémium Minőségű Fiókrendszer</h2>
-   - 2-3 paragraphs introducing the product
-   - Include the main product name and primary keyword in the first paragraph
+   - **1–2 paragraphs** under this heading (the opening \`<p>\` lead already introduced the product; avoid repeating the same opening sentences)
+   - Include the main product name and primary keyword in the first paragraph under this \`<h2>\`
    - Mention key variant options (if parent product) or specific variant details (if child product)
-   - Hook the reader with benefits or unique selling points
+   - Hook the reader with benefits or unique selling points **only** where supported by context
    - Use natural Hungarian language, not keyword stuffing
 
 2. **Key Features Section** (<h2>Főbb jellemzők</h2> or <h2>Kiemelt tulajdonságok</h2>)
@@ -1498,6 +1635,8 @@ FINAL QUALITY CHECK - BEFORE SUBMITTING:
 12. ✅ **PAIN POINT CHECK**: Are all pain points actually solved by this product? (No made-up problems or solutions)
 13. ✅ **ANTI-AI SLOP CHECK**: Does the text avoid formulaic connectors, repeated openers, and empty superlatives? Does it read like a skilled human editor, not a template?
 14. ✅ **PUNCTUATION CHECK**: No em/en dash (Unicode) between clauses; no "…" character; number ranges use ASCII hyphen.
+15. ✅ **JSON-LD LEAD CHECK**: Does the HTML start with **one or two** \`<p>\` blocks (no \`<h2>\` before them) with identity + one concrete fact from context (~120–280 plain-text chars before the first \`<h2>\`)?
+16. ✅ **SCHEMA PREVIEW CHECK**: Would the first ~250 characters of stripped text clearly identify the product (name/series/type + model_number or SKU or a defining attribute) without generic meta-intro phrases?
 
 **CRITICAL: Your response MUST be complete. Do not stop mid-sentence or mid-section. Always include:**
 - A FULL conclusion/summary section ("Összefoglalás" or "Összegzés")
@@ -1916,14 +2055,15 @@ TASK:
 
 HARD CONSTRAINTS (MUST ALL BE MET):
 1. Output MUST be valid HTML using only: <h2>, <h3>, <p>, <ul>, <li>, <a>.
-2. Output MUST follow the same 8-section structure as the input (keep all section headings, but you may shorten text).
-3. Output MUST be <= ${maxChars} characters total, INCLUDING HTML tags.
-4. Language: Hungarian only.
-5. Do NOT add any new claims, numbers, specs, or features not already present in the input.
-6. Do NOT hardcode prices.
-7. Identifier rule: Prefer "gyártói cikkszám" (model_number) when present in the input; avoid repeating SKU. Mention SKU at most once.
-8. FAQ: keep EXACTLY 3 questions.
-9. Do NOT use Unicode em dash or en dash (U+2014 / U+2013) between clauses; use comma or new sentence. Use ASCII hyphen only for number ranges (300-550).
+2. If the input already starts with one or two \`<p>\` lead paragraphs before the first \`<h2>\`, **preserve them verbatim** at the very start (only fix obvious tag errors). If missing, **prepend** a compliant 1–2 \`<p>\` identity lead (Hungarian, factual, ~120–280 plain-text chars) before the first \`<h2>\`.
+3. Output MUST follow the same 8-section structure as the input (keep all section headings, but you may shorten text).
+4. Output MUST be <= ${maxChars} characters total, INCLUDING HTML tags.
+5. Language: Hungarian only.
+6. Do NOT add any new claims, numbers, specs, or features not already present in the input.
+7. Do NOT hardcode prices.
+8. Identifier rule: Prefer "gyártói cikkszám" (model_number) when present in the input; avoid repeating SKU. Mention SKU at most once.
+9. FAQ: keep EXACTLY 3 questions.
+10. Do NOT use Unicode em dash or en dash (U+2014 / U+2013) between clauses; use comma or new sentence. Use ASCII hyphen only for number ranges (300-550).
 
 Return ONLY the rewritten HTML, nothing else.`
 
@@ -1965,7 +2105,11 @@ ${description}`
     }
 
     // 9. Validate description for logical consistency and completeness
-    const validation = validateDescription(description, product.name || product.sku, productType)
+    const validation = validateDescription(description, product.name || product.sku, productType, {
+      htmlProductDescription: true,
+      modelNumber: product.model_number,
+      sku: product.sku
+    })
     
     // Add warning if response was cut off
     if (wasCutOff) {
@@ -1974,15 +2118,16 @@ ${description}`
     
     // Check for incomplete endings (cut-off sentences, empty paragraphs at end)
     const trimmedDescription = description.trim()
-    const endsWithIncomplete = 
+    const endsWithStructuralClose = /(<\/p>|<\/h2>|<\/h3>|<\/ul>|<\/ol>|<\/li>)\s*$/i.test(trimmedDescription)
+    const endsWithIncomplete =
       trimmedDescription.endsWith('<p></p>') ||
       trimmedDescription.endsWith('<li><p>') ||
       trimmedDescription.endsWith('<li><p>✅</p></li>') ||
-      trimmedDescription.match(/<h[1-6]>[^<]*$/) || // Heading without closing tag
-      trimmedDescription.match(/<p>[^<]*$/) || // Paragraph without closing tag
-      trimmedDescription.match(/<li>[^<]*$/) // List item without closing tag
-    
-    if (endsWithIncomplete && !wasCutOff) {
+      !!trimmedDescription.match(/<h[1-6]>[^<]*$/) || // Heading without closing tag
+      !!trimmedDescription.match(/<p>[^<]*$/) || // Paragraph without closing tag
+      !!trimmedDescription.match(/<li>[^<]*$/) // List item without closing tag
+
+    if (endsWithIncomplete && !wasCutOff && !endsWithStructuralClose) {
       validation.warnings.push('⚠️ A leírás hiányosnak tűnik - lehet, hogy a válasz le lett vágva.')
     }
     
