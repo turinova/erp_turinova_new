@@ -11,6 +11,73 @@ import { updateProgress, incrementProgress, clearProgress, shouldStopSync } from
 import { getShopRenterRateLimiter } from '@/lib/shoprenter-rate-limiter'
 
 /**
+ * Net price ShopRenter-re: ugyanaz a szabály, mint a POST /api/products/[id]/sync-nél —
+ * ERP-ben a multiplier már az árba van építve, ezért SR-nek 1.0 / lock-et küldünk.
+ */
+function computeShopRenterPricingFromProduct(product: Record<string, unknown>): {
+  price: string
+  cost?: string
+} | null {
+  let priceToSend: number | null = null
+
+  if (
+    product.price !== null &&
+    product.price !== undefined &&
+    product.price !== ''
+  ) {
+    const parsedPrice = parseFloat(String(product.price))
+    if (!isNaN(parsedPrice) && isFinite(parsedPrice) && parsedPrice > 0) {
+      priceToSend = parsedPrice
+    }
+  }
+
+  const costRaw = product.cost ? parseFloat(String(product.cost)) : null
+  const cost =
+    costRaw !== null &&
+    costRaw !== undefined &&
+    !isNaN(costRaw) &&
+    isFinite(costRaw)
+      ? costRaw
+      : null
+  const multiplier = product.multiplier
+    ? parseFloat(String(product.multiplier))
+    : 1.0
+
+  if (!priceToSend || priceToSend <= 0 || isNaN(priceToSend)) {
+    if (
+      cost &&
+      cost > 0 &&
+      multiplier > 0 &&
+      !isNaN(cost) &&
+      !isNaN(multiplier)
+    ) {
+      priceToSend = cost * multiplier
+    } else {
+      return null
+    }
+  }
+
+  if (
+    priceToSend === null ||
+    priceToSend === undefined ||
+    isNaN(priceToSend) ||
+    !isFinite(priceToSend) ||
+    priceToSend <= 0
+  ) {
+    return null
+  }
+
+  const roundedPrice = Math.round(priceToSend * 100) / 100
+  const out: { price: string; cost?: string } = {
+    price: String(roundedPrice)
+  }
+  if (cost !== null && cost !== undefined && !isNaN(cost) && isFinite(cost) && cost > 0) {
+    out.cost = String(Math.round(cost * 100) / 100)
+  }
+  return out
+}
+
+/**
  * POST /api/products/bulk-sync-to-shoprenter
  * Sync multiple products TO ShopRenter (push local changes) using batch API
  */
@@ -245,17 +312,16 @@ async function processBulkSyncToShopRenterInBackground(
                 if (product.gtin !== null && product.gtin !== undefined) {
                   productPayload.gtin = product.gtin || ''
                 }
-                if (product.price !== null && product.price !== undefined) {
-                  productPayload.price = String(product.price)
-                }
-                if (product.cost !== null && product.cost !== undefined) {
-                  productPayload.cost = String(product.cost)
-                }
-                if (product.multiplier !== null && product.multiplier !== undefined) {
-                  productPayload.multiplier = String(product.multiplier)
-                }
-                if (product.multiplier_lock !== null && product.multiplier_lock !== undefined) {
-                  productPayload.multiplierLock = product.multiplier_lock ? '1' : '0'
+                const pricing = computeShopRenterPricingFromProduct(product)
+                if (pricing) {
+                  productPayload.price = pricing.price
+                  if (pricing.cost !== undefined) {
+                    productPayload.cost = pricing.cost
+                  }
+                  productPayload.multiplier = '1.0'
+                  productPayload.multiplierLock = '1'
+                } else {
+                  batchResults.errors++
                 }
               }
 
