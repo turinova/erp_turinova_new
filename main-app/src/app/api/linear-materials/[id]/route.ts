@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     console.log(`Fetching linear material ${id}`)
 
     // Fetch linear material from linear_materials table with pricing data
-    const { data: linearMaterialData, error } = await supabase
+    const { data: linearMaterialData, error } = await supabaseServer
       .from('linear_materials')
       .select(`
         id,
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch machine code from machine_linear_material_map
-    const { data: machineData } = await supabase
+    const { data: machineData } = await supabaseServer
       .from('machine_linear_material_map')
       .select('machine_code')
       .eq('linear_material_id', id)
@@ -107,7 +107,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json()
 
     // Get current data for price history
-    const { data: currentData } = await supabase
+    const { data: currentData } = await supabaseServer
       .from('linear_materials')
       .select('base_price, multiplier, price_per_m, currency_id, vat_id')
       .eq('id', id)
@@ -133,7 +133,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updated_at: new Date().toISOString()
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseServer
       .from('linear_materials')
       .update(updateData)
       .eq('id', id)
@@ -147,7 +147,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Update machine code
     if (body.machine_code !== undefined) {
-      const { data: existing } = await supabase
+      const { data: existing } = await supabaseServer
         .from('machine_linear_material_map')
         .select('id')
         .eq('linear_material_id', id)
@@ -155,13 +155,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         .single()
 
       if (existing) {
-        await supabase
+        await supabaseServer
           .from('machine_linear_material_map')
           .update({ machine_code: body.machine_code })
           .eq('linear_material_id', id)
           .eq('machine_type', 'Korpus')
       } else {
-        await supabase
+        await supabaseServer
           .from('machine_linear_material_map')
           .insert({
             linear_material_id: id,
@@ -229,7 +229,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         
         console.log('Inserting price history:', historyData)
         
-        const { error: historyError } = await supabase
+        const { error: historyError } = await supabaseServer
           .from('linear_material_price_history')
           .insert(historyData)
         
@@ -253,7 +253,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   try {
     const { id } = await params
 
-    const { error } = await supabase
+    const { error } = await supabaseServer
       .from('linear_materials')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)

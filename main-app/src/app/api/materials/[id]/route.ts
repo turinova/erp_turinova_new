@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabase-server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     console.log(`Fetching material ${id}`)
 
     // Fetch material from materials table with pricing data
-    const { data: materialData, error } = await supabase
+    const { data: materialData, error } = await supabaseServer
       .from('materials')
       .select(`
         id,
@@ -56,14 +56,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     // Fetch settings from material_settings
-    const { data: settingsData } = await supabase
+    const { data: settingsData } = await supabaseServer
       .from('material_settings')
       .select('kerf_mm, trim_top_mm, trim_right_mm, trim_bottom_mm, trim_left_mm, rotatable, waste_multi, usage_limit')
       .eq('material_id', id)
       .single()
 
     // Fetch machine code from machine_material_map
-    const { data: machineData } = await supabase
+    const { data: machineData } = await supabaseServer
       .from('machine_material_map')
       .select('machine_code')
       .eq('material_id', id)
@@ -124,7 +124,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     console.log(`Updating material ${id}:`, body)
     
     // FIRST: Get current material to check if price changed
-    const { data: currentMaterial } = await supabase
+    const { data: currentMaterial } = await supabaseServer
       .from('materials')
       .select('base_price, multiplier, price_per_sqm, currency_id, vat_id')
       .eq('id', id)
@@ -153,7 +153,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     console.log('Current user for materials price history:', user?.id, user?.email)
     
     // Update the materials table
-    const { data: materialData, error: materialError } = await supabase
+    const { data: materialData, error: materialError } = await supabaseServer
       .from('materials')
       .update({
         name: body.name,
@@ -201,7 +201,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     // Update the material_settings table using upsert with proper conflict resolution
-    const { data: settingsData, error: settingsError } = await supabase
+    const { data: settingsData, error: settingsError } = await supabaseServer
       .from('material_settings')
       .upsert({
         material_id: id,
@@ -231,7 +231,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     // Update the machine_material_map table
     if (body.machine_code) {
-      const { data: machineData, error: machineError } = await supabase
+      const { data: machineData, error: machineError } = await supabaseServer
         .from('machine_material_map')
         .upsert({
           material_id: id,
@@ -282,7 +282,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
           source_reference: null
         }
         
-        const { error: historyError } = await supabase
+        const { error: historyError } = await supabaseServer
           .from('material_price_history')
           .insert(historyData)
         
@@ -316,7 +316,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     console.log(`Soft deleting material ${id}`)
 
     // Try soft delete first
-    let { error } = await supabase
+    let { error } = await supabaseServer
       .from('materials')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', id)
@@ -325,7 +325,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     if (error && error.message.includes('column "deleted_at" does not exist')) {
       console.log('deleted_at column not found, using hard delete...')
 
-      const result = await supabase
+      const result = await supabaseServer
         .from('materials')
         .delete()
         .eq('id', id)
